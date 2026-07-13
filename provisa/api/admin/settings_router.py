@@ -6,6 +6,11 @@
 
 """Admin config + platform settings REST endpoints."""
 
+# complexity-gate: allow-ble=4 reason="best-effort admin/settings handlers: config upload+reload
+# reports the failure to the caller (never 500s the admin API); OTLP-exporter attach, config reload
+# on domain-policy apply, and the recent-traces read each degrade (log/pass/empty) rather than crash a
+# settings request"
+
 # Requirements: REQ-164, REQ-165, REQ-194, REQ-253, REQ-302, REQ-303, REQ-416
 
 import os
@@ -20,7 +25,8 @@ router = APIRouter()
 
 @router.get("/admin/config")
 async def download_config():  # REQ-164
-    """Download the current config YAML."""
+    """Download the ORIGINAL config YAML (the on-disk boot seed). The live-state view is
+    ``/admin/config/live``; the UI diffs the two."""
     path = config_path()
     if not path.exists():
         raise HTTPException(status_code=404, detail="Config file not found")
@@ -31,12 +37,80 @@ async def download_config():  # REQ-164
     )
 
 
+def _require_live_export() -> None:
+    """Live config export/diff/patch is opt-in (config_live_export) — coherent only where the
+    generated/normalized config is canonical (the demo), not a hand-authored file a normalized patch
+    could not stay faithful to. 404 when off."""
+    from provisa.api.app import state
+
+    if not getattr(state, "config_live_export", False):
+        raise HTTPException(
+            status_code=404,
+            detail="Live config export is disabled (set live_config_export: true).",
+        )
+
+
+@router.get("/admin/config/live")
+async def download_live_config():  # REQ-164
+    """The CURRENT config generated from live state (admin-created views/MVs, relationships, roles,
+    rls, domains overlaid on the file base)."""
+    _require_live_export()
+    from provisa.api.admin.config_export import build_live_config_yaml
+
+    return Response(
+        content=await build_live_config_yaml(),
+        media_type="application/x-yaml",
+        headers={"Content-Disposition": "attachment; filename=provisa.live.yaml"},
+    )
+
+
+@router.get("/admin/config/diff")
+async def config_diff():  # REQ-164
+    """Both sides of the config diff — ``original`` (startup baseline) and ``current`` (live state) —
+    NORMALIZED identically so the side-by-side view shows only genuine changes, not reordering."""
+    _require_live_export()
+    from provisa.api.admin.config_export import config_diff as _diff
+
+    return await _diff()
+
+
+@router.post("/admin/config/patch")
+async def config_patch(request: Request):  # REQ-164
+    """A unified-diff patch from the baseline to the posted (curated) config — git-apply / ``patch``
+    compatible, for committing config changes made in the UI through CI/CD."""
+    _require_live_export()
+    from provisa.api.admin.config_export import make_config_patch
+
+    revised = (await request.body()).decode("utf-8")
+    patch = make_config_patch(revised)
+    return Response(
+        content=patch,
+        media_type="text/x-patch",
+        headers={"Content-Disposition": "attachment; filename=provisa.config.patch"},
+    )
+
+
 @router.put("/admin/config")
 async def upload_config(request: Request):  # REQ-164
-    """Upload a revised config YAML and reload."""
-    from provisa.api.app import _load_and_build  # lazy to avoid circular import
+    """Upload a revised config YAML and reload.
+
+    When live config export is on (the generated-config-is-canonical contract), the config is
+    NORMALIZED on consume and the normalized form is persisted — so the on-disk file stays byte-faithful
+    to the diff/patch baseline and a downloaded patch applies cleanly via ``git apply``. With the flag
+    off the file is written verbatim (a hand-authored config keeps its comments/ordering)."""
+    from provisa.api.app import _load_and_build, state  # lazy to avoid circular import
 
     body = await request.body()
+    if getattr(state, "config_live_export", False):
+        import yaml
+
+        from provisa.api.admin.config_export import normalize_config
+
+        parsed = yaml.safe_load(body.decode("utf-8")) or {}
+        body = yaml.dump(
+            normalize_config(parsed), default_flow_style=False, sort_keys=False
+        ).encode("utf-8")
+
     path = config_path()
     if not path.exists() or path.read_bytes() != body:
         if path.exists():
@@ -69,6 +143,8 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
         return cfg.get(key, ProvisaConfig.model_fields[key].default)
 
     return {
+        # Opt-in features the UI gates on (REQ-164): live config export/diff/patch.
+        "features": {"live_config_export": bool(getattr(state, "config_live_export", False))},
         "engine": {
             "jvm_heap_gb": int(_eng("jvm_heap_gb")),
             "query_max_memory": _eng("query_max_memory"),

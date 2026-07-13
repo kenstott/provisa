@@ -23,6 +23,8 @@ import {
 } from "../hooks/useAdminQueries";
 import {
   downloadConfig,
+  fetchConfigDiff,
+  downloadConfigPatch,
   uploadConfig,
   fetchSettings,
   updateSettings,
@@ -40,6 +42,7 @@ import { EncryptionTab } from "../components/admin/EncryptionTab";
 import { AuthTab } from "../components/admin/AuthTab";
 import { LocalUsersTab } from "../components/admin/LocalUsersTab";
 import { OrgsTab } from "../components/admin/OrgsTab";
+import { ConfigDiffView } from "../components/admin/ConfigDiffView";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
 
@@ -69,7 +72,11 @@ export function AdminPage() {
   const [newDomainAlias, setNewDomainAlias] = useState("");
   const [domainMsg, setDomainMsg] = useState("");
   const [loading, setLoading] = useState(true);
-  const [configYaml, setConfigYaml] = useState<string | null>(null);
+  // Config diff: original (on-disk) vs current (live state), with the edited/reverted current tracked
+  // for apply. null diffOriginal = diff view closed.
+  const [diffOriginal, setDiffOriginal] = useState<string | null>(null);
+  const [diffCurrent, setDiffCurrent] = useState<string>("");
+  const [revisedConfig, setRevisedConfig] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
@@ -109,10 +116,14 @@ export function AdminPage() {
     setLoading(loading);
 
     if (!loading) {
+      // A view is a registered table with view_sql; materialized ones additionally have materialize.
+      const viewTables = tables.filter((t) => t.viewSql != null);
       setStats({
         Sources: sources.length,
         Domains: domains.length,
         Tables: tables.length,
+        Views: viewTables.length,
+        "Materialized Views": viewTables.filter((t) => t.materialize).length,
         Relationships: relationships.length,
         Roles: allRoles.length,
         "RLS Rules": rlsRules.length,
@@ -156,12 +167,39 @@ export function AdminPage() {
   };
 
   const handleViewConfig = async () => {
-    if (configYaml !== null) {
-      setConfigYaml(null);
+    if (diffOriginal !== null) {
+      setDiffOriginal(null);
       return;
     }
-    const yaml = await downloadConfig();
-    setConfigYaml(yaml);
+    // Both sides normalized identically server-side, so the diff surfaces only real admin changes
+    // (e.g. a created MV) rather than section/key reordering noise.
+    const { original, current } = await fetchConfigDiff();
+    setDiffOriginal(original);
+    setDiffCurrent(current);
+    setRevisedConfig(current);
+  };
+
+  const handleApplyRevised = async () => {
+    setUploading(true);
+    setUploadMsg("");
+    const result = await uploadConfig(revisedConfig);
+    setUploadMsg(result.message);
+    setUploading(false);
+  };
+
+  const handleDownloadPatch = async () => {
+    const patch = await downloadConfigPatch(revisedConfig);
+    if (!patch) {
+      setUploadMsg("No changes — patch is empty.");
+      return;
+    }
+    const blob = new Blob([patch], { type: "text/x-patch" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "provisa.config.patch";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleUploadClick = () => fileInputRef.current?.click();
@@ -476,9 +514,11 @@ export function AdminPage() {
               <button className="btn-secondary" onClick={handleDownload}>
                 Download
               </button>
-              <button className="btn-secondary" onClick={handleViewConfig}>
-                {configYaml !== null ? "Hide" : "View"}
-              </button>
+              {settings?.features?.live_config_export && (
+                <button className="btn-secondary" onClick={handleViewConfig}>
+                  {diffOriginal !== null ? "Hide Diff" : "View / Diff"}
+                </button>
+              )}
               <button className="btn-primary" onClick={handleUploadClick} disabled={uploading}>
                 {uploading ? "Uploading..." : "Upload"}
               </button>
@@ -492,7 +532,41 @@ export function AdminPage() {
               {uploadMsg && <span className="upload-msg">{uploadMsg}</span>}
             </div>
 
-            {configYaml !== null && <pre className="config-preview">{configYaml}</pre>}
+            {diffOriginal !== null && (
+              <>
+                <div className="config-diff-legend">
+                  <span>
+                    <strong>Baseline</strong> (config at startup) — read-only
+                  </span>
+                  <span>
+                    <strong>Current</strong> (live state) — editable; shows changes made since
+                    startup. Use the ⇐ arrows to revert a change, then Apply
+                  </span>
+                </div>
+                <ConfigDiffView
+                  original={diffOriginal}
+                  current={diffCurrent}
+                  onCurrentChange={setRevisedConfig}
+                />
+                <div className="config-actions" style={{ marginTop: "0.5rem" }}>
+                  <button
+                    className="btn-secondary"
+                    onClick={handleDownloadPatch}
+                    disabled={revisedConfig === diffOriginal}
+                    title="Unified-diff patch of your changes, for committing via CI/CD (git apply)"
+                  >
+                    Download Patch
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={handleApplyRevised}
+                    disabled={uploading || revisedConfig === diffOriginal}
+                  >
+                    {uploading ? "Applying..." : "Apply Revised"}
+                  </button>
+                </div>
+              </>
+            )}
           </>
         )}
 

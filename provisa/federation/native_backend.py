@@ -273,3 +273,13 @@ class NativeEngineBackend(EngineBackend):
         cannot reach live are cached in the materialization store, attached under its alias. A missing
         store is a hard error (raised by the runtime)."""
         return self._runtime_for(state).ensure_materialize_attached()
+
+    def materialize_store_target(self, state: Any, org_id: str) -> tuple[str, str]:
+        """A native engine writes MVs into its OWN materialization store — the catalog it attaches the
+        store under (``ensure_materialize_attached``: DuckDB → ``mat_store``, Databricks → its Unity
+        catalog, BigQuery → its project) and the runtime's declared MV schema — NOT the Postgres
+        store-engine default. Hardcoding ``postgresql`` here failed the refresh with "Catalog with name
+        postgresql does not exist" on a DuckDB deployment. An engine whose store terminal is not wired
+        (ClickHouse) raises from ``ensure_materialize_attached`` — explicit, never a wrong target."""
+        rt = self._runtime_for(state)
+        return rt.ensure_materialize_attached(), rt.mv_store_schema(org_id)

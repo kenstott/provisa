@@ -894,6 +894,67 @@ main {
   margin-top: 1rem;
 }
 .upload-msg { font-size: 0.875rem; color: var(--text-muted); }
+.config-diff-legend {
+  display: flex;
+  gap: 2rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0.75rem 0 0.4rem;
+}
+
+/* GitHub-style diff for the config MergeView (CodeMirror @codemirror/merge). */
+.config-diff {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: 620px;
+}
+.config-diff .cm-mergeView,
+.config-diff .cm-mergeViewEditors { height: 100%; }
+.config-diff .cm-editor {
+  max-height: 620px;
+  background: #0d1117; /* github dark canvas */
+  color: #e6edf3;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.config-diff .cm-content { caret-color: #e6edf3; }
+.config-diff .cm-cursor { border-left-color: #e6edf3; }
+.config-diff .cm-activeLine { background: rgba(110, 118, 129, 0.1); }
+.config-diff .cm-activeLineGutter { background: rgba(110, 118, 129, 0.1); }
+.config-diff .cm-scroller { overflow: auto; }
+.config-diff .cm-gutters {
+  background: #0d1117;
+  border-right: 1px solid #21262d;
+  color: #6e7681;
+}
+/* Line-level change backgrounds — GitHub add/remove tints. */
+.config-diff .cm-changedLine { background: rgba(63, 185, 80, 0.12); }
+.config-diff .cm-deletedChunk,
+.config-diff .cm-deletedLine { background: rgba(248, 81, 73, 0.12); }
+/* Word-level highlights within a changed line. */
+.config-diff .cm-changedText { background: rgba(63, 185, 80, 0.30); }
+.config-diff .cm-deletedText { background: rgba(248, 81, 73, 0.30); }
+/* Left (original) side: treat changed lines as removals (red), not green. */
+.config-diff .cm-merge-a .cm-changedLine { background: rgba(248, 81, 73, 0.12); }
+.config-diff .cm-merge-a .cm-changedText { background: rgba(248, 81, 73, 0.30); }
+/* Collapsed "N unchanged lines" band. */
+.config-diff .cm-collapsedLines {
+  background: #161b22;
+  color: #58a6ff;
+  border-top: 1px solid #21262d;
+  border-bottom: 1px solid #21262d;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+}
+/* Center revert gutter (the ⇐ undo arrows). */
+.config-diff .cm-merge-revert {
+  background: #0d1117;
+  border-left: 1px solid #21262d;
+  border-right: 1px solid #21262d;
+}
+.config-diff .cm-merge-revert button { color: #58a6ff; cursor: pointer; }
 
 /* Settings */
 .settings-grid {
@@ -906,23 +967,48 @@ main {
   margin-bottom: 1.5rem;
 }
 .settings-section h4 { margin: 0 0 0.75rem; font-size: 0.875rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.settings-section { display: flex; flex-direction: column; gap: 0.75rem; align-content: start; }
 .settings-section label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
   font-size: 0.875rem;
   color: var(--text-muted);
-  margin-bottom: 0.5rem;
+  margin: 0;
 }
-.settings-section label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; gap: 0.5rem; }
+/* Reserve one line for the label text so the box below it sits at the SAME offset in every field —
+   a wrapping label would otherwise push its box down and break column alignment. */
+.settings-section > label > :first-child,
+.settings-section > label { line-height: 1.3; }
 .settings-section input, .settings-section select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 2.25rem; /* uniform box height so boxes line up */
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 0.5rem;
+  padding: 0 0.5rem;
   border-radius: 4px;
   font-size: 0.875rem;
 }
+/* Checkbox rows: inline, fixed height, single line — so a column that leads with a checkbox stays the
+   same height as one that leads with a text field, keeping following rows aligned across columns. */
+.settings-section label:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.settings-section label:has(input[type="checkbox"]) input[type="checkbox"] {
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
+}
+/* The domain-policy button aligns with the boxes above it. */
+.settings-section > button { align-self: flex-start; margin-top: 0.25rem; }
 .settings-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.75rem; }
 
 /* View editor */

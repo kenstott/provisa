@@ -155,6 +155,78 @@ class TestViewSqlPhysicalRewrite:
         assert '"sales_pg"."public"."orders"' in out
 
 
+class TestMaterializedViewPhysicalCompile:
+    """Regression: a materialized user-view MV must have its semantic SQL compiled to a
+    physical plan at schema-rebuild, else refresh_mv runs the semantic SQL straight at
+    the federation engine and fails with "schema <domain> does not exist" — the observed
+    Materialized-Store bug where an MV over `pet_store.users` stayed STALE with
+    'schema "pet_store" does not exist'. Guards compile_registry_mvs_to_physical.
+    """
+
+    def _reg_with(self, **kwargs):
+        from provisa.mv.registry import MVRegistry
+        from provisa.mv.models import MVDefinition, MVStatus
+
+        reg = MVRegistry()
+        reg.register(
+            MVDefinition(
+                id=kwargs.pop("id", "view-test"),
+                source_tables=[],
+                target_catalog="postgresql",
+                target_schema="org_x_mv_cache",
+                target_table="mv_test",
+                status=MVStatus.STALE,
+                **kwargs,
+            )
+        )
+        return reg
+
+    def test_custom_sql_mv_compiled_to_physical(self, schema_and_ctx):
+        from provisa.api.app_rebuild import compile_registry_mvs_to_physical
+
+        _, ctx = schema_and_ctx
+        reg = self._reg_with(sql="SELECT id FROM sales.orders")
+        compile_registry_mvs_to_physical(reg, ctx)
+        mv = reg.get("view-test")
+        assert mv is not None and mv.sql is not None
+        # Semantic schema ref must be gone; catalog-qualified physical ref present.
+        assert "sales.orders" not in mv.sql
+        assert '"sales_pg"."public"."orders"' in mv.sql
+
+    def test_compile_is_idempotent(self, schema_and_ctx):
+        from provisa.api.app_rebuild import compile_registry_mvs_to_physical
+
+        _, ctx = schema_and_ctx
+        reg = self._reg_with(sql="SELECT id FROM sales.orders")
+        compile_registry_mvs_to_physical(reg, ctx)
+        first = reg.get("view-test")
+        assert first is not None
+        once = first.sql
+        compile_registry_mvs_to_physical(reg, ctx)  # second rebuild pass
+        second = reg.get("view-test")
+        assert second is not None and second.sql == once
+
+    def test_join_pattern_mv_sql_untouched(self, schema_and_ctx):
+        from provisa.api.app_rebuild import compile_registry_mvs_to_physical
+        from provisa.mv.models import JoinPattern
+
+        _, ctx = schema_and_ctx
+        reg = self._reg_with(
+            id="jp-mv",
+            sql=None,
+            join_pattern=JoinPattern(
+                left_table="orders",
+                left_column="customer_id",
+                right_table="customers",
+                right_column="id",
+            ),
+        )
+        compile_registry_mvs_to_physical(reg, ctx)
+        # sql is None → nothing to compile; must stay None so refresh builds it from the join.
+        jp = reg.get("jp-mv")
+        assert jp is not None and jp.sql is None
+
+
 class TestSimpleSelect:
     def test_select_fields(self, schema_and_ctx):
         schema, ctx = schema_and_ctx

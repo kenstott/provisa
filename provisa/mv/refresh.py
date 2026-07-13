@@ -88,7 +88,10 @@ async def _build_refresh_sql(mv: MVDefinition, engine=None) -> str:
 
     For join-pattern MVs, builds a SELECT from the source tables with the join.
     Prefixes right-table columns to avoid duplicate column names.
-    For custom SQL MVs, uses the provided SQL directly.
+    For custom SQL MVs, uses the provided SQL directly. That SQL is already a
+    catalog-qualified physical plan — the semantic→physical rewrite happens once at
+    schema-rebuild time (app_rebuild._compile_view_sqls), the same point the query
+    path compiles view SQL, so the engine never sees an unresolved semantic schema.
     """
     if mv.sql:
         return mv.sql
@@ -175,6 +178,14 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
 
         select_sql = await _build_refresh_sql(mv, engine)
         _emit_column_lineage_span(mv, select_sql, str(start), input_signals)  # REQ-862
+
+        # Ensure the target schema exists before the CTAS. The store's MV-cache schema is created on
+        # demand (it need not pre-exist — e.g. a fresh deployment where no source has landed yet). The
+        # catalog-qualified form is portable across the engines that materialize (DuckDB/Trino/
+        # Postgres/Databricks/BigQuery all accept CREATE SCHEMA IF NOT EXISTS "catalog"."schema").
+        await engine.execute_engine(
+            f'CREATE SCHEMA IF NOT EXISTS "{mv.target_catalog}"."{mv.target_schema}"'
+        )
 
         # Check if target table exists — probe through the engine (empty rows on absence).
         try:

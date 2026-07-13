@@ -230,12 +230,12 @@ class ExprLowering:
         return exp.Array(expressions=[self.lower(i) for i in node.items])
 
     def _lower_MapLiteral(self, node: MapLiteral) -> exp.Expression:
-        # {k: v, ...} → MAP(ARRAY['k',...], ARRAY[CAST(v AS JSON), ...]) — values cast to JSON so a
-        # heterogeneous map survives as a single array type (matches the text path's bare-map rewrite).
+        # {k: v, ...} → MAP(ARRAY['k',...], ARRAY[to_json(v), ...]) — encode each value to a JSON value
+        # so a heterogeneous map survives as a single array type (matches the text path's bare-map
+        # rewrite). to_json, NOT CAST(v AS JSON): in the IR dialect (Postgres) CAST AS JSON *parses*
+        # the input as JSON text, so a bare string 'Siamese' fails; to_json *encodes* any scalar.
         keys = [exp.Literal.string(k) for k, _ in node.entries]
-        values = [
-            exp.Cast(this=self.lower(v), to=exp.DataType.build("json")) for _, v in node.entries
-        ]
+        values = [_anon("to_json", self.lower(v)) for _, v in node.entries]
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:

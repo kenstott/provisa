@@ -21,7 +21,6 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, cast
 
-import asyncpg
 from sqlalchemy import select
 
 from provisa.core.database import Database
@@ -32,6 +31,32 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 log = logging.getLogger(__name__)
+
+
+def compile_view_sql_to_physical(sql: str, ctx) -> str:
+    """Compile a view's *semantic* SQL (domain.field / schema.table refs) into a
+    catalog-qualified *physical* plan. Normalize first (sqlglot parse) so unquoted
+    semantic refs resolve, then catalog-qualify — the exact rewrite the query path
+    applies to inline views. Idempotent on already-physical SQL."""
+    from provisa.compiler.sql_rewrite import (
+        normalize_table_refs,
+        rewrite_semantic_to_catalog_physical,
+    )
+
+    return rewrite_semantic_to_catalog_physical(normalize_table_refs(sql, ctx), ctx)
+
+
+def compile_registry_mvs_to_physical(mv_registry, ctx) -> None:
+    """Rewrite every custom-SQL MV's semantic SQL to a physical plan in place.
+
+    Materialized user-view MVs carry semantic SQL (set in _register_user_views_in_state);
+    their refresh executes mv.sql straight at the federation engine, which only knows
+    physical catalogs. Without this compile the refresh fails with "schema <domain> does
+    not exist". Join-pattern MVs (sql is None) are untouched — they build SQL at refresh.
+    """
+    for mv in mv_registry._mvs.values():
+        if mv.sql:
+            mv.sql = compile_view_sql_to_physical(mv.sql, ctx)
 
 
 async def _bg_hydrate_api_endpoints() -> None:
@@ -59,7 +84,7 @@ async def _bg_hydrate_api_endpoints() -> None:
                         _src.base_url,
                         _ep.path,
                         _ep.default_params,
-                        cast(asyncpg.Connection, _conn),
+                        cast("Connection", _conn),
                         "default",
                         _ep.table_name,
                         _ep.ttl,
@@ -106,6 +131,15 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
             (raw_config or {}).get("materialized_views", {}).get("default_ttl", 300)
         )
         for _vr in _view_rows:
+            # Store the *semantic* view SQL; _compile_view_sqls rewrites it to a physical plan.
+            # EVERY user view (materialized or not) goes into view_sql_map so the query path can
+            # inline-expand it live. A materialized view is ALSO registered as an MV below — the query
+            # path expands the view and, when its MV is fresh, rewrite_if_mv_match redirects to the
+            # materialized table. Without the view_sql_map entry a materialized-but-unrefreshed view
+            # is unqueryable: its raw source catalog (e.g. __provisa__) reaches the engine and fails
+            # with "Catalog __provisa__ does not exist".
+            _semantic_sql = _vr["view_sql"].rstrip().rstrip(";")
+            state.view_sql_map[_vr["table_name"]] = _semantic_sql
             if _vr.get("materialize"):
                 from provisa.mv.models import MVDefinition, MVStatus
                 from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
@@ -116,24 +150,30 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                 # (event-driven, no poll gate) → keep the ttl default until CDC-apply landing exists.
                 _sig = resolve(_vr.get("change_signal"), None)
                 _fresh = to_freshness_mode(_sig) or "ttl"  # REQ-932: push → ttl until Phase 3
-                if state.mv_registry.get(_mv_id) is None:
+                _existing = state.mv_registry.get(_mv_id)
+                if _existing is None:
+                    # Target the store the ACTIVE engine materializes into (DuckDB attaches its store
+                    # as ``mat_store``, not ``postgresql``), matching _sync_view_mv.
+                    _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
+                        state.org_id
+                    )
                     state.mv_registry.register(
                         MVDefinition(
                             id=_mv_id,
                             source_tables=[],
-                            target_catalog="postgresql",
-                            target_schema=f"org_{state.org_id}_mv_cache",
+                            target_catalog=_tgt_cat,
+                            target_schema=_tgt_schema,
                             target_table=f"mv_{_vr['table_name']}",
                             refresh_interval=int(_vr.get("mv_refresh_interval") or _mv_default_ttl),
                             enabled=True,
-                            sql=_vr["view_sql"].rstrip().rstrip(";"),
+                            sql=_semantic_sql,
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
                             freshness_mode=_fresh,
                         )
                     )
-            else:
-                state.view_sql_map[_vr["table_name"]] = _vr["view_sql"].rstrip().rstrip(";")
+                else:
+                    _existing.sql = _semantic_sql
 
 
 async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
@@ -148,14 +188,11 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
                 await _reconcile_live_engine(_lc)
 
     # Compile inline view SQLs now that a context is available
-    if state.view_sql_map and state.contexts:
-        from provisa.compiler.sql_rewrite import (
-            normalize_table_refs,
-            rewrite_semantic_to_catalog_physical,
-        )
-
+    if state.contexts:
         ctx = next(iter(state.contexts.values()))
-        state.view_sql_map = {
-            name: rewrite_semantic_to_catalog_physical(normalize_table_refs(sql, ctx), ctx)
-            for name, sql in state.view_sql_map.items()
-        }
+        if state.view_sql_map:
+            state.view_sql_map = {
+                name: compile_view_sql_to_physical(sql, ctx)
+                for name, sql in state.view_sql_map.items()
+            }
+        compile_registry_mvs_to_physical(state.mv_registry, ctx)

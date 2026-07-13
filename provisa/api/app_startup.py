@@ -16,7 +16,7 @@ state / _rebuild_schemas / _reconcile_live_engine are imported lazily inside
 each function to avoid an app <-> app_startup import cycle.
 """
 
-# complexity-gate: allow-ble=16 reason="startup orchestration relocated verbatim from app.py; each broad except makes a boot phase (background task/server/scheduler/prewarm/demo-registration) best-effort — it logs and degrades that phase, never crashing boot/serve"
+# complexity-gate: allow-ble=17 reason="startup orchestration relocated verbatim from app.py; each broad except makes a boot phase (background task/server/scheduler/prewarm/demo-registration/config-snapshot) best-effort — it logs and degrades that phase, never crashing boot/serve"
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ import logging
 import os
 from pathlib import Path
 
-import asyncpg
 import yaml
 
 from sqlalchemy import select
@@ -39,7 +38,7 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
 if TYPE_CHECKING:
-    pass
+    from provisa.core.database import Connection
 
 
 log = logging.getLogger(__name__)
@@ -179,7 +178,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                 if state.tenant_db is None:
                     continue
                 async with state.tenant_db.acquire() as conn:
-                    _sc = cast(asyncpg.Connection, conn)
+                    _sc = cast("Connection", conn)  # core Connection (proxies asyncpg)
                     rows = [
                         dict(_r._mapping)
                         for _r in (
@@ -624,3 +623,20 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
             )
 
     asyncio.create_task(_register_graphql_demo())
+
+
+async def _capture_config_boot_snapshot(_log: logging.Logger) -> None:
+    """Snapshot the config generated from live state ONCE at end of boot — after all runtime
+    auto-derivation (FK tracking, graphql-remote) — as the admin config-diff baseline, so the diff
+    shows only changes made SINCE startup (REQ-164). Opt-in via ``config_live_export``; another boot
+    phase best-effort — a failure degrades the diff to the on-disk file, never bricking boot."""
+    from provisa.api.app import state
+
+    if not getattr(state, "config_live_export", False):
+        return
+    try:
+        from provisa.api.admin.config_export import build_live_config_yaml
+
+        state.config_boot_snapshot = await build_live_config_yaml()
+    except Exception:
+        _log.exception("Failed to capture config boot snapshot")

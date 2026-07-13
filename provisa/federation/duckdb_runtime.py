@@ -122,6 +122,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     _FILE_ATTACH_TYPES = frozenset({"sqlite", "duckdb"})  # ATTACH a file path, not a URL
     _NO_EXTENSION_TYPES = frozenset({"duckdb"})  # core store type: no INSTALL/LOAD needed
 
+    def mv_store_schema(self, org_id: str) -> str:
+        """The schema MVs materialize into — the SAME store schema source-landing writes to (``mat`` /
+        ``main``). The embedded store is already the org's isolated store, so ``org_id`` is unused
+        (no org-scoped namespace needed, unlike a shared Postgres store-engine)."""
+        del org_id
+        return self._store_schema()
+
     def _store_schema(self) -> str:
         """The schema the landed replicas live in WITHIN the store. Schema-capable stores (postgres)
         isolate them under ``mat``; a schema-less store (sqlite) has no namespaces, so they land in

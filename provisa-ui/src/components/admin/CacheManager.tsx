@@ -24,6 +24,7 @@ import {
 } from "../../hooks/useAdminQueries";
 import { CacheStorageTab } from "./CacheStorageTab";
 import { FilterInput } from "./FilterInput";
+import { displayMvName } from "./mvDisplay";
 
 const PAGE_SIZE = 50;
 
@@ -376,7 +377,8 @@ function MaterializedStoreTab() {
               {paged.map((mv) => (
                 <tr key={mv.id}>
                   <td>
-                    <code>{mv.id}</code>
+                    {/* Show the user's alias; mv.id stays the action key below. */}
+                    <code>{displayMvName(mv.id)}</code>
                   </td>
                   <td>{mv.sourceTables.join(", ")}</td>
                   <td>

@@ -22,6 +22,14 @@ from provisa.transpiler.transpile import (
 
 
 class TestTranspileToTrino:
+    def test_to_json_becomes_cast_as_json(self):
+        # Cypher map literals emit to_json (Postgres/DuckDB encode); Trino has no to_json — its
+        # CAST(x AS JSON) already encodes. Regression for "Malformed JSON" on bare strings.
+        pg = 'SELECT to_json("b"."breed_name") AS x FROM "public"."breeds" "b"'
+        trino_sql = transpile_to_trino(pg).lower()
+        assert "to_json" not in trino_sql
+        assert "cast(" in trino_sql and "as json)" in trino_sql
+
     def test_simple_select(self):
         pg = 'SELECT "id", "amount" FROM "public"."orders"'
         trino_sql = transpile_to_trino(pg)

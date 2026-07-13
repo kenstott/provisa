@@ -43,7 +43,29 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
     result = transpile(pg_sql, "trino")
     result = _rewrite_json_build_object_for_trino(result)
-    return _rewrite_json_arrayagg_for_trino(result)
+    result = _rewrite_json_arrayagg_for_trino(result)
+    return _rewrite_to_json_for_trino(result)
+
+
+def _rewrite_to_json_for_trino(sql: str) -> str:
+    """Replace to_json(x) with CAST(x AS JSON) for Trino.
+
+    Trino has no to_json; its CAST(x AS JSON) already ENCODES a scalar/struct as a JSON value (the
+    same semantics to_json gives on Postgres/DuckDB). The Cypher map-literal path emits to_json so the
+    parse-semantics engines (Postgres/DuckDB) encode bare strings correctly; here it maps back to the
+    Trino spelling."""
+    # Parse failure must fail loud: returning input skips the required Trino rewrite.
+    tree = sqlglot.parse_one(sql, read="trino")
+
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "TO_JSON":
+            if len(node.expressions) == 1:
+                return exp.Cast(
+                    this=node.expressions[0], to=exp.DataType(this=exp.DataType.Type.JSON)
+                )
+        return node
+
+    return tree.transform(_transform).sql(dialect="trino")
 
 
 def _rewrite_json_build_object_for_trino(sql: str) -> str:

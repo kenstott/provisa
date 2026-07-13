@@ -124,6 +124,11 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
     def ensure_materialize_attached(self) -> str:
         return self._project  # type: ignore[return-value]
 
+    def mv_store_schema(self, org_id: str) -> str:
+        """MVs materialize into an org-scoped cache dataset in the project — a dedicated dataset
+        (distinct from the per-source landing datasets), created on demand at refresh."""
+        return f"org_{org_id}_mv_cache"
+
     @property
     def connection(self):
         return self._client

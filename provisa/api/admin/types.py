@@ -400,7 +400,9 @@ class HotTableStatType:
 @strawberry.type
 class MaterializeStoreInfoType:
     engine_name: str
-    store_ref: str
+    # None when the engine has no materialization store configured yet — the panel still shows the
+    # engine + MV count; the UI renders storeRef only when present.
+    store_ref: str | None
     mv_count: int
 
 

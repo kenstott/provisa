@@ -64,6 +64,7 @@ from provisa.api.app_schema_build import (
 )
 from provisa.api.app_startup import (
     _auto_register_graphql_demo,
+    _capture_config_boot_snapshot,
     _prewarm_govdata_jvm,
     _start_background_tasks,
     _start_scheduler,
@@ -222,6 +223,13 @@ class AppState:
         str, str
     ] = {}  # virtual gql table → physical the engine table (Kafka sources)
     config: Any = None  # ProvisaConfig set at startup
+    # Live config export/diff/patch is opt-in (REQ-164) — coherent only where the generated/normalized
+    # config is canonical (the demo), not a hand-authored file. Gates the boot snapshot + endpoints.
+    config_live_export: bool = False
+    # Normalized config generated ONCE at end of boot — after all runtime auto-derivation (FK tracking,
+    # graphql-remote registration). The admin config-diff uses it as the baseline so it shows only
+    # changes made SINCE startup, not derived entities that were never in the file (REQ-164).
+    config_boot_snapshot: str | None = None
     otel_snapshot_retention_hours: int | None = None  # Iceberg snapshot expiry hours
     _stale_check_task: asyncio.Task | None = None  # schema staleness background loop
 
@@ -332,6 +340,14 @@ async def _load_and_build(
         state.otel_s3_endpoint = config.observability.s3_endpoint
 
     # Initialize cache store — REDIS_URL env var overrides config
+    # Live config export/diff/patch (REQ-164) is coherent only when the generated/normalized config is
+    # canonical — the demo scenario (config built from installer choices), NOT a hand-authored file
+    # with comments/ordering a normalized patch could not stay faithful to. Off unless opted in.
+    state.config_live_export = bool(
+        raw_config.get("live_config_export", False)
+        or os.environ.get("PROVISA_LIVE_CONFIG_EXPORT", "").lower() in ("1", "true", "yes")
+    )
+
     cache_config = raw_config.get("cache", {})
     # Resolve Redis URL regardless of response-cache enablement so rate limiting
     # (REQ-371) can use it even when the response cache is off. PROVISA_REDIS_EMBEDDED
@@ -629,6 +645,11 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     _start_scheduler(_log)
 
     await _auto_register_graphql_demo(_log)
+
+    # Snapshot the config AFTER all boot-time auto-derivation, so the admin config-diff baseline
+    # excludes runtime-derived entities (REQ-164). Opt-in; best-effort (the helper degrades and the
+    # diff falls back to the on-disk file).
+    await _capture_config_boot_snapshot(_log)
 
     yield
 

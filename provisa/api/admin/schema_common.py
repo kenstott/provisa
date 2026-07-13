@@ -318,11 +318,15 @@ def _sync_view_mv(
     # REQ-932: derive the refresh gate from change_signal. A user view has no backing source, so
     # resolve falls to the global default. Push signals return None → keep ttl until CDC-apply.
     freshness = to_freshness_mode(resolve(change_signal, None)) or "ttl"
+    # Target the store the ACTIVE engine actually materializes into — a DuckDB engine attaches its
+    # store as ``mat_store``, not ``postgresql``. Hardcoding the latter fails the refresh with
+    # "Catalog with name postgresql does not exist".
+    target_catalog, target_schema = state.federation_engine.materialize_store_target(state.org_id)
     mv = MVDefinition(
         id=mv_id,
         source_tables=[],
-        target_catalog="postgresql",
-        target_schema=f"org_{state.org_id}_mv_cache",
+        target_catalog=target_catalog,
+        target_schema=target_schema,
         target_table=f"mv_{table_name}",
         refresh_interval=refresh_interval,
         enabled=True,
@@ -341,3 +345,36 @@ def _remove_view_mv(table_name: str) -> None:
     from provisa.api.app import state
 
     state.mv_registry.unregister(f"view-{table_name}")
+
+
+async def activate_view_mv(table_name: str) -> None:
+    """Bring a freshly-created materialized view online WITHOUT a restart. Call AFTER the MV is
+    registered and the schemas are rebuilt (so ``mv.sql`` is compiled to a physical plan):
+
+      1. Materialize it immediately — a first refresh, so it lands FRESH with rows instead of sitting
+         STALE/never until something else triggers it.
+      2. (Re)register its event-loop poll job — ``wire_event_loop`` otherwise runs only at boot, so a
+         runtime-created MV would have no refresh cadence until the next restart. Re-wired with
+         ``seed=False`` (idempotent, replace_existing) so it does NOT re-land every source.
+
+    Both callees own their own failure handling — ``refresh_mv`` marks the MV failed (never raises)
+    and ``wire_event_loop`` is best-effort (never raises into its caller) — so a failure here leaves
+    the MV STALE with the manual Refresh still available, without swallowing errors at this layer."""
+    import logging as _logging
+
+    from provisa.api.app import state
+    from provisa.mv.refresh import refresh_mv
+
+    _log = _logging.getLogger(__name__)
+    mv = state.mv_registry.get(f"view-{table_name}")
+    if mv is None:
+        return
+    # refresh_mv catches its own exceptions and marks the MV refresh-failed — no guard needed here.
+    await refresh_mv(state.federation_engine, mv, state.mv_registry)
+
+    scheduler = getattr(state, "_scheduler", None)
+    if scheduler is not None:
+        from provisa.events.app_wiring import wire_event_loop
+
+        # wire_event_loop is best-effort and never raises into its caller.
+        await wire_event_loop(scheduler, state=state, log=_log, seed=False)

@@ -29179,3 +29179,73 @@
   - REQ-977
   - REQ-978
   - REQ-979
+- id: REQ-1008
+  status: proposed
+  group: 8. Client Access & Protocols
+  category: MCP Server
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: Provisa exposes a Model Context Protocol (MCP) server so external AI agents (Claude Desktop,
+    claude.ai connectors, Claude Code) can discover catalog metadata and execute SQL through the same
+    governed pipeline as every other client. The server is a protocol adapter with zero new governance
+    logic — every SQL path routes through the existing choke point _govern_and_route(sql, role_id) in
+    provisa/pgwire/_pipeline.py, and catalog reads reuse build_catalog_tables(state). It runs in-process
+    in the FastAPI app (shared state) via the official mcp Python SDK (FastMCP). Two transports remote
+    Streamable HTTP with OAuth (token→provisa role via existing pgwire OIDC) and local stdio with a pinned
+    role for development. A role is REQUIRED on every call; the server never defaults to admin. Tools
+    list_schemas, list_tables(schema), describe_table(schema,table), run_sql(sql) (row-limited/paged),
+    explain_sql(sql) (plan-only), and search_catalog(nl_text). Structured drill-down (list_schemas →
+    list_tables → describe_table) is deterministic over the meta views (registered_tables_meta,
+    table_columns_meta) and needs no vector store. search_catalog is semantic bottom-up detail search
+    using small-to-big retrieval embed narrow column-leaf chunks, match on the detail, then resolve up
+    through deterministic drill-down to return the parent table branch (all columns + FKs) plus schema
+    breadcrumb. Three chunk tiers schema (schema+desc+table names), table (table+desc+column names),
+    column (column+desc+table+schema); all columns embedded. A single formatter get_chunk(schema, table?,
+    column?) is the sole chunk-text contract address depth selects the tier (schema | schema+table |
+    schema+table+column), column requires table, and it returns embed-text as labeled plain prose (NOT
+    markdown — markdown chrome is token noise to the embedder; the pretty structured view is describe_table's
+    job for a different consumer). A separate iter_entities() enumerator walks the meta views yielding
+    addresses that drive get_chunk, keeping the formatter pure (address in, text out). The address IS the
+    provenance the args (schema, table, column) equal the {level, schema_id, table_id, column_id} stored
+    on the vector row, so a hit resolves straight back through get_chunk/describe_table with no separate
+    chunk-id→entity mapping. Schema questions are never answered from stale chunk text. Because one
+    formatter serves both initial index and incremental reindex, indexed and re-indexed text cannot drift.
+    Vector store is DuckDB VSS, full stop — no second backend. The index runs in-process with the always-running
+    Provisa server, alongside the meta views and pg_duckdb it derives from, so there is no external vector
+    store to provision. DuckDB's HNSW index is memory-resident (disk persistence is still experimental), so
+    it is treated as a server-lifetime artifact rebuilt/loaded at startup by the same walk-the-meta-views
+    code path as incremental reindex (a cold build is just the full case). Sizing the index scales with schema
+    cardinality, not row volume, and the catalog is curated, so it stays single-node across the range
+    (fed ~10K, enterprise ~140K, largest curated+transaction ~1.4M column chunks) — well inside DuckDB VSS's
+    range, which is why no pgvector/multi-million fallback is needed. Reindex is incremental re-embed only
+    datasets whose meta rows changed (over the server-lifetime index), keyed off the
+    MV/catalog refresh (provisa/mv/refresh.py); per-entity chunks emitted while walking the meta views
+    (not a rendered doc split by size) keep per-dataset chunk identity stable so incremental reindex is cheap.
+  use_case: Makes Provisa pluggable into Claude and other MCP-speaking agents for governed metadata
+    discovery and SQL execution, without exposing a second ungoverned surface. Extends the
+    governed-surface-for-AI-planners motivation of REQ-884 from "queryable telemetry" to a first-class
+    agent-facing protocol. Bottom-up search answers detail-topic questions ("which dataset holds the
+    SOFR reset rate") that structured top-down navigation cannot at enterprise catalog scale where the
+    flat table list exceeds an agent's context window.
+  code:
+  - provisa/pgwire/_pipeline.py
+  - provisa/api/flight/catalog.py
+  - provisa/api/_meta_views.py
+  - provisa/mv/refresh.py
+  scenario: 'Given a Provisa instance whose curated catalog is indexed and an MCP client authenticated
+    as role r with access to a subset of domains
+
+    When the agent calls search_catalog("customer lifetime value") then describe_table on the top hit
+    and finally run_sql("SELECT ... LIMIT 100") against that table
+
+    Then search_catalog returns only entities in domains r may access, ranked by column-detail relevance
+    with {schema,table,column} provenance, describe_table returns the authoritative table structure from
+    the meta views, and run_sql executes through _govern_and_route under role r — enforcing the same
+    domain access policy as pgwire and returning a row-limited result
+
+    '
+  related_reqs:
+  - REQ-884
+  - REQ-267
+  - REQ-369

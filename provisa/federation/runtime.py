@@ -195,6 +195,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         this raises if none is configured. The engine only READS the landed replica back."""
         return self.engine.materialize_store()
 
+    def materialize_store_target(self, org_id: str) -> tuple[str, str]:
+        """The (catalog, schema) an MV materializes into for the bound engine — delegated to the
+        backend. Native engines (DuckDB/Databricks/BigQuery) target their attached store; own-store
+        engines (Postgres/Trino) the Postgres store default. Never a hardcoded catalog."""
+        return self._backend.materialize_store_target(self._state, org_id)
+
     def provision(self, ops_views: list, retention_hours: int | None) -> None:
         """Boot-time: connect the engine terminal and seed the OTel ops store (no-op for native
         engines, whose telemetry lands in the dedicated ops store)."""

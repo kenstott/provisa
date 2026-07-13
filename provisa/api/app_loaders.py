@@ -354,11 +354,14 @@ def _load_mv_and_views_config(
                 domain_id=sc["domain_id"],
                 columns=sc.get("columns"),
             )
+        # Default the target to the store the ACTIVE engine materializes into (DuckDB → mat_store,
+        # not postgresql); an explicit config value still wins.
+        _def_cat, _def_schema = state.federation_engine.materialize_store_target(state.org_id)
         mv = MVDefinition(
             id=mvc["id"],
             source_tables=mvc.get("source_tables", []),
-            target_catalog=mvc.get("target_catalog", "postgresql"),
-            target_schema=mvc.get("target_schema", f"org_{state.org_id}_mv_cache"),
+            target_catalog=mvc.get("target_catalog", _def_cat),
+            target_schema=mvc.get("target_schema", _def_schema),
             target_table=mvc.get("target_table"),
             refresh_interval=mvc.get("refresh_interval", 300),
             enabled=mvc.get("enabled", True),
@@ -369,12 +372,13 @@ def _load_mv_and_views_config(
         )
         state.mv_registry.register(mv)
 
-        # REQ-086: Expose MV as queryable table in schema
+        # REQ-086: Expose MV as queryable table in schema. Source catalog/schema mirror the MV's
+        # resolved target (engine store), not a hardcoded postgresql.
         if mv.expose_in_sdl and sdl_cfg:
             mv_table = {
-                "source_id": mvc.get("target_catalog", "postgresql"),
+                "source_id": mvc.get("target_catalog", _def_cat),
                 "domain_id": sdl_cfg.domain_id,
-                "schema": mvc.get("target_schema", f"org_{state.org_id}_mv_cache"),
+                "schema": mvc.get("target_schema", _def_schema),
                 "table": mv.target_table,
                 "columns": sdl_cfg.columns or [],
             }
@@ -407,12 +411,21 @@ def _load_mv_and_views_config(
             }
             raw_config.setdefault("tables", []).append(view_table)
 
+            # EVERY view is inline-expandable (live path); a materialized view is ALSO registered as
+            # an MV for acceleration when fresh. Keeping the view_sql_map entry makes a materialized
+            # view queryable before/without a refresh (its raw source catalog would otherwise reach
+            # the engine → "Catalog does not exist").
+            state.view_sql_map[view_table_name] = view_sql.strip()
             if materialize:
+                # Target the store the ACTIVE engine materializes into (never a hardcoded catalog).
+                _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
+                    state.org_id
+                )
                 mv = MVDefinition(
                     id=f"view-{view_id}",
                     source_tables=[],
-                    target_catalog="postgresql",
-                    target_schema=f"org_{state.org_id}_mv_cache",
+                    target_catalog=_tgt_cat,
+                    target_schema=_tgt_schema,
                     target_table=view_table_name,
                     refresh_interval=refresh_interval,
                     enabled=True,
@@ -422,7 +435,6 @@ def _load_mv_and_views_config(
                 state.mv_registry.register(mv)
                 _view_log.info("Registered materialized view: %s", view_id)
             else:
-                state.view_sql_map[view_table_name] = view_sql.strip()
                 _view_log.info("Registered inline view: %s", view_id)
 
     # Auto-generate MVs from cross-source relationships with materialize=true

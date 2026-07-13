@@ -33,9 +33,12 @@ from provisa.events import supervisor
 from provisa.events.boot import build_processors, register_runtime, specs_from_config
 
 
-async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
+async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = True) -> int:
     """Build + register the event loop from live state. Returns the node count registered (0 if the
-    prerequisites are not ready or the loop is skipped). Best-effort — never raises into boot."""
+    prerequisites are not ready or the loop is skipped). Best-effort — never raises into boot.
+
+    ``seed`` is True at boot (seed every source's first land). Pass False to RE-wire after a runtime
+    change (e.g. an MV created in the UI) — poll jobs get (re)registered without re-landing sources."""
     try:
         db = getattr(state, "tenant_db", None)
         engine = getattr(state, "federation_engine", None)
@@ -211,7 +214,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
         # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create
         # job: replicas are BUILT at boot (that job lands every source + fans out to its MVs), then
         # REFRESHED by the poll/push events.
-        register_runtime(scheduler, db=db, processors=processors, specs=specs)
+        register_runtime(scheduler, db=db, processors=processors, specs=specs, seed=seed)
         log.info(
             "event loop wired: %d node(s) on the scheduler (boot-create + refresh scheduled)",
             len(processors),

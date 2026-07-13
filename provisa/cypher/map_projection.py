@@ -69,8 +69,12 @@ def _expand_bare_map(m: re.Match) -> str:
         vals.append(v)
     if not keys:
         return m.group(0)
-    cast_vals = [f"CAST({v} AS JSON)" for v in vals]
-    return f"MAP(ARRAY[{', '.join(keys)}], ARRAY[{', '.join(cast_vals)}])"
+    # Encode each value as a JSON value with to_json, NOT CAST(v AS JSON): in the IR dialect
+    # (Postgres) CAST AS JSON *parses* the input as JSON text, so a bare string like 'Siamese' fails
+    # ("Malformed JSON"); to_json *encodes* any scalar/struct into a JSON value. Keeps the
+    # heterogeneous map as one JSON array type.
+    json_vals = [f"to_json({v})" for v in vals]
+    return f"MAP(ARRAY[{', '.join(keys)}], ARRAY[{', '.join(json_vals)}])"
 
 
 def rewrite_bare_map_literals(text: str) -> str:  # REQ-571

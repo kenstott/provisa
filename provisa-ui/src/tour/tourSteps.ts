@@ -62,10 +62,10 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/sources",
     element: ".navbar-tour-btn",
-    title: "Welcome — let's take the tour",
+    title: "Welcome, let's take the tour",
     description:
-      "🧭 This compass reopens the tour anytime. Leave whenever — click the app or press <kbd>Esc</kbd>." +
-      "<p><strong>Provisa</strong> is a governed federation compiler that stays out of the data path — one declared model, queryable through many surfaces:</p>" +
+      "🧭 This compass reopens the tour anytime. Leave whenever, click the app or press <kbd>Esc</kbd>." +
+      "<p><strong>Provisa</strong> is a governed federation compiler that stays out of the data path: one declared model, queryable through many surfaces.</p>" +
       "<div class='tour-tags'>" +
       "<span>GraphQL</span><span>SQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span>" +
       "<span>Postgres · pgwire</span><span>Neo4j · Bolt</span>" +
@@ -77,7 +77,8 @@ export const TOUR_STEPS: TourStep[] = [
       "<li><strong>RDB-first</strong> — federate into the database you already run, Oracle to MySQL.</li>" +
       "<li><strong>Already run a cluster</strong> — Trino, Databricks, ClickHouse, Fabric, Snowflake, BigQuery — Provisa defers to it.</li>" +
       "</ul>" +
-      "<p>Declarative in, behavior out — you change the <em>strategy</em>, never the model.</p>" +
+      "<p>Pick any of them. The engine sits behind the model, so everything ahead (the tables, the six surfaces, the governance) is identical either way. That's the point.</p>" +
+      "<p>Declarative in, behavior out: you change the <em>strategy</em>, never the model.</p>" +
       "<p>One model, no rewrites: develop on embedded DuckDB, validate against production engines, promote to your own infrastructure.</p>" +
       "<p>Ready? Let's go. →</p>",
   },
@@ -222,35 +223,38 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/sql",
     openBranch: "sql",
     element: '.subnav a[href="/sql"]',
-    title: "1 · SQL",
+    title: "SQL (1 of 6 surfaces)",
     description:
-      "SQL lives in the SQL explorer. Standard SQL federated across every source — join Postgres to Mongo to a CSV in one statement. And the model's own metadata and every activity trace are themselves queryable tables here — join your audit log or lineage straight to live data.",
+      "SQL lives in the SQL explorer. Standard SQL federated across every source — join Postgres to Mongo to a CSV in one statement. And the model's own metadata and every activity trace are themselves queryable tables here — join your audit log or lineage straight to live data." +
+      "<p>🔌 Not just this explorer — point <strong>psql, DBeaver, or Tableau</strong> at Provisa's pgwire port and they run the exact same federated SQL.</p>",
   },
   {
     route: "/query",
     openBranch: "graphql",
     element: '.subnav a[href="/query"]',
-    title: "2 · GraphQL",
+    title: "GraphQL (2 of 6 surfaces)",
     description:
       "◈ The same question as a typed GraphQL query:" +
       "<p><code>{ inquiries { groupBy { user }, count } }</code></p>" +
-      "<p>Grouping and aggregates over your relationships — 🎯 one endpoint, 📖 self-documenting schema.</p>",
+      "<p>Grouping and aggregates over your relationships — 🎯 one endpoint, 📖 self-documenting schema.</p>" +
+      "<p>🔌 Hit it from <strong>any GraphQL client</strong> — Apollo, Relay, urql — and, with federation enabled, drop Provisa into an <strong>Apollo supergraph as a subgraph</strong>, so your federated model composes alongside your existing graphs.</p>",
   },
   {
     route: "/graph",
     openBranch: "cypher",
     element: '.subnav a[href="/graph"]',
-    title: "3 · Cypher",
+    title: "Cypher (3 of 6 surfaces)",
     description:
       "🕸️ Traverse the federated model as a graph with Cypher:" +
       "<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p>" +
-      "<p>↔️ That traversal runs <strong>across sources</strong> — no single graph database required.</p>",
+      "<p>↔️ That traversal runs <strong>across sources</strong> — no single graph database required.</p>" +
+      "<p>🔌 And any <strong>Bolt</strong> client — Neo4j Browser, Bloom — runs that same traversal over the wire, no code change.</p>",
   },
   {
     route: "/grpc",
     openBranch: "grpc",
     element: '.subnav a[href="/grpc"]',
-    title: "4 · gRPC",
+    title: "gRPC (4 of 6 surfaces)",
     description:
       "⚙️ Every registered entity is also a gRPC service:" +
       "<p><code>rpc QueryInquiries(...) returns (...)</code></p>" +
@@ -260,7 +264,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/jsonapi",
     openBranch: "jsonapi",
     element: '.subnav a[href="/jsonapi"]',
-    title: "5 · JSON:API",
+    title: "JSON:API (5 of 6 surfaces)",
     description:
       "🧩 A spec-compliant JSON:API surface:" +
       "<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p>" +
@@ -270,7 +274,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/openapi",
     openBranch: "openapi",
     element: '.subnav a[href="/openapi"]',
-    title: "6 · OpenAPI / REST",
+    title: "OpenAPI / REST (6 of 6 surfaces)",
     description:
       "🌐 And a plain REST endpoint, described by OpenAPI:" +
       "<p><code>GET /data/rest/pet-store/inquiries</code></p>" +
@@ -287,7 +291,7 @@ export const TOUR_STEPS: TourStep[] = [
       "The Admin pages run the platform:" +
       "<ul>" +
       "<li>⚙️ Choose and configure your <strong>federation engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, or a cloud warehouse as a first-class engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse)</li>" +
-      "<li>🔗 Reach object/lake data (Parquet, Iceberg, Delta) in S3, R2, GCS, ADLS or OneLake as a <strong>zero-copy external link</strong> — read in place via the engine's native mechanism (external tables, OneLake shortcuts, ClickHouse table engines), credentials provisioned automatically, everything else landed as a governed replica</li>" +
+      "<li>🔗 Whichever engine you pick brings its own <strong>live external data</strong> reach — Parquet, Iceberg, Delta read in place, zero-copy, credentials auto-provisioned. Anything it can't link live lands as a governed replica.</li>" +
       "<li>🔑 Manage <strong>encryption keys</strong> and wire up <strong>auth providers</strong></li>" +
       "<li>📊 Full <strong>observability</strong> — redirect to any OpenTelemetry collector for enterprise-class trace management</li>" +
       "</ul>" +

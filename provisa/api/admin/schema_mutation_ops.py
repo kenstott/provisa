@@ -194,6 +194,13 @@ async def register_table(
         await _rc_state.federation_engine.reconcile_landed_tables()
     except Exception:
         logging.getLogger(__name__).exception("landed-table reconcile after registration failed")
+
+    # A newly-created materialized view is materialized immediately and its refresh job registered, so
+    # it lands FRESH instead of STALE-until-restart (the event loop otherwise wires only at boot).
+    if input.view_sql and input.materialize:
+        from provisa.api.admin.schema_common import activate_view_mv
+
+        await activate_view_mv(input.table_name)
     return MutationResult(
         success=True,
         message=f"Table {input.table_name!r} registered (id={table_id})",

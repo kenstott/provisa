@@ -88,6 +88,90 @@ class TestMVListQuery:
         assert result.refresh_interval == 300
 
 
+class TestMaterializeStoreInfoResilience:
+    """Regression: an unconfigured materialization store must NOT blank the whole store panel. The
+    resolver failing on materialize_store() collapsed BOTH tiles (engine name AND the always-known
+    MV count) to "—". store_ref is now best-effort → None, so the panel still renders."""
+
+    async def test_configured_store_returns_dsn(self):
+        # The resolver reads the EngineRuntime accessor materialize_store_dsn (NOT materialize_store,
+        # which only exists on the wrapped FederationEngine — calling it blanked both tiles).
+        from provisa.api.admin.schema_query import _safe_store_ref
+
+        engine = MagicMock(spec=["materialize_store_dsn"])
+        engine.materialize_store_dsn.return_value = "duckdb:///~/.provisa/store.db"
+        assert _safe_store_ref(engine) == "duckdb:///~/.provisa/store.db"
+
+    async def test_unconfigured_store_returns_none_not_raise(self):
+        from provisa.api.admin.schema_query import _safe_store_ref
+        from provisa.federation.engine import MaterializeStoreUnconfigured
+
+        engine = MagicMock(spec=["materialize_store_dsn"])
+        engine.materialize_store_dsn.side_effect = MaterializeStoreUnconfigured("duckdb")
+        assert _safe_store_ref(engine) is None
+
+
+class TestMaterializedViewIsQueryable:
+    """Regression: a materialized view must ALSO populate view_sql_map so the query path can inline-
+    expand it live. Registering it ONLY as an MV left its raw source catalog (e.g. __provisa__) in the
+    compiled query → "Binder Error: Catalog __provisa__ does not exist" until a refresh landed."""
+
+    async def test_config_materialized_view_populates_both_and_resolves_target(self):
+        from provisa.api.app_loaders import _load_mv_and_views_config
+
+        fake_state = MagicMock()
+        fake_state.org_id = "acme"
+        fake_state.view_sql_map = {}
+        fake_state.mv_registry = MVRegistry()
+        fake_state.federation_engine.materialize_store_target.return_value = ("mat_store", "mat")
+
+        raw = {
+            "views": [{"id": "v1", "sql": "SELECT 1 AS x", "materialize": True, "domain_id": "d"}]
+        }
+        with patch("provisa.api.app.state", fake_state):
+            _load_mv_and_views_config(raw)
+
+        assert "view_v1" in fake_state.view_sql_map  # queryable live path
+        mv = fake_state.mv_registry.get("view-v1")
+        assert mv is not None  # MV registered for acceleration
+        assert mv.target_catalog == "mat_store"  # engine-resolved, not hardcoded postgresql
+
+    async def test_config_plain_view_only_in_view_sql_map(self):
+        from provisa.api.app_loaders import _load_mv_and_views_config
+
+        fake_state = MagicMock()
+        fake_state.org_id = "acme"
+        fake_state.view_sql_map = {}
+        fake_state.mv_registry = MVRegistry()
+
+        raw = {
+            "views": [{"id": "v2", "sql": "SELECT 2 AS x", "materialize": False, "domain_id": "d"}]
+        }
+        with patch("provisa.api.app.state", fake_state):
+            _load_mv_and_views_config(raw)
+
+        assert "view_v2" in fake_state.view_sql_map
+        assert fake_state.mv_registry.get("view-v2") is None
+
+
+class TestEngineRuntimeMVTarget:
+    """Regression: MV registration calls federation_engine.materialize_store_target(org_id) on the
+    EngineRuntime — the method must exist there and delegate to the backend (the missing delegation
+    raised "'EngineRuntime' object has no attribute 'materialize_store_target'" on view creation)."""
+
+    async def test_runtime_delegates_to_backend(self):
+        from provisa.federation.runtime import EngineRuntime
+
+        rt = EngineRuntime.__new__(EngineRuntime)
+        rt._state = object()  # type: ignore[attr-defined]
+        backend = MagicMock()
+        backend.materialize_store_target.return_value = ("mat_store", "mat")
+        rt._backend = backend  # type: ignore[attr-defined]
+
+        assert rt.materialize_store_target("acme") == ("mat_store", "mat")
+        backend.materialize_store_target.assert_called_once_with(rt._state, "acme")
+
+
 class TestRefreshMVMutation:
     async def test_refresh_found_mv(self):
         mv = _make_mv("mv-1", status=MVStatus.STALE)
@@ -152,6 +236,7 @@ class TestToggleMVMutation:
         registry = _build_registry(mv)
 
         target = registry.get("mv-1")
+        assert target is not None
         target.enabled = True
         # Status should not change from FRESH when re-enabling
         assert target.status == MVStatus.FRESH

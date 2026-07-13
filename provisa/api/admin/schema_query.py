@@ -14,7 +14,7 @@ from __future__ import annotations
 
 
 import logging
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 import strawberry
 from sqlalchemy import func, or_, select
@@ -78,6 +78,19 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     CreationRequestType,
     _resolve_admin_context,
 )
+
+
+def _safe_store_ref(engine: Any) -> str | None:
+    """The engine's materialization-store DSN, or None when unconfigured. ``engine`` is the
+    EngineRuntime, whose accessor is ``materialize_store_dsn`` (NOT ``materialize_store`` — that lives
+    on the wrapped FederationEngine). Best-effort so an unconfigured store still renders the engine +
+    MV count instead of the whole field failing (which blanked both tiles to "—")."""
+    from provisa.federation.engine import MaterializeStoreUnconfigured
+
+    try:
+        return engine.materialize_store_dsn()
+    except MaterializeStoreUnconfigured:
+        return None
 
 
 @strawberry.type
@@ -655,7 +668,7 @@ class Query:  # REQ-021, REQ-042
         engine = state.federation_engine
         return MaterializeStoreInfoType(
             engine_name=engine.name,
-            store_ref=engine.materialize_store(),
+            store_ref=_safe_store_ref(engine),
             mv_count=len(state.mv_registry._mvs),
         )
 

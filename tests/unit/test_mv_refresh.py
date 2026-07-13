@@ -120,6 +120,59 @@ class TestBuildRefreshSQL:
             await _build_refresh_sql(mv)
 
 
+class TestMaterializeStoreTarget:
+    """Regression: an MV must target the store the ACTIVE engine materializes into. A DuckDB engine
+    attaches its store as ``mat_store``; hardcoding ``postgresql`` failed the refresh with
+    "Catalog with name postgresql does not exist" on a DuckDB deployment.
+    """
+
+    def test_native_backend_targets_attached_store(self):
+        # A native engine (DuckDB here) targets the catalog it attaches its store under and the
+        # runtime's declared MV schema — never the Postgres store default.
+        from provisa.federation.duckdb_backend import DuckDBBackend
+
+        class _RT:
+            def ensure_materialize_attached(self) -> str:
+                return "mat_store"
+
+            def mv_store_schema(self, org_id: str) -> str:
+                return "mat"
+
+        be = DuckDBBackend.__new__(DuckDBBackend)  # skip full engine init
+        be._runtime_for = lambda _state: _RT()  # type: ignore[method-assign]
+        assert be.materialize_store_target(object(), "acme") == ("mat_store", "mat")
+
+    def test_duckdb_runtime_mv_schema_is_store_schema(self):
+        # DuckDB's MV schema is its store schema (mat/main), org-independent.
+        from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+
+        rt = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
+        rt._store_schema = lambda: "mat"  # type: ignore[method-assign]
+        assert rt.mv_store_schema("acme") == "mat"
+
+    def test_warehouse_runtime_mv_schema_is_org_scoped(self):
+        # Databricks/BigQuery isolate MVs in an org-scoped cache namespace in the warehouse/project.
+        from provisa.federation.databricks_runtime import DatabricksFederationRuntime
+        from provisa.federation.bigquery_runtime import BigQueryFederationRuntime
+
+        db = DatabricksFederationRuntime.__new__(DatabricksFederationRuntime)
+        bq = BigQueryFederationRuntime.__new__(BigQueryFederationRuntime)
+        assert db.mv_store_schema("acme") == "org_acme_mv_cache"
+        assert bq.mv_store_schema("acme") == "org_acme_mv_cache"
+
+    def test_base_backend_defaults_to_pg_store(self):
+        # An own-store (Postgres) engine keeps the Postgres store target + org-scoped schema.
+        from provisa.federation.backend import EngineBackend
+
+        cat, schema = EngineBackend.materialize_store_target(
+            None,  # type: ignore[arg-type]  # self unused
+            object(),
+            "acme",
+        )
+        assert cat == "postgresql"
+        assert schema == "org_acme_mv_cache"
+
+
 class TestTargetRef:
     def test_fully_qualified(self):
         mv = _jp_mv()
@@ -168,6 +221,7 @@ class TestRefreshMV:
         await refresh_mv(engine, mv, registry)
 
         assert mv.status == MVStatus.STALE
+        assert mv.last_error is not None
         assert "connection lost" in mv.last_error
 
     async def test_refresh_marks_refreshing_during_execution(self):

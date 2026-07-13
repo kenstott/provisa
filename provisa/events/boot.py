@@ -183,6 +183,17 @@ def specs_from_config(
             columns=cols,
             run_query=mv_run_query(mv),
         )
+        # An MV's periodic cadence IS its poll job (register_runtime skips a poll node with no
+        # probe_factory). Poll-mode MVs (ttl/probe/ttl_probe) recompute-to-current on cadence; the MV's
+        # own change detection is the input-token (REQ-881) + output-hash (REQ-981) gate inside the
+        # generate handler, so the node probe is always "none" (cadence-only). Without this a poll MV
+        # never fires — most visibly a source-less view MV (source_tables=[]) that has no upstream
+        # ripple either, so it sits STALE forever despite its TTL.
+        mv_probe_factory = (
+            _probe_factory("none", query_scalar=None, ref=None, watermark_column=None)
+            if is_poll(mv.freshness_mode)
+            else None
+        )
         specs.append(
             NodeSpec(
                 node=node,
@@ -191,6 +202,8 @@ def specs_from_config(
                 watermark_column=None,
                 handle=handle,
                 poll_seconds=mv.refresh_interval,
+                probe_factory=mv_probe_factory,
+                probe_type="none",
                 debounce_quiet=mv.debounce_quiet,  # REQ-963
                 debounce_max_delay=mv.debounce_max_delay,  # REQ-963
             )
@@ -233,11 +246,16 @@ def register_runtime(
     specs: list[NodeSpec],
     tick_seconds: int = 5,
     lease_seconds: int = 60,
+    seed: bool = True,
 ) -> None:
     """Register the event-loop jobs on the embedded scheduler (APScheduler): one tick (drain all
     processors' pending work), one reaper (reclaim stale leases), and each POLL node's own interval
     job (its injector action at its cadence). Push nodes' listeners are started by the processor
-    (``consume_kafka``) — the app wires the consumer; this registers only the scheduled side."""
+    (``consume_kafka``) — the app wires the consumer; this registers only the scheduled side.
+
+    ``seed`` controls the one-shot boot-create (seed every source's first land + drain the DAG). True
+    at boot; False on a RE-wire (e.g. after a runtime MV create) so poll jobs get (re)registered
+    WITHOUT re-landing every source. Re-registration is idempotent (replace_existing throughout)."""
     from apscheduler.triggers.interval import IntervalTrigger
 
     async def _tick() -> None:
@@ -252,8 +270,9 @@ def register_runtime(
         await boot_create(db, specs)
         await supervisor.drain(db, processors)
 
-    # One-shot: run once as soon as the scheduler starts (no trigger = immediate single fire).
-    scheduler.add_job(_boot, id="events:boot", replace_existing=True)
+    if seed:
+        # One-shot: run once as soon as the scheduler starts (no trigger = immediate single fire).
+        scheduler.add_job(_boot, id="events:boot", replace_existing=True)
     scheduler.add_job(
         _tick,
         trigger=IntervalTrigger(seconds=tick_seconds),

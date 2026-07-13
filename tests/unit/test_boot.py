@@ -133,7 +133,28 @@ def test_specs_from_config_binds_materialized_sources_and_mvs():
     assert src.change_signal == "ttl" and src.poll_seconds == 300
     # A poll source carries a probe_factory so register_runtime schedules its refresh (REQ-941).
     assert src.probe_factory is not None
-    assert next(s for s in specs if s.kind == "mv").poll_seconds == 600
+    mv_spec = next(s for s in specs if s.kind == "mv")
+    assert mv_spec.poll_seconds == 600
+    # A poll-mode (ttl) MV must ALSO carry a probe_factory so its poll job registers — otherwise a
+    # source-less view MV never recomputes and sits STALE forever despite its TTL.
+    assert mv_spec.probe_factory is not None
+    assert mv_spec.probe_type == "none"
+
+
+def test_ttl_mv_poll_job_is_registered():
+    """Regression: a poll-mode MV must get its own poll job in register_runtime. It previously had no
+    probe_factory, so a source-less view MV (no upstream ripple) never fired → STALE forever."""
+    specs = [
+        _spec(
+            "mv.ttl", "mv", cs="ttl", poll=300, pf=lambda: _probe
+        ),  # poll MV WITH probe → poll job
+        _spec("mv.driven", "mv"),  # no cadence/probe → upstream-driven only, no poll job
+    ]
+    procs = build_processors(specs, db=object(), dependents_of=lambda n: [])
+    sched = _Sched()
+    register_runtime(sched, db=object(), processors=procs, specs=specs)
+    assert "poll:mv.ttl" in sched.jobs
+    assert "poll:mv.driven" not in sched.jobs
 
 
 def test_register_runtime_adds_tick_reaper_and_poll_jobs():
@@ -149,6 +170,18 @@ def test_register_runtime_adds_tick_reaper_and_poll_jobs():
     assert "events:boot" in sched.jobs  # one-shot boot-create job (build replicas at boot)
     assert "poll:s.poll" in sched.jobs  # only the poll node with a cadence gets its own job
     assert "poll:s.kafka" not in sched.jobs and "poll:mv.driven" not in sched.jobs
+
+
+def test_register_runtime_seed_false_skips_boot_create():
+    # A RE-wire after a runtime MV create must register poll jobs WITHOUT re-seeding/re-landing every
+    # source — so no one-shot boot-create job, but poll jobs (and tick/reaper) still (re)register.
+    specs = [_spec("mv.ttl", "mv", poll=300, pf=lambda: _probe)]
+    procs = build_processors(specs, db=object(), dependents_of=lambda n: [])
+    sched = _Sched()
+    register_runtime(sched, db=object(), processors=procs, specs=specs, seed=False)
+    assert "events:boot" not in sched.jobs  # no source re-seed on a re-wire
+    assert "events:tick" in sched.jobs and "events:reaper" in sched.jobs
+    assert "poll:mv.ttl" in sched.jobs  # the new MV's refresh cadence is registered
 
 
 @pytest.mark.asyncio

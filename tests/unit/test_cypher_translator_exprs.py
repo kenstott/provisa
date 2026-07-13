@@ -759,7 +759,9 @@ def test_collect_bare_map_simple():
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "array['name', 'age']" in sql.lower()
-    assert "cast(" in sql.lower() and "as json)" in sql.lower()
+    # Values are encoded with to_json (NOT CAST AS JSON): Postgres/DuckDB CAST AS JSON parses text and
+    # fails on bare strings; the Trino transpile maps to_json → CAST(x AS JSON).
+    assert "to_json(" in sql.lower()
     assert "array_agg" in sql.lower()
 
 

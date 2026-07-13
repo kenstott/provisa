@@ -30,8 +30,6 @@ from provisa.core.schema_org import (
 )
 
 if TYPE_CHECKING:
-    import asyncpg
-
     from provisa.core.database import Connection
 
 from provisa.compiler.naming import source_to_catalog
@@ -412,6 +410,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         elif not input.materialize:
             _remove_view_mv(input.table_name)
         await _rebuild_schemas()
+        # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
+        if input.view_sql and input.materialize:
+            from provisa.api.admin.schema_common import activate_view_mv
+
+            await activate_view_mv(input.table_name)
         return MutationResult(
             success=True,
             message=f"Table {input.table_name!r} updated (id={table_id})",
@@ -912,7 +915,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await _conn.execute_core(
                     _delete(file_source_mtimes).where(file_source_mtimes.c.table_id == table_id)
                 )
-                _pg_conn = cast("asyncpg.Connection", _conn)  # provisa Connection proxies asyncpg
+                _pg_conn = cast("Connection", _conn)  # core Connection (proxies asyncpg)
                 await migrate_sqlite_table(
                     row["path"], row["table_name"], _pg_conn, row["schema_name"], row["table_name"]
                 )

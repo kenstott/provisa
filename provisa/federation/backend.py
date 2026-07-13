@@ -116,9 +116,10 @@ class EngineBackend:
 
     def polling_provider(
         self, state: Any, catalog: str, schema: str, table: str, watermark_column: str
-    ):
+    ) -> Any:
         """A change-data polling provider for the engine, or ``None`` when the engine offers no
-        catalog-polling transport (native engines poll their source directly instead)."""
+        catalog-polling transport (native engines poll their source directly instead). Return type is
+        Any so a subclass (TrinoBackend) can return a concrete provider without an incompatible-override."""
         return None
 
     def close(self, state: Any) -> None:
@@ -166,6 +167,18 @@ class EngineBackend:
         """Catalog the API-result cache lives in for THIS engine — the reference to its materialization
         store. Generic across every engine: it always resolves through ``_materialize_store_ref``."""
         return self._materialize_store_ref(state)
+
+    def materialize_store_target(self, state: Any, org_id: str) -> tuple[str, str]:
+        """The (catalog, schema) an MV materializes into for THIS engine.
+
+        An OWN-store engine (a Postgres store-engine, ``_materialize_store_ref`` → None) writes into
+        its own catalog under the org-scoped MV-cache schema. A native engine that ATTACHES its store
+        (DuckDB exposes it under the ``mat_store`` alias) overrides this to return the attached
+        store's catalog + its store schema, so the MV target matches where source-landing actually
+        writes — otherwise the refresh targets a catalog the engine has never heard of (the observed
+        "Catalog with name postgresql does not exist" on a DuckDB deployment).
+        """
+        return "postgresql", f"org_{org_id}_mv_cache"
 
     def _materialize_store_ref(self, state: Any) -> str | None:
         """The catalog under which this engine references its materialization store (attaching it on

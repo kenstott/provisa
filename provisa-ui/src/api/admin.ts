@@ -300,6 +300,26 @@ export async function downloadConfig(): Promise<string> {
   return resp.text();
 }
 
+// Both sides of the config diff — original (on-disk file) and current (live state) — normalized
+// identically server-side so the diff shows only genuine changes, not section/key reordering.
+export async function fetchConfigDiff(): Promise<{ original: string; current: string }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/config/diff`);
+  if (!resp.ok) throw new Error(`Config diff failed: ${resp.status}`);
+  return resp.json();
+}
+
+// A unified-diff patch (git-apply / patch compatible) from the startup baseline to the curated
+// config — for committing UI config changes through CI/CD.
+export async function downloadConfigPatch(revised: string): Promise<string> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/config/patch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-yaml" },
+    body: revised,
+  });
+  if (!resp.ok) throw new Error(`Config patch failed: ${resp.status}`);
+  return resp.text();
+}
+
 export async function uploadConfig(yaml: string): Promise<{ success: boolean; message: string }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/config`, {
     method: "PUT",
@@ -313,6 +333,9 @@ export async function uploadConfig(yaml: string): Promise<{ success: boolean; me
 // --- Platform Settings ---
 
 export interface PlatformSettings {
+  features?: {
+    live_config_export: boolean;
+  };
   engine: {
     jvm_heap_gb: number;
     query_max_memory: string;
@@ -707,7 +730,7 @@ export interface HotTableStat {
 
 export interface MaterializeStoreInfo {
   engineName: string;
-  storeRef: string;
+  storeRef: string | null; // null when no materialization store is configured yet
   mvCount: number;
 }
 

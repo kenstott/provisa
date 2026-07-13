@@ -151,6 +151,11 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         """The store IS the warehouse; landed/cache tables live in its catalog directly."""
         return self._catalog
 
+    def mv_store_schema(self, org_id: str) -> str:
+        """MVs materialize into an org-scoped cache schema inside the warehouse catalog — a dedicated
+        namespace (distinct from the per-source landing schemas), created on demand at refresh."""
+        return f"org_{org_id}_mv_cache"
+
     async def materialize_source(
         self,
         source: Any,
