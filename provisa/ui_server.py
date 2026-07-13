@@ -24,6 +24,7 @@ SPA deep-link refreshes (e.g. /admin/overview) resolve correctly.
 # Requirements: REQ-057, REQ-058, REQ-559
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 import httpx
@@ -65,6 +66,18 @@ if monaco_dir.is_dir():
     app.mount("/monacoeditorwork", StaticFiles(directory=monaco_dir), name="monacoeditorwork")
 
 
+def is_spa_navigation(method: str, headers: Mapping[str, str]) -> bool:  # REQ-1006
+    # Sec-Fetch-Dest: document identifies a real page load / deep-link refresh.
+    # All browsers Provisa ships against emit it; when absent (legacy UA) fall
+    # back to the Accept: text/html + GET pair, which carries the same meaning.
+    # Anything else (fetch/XHR/EventSource: empty; iframe subresource; any
+    # non-GET) is an API request and is proxied — never served index.html.
+    dest = headers.get("sec-fetch-dest")
+    return dest == "document" or (
+        dest is None and method == "GET" and "text/html" in headers.get("accept", "")
+    )
+
+
 @app.api_route(
     "/{full_path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
@@ -91,13 +104,7 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
     # back to the Accept: text/html + GET pair, which carries the same meaning.
     # Anything else (fetch/XHR/EventSource: empty; iframe subresource; any
     # non-GET) is an API request and is proxied below — never served index.html.
-    dest = request.headers.get("sec-fetch-dest")
-    is_navigation = dest == "document" or (
-        dest is None
-        and request.method == "GET"
-        and "text/html" in request.headers.get("accept", "")
-    )
-    if is_navigation:
+    if is_spa_navigation(request.method, request.headers):
         return FileResponse(index)
 
     # ── API proxy — forward to the provisa API, surfacing its real status ─────
