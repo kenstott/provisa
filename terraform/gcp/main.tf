@@ -134,6 +134,14 @@ locals {
     apt-get install -y -qq google-cloud-cli fuse
     gsutil cp gs://${var.gcs_bucket}/${var.gcs_object} /opt/Provisa.AppImage
     chmod +x /opt/Provisa.AppImage
+    # Deployment choices (parity with the desktop wizard, REQ-972..979). The Linux
+    # first-launch reads these env vars in --non-interactive mode.
+    export PROVISA_ENGINE="${var.federation_engine}"
+    export PROVISA_ENGINE_URL="${var.engine_url}"
+    export PROVISA_MATERIALIZE_URL="${var.materialize_url}"
+    export PROVISA_OBS_MODE="${var.obs_mode}"
+    export PROVISA_OTLP_ENDPOINT="${var.otlp_endpoint}"
+    export PROVISA_INSTALL_DEMO="${var.install_demo ? "y" : "n"}"
   SHELL
 
   metadata_ssh = var.ssh_public_key != "" ? { ssh-keys = var.ssh_public_key } : {}

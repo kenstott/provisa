@@ -11,6 +11,17 @@ global:
   # Tolerations applied to all pods
   tolerations: []
 
+# Deployment choices (parity with the desktop installer wizard, REQ-972..979).
+# engine:   trino    — federate through the in-cluster Trino (set trino.enabled=true)
+#           external — point at an operator-supplied engine via engineUrl
+# obs is configured under `observability` below; demo under `demo`.
+deployment:
+  engine: trino
+  # External engine DSN when engine=external (e.g. postgresql+psycopg://user:pass@host:5432/db).
+  engineUrl: ""
+  # Optional external materialization-store DSN.
+  materializeUrl: ""
+
 provisa:
   replicaCount: 2
   image:
@@ -172,6 +183,31 @@ redis:
   pdb:
     minAvailable: 1
 
+# Demo add-on (parity with the desktop wizard's demo toggle). When enabled, the
+# demo mock-source servers are deployed and PROVISA_INSTALL_DEMO is set so the app
+# seeds the demo domains and the UI opens the guided tour.
+demo:
+  enabled: false
+  graphql:
+    image:
+      repository: provisa-demo-graphql
+      tag: latest
+      pullPolicy: IfNotPresent
+    port: 4000
+  petstore:
+    image:
+      repository: provisa-demo-petstore
+      tag: latest
+      pullPolicy: IfNotPresent
+    port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
 ingress:
   enabled: false
   # className: "" uses the cluster default ingress controller.
@@ -183,7 +219,14 @@ ingress:
     secretName: provisa-tls
 
 observability:
-  enabled: false  # set to true to deploy otel-collector, tempo, prometheus, grafana
+  # Three mutually-exclusive modes (parity with the desktop wizard's obs choice):
+  #   built-in only — enabled=false, externalEndpoint=""  (deploy nothing, export nowhere)
+  #   in-cluster    — enabled=true                        (deploy collector+tempo+prometheus+grafana)
+  #   collector     — enabled=false, externalEndpoint set (deploy nothing, export OTLP out)
+  enabled: false  # deploy the in-cluster otel-collector + tempo + prometheus + grafana
+  # externalEndpoint exports OTLP to an operator-supplied collector when enabled=false
+  # (e.g. http://otel-gateway:4317). Ignored when enabled=true (in-cluster wins).
+  externalEndpoint: ""
 
   otelCollector:
     image: otel/opentelemetry-collector-contrib

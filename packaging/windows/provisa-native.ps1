@@ -31,11 +31,14 @@ function Read-Config {
   return $Default
 }
 
-$UiPort       = [int](Read-Config 'ui_port' '3000')
-$ApiPort      = [int](Read-Config 'api_port' '8000')
-$DeployEngine = Read-Config 'engine' 'duckdb'
-$EngineUrl    = Read-Config 'engine_url' ''
-$AutoOpen     = (Read-Config 'auto_open_browser' 'true') -eq 'true'
+$UiPort        = [int](Read-Config 'ui_port' '3000')
+$ApiPort       = [int](Read-Config 'api_port' '8000')
+$DeployEngine  = Read-Config 'engine' 'duckdb'
+$EngineUrl     = Read-Config 'engine_url' ''
+$MaterializeUrl= Read-Config 'materialize_url' ''
+$OtlpEndpoint  = Read-Config 'otlp_endpoint' ''
+$Demo          = (Read-Config 'demo' 'false') -eq 'true'
+$AutoOpen      = (Read-Config 'auto_open_browser' 'true') -eq 'true'
 
 function Require-Runtime {
   if (-not (Test-Path $RuntimePy)) {
@@ -55,7 +58,9 @@ function Native-Env {
     'PLATFORM_DATABASE_URL' = "sqlite+aiosqlite:///$platformDb"
     'TENANT_DATABASE_URL'   = "sqlite+aiosqlite:///$tenantDb"
   }
-  if ($EngineUrl) { $e['PROVISA_ENGINE_URL'] = $EngineUrl }
+  if ($EngineUrl)      { $e['PROVISA_ENGINE_URL'] = $EngineUrl }
+  if ($MaterializeUrl) { $e['PROVISA_MATERIALIZE_URL'] = $MaterializeUrl }
+  if ($OtlpEndpoint)   { $e['OTEL_EXPORTER_OTLP_ENDPOINT'] = $OtlpEndpoint }
   return $e
 }
 
@@ -113,7 +118,9 @@ function Status-Native {
 }
 
 function Open-Native {
-  $url = "http://localhost:$UiPort"
+  # Open at ?tour=1 when the demo was installed so the guided tour auto-starts
+  # (App.tsx reads the query param), mirroring the macOS launcher.
+  $url = if ($Demo) { "http://localhost:$UiPort/?tour=1" } else { "http://localhost:$UiPort" }
   Write-Info "Opening $url"
   Start-Process $url
 }

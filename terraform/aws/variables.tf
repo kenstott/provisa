@@ -85,3 +85,48 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# ── Deployment choices (parity with the desktop installer wizard, REQ-972..979) ─
+variable "federation_engine" {
+  description = "Federation engine PROVISA_ENGINE: 'trino' (bundled cluster, default), 'duckdb', or 'sqlalchemy' (external engine — set engine_url)."
+  type        = string
+  default     = "trino"
+  validation {
+    condition     = contains(["trino", "duckdb", "sqlalchemy"], var.federation_engine)
+    error_message = "federation_engine must be one of: trino, duckdb, sqlalchemy."
+  }
+}
+
+variable "engine_url" {
+  description = "External engine DSN when federation_engine=sqlalchemy (e.g. postgresql+psycopg://user:pass@host:5432/db)."
+  type        = string
+  default     = ""
+}
+
+variable "materialize_url" {
+  description = "Optional external materialization-store DSN."
+  type        = string
+  default     = ""
+}
+
+variable "obs_mode" {
+  description = "Observability: 'none' (built-in only), 'docker' (bundled Grafana/Prometheus), or 'collector' (export OTLP to otlp_endpoint)."
+  type        = string
+  default     = "none"
+  validation {
+    condition     = contains(["none", "docker", "collector"], var.obs_mode)
+    error_message = "obs_mode must be one of: none, docker, collector."
+  }
+}
+
+variable "otlp_endpoint" {
+  description = "OTLP collector endpoint when obs_mode=collector (e.g. http://otel-gateway:4317)."
+  type        = string
+  default     = ""
+}
+
+variable "install_demo" {
+  description = "Install the demo dataset and open the guided tour."
+  type        = bool
+  default     = false
+}

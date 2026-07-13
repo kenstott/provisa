@@ -29145,3 +29145,37 @@
   - REQ-057
   - REQ-058
   - REQ-559
+- id: REQ-1007
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: Multi-Tier Deployment
+  priority: MUST
+  type: infrastructure
+  description: Deployment choices — federation engine (DuckDB/Trino/external-SQLAlchemy), observability mode
+    (none/Docker-incluster/collector), and demo install — are exposed uniformly across all deployment surfaces
+    (macOS SwiftUI, Linux AppImage, install.sh, Windows native, Helm, Terraform) with environment-variable
+    overrides and interactive prompts where applicable.
+  use_case: Deployment parity ensures users can select the same configuration across desktop, server, container,
+    and cloud deployments without relearning the choice model for each platform.
+  code:
+  - packaging/linux/first-launch.sh
+  - packaging/macos/build-dmg.sh
+  - packaging/windows/first-launch-native.ps1
+  - packaging/windows/install-container.ps1
+  - install.sh
+  - helm/provisa/values.yaml
+  - helm/provisa/templates/demo.yaml
+  - terraform/aws/main.tf
+  - terraform/azure/main.tf
+  - terraform/gcp/main.tf
+  - terraform/deploy.sh
+  related_reqs:
+  - REQ-972
+  - REQ-973
+  - REQ-974
+  - REQ-975
+  - REQ-976
+  - REQ-977
+  - REQ-978
+  - REQ-979

@@ -101,6 +101,17 @@ spec:
               value: "postgresql+asyncpg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE)"
             - name: PLATFORM_DATABASE_URL
               value: "postgresql+asyncpg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE)"
+            # Deployment engine (parity with the desktop wizard, REQ-972..979).
+            - name: PROVISA_ENGINE
+              value: "{{ .Values.deployment.engine }}"
+            {{- if eq .Values.deployment.engine "external" }}
+            - name: PROVISA_ENGINE_URL
+              value: "{{ required "deployment.engineUrl is required when deployment.engine=external" .Values.deployment.engineUrl }}"
+            {{- if .Values.deployment.materializeUrl }}
+            - name: PROVISA_MATERIALIZE_URL
+              value: "{{ .Values.deployment.materializeUrl }}"
+            {{- end }}
+            {{- end }}
             - name: TRINO_HOST
               value: "{{ .Release.Name }}-trino-coordinator"
             - name: TRINO_PORT
@@ -137,6 +148,21 @@ spec:
               value: "http://{{ .Release.Name }}-otel-collector:{{ .Values.observability.otelCollector.otlpGrpcPort }}"
             - name: OTEL_SERVICE_NAME
               value: "provisa"
+            {{- else if .Values.observability.externalEndpoint }}
+            # obs=collector: export to an operator-supplied OTLP endpoint, deploy no stack.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "{{ .Values.observability.externalEndpoint }}"
+            - name: OTEL_SERVICE_NAME
+              value: "provisa"
+            {{- end }}
+            {{- if .Values.demo.enabled }}
+            # Demo add-on: seed demo domains and open the guided tour.
+            - name: PROVISA_INSTALL_DEMO
+              value: "y"
+            - name: PROVISA_DEMO_GRAPHQL_URL
+              value: "http://{{ .Release.Name }}-demo-graphql:{{ .Values.demo.graphql.port }}"
+            - name: PROVISA_DEMO_PETSTORE_URL
+              value: "http://{{ .Release.Name }}-demo-petstore:{{ .Values.demo.petstore.port }}"
             {{- end }}
           volumeMounts:
             - name: config

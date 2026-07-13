@@ -116,7 +116,9 @@ function Status-Container  { Invoke-Compose @('ps') }
 function Logs-Container    { Invoke-Compose @('logs', '--follow') }
 
 function Open-Container {
-  $url = "http://localhost:$UiPort"
+  # Open at ?tour=1 when the demo was installed so the guided tour auto-starts
+  # (App.tsx reads the query param), mirroring the macOS launcher.
+  $url = if ($Demo) { "http://localhost:$UiPort/?tour=1" } else { "http://localhost:$UiPort" }
   Write-Info "Opening $url"
   Start-Process $url
 }

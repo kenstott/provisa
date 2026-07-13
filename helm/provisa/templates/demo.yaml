@@ -1,0 +1,98 @@
+{{- if .Values.demo.enabled }}
+# Demo mock-source servers (parity with the desktop wizard's demo add-on). These
+# stand in for the external sources the demo domains federate over; the app is
+# pointed at them via PROVISA_DEMO_*_URL in the provisa deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-demo-graphql
+  labels:
+    app: demo-graphql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-graphql
+  template:
+    metadata:
+      labels:
+        app: demo-graphql
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: demo-graphql
+          image: "{{ .Values.demo.graphql.image.repository }}:{{ .Values.demo.graphql.image.tag }}"
+          imagePullPolicy: {{ .Values.demo.graphql.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.demo.graphql.port }}
+          resources:
+            {{- toYaml .Values.demo.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.demo.graphql.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-demo-graphql
+spec:
+  selector:
+    app: demo-graphql
+  ports:
+    - port: {{ .Values.demo.graphql.port }}
+      targetPort: {{ .Values.demo.graphql.port }}
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-demo-petstore
+  labels:
+    app: demo-petstore
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-petstore
+  template:
+    metadata:
+      labels:
+        app: demo-petstore
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: demo-petstore
+          image: "{{ .Values.demo.petstore.image.repository }}:{{ .Values.demo.petstore.image.tag }}"
+          imagePullPolicy: {{ .Values.demo.petstore.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.demo.petstore.port }}
+          resources:
+            {{- toYaml .Values.demo.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.demo.petstore.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-demo-petstore
+spec:
+  selector:
+    app: demo-petstore
+  ports:
+    - port: {{ .Values.demo.petstore.port }}
+      targetPort: {{ .Values.demo.petstore.port }}
+  type: ClusterIP
+{{- end }}

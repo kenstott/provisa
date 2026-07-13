@@ -132,9 +132,18 @@ function Write-ContainerConfig {
   $keep += "ui_port: $uiPort"
   $keep += "api_port: $apiPort"
   $keep += "project_dir: `"$(Join-Path $ProvisaHome 'compose')`""
-  $obsFlag = if ($env:PROVISA_OBS) { 'true' } else { 'false' }
+  # Add-on selection (parity with macOS wizard). Non-interactive reads env; the
+  # container tier runs Trino, so the engine is fixed and only obs/demo are asked.
+  $keep += 'engine: trino'
+  if ($env:PROVISA_NONINTERACTIVE) {
+    $obsFlag  = if ($env:PROVISA_OBS -or $env:PROVISA_OBS_MODE -eq 'docker') { 'true' } else { 'false' }
+    $demoFlag = if ($env:PROVISA_INSTALL_DEMO -match '^(y|Y|true)') { 'true' } else { 'false' }
+  } else {
+    $obsFlag  = if ((Read-Host 'Install bundled Grafana/Prometheus observability (y/N)') -match '^(y|Y)') { 'true' } else { 'false' }
+    $demoFlag = if ((Read-Host 'Install the demo dataset with guided tour (y/N)') -match '^(y|Y)') { 'true' } else { 'false' }
+  }
   $keep += "obs: $obsFlag"
-  $keep += 'demo: false'
+  $keep += "demo: $demoFlag"
   $keep | Set-Content -Path $ConfigPath -Encoding UTF8
   # Compose reads relative bind-mount sources; also keep a host copy for parity.
   if (-not (Test-Path (Join-Path $ProvisaHome 'compose'))) {

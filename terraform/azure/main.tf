@@ -275,6 +275,11 @@ locals {
       - chmod +x /opt/Provisa.AppImage
   YAML
 
+  # Deployment choices (parity with the desktop wizard, REQ-972..979) forwarded to
+  # the AppImage as env — cloud-init runcmd runs a non-login shell, so prefix the
+  # invocation inline rather than relying on exported env persisting.
+  deploy_env = "env PROVISA_ENGINE='${var.federation_engine}' PROVISA_ENGINE_URL='${var.engine_url}' PROVISA_MATERIALIZE_URL='${var.materialize_url}' PROVISA_OBS_MODE='${var.obs_mode}' PROVISA_OTLP_ENDPOINT='${var.otlp_endpoint}' PROVISA_INSTALL_DEMO='${var.install_demo ? "y" : "n"}'"
+
   ssh_key_config = var.ssh_public_key != "" ? [{
     username   = var.admin_username
     public_key = var.ssh_public_key
@@ -348,7 +353,7 @@ resource "azurerm_linux_virtual_machine" "primary" {
 
   custom_data = base64encode(<<-YAML
     ${local.base_cloud_init}
-      - /opt/Provisa.AppImage --non-interactive --role primary --ram-gb ${local.effective_ram}
+      - ${local.deploy_env} /opt/Provisa.AppImage --non-interactive --role primary --ram-gb ${local.effective_ram}
   YAML
   )
 }
@@ -426,7 +431,7 @@ resource "azurerm_linux_virtual_machine" "secondary" {
 
   custom_data = base64encode(<<-YAML
     ${local.base_cloud_init}
-      - /opt/Provisa.AppImage --non-interactive --role secondary --primary-ip primary.provisa.internal --ram-gb ${local.effective_worker_ram}
+      - ${local.deploy_env} /opt/Provisa.AppImage --non-interactive --role secondary --primary-ip primary.provisa.internal --ram-gb ${local.effective_worker_ram}
   YAML
   )
 }

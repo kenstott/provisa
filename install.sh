@@ -108,6 +108,72 @@ check_compose() {
     fi
 }
 
+# ── Deployment selection (parity with macOS SwiftUI wizard, REQ-972..979) ────
+# Sets globals: DEPLOY_ENGINE ENGINE_URL MATERIALIZE_URL TRINO_HOST TRINO_PORT
+#               OBS_MODE OTLP_ENDPOINT INSTALL_DEMO DEMO_MODE
+resolve_deployment() {
+    # Non-interactive / CI: read the same env vars the macOS wizard forwards.
+    if [ "$NON_INTERACTIVE" = true ]; then
+        DEPLOY_ENGINE="${PROVISA_ENGINE:-duckdb}"
+        ENGINE_URL="${PROVISA_ENGINE_URL:-}"
+        MATERIALIZE_URL="${PROVISA_MATERIALIZE_URL:-}"
+        TRINO_HOST="${PROVISA_TRINO_HOST:-}"
+        TRINO_PORT="${PROVISA_TRINO_PORT:-}"
+        OBS_MODE="${PROVISA_OBS_MODE:-none}"
+        OTLP_ENDPOINT="${PROVISA_OTLP_ENDPOINT:-}"
+        INSTALL_DEMO="${PROVISA_INSTALL_DEMO:-n}"
+        DEMO_MODE="${PROVISA_DEMO_MODE:-docker}"
+        ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}"
+        return
+    fi
+
+    # ── Federation engine ──
+    printf "\n${BOLD}Federation engine${NC}\n"
+    printf "  1) DuckDB — native (recommended)\n"
+    printf "  2) Trino — Docker\n"
+    printf "  3) External engine\n"
+    local engine_choice
+    engine_choice="$(prompt_or_default "Choose 1-3" "1")"
+    case "$engine_choice" in
+        2) DEPLOY_ENGINE="trino" ;;
+        3) DEPLOY_ENGINE="sqlalchemy" ;;
+        *) DEPLOY_ENGINE="duckdb" ;;
+    esac
+    ENGINE_URL=""; MATERIALIZE_URL=""; TRINO_HOST=""; TRINO_PORT=""
+    if [ "$DEPLOY_ENGINE" = "sqlalchemy" ]; then
+        ENGINE_URL="$(prompt_or_default "External engine URL (e.g. postgresql+psycopg://user:pass@host:5432/db)" "")"
+        MATERIALIZE_URL="$(prompt_or_default "Materialization store URL (optional)" "")"
+    fi
+
+    # ── Observability integration (built-in telemetry is always on) ──
+    printf "\n${BOLD}Observability integration${NC}\n"
+    printf "  1) Built-in only\n"
+    printf "  2) Bundled Grafana/Prometheus demo (Docker)\n"
+    printf "  3) Export to my collector\n"
+    local obs_choice
+    obs_choice="$(prompt_or_default "Choose 1-3" "1")"
+    case "$obs_choice" in
+        2) OBS_MODE="docker" ;;
+        3) OBS_MODE="collector" ;;
+        *) OBS_MODE="none" ;;
+    esac
+    OTLP_ENDPOINT=""
+    if [ "$OBS_MODE" = "collector" ]; then
+        OTLP_ENDPOINT="$(prompt_or_default "OTLP collector endpoint (e.g. http://collector-host:4317)" "")"
+    fi
+
+    # ── Demo ──
+    local demo_ans
+    demo_ans="$(prompt_or_default "Install the demo dataset with guided tour (y/n)" "n")"
+    case "$demo_ans" in
+        [yY]|[yY][eE][sS]) INSTALL_DEMO="y" ;;
+        *) INSTALL_DEMO="n" ;;
+    esac
+    DEMO_MODE="docker"
+
+    ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}"
+}
+
 # ── Config generation ────────────────────────────────────────────────────────
 generate_config() {
     if [ -f "${PROVISA_HOME}/config.yaml" ] && [ "$NON_INTERACTIVE" = false ]; then
@@ -125,12 +191,27 @@ generate_config() {
     api_port="$(prompt_or_default "API port" "8000")"
     auto_open="$(prompt_or_default "Auto-open browser on start (true/false)" "true")"
 
+    resolve_deployment
+
+    local demo_flag
+    case "$INSTALL_DEMO" in [yY]|[yY][eE][sS]) demo_flag=true ;; *) demo_flag=false ;; esac
+
     cat > "${PROVISA_HOME}/config.yaml" <<YAML
 # Provisa configuration
 project_dir: "${SCRIPT_DIR}"
 ui_port: ${ui_port}
 api_port: ${api_port}
 auto_open_browser: ${auto_open}
+# Deployment (REQ-972..979): parity with the macOS SwiftUI wizard.
+engine: ${DEPLOY_ENGINE}
+engine_url: "${ENGINE_URL}"
+materialize_url: "${MATERIALIZE_URL}"
+trino_host: "${TRINO_HOST}"
+trino_port: "${TRINO_PORT}"
+obs_mode: ${OBS_MODE}
+otlp_endpoint: "${OTLP_ENDPOINT}"
+demo: ${demo_flag}
+demo_mode: ${DEMO_MODE}
 YAML
     ok "Created config at ${PROVISA_HOME}/config.yaml"
 }

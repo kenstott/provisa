@@ -81,6 +81,35 @@ echo
 NODE_COUNT=$(ask "Number of nodes" "2")
 [[ "$NODE_COUNT" =~ ^[0-9]+$ ]] && (( NODE_COUNT >= 1 )) || fatal "node_count must be a positive integer."
 
+# ── Deployment choices (parity with the desktop wizard, REQ-972..979) ──────────
+
+echo
+ENGINE_CHOICE=$(pick "Federation engine:" "Trino (bundled cluster)" "DuckDB" "External engine")
+case "$ENGINE_CHOICE" in
+  "Trino (bundled cluster)") FEDERATION_ENGINE="trino" ;;
+  "DuckDB")                  FEDERATION_ENGINE="duckdb" ;;
+  "External engine")         FEDERATION_ENGINE="sqlalchemy" ;;
+esac
+ENGINE_URL=""; MATERIALIZE_URL=""
+if [ "$FEDERATION_ENGINE" = "sqlalchemy" ]; then
+  ENGINE_URL=$(ask "External engine URL (e.g. postgresql+psycopg://user:pass@host:5432/db)")
+  MATERIALIZE_URL=$(ask "Materialization store URL (optional)")
+fi
+
+echo
+OBS_CHOICE=$(pick "Observability:" "Built-in only" "Bundled Grafana/Prometheus" "Export to my collector")
+case "$OBS_CHOICE" in
+  "Built-in only")               OBS_MODE="none" ;;
+  "Bundled Grafana/Prometheus")  OBS_MODE="docker" ;;
+  "Export to my collector")      OBS_MODE="collector" ;;
+esac
+OTLP_ENDPOINT=""
+[ "$OBS_MODE" = "collector" ] && OTLP_ENDPOINT=$(ask "OTLP collector endpoint (e.g. http://otel-gateway:4317)")
+
+echo
+DEMO_CHOICE=$(pick "Install the demo dataset with guided tour?" "No" "Yes")
+[ "$DEMO_CHOICE" = "Yes" ] && INSTALL_DEMO="true" || INSTALL_DEMO="false"
+
 # ── Provider-specific questions ────────────────────────────────────────────────
 
 case "$PROVIDER" in
@@ -201,6 +230,12 @@ appimage_s3_key     = "${APPIMAGE_S3_KEY}"
 key_pair            = "${KEY_PAIR}"
 admin_cidr          = "${ADMIN_CIDR}"
 vpc_cidr            = "${VPC_CIDR}"
+federation_engine   = "${FEDERATION_ENGINE}"
+engine_url          = "${ENGINE_URL}"
+materialize_url     = "${MATERIALIZE_URL}"
+obs_mode            = "${OBS_MODE}"
+otlp_endpoint       = "${OTLP_ENDPOINT}"
+install_demo        = ${INSTALL_DEMO}
 EOF
   ;;
 
@@ -303,6 +338,12 @@ appimage_blob          = "${APPIMAGE_BLOB}"
 ssh_public_key         = "${SSH_PUBLIC_KEY}"
 admin_cidr             = "${ADMIN_CIDR}"
 vnet_cidr              = "${VNET_CIDR}"
+federation_engine      = "${FEDERATION_ENGINE}"
+engine_url             = "${ENGINE_URL}"
+materialize_url        = "${MATERIALIZE_URL}"
+obs_mode               = "${OBS_MODE}"
+otlp_endpoint          = "${OTLP_ENDPOINT}"
+install_demo           = ${INSTALL_DEMO}
 EOF
   ;;
 
@@ -403,6 +444,12 @@ gcs_object     = "${GCS_OBJECT}"
 ssh_public_key = "${SSH_PUBLIC_KEY}"
 admin_cidr     = "${ADMIN_CIDR}"
 network_cidr   = "${NETWORK_CIDR}"
+federation_engine = "${FEDERATION_ENGINE}"
+engine_url        = "${ENGINE_URL}"
+materialize_url   = "${MATERIALIZE_URL}"
+obs_mode          = "${OBS_MODE}"
+otlp_endpoint     = "${OTLP_ENDPOINT}"
+install_demo      = ${INSTALL_DEMO}
 EOF
   ;;
 

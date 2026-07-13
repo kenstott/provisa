@@ -199,6 +199,14 @@ locals {
     apt-get install -y -qq awscli fuse
     aws s3 cp ${local.appimage_url} /opt/Provisa.AppImage
     chmod +x /opt/Provisa.AppImage
+    # Deployment choices (parity with the desktop wizard, REQ-972..979). The Linux
+    # first-launch reads these env vars in --non-interactive mode.
+    export PROVISA_ENGINE="${var.federation_engine}"
+    export PROVISA_ENGINE_URL="${var.engine_url}"
+    export PROVISA_MATERIALIZE_URL="${var.materialize_url}"
+    export PROVISA_OBS_MODE="${var.obs_mode}"
+    export PROVISA_OTLP_ENDPOINT="${var.otlp_endpoint}"
+    export PROVISA_INSTALL_DEMO="${var.install_demo ? "y" : "n"}"
   SHELL
 
   ssh_key_args = var.key_pair != "" ? "key_name = \"${var.key_pair}\"" : ""

@@ -288,6 +288,47 @@ UNIT
   ok "systemd unit installed: ${unit}"
 }
 
+# ── Resolve deployment (parity with macOS wizard / install.sh, REQ-972..979) ──
+# Non-interactive (Terraform / cloud-init exports the env) reads the wizard vars;
+# interactive prompts. Only the primary node carries these fields — secondaries
+# pull shared config from the primary DB at runtime.
+# Sets globals: DEPLOY_ENGINE ENGINE_URL MATERIALIZE_URL OBS_MODE OTLP_ENDPOINT INSTALL_DEMO
+resolve_deployment() {
+  if [ "$NON_INTERACTIVE" = true ]; then
+    DEPLOY_ENGINE="${PROVISA_ENGINE:-duckdb}"
+    ENGINE_URL="${PROVISA_ENGINE_URL:-}"
+    MATERIALIZE_URL="${PROVISA_MATERIALIZE_URL:-}"
+    OBS_MODE="${PROVISA_OBS_MODE:-none}"
+    OTLP_ENDPOINT="${PROVISA_OTLP_ENDPOINT:-}"
+    INSTALL_DEMO="${PROVISA_INSTALL_DEMO:-n}"
+    ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}"
+    return
+  fi
+
+  printf "\n${BOLD}Federation engine${NC}\n"
+  printf "  1) DuckDB — native (recommended)\n  2) Trino\n  3) External engine\n"
+  local ec; read -rp "$(printf "${CYAN}[provisa]${NC} Choose 1-3 [1]: ")" ec
+  case "$ec" in 2) DEPLOY_ENGINE="trino" ;; 3) DEPLOY_ENGINE="sqlalchemy" ;; *) DEPLOY_ENGINE="duckdb" ;; esac
+  ENGINE_URL=""; MATERIALIZE_URL=""
+  if [ "$DEPLOY_ENGINE" = "sqlalchemy" ]; then
+    read -rp "$(printf "${CYAN}[provisa]${NC} External engine URL: ")" ENGINE_URL
+    read -rp "$(printf "${CYAN}[provisa]${NC} Materialization store URL (optional): ")" MATERIALIZE_URL
+  fi
+
+  printf "\n${BOLD}Observability integration${NC}\n"
+  printf "  1) Built-in only\n  2) In-cluster Grafana/Prometheus stack\n  3) Export to my collector\n"
+  local oc; read -rp "$(printf "${CYAN}[provisa]${NC} Choose 1-3 [1]: ")" oc
+  case "$oc" in 2) OBS_MODE="docker" ;; 3) OBS_MODE="collector" ;; *) OBS_MODE="none" ;; esac
+  OTLP_ENDPOINT=""
+  if [ "$OBS_MODE" = "collector" ]; then
+    read -rp "$(printf "${CYAN}[provisa]${NC} OTLP collector endpoint: ")" OTLP_ENDPOINT
+  fi
+
+  local dm; read -rp "$(printf "${CYAN}[provisa]${NC} Install the demo dataset with guided tour (y/N): ")" dm
+  case "$dm" in [yY]|[yY][eE][sS]) INSTALL_DEMO="y" ;; *) INSTALL_DEMO="n" ;; esac
+  ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}"
+}
+
 # ── Write config ───────────────────────────────────────────────────────────────
 write_config() {
   mkdir -p "$PROVISA_HOME"
@@ -298,6 +339,9 @@ write_config() {
   local hostname api_port
   hostname="$(ask_hostname)"
   api_port="$(ask_api_port)"
+
+  local demo_flag
+  case "${INSTALL_DEMO:-n}" in [yY]|[yY][eE][sS]) demo_flag=true ;; *) demo_flag=false ;; esac
 
   if [ "$ROLE" = "primary" ]; then
     cat > "${PROVISA_HOME}/config.yaml" <<YAML
@@ -325,6 +369,13 @@ runtime: bundled
 docker_host: "unix://${BUNDLED_SOCKET}"
 project_dir: "${COMPOSE_DIR}"
 federation_workers: ${TRINO_WORKERS}
+# Deployment (REQ-972..979): parity with the desktop wizard.
+engine: ${DEPLOY_ENGINE:-duckdb}
+engine_url: "${ENGINE_URL:-}"
+materialize_url: "${MATERIALIZE_URL:-}"
+obs_mode: ${OBS_MODE:-none}
+otlp_endpoint: "${OTLP_ENDPOINT:-}"
+demo: ${demo_flag}
 YAML
 
   else
@@ -440,6 +491,7 @@ main() {
   fi
 
   ask_ram_budget
+  resolve_deployment
   load_images
   write_config
   install_cli
