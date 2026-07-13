@@ -28426,6 +28426,8 @@
   tests:
   - tests/unit/test_engine_capabilities.py
   - tests/unit/test_native_arrow_transport.py
+  - tests/integration/test_clickhouse_runtime_e2e.py
+  - tests/integration/test_arrow_flight_integration.py
   group: 3. Federation Engines & Data Sources
   category: Arrow Flight Transport
   priority: MUST
@@ -28442,9 +28444,7 @@
   - provisa/federation/clickhouse_runtime.py
   - provisa/api/flight/server.py
   target: 2026-Q4
-  e2e: true
-  e2e_reason: Arrow Flight transport behavior is only verifiable through a full round-trip to the Arrow
-    Flight endpoint, confirming lazy record-batch streaming and columnar data format.
+  integration_test: required
   competitive_position:
     status: parity
     rationale: Trino natively streams Arrow over Flight; ClickHouse as a standalone system does not expose
@@ -28470,6 +28470,8 @@
   tests:
   - tests/unit/test_databricks_store.py
   - tests/unit/test_engine_capabilities.py
+  - tests/integration/test_databricks_federation_engine_e2e.py
+  - tests/integration/test_databricks_external_link_e2e.py
   group: 3. Federation Engines & Data Sources
   category: Arrow Flight Transport
   priority: MUST
@@ -28494,10 +28496,7 @@
   - provisa/api/flight/server.py
   - provisa/transpiler/transpile.py
   target: 2026-Q4
-  e2e: true
-  e2e_reason: Arrow Flight transport behavior, Databricks SQL query execution, and write-path columnar
-    ingestion are only verifiable through full round-trip testing with actual Databricks SQL warehouse
-    (read endpoint and object staging).
+  integration_test: required
   validation_notes: 'Databricks live-tested successfully on Serverless SQL Warehouse with ARROW_STREAM
     via Cloud Fetch EXTERNAL_LINKS, parsed by pyarrow. Python databricks-sql-connector / urllib fail on
     TLS in dev environment due to TLS-intercepting proxy; CA cert is in macOS keychain (curl trusts it)
@@ -28532,6 +28531,7 @@
   tests:
   - tests/unit/test_engine_capabilities.py
   - tests/unit/test_transpiler.py
+  - tests/integration/test_snowflake_federation_engine_e2e.py
   target: 2026-Q4
   group: 3. Federation Engines & Data Sources
   category: Arrow Flight Transport
@@ -28555,10 +28555,7 @@
   - provisa/transpiler/transpile.py
   - provisa/source_registry.py
   - provisa/source_connectors/snowflake_connector.py
-  e2e: true
-  e2e_reason: Arrow Flight transport and Snowflake SQL dialect correctness are only verifiable through
-    a full round-trip to the Arrow Flight endpoint with live Snowflake backend, confirming lazy record-batch
-    streaming, columnar format, and physical SQL validity.
+  integration_test: required
   competitive_position:
     status: ahead
     rationale: Snowflake natively supports Arrow data export (fetch_arrow_all / fetch_arrow_batches);
@@ -29118,6 +29115,7 @@
   tests:
   - provisa-ui/e2e/infrastructure.spec.ts
   - tests/e2e/test_health_checks.py
+  - tests/unit/test_ui_server_routing.py
   scenario: 'Given a browser navigates directly to the SPA deep link /graph/node/42
 
     When the request includes Sec-Fetch-Dest: document
