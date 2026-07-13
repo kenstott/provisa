@@ -15,7 +15,9 @@ export interface SetupStatus {
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {
   const res = await fetch('/setup/status');
-  if (!res.ok) return { needs_setup: false, demo_mode: false };
+  if (!res.ok) {
+    throw new Error(`Setup status check failed: ${res.status} ${res.statusText}`);
+  }
   return res.json();
 }
 

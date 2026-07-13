@@ -10,10 +10,15 @@
 
 """SPA static file server with API reverse proxy.
 
-Serves provisa-ui/dist/ on port 3000 and proxies all API calls
-(anything that is not a static asset) to the provisa API container
-at http://provisa:8000.  This lets the React SPA use relative URLs
-for all API requests regardless of the environment.
+Serves provisa-ui/dist/ on port 3000 and reverse-proxies API calls to the provisa
+API container at http://provisa:8000, letting the React SPA use relative URLs.
+
+API-vs-SPA routing is deterministic, driven by the browser's Sec-Fetch-Dest
+signal rather than a maintained path allowlist: only a genuine top-level
+navigation (Sec-Fetch-Dest: document) renders the SPA shell; every other request
+is proxied to the API and its real status — including 404 — is surfaced. This
+means an unrecognized API path can never silently masquerade as an HTML 200, and
+SPA deep-link refreshes (e.g. /admin/overview) resolve correctly.
 """
 
 # Requirements: REQ-057, REQ-058, REQ-559
@@ -80,50 +85,44 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
             status_code=503,
         )
 
-    # ── API proxy — forward to provisa container ──────────────────────────────
-    # Heuristic: paths with no extension that match known API prefixes are proxied.
-    api_prefixes = (
-        "/admin/",
-        "/data/",
-        "/sources",
-        "/tables",
-        "/views",
-        "/domains",
-        "/roles",
-        "/health",
-        "/metrics",
-        "/auth",
+    # ── SPA shell — only for genuine top-level navigations ───────────────────
+    # Sec-Fetch-Dest: document identifies a real page load / deep-link refresh.
+    # All browsers Provisa ships against emit it; when absent (legacy UA) fall
+    # back to the Accept: text/html + GET pair, which carries the same meaning.
+    # Anything else (fetch/XHR/EventSource: empty; iframe subresource; any
+    # non-GET) is an API request and is proxied below — never served index.html.
+    dest = request.headers.get("sec-fetch-dest")
+    is_navigation = dest == "document" or (
+        dest is None
+        and request.method == "GET"
+        and "text/html" in request.headers.get("accept", "")
     )
-    is_api = any(
-        request.url.path == p.rstrip("/") or request.url.path.startswith(p) for p in api_prefixes
+    if is_navigation:
+        return FileResponse(index)
+
+    # ── API proxy — forward to the provisa API, surfacing its real status ─────
+    target = f"{API_BASE_URL}/{full_path}"
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+
+    body = await request.body()
+    headers = {
+        k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")
+    }
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        try:
+            upstream = await client.request(
+                method=request.method,
+                url=target,
+                headers=headers,
+                content=body,
+            )
+        except httpx.ConnectError:
+            return HTMLResponse("API unavailable", status_code=502)
+
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=dict(upstream.headers),
     )
-
-    if is_api:
-        target = f"{API_BASE_URL}/{full_path}"
-        if request.url.query:
-            target = f"{target}?{request.url.query}"
-
-        body = await request.body()
-        headers = {
-            k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")
-        }
-
-        async with httpx.AsyncClient(timeout=120) as client:
-            try:
-                upstream = await client.request(
-                    method=request.method,
-                    url=target,
-                    headers=headers,
-                    content=body,
-                )
-            except httpx.ConnectError:
-                return HTMLResponse("API unavailable", status_code=503)
-
-        return Response(
-            content=upstream.content,
-            status_code=upstream.status_code,
-            headers=dict(upstream.headers),
-        )
-
-    # ── SPA fallback — all other paths render index.html ─────────────────────
-    return FileResponse(index)

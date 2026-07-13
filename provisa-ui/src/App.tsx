@@ -93,20 +93,30 @@ function App() {
   const [setupChecked, setSetupChecked] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchSetupStatus().then(({ needs_setup, demo_mode }) => {
-      setNeedsSetup(needs_setup);
-      setDemoMode(demo_mode);
-      setSetupChecked(true);
-    });
+    fetchSetupStatus()
+      .then(({ needs_setup, demo_mode }) => {
+        setNeedsSetup(needs_setup);
+        setDemoMode(demo_mode);
+        setSetupChecked(true);
+      })
+      .catch((err: unknown) => {
+        setSetupError(err instanceof Error ? err.message : String(err));
+      });
   }, []);
 
   return (
     <BrowserRouter>
       <ApolloProvider client={client}>
         <AuthProvider>
-          {!setupChecked ? (
+          {setupError ? (
+            <div className="page">
+              <p>Could not reach the Provisa API.</p>
+              <p>{setupError}</p>
+            </div>
+          ) : !setupChecked ? (
             <div className="page"><p>Loading...</p></div>
           ) : needsSetup ? (
             <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
