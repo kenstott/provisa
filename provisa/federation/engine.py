@@ -173,6 +173,31 @@ class FederationEngine:  # REQ-840
 
         return source_type in _MATERIALIZE_ONLY
 
+    def complete_reach(self) -> FederationEngine:  # REQ-947
+        """Fill ``connectors`` with a land-reach connector for EVERY source type the engine can offer
+        that it does not already ATTACH/SCAN live — the Provisa-direct DRIVERS (executor/drivers) and
+        the adapter/materialize-only + connector-pgwire-replica FETCH types (source_adapters +
+        strategy). After this, ``connectors`` is the complete reach and the source-creation dropdown is
+        a PURE PROJECTION of it (no parallel-map union). A live-attach connector always wins — a land
+        connector is added only where the engine has none for that type. Idempotent."""
+        from provisa.executor.drivers.registry import _DRIVER_FACTORIES
+        from provisa.source_adapters.registry import _ADAPTER_MAP
+        from provisa.federation.connector import Mechanism, WarehouseNativeConnector
+        from provisa.federation.strategy import _CONNECTOR_PGWIRE_REPLICA, _MATERIALIZE_ONLY
+
+        direct = frozenset(_DRIVER_FACTORIES)
+        fetch = frozenset(_ADAPTER_MAP) | _MATERIALIZE_ONLY | _CONNECTOR_PGWIRE_REPLICA
+        for source_type in sorted(direct | fetch):
+            if source_type in self.connectors:
+                continue  # already reached live (ATTACH/SCAN) — attach wins over a landed replica
+            mechanism = Mechanism.DIRECT if source_type in direct else Mechanism.FETCH
+            connector = WarehouseNativeConnector(self.name, source_type, mechanism)
+            self.connectors[source_type] = connector
+            self._candidates.append(
+                connector
+            )  # survive discover(): land connectors have no dep-probe
+        return self
+
     def connector_for(self, source_type: str) -> Connector:
         connector = self.connectors.get(source_type)
         if connector is not None:
@@ -249,13 +274,11 @@ class FederationEngine:  # REQ-840
         """The engine's declared class, or the mechanism/count heuristic when undeclared (REQ-840)."""
         if self._driver_class is not None:
             return self._driver_class
-        from provisa.federation.connector import Mechanism
 
-        if self.native_store is not None and all(
-            c.mechanism not in (Mechanism.ATTACH_RW, Mechanism.ATTACH_R)
-            for c in self.connectors.values()
+        if self.native_store is not None and not any(
+            c.reads_in_place for c in self.connectors.values()
         ):
-            return DriverClass.SELF_ONLY  # cannot attach anything live — all materialized into self
+            return DriverClass.SELF_ONLY  # cannot read anything live — all materialized into self
         # Undeclared ad-hoc engine: infer from breadth. BROAD-by-count is only a fallback — real
         # engines declare their class since BROAD means MPP, which connector count cannot imply.
         return (
@@ -420,12 +443,15 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
     from provisa.federation.connector_duckdb import (
         FileFdwConnector,
         MysqlFdwConnector,
+        OracleFdwConnector,
         PgDuckdbCsvConnector,
+        PgDuckdbDeltaConnector,
         PgDuckdbIcebergConnector,
         PgDuckdbJsonConnector,
         PgDuckdbParquetConnector,
         PostgresFdwConnector,
         SqliteFdwConnector,
+        TdsFdwConnector,
     )
     from provisa.federation.pg_backend import PgBackend
 
@@ -438,8 +464,11 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PgDuckdbParquetConnector(),  # parquet
             PgDuckdbJsonConnector(),  # json
             PgDuckdbIcebergConnector(),  # iceberg (DuckDB iceberg ext; probe verifies it's compiled in)
+            PgDuckdbDeltaConnector(),  # delta_lake (DuckDB delta ext; probe verifies it's compiled in)
             SqliteFdwConnector(),  # sqlite (system libsqlite3)
             MysqlFdwConnector(),  # mysql (needs a bundled client lib; probe-gated)
+            TdsFdwConnector(),  # sqlserver via tds_fdw (bundled freetds; probe-gated)
+            OracleFdwConnector(),  # oracle via oracle_fdw (operator-supplied Instant Client; probe-gated)
         ],
         native_store="postgres",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
@@ -933,32 +962,35 @@ def live_source_types(engine_key: str) -> list[str]:
         # A URL-driven engine (sqlalchemy) cannot build without config; it contributes no attach
         # connectors, so its live set is empty until configured.
         return []
-    from provisa.federation.connector import Mechanism
-
-    attach_modes = {Mechanism.ATTACH_RW, Mechanism.ATTACH_R}
-    return sorted(t for t, c in engine.connectors.items() if c.reach_modes & attach_modes)
+    # LIVE = read in place with no replica (ATTACH_* or SCAN) — always fresh (REQ-951).
+    return sorted(t for t, c in engine.connectors.items() if c.reads_in_place)
 
 
 def reachable_source_types(engine_key: str) -> list[str]:
-    """Every source type CONFIGURABLE on the given engine (REQ-947). The union of three reach
-    faces: the engine's live-attach connectors, the API/push types that only federate by being
-    landed (``_MATERIALIZE_ONLY``), and the types Provisa reads directly then lands
-    (``_provisa_direct_types``). This drives the source-creation dropdown: types outside the
-    current engine's union are shown disabled with the engine(s) that do reach them."""
+    """Every source type CONFIGURABLE on the given engine (REQ-947) — a PURE PROJECTION of the engine's
+    COMPLETED connector registry (``complete_reach``): live-attach/scan connectors plus the land-reach
+    connectors for every Provisa-direct driver / adapter / materialize-only / pgwire-replica type. This
+    drives the source-creation dropdown; types outside the current engine's set are shown disabled with
+    the engine(s) that do reach them. No parallel-map union — the registry IS the reach."""
+    builder = _ENGINE_BUILDERS.get(engine_key)
+    if builder is None:
+        return []
+    try:
+        engine = builder().complete_reach()
+    except ValueError:
+        # A URL-driven engine (sqlalchemy) cannot build without config, so it contributes no live
+        # connectors; its direct/materialize land reach is engine-independent and still applies.
+        return sorted(_provisa_direct_land_types())
+    return sorted(engine.connectors)
+
+
+def _provisa_direct_land_types() -> frozenset[str]:
+    """The engine-INDEPENDENT land reach — Provisa-direct drivers + adapters + materialize-only +
+    pgwire-replica — used when an engine cannot build (unconfigured URL engine) so its dropdown still
+    lists what Provisa lands regardless of the engine (REQ-947)."""
     from provisa.federation.strategy import _CONNECTOR_PGWIRE_REPLICA, _MATERIALIZE_ONLY
 
-    builder = _ENGINE_BUILDERS.get(engine_key)
-    attach: set[str] = set()
-    if builder is not None:
-        # A URL-driven engine that cannot build without config contributes no attach connectors; its
-        # direct/materialize reach still applies, so an unconfigured engine still lists what it lands.
-        try:
-            attach = set(builder().connectors)
-        except ValueError:
-            attach = set()
-    return sorted(
-        attach | set(_MATERIALIZE_ONLY) | set(_CONNECTOR_PGWIRE_REPLICA) | _provisa_direct_types()
-    )
+    return _provisa_direct_types() | _MATERIALIZE_ONLY | _CONNECTOR_PGWIRE_REPLICA
 
 
 def engine_registry() -> list[dict]:
@@ -1026,4 +1058,7 @@ def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/90
     key = (selected or "duckdb").lower().replace("_", "-")
     if key not in _ENGINE_BUILDERS:
         raise ValueError(f"unknown federation engine {key!r}; valid: {sorted(_ENGINE_BUILDERS)}")
-    return _ENGINE_BUILDERS[key]()
+    # Complete the reach so the runtime engine's connectors include every configurable type (REQ-947):
+    # live-attach plus the Provisa-direct/adapter land connectors. connector_for/federate/reconcile then
+    # resolve landable sources from the registry directly rather than synthesizing per call.
+    return _ENGINE_BUILDERS[key]().complete_reach()

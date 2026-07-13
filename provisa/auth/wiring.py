@@ -69,10 +69,10 @@ def build_auth_provider(
             client_id=kc["client_id"],
             client_secret=kc.get("client_secret"),
         )
-    if provider_name == "oauth":
+    if provider_name in ("oauth", "oidc"):  # REQ-890: "oidc" is the generic OIDC selector
         from provisa.auth.providers.oauth import OAuthProvider
 
-        oa = auth_config.get("oauth", {})
+        oa = auth_config.get("oidc" if provider_name == "oidc" else "oauth", {})
         return OAuthProvider(
             discovery_url=oa["discovery_url"],
             client_id=oa["client_id"],

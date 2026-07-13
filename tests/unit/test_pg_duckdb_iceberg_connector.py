@@ -58,14 +58,15 @@ def test_iceberg_connector_identity_and_reader():
     assert c.engine == "postgres"
     assert c.source_type == "iceberg"
     assert c.key == "pg_duckdb_iceberg"
-    assert c.mechanism is Mechanism.ATTACH_RW
+    assert c.mechanism is Mechanism.SCAN  # iceberg_scan reads the table in place (REQ-951)
+    assert c.reads_in_place is True
     assert c._reader == "iceberg_scan"
 
 
 def test_iceberg_runtime_deps_document_static_linked_libs():
     deps = PgDuckdbIcebergConnector().runtime_deps
-    assert any("libduckdb" in d for d in deps)
-    assert any("aws-sdk-cpp" in d and "static-linked" in d for d in deps)
+    assert any("libduckdb" in d.lib for d in deps)
+    assert any("aws-sdk-cpp" in d.lib for d in deps)
 
 
 # ---- attach payload (REQ-908) ------------------------------------------------

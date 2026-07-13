@@ -61,8 +61,12 @@ class TestDriverRegistry:
         assert has_driver("databricks")
         assert has_driver("clickhouse")
 
-    def test_bigquery_no_driver(self):
-        assert not has_driver("bigquery")
+    def test_bigquery_has_direct_driver(self):
+        # BigQuery/Fabric/Synapse gained per-source direct drivers (commit 35bb7f74): a single-source
+        # query reads them directly rather than detouring through Trino.
+        assert has_driver("bigquery")
+        assert has_driver("fabric")
+        assert has_driver("synapse")
 
     def test_create_postgresql(self):
         driver = create_driver("postgresql")

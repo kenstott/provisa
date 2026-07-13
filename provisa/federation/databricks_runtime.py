@@ -69,10 +69,12 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         ``ATTACH_R`` SCAN — REQ-987): install + validate the Unity Catalog credential/external location
         for the bucket, then create an external table at the compiler's physical name. Every other
         source LANDs (handled by ``materialize_source``), so attach is a no-op for it — never a copy."""
-        from provisa.federation.connector_base import Mechanism
+        from provisa.federation.connector_base import LIVE_IN_PLACE
 
         entry = self._engine_for().resolve(source)
-        if entry.mechanism not in (Mechanism.ATTACH_R, Mechanism.ATTACH_RW):
+        if (
+            entry.mechanism not in LIVE_IN_PLACE
+        ):  # attach only what the engine reads in place (REQ-951)
             return None
         from provisa.federation.databricks_uc import ensure_external_link
 
@@ -105,6 +107,46 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
 
     # -- materialization store -------------------------------------------------
 
+    def _stage_from_env(self) -> Any:
+        """The object stage for the bulk COPY-INTO ingest (REQ-990), or None when unconfigured.
+
+        Presence of ``PROVISA_DATABRICKS_STAGE_URL`` turns the bulk path on (a large batch then lands
+        via COPY INTO); its absence is a capability gate → the INSERT path (REQ-990 permits INSERT
+        when the target lacks bulk). If the stage URL is set but its R2 credentials are missing, that
+        is a misconfiguration — raise, never a silent fallback."""
+        import os
+
+        root = os.environ.get("PROVISA_DATABRICKS_STAGE_URL")
+        if not root:
+            return None
+        missing = [
+            k
+            for k in (
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "AWS_ENDPOINT_OVERRIDE",
+                "CLOUDFLARE_ACCOUNT_ID",
+            )
+            if not os.environ.get(k)
+        ]
+        if missing:
+            raise RuntimeError(
+                f"PROVISA_DATABRICKS_STAGE_URL is set but staging config is incomplete: {missing}"
+            )
+        from provisa.federation.databricks_store import DatabricksStage
+
+        return DatabricksStage(
+            root_url=root.rstrip("/") + "/",
+            endpoint_url=os.environ["AWS_ENDPOINT_OVERRIDE"],
+            credential={
+                "access_key_id": os.environ["AWS_ACCESS_KEY_ID"],
+                "secret_access_key": os.environ["AWS_SECRET_ACCESS_KEY"],
+                "account_id": os.environ["CLOUDFLARE_ACCOUNT_ID"],
+            },
+            uc_host=self._host,
+            uc_token=self._token,
+        )
+
     def ensure_materialize_attached(self) -> str:
         """The store IS the warehouse; landed/cache tables live in its catalog directly."""
         return self._catalog
@@ -119,15 +161,17 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         watermark_column: str | None = None,
         pk_columns: list[str] | None = None,
     ) -> None:
-        """LAND a source into the warehouse at its compiler-physical name (REQ-987). Self-only: the
-        landed Delta table IS the physical relation the governed query reads — no separate mat table
-        or view. Columnar bulk write (never per-row) via ``land_databricks_native``."""
+        """LAND a source into the warehouse at its compiler-physical name (REQ-987, REQ-990). Self-only:
+        the landed Delta table IS the physical relation the governed query reads — no separate mat table
+        or view. Columnar bulk write via ``land_databricks_native`` — a large batch takes the bulk COPY
+        INTO from a staged Parquet object when a stage is configured, else the multi-row INSERT."""
         del pk_columns  # Delta MERGE/CDC identity is a future path; batch land needs no PK
         import asyncio
 
         from provisa.federation.databricks_store import land_databricks_native
 
         catalog, schema, table = self._phys_parts(source)
+        stage = self._stage_from_env()
         cur = self._conn.cursor()
         try:
             await asyncio.to_thread(
@@ -140,6 +184,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
                 rows=rows,
                 change_signal=change_signal,
                 watermark_column=watermark_column,
+                stage=stage,
             )
         finally:
             cur.close()

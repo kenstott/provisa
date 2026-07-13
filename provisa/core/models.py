@@ -29,7 +29,6 @@ from pydantic import (
 from provisa.core.source_registry import (
     _MYSQL_WIRE_TYPES,
     _PG_WIRE_TYPES,
-    SOURCE_TO_CONNECTOR,
     SOURCE_TO_DIALECT,
 )
 
@@ -187,8 +186,13 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     cdc: SourceCdcConfig | None = None
 
     @property
-    def connector(self) -> str:
-        return SOURCE_TO_CONNECTOR[self.type.value]
+    def connector(self) -> str | None:
+        """The Trino catalog ``connector.name`` (the ``USING`` label) for this source type, or None if
+        Trino has no connector for it. Derived from the Trino connector registry — no parallel map
+        (REQ-947). Deferred import: ``core`` reaches ``federation`` lazily, as ``core.catalog`` does."""
+        from provisa.federation.connector import trino_connector_name
+
+        return trino_connector_name(self.type.value)
 
     @property
     def dialect(self) -> str | None:
@@ -652,10 +656,13 @@ class ScheduledTrigger(BaseModel):
 class AuthConfig(
     BaseModel
 ):  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125, REQ-203, REQ-247
-    provider: str = "none"  # none, firebase, keycloak, oauth, simple
+    provider: str = "none"  # none, firebase, keycloak, oauth, oidc, simple
     firebase: dict | None = None
     keycloak: dict | None = None
     oauth: dict | None = None
+    oidc: dict | None = (
+        None  # REQ-890: generic OIDC (discovery_url, client_id, audience, role_claim)
+    )
     simple: dict | None = None
     allow_simple_auth: bool = False  # REQ-124: production guard — simple auth refused unless true
     superuser: dict | None = None

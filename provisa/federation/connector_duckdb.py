@@ -21,7 +21,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from provisa.federation.connector_base import Capability, Connector, Mechanism, ProbeResult
+from provisa.federation.connector_base import (
+    Capability,
+    Connector,
+    DriverProvider,
+    Mechanism,
+    ProbeResult,
+    RuntimeDep,
+)
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
@@ -55,7 +62,7 @@ class DuckDBPostgresConnector(Connector):
 class DuckDBCsvConnector(Connector):
     engine = "duckdb"
     source_type = "csv"
-    mechanism = Mechanism.ATTACH_RW  # a scanner view references the file in place
+    mechanism = Mechanism.SCAN  # a scanner view reads the file in place (read_csv_auto)
 
     def capability(self) -> Capability:
         return Capability()
@@ -69,7 +76,7 @@ class DuckDBCsvConnector(Connector):
 class DuckDBParquetConnector(Connector):
     engine = "duckdb"
     source_type = "parquet"
-    mechanism = Mechanism.ATTACH_RW  # a scanner view references the file in place
+    mechanism = Mechanism.SCAN  # a scanner view reads the file in place (read_parquet)
 
     def capability(self) -> Capability:
         return Capability(
@@ -258,6 +265,7 @@ class DuckDBGsheetsConnector(_DuckDBExtensionConnector):  # REQ-899
     key = "duckdb_gsheets"
     extension = "gsheets"
     probe_symbol = "read_gsheet"
+    mechanism = Mechanism.SCAN  # read_gsheet scanner view — read in place, no attach (REQ-951)
 
     def capability(self) -> Capability:
         return Capability()  # a Sheets scan has no predicate pushdown
@@ -291,6 +299,7 @@ class DuckDBIcebergConnector(_DuckDBExtensionConnector):  # REQ-899
     extension = "iceberg"
     install_from_community = False  # core registry — INSTALL iceberg (no FROM community)
     probe_symbol = "iceberg_scan"
+    mechanism = Mechanism.SCAN  # iceberg_scan scanner view — read in place, no attach (REQ-951)
 
     def details(self, source: Source) -> dict:
         return {
@@ -372,7 +381,7 @@ class FileFdwConnector(Connector):  # REQ-893
 
     engine = "postgres"
     source_type = "csv"
-    mechanism = Mechanism.ATTACH_RW
+    mechanism = Mechanism.SCAN  # file_fdw foreign table reads the CSV in place (REQ-951)
     key = "file_fdw"
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
@@ -404,7 +413,7 @@ class SqliteFdwConnector(Connector):  # REQ-907
     source_type = "sqlite"
     mechanism = Mechanism.ATTACH_RW
     key = "sqlite_fdw"
-    runtime_deps = ("libsqlite3 (system — OS-provided on macOS/Linux)",)
+    runtime_deps = (RuntimeDep("libsqlite3", DriverProvider.SYSTEM),)  # OS-provided on macOS/Linux
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
         return await _probe_pg_extension(fetch, "sqlite_fdw", auto_create=True)
@@ -440,7 +449,7 @@ class MysqlFdwConnector(Connector):  # REQ-907
     source_type = "mysql"
     mechanism = Mechanism.ATTACH_RW
     key = "mysql_fdw"
-    runtime_deps = ("libmysqlclient / mariadb-connector-c (bundled — must ship + relocate)",)
+    runtime_deps = (RuntimeDep("libmysqlclient / mariadb-connector-c", DriverProvider.BUNDLED),)
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
         return await _probe_pg_extension(fetch, "mysql_fdw", auto_create=True)
@@ -469,6 +478,88 @@ class MysqlFdwConnector(Connector):  # REQ-907
         }
 
 
+class TdsFdwConnector(Connector):  # REQ-900
+    """Attach a remote Microsoft SQL Server source into a Postgres engine via tds_fdw (external contrib).
+
+    Same ATTACH shape as postgres_fdw (foreign server + imported foreign schema). tds_fdw speaks TDS
+    through FreeTDS; it is READ-ONLY with WHERE + column pushdown only (no JOIN/aggregate pushdown).
+    ``msg_handler 'notice'`` surfaces SQL Server messages as PG notices. The SQL Server default schema
+    is ``dbo`` unless overridden via federation_hints.
+    """
+
+    engine = "postgres"
+    source_type = "sqlserver"
+    mechanism = Mechanism.ATTACH_R  # read-only live attach (tds_fdw has no write path)
+    key = "tds_fdw"
+    runtime_deps = (RuntimeDep("freetds", DriverProvider.BUNDLED),)
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904
+        return await _probe_pg_extension(fetch, "tds_fdw", auto_create=True)
+
+    def capability(self) -> Capability:
+        # tds_fdw pushes WHERE + column projection to SQL Server; no JOIN/aggregate pushdown, read-only.
+        return Capability(predicate_pushdown=True, write=False)
+
+    def details(self, source: Source) -> dict:
+        server = f"fdw_{source.id}"
+        local_schema = f"fdw_{source.id}"
+        remote_schema = source.federation_hints.get("schema") or "dbo"
+        return {
+            "attach_ddl": [
+                "CREATE EXTENSION IF NOT EXISTS tds_fdw",
+                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER tds_fdw "
+                f"OPTIONS (servername '{source.host}', port '{source.port}', "
+                f"database '{source.database}', msg_handler 'notice')",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f"OPTIONS (username '{source.username}', password '{source.password}')",
+                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
+                f"IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER {server} INTO {local_schema}",
+            ],
+            "local_schema": local_schema,
+        }
+
+
+class OracleFdwConnector(Connector):  # REQ-900
+    """Attach a remote Oracle source into a Postgres engine via oracle_fdw (external contrib).
+
+    Same ATTACH shape as postgres_fdw. The server ``dbserver`` is an EZConnect string
+    ``//host:port/service``. oracle_fdw links the Oracle Instant Client, which is Oracle-proprietary
+    and NOT redistributable — the DEPLOYMENT supplies it (OPERATOR dep) and sets ORACLE_HOME /
+    LD_LIBRARY_PATH; the catalog never bundles it. Oracle schema names are upper-cased.
+    """
+
+    engine = "postgres"
+    source_type = "oracle"
+    mechanism = Mechanism.ATTACH_RW  # oracle_fdw supports read + write on foreign tables
+    key = "oracle_fdw"
+    runtime_deps = (RuntimeDep("Oracle Instant Client + SDK", DriverProvider.OPERATOR),)
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904
+        return await _probe_pg_extension(fetch, "oracle_fdw", auto_create=True)
+
+    def capability(self) -> Capability:
+        # oracle_fdw pushes WHERE + ORDER BY and same-server joins; writable on foreign tables.
+        return Capability(predicate_pushdown=True, join_pushdown=True, write=True)
+
+    def details(self, source: Source) -> dict:
+        server = f"fdw_{source.id}"
+        local_schema = f"fdw_{source.id}"
+        # Oracle schema defaults to the connecting user's schema (upper-cased), overridable via hints.
+        remote_schema = (source.federation_hints.get("schema") or source.username or "").upper()
+        return {
+            "attach_ddl": [
+                "CREATE EXTENSION IF NOT EXISTS oracle_fdw",
+                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER oracle_fdw "
+                f"OPTIONS (dbserver '//{source.host}:{source.port}/{source.database}')",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f"OPTIONS (user '{source.username}', password '{source.password}')",
+                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
+                f'IMPORT FOREIGN SCHEMA "{remote_schema}" FROM SERVER {server} INTO {local_schema}',
+            ],
+            "local_schema": local_schema,
+        }
+
+
 # --- Postgres + pg_duckdb: attach files IN PLACE via an embedded DuckDB (no landing) ---
 
 
@@ -487,8 +578,10 @@ class _PgDuckdbScanConnector(Connector):  # REQ-901
     _reader = ""  # read_csv | read_parquet | read_json | iceberg_scan
     _scan_args = ""  # extra reader args appended after the path, e.g. ", allow_moved_paths := true"
     runtime_deps = (
-        "libduckdb (bundled — the embedded DuckDB engine)",
-        "libssl/libcrypto via httpfs (bundled — relocated to @loader_path)",
+        RuntimeDep("libduckdb", DriverProvider.BUNDLED),  # the embedded DuckDB engine
+        RuntimeDep(
+            "libssl/libcrypto via httpfs", DriverProvider.BUNDLED
+        ),  # relocated to @loader_path
     )  # also requires pg_duckdb in shared_preload_libraries (see probe)
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
@@ -522,18 +615,21 @@ class PgDuckdbCsvConnector(_PgDuckdbScanConnector):  # REQ-901
     source_type = "csv"
     _reader = "read_csv"
     key = "pg_duckdb_csv"
+    mechanism = Mechanism.SCAN  # read_csv reads the file in place — no copy (REQ-951)
 
 
 class PgDuckdbParquetConnector(_PgDuckdbScanConnector):  # REQ-901
     source_type = "parquet"
     _reader = "read_parquet"
     key = "pg_duckdb_parquet"
+    mechanism = Mechanism.SCAN  # read_parquet reads the file in place — no copy (REQ-951)
 
 
 class PgDuckdbJsonConnector(_PgDuckdbScanConnector):  # REQ-901
     source_type = "json"
     _reader = "read_json"
     key = "pg_duckdb_json"
+    mechanism = Mechanism.SCAN  # read_json reads the file in place — no copy (REQ-951)
 
 
 class PgDuckdbIcebergConnector(_PgDuckdbScanConnector):  # REQ-908
@@ -550,9 +646,11 @@ class PgDuckdbIcebergConnector(_PgDuckdbScanConnector):  # REQ-908
     _reader = "iceberg_scan"
     _scan_args = ", allow_moved_paths := true"
     key = "pg_duckdb_iceberg"
+    mechanism = Mechanism.SCAN  # iceberg_scan reads the table in place — no copy (REQ-951)
     runtime_deps = (
-        "libduckdb (bundled — the embedded DuckDB engine)",
-        "aws-sdk-cpp / avro-c / roaring (bundled — static-linked into libduckdb via vcpkg)",
+        RuntimeDep("libduckdb", DriverProvider.BUNDLED),  # the embedded DuckDB engine
+        # aws-sdk-cpp / avro-c / roaring — static-linked into libduckdb via vcpkg
+        RuntimeDep("aws-sdk-cpp / avro-c / roaring", DriverProvider.BUNDLED),
     )
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904/908
@@ -565,6 +663,37 @@ class PgDuckdbIcebergConnector(_PgDuckdbScanConnector):  # REQ-908
             False,
             "pg_duckdb is loaded but was built without the iceberg extension",
             "rebuild pg_duckdb with the iceberg DuckDB extension (vcpkg)",
+        )
+
+
+class PgDuckdbDeltaConnector(_PgDuckdbScanConnector):  # REQ-900
+    """Attach a Delta Lake table IN PLACE via pg_duckdb's delta_scan (DuckDB delta extension).
+
+    Reads the table's current version from its ``_delta_log``; zero copy. Requires a pg_duckdb built
+    WITH the delta extension — the probe verifies ``delta_scan`` is registered, not just that pg_duckdb
+    is loaded (a pg_duckdb without delta passes the base probe but lacks the function). v1 curated set
+    (REQ-900): delta_lake routes through pg_duckdb, the same single .so that backs parquet + iceberg."""
+
+    source_type = "delta_lake"
+    _reader = "delta_scan"
+    key = "pg_duckdb_delta"
+    mechanism = Mechanism.SCAN  # delta_scan reads the table in place — no copy (REQ-951)
+    runtime_deps = (
+        RuntimeDep("libduckdb", DriverProvider.BUNDLED),  # the embedded DuckDB engine
+        # aws-sdk-cpp / delta-kernel-rs — static-linked into libduckdb via vcpkg
+        RuntimeDep("aws-sdk-cpp / delta-kernel-rs", DriverProvider.BUNDLED),
+    )
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904/900
+        base = await super().probe(fetch)
+        if not base.available:
+            return base
+        if await fetch("SELECT 1 FROM pg_proc WHERE proname = 'delta_scan'"):
+            return ProbeResult(True, "pg_duckdb with delta extension")
+        return ProbeResult(
+            False,
+            "pg_duckdb is loaded but was built without the delta extension",
+            "rebuild pg_duckdb with the delta DuckDB extension (vcpkg)",
         )
 
 

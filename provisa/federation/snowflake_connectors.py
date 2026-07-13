@@ -42,7 +42,7 @@ class _SnowflakeObjectLinkConnector(Connector):
     """A Snowflake external-table link over cloud object/lake storage (ATTACH_R → SCAN)."""
 
     engine = "snowflake"
-    mechanism = Mechanism.ATTACH_R
+    mechanism = Mechanism.SCAN  # external table reads the object/lake in place — no copy (REQ-951)
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True, aggregate_pushdown=True, write=False)

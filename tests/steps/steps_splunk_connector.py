@@ -11,7 +11,7 @@ import pytest
 from pytest_bdd import given, parsers, scenario, then, when
 
 from provisa.core.models import Source, SourceType
-from provisa.core.source_registry import SOURCE_TO_CONNECTOR
+from provisa.federation.connector import trino_connector_name
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ def step_splunk_instance_with_admin_credentials(shared_data):
     # Verify splunk is a known SourceType
     assert SourceType.splunk in SourceType.__members__.values()
     # Verify it maps to the splunk connector
-    assert SOURCE_TO_CONNECTOR.get("splunk") == "splunk"
+    assert trino_connector_name("splunk") == "splunk"
 
 
 @when("a user registers the Splunk source with host, port, and auth token")
@@ -249,7 +249,7 @@ def step_source_in_catalog_and_tables_enumerable(shared_data):
         conn.close()
     else:
         # Unit mode: validate connector mapping is correct
-        assert SOURCE_TO_CONNECTOR["splunk"] == "splunk", (
+        assert trino_connector_name("splunk") == "splunk", (
             "splunk must map to 'splunk' connector in SOURCE_TO_CONNECTOR"
         )
         # Validate the source type enum value

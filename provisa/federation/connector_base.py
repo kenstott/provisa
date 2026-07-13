@@ -31,12 +31,39 @@ class Mechanism(str, Enum):  # REQ-841, REQ-947, REQ-951
     # orthogonal STRATEGY, not a mechanism — any readable source is landable (see ``materializable``).
     ATTACH_RW = "attach_rw"  # engine attaches the live source in place, read + write upstream
     ATTACH_R = "attach_r"  # engine attaches/scans the live source in place, read-only (files, RO)
+    SCAN = "scan"  # engine reads a file/object in place as a view (read_csv/read_parquet, iceberg_scan,
+    # lakehouse table engines) — no live DB attached, no copy; freshness follows the underlying file
     DIRECT = "direct"  # Provisa's native driver reads the source directly, bypassing the engine
     FETCH = "fetch"  # Provisa's adapter reads an API/push source (openapi/graphql_remote/grpc/…)
-    # ATTACH_* → the engine reads the LIVE source (VIRTUAL). DIRECT/FETCH → the engine can't read it
-    # live, so Provisa reads it (driver/adapter) and materializes a refreshed REPLICA (an MV of the
-    # source) that the engine reads → MATERIALIZED. "Materialize into a store" is that replica, an
-    # OUTPUT of a DIRECT/FETCH read — not a reach mechanism of its own (REQ-951).
+    # ATTACH_* → the engine reads the LIVE source (VIRTUAL). SCAN → the engine reads a file/object in
+    # place (a view, no copy). DIRECT/FETCH → the engine can't read it live, so Provisa reads it
+    # (driver/adapter) and materializes a refreshed REPLICA (an MV of the source) that the engine reads
+    # → MATERIALIZED. "Materialize into a store" is that replica, an OUTPUT of a DIRECT/FETCH read — not
+    # a reach mechanism of its own (REQ-951).
+
+
+# Reach modes where the engine reads the source LIVE IN PLACE — a live DB attach or a file/object
+# scan — so the source MUST NOT be landed (the engine reads it directly). DIRECT/FETCH are excluded:
+# Provisa reads those and lands a refreshed replica the engine reads (REQ-951).
+LIVE_IN_PLACE = frozenset({Mechanism.ATTACH_RW, Mechanism.ATTACH_R, Mechanism.SCAN})
+
+
+class DriverProvider(str, Enum):  # REQ-948
+    """Who provides the runtime driver/library a connector's extension links."""
+
+    SYSTEM = "system"  # OS-provided (e.g. libsqlite3 on macOS/Linux)
+    BUNDLED = "bundled"  # Provisa ships + relocates it
+    OPERATOR = "operator"  # BYO — the operator must install it
+
+
+@dataclass(frozen=True)
+class RuntimeDep:  # REQ-948
+    """A non-core shared library a connector's extension links at runtime, tagged by who provides it.
+    Structured (not free text) so the capability report / source dropdown can reason over provenance:
+    an OPERATOR-provided dep that is not installed renders the source disabled with its remediation."""
+
+    lib: str
+    provider: DriverProvider
 
 
 @dataclass(frozen=True)
@@ -115,11 +142,10 @@ class Connector(ABC):  # REQ-842
     # write face to land into (store_writer). The engine's usable-store set is the connectors so
     # flagged. False for a reach-only source (no write face, or not a landing target).
     materialized_store: bool = False
-    # Non-Postgres/-engine shared libraries this connector's extension links at runtime, each tagged by
-    # who provides it: "system" (OS-provided), "bundled" (we ship + relocate it), "operator" (BYO must
-    # install). Empty for core contrib (postgres_fdw/file_fdw) with no external dependency. Documents
-    # the packaging surface and feeds the capability report.
-    runtime_deps: tuple[str, ...] = ()
+    # Non-core shared libraries this connector's extension links at runtime, each a structured
+    # ``RuntimeDep(lib, provider)`` (REQ-948). Empty for core contrib (postgres_fdw/file_fdw) with no
+    # external dependency. Documents the packaging surface and feeds the capability report + dropdown.
+    runtime_deps: tuple[RuntimeDep, ...] = ()
 
     @property
     def reach_modes(self) -> frozenset[Mechanism]:
@@ -127,6 +153,18 @@ class Connector(ABC):  # REQ-842
         ``{mechanism}`` when none is declared. The complete self-description of how the engine can
         offer this source; the planner/source UI pick a mode from it."""
         return self.mechanisms or frozenset({self.mechanism})
+
+    @property
+    def reads_in_place(self) -> bool:
+        """True iff the engine reads this source LIVE in place (attach or scan) — so it MUST NOT be
+        landed (REQ-951). False for DIRECT/FETCH, which Provisa reads and lands as a replica."""
+        return bool(self.reach_modes & LIVE_IN_PLACE)
+
+    @property
+    def operator_deps(self) -> tuple[RuntimeDep, ...]:
+        """Runtime deps the OPERATOR must install (BYO). Non-empty ⇒ the source is offered but shown
+        disabled with remediation until the deps + probe confirm availability (REQ-948)."""
+        return tuple(d for d in self.runtime_deps if d.provider is DriverProvider.OPERATOR)
 
     @abstractmethod
     def capability(self) -> Capability: ...

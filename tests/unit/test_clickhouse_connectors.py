@@ -36,16 +36,20 @@ def _src(sid: str, type_: SourceType, **kw) -> Source:
 # ---- identity ----------------------------------------------------------------
 
 
-def test_all_clickhouse_connectors_are_attach_on_the_clickhouse_engine():
+def test_all_clickhouse_connectors_read_in_place_on_the_clickhouse_engine():
+    # Relational DATABASE-engine links ATTACH live; file/lake table engines SCAN in place. Both read
+    # in place — nothing lands (REQ-951).
     for c in (
         ClickHousePostgresConnector(),
         ClickHouseMysqlConnector(),
         ClickHouseMongoConnector(),
-        ClickHouseCsvConnector(),
-        ClickHouseParquetConnector(),
     ):
         assert c.engine == "clickhouse"
         assert c.mechanism is Mechanism.ATTACH_RW
+    for c in (ClickHouseCsvConnector(), ClickHouseParquetConnector()):
+        assert c.engine == "clickhouse"
+        assert c.mechanism is Mechanism.SCAN
+        assert c.reads_in_place is True
 
 
 # ---- relational DATABASE engine (auto-import) --------------------------------

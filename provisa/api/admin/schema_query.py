@@ -296,7 +296,6 @@ class Query:  # REQ-021, REQ-042
         """List schemas available in a source."""
         from provisa.api.app import state
         from provisa.api.admin.introspect import is_provisa_internal, native_schemas
-        from provisa.core.source_registry import SOURCE_TO_CONNECTOR
 
         source_type = state.source_types.get(source_id, "")
         if source_type == "openapi":
@@ -306,9 +305,10 @@ class Query:  # REQ-021, REQ-042
             result = await native_schemas(source_id, source_type, state.source_pools, config_conn)
         if result is not None:
             return [s for s in result if not is_provisa_internal(s)]
-        # native_schemas returns None only for the engine-backed connector sources
-        # that have no cheaper direct pool path. Use the engine for those.
-        if source_type not in SOURCE_TO_CONNECTOR:
+        # native_schemas returns None only for the engine-backed connector sources that have no
+        # cheaper direct pool path. Use the engine for those — reach is the engine's OWN connector
+        # registry (REQ-947), not a parallel map: unreachable ⇒ no engine schemas.
+        if not state.federation_engine.reachable(source_type):
             return []
         catalog = source_to_catalog(source_id)
         schemas: list[str] = []

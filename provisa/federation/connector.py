@@ -94,13 +94,18 @@ class TrinoSqlServerConnector(_TrinoJdbcConnector):
     trino_connector = "sqlserver"
 
 
+# Lake/object source types Trino reads IN PLACE via a lakehouse catalog (iceberg/hive/delta) — a SCAN
+# (no copy, freshness follows the files), not a live-DB VIRTUAL attach (REQ-951).
+_TRINO_SCAN_TYPES = frozenset({"hive", "hive_s3", "delta_lake", "iceberg"})
+
+
 def _jdbc_trino(source_type: str, trino_connector: str) -> type[_TrinoJdbcConnector]:
-    """A JDBC Trino connector class for ``source_type`` published under ``trino_connector``."""
-    return type(
-        f"Trino_{source_type}_Connector",
-        (_TrinoJdbcConnector,),
-        {"source_type": source_type, "trino_connector": trino_connector},
-    )
+    """A JDBC Trino connector class for ``source_type`` published under ``trino_connector``. Lake types
+    (``_TRINO_SCAN_TYPES``) declare SCAN; relational/warehouse types keep the base ATTACH_RW."""
+    attrs: dict = {"source_type": source_type, "trino_connector": trino_connector}
+    if source_type in _TRINO_SCAN_TYPES:
+        attrs["mechanism"] = Mechanism.SCAN
+    return type(f"Trino_{source_type}_Connector", (_TrinoJdbcConnector,), attrs)
 
 
 # The remaining JDBC-family source types (relational + warehouse + lake), each its own catalog under
@@ -202,6 +207,7 @@ class TrinoCassandraConnector(_TrinoConnector):
 class TrinoFilesConnector(_TrinoConnector):
     source_type = "files"
     trino_connector = "file"
+    mechanism = Mechanism.SCAN  # the file catalog reads the glob in place — no copy (REQ-951)
 
     def capability(self) -> Capability:
         return Capability()
@@ -335,8 +341,8 @@ class TrinoKafkaConnector(_TrinoConnector):
 
 def build_trino_connectors() -> list[_TrinoConnector]:
     """Every Trino catalog connector (REQ-842) — the complete, authoritative reach of the Trino
-    engine, one per ``SOURCE_TO_CONNECTOR`` type. This is THE source of truth: a type absent here is
-    not Trino-reachable and gets no catalog."""
+    engine. This is THE source of truth for a type's Trino ``connector.name`` (``trino_connector``):
+    a type absent here is not Trino-reachable and gets no catalog (REQ-947)."""
     connectors: list[_TrinoConnector] = [
         TrinoPostgresConnector(),
         TrinoMysqlConnector(),
@@ -361,6 +367,14 @@ def build_trino_connectors() -> list[_TrinoConnector]:
 
 # source_type -> Trino connector, the registry catalog.py consults ("no connector ⇒ no catalog").
 TRINO_CONNECTORS: dict[str, _TrinoConnector] = {c.source_type: c for c in build_trino_connectors()}
+
+
+def trino_connector_name(source_type: str) -> str | None:
+    """The Trino catalog ``connector.name`` (the ``CREATE CATALOG … USING <name>`` label) for a source
+    type, or None if Trino has no connector for it. The single source of truth is the Trino connector
+    objects themselves — this retires the parallel ``SOURCE_TO_CONNECTOR`` name map (REQ-947)."""
+    connector = TRINO_CONNECTORS.get(source_type)
+    return connector.trino_connector if connector is not None else None
 
 
 # --- DuckDB: a partial federator (postgres via ATTACH; files via scanner views) ---
@@ -500,7 +514,9 @@ class _ClickHouseFileConnector(Connector):
     object fail loud at attach time, not at first query."""
 
     engine = "clickhouse"
-    mechanism = Mechanism.ATTACH_RW
+    mechanism = (
+        Mechanism.SCAN
+    )  # S3/URL/File table engine reads the file in place — no copy (REQ-951)
     _format = ""  # ClickHouse input-format name
 
     def details(self, source: Source) -> dict:
@@ -535,7 +551,9 @@ class _ClickHouseLakeConnector(Connector):
     probes the attach so a bad credential / unreachable table fails loud at attach time."""
 
     engine = "clickhouse"
-    mechanism = Mechanism.ATTACH_RW
+    mechanism = (
+        Mechanism.SCAN
+    )  # IcebergS3/DeltaLake engine reads the table in place — no copy (REQ-951)
     _engine_name = ""  # ClickHouse lakehouse table engine
 
     def capability(self) -> Capability:
@@ -565,21 +583,28 @@ class ClickHouseDeltaLakeConnector(_ClickHouseLakeConnector):
 
 
 class WarehouseNativeConnector(Connector):
-    """A self-only engine (e.g. Snowflake) cannot attach an external source live; Provisa reads
-    it and lands a replica into the engine's store, which the engine reads — MATERIALIZED, not a
-    live attach (the engine never lands; Provisa does — REQ-848/951)."""
+    """A source the engine cannot attach live: Provisa reads it and lands a refreshed replica into the
+    engine's materialization store, which the engine reads — MATERIALIZED, not a live attach (the engine
+    never lands; Provisa does — REQ-848/951). ``mechanism`` records HOW Provisa reads the source:
+    ``DIRECT`` (a native async driver, executor/drivers) or ``FETCH`` (an API/push adapter,
+    source_adapters). This is the unified land-reach connector that completes ``engine.connectors`` for
+    every direct-route / adapter source type, so the source-creation dropdown is a pure projection of
+    the registry (REQ-947)."""
 
-    mechanism = Mechanism.DIRECT
-
-    def __init__(self, engine: str, source_type: str) -> None:
+    def __init__(
+        self, engine: str, source_type: str, mechanism: Mechanism = Mechanism.DIRECT
+    ) -> None:
         self.engine = engine
         self.source_type = source_type
+        self.mechanism = mechanism
+        # A stable key so discover()'s report + override strike-list address it distinctly per type.
+        self.key = f"land_{engine}_{source_type}"
 
     def capability(self) -> Capability:
-        # Its own native store — full pushdown and writable.
+        # The engine reads the LANDED replica in its own store — full pushdown and writable.
         return Capability(
             predicate_pushdown=True, join_pushdown=True, aggregate_pushdown=True, write=True
         )
 
     def details(self, source: Source) -> dict:
-        return {}  # land-into-self: nothing to attach; the table is already native
+        return {}  # land: nothing to attach; the engine reads the replica in its store

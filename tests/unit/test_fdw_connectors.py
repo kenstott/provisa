@@ -21,6 +21,7 @@ import pytest
 
 from provisa.core.models import Source, SourceType
 from provisa.federation.connector import Mechanism
+from provisa.federation.connector_base import DriverProvider, RuntimeDep
 from provisa.federation.connector_duckdb import MysqlFdwConnector, SqliteFdwConnector
 
 
@@ -55,7 +56,8 @@ def test_sqlite_fdw_identity_and_runtime_deps():
     assert c.source_type == "sqlite"
     assert c.key == "sqlite_fdw"
     assert c.mechanism is Mechanism.ATTACH_RW
-    assert c.runtime_deps == ("libsqlite3 (system — OS-provided on macOS/Linux)",)
+    assert c.runtime_deps == (RuntimeDep("libsqlite3", DriverProvider.SYSTEM),)
+    assert c.operator_deps == ()  # system-provided — never BYO (REQ-948)
 
 
 def test_mysql_fdw_identity_and_runtime_deps():
@@ -65,8 +67,9 @@ def test_mysql_fdw_identity_and_runtime_deps():
     assert c.key == "mysql_fdw"
     assert c.mechanism is Mechanism.ATTACH_RW
     assert c.runtime_deps == (
-        "libmysqlclient / mariadb-connector-c (bundled — must ship + relocate)",
+        RuntimeDep("libmysqlclient / mariadb-connector-c", DriverProvider.BUNDLED),
     )
+    assert c.operator_deps == ()  # bundled — Provisa ships it, not BYO (REQ-948)
 
 
 # ---- capability (REQ-907) ----------------------------------------------------

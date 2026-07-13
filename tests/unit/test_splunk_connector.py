@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from provisa.core.catalog import _build_catalog_properties
 from provisa.core.models import Source, SourceType
-from provisa.core.source_registry import SOURCE_TO_CONNECTOR
+from provisa.federation.connector import trino_connector_name
 
 
 # --------------------------------------------------------------------------- #
@@ -65,7 +65,7 @@ class TestSourceTypeRegistration:
         assert SourceType.splunk.value == "splunk"
 
     def test_splunk_maps_to_splunk_connector(self):
-        assert SOURCE_TO_CONNECTOR["splunk"] == "splunk"
+        assert trino_connector_name("splunk") == "splunk"
 
     def test_source_with_type_splunk_is_valid(self):
         src = _source()

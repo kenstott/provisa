@@ -18,10 +18,10 @@ import pytest
 
 from provisa.core.models import SourceType
 from provisa.core.source_registry import (
-    SOURCE_TO_CONNECTOR,
     SOURCE_TO_DIALECT,
     LAKE_ONLY_SOURCES,
 )
+from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
 from provisa.transpiler.router import VIRTUAL_SOURCES
 from provisa.transpiler.transpile import transpile
 
@@ -212,9 +212,7 @@ class TestTrinoOnlySources:
 
     @pytest.mark.parametrize("source_type", sorted(_TRINO_ONLY))
     def test_has_connector_entry(self, source_type):
-        assert source_type in SOURCE_TO_CONNECTOR, (
-            f"{source_type!r} missing from SOURCE_TO_CONNECTOR"
-        )
+        assert source_type in TRINO_CONNECTORS, f"{source_type!r} missing from TRINO_CONNECTORS"
 
     @pytest.mark.parametrize("source_type", sorted(_TRINO_ONLY))
     def test_no_dialect_entry(self, source_type):
@@ -238,10 +236,10 @@ class TestTrinoOnlySources:
         assert source_type in enum_values, f"SourceType enum missing {source_type!r}"
 
     def test_iceberg_connector(self):
-        assert SOURCE_TO_CONNECTOR["iceberg"] == "iceberg"
+        assert trino_connector_name("iceberg") == "iceberg"
 
     def test_hive_s3_uses_hive_connector(self):
-        assert SOURCE_TO_CONNECTOR["hive_s3"] == "hive"
+        assert trino_connector_name("hive_s3") == "hive"
 
     def test_delta_lake_connector(self):
-        assert SOURCE_TO_CONNECTOR["delta_lake"] == "delta_lake"
+        assert trino_connector_name("delta_lake") == "delta_lake"

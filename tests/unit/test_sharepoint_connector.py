@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from provisa.core.catalog import _build_catalog_properties
 from provisa.core.models import Column, Source, SourceType, Table
-from provisa.core.source_registry import SOURCE_TO_CONNECTOR
+from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
 
 
 # --------------------------------------------------------------------------- #
@@ -85,10 +85,10 @@ class TestReq726RegistryPresence:
         assert SourceType.sharepoint.value == "sharepoint"
 
     def test_sharepoint_in_source_to_connector(self):
-        assert "sharepoint" in SOURCE_TO_CONNECTOR
+        assert "sharepoint" in TRINO_CONNECTORS
 
     def test_sharepoint_connector_name(self):
-        assert SOURCE_TO_CONNECTOR["sharepoint"] == "sharepoint"
+        assert trino_connector_name("sharepoint") == "sharepoint"
 
     def test_source_connector_property(self):
         src = _source()
@@ -99,7 +99,7 @@ class TestReq726RegistryPresence:
         assert src.type == SourceType.sharepoint
 
     def test_connector_name_non_empty(self):
-        assert SOURCE_TO_CONNECTOR["sharepoint"]
+        assert trino_connector_name("sharepoint")
 
 
 # --------------------------------------------------------------------------- #

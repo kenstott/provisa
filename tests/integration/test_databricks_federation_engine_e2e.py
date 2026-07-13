@@ -152,5 +152,54 @@ async def test_databricks_engine_applies_rls(runtime):
     assert table.num_rows == 2
 
 
+_R2 = (
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_ENDPOINT_OVERRIDE",
+    "CLOUDFLARE_ACCOUNT_ID",
+)
+_HAVE_R2 = all(os.environ.get(v) for v in _R2)
+_COPY_SRC = (
+    "e2e-dbx-copy"  # its own Unity Catalog so the COPY-INTO test never collides with the above
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not _HAVE_R2, reason="R2 staging creds not set (bulk COPY INTO path)")
+async def test_databricks_bulk_copy_into_lands_large_batch(runtime):
+    """A batch >= COPY_INTO_ROW_THRESHOLD lands via the REAL bulk COPY-INTO path (staged Parquet on R2
+    → COPY INTO the Delta table), then reads back the exact row count + a sample value on the live
+    warehouse. Below-threshold batches take the INSERT path (covered in unit); this pins the bulk seam."""
+    from types import SimpleNamespace
+
+    from provisa.federation.databricks_store import COPY_INTO_ROW_THRESHOLD
+
+    bucket = os.environ.get("PROVISA_R2_TEST_BUCKET", "pubs")
+    acct = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+    os.environ["PROVISA_DATABRICKS_STAGE_URL"] = (
+        f"r2://{bucket}@{acct}.r2.cloudflarestorage.com/provisa_stage/"
+    )
+
+    n = COPY_INTO_ROW_THRESHOLD + 500  # comfortably above the gate → COPY INTO, not INSERT
+    rows = [{"id": i, "region": "west" if i % 2 else "east", "amount": float(i)} for i in range(n)]
+    cols = [("id", "bigint"), ("region", "text"), ("amount", "double")]
+    src = SimpleNamespace(id=_COPY_SRC, type="databricks", schema_name=_SCHEMA, table_name=_TABLE)
+    cat = _to_catalog_name(_COPY_SRC)
+    try:
+        await runtime.materialize_source(src, cols, rows, change_signal="ttl")
+        table = runtime.run_arrow(
+            f"SELECT count(*) AS n, max(amount) AS mx FROM `{cat}`.`{_SCHEMA}`.`{_TABLE}`"
+        )
+        assert table.column("n").to_pylist()[0] == n
+        assert table.column("mx").to_pylist()[0] == float(n - 1)
+    finally:
+        cur = runtime.connection.cursor()
+        try:
+            cur.execute(f"DROP TABLE IF EXISTS `{cat}`.`{_SCHEMA}`.`{_TABLE}`")
+        finally:
+            cur.close()
+        os.environ.pop("PROVISA_DATABRICKS_STAGE_URL", None)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])

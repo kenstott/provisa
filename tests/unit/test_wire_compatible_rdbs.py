@@ -12,7 +12,8 @@ from __future__ import annotations
 import pytest
 
 from provisa.core.models import Source, SourceType
-from provisa.core.source_registry import SOURCE_TO_CONNECTOR, SOURCE_TO_DIALECT
+from provisa.core.source_registry import SOURCE_TO_DIALECT
+from provisa.federation.connector import trino_connector_name
 from provisa.executor.drivers.registry import has_native_driver
 from provisa.federation.engine import build_trino_engine
 from provisa.federation.strategy import Strategy, federate
@@ -41,12 +42,12 @@ def test_wire_compatible_rdb_has_native_direct_driver(stype):
 @pytest.mark.parametrize("stype", _PG_WIRE)
 def test_pg_wire_maps_to_postgres(stype):
     assert SOURCE_TO_DIALECT[stype] == "postgres"
-    assert SOURCE_TO_CONNECTOR[stype] == "postgresql"
+    assert trino_connector_name(stype) == "postgresql"
     url = _src(stype).jdbc_url()
     assert url == "jdbc:postgresql://h:5432/db?autosave=conservative"
 
 
 def test_tidb_maps_to_mysql():
     assert SOURCE_TO_DIALECT["tidb"] == "mysql"
-    assert SOURCE_TO_CONNECTOR["tidb"] == "mysql"
+    assert trino_connector_name("tidb") == "mysql"
     assert _src("tidb").jdbc_url() == "jdbc:mysql://h:5432/db"

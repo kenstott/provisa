@@ -129,10 +129,12 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         its UC credential + external location), then OPENROWSETs the OneLake path. A direct ADLS/OneLake
         URL (Synapse, or Fabric with an already-onelake path) is OPENROWSET'd as-is. Validation reads a
         row so bad credentials / an unreachable object fail loud at attach time."""
-        from provisa.federation.connector_base import Mechanism
+        from provisa.federation.connector_base import LIVE_IN_PLACE
 
         entry = self._engine_for().resolve(source)
-        if entry.mechanism not in (Mechanism.ATTACH_R, Mechanism.ATTACH_RW):
+        if (
+            entry.mechanism not in LIVE_IN_PLACE
+        ):  # attach only what the engine reads in place (REQ-951)
             return None
         d = entry.details
         location = d.get("location")

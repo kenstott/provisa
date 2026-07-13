@@ -24758,7 +24758,7 @@
   - REQ-862
   - REQ-844
 - id: REQ-880
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Materialization Store
   priority: MUST
@@ -25213,7 +25213,7 @@
   - REQ-840
   - REQ-888
 - id: REQ-890
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 4. Source Connectors
   category: Federation Engine Abstraction
@@ -25237,7 +25237,7 @@
   - REQ-883
   - REQ-527
 - id: REQ-891
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 4. Source Connectors
   category: Federation Engine Abstraction
@@ -25408,7 +25408,7 @@
   - REQ-889
   - REQ-893
 - id: REQ-895
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 4. Source Connectors
   category: Federation Engine Abstraction
@@ -25523,7 +25523,7 @@
   - REQ-894
   - REQ-895
 - id: REQ-899
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 4. Source Connectors
   category: Federation Engine Abstraction
@@ -25635,7 +25635,7 @@
   - REQ-888
   - REQ-840
 - id: REQ-900
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 3. Federation Engines & Data Sources
   category: PostgreSQL Deployment
@@ -26915,7 +26915,7 @@
   related_reqs:
   - REQ-842
 - id: REQ-947
-  status: proposed
+  status: complete
   target: 2026-Q3
   group: 4. Source Connectors
   category: Connector Abstraction
@@ -26940,7 +26940,7 @@
   - provisa/executor/drivers/registry.py
   - provisa/source_adapters/_ADAPTER_MAP
 - id: REQ-948
-  status: proposed
+  status: complete
   target: 2026-Q3
   group: 4. Source Connectors
   category: Driver Management
@@ -26997,7 +26997,7 @@
   - tests/unit/test_wire_compatible_rdbs.py
   since: 2026-07
 - id: REQ-951
-  status: proposed
+  status: complete
   target: 2026-Q3
   group: 4. Source Connectors
   category: Connector Abstraction
@@ -28277,7 +28277,7 @@
     - REQ-829
     - REQ-544
 - id: REQ-986
-  status: proposed
+  status: complete
   group: "3. Federation Engines & Data Sources"
   category: Arrow Flight Transport
   priority: MUST
@@ -28300,7 +28300,7 @@
     rationale: >-
       Trino natively streams Arrow over Flight; ClickHouse as a standalone system does not expose Arrow Flight. Once implemented, Provisa matches Trino's federated Arrow capability, providing parity with the industry standard for columnar transport in federated query engines.
 - id: REQ-987
-  status: proposed
+  status: complete
   group: "3. Federation Engines & Data Sources"
   category: Arrow Flight Transport
   priority: MUST
@@ -28329,7 +28329,7 @@
     - REQ-986
     - REQ-988
 - id: REQ-988
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: "3. Federation Engines & Data Sources"
   category: Arrow Flight Transport
@@ -28358,7 +28358,7 @@
     - REQ-986
     - REQ-987
 - id: REQ-989
-  status: proposed
+  status: complete
   target: 2026-Q3
   group: "3. Federation Engines & Data Sources"
   category: Platform Defaults
@@ -28380,7 +28380,7 @@
     - REQ-987
     - REQ-988
 - id: REQ-990
-  status: proposed
+  status: complete
   group: "3. Federation Engines & Data Sources"
   category: Materialization Writes
   priority: MUST
@@ -28700,3 +28700,64 @@
     When the cron fires again on 2026-07-13
     Then the token {{yyyymmdd}} is substituted with 20260713 and the table archive.orders_20260713 is created
     And both archive.orders_20260712 and archive.orders_20260713 exist in the model with distinct names
+- id: REQ-1005
+  status: proposed
+  target: "2026-Q3"
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Desktop Installation
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    Windows native tier first-launch (after setup completes and before/after opening the UI) presents
+    next-steps guidance telling the user that the federation engine (Trino), observability stack, and
+    demo data pack are NOT part of the native tier and are added via separate layered installers:
+    Container installer (Provisa-Container-*.exe → WSL2 + containerd + Trino), then Obs installer
+    (requires container tier), then Demo installer (requires Core + Obs). Guidance includes how to
+    initialize the federation engine by running the Container installer.
+  use_case: >-
+    The native tier installer provides a standalone local query engine (core + duckdb) but ships no
+    federation engine (Trino), observability stack, or demo data. Users who install native tier receive
+    no indication of how to access these optional features and the app opens directly to the UI without
+    guidance, creating confusion about what Provisa can do. This requirement ensures users understand
+    the tier model and how to extend their installation.
+  code:
+    - packaging/windows/first-launch-native.ps1
+  related_reqs:
+    - REQ-979
+    - REQ-889
+    - REQ-633
+- id: REQ-1006
+  status: complete
+  since: "2026-07"
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Infrastructure
+  priority: MUST
+  type: behavioral
+  description: >-
+    The SPA static server routing is deterministic and driven by the browser Sec-Fetch-Dest request header (never by a maintained path allowlist). Requests with Sec-Fetch-Dest: document or GET whose Accept contains text/html are top-level SPA navigation and receive index.html; all other requests (fetch/XHR/EventSource, iframe subresource, non-GET) are proxied to the API and their real HTTP status — including 404 — is surfaced.
+  use_case: >-
+    The previous path-allowlist heuristic silently served index.html (HTTP 200 HTML) for any unlisted API path, causing JSON parse errors and UI hangs on "Loading...". Deterministic header-driven routing eliminates both failure classes and prevents silent fallbacks. It also enables SPA deep-link refreshes on client routes without collision with API prefix handlers like /admin.
+  code:
+    - provisa/ui_server.py
+  tests:
+    - provisa-ui/e2e/infrastructure.spec.ts
+    - tests/e2e/test_health_checks.py
+  scenario: |
+    Given a browser navigates directly to the SPA deep link /graph/node/42
+    When the request includes Sec-Fetch-Dest: document
+    Then index.html is served with HTTP 200
+
+    Given the UI calls fetch('/api/setup/status')
+    When the API endpoint is unlisted and returns 404
+    Then the 404 status is proxied to the browser (never silently replaced with index.html)
+
+    Given a browser makes a XHR request to /api/v1/query
+    When the request lacks Sec-Fetch-Dest: document header
+    Then the request is proxied to the API and its real HTTP status is returned
+  e2e: true
+  e2e_reason: >-
+    The Sec-Fetch-Dest routing decision is only verifiable through a full live-stack round-trip where a browser navigates the SPA and makes API calls; the 404 propagation behavior (without silent HTML fallback) cannot be verified through unit tests alone.
+  related_reqs:
+    - REQ-057
+    - REQ-058
+    - REQ-559

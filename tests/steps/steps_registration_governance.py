@@ -118,7 +118,7 @@ from provisa.core.models import (
     SourceType,
     Table,
 )
-from provisa.core.source_registry import SOURCE_TO_CONNECTOR
+from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
 
 
 # ---------------------------------------------------------------------------
@@ -572,7 +572,7 @@ class NoSQLConnectorReadOnlyGuard:
                 f"got {source.type.value!r}"
             )
         self.source = source
-        self._connector_name = SOURCE_TO_CONNECTOR.get(source.type, "unknown")
+        self._connector_name = trino_connector_name(source.type.value) or "unknown"
         self._query_log: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------ #
@@ -635,7 +635,7 @@ def _nosql_source_types_from_model() -> frozenset[SourceType]:
     nosql_connector_keywords = {"mongodb", "redis", "elasticsearch", "prometheus"}
     result: set[SourceType] = set()
     for stype in SourceType:
-        connector = SOURCE_TO_CONNECTOR.get(stype)
+        connector = trino_connector_name(stype)
         if connector and any(kw in stype.value for kw in nosql_connector_keywords):
             result.add(stype)
         elif stype.value in nosql_connector_keywords:
@@ -855,7 +855,7 @@ class SourceRegistrationService:
         catalog_name = source.catalog_name
         trino_dynamic_catalog_api.create_catalog(
             catalog_name,
-            SOURCE_TO_CONNECTOR.get(source.type, source.type.value),
+            (trino_connector_name(source.type.value) or source.type.value),
             source.mapping,
         )
 
@@ -872,7 +872,7 @@ class SourceRegistrationService:
 
         self._registered_catalogs[catalog_name] = {
             "source_id": source.id,
-            "connector": SOURCE_TO_CONNECTOR.get(source.type, source.type.value),
+            "connector": (trino_connector_name(source.type.value) or source.type.value),
         }
         self._catalog_available_at[catalog_name] = elapsed
         return {
@@ -1302,7 +1302,7 @@ def _req017_then(shared_data):
     # SELECT passes through the native connector
     sel = shared_data["nosql_select"]
     assert sel["allowed"] is True
-    assert sel["connector"] == SOURCE_TO_CONNECTOR[SourceType.mongodb]
+    assert sel["connector"] == trino_connector_name("mongodb")
     # Mutations are rejected — no mutation path
     assert shared_data["nosql_insert"]["allowed"] is False
     assert shared_data["nosql_update"]["allowed"] is False
@@ -1991,7 +1991,6 @@ def _req636_source(shared_data):
 @when("schema or table introspection is triggered")
 def _req636_introspect(shared_data):
     from provisa.api.admin.introspect import native_schemas
-    from provisa.core.source_registry import SOURCE_TO_CONNECTOR as _S2C
     from provisa.executor.pool import SourcePool
 
     async def _run():
@@ -2013,7 +2012,7 @@ def _req636_introspect(shared_data):
     mongo_native, graphql_native = _asyncio.run(_run())
     shared_data["r636_mongo_native"] = mongo_native
     shared_data["r636_graphql_native"] = graphql_native
-    shared_data["r636_mongo_has_connector"] = shared_data["r636_connectored"] in _S2C
+    shared_data["r636_mongo_has_connector"] = shared_data["r636_connectored"] in TRINO_CONNECTORS
 
 
 @then(

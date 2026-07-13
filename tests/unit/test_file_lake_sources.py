@@ -131,9 +131,9 @@ class TestFilesConnectorGlobPattern:
         assert props["glob"] == glob
 
     def test_source_type_mapped_to_file_connector(self):
-        from provisa.core.source_registry import SOURCE_TO_CONNECTOR
+        from provisa.federation.connector import trino_connector_name
 
-        assert SOURCE_TO_CONNECTOR["files"] == "file"
+        assert trino_connector_name("files") == "file"
 
     def test_walk_local_enumerates_csv_files(self, tmp_path: Path):
         _make_csv(tmp_path, "orders.csv", ["id", "name"])

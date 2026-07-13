@@ -84,7 +84,11 @@ def test_connector_identity_and_community_install(cls, stype, key, ext, sym):
     assert c.key == key
     assert c.extension == ext
     assert c.probe_symbol == sym
-    assert c.mechanism is Mechanism.ATTACH_RW  # referenced in place, never landed
+    # Scanner-view types (Google Sheets read_gsheet) declare SCAN; ATTACH-catalog types declare
+    # ATTACH_RW — both read in place, never landed (REQ-951).
+    expected = Mechanism.SCAN if stype == "google_sheets" else Mechanism.ATTACH_RW
+    assert c.mechanism is expected
+    assert c.reads_in_place is True
     assert c.install_from_community is True  # community registry
     assert c._install_sql() == f"INSTALL {ext} FROM community"
 

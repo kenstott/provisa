@@ -33,9 +33,7 @@ class _DatabricksObjectLinkConnector(Connector):
     """A Databricks external-table link over cloud object/lake storage (ATTACH_R → SCAN)."""
 
     engine = "databricks"
-    mechanism = (
-        Mechanism.ATTACH_R
-    )  # read-only live attach (external table); the engine never writes it
+    mechanism = Mechanism.SCAN  # external table reads the object/lake in place — no copy (REQ-951)
     _format = ""  # the Databricks USING <format> keyword (PARQUET / CSV / ICEBERG / DELTA)
 
     def capability(self) -> Capability:

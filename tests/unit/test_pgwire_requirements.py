@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
+import jwt
 import pytest
 
 
@@ -166,7 +167,8 @@ class TestReq529AuthType3:
         handler.send_authentication_ok.assert_called_once()
 
     def test_unsupported_provider_returns_fatal_error(self):
-        # REQ-529: Any provider other than 'none' or 'simple' returns FATAL
+        # REQ-529/REQ-890: A provider that is neither trust, simple, nor an OIDC-family
+        # provider returns FATAL.
         from provisa.pgwire.server import ProvisaHandler
 
         ctx = MagicMock()
@@ -181,7 +183,7 @@ class TestReq529AuthType3:
         handler._send_pg_error = MagicMock()
 
         fake_state = MagicMock()
-        fake_state.auth_config = {"provider": "oidc"}
+        fake_state.auth_config = {"provider": "ldap"}
         fake_state.auth_middleware_active = True
 
         with patch("provisa.pgwire.server.state", fake_state):
@@ -190,6 +192,97 @@ class TestReq529AuthType3:
         handler._send_pg_error.assert_called_once()
         call_args = handler._send_pg_error.call_args[0]
         assert call_args[0] == "FATAL"
+
+
+# ---------------------------------------------------------------------------
+# REQ-890 — pluggable pgwire auth: oidc provider validates a bearer token
+# ---------------------------------------------------------------------------
+
+
+class TestReq890OidcAuth:
+    """REQ-890: pgwire 'oidc' provider validates an OIDC bearer token (cleartext password)
+    via the existing AuthProvider abstraction and maps the identity to a role."""
+
+    def _handler(self):
+        from provisa.pgwire.server import ProvisaHandler
+
+        handler = object.__new__(ProvisaHandler)
+        handler.wfile = MagicMock()
+        handler.wfile.write = MagicMock()
+        handler.wfile.flush = MagicMock()
+        handler.send_authentication_ok = MagicMock()
+        handler.handle_post_auth = MagicMock()
+        handler._send_pg_error = MagicMock()
+        return handler
+
+    def _state(self):
+        fake_state = MagicMock()
+        fake_state.auth_config = {
+            "provider": "oidc",
+            "oidc": {
+                "discovery_url": "https://idp.example/.well-known/openid-configuration",
+                "client_id": "provisa",
+            },
+            "role_mapping": [
+                {"type": "exact", "claim": "sub", "value": "alice", "role": "analyst"}
+            ],
+            "default_role": "viewer",
+        }
+        fake_state.auth_middleware_active = True
+        return fake_state
+
+    def test_valid_token_accepted_and_mapped_to_role(self):
+        # REQ-890: a valid bearer token is validated and mapped to a role via resolve_role.
+        from provisa.auth.models import AuthIdentity
+
+        ctx = MagicMock()
+        ctx.params = {"user": "alice"}
+        ctx.session = MagicMock()
+
+        class _FakeProvider:
+            async def validate_token(self, token):
+                assert token == "valid-token"
+                return AuthIdentity(
+                    user_id="alice",
+                    email=None,
+                    display_name="alice",
+                    roles=["analyst"],
+                    raw_claims={"sub": "alice", "roles": ["analyst"]},
+                )
+
+        handler = self._handler()
+        with (
+            patch("provisa.pgwire.server.state", self._state()),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=_FakeProvider()),
+        ):
+            handler.handle_md5_password(ctx, b"valid-token\x00")
+
+        assert ctx.session.role_id == "analyst"
+        handler.send_authentication_ok.assert_called_once()
+        handler.handle_post_auth.assert_called_once()
+        handler._send_pg_error.assert_not_called()
+
+    def test_invalid_token_rejected_with_fatal(self):
+        # REQ-890: an invalid token yields a FATAL 28P01 and no authentication.
+        ctx = MagicMock()
+        ctx.params = {"user": "alice"}
+        ctx.session = MagicMock()
+
+        class _FakeProvider:
+            async def validate_token(self, token):
+                raise jwt.InvalidTokenError("bad token")
+
+        handler = self._handler()
+        with (
+            patch("provisa.pgwire.server.state", self._state()),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=_FakeProvider()),
+        ):
+            handler.handle_md5_password(ctx, b"bad-token\x00")
+
+        handler.send_authentication_ok.assert_not_called()
+        handler._send_pg_error.assert_called_once()
+        assert handler._send_pg_error.call_args[0][0] == "FATAL"
+        assert handler._send_pg_error.call_args[0][1] == "28P01"
 
 
 # ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ Builds on buenavista's socketserver-based handler, adding:
 - Multi-statement simple-query support
 """
 # Requirements: REQ-001, REQ-002, REQ-120, REQ-124, REQ-125, REQ-266, REQ-273
+# complexity-gate: allow-ble=4 reason="wire-protocol request-handler boundary: an arbitrary user query / DDL / COPY / describe can raise any exception type from the pluggable engine (DuckDB/buenavista/extensions) — each is caught and converted to a PostgreSQL SQLSTATE error response (send_error / _send_pg_error) so one bad statement returns a protocol error instead of crashing the connection handler; catching a narrower set would let an unmapped type kill the session"
 
 from __future__ import annotations
 
@@ -31,6 +32,8 @@ import ssl
 import struct
 import threading
 from typing import Iterator, Optional, Tuple
+
+import jwt
 
 from buenavista.core import BVType, Connection, QueryResult as BVQueryResult, Session
 from buenavista.postgres import (
@@ -63,6 +66,15 @@ _DDL_RE = re.compile(
 
 
 state = None  # module-level reference; replaced by tests via patch()
+
+# PostgreSQL startup-message protocol codes (the uint32 following the length prefix). Magic values
+# fixed by the wire protocol — named here so handle_startup reads as protocol dispatch, not integers.
+_SSL_REQUEST_CODE = 80877103  # SSLRequest (1234 << 16 | 5679)
+_CANCEL_REQUEST_CODE = 80877102  # CancelRequest (1234 << 16 | 5678)
+_PROTOCOL_VERSION_3 = 196608  # StartupMessage protocol 3.0 (3 << 16)
+
+# REQ-890: bearer/JWT provider names whose cleartext password payload is an OIDC access token.
+_OIDC_PROVIDERS = frozenset({"oidc", "oauth", "keycloak", "firebase"})
 
 
 def _pg_literal(v) -> str:
@@ -303,7 +315,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     def handle_startup(self, conn: Connection) -> Optional[BVContext]:  # type: ignore[override]
         msglen = self.r.read_uint32() - 4
         code = self.r.read_uint32()
-        if code == 80877103:  # SSL request
+        if code == _SSL_REQUEST_CODE:
             ssl_ctx: ssl.SSLContext | None = getattr(self.server, "ssl_ctx", None)
             if ssl_ctx:
                 self.wfile.write(b"S")
@@ -316,7 +328,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.wfile.write(b"N")
                 self.wfile.flush()
             return self.handle_startup(conn)
-        elif code == 80877102:  # Cancel request
+        elif code == _CANCEL_REQUEST_CODE:
             process_id = self.r.read_uint32()
             secret_key = self.r.read_uint32()
             ctx = self.server.ctxts.get(process_id)  # type: ignore[attr-defined]
@@ -324,7 +336,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.server.conn.close_session(ctx.session)  # type: ignore[attr-defined]
                 del self.server.ctxts[ctx.process_id]  # type: ignore[attr-defined]
             return None
-        elif code == 196608:  # Protocol 3.0
+        elif code == _PROTOCOL_VERSION_3:
             msg = [x.decode("utf-8") for x in self.r.read_bytes(msglen - 4).split(b"\x00")]
             params = dict(zip(msg[::2], msg[1::2]))
             log.info(
@@ -351,7 +363,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if _state is None:
             from provisa.api.app import state as _state  # type: ignore[assignment]
 
-        if _state.auth_config is None:
+        auth_config = _state.auth_config
+        if auth_config is None:
             if getattr(_state, "auth_middleware_active", False):
                 # A real provider is active but its config is absent — misconfiguration.
                 # Fail closed: never silently degrade a secured server to no-auth/trust.
@@ -359,7 +372,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             # Explicit unsecured mode (provider: none / no auth section) — treat as trust mode.
             provider = "none"
         else:
-            provider = _state.auth_config["provider"]
+            provider = auth_config["provider"]
 
         if provider == "none" or not _state.auth_middleware_active:
             # Trust mode: username maps directly to role_id, password ignored.
@@ -368,11 +381,16 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self.handle_post_auth(ctx)
             return
 
+        if provider in _OIDC_PROVIDERS:
+            assert auth_config is not None  # provider != "none" ⇒ auth_config is present
+            self._authenticate_oidc(ctx, username, password, auth_config)
+            return
+
         if provider != "simple":
             self._send_pg_error(
                 "FATAL",
                 "28P01",
-                f"pgwire auth requires provider 'none' or 'simple'; configured: {provider!r}",
+                f"pgwire auth provider not supported: {provider!r}",
             )
             return
 
@@ -391,6 +409,36 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             return
 
         ctx.session.role_id = username  # type: ignore[attr-defined]
+        self.send_authentication_ok()
+        self.handle_post_auth(ctx)
+
+    def _authenticate_oidc(  # REQ-890
+        self, ctx: BVContext, username: str, token: str, auth_config: dict
+    ) -> None:
+        """Validate an OIDC bearer token (sent as the cleartext password) and map it to a role.
+
+        Reuses the same AuthProvider the REST/GraphQL path uses (built via build_auth_provider)
+        and the same claim→role mapping (resolve_role). validate_token bodies are synchronous, so
+        asyncio.run drives them from this socketserver thread.
+        """
+        from provisa.auth.role_mapping import resolve_role
+        from provisa.auth.wiring import build_auth_provider
+
+        provider = build_auth_provider(auth_config)
+        try:
+            identity = asyncio.run(provider.validate_token(token))
+        except (ValueError, jwt.PyJWTError):
+            self._send_pg_error(
+                "FATAL", "28P01", f'token authentication failed for user "{username}"'
+            )
+            return
+
+        role = resolve_role(
+            identity,
+            auth_config.get("role_mapping", []),
+            auth_config.get("default_role", "analyst"),
+        )
+        ctx.session.role_id = role  # type: ignore[attr-defined]
         self.send_authentication_ok()
         self.handle_post_auth(ctx)
 

@@ -15,10 +15,12 @@ dropdown disables it and names the engine that reaches it, educating on the engi
 from __future__ import annotations
 
 from provisa.federation.engine import (
+    _ENGINE_BUILDERS,
     engine_registry,
     live_source_types,
     reachable_source_types,
 )
+from provisa.federation.connector import Mechanism
 
 
 def test_live_is_subset_of_reachable():
@@ -73,3 +75,26 @@ def test_registry_entries_carry_reach_faces():
     for e in engine_registry():
         assert "reachable_source_types" in e
         assert "live_source_types" in e
+
+
+def test_reachable_is_pure_projection_of_completed_connectors():  # REQ-947
+    # After complete_reach(), engine.connectors IS the reach: reachable_source_types is exactly its
+    # keys, no parallel-map union. Every non-live type resolves to a DIRECT/FETCH land connector.
+    for key in ("trino", "duckdb", "pg", "clickhouse"):
+        engine = _ENGINE_BUILDERS[key]().complete_reach()
+        assert set(reachable_source_types(key)) == set(engine.connectors)
+        live = set(live_source_types(key))
+        for stype, connector in engine.connectors.items():
+            if stype in live:
+                assert connector.reads_in_place  # ATTACH/SCAN
+            else:
+                assert connector.mechanism in (Mechanism.DIRECT, Mechanism.FETCH)  # landed replica
+
+
+def test_complete_reach_is_idempotent_and_attach_wins():  # REQ-947
+    engine = _ENGINE_BUILDERS["trino"]().complete_reach()
+    before = dict(engine.connectors)
+    engine.complete_reach()  # second pass adds nothing
+    assert dict(engine.connectors) == before
+    # postgresql is reached live (ATTACH_RW) — never replaced by a land connector.
+    assert engine.connectors["postgresql"].mechanism is Mechanism.ATTACH_RW

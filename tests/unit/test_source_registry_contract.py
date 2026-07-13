@@ -32,12 +32,11 @@ import sqlglot
 
 from provisa.core.models import Source, SourceType
 from provisa.core.source_registry import (
-    SOURCE_TO_CONNECTOR,
     SOURCE_TO_DIALECT,
     _MYSQL_WIRE_TYPES,
     _PG_WIRE_TYPES,
 )
-from provisa.federation.connector import TRINO_CONNECTORS
+from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
 
 # Relational types whose rows a native driver reads directly (bypassing Trino):
 # Source.jdbc_url is the authoritative url builder for exactly these (the pg/mysql
@@ -93,19 +92,17 @@ def test_every_dialect_resolves_in_sqlglot(dialect):
 
 
 # --------------------------------------------------------------------------- #
-# 4. The two connector registries never disagree.
+# 4. The Trino connector.name has ONE source of truth (REQ-947).
 # --------------------------------------------------------------------------- #
-def test_connector_registries_do_not_conflict():
-    """SOURCE_TO_CONNECTOR (source_registry) and TRINO_CONNECTORS (federation, the
-    catalog source of truth) legitimately cover different sets, but where BOTH
-    name a type they must name the SAME Trino connector — a conflict means one
-    path catalogs the source differently than the other."""
-    conflicts = {
-        st: (SOURCE_TO_CONNECTOR[st], TRINO_CONNECTORS[st].trino_connector)
-        for st in set(SOURCE_TO_CONNECTOR) & set(TRINO_CONNECTORS)
-        if SOURCE_TO_CONNECTOR[st] != TRINO_CONNECTORS[st].trino_connector
-    }
-    assert not conflicts, f"connector-name drift between the two registries: {conflicts}"
+def test_connector_name_is_derived_from_the_trino_registry():
+    """The parallel ``SOURCE_TO_CONNECTOR`` name map is retired (REQ-947): the Trino
+    ``connector.name`` comes solely from the Trino connector objects, read via
+    ``trino_connector_name``. Every Trino-reachable type resolves to its object's
+    ``trino_connector``; a type with no Trino connector resolves to None — so drift
+    between two maps is structurally impossible, not merely asserted-absent."""
+    for st, connector in TRINO_CONNECTORS.items():
+        assert trino_connector_name(st) == connector.trino_connector
+    assert trino_connector_name("duckdb") is None  # no Trino connector → no USING name
 
 
 # --------------------------------------------------------------------------- #
@@ -113,12 +110,14 @@ def test_connector_registries_do_not_conflict():
 # --------------------------------------------------------------------------- #
 def test_every_sql_dialect_type_is_catalog_reachable():
     """A type with a SQLGlot dialect is a SQL source Provisa can push down to; it
-    must also have a Trino connector (be catalog-reachable) OR be a known
-    native-driver-only type. A dialect with neither is an orphan."""
-    # Types served by a NATIVE engine, not a Trino catalog: sqlite via the
-    # SQLAlchemy fallback, duckdb via the DuckDB engine backend.
-    driver_only = {"sqlite", "duckdb"}
+    must also have a Trino connector (be catalog-reachable) OR a Provisa-native
+    driver (DIRECT-routable). A dialect with neither is an orphan."""
+    from provisa.executor.drivers.registry import has_native_driver
+
+    # A type reached by a NATIVE Provisa driver rather than a Trino catalog: sqlite/duckdb, and the
+    # warehouse direct-source drivers (bigquery/fabric/synapse/…). Derived from the driver registry so
+    # the invariant tracks it, never a hand-maintained list.
     orphans = [
-        st for st in SOURCE_TO_DIALECT if st not in TRINO_CONNECTORS and st not in driver_only
+        st for st in SOURCE_TO_DIALECT if st not in TRINO_CONNECTORS and not has_native_driver(st)
     ]
     assert not orphans, f"SQL types with a dialect but no connector/driver: {orphans}"

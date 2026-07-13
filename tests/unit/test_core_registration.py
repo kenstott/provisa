@@ -19,7 +19,7 @@ from provisa.core.models import (
     SourceType,
     Table,
 )
-from provisa.core.source_registry import SOURCE_TO_CONNECTOR
+from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
 
 
 # ---------------------------------------------------------------------------
@@ -188,18 +188,18 @@ class TestReq016TablePublicationTriggersSchema:
 class TestReq017NoSQLViaTrinio:
     def test_mongodb_maps_to_trino_connector(self):
         # REQ-017
-        assert "mongodb" in SOURCE_TO_CONNECTOR
-        assert SOURCE_TO_CONNECTOR["mongodb"] == "mongodb"
+        assert "mongodb" in TRINO_CONNECTORS
+        assert trino_connector_name("mongodb") == "mongodb"
 
     def test_redis_maps_to_trino_connector(self):
         # REQ-017
-        assert "redis" in SOURCE_TO_CONNECTOR
-        assert SOURCE_TO_CONNECTOR["redis"] == "redis"
+        assert "redis" in TRINO_CONNECTORS
+        assert trino_connector_name("redis") == "redis"
 
     def test_elasticsearch_maps_to_trino_connector(self):
         # REQ-017
-        assert "elasticsearch" in SOURCE_TO_CONNECTOR
-        assert SOURCE_TO_CONNECTOR["elasticsearch"] == "elasticsearch"
+        assert "elasticsearch" in TRINO_CONNECTORS
+        assert trino_connector_name("elasticsearch") == "elasticsearch"
 
     def test_nosql_source_model_has_no_write_fields(self):
         # REQ-017 — NoSQL sources are read-only; the Source model doesn't have a writable flag
@@ -354,7 +354,7 @@ class TestReq250ConfigDrivenTrinoCatalog:
     def test_source_connector_property_derives_from_source_type(self):
         # REQ-250
         s = Source(id="kafka1", type=SourceType.kafka)
-        assert s.connector == SOURCE_TO_CONNECTOR["kafka"]
+        assert s.connector == trino_connector_name("kafka")
 
     def test_source_mapping_field_holds_nosql_connector_options(self):
         # REQ-250
@@ -937,7 +937,7 @@ class TestReq635NativeSchemaNames:
 
 # ---------------------------------------------------------------------------
 # REQ-636 — Trino-first introspection when connector configured
-# When a source type is in SOURCE_TO_CONNECTOR, Trino is the preferred path.
+# When a source type is in TRINO_CONNECTORS, Trino is the preferred path.
 # native_schemas returns None for RDBMS without live pool, triggering Trino fallback.
 # ---------------------------------------------------------------------------
 
@@ -945,15 +945,15 @@ class TestReq635NativeSchemaNames:
 class TestReq636TrinoFirstIntrospection:
     def test_source_to_connector_covers_rdbms_types(self):
         # REQ-636
-        assert "postgresql" in SOURCE_TO_CONNECTOR
-        assert "mysql" in SOURCE_TO_CONNECTOR
-        assert "sqlserver" in SOURCE_TO_CONNECTOR
+        assert "postgresql" in TRINO_CONNECTORS
+        assert "mysql" in TRINO_CONNECTORS
+        assert "sqlserver" in TRINO_CONNECTORS
 
     def test_nosql_types_in_source_to_connector_use_trino(self):
         # REQ-636
-        assert "mongodb" in SOURCE_TO_CONNECTOR
-        assert "elasticsearch" in SOURCE_TO_CONNECTOR
-        assert "redis" in SOURCE_TO_CONNECTOR
+        assert "mongodb" in TRINO_CONNECTORS
+        assert "elasticsearch" in TRINO_CONNECTORS
+        assert "redis" in TRINO_CONNECTORS
 
 
 # ---------------------------------------------------------------------------

@@ -32,7 +32,9 @@ def _src(stype, path="s3://b/dir/orders.parquet", hints=None):
 def test_object_link_connectors_are_attach_r():
     conns = {c.source_type: c for c in snowflake_object_link_connectors()}
     assert set(conns) == {"parquet", "csv", "json", "iceberg", "delta_lake"}
-    assert all(c.mechanism is Mechanism.ATTACH_R for c in conns.values())
+    assert all(
+        c.mechanism is Mechanism.SCAN for c in conns.values()
+    )  # object-link = SCAN (REQ-951)
     assert conns["parquet"].capability().write is False
 
 

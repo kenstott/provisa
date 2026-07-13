@@ -37,7 +37,9 @@ def _src(stype, path="s3://b/dir/orders.parquet", hints=None):
 def test_openrowset_link_connectors_are_attach_r(engine, expected):
     conns = {c.source_type: c for c in openrowset_link_connectors(engine)}
     assert set(conns) == expected
-    assert all(c.mechanism is Mechanism.ATTACH_R for c in conns.values())
+    assert all(
+        c.mechanism is Mechanism.SCAN for c in conns.values()
+    )  # object-link = SCAN (REQ-951)
     assert all(c.engine == engine for c in conns.values())
     d = conns["parquet"].details(_src("parquet"))
     assert d == {"format": "PARQUET", "location": "s3://b/dir/orders.parquet"}

@@ -49,7 +49,7 @@ def _format_for(source_type: str) -> str:
 class _OpenrowsetLinkConnector(Connector):
     """A Fabric/Synapse external link over OneLake/ADLS via ``OPENROWSET`` (ATTACH_R → SCAN)."""
 
-    mechanism = Mechanism.ATTACH_R
+    mechanism = Mechanism.SCAN  # OPENROWSET reads the object/lake in place — no copy (REQ-951)
 
     def __init__(self, engine: str, source_type: str, key: str) -> None:
         self.engine = engine

@@ -31,7 +31,9 @@ def _src(stype, path="gs://b/dir/orders.parquet", hints=None):
 def test_object_link_connectors_are_attach_r():
     conns = {c.source_type: c for c in bigquery_object_link_connectors()}
     assert set(conns) == {"parquet", "csv", "json", "iceberg", "delta_lake"}
-    assert all(c.mechanism is Mechanism.ATTACH_R for c in conns.values())
+    assert all(
+        c.mechanism is Mechanism.SCAN for c in conns.values()
+    )  # object-link = SCAN (REQ-951)
     assert conns["parquet"].capability().write is False
 
 
@@ -70,11 +72,10 @@ def test_external_table_ddl_requires_location():
 def test_bigquery_engine_attaches_lake_scans_lands_rest():
     e = build_bigquery_engine()
     assert e.driver_class().value == "partial"
-    # object/lake file formats attach as a zero-copy SCAN
-    for t in ("parquet", "csv", "iceberg", "delta_lake"):
+    # object/lake file formats (json included) read in place as a zero-copy SCAN (REQ-951): the
+    # connector's declared SCAN reach mode drives the strategy, not a source-type name list.
+    for t in ("parquet", "csv", "json", "iceberg", "delta_lake"):
         assert federate(_src(t), e) is Strategy.SCAN, t
-    # json is attached in place too (zero-copy), labelled VIRTUAL (not in the file-SCAN set)
-    assert federate(_src("json"), e) is Strategy.VIRTUAL
     # everything else readable lands, not the demo 6-tuple
     for t in ("postgresql", "mongodb", "kafka", "oracle"):
         assert federate(_src(t), e) is Strategy.MATERIALIZED, t

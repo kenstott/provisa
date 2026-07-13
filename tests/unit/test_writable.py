@@ -91,8 +91,11 @@ def test_engine_writable_source_types_lists_only_write_connectors():
     from provisa.federation.engine import build_pg_engine
 
     got = engine_writable_source_types(build_pg_engine())
-    assert got == {"postgresql", "sqlite", "mysql"}  # write=True connectors
+    # write=True connectors: postgres_fdw, sqlite_fdw, mysql_fdw, oracle_fdw (REQ-900). tds_fdw
+    # (sqlserver) is read-only; file/lake scanners are read-only.
+    assert got == {"postgresql", "sqlite", "mysql", "oracle"}
     assert "csv" not in got and "parquet" not in got and "json" not in got
+    assert "sqlserver" not in got  # tds_fdw is read-only
 
 
 def test_resolve_write_path_prefers_native_then_sqlalchemy_then_engine():
@@ -107,7 +110,9 @@ def test_resolve_write_path_prefers_native_then_sqlalchemy_then_engine():
     assert resolve_write_path("sqlite", eng) is WritePath.SQLALCHEMY
 
     # a source with neither a native driver nor a fallback, only a write-capable connector → ENGINE.
-    eng = _engine_with(WarehouseNativeConnector("test", "cassandra"))  # write=True, no driver/dialect
+    eng = _engine_with(
+        WarehouseNativeConnector("test", "cassandra")
+    )  # write=True, no driver/dialect
     assert resolve_write_path("cassandra", eng) is WritePath.ENGINE
 
     # no path at all → None.

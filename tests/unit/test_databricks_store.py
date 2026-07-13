@@ -13,7 +13,10 @@ import json
 
 import pytest
 
+from provisa.federation import databricks_store
 from provisa.federation.databricks_store import (
+    COPY_INTO_ROW_THRESHOLD,
+    DatabricksStage,
     _ddl_type,
     land_databricks_native,
     reconcile_databricks_native,
@@ -132,6 +135,62 @@ def test_land_coerces_dict_json_to_text():
     _, params = [(s, p) for s, p in cur.sql if s.startswith("INSERT INTO")][0]
     assert params is not None
     assert params[3] == '{"k": 2}'  # dict re-serialized to JSON text for the STRING column
+
+
+def _fake_stage() -> DatabricksStage:
+    return DatabricksStage(
+        root_url="r2://b@acct.r2.cloudflarestorage.com/stage/",
+        endpoint_url="https://acct.r2.cloudflarestorage.com",
+        credential={"access_key_id": "k", "secret_access_key": "s", "account_id": "a"},
+        uc_host="host",
+        uc_token="tok",
+    )
+
+
+def test_land_large_batch_uses_copy_into(monkeypatch):
+    # Stub the object upload + UC credential install so the gate is exercised without R2/Databricks.
+    staged: dict = {}
+
+    def fake_stage_parquet(stage, key, arrow_table):
+        staged["url"] = stage.root_url + key
+        staged["rows"] = arrow_table.num_rows
+        return staged["url"]
+
+    monkeypatch.setattr(databricks_store, "_stage_parquet", fake_stage_parquet)
+    monkeypatch.setattr(databricks_store, "ensure_external_link", lambda *a, **k: "loc")
+    monkeypatch.setattr(databricks_store, "_unstage", lambda *a, **k: None)
+
+    cur = _FakeCursor()
+    rows = [{"id": i, "s": "x", "amt": i, "j": None} for i in range(COPY_INTO_ROW_THRESHOLD)]
+    land_databricks_native(
+        cur, catalog="c", schema="s", table="t", columns=COLS, rows=rows, stage=_fake_stage()
+    )
+
+    j = cur.joined()
+    assert "COPY INTO `c`.`s`.`t`" in j  # bulk COPY-INTO for a batch at/above threshold (REQ-990)
+    assert "FILEFORMAT = PARQUET" in j
+    assert not any(s.startswith("INSERT INTO") for s, _ in cur.sql)  # never the row INSERT
+    assert "TRUNCATE TABLE `c`.`s`.`t`" in j  # replace shape still truncates first
+    assert staged["rows"] == COPY_INTO_ROW_THRESHOLD  # the whole batch was staged as Parquet
+
+
+def test_land_small_batch_uses_insert_even_with_stage(monkeypatch):
+    # A stage is configured but the batch is below threshold → the multi-row INSERT (REQ-990 tiny write).
+    monkeypatch.setattr(
+        databricks_store,
+        "_stage_parquet",
+        lambda *a, **k: pytest.fail("COPY path taken for tiny batch"),
+    )
+    cur = _FakeCursor()
+    rows = [{"id": 1, "s": "a", "amt": 10, "j": None}]  # 1 row << threshold
+    land_databricks_native(
+        cur, catalog="c", schema="s", table="t", columns=COLS, rows=rows, stage=_fake_stage()
+    )
+
+    j = cur.joined()
+    assert "COPY INTO" not in j
+    inserts = [s for s, _ in cur.sql if s.startswith("INSERT INTO")]
+    assert len(inserts) == 1  # one multi-row INSERT for the tiny write
 
 
 def test_land_no_rows_creates_but_no_insert():

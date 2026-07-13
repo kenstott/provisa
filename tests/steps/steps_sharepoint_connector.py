@@ -12,7 +12,7 @@ from pytest_bdd import given, parsers, scenarios, then, when
 
 from provisa.core.catalog import _build_catalog_properties
 from provisa.core.models import Column, Source, SourceType, Table
-from provisa.core.source_registry import SOURCE_TO_CONNECTOR
+from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
 
 scenarios("../features/REQ-726.feature")
 scenarios("../features/REQ-727.feature")
@@ -271,12 +271,12 @@ def a_user_navigates_to_add_a_table_and_selects_this_source(shared_data):
 
     # Verify the SOURCE_TO_CONNECTOR registry maps sharepoint to the sharepoint Trino connector,
     # which is required for Trino to route SHOW SCHEMAS queries to the correct connector.
-    assert "sharepoint" in SOURCE_TO_CONNECTOR, (
+    assert "sharepoint" in TRINO_CONNECTORS, (
         "'sharepoint' must be in SOURCE_TO_CONNECTOR for Trino catalog routing."
     )
-    assert SOURCE_TO_CONNECTOR["sharepoint"] == "sharepoint", (
+    assert trino_connector_name("sharepoint") == "sharepoint", (
         f"SOURCE_TO_CONNECTOR['sharepoint'] must be 'sharepoint', "
-        f"got '{SOURCE_TO_CONNECTOR['sharepoint']}'."
+        f"got '{trino_connector_name('sharepoint')}'."
     )
 
     # Verify the source has a valid base_url or host so the connector can reach SharePoint
@@ -434,11 +434,11 @@ def the_source_is_created_and_can_be_queried_via_trino(shared_data):
         "'sharepoint' is not registered in SourceType enum."
     )
 
-    assert "sharepoint" in SOURCE_TO_CONNECTOR, (
+    assert "sharepoint" in TRINO_CONNECTORS, (
         "'sharepoint' is not mapped in SOURCE_TO_CONNECTOR registry."
     )
 
-    connector_name = SOURCE_TO_CONNECTOR["sharepoint"]
+    connector_name = trino_connector_name("sharepoint")
     assert connector_name, "Connector name for 'sharepoint' is empty in SOURCE_TO_CONNECTOR."
     assert connector_name == "sharepoint", (
         f"Expected Trino connector 'sharepoint', got '{connector_name}'."
@@ -483,7 +483,7 @@ def the_source_is_created_and_can_be_queried_via_trino(shared_data):
     # to route SQL queries from Provisa to the Apache Calcite SharePoint connector.
     # The presence of "sharepoint" -> "sharepoint" in the registry is the contract
     # that makes this routing possible.
-    assert SOURCE_TO_CONNECTOR.get("sharepoint") == "sharepoint", (
+    assert trino_connector_name("sharepoint") == "sharepoint", (
         "SharePoint must map to the 'sharepoint' Trino connector to be queryable via Trino."
     )
 

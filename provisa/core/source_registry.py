@@ -8,50 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Source-type registry: maps a source type to its engine connector, SQLGlot
-dialect, and wire-protocol family. Keyed by the string source-type value so it
-has no dependency on the SourceType enum."""
+"""Source-type registry: maps a source type to its SQLGlot dialect and wire-protocol family.
+Keyed by the string source-type value so it has no dependency on the SourceType enum.
 
-# Requirements: REQ-229, REQ-250, REQ-251, REQ-372, REQ-950
+The Trino catalog ``connector.name`` is NOT held here (REQ-947): it lives on the Trino connector
+objects (``TRINO_CONNECTORS[st].trino_connector`` in ``provisa.federation.connector``), read via
+``trino_connector_name(source_type)``. The former parallel ``SOURCE_TO_CONNECTOR`` map is retired —
+it was a hand-maintained duplicate of those objects' names. REACH, likewise, is the federation
+engine's OWN connector registry (``reachable_source_types``), never a parallel map here."""
 
-# Map source types to the engine connector names
-SOURCE_TO_CONNECTOR: dict[str, str] = {
-    "postgresql": "postgresql",
-    "mysql": "mysql",
-    "mariadb": "mariadb",
-    "singlestore": "singlestore",
-    "sqlserver": "sqlserver",
-    "oracle": "oracle",
-    # Wire-compatible RDBs read via the postgresql/mysql Trino connector (REQ-950)
-    "cockroachdb": "postgresql",
-    "yugabytedb": "postgresql",
-    "greenplum": "postgresql",
-    "tidb": "mysql",
-    "mongodb": "mongodb",
-    "cassandra": "cassandra",
-    "duckdb": "memory",
-    "snowflake": "snowflake",
-    "bigquery": "bigquery",
-    "clickhouse": "clickhouse",
-    "redshift": "redshift",
-    "databricks": "delta_lake",
-    "hive": "hive",
-    "druid": "druid",
-    "exasol": "exasol",
-    # CONNECTOR_ONLY lake sources — connector-only, no direct driver, no SQLGlot dialect (REQ-229)
-    "iceberg": "iceberg",
-    "hive_s3": "hive",
-    "delta_lake": "delta_lake",
-    # NoSQL/non-relational connectors driven by the mapping DSL (REQ-250/251)
-    "redis": "redis",
-    "elasticsearch": "elasticsearch",
-    "prometheus": "prometheus",
-    "kafka": "kafka",
-    # Apache Calcite-based connectors (kenstott/calcite)
-    "sharepoint": "sharepoint",
-    "splunk": "splunk",
-    "files": "file",
-}
+# Requirements: REQ-229, REQ-250, REQ-251, REQ-372, REQ-950, REQ-947
 
 # Wire-protocol families (REQ-950): a wire-compatible RDB reuses its base wire's JDBC driver,
 # native async driver, and SQLGlot dialect — it only needs registry entries, no new code.

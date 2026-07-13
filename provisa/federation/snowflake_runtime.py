@@ -79,10 +79,12 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         create the external table at the compiler's physical name, and VALIDATE (read a row) so bad
         credentials / an unreachable object fail loud at attach time. Every other source LANDs, so
         attach is a no-op for it. NOTE: not live-verified (no Snowflake account available)."""
-        from provisa.federation.connector_base import Mechanism
+        from provisa.federation.connector_base import LIVE_IN_PLACE
 
         entry = self._engine_for().resolve(source)
-        if entry.mechanism not in (Mechanism.ATTACH_R, Mechanism.ATTACH_RW):
+        if (
+            entry.mechanism not in LIVE_IN_PLACE
+        ):  # attach only what the engine reads in place (REQ-951)
             return None
         from provisa.federation.snowflake_connectors import stage_and_external_table_ddl
 

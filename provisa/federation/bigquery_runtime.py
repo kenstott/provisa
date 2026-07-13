@@ -105,10 +105,12 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
     def attach_source(self, source: Any) -> None:
         """Object/lake sources on cloud storage attach as a ZERO-COPY external table (an ``ATTACH_R``
         SCAN); every other source LANDs (materialize_source), so attach is a no-op for it."""
-        from provisa.federation.connector_base import Mechanism
+        from provisa.federation.connector_base import LIVE_IN_PLACE
 
         entry = self._engine_for().resolve(source)
-        if entry.mechanism not in (Mechanism.ATTACH_R, Mechanism.ATTACH_RW):
+        if (
+            entry.mechanism not in LIVE_IN_PLACE
+        ):  # attach only what the engine reads in place (REQ-951)
             return None
         from provisa.federation.bigquery_connectors import external_table_ddl
 

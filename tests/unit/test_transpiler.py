@@ -375,9 +375,11 @@ class TestRouterVirtualSources:
         d = decide_route({"sf1"}, _TYPES, _DIALECTS)
         assert d.route == Route.DIRECT
 
-    def test_bigquery_without_driver_routes_trino(self):
+    def test_bigquery_with_driver_routes_direct(self):
+        # BigQuery gained a per-source direct driver (commit 35bb7f74), so a single-source query reads
+        # it directly (no Trino detour) — mirroring snowflake. Multi-source still routes ENGINE + land.
         d = decide_route({"bq1"}, _TYPES, _DIALECTS)
-        assert d.route == Route.ENGINE
+        assert d.route == Route.DIRECT
 
 
 class TestRouterAPIRoute:

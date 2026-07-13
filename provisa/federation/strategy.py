@@ -53,7 +53,6 @@ def engine_attaches(engine: Any, source_type: str) -> bool:
     or the bare FederationEngine; None (unknown) → False (fall back to landing)."""
     if engine is None:
         return False
-    from provisa.federation.connector import Mechanism
 
     fed = (
         engine
@@ -63,7 +62,9 @@ def engine_attaches(engine: Any, source_type: str) -> bool:
     connector = getattr(fed, "connectors", {}).get(source_type)
     if connector is None:
         return False
-    return bool(connector.reach_modes & {Mechanism.ATTACH_RW, Mechanism.ATTACH_R})
+    return bool(
+        connector.reads_in_place
+    )  # ATTACH_* or SCAN — read live in place, never landed (REQ-951)
 
 
 class Strategy(str, Enum):  # REQ-826
@@ -71,11 +72,6 @@ class Strategy(str, Enum):  # REQ-826
     SCAN = "scan"
     MATERIALIZED = "materialized"
 
-
-# File/object source types the engine reads in place (a SCAN view, no data moved).
-_SCANNABLE = frozenset(
-    {"csv", "parquet", "files", "iceberg", "delta_lake", "hive", "hive_s3", "google_sheets"}
-)
 
 # Types Provisa reaches only through their connector's Calcite pgwire server (REQ-947): Provisa
 # starts that server from the source's backing-store config, connects as generic PostgreSQL, and
@@ -133,10 +129,11 @@ def federate(
 
     if connector is not None and not prefer_materialized:
         modes = connector.reach_modes
-        # A source the engine can read LIVE in place (ATTACH_*): a file/object type is a SCAN view,
-        # a live source is VIRTUAL.
-        if Mechanism.ATTACH_RW in modes or Mechanism.ATTACH_R in modes:
-            strategy = Strategy.SCAN if source_type in _SCANNABLE else Strategy.VIRTUAL
+        # A source the engine reads LIVE in place: a SCAN reach (file/object read as a view, no copy)
+        # is Strategy.SCAN; an ATTACH reach (live DB) is Strategy.VIRTUAL. The connector's declared
+        # reach mode decides — no source-type name heuristic (REQ-951).
+        if connector.reads_in_place:
+            strategy = Strategy.SCAN if Mechanism.SCAN in modes else Strategy.VIRTUAL
             if demand is not None and estimate is not None:
                 from provisa.federation.promote import should_promote
 

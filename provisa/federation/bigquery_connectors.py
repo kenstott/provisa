@@ -39,7 +39,7 @@ class _BigQueryObjectLinkConnector(Connector):
     """A BigQuery external-table link over cloud object/lake storage (ATTACH_R → SCAN)."""
 
     engine = "bigquery"
-    mechanism = Mechanism.ATTACH_R
+    mechanism = Mechanism.SCAN  # external table reads the object/lake in place — no copy (REQ-951)
 
     def capability(self) -> Capability:
         # BigQuery pushes predicates/aggregates into the external-table scan; read-only (no upstream write).
