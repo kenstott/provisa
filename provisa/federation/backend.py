@@ -71,7 +71,14 @@ class EngineBackend:
         """No external terminal to connect; telemetry lands in the dedicated ops store."""
 
     async def provision_infra(self, state: Any) -> None:
-        """No Arrow-Flight proxy / object store / results schema for a native engine."""
+        """No Arrow-Flight proxy / results schema for a native engine. The redirect results
+        bucket (REQ-171) is engine-agnostic — large-result redirect ships on every engine — so
+        ensure it whenever redirect is configured (a no-op when PROVISA_REDIRECT_ENDPOINT is unset,
+        e.g. the zero-config embedded stack per REQ-989)."""
+        del state
+        from provisa.executor.redirect import RedirectConfig, ensure_results_bucket
+
+        await ensure_results_bucket(RedirectConfig.from_env())
 
     async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
         """Schema-currency reconcile of MATERIALIZED landing tables (REQ-846/932). No-op on the base

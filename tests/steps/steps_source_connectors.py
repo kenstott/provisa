@@ -208,19 +208,21 @@ def connector_probes_functional_availability(shared_data):
     sqlite_connector: SqliteFdwConnector = shared_data["sqlite_connector"]
     mysql_connector: MysqlFdwConnector = shared_data["mysql_connector"]
 
+    # REQ-948: runtime_deps are structured RuntimeDep(lib, provider) records, not strings.
     assert len(sqlite_connector.runtime_deps) > 0, "SqliteFdwConnector must declare runtime_deps"
-    assert any("sqlite" in dep.lower() for dep in sqlite_connector.runtime_deps), (
+    assert any("sqlite" in dep.lib.lower() for dep in sqlite_connector.runtime_deps), (
         "SqliteFdwConnector runtime_deps must reference libsqlite3"
     )
-    assert any("system" in dep.lower() for dep in sqlite_connector.runtime_deps), (
+    assert any(dep.provider.value == "system" for dep in sqlite_connector.runtime_deps), (
         "SqliteFdwConnector libsqlite3 must be tagged as system-provided"
     )
 
     assert len(mysql_connector.runtime_deps) > 0, "MysqlFdwConnector must declare runtime_deps"
     assert any(
-        "mysql" in dep.lower() or "mariadb" in dep.lower() for dep in mysql_connector.runtime_deps
+        "mysql" in dep.lib.lower() or "mariadb" in dep.lib.lower()
+        for dep in mysql_connector.runtime_deps
     ), "MysqlFdwConnector runtime_deps must reference libmysqlclient or mariadb-connector-c"
-    assert any("bundled" in dep.lower() for dep in mysql_connector.runtime_deps), (
+    assert any(dep.provider.value == "bundled" for dep in mysql_connector.runtime_deps), (
         "MysqlFdwConnector libmysqlclient must be tagged as bundled"
     )
 
@@ -369,7 +371,8 @@ def source_configured_with_pg_duckdb_iceberg(shared_data):
     assert connector.engine == "postgres"
     assert connector.source_type == "iceberg"
     assert connector.key == "pg_duckdb_iceberg"
-    assert connector.mechanism is Mechanism.ATTACH_RW
+    # REQ-951: iceberg_scan reads the table in place (no copy) → SCAN, not ATTACH_RW.
+    assert connector.mechanism is Mechanism.SCAN
 
     shared_data["iceberg_connector"] = connector
 
@@ -490,12 +493,13 @@ def governance_predicates_pushed_down_into_scan(shared_data):
         "predicates are pushed into the iceberg_scan at the scan level"
     )
 
-    # Verify the runtime_deps document static-linked libs (no extra runtime dylib required)
+    # REQ-948: runtime_deps are structured RuntimeDep(lib, provider). Provider=bundled means
+    # Provisa ships/relocates the lib (the static-linked-into-the-bundle intent).
     deps = connector.runtime_deps
     assert len(deps) > 0, "PgDuckdbIcebergConnector must declare runtime_deps"
-    assert any("libduckdb" in d for d in deps), "runtime_deps must reference libduckdb"
-    assert any("aws-sdk-cpp" in d and "static-linked" in d for d in deps), (
-        "runtime_deps must document that aws-sdk-cpp is static-linked (no extra runtime dylib)"
+    assert any("libduckdb" in d.lib for d in deps), "runtime_deps must reference libduckdb"
+    assert any("aws-sdk-cpp" in d.lib and d.provider.value == "bundled" for d in deps), (
+        "runtime_deps must document aws-sdk-cpp as bundled (Provisa ships it; no extra runtime dylib)"
     )
 
 
@@ -548,8 +552,8 @@ def results_correctly_federated_with_other_sources(shared_data):
     assert entry.source_type == "iceberg", (
         f"catalog entry source_type must be iceberg; got {entry.source_type!r}"
     )
-    assert entry.mechanism is Mechanism.ATTACH_RW, (
-        "iceberg connector must use ATTACH mechanism (no data movement)"
+    assert entry.mechanism is Mechanism.SCAN, (
+        "iceberg connector must use SCAN mechanism (reads in place, no data movement) — REQ-951"
     )
 
     stored = engine.catalog.get("federated_orders")

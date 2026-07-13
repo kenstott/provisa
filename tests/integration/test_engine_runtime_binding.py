@@ -53,20 +53,24 @@ def test_engine_selected_by_env(monkeypatch):
     assert state.federation_engine.name == "duckdb"
 
 
-def test_default_engine_is_trino(monkeypatch):
+def test_default_engine_is_duckdb(monkeypatch):
+    # REQ-989: the zero-config default is the fully-embedded in-process DuckDB engine (not trino).
     monkeypatch.delenv("PROVISA_ENGINE", raising=False)
     from provisa.api.app import AppState
 
     state = AppState()
-    assert state.federation_engine.name == "trino"
+    assert state.federation_engine.name == "duckdb"
 
 
 def test_bound_runtime_gates_capabilities_fail_closed(monkeypatch):
-    monkeypatch.setenv("PROVISA_ENGINE", "duckdb")
+    # The pg engine advertises ROWS only (no Arrow transport), so requiring ARROW_STREAM must
+    # fail closed. (DuckDB/Trino now advertise all three transports per REQ-986.)
+    monkeypatch.setenv("PROVISA_ENGINE", "pg")
     from provisa.api.app import AppState
 
     rt = AppState().federation_engine
     assert rt.supports(EngineCapability.ROWS) is True
+    assert rt.supports(EngineCapability.ARROW_STREAM) is False
     with pytest.raises(UnsupportedCapabilityError):
         rt.require(EngineCapability.ARROW_STREAM)
 
