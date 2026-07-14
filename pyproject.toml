@@ -74,6 +74,12 @@ dependencies = [
     "minio",
     "pyiceberg",
     "neo4j",
+    # Native/desktop tier (REQ-979) control plane is SQLite via sqlite+aiosqlite, and SQLAlchemy's
+    # async runtime needs greenlet. Both are RUNTIME requirements — the packaged native runtime
+    # (built with a plain `pip install .`) failed at startup with ModuleNotFoundError: aiosqlite when
+    # these lived only in the `dev` extra.
+    "aiosqlite",
+    "greenlet",
 ]
 
 [project.optional-dependencies]
