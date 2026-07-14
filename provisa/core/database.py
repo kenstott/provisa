@@ -428,8 +428,14 @@ class Connection:
     # -- portable Core helpers (dialect-agnostic; used by migrated repositories) --
     async def execute_core(self, stmt: Any) -> Any:
         """Execute a SQLAlchemy Core statement (select/insert/update/delete)
-        and return the CursorResult. Autocommits outside a transaction."""
-        result = await self._ac.execute(stmt)
+        and return the CursorResult. Autocommits outside a transaction.
+
+        REQ-828: every control-plane statement passes through the app-layer meta-RLS guard here —
+        the single, un-bypassable seam that enforces tenant isolation store-independently (a no-op
+        when no tenant is in scope)."""
+        from provisa.core.meta_rls import apply_meta_tenant_guard
+
+        result = await self._ac.execute(apply_meta_tenant_guard(stmt))
         await self._commit_if_autocommit()
         return result
 

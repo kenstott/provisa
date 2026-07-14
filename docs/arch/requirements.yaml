@@ -22867,12 +22867,12 @@
   - REQ-825
   - REQ-826
 - id: REQ-828
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Deployment & Infrastructure
   priority: SHOULD
   type: structural
-  target: 2026-Q4
   description: 'Pluggable admin/metadata store, decoupled from Postgres, selected via a SQLAlchemy-compliant
     URI. The control-plane store (sources, domains, registered tables, columns, naming rules, governance
     config) plus the OpenAPI/GraphQL cache substrate must run on an embedded engine (DuckDB or SQLite)
@@ -22897,6 +22897,7 @@
     on a developer laptop, completing the develop-on-DuckDB / scale-out-in-prod model in REQ-825 without
     requiring Docker or an external Postgres.
   code:
+  - provisa/core/meta_rls.py
   - provisa/core/db.py
   - provisa/core/database.py
   - provisa/core/duckdb_async.py
