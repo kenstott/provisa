@@ -328,6 +328,7 @@ async def _fetch_table_with_columns(
         mv_refresh_interval=int(row.get("mv_refresh_interval") or 300),
         mv_debounce_quiet=float(row.get("mv_debounce_quiet") or 0.0),  # REQ-963
         mv_debounce_max_delay=float(row.get("mv_debounce_max_delay") or 5.0),  # REQ-963
+        mv_consistency=row.get("mv_consistency") or "shared",  # REQ-879
         data_product=bool(row.get("data_product", False)),
         enable_aggregates=bool(row.get("enable_aggregates", False)),
         enable_group_by=bool(row.get("enable_group_by", False)),

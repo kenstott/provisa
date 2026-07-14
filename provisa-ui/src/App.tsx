@@ -300,6 +300,7 @@ function App() {
                     "/admin/auth",
                     "/admin/system-health",
                     "/admin/observability",
+                    "/admin/mcp-server",
                     "/admin/local-users",
                     "/admin/orgs",
                   ].map((path) => (

@@ -453,6 +453,10 @@ class Table(
     mv_debounce_max_delay: float = (
         5.0  # hard cap: never more than this stale under continuous churn
     )
+    # REQ-879: cross-instance MV consistency tier. "shared" = one fleet-coordinated copy (CAS on
+    # the shared materialized_views catalog; one instance refreshes at a time). "distributed" =
+    # legacy per-instance materialization (eventually consistent).
+    mv_consistency: str = "shared"
     data_product: bool = False  # publish as a Data Product (catalog export)
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field

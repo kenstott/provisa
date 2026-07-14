@@ -180,7 +180,11 @@ async def register_table(
 
     if input.view_sql and input.materialize:
         _sync_view_mv(
-            input.table_name, input.view_sql, input.mv_refresh_interval, input.change_signal
+            input.table_name,
+            input.view_sql,
+            input.mv_refresh_interval,
+            input.change_signal,
+            consistency=input.mv_consistency,  # REQ-879
         )
 
     await _rebuild_schemas()
@@ -319,3 +323,137 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
         success=True,
         message=f"View '{view_name}' deployed to {target_source_id!r} schema '{target_schema}'",
     )
+
+
+def _register_trigger_live(trigger_dict: dict) -> None:  # REQ-1003
+    """Add a newly-created trigger to the running scheduler, if one exists.
+
+    No-op when no scheduler is running (e.g. unit tests, or startup with no prior
+    triggers). Fresh runs pick the trigger up from config regardless.
+    """
+    from provisa.api.app import state
+    from provisa.core.models import ScheduledTrigger
+    from provisa.scheduler.jobs import build_scheduler
+
+    live = getattr(state, "_scheduler", None)
+    if live is None:
+        return
+    model = ScheduledTrigger(**{k: v for k, v in trigger_dict.items() if k != "name"})
+    built = build_scheduler([model])
+    if built is None:
+        return
+    for job in built.get_jobs():
+        live.add_job(
+            job.func,
+            trigger=job.trigger,
+            args=job.args,
+            id=job.id,
+            name=job.name,
+            replace_existing=True,
+        )
+
+
+async def create_scheduled_task_op(  # REQ-1003, REQ-1004
+    id: str,
+    name: str,
+    cron: str,
+    kind: str,
+    webhook_name: str | None,
+    args_json: str | None,
+    sql: str | None,
+) -> MutationResult:
+    """Create a scheduled trigger (webhook or SQL) and register it live. Persists to config
+    and (if a scheduler is running) adds the job so it fires without a restart. url/sql are
+    mutually exclusive — supplying both fails loudly (REQ-1003)."""
+    import json as _json
+
+    import yaml
+    from sqlalchemy import select
+
+    from provisa.api.admin._config_io import read_config
+    from provisa.api.admin._table_ops import _get_pool
+    from provisa.api.admin.schema_query import _config_path
+    from provisa.core.schema_org import tracked_webhooks
+
+    path = _config_path()
+    if not path.exists():
+        return MutationResult(success=False, message="Config file not found")
+
+    kind = kind.strip().lower()
+    if kind not in ("webhook", "sql"):
+        return MutationResult(success=False, message=f"Unknown trigger kind {kind!r}")
+    if not id.strip() or not name.strip() or not cron.strip():
+        return MutationResult(success=False, message="id, name, and cron are required")
+
+    trigger: dict = {"id": id.strip(), "name": name.strip(), "cron": cron.strip(), "enabled": True}
+
+    if kind == "webhook":
+        if not webhook_name:
+            return MutationResult(
+                success=False, message="webhook_name is required for a webhook trigger"
+            )
+        if sql:  # fail loud on url/sql collision (REQ-1003)
+            return MutationResult(success=False, message="url and sql are mutually exclusive")
+        pool = await _get_pool()
+        if pool is None:
+            return MutationResult(success=False, message="Database pool not available")
+        async with pool.acquire() as conn:
+            res = await conn.execute_core(
+                select(tracked_webhooks.c.url).where(tracked_webhooks.c.name == webhook_name)
+            )
+            row = res.fetchone()
+        if row is None:
+            return MutationResult(success=False, message=f"Webhook {webhook_name!r} not found")
+        trigger["url"] = row[0]
+        trigger["webhook_name"] = webhook_name
+        if args_json:
+            trigger["args"] = _json.loads(args_json)
+    else:  # sql
+        if not sql or not sql.strip():
+            return MutationResult(success=False, message="sql is required for a SQL trigger")
+        trigger["sql"] = sql.strip()
+
+    cfg = read_config()
+    triggers = cfg.setdefault("scheduled_triggers", [])
+    if any(t.get("id") == trigger["id"] for t in triggers):
+        return MutationResult(success=False, message=f"Trigger {trigger['id']!r} already exists")
+    triggers.append(trigger)
+
+    with open(path, "w") as f:
+        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+
+    _register_trigger_live(trigger)
+    return MutationResult(success=True, message=f"Scheduled task {trigger['id']!r} created")
+
+
+async def delete_scheduled_task_op(task_id: str) -> MutationResult:  # REQ-1003
+    """Remove a scheduled trigger from config and the live scheduler."""
+    import yaml
+    from apscheduler.jobstores.base import JobLookupError
+
+    from provisa.api.admin._config_io import read_config
+    from provisa.api.admin.schema_query import _config_path
+    from provisa.api.app import state
+
+    path = _config_path()
+    if not path.exists():
+        return MutationResult(success=False, message="Config file not found")
+
+    cfg = read_config()
+    triggers = cfg.get("scheduled_triggers", [])
+    remaining = [t for t in triggers if t.get("id") != task_id]
+    if len(remaining) == len(triggers):
+        return MutationResult(success=False, message=f"Task {task_id!r} not found")
+    cfg["scheduled_triggers"] = remaining
+
+    with open(path, "w") as f:
+        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+
+    live = getattr(state, "_scheduler", None)
+    if live is not None:
+        try:
+            live.remove_job(task_id)
+        except JobLookupError:
+            # Disabled triggers are persisted but never scheduled — absence is expected.
+            pass
+    return MutationResult(success=True, message=f"Task {task_id!r} deleted")

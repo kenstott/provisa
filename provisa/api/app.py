@@ -932,6 +932,9 @@ def create_app() -> FastAPI:
     from provisa.api.setup_router import router as setup_router
 
     app.include_router(setup_router)
+    from provisa.api.mcp.status import router as mcp_status_router
+
+    app.include_router(mcp_status_router)
 
     # Cypher query endpoint (Phase AU)
     try:

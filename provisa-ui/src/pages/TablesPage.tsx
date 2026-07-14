@@ -298,6 +298,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         mvRefreshInterval: editingTable.mvRefreshInterval,
         mvDebounceQuiet: editingTable.mvDebounceQuiet,
         mvDebounceMaxDelay: editingTable.mvDebounceMaxDelay,
+        mvConsistency: editingTable.mvConsistency,
         dataProduct: editingTable.dataProduct,
         enableAggregates: editingTable.enableAggregates,
         enableGroupBy: editingTable.enableGroupBy,

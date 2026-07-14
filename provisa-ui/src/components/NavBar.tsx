@@ -81,6 +81,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/auth", label: "Authentication", capability: "admin" },
       { to: "/admin/system-health", label: "Health", capability: "admin" },
       { to: "/admin/observability", label: "Observability", capability: "admin" },
+      { to: "/admin/mcp-server", label: "MCP Server", capability: "admin" },
       { to: "/admin/local-users", label: "Local Users", capability: "admin" },
       { to: "/admin/requests", label: "Requests", capability: "admin" },
     ],

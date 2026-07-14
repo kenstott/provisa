@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     probe_type TEXT,     -- REQ-982: input-probe method; NULL = resolve per source class
     mv_debounce_quiet     DOUBLE PRECISION NOT NULL DEFAULT 0,  -- MV NRT debounce quiet window (s)
     mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- MV NRT debounce max delay (s)
+    mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -131,6 +132,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_quiet DOUBLE PRECISION NOT NULL DEFAULT 0;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_consistency TEXT NOT NULL DEFAULT 'shared';  -- REQ-879
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_aggregates BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_group_by BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS live JSONB;

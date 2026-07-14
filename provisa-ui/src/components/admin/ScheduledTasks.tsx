@@ -13,16 +13,24 @@ import {
   useScheduledTasks,
   useToggleScheduledTask,
   useCreateScheduledTask,
+  useDeleteScheduledTask,
 } from "../../hooks/useAdminQueries";
 import { fetchActions, type TrackedWebhook } from "../../api/actions";
 
 const PAGE_SIZE = 50;
 
+type TriggerKind = "webhook" | "sql";
+
+// REQ-1004: date/timestamp tokens substituted with the run's execution time.
+const SQL_TOKENS = "{{yyyymmdd}} · {{YYYY-MM-DD}} · {{iso8601}} · {{timestamp}}";
+
 export function ScheduledTasks() {
   const { scheduledTasks: tasks, loading } = useScheduledTasks();
   const { toggleScheduledTask } = useToggleScheduledTask();
   const { createScheduledTask } = useCreateScheduledTask();
+  const { deleteScheduledTask } = useDeleteScheduledTask();
   const [toggling, setToggling] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [taskPage, setTaskPage] = useState(0);
 
   const [webhooks, setWebhooks] = useState<TrackedWebhook[]>([]);
@@ -31,15 +39,26 @@ export function ScheduledTasks() {
   }, []);
 
   const [showForm, setShowForm] = useState(false);
+  const [newKind, setNewKind] = useState<TriggerKind>("webhook");
   const [newId, setNewId] = useState("");
   const [newName, setNewName] = useState("");
   const [newCron, setNewCron] = useState("");
   const [newWebhookName, setNewWebhookName] = useState("");
+  const [newSql, setNewSql] = useState("");
   const [argValues, setArgValues] = useState<Record<string, string>>({});
   const [formMsg, setFormMsg] = useState("");
   const [creating, setCreating] = useState(false);
 
   const selectedWebhook = webhooks.find((w) => w.name === newWebhookName) ?? null;
+
+  const resetForm = () => {
+    setNewId("");
+    setNewName("");
+    setNewCron("");
+    setNewWebhookName("");
+    setNewSql("");
+    setArgValues({});
+  };
 
   const handleToggle = async (id: string, enabled: boolean) => {
     setToggling(id);
@@ -47,31 +66,51 @@ export function ScheduledTasks() {
     setToggling(null);
   };
 
+  const handleDelete = async (id: string) => {
+    setDeleting(id);
+    await deleteScheduledTask(id);
+    setDeleting(null);
+  };
+
   const handleCreate = async () => {
-    if (!newId.trim() || !newName.trim() || !newCron.trim() || !newWebhookName) {
-      setFormMsg("ID, Name, Cron, and Webhook are required.");
+    if (!newId.trim() || !newName.trim() || !newCron.trim()) {
+      setFormMsg("ID, Name, and Cron are required.");
+      return;
+    }
+    if (newKind === "webhook" && !newWebhookName) {
+      setFormMsg("Webhook is required.");
+      return;
+    }
+    if (newKind === "sql" && !newSql.trim()) {
+      setFormMsg("SQL statement is required.");
       return;
     }
     setCreating(true);
     setFormMsg("");
-    const argsJson = Object.keys(argValues).length
-      ? JSON.stringify(argValues)
-      : undefined;
     const result = await createScheduledTask(
-      newId.trim(),
-      newName.trim(),
-      newCron.trim(),
-      newWebhookName,
-      argsJson,
+      newKind === "webhook"
+        ? {
+            id: newId.trim(),
+            name: newName.trim(),
+            cron: newCron.trim(),
+            kind: "webhook",
+            webhookName: newWebhookName,
+            argsJson: Object.keys(argValues).length
+              ? JSON.stringify(argValues)
+              : undefined,
+          }
+        : {
+            id: newId.trim(),
+            name: newName.trim(),
+            cron: newCron.trim(),
+            kind: "sql",
+            sql: newSql.trim(),
+          },
     );
     setCreating(false);
     if (result.success) {
       setShowForm(false);
-      setNewId("");
-      setNewName("");
-      setNewCron("");
-      setNewWebhookName("");
-      setArgValues({});
+      resetForm();
     } else {
       setFormMsg(result.message);
     }
@@ -93,6 +132,20 @@ export function ScheduledTasks() {
       {showForm && (
         <div className="form-card" style={{ marginBottom: "1rem" }}>
           <label>
+            Kind
+            <select
+              aria-label="Trigger kind"
+              value={newKind}
+              onChange={(e) => {
+                setNewKind(e.target.value as TriggerKind);
+                setFormMsg("");
+              }}
+            >
+              <option value="webhook">Webhook</option>
+              <option value="sql">SQL</option>
+            </select>
+          </label>
+          <label>
             ID
             <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="my-task" />
           </label>
@@ -104,33 +157,54 @@ export function ScheduledTasks() {
             Cron Expression
             <input value={newCron} onChange={(e) => setNewCron(e.target.value)} placeholder="0 * * * *" />
           </label>
-          <label>
-            Webhook
-            <select
-              value={newWebhookName}
-              onChange={(e) => {
-                setNewWebhookName(e.target.value);
-                setArgValues({});
-              }}
-            >
-              <option value="">Select webhook…</option>
-              {webhooks.map((w) => (
-                <option key={w.name} value={w.name}>{w.name}</option>
+
+          {newKind === "webhook" ? (
+            <>
+              <label>
+                Webhook
+                <select
+                  value={newWebhookName}
+                  onChange={(e) => {
+                    setNewWebhookName(e.target.value);
+                    setArgValues({});
+                  }}
+                >
+                  <option value="">Select webhook…</option>
+                  {webhooks.map((w) => (
+                    <option key={w.name} value={w.name}>{w.name}</option>
+                  ))}
+                </select>
+              </label>
+              {selectedWebhook?.arguments.map((arg) => (
+                <label key={arg.name}>
+                  {arg.name} <span style={{ color: "var(--text-muted)", fontSize: "0.8em" }}>({arg.type})</span>
+                  <input
+                    value={argValues[arg.name] ?? ""}
+                    onChange={(e) =>
+                      setArgValues((prev) => ({ ...prev, [arg.name]: e.target.value }))
+                    }
+                    placeholder={arg.type}
+                  />
+                </label>
               ))}
-            </select>
-          </label>
-          {selectedWebhook?.arguments.map((arg) => (
-            <label key={arg.name}>
-              {arg.name} <span style={{ color: "var(--text-muted)", fontSize: "0.8em" }}>({arg.type})</span>
-              <input
-                value={argValues[arg.name] ?? ""}
-                onChange={(e) =>
-                  setArgValues((prev) => ({ ...prev, [arg.name]: e.target.value }))
-                }
-                placeholder={arg.type}
+            </>
+          ) : (
+            <label>
+              SQL Statement
+              <textarea
+                aria-label="SQL statement"
+                value={newSql}
+                onChange={(e) => setNewSql(e.target.value)}
+                placeholder="INSERT INTO audit.runs SELECT * FROM ... WHERE d = '{{YYYY-MM-DD}}'"
+                rows={4}
+                style={{ fontFamily: "monospace", width: "100%" }}
               />
+              <span style={{ color: "var(--text-muted)", fontSize: "0.8em" }}>
+                Date tokens: {SQL_TOKENS}
+              </span>
             </label>
-          ))}
+          )}
+
           {formMsg && <p style={{ color: "var(--error)" }}>{formMsg}</p>}
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button onClick={handleCreate} disabled={creating}>
@@ -150,7 +224,8 @@ export function ScheduledTasks() {
                 <th>ID</th>
                 <th>Name</th>
                 <th>Cron Expression</th>
-                <th>Webhook URL</th>
+                <th>Kind</th>
+                <th>Target</th>
                 <th>Enabled</th>
                 <th>Last Run</th>
                 <th>Next Run</th>
@@ -167,8 +242,11 @@ export function ScheduledTasks() {
                   <td>
                     <code>{task.cronExpression}</code>
                   </td>
-                  <td className="reasoning-cell" style={{ maxWidth: 250 }}>
-                    {task.webhookUrl || "—"}
+                  <td>
+                    <span className="status-badge">{task.kind}</span>
+                  </td>
+                  <td className="reasoning-cell" style={{ maxWidth: 300 }}>
+                    {task.kind === "sql" ? <code>{task.sql}</code> : task.webhookUrl || "—"}
                   </td>
                   <td>
                     <span className={`status-badge status-${task.enabled ? "active" : "disabled"}`}>
@@ -177,13 +255,20 @@ export function ScheduledTasks() {
                   </td>
                   <td>{task.lastRunAt ? new Date(task.lastRunAt).toLocaleString() : "never"}</td>
                   <td>{task.nextRunAt ? new Date(task.nextRunAt).toLocaleString() : "—"}</td>
-                  <td>
+                  <td style={{ display: "flex", gap: "0.35rem" }}>
                     <button
                       onClick={() => handleToggle(task.id, !task.enabled)}
                       disabled={toggling === task.id}
                       style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
                     >
                       {toggling === task.id ? "..." : task.enabled ? "Disable" : "Enable"}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(task.id)}
+                      disabled={deleting === task.id}
+                      style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                    >
+                      {deleting === task.id ? "..." : "Delete"}
                     </button>
                   </td>
                 </tr>

@@ -434,6 +434,30 @@ export async function setFederationEngine(
   return resp.json();
 }
 
+// --- MCP server status (REQ-1008) ---
+
+export interface McpTool {
+  name: string;
+  description: string;
+}
+
+export interface McpServerStatus {
+  enabled: boolean;
+  port: number | null;
+  transport: string | null;
+  stdio_role: string | null;
+  max_rows: number;
+  tools: McpTool[];
+  enable_env_var: string;
+  role_env_var: string;
+}
+
+export async function fetchMcpServer(): Promise<McpServerStatus> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/mcp-server`);
+  if (!resp.ok) throw new Error(`MCP server status fetch failed: ${resp.status}`);
+  return resp.json();
+}
+
 // --- Cache (Redis) + materialize-store settings (REQ-917) ---
 
 export interface CacheStorageState {
@@ -760,6 +784,8 @@ export interface ScheduledTask {
   name: string;
   cronExpression: string;
   webhookUrl: string | null;
+  kind: string;
+  sql: string | null;
   enabled: boolean;
   lastRunAt: string | null;
   nextRunAt: string | null;
