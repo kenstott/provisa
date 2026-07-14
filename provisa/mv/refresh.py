@@ -188,11 +188,33 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
         )
 
         # Check if target table exists — probe through the engine (empty rows on absence).
+        # SELECT * (not SELECT 1) so column_names carries the existing target shape.
         try:
-            await engine.execute_engine(f"SELECT 1 FROM {target} LIMIT 0")
+            existing_cols = (
+                await engine.execute_engine(f"SELECT * FROM {target} LIMIT 0")
+            ).column_names
             table_exists = True
         except Exception:
+            existing_cols = []
             table_exists = False
+
+        # DELETE+INSERT only reconciles rows, not shape. If the view SQL was edited so its
+        # column set no longer matches the existing target (count or names), INSERT would
+        # mismatch — "table T has N columns but M values were supplied". Rebuild instead.
+        if table_exists:
+            new_cols = (
+                await engine.execute_engine(f"SELECT * FROM ({select_sql}) _shape LIMIT 0")
+            ).column_names
+            if new_cols != existing_cols:
+                log.info(
+                    "MV %s: target %s shape drifted (%d→%d cols) — rebuilding",
+                    mv.id,
+                    target,
+                    len(existing_cols),
+                    len(new_cols),
+                )
+                await engine.execute_engine(f"DROP TABLE {target}")
+                table_exists = False
 
         if table_exists:
             await engine.execute_engine(f"DELETE FROM {target}")

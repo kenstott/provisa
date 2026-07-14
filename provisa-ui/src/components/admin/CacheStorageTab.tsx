@@ -51,8 +51,8 @@ export function CacheStorageTab() {
     <div className="cache-storage-tab" style={{ maxWidth: 720 }}>
       <h3>Hot Cache (Redis)</h3>
       <p className="muted">
-        The hot cache promotes frequently-queried tables into Redis. Leave the URL empty to use the
-        embedded in-process store (fakeredis).
+        The hot cache promotes frequently-queried tables into cache. Leave the URL empty to use the
+        embedded in-process cache.
       </p>
 
       <div className="form-card">
@@ -120,8 +120,14 @@ export function CacheStorageTab() {
 
       <h3>Materialize Store</h3>
       <p className="muted">
-        PostgreSQL database where non-attachable sources (OpenAPI, GraphQL) are landed for native
-        engines. Empty disables the native materialize path.
+        Durable store where non-attachable sources (OpenAPI, GraphQL) and materialized views are
+        landed. Leave empty to use the active federation engine's default
+        {s.materialize.default_store_url ? (
+          <> — <code>{s.materialize.default_store_url}</code></>
+        ) : (
+          <> — this engine declares none, so a URL is required</>
+        )}
+        . Set a URL to override.
       </p>
       <div className="form-card">
         <label style={{ gridColumn: "1 / -1" }}>
@@ -129,8 +135,14 @@ export function CacheStorageTab() {
           <input
             type="text"
             value={s.materialize.store_url}
-            placeholder="postgresql://user:pass@host:5432/materialize"
-            onChange={(e) => setS({ ...s, materialize: { store_url: e.target.value } })}
+            placeholder={
+              s.materialize.default_store_url
+                ? `empty → ${s.materialize.default_store_url}`
+                : "postgresql://user:pass@host:5432/materialize (required)"
+            }
+            onChange={(e) =>
+              setS({ ...s, materialize: { ...s.materialize, store_url: e.target.value } })
+            }
           />
         </label>
       </div>

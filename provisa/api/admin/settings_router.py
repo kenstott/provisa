@@ -513,9 +513,15 @@ async def set_federation_engine(request: Request):  # REQ-916
 @router.get("/admin/cache-storage")
 async def get_cache_storage():  # REQ-917
     """Hot-cache (Redis) + materialize-store settings for the admin UI."""
+    from provisa.api.app import state
+
     cfg = read_config()
     cache = cfg.get("cache", {}) or {}
     hot = cfg.get("hot_tables", {}) or {}
+    # The DSN the active engine offers itself as its materialize target absent explicit config
+    # (engine.py:_*_materialize_default). Reported so the UI shows the real "empty →" fallback
+    # for THIS engine rather than a hardcoded string — None when the engine declares no default.
+    default_store = state.federation_engine.engine.default_materialize_store()
     # Defaults mirror the single source of truth — the reads in cache/hot_tables.py.
     return {
         "cache": {
@@ -529,7 +535,10 @@ async def get_cache_storage():  # REQ-917
             "max_bytes": hot.get("max_bytes", 10 * 1024 * 1024),
             "refresh_interval": hot.get("refresh_interval"),
         },
-        "materialize": {"store_url": cfg.get("materialize_store_url") or ""},
+        "materialize": {
+            "store_url": cfg.get("materialize_store_url") or "",
+            "default_store_url": default_store or "",
+        },
         "restart_required_note": "Redis and materialize-store connections bind at startup — changes take effect after a service restart.",
     }
 

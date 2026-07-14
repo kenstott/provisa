@@ -70,7 +70,6 @@ roles:
   - pet-store
 cache:
   enabled: true
-  redis_url: redis://${env:REDIS_HOST:-localhost}:6379
   default_ttl: 300
 discovery:
   sample_size: 20
