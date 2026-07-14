@@ -15,7 +15,8 @@ from __future__ import annotations
 import pytest
 
 from provisa.core.models import Source, SourceType
-from provisa.federation.connector import Mechanism, TrinoPostgresConnector
+from provisa.federation.connector_base import Mechanism
+from provisa.federation.trino_connectors import TrinoPostgresConnector
 from provisa.federation.engine import (
     DriverClass,
     FederationEngine,

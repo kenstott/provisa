@@ -31,8 +31,7 @@ from enum import Enum
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from provisa.federation.connector import Connector
-from provisa.federation.connector_base import CatalogEntry
+from provisa.federation.connector_base import CatalogEntry, Connector
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
@@ -182,7 +181,8 @@ class FederationEngine:  # REQ-840
         connector is added only where the engine has none for that type. Idempotent."""
         from provisa.executor.drivers.registry import _DRIVER_FACTORIES
         from provisa.source_adapters.registry import _ADAPTER_MAP
-        from provisa.federation.connector import Mechanism, WarehouseNativeConnector
+        from provisa.federation.connector import WarehouseNativeConnector
+        from provisa.federation.connector_base import Mechanism
         from provisa.federation.strategy import _CONNECTOR_PGWIRE_REPLICA, _MATERIALIZE_ONLY
 
         direct = frozenset(_DRIVER_FACTORIES)
@@ -332,7 +332,7 @@ _BROAD_THRESHOLD = 3  # a connector collection reaching >= this many source type
 
 def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
     from provisa.federation.backend import TrinoBackend
-    from provisa.federation.connector import build_trino_connectors
+    from provisa.federation.trino_connectors import build_trino_connectors
     from provisa.federation.runtime import EngineCapability
 
     return FederationEngine(
@@ -488,7 +488,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
     referenced in place (Mechanism.ATTACH_RW) — nothing lands. ClickHouse is its own native store, so a
     source of type ``clickhouse`` is already native. Single-node reach model like DuckDB/Postgres.
     """
-    from provisa.federation.connector import (
+    from provisa.federation.clickhouse_connectors import (
         ClickHouseCsvConnector,
         ClickHouseDeltaLakeConnector,
         ClickHouseIcebergConnector,

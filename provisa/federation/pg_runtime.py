@@ -83,7 +83,9 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         ``db.schema.table`` cache ref then resolves natively. (An external store is future work.)"""
         cur = self._con.cursor()
         cur.execute("SELECT current_database()")
-        return cur.fetchone()[0]
+        row = cur.fetchone()
+        assert row is not None  # SELECT current_database() always returns exactly one row
+        return row[0]
 
     @property
     def connection(self):

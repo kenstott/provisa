@@ -13,10 +13,12 @@
 Returns None when no native path exists — caller falls back to the engine.
 """
 
-# Requirements: REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147
+# Requirements: REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147, REQ-887
+# complexity-gate: allow-ble=5 reason="best-effort source-schema introspection: GraphQL SDL parse, protobuf descriptor parse, govdata native-table probe, and pg_proc routine-catalog read each return empty/None on any failure over an external/pluggable source, so a source that cannot be introspected yields no discovered schema rather than aborting source registration"
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
@@ -475,3 +477,188 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         return await _native_tables_govdata(source_id, schema_name, config_conn)
 
     return await _native_tables_rdbms(source_id, source_type, schema_name, pool)
+
+
+# ── Stored-procedure / routine auto-discovery (REQ-887) ──────────────────────
+#
+# Extends database-source introspection to discover source-resident routines
+# (stored procedures + functions) from the vendor catalog and classify each as
+# read-returning ("query") or write/side-effecting ("mutation"). Discovered
+# routines auto-register through the existing tracked-function representation
+# (REQ-205–208); see register.register_discovered_routines. Mirrors the OpenAPI
+# discovery pattern (REQ-316/317) — introspection + auto-registration, no
+# parallel registry.
+
+# GraphQL scalar names — reuse the tracked-function argument type vocabulary.
+_PG_TYPE_TO_GQL: dict[str, str] = {
+    "smallint": "Int",
+    "integer": "Int",
+    "bigint": "Int",
+    "int2": "Int",
+    "int4": "Int",
+    "int8": "Int",
+    "real": "Float",
+    "double precision": "Float",
+    "numeric": "Float",
+    "decimal": "Float",
+    "float4": "Float",
+    "float8": "Float",
+    "boolean": "Boolean",
+    "bool": "Boolean",
+}
+
+
+def _pg_type_to_gql(pg_type: str) -> str:
+    """Map a Postgres argument type name to a GraphQL scalar type name."""
+    base = pg_type.strip().lower().split("(")[0].strip()
+    if base in _PG_TYPE_TO_GQL:
+        return _PG_TYPE_TO_GQL[base]
+    if base.startswith("timestamp") or base in ("date", "time", "timestamptz"):
+        return "DateTime"
+    return "String"
+
+
+@dataclass
+class RoutineArg:
+    """A single input argument of a discovered routine."""
+
+    name: str
+    type: str  # GraphQL scalar type name
+
+
+@dataclass
+class DiscoveredRoutine:
+    """A stored procedure / function discovered from a source's routine catalog."""
+
+    schema_name: str
+    routine_name: str
+    kind: str  # "query" (read-returning) | "mutation" (write/side-effecting)
+    returns_setof: bool
+    arguments: list[RoutineArg] = field(default_factory=list)
+    description: str | None = None
+
+
+def classify_routine(prokind: str, provolatile: str) -> str:
+    """Classify a Postgres routine as read-returning ("query") or side-effecting ("mutation").
+
+    prokind: 'p' = procedure, 'f' = function, 'a' = aggregate, 'w' = window.
+    provolatile: 'i' = immutable, 's' = stable, 'v' = volatile.
+
+    Procedures always mutate (called via CALL, may run COMMIT). Functions are
+    read-returning only when the planner-declared volatility is immutable/stable;
+    a volatile function may side-effect, so it is treated as a mutation. This
+    mirrors the REQ-887 scenario (prokind + provolatile drive the split).
+    """
+    if prokind == "p":
+        return "mutation"
+    if provolatile in ("i", "s"):
+        return "query"
+    return "mutation"
+
+
+# proargtypes covers only IN arguments; proargnames aligns positionally with the
+# leading IN args (OUT/INOUT names, if any, trail). obj_description carries the
+# COMMENT ON FUNCTION text. Restricted to prokind IN ('f','p') — aggregates and
+# window functions are not callable as tracked functions.
+_PG_ROUTINE_SQL = (
+    "SELECT n.nspname, p.proname, p.prokind::text, p.provolatile::text, p.proretset, "
+    "COALESCE(p.proargnames, ARRAY[]::text[]) AS arg_names, "
+    "ARRAY(SELECT format_type(t, NULL) FROM unnest(p.proargtypes) AS t) AS arg_types, "
+    "obj_description(p.oid, 'pg_proc') AS description "
+    "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+    "WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') "
+    "ORDER BY p.proname"
+)
+
+
+def _row_to_routine(row) -> DiscoveredRoutine:
+    """Build a DiscoveredRoutine from a Postgres pg_proc catalog row."""
+    schema, name, prokind, provolatile, proretset, arg_names, arg_types, description = row
+    args: list[RoutineArg] = []
+    names = list(arg_names or [])
+    types = list(arg_types or [])
+    for i, pg_type in enumerate(types):
+        arg_name = names[i] if i < len(names) and names[i] else f"arg{i + 1}"
+        args.append(RoutineArg(name=arg_name, type=_pg_type_to_gql(pg_type)))
+    return DiscoveredRoutine(
+        schema_name=schema,
+        routine_name=name,
+        kind=classify_routine(prokind, provolatile),
+        returns_setof=bool(proretset),
+        arguments=args,
+        description=description,
+    )
+
+
+async def native_routines(  # REQ-887
+    source_id: str,
+    source_type: str,
+    schema_name: str,
+    pool: "SourcePool",
+) -> "list[DiscoveredRoutine] | None":
+    """Discover + classify stored procedures/functions in a schema.
+
+    Returns None when no native routine-catalog path exists for the source type
+    (caller skips routine registration — there is no engine fallback for routines).
+    Introspection errors propagate: a failing catalog query is a real source
+    fault, not an empty routine set.
+    """
+    if not pool.has(source_id):
+        return None
+
+    t = source_type.lower()
+    if t == "postgresql":
+        result = await pool.execute(source_id, _PG_ROUTINE_SQL, [schema_name])
+        return [_row_to_routine(row) for row in result.rows]
+
+    # Other vendors (mysql, sqlserver, oracle) not yet wired — no fallback.
+    return None
+
+
+async def register_discovered_routines(  # REQ-887
+    conn: "Connection",
+    source_id: str,
+    routines: "list[DiscoveredRoutine]",
+    domain_id: str = "",
+) -> tuple[int, int]:
+    """Auto-register discovered routines as tracked functions. Returns (registered, skipped).
+
+    Conflict rule — explicit hand-registration wins, discovery never clobbers it:
+      * If no tracked function owns the exposed name → register it.
+      * If a tracked function with the same name already points at this exact
+        routine (same source_id + schema + function_name) → upsert (idempotent
+        re-introspection; REQ-870 preserves existing writable_by grants).
+      * If a tracked function with the same name points at a *different* routine
+        (a hand-registered function, or a different proc) → skip; a discovered
+        routine must not overwrite an explicit registration.
+    """
+    from provisa.core.models import Function, FunctionArgument
+    from provisa.core.repositories import function as function_repo
+
+    registered = 0
+    skipped = 0
+    for r in routines:
+        existing = await function_repo.get_function(conn, r.routine_name)
+        if existing is not None and not (
+            existing.get("source_id") == source_id
+            and existing.get("schema_name") == r.schema_name
+            and existing.get("function_name") == r.routine_name
+        ):
+            skipped += 1
+            continue
+        func = Function(
+            name=r.routine_name,
+            source_id=source_id,
+            schema_name=r.schema_name,
+            function_name=r.routine_name,
+            returns="",
+            arguments=[FunctionArgument(name=a.name, type=a.type) for a in r.arguments],
+            visible_to=[],
+            writable_by=[],
+            domain_id=domain_id or "",
+            description=r.description,
+            kind=r.kind,
+        )
+        await function_repo.upsert_function(conn, func)
+        registered += 1
+    return registered, skipped

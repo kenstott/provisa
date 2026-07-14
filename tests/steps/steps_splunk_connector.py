@@ -11,7 +11,7 @@ import pytest
 from pytest_bdd import given, parsers, scenario, then, when
 
 from provisa.core.models import Source, SourceType
-from provisa.federation.connector import trino_connector_name
+from provisa.federation.trino_connectors import trino_connector_name
 
 
 # ---------------------------------------------------------------------------
