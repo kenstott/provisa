@@ -19,7 +19,7 @@ from provisa.core.models import (
     SourceType,
     Table,
 )
-from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
+from provisa.federation.trino_connectors import TRINO_CONNECTORS, trino_connector_name
 
 
 # ---------------------------------------------------------------------------

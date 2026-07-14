@@ -36,7 +36,7 @@ from provisa.core.source_registry import (
     _MYSQL_WIRE_TYPES,
     _PG_WIRE_TYPES,
 )
-from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
+from provisa.federation.trino_connectors import TRINO_CONNECTORS, trino_connector_name
 
 # Relational types whose rows a native driver reads directly (bypassing Trino):
 # Source.jdbc_url is the authoritative url builder for exactly these (the pg/mysql

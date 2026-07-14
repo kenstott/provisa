@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from provisa.core.catalog import _build_catalog_properties
 from provisa.core.models import Source, SourceType
-from provisa.federation.connector import trino_connector_name
+from provisa.federation.trino_connectors import trino_connector_name
 
 
 # --------------------------------------------------------------------------- #

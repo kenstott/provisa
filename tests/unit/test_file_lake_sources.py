@@ -131,7 +131,7 @@ class TestFilesConnectorGlobPattern:
         assert props["glob"] == glob
 
     def test_source_type_mapped_to_file_connector(self):
-        from provisa.federation.connector import trino_connector_name
+        from provisa.federation.trino_connectors import trino_connector_name
 
         assert trino_connector_name("files") == "file"
 

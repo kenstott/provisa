@@ -16,14 +16,14 @@ from __future__ import annotations
 import pytest
 
 from provisa.core.models import Source, SourceType
-from provisa.federation.connector import (
+from provisa.federation.clickhouse_connectors import (
     ClickHouseCsvConnector,
     ClickHouseMongoConnector,
     ClickHouseMysqlConnector,
     ClickHouseParquetConnector,
     ClickHousePostgresConnector,
-    Mechanism,
 )
+from provisa.federation.connector_base import Mechanism
 from provisa.federation.engine import build_clickhouse_engine
 from provisa.federation.runtime import EngineCapability, EngineRuntime
 

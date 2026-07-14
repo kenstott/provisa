@@ -21,7 +21,7 @@ from provisa.core.source_registry import (
     SOURCE_TO_DIALECT,
     LAKE_ONLY_SOURCES,
 )
-from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
+from provisa.federation.trino_connectors import TRINO_CONNECTORS, trino_connector_name
 from provisa.transpiler.router import VIRTUAL_SOURCES
 from provisa.transpiler.transpile import transpile
 

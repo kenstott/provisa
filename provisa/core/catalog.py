@@ -84,7 +84,7 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
     # source produces; ``resolved_password`` is unused (the connector resolves
     # secrets itself) but kept for call-site compatibility.
     del resolved_password
-    from provisa.federation.connector import TRINO_CONNECTORS
+    from provisa.federation.trino_connectors import TRINO_CONNECTORS
 
     connector = TRINO_CONNECTORS.get(source.type.value)
     return connector.details(source) if connector is not None else {}
@@ -105,7 +105,7 @@ def create_catalog(
 
     # REQ-842: the Trino Connector class is the source of truth for reach + catalog. A type with no
     # Trino connector is not reachable by Trino — no catalog (never a parallel type→name map).
-    from provisa.federation.connector import TRINO_CONNECTORS
+    from provisa.federation.trino_connectors import TRINO_CONNECTORS
 
     stype = source.type.value
     trino_connector = TRINO_CONNECTORS.get(stype)

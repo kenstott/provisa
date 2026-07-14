@@ -12,7 +12,7 @@ from pytest_bdd import given, parsers, scenarios, then, when
 
 from provisa.core.catalog import _build_catalog_properties
 from provisa.core.models import Column, Source, SourceType, Table
-from provisa.federation.connector import TRINO_CONNECTORS, trino_connector_name
+from provisa.federation.trino_connectors import TRINO_CONNECTORS, trino_connector_name
 
 scenarios("../features/REQ-726.feature")
 scenarios("../features/REQ-727.feature")

@@ -195,7 +195,7 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         """The Trino catalog ``connector.name`` (the ``USING`` label) for this source type, or None if
         Trino has no connector for it. Derived from the Trino connector registry — no parallel map
         (REQ-947). Deferred import: ``core`` reaches ``federation`` lazily, as ``core.catalog`` does."""
-        from provisa.federation.connector import trino_connector_name
+        from provisa.federation.trino_connectors import trino_connector_name
 
         return trino_connector_name(self.type.value)
 

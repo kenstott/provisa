@@ -10,12 +10,12 @@ the engine reads (there is no engine 'LAND' — the engine never writes)."""
 from __future__ import annotations
 
 from provisa.core.models import Source, SourceType
-from provisa.federation.connector import (
-    Mechanism,
+from provisa.federation.connector import WarehouseNativeConnector
+from provisa.federation.connector_base import Mechanism
+from provisa.federation.trino_connectors import (
     TrinoFilesConnector,
     TrinoOpenapiConnector,
     TrinoPostgresConnector,
-    WarehouseNativeConnector,
 )
 from provisa.federation.connector_base import LIVE_IN_PLACE, DriverProvider, RuntimeDep
 from provisa.federation.connector_duckdb import DuckDBParquetConnector, MysqlFdwConnector
