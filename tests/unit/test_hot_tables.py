@@ -24,9 +24,9 @@ from provisa.cache.hot_tables import (
 from provisa.compiler.sql_gen import (
     ColumnRef,
     CompiledQuery,
-    _sql_literal,
     rewrite_hot_joins,
 )
+from provisa.cache.hot_tables import _sql_literal
 from provisa.executor.result import QueryResult
 
 
@@ -331,7 +331,7 @@ class TestRewriteHotJoins:
         )
 
         result = rewrite_hot_joins(compiled, mgr)
-        assert "WITH _hot_countries" in result.sql
+        assert 'WITH "_hot_countries"' in result.sql
         assert "VALUES" in result.sql
         assert "(1, 'US')" in result.sql
         assert "(2, 'UK')" in result.sql

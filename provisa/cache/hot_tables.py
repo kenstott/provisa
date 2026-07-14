@@ -83,8 +83,12 @@ def build_values_cte_sql(
     governance filters and masks the CTE rows exactly as it would the live table. Storing
     governed-per-role copies in Redis would be both redundant and a leak risk, so the cache
     holds the raw rows and governance stays at query time.
+
+    REQ-913: structural, AST-only. The table reference is renamed and the CTE is attached
+    to the query's ``WITH`` node on the parsed tree — the injection point is never derived
+    from SQL text via regex. The CTE definition is built as a self-contained fragment and
+    parsed to an AST node (IR construction, not re-deriving the query's structure from text).
     """
-    import re
     import sqlglot
     import sqlglot.expressions as exp
 
@@ -104,32 +108,38 @@ def build_values_cte_sql(
         ]
         cte_body = f"({col_defs}) AS (VALUES {', '.join(value_rows)})"
 
-    cte_sql = f"{cte_name}{cte_body}"
+    cte_sql = f'"{cte_name}"{cte_body}'
 
     try:
         tree = sqlglot.parse_one(sql, dialect="postgres")
-        for tbl in tree.find_all(exp.Table):
-            if tbl.name == table_name:
-                # Preserve the original table name as an alias when the ref is
-                # unaliased, so column qualifiers (e.g. shelter__animalBreeds.name)
-                # still resolve after the relation is renamed to the CTE.
-                if not tbl.alias:
-                    tbl.set("alias", exp.TableAlias(this=exp.to_identifier(table_name)))
-                tbl.set("catalog", None)
-                tbl.set("db", None)
-                tbl.set("this", exp.to_identifier(cte_name))
-        rewritten = tree.sql(dialect="postgres")
     except Exception as exc:
         # A regex fallback can rewrite the wrong occurrence — fail loud on parse error.
         raise ValueError(
             f"Failed to parse SQL for hot-table CTE rewrite of {table_name!r}"
         ) from exc
 
-    _with_re = re.compile(r"^\s*WITH\s+", re.IGNORECASE)
-    if _with_re.match(rewritten):
-        _prefix = f"WITH {cte_sql}, "
-        return _with_re.sub(lambda _: _prefix, rewritten, count=1)
-    return f"WITH {cte_sql} {rewritten}"
+    for tbl in tree.find_all(exp.Table):
+        if tbl.name == table_name:
+            # Preserve the original table name as an alias when the ref is
+            # unaliased, so column qualifiers (e.g. shelter__animalBreeds.name)
+            # still resolve after the relation is renamed to the CTE.
+            if not tbl.alias:
+                tbl.set("alias", exp.TableAlias(this=exp.to_identifier(table_name)))
+            tbl.set("catalog", None)
+            tbl.set("db", None)
+            tbl.set("this", exp.to_identifier(cte_name, quoted=True))
+
+    # Parse the CTE definition (a self-contained fragment we constructed) into an AST node
+    # and attach it to the query's WITH — the injection point is chosen structurally, never
+    # by matching a leading "WITH" in the query text.
+    cte_fragment = sqlglot.parse_one(f"WITH {cte_sql} SELECT 1", read="postgres")
+    cte_node = cte_fragment.args["with_"].expressions[0]
+    existing_with = tree.args.get("with_")
+    if existing_with is not None:
+        existing_with.set("expressions", [cte_node, *existing_with.expressions])
+    else:
+        tree.set("with_", exp.With(expressions=[cte_node]))
+    return tree.sql(dialect="postgres")
 
 
 @dataclass

@@ -69,6 +69,54 @@ class _Plan:
 _NON_FTE_SOURCE_TYPES = frozenset({"kafka"})
 
 
+async def _optimize_and_route(
+    exec_sql: str, governed_sql: str, gov_ctx, ctx, state, *, nf_args=None, has_json_extract=False
+):
+    """REQ-863 post-governance optimization stage (may REMOVE sources) + routing on the reduced
+    set — shared by both governed-SQL entrypoints so routing observes the optimized source set,
+    not the pre-optimization one. ``exec_sql`` is the caller's already-lowered SQL (catalog-
+    qualified semantic, or compiled catalog-physical); ``governed_sql`` is the pre-optimization
+    governed semantic used for source extraction. Returns the optimized exec SQL, the route
+    decision, the resolved default source, and whether optimization changed the SQL."""
+    from provisa.api.data.materialization import _materialize_api_to_engine_cache
+    from provisa.api_source.engine_cache import rewrite_all_from_cache
+    from provisa.cache.hot_tables import build_values_cte_sql
+    from provisa.compiler.stage2 import extract_sources, reduce_sources_for_routing
+    from provisa.transpiler.router import decide_route
+
+    _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
+        exec_sql, state, nf_args=nf_args
+    )
+    if _dropped:
+        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+
+        for _dtn in _dropped:
+            exec_sql = drop_union_branches_for_table(exec_sql, _dtn)
+    for _tn, _entry in _values_ctes.items():
+        exec_sql = build_values_cte_sql(exec_sql, _tn, _entry)
+    if _rewrites:
+        exec_sql = rewrite_all_from_cache(exec_sql, _rewrites)
+
+    _inlined = set(_values_ctes) | set(_dropped)
+    optimized = bool(_inlined or _rewrites)
+    if optimized:
+        sources = reduce_sources_for_routing(governed_sql, gov_ctx, ctx, _inlined)
+    else:
+        sources = extract_sources(governed_sql, gov_ctx, ctx)
+    default_source = next(
+        (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
+        next(iter(state.source_pools.source_ids), "pg"),
+    )
+    decision = decide_route(
+        sources=sources or {default_source},
+        source_types=state.source_types,
+        source_dialects=state.source_dialects,
+        has_json_extract=has_json_extract,
+        source_dsns=getattr(state, "source_dsns", None),
+    )
+    return exec_sql, decision, default_source, optimized, sources
+
+
 async def _govern_and_route(
     sql: str, role_id: str
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272
@@ -78,10 +126,9 @@ async def _govern_and_route(
     from provisa.api.app import state
     from provisa.compiler.rls import RLSContext
     from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
-    from provisa.compiler.sql_rewrite import qualify_with_catalogs
-    from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
+    from provisa.compiler.stage2 import apply_governance, build_governance_context
     from provisa.compiler.sql_validator import validate_sql
-    from provisa.transpiler.router import Route, decide_route
+    from provisa.transpiler.router import Route
     from provisa.transpiler.transpile import transpile
 
     if role_id not in state.contexts:
@@ -156,41 +203,24 @@ async def _govern_and_route(
     # resolve_row_cap applies). Statistical sampling is the GraphQL `sample` arg → TABLESAMPLE,
     # a query-construction feature with no equivalent for already-formed raw SQL, so it is N/A
     # here; there is no ungoverned access path.
+    # REQ-863 pipeline order: governance → post-governance optimization → routing.
     governed_semantic = apply_governance(normalized_sql, gov_ctx)
 
-    sources = extract_sources(governed_semantic, gov_ctx, ctx)
-    _default_source = next(
-        (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
-        next(iter(state.source_pools.source_ids), "pg"),
-    )
-    decision = decide_route(
-        sources=sources or {_default_source},
-        source_types=state.source_types,
-        source_dialects=state.source_dialects,
+    # REQ-863 pipeline order: governance → post-governance optimization → routing.
+    from provisa.compiler.sql_rewrite import qualify_with_catalogs
+
+    _qualified, decision, _default_source, _optimized, _sources = await _optimize_and_route(
+        qualify_with_catalogs(governed_semantic, ctx),
+        governed_semantic,
+        gov_ctx,
+        ctx,
+        state,
         has_json_extract="->>" in governed_semantic,
-        source_dsns=getattr(state, "source_dsns", None),
     )
 
     exec_params = embedded_params or None
 
     if decision.route == Route.ENGINE:
-        from provisa.api.data.materialization import _materialize_api_to_engine_cache
-        from provisa.cache.hot_tables import build_values_cte_sql
-        from provisa.api_source.engine_cache import rewrite_all_from_cache
-
-        _qualified = qualify_with_catalogs(governed_semantic, ctx)
-        _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
-            _qualified, state
-        )
-        if _dropped:
-            from provisa.compiler.nf_extractor import drop_union_branches_for_table
-
-            for _dtn in _dropped:
-                _qualified = drop_union_branches_for_table(_qualified, _dtn)
-        for _tn, _entry in _values_ctes.items():
-            _qualified = build_values_cte_sql(_qualified, _tn, _entry)
-        if _rewrites:
-            _qualified = rewrite_all_from_cache(_qualified, _rewrites)
         _known_cats_pgwire = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
             "otel",
@@ -228,7 +258,14 @@ async def _govern_and_route(
         )
     else:
         dialect = decision.dialect or "postgres"
-        sql_to_run = transpile(governed_semantic, dialect)
+        # Direct route lowers the OPTIMIZED SQL when the optimization stage changed it (REQ-863),
+        # carrying any inlined VALUES CTE onto the direct path; else the unchanged fast path.
+        if _optimized:
+            from provisa.compiler.sql_rewrite import strip_catalog
+
+            sql_to_run = transpile(strip_catalog(_qualified), dialect)
+        else:
+            sql_to_run = transpile(governed_semantic, dialect)
         return _Plan(
             route=decision.route,
             sql=sql_to_run,
@@ -294,16 +331,13 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
     """
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
-    from provisa.api.data.materialization import _materialize_api_to_engine_cache
-    from provisa.api_source.engine_cache import rewrite_all_from_cache
-    from provisa.cache.hot_tables import build_values_cte_sql
     from provisa.compiler.rls import RLSContext
     from provisa.compiler.sql_rewrite import (
         rewrite_semantic_to_catalog_physical,
         rewrite_semantic_to_physical,
     )
-    from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
-    from provisa.transpiler.router import Route, decide_route
+    from provisa.compiler.stage2 import apply_governance, build_governance_context
+    from provisa.transpiler.router import Route
     from provisa.transpiler.transpile import transpile
 
     if role_id not in state.contexts:
@@ -321,44 +355,31 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         role=state.roles.get(role_id),
     )
 
+    # REQ-863 pipeline order: governance → post-governance optimization → routing.
     governed_sql = apply_governance(sql, gov_ctx)
 
-    sources = extract_sources(governed_sql, gov_ctx, ctx)
-    _default_source = next(
-        (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
-        next(iter(state.source_pools.source_ids), "pg"),
-    )
-    decision = decide_route(
-        sources=sources or {_default_source},
-        source_types=state.source_types,
-        source_dialects=state.source_dialects,
-        source_dsns=getattr(state, "source_dsns", None),
+    # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then
+    # inline hot/API tables as VALUES CTEs, prune unreachable union branches, and rewrite cached
+    # tables. This MUST complete before extract_sources/decide_route so routing observes the
+    # reduced source set (a query whose second source is fully inlined collapses to DIRECT).
+    _exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
+    _view_map = getattr(state, "view_sql_map", None)
+    if _view_map:
+        from provisa.compiler.view_expand import expand_view_refs
+
+        _exec_sql = expand_view_refs(_exec_sql, _view_map)
+    from provisa.compiler.nf_extractor import extract_nf_args
+
+    _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_exec_sql, exec_params or [])
+    exec_params = _nf_clean_params if _nf_clean_params != (exec_params or []) else exec_params
+    _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None
+    # Route on the OUTPUT of the optimization stage (REQ-863): sources whose every referenced
+    # table was inlined/pruned drop out of the routing set.
+    _exec_sql, decision, _default_source, _optimized, sources = await _optimize_and_route(
+        _exec_sql, governed_sql, gov_ctx, ctx, state, nf_args=_nf_args
     )
 
     if decision.route == Route.ENGINE:
-        _exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
-        _view_map = getattr(state, "view_sql_map", None)
-        if _view_map:
-            from provisa.compiler.view_expand import expand_view_refs
-
-            _exec_sql = expand_view_refs(_exec_sql, _view_map)
-        from provisa.compiler.nf_extractor import extract_nf_args
-
-        _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_exec_sql, exec_params or [])
-        exec_params = _nf_clean_params if _nf_clean_params != (exec_params or []) else exec_params
-        _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None
-        _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
-            _exec_sql, state, nf_args=_nf_args
-        )
-        if _dropped:
-            from provisa.compiler.nf_extractor import drop_union_branches_for_table
-
-            for _dtn in _dropped:
-                _exec_sql = drop_union_branches_for_table(_exec_sql, _dtn)
-        for _tn, _entry in _values_ctes.items():
-            _exec_sql = build_values_cte_sql(_exec_sql, _tn, _entry)
-        if _rewrites:
-            _exec_sql = rewrite_all_from_cache(_exec_sql, _rewrites)
         _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
             "otel",
@@ -408,9 +429,15 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         )
     else:
         dialect = decision.dialect or "postgres"
-        # Rewrite semantic names to physical (no catalog) before transpile.
-        # Input sql is semantic; direct drivers don't understand domain-qualified refs.
-        physical_sql = rewrite_semantic_to_physical(governed_sql, ctx)
+        # Direct route lowers the OPTIMIZED SQL (REQ-863): when the optimization stage inlined a
+        # VALUES CTE, strip the catalog so a native driver addresses schema.table with the CTE
+        # carried onto the direct path. With no optimization, take the unchanged fast path.
+        if _optimized:
+            from provisa.compiler.sql_rewrite import strip_catalog
+
+            physical_sql = strip_catalog(_exec_sql)
+        else:
+            physical_sql = rewrite_semantic_to_physical(governed_sql, ctx)
         sql_to_run = transpile(physical_sql, dialect)
         return _Plan(
             route=decision.route,

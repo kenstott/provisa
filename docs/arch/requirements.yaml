@@ -24015,7 +24015,8 @@
 
     '
 - id: REQ-863
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 6. Execution, Routing, Caching & Performance
   category: Query Planning Pipeline
   priority: SHOULD
@@ -24043,6 +24044,9 @@
   - provisa/compiler/sql_gen.py
   - provisa/cache/hot_tables.py
   - provisa/compiler/stage2.py
+  - provisa/compiler/sql_rewrite.py
+  tests:
+  - tests/unit/test_pipeline_order.py
   related_reqs:
   - REQ-230
   - REQ-232
@@ -26211,7 +26215,8 @@
   related_reqs:
   - REQ-911
 - id: REQ-913
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 0. Architecture & Design Principles
   category: AST-Based Transforms
   priority: MUST
@@ -26235,6 +26240,7 @@
   - provisa/cypher/translator.py
   tests:
   - tests/unit/test_ast_transform_invariants.py
+  - tests/unit/test_ast_transforms.py
   - tests/integration/test_ast_transform_e2e.py
   target: 2026-Q4
   competitive_position:
@@ -27102,9 +27108,6 @@
   use_case: As Provisa adds support for additional federation engines (DuckDB, ClickHouse, etc.), centralizing
     all engine-specific code in monolithic modules becomes unmaintainable. Per-engine module organization
     enables independent engine contributions without merge conflicts or coupling.
-  code:
-  - provisa/federation/connector.py
-  - provisa/federation/engine.py
 - id: REQ-950
   status: complete
   group: 4. Source Connectors
@@ -28011,7 +28014,7 @@
   - REQ-965
   - REQ-969
 - id: REQ-971
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 6. Execution, Routing, Caching & Performance
@@ -28048,6 +28051,8 @@
   - provisa/federation/promote.py
   - provisa/federation/cardinality.py
   - provisa/api/data/subscribe.py
+  tests:
+  - tests/unit/test_mask_pushdown.py
   scenario: 'Given a column with a masking rule that uses functions the source supports (e.g., DATE_TRUNC)
 
     When a query projects that column

@@ -16,11 +16,11 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 """
 
 # Requirements: REQ-007, REQ-008, REQ-009, REQ-010, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-037, REQ-066, REQ-151, REQ-152, REQ-153, REQ-196, REQ-197, REQ-198, REQ-199, REQ-252, REQ-253, REQ-259, REQ-262, REQ-263, REQ-264, REQ-265, REQ-301, REQ-367, REQ-372, REQ-393, REQ-403, REQ-411, REQ-412, REQ-416, REQ-423, REQ-426, REQ-429, REQ-478
+# complexity-gate: allow-cc=85 allow-ble=1 allow-magic=1 reason="_compile_root_field is the GraphQL root-field compiler — an inherently large dispatch over field/argument kinds (aggregate, sample, relationship, pagination, …), pre-existing and untouched by the REQ-913 AST change (which only converted rewrite_hot_joins off regex). The one blind-except is the best-effort PROVISA_DEFAULT_ROW_LIMIT env read (falls back to the documented default limit); the one magic literal is the 100 upper bound of a sample percentage. Separate refactor tracked for the root-field compiler."
 
 from __future__ import annotations
 
 import os as _os
-import re as _re
 
 from typing import TYPE_CHECKING
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -544,91 +544,46 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     )
 
 
-def _sql_literal(
-    val: object,  # object-ok: truly-any payload — SQL literal accepts any Python scalar
-) -> str:
-    """Convert a Python value to a SQL literal for VALUES injection."""
-    if val is None:
-        return "NULL"
-    if isinstance(val, bool):
-        return "TRUE" if val else "FALSE"
-    if isinstance(val, int):
-        return str(val)
-    if isinstance(val, float):
-        return str(val)
-    if isinstance(val, str):
-        escaped = val.replace("'", "''")
-        return f"'{escaped}'"
-    return f"'{val!s}'"
-
-
 def rewrite_hot_joins(  # REQ-230, REQ-232
     compiled: CompiledQuery, hot_manager: object
 ) -> (
     CompiledQuery
 ):  # object-ok: circular import boundary — HotTableManager imported inside function body
-    """Rewrite JOINs targeting hot tables to use VALUES-based CTEs.
+    """Rewrite references to hot-cached tables to use VALUES-based CTEs.
 
-    When a LEFT JOIN target is a hot-cached table, replace the table reference
+    When the query references a hot-cached table, replace the table reference
     with a CTE containing the cached rows as VALUES. This works cross-source
     since the data travels as constants in the query.
+
+    REQ-913: structural, AST-only. The set of hot tables is read from the parsed
+    tree and each rewrite is delegated to ``build_values_cte_sql``, which renames
+    the table node and attaches the CTE on the AST — no regex over the SQL text
+    derives the JOIN structure, alias binding, or WITH injection point.
     """
-    from provisa.cache.hot_tables import HotTableManager
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.cache.hot_tables import HotTableManager, build_values_cte_sql
 
     assert isinstance(hot_manager, HotTableManager)
 
-    sql = compiled.sql
-    ctes: list[str] = []
-
-    # Match LEFT JOIN patterns: LEFT JOIN "schema"."table" "alias" ON ...
-    # or LEFT JOIN "catalog"."schema"."table" "alias" ON ...
-    join_pattern = _re.compile(
-        r"LEFT JOIN\s+"
-        r'(?:"[^"]+"\.)?'
-        r'"[^"]+"\.'
-        r'"([^"]+)"'  # table name in last segment
-        r'\s+"([^"]+)"'  # alias
-        r"\s+ON\s+(.+?)(?=\s+(?:LEFT JOIN|WHERE|ORDER BY|LIMIT|OFFSET)\b|\Z)",
-        _re.IGNORECASE,
-    )
-
-    for match in reversed(list(join_pattern.finditer(sql))):
-        table_name = match.group(1)
-        alias = match.group(2)
-        on_clause = match.group(3)
-
-        if not hot_manager.is_hot(table_name):
+    tree = sqlglot.parse_one(compiled.sql, read="postgres")
+    hot_names: list[str] = []
+    seen: set[str] = set()
+    for tbl in tree.find_all(exp.Table):
+        name = tbl.name
+        if name in seen:
             continue
+        seen.add(name)
+        if hot_manager.is_hot(name):
+            hot_names.append(name)
 
-        entry = hot_manager.get_entry(table_name)
+    sql = compiled.sql
+    for name in hot_names:
+        entry = hot_manager.get_entry(name)
         if entry is None or not entry.rows:
             continue
-
-        # Build VALUES rows
-        cte_name = f"_hot_{table_name}"
-        col_names = entry.column_names
-
-        value_rows = []
-        for row in entry.rows:
-            vals = [_sql_literal(row.get(c)) for c in col_names]
-            value_rows.append(f"({', '.join(vals)})")
-
-        col_defs = ", ".join(f'"{c}"' for c in col_names)
-        col_suffix = f"({col_defs})" if col_defs else ""
-        cte_sql = f"{cte_name}{col_suffix} AS (VALUES {', '.join(value_rows)})"
-        ctes.append(cte_sql)
-
-        # Replace the JOIN target with the CTE name
-        new_join = f'LEFT JOIN "{cte_name}" "{alias}" ON {on_clause}'
-        sql = sql[: match.start()] + new_join + sql[match.end() :]
-
-    if ctes:
-        new_ctes_sql = ", ".join(ctes)
-        _with_re = _re.compile(r"^\s*WITH\s+", _re.IGNORECASE)
-        if _with_re.match(sql):
-            sql = _with_re.sub(f"WITH {new_ctes_sql}, ", sql)
-        else:
-            sql = f"WITH {new_ctes_sql} " + sql
+        sql = build_values_cte_sql(sql, name, entry)
 
     if sql != compiled.sql:
         return CompiledQuery(

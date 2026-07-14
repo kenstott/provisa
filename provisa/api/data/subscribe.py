@@ -18,6 +18,7 @@ Falls back to PostgreSQL LISTEN/NOTIFY when source type is ``postgresql``.
 """
 
 # Requirements: REQ-258, REQ-260, REQ-336, REQ-338, REQ-342, REQ-369, REQ-371
+# complexity-gate: allow-ble=1 reason="best-effort listener removal in the SSE disconnect finally-block (pre-existing) — a remove_listener failure during teardown is logged and must not mask the disconnect or block the connection release that follows"
 
 from __future__ import annotations
 
@@ -374,11 +375,16 @@ def _resolve_table_id(table: str, state) -> int | None:
 
 
 def _mask_row(row: dict, table_id: int | None, role_id: str | None, masking_rules) -> dict:
-    """Apply column masking to a change-event row (REQ-336).
+    """Apply column masking to a change-event row (REQ-336, REQ-971).
 
     Mirrors local-table governance: a role not in a column's ``unmasked_to`` receives the
     masked value, computed by the same rules Stage 2 injects into SQL. Returns the row
     unchanged when no masking applies.
+
+    REQ-971: this is the bounded-memory STREAMING mask stage — the non-pushdown fallback.
+    It masks exactly one event/row at a time (O(1) cleartext resident, O(batch) never
+    O(relation)); the subscription generators call it per event as the stream arrives and
+    never buffer the full unmasked relation to mask it (the forbidden fetchall-then-mask).
     """
     if not (role_id and masking_rules and table_id is not None):
         return row
