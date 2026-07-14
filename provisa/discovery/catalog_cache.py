@@ -14,7 +14,8 @@ The cache is populated in the background after source registration.
 The search endpoint reads from cache; falls back to live the engine if cache is cold.
 """
 
-# Requirements: REQ-464
+# Requirements: REQ-464, REQ-887
+# complexity-gate: allow-ble=6 reason="best-effort catalog indexing over a pluggable engine backend: schema listing, table listing, column-cache writes, and REQ-887 routine discovery each log and continue on any failure, so one source's metadata-indexing error never aborts source registration or the indexing of other sources"
 
 from __future__ import annotations
 
@@ -202,3 +203,37 @@ async def index_source(
             )
         except Exception as exc:
             log.warning("catalog_cache: write failed for %r/%r: %s", source_id, schema, exc)
+
+    # REQ-887: discover source-resident stored procedures/functions and auto-register
+    # them as tracked functions (read-returning → query, side-effecting → mutation).
+    # Runs after config-file functions are seeded, so hand-registration wins on conflict.
+    await _index_source_routines(source_id, source_type, schemas, source_pools, pool)
+
+
+async def _index_source_routines(  # REQ-887
+    source_id: str, source_type: str, schemas: list[str], source_pools, pool
+) -> None:
+    """Discover + auto-register stored procedures for one source across its schemas."""
+    from provisa.api.admin.introspect import native_routines, register_discovered_routines
+
+    for schema in schemas:
+        try:
+            routines = await native_routines(source_id, source_type, schema, source_pools)
+        except Exception as exc:
+            log.warning(
+                "catalog_cache: routine discovery failed for %r/%r: %s", source_id, schema, exc
+            )
+            continue
+        if not routines:
+            continue
+        async with pool.acquire() as config_conn:
+            registered, skipped = await register_discovered_routines(
+                config_conn, source_id, routines
+            )
+        log.debug(
+            "catalog_cache: registered %d routines (%d skipped) for %r/%r",
+            registered,
+            skipped,
+            source_id,
+            schema,
+        )

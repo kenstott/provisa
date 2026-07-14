@@ -112,6 +112,34 @@ demo_mode: native
   Write-Ok "Config written to $ConfigPath"
 }
 
+# ── Next-steps guidance (REQ-1005) ────────────────────────────────────────────
+# The native tier ships core + DuckDB only. Tell the user, in tier order, that the
+# federation engine (Trino), observability stack, and demo data pack are NOT part
+# of the native tier and how to add each via the layered installers. Trino is what
+# initializes the federation engine, so it comes first (Obs requires the container
+# tier; Demo requires Core + Obs).
+function Show-NextSteps {
+  Write-Host ''
+  Write-Host 'Next steps — extend your native install' -ForegroundColor White
+  Write-Host '═══════════════════════════════════════════════════'
+  Write-Host 'You installed the native tier: local query engine (core + DuckDB).'
+  Write-Host 'The federation engine (Trino), the observability stack, and the demo'
+  Write-Host 'data pack are NOT part of the native tier. Add them via layered installers:'
+  Write-Host ''
+  Write-Host '  1) Container installer (Provisa-Container-*.exe)' -ForegroundColor Cyan
+  Write-Host '     Provisions WSL2 + containerd + Trino. Run this to initialize the'
+  Write-Host '     federation engine (Trino). Required before Obs or Demo.'
+  Write-Host '  2) Obs installer (Provisa-Obs-*.exe)' -ForegroundColor Cyan
+  Write-Host '     Observability stack (collector + Prometheus + Grafana).'
+  Write-Host '     Requires the container tier.'
+  Write-Host '  3) Demo installer (Provisa-Demo-*.exe)' -ForegroundColor Cyan
+  Write-Host '     Demo data pack with guided tour. Requires Core + Obs.'
+  Write-Host ''
+  Write-Host 'To initialize the federation engine now, run the Container installer' -ForegroundColor Yellow
+  Write-Host '(Provisa-Container-*.exe), then re-run setup and choose Trino.' -ForegroundColor Yellow
+  Write-Host ''
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 Write-Host ''
 Write-Host 'Provisa — First Launch Setup (native — no Docker)' -ForegroundColor White
@@ -122,6 +150,8 @@ Stage-Runtime
 Write-ProvisaConfig
 New-Item -ItemType File -Path $Sentinel -Force | Out-Null
 Write-Ok 'First-launch setup complete.'
+
+Show-NextSteps
 
 # Hand off to the native CLI to start + open the UI.
 & powershell.exe -ExecutionPolicy Bypass -File (Join-Path $ScriptDir 'provisa-native.ps1') start

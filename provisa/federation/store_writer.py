@@ -29,7 +29,12 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.schema import CreateTable, DropTable
 
 from provisa.core.change_signal import APPEND, select_landing_shape
-from provisa.federation.materialize_exec import build_table, land_append, land_replace
+from provisa.federation.materialize_exec import (
+    _bulk_insert,
+    build_table,
+    land_append,
+    land_replace,
+)
 
 
 def _qualified(schema: str, table: str) -> str:
@@ -106,6 +111,46 @@ async def ensure_table(
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
         await conn.execute_core(CreateTable(tbl, if_not_exists=True))
+    return _qualified(schema, table)
+
+
+async def land_ctas(
+    store_dsn: str,
+    *,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    rows: list[dict],
+) -> str:
+    """Land a CTAS result transactionally (REQ-1001): create-temp → bulk-load → atomic swap.
+
+    The target ``schema.table`` is guaranteed absent by name-uniqueness resolution (REQ-998), so the
+    swap is a rename of the freshly loaded temp into place. A mid-load failure DROPs the temp and
+    re-raises — no partial target table is ever left behind. Returns the qualified target name. The
+    engine is never the writer; this opens the store's own connection (REQ-997)."""
+    from uuid import uuid4
+
+    from sqlalchemy.schema import CreateTable
+
+    temp = f"__ctas_{table}_{uuid4().hex[:8]}"
+    tmp_tbl = build_table(schema, temp, columns)
+    tmp_qualified = _qualified(schema, temp)
+    async with store_connection(store_dsn) as conn:
+        if schema and conn.capabilities.schemas:
+            from sqlalchemy.schema import CreateSchema
+
+            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        await conn.execute_core(CreateTable(tmp_tbl))
+        try:
+            await _bulk_insert(conn, tmp_tbl, rows)
+            # Atomic swap: RENAME the loaded temp to the target name (same schema). Portable across
+            # PostgreSQL/MySQL/SQLite/DuckDB — the target is new, so no drop-then-rename window.
+            await conn.execute(f"ALTER TABLE {tmp_qualified} RENAME TO {table}")
+        except Exception:
+            from sqlalchemy.schema import DropTable
+
+            await conn.execute_core(DropTable(tmp_tbl, if_exists=True))
+            raise
     return _qualified(schema, table)
 
 

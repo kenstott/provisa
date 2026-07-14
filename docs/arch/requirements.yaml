@@ -25140,7 +25140,8 @@
   - REQ-884
   - REQ-885
 - id: REQ-887
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 4. Source Connectors
   category: RDBMS Stored Procedure Auto-Discovery
   priority: SHOULD
@@ -25156,7 +25157,10 @@
     pattern (REQ-316/317): introspection + auto-registration avoiding hand-registration. Value scales
     with proc inventory; low build cost because it reuses existing introspection and OpenAPI-style registration.'
   code:
-  - provisa/introspection/
+  - provisa/api/admin/introspect.py
+  - provisa/discovery/catalog_cache.py
+  tests:
+  - tests/unit/test_stored_proc_discovery.py
   scenario: 'Given a user connects a Postgres source with stored procedures (identified via pg_proc)
 
     When introspection runs and analyzes prokind (p=procedure, f=function) and provolatile (stable/immutable
@@ -27061,8 +27065,17 @@
   related_reqs:
   - REQ-904
 - id: REQ-949
-  status: proposed
-  target: 2026-Q4
+  status: complete
+  since: 2026-07
+  code:
+  - provisa/federation/trino_connectors.py
+  - provisa/federation/clickhouse_connectors.py
+  - provisa/federation/connector.py
+  - provisa/federation/engine.py
+  tests:
+  - tests/unit/test_federation_engine.py
+  - tests/unit/test_clickhouse_connectors.py
+  - tests/unit/test_connector_reach_modes.py
   group: 4. Source Connectors
   category: Connector Abstraction
   priority: SHOULD
@@ -28045,7 +28058,8 @@
   - REQ-673
   - REQ-875
 - id: REQ-972
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
   priority: MUST
@@ -28058,8 +28072,12 @@
   target: 2026-Q3
   code:
   - config/capabilities.yaml
+  - provisa/core/desktop_profile.py
+  tests:
+  - tests/unit/test_desktop_profile.py
 - id: REQ-973
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
   priority: SHOULD
@@ -28071,9 +28089,14 @@
     reinstalling the base system.
   target: 2026-Q3
   code:
-  - provisa/installer/
+  - provisa/core/desktop_profile.py
+  - packaging/macos/first-launch.sh
+  - packaging/windows/first-launch-native.ps1
+  tests:
+  - tests/unit/test_desktop_profile.py
 - id: REQ-974
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
   priority: SHOULD
@@ -28085,9 +28108,12 @@
     endpoints at runtime without modifying the installer-created configuration.
   target: 2026-Q3
   code:
-  - provisa/desktop_profile.py
+  - provisa/core/desktop_profile.py
+  tests:
+  - tests/unit/test_desktop_profile.py
 - id: REQ-975
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
   priority: MUST
@@ -28099,10 +28125,12 @@
     optional for enterprise monitoring without adding complexity to the base install.
   target: 2026-Q3
   code:
-  - provisa/observability/
-  - provisa-ui/src/admin/
+  - provisa/core/desktop_profile.py
+  tests:
+  - tests/unit/test_desktop_profile.py
 - id: REQ-976
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
   priority: SHOULD
@@ -28113,9 +28141,12 @@
     reducing memory and disk overhead on desktop systems.
   target: 2026-Q3
   code:
-  - provisa/installer/
+  - packaging/macos/first-launch.sh
+  tests:
+  - tests/unit/test_desktop_install.py
 - id: REQ-977
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
   priority: SHOULD
@@ -28127,9 +28158,12 @@
     demo datasets alongside the installer.
   target: 2026-Q3
   code:
-  - provisa/installer/download.py
+  - packaging/macos/first-launch.sh
+  tests:
+  - tests/unit/test_desktop_install.py
 - id: REQ-978
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
   priority: SHOULD
@@ -28140,8 +28174,11 @@
     the demo without manual navigation.
   target: 2026-Q3
   code:
-  - provisa/launcher/
-  - provisa-ui/src/app.tsx
+  - packaging/macos/ProvisaLauncher/Sources/ProvisaLauncher/Views/Setup/SetupWizardView.swift
+  - packaging/windows/provisa-native.ps1
+  - packaging/macos/first-launch.sh
+  tests:
+  - tests/unit/test_desktop_install.py
   scenario: 'Given a fresh desktop installation without demo data
 
     When the user completes the wizard and launches the app
@@ -28160,7 +28197,8 @@
 
     '
 - id: REQ-979
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
   priority: MUST
@@ -28172,11 +28210,13 @@
     Linux) without requiring external Python environments or container runtimes.
   target: 2026-Q3
   code:
-  - provisa/build/
   - packaging/macos/build-dmg.sh
   - packaging/windows/build-sfx.ps1
   - packaging/windows/first-launch-native.ps1
   - packaging/windows/provisa-native.ps1
+  tests:
+  - tests/unit/test_desktop_install.py
+  - tests/unit/test_infra_requirements.py
   notes: Windows native builder (build-sfx.ps1) downloads python-build-standalone for x86_64-pc-windows-msvc,
     pip-installs provisa + uvicorn into it, and stages the built UI at <site-packages>/static — parity
     with macOS bundle_native_runtime. first-launch-native.ps1 stages the runtime to %USERPROFILE%\.provisa\runtime
@@ -28787,7 +28827,8 @@
 
     '
 - id: REQ-996
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 6. Cross-Source Data Movement
   category: Physical Data Transfer
@@ -28807,8 +28848,12 @@
     (REQ-998) holds automatically with no collision/overwrite; snapshots remain unregistered, ideal for
     time-windowed archives.'
   code:
+  - provisa/executor/ctas.py
   - provisa/executor/writable.py
   - provisa/federation/store_writer.py
+  - provisa/pgwire/server.py
+  tests:
+  - tests/unit/test_ctas.py
   scenario: 'Given a federated view SELECT col1, col2 FROM schema_a.table_a
 
     When a user executes CREATE TABLE schema_b.new_table AS SELECT col1, col2 FROM schema_a.table_a
@@ -28825,7 +28870,8 @@
       semantic model registration, enabling users to manage physical data layout outside the federated
       schema.
 - id: REQ-997
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 6. Cross-Source Data Movement
   category: Execution Routing
@@ -28841,9 +28887,12 @@
     budget prevents accidental duplicate table creation. This two-tier routing model is the performance
     guarantor for federation-wide bulk copy without intermediate staging.'
   code:
+  - provisa/executor/ctas.py
   - provisa/executor/writable.py
   - provisa/federation/store_writer.py
   - provisa/executor/direct.py
+  tests:
+  - tests/unit/test_ctas.py
   scenario: 'Given source_a on Snowflake and target schema on Snowflake
 
     When CREATE TABLE target_schema.new_table AS SELECT ... FROM source_a.table
@@ -28863,7 +28912,8 @@
 
     '
 - id: REQ-998
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 6. Cross-Source Data Movement
   category: Name Resolution
@@ -28876,7 +28926,9 @@
     Allowing collisions would create ambiguity in later reads: schema.table could refer to multiple physical
     tables across different sources, breaking the semantic model.'
   code:
-  - provisa/executor/writable.py
+  - provisa/executor/ctas.py
+  tests:
+  - tests/unit/test_ctas.py
   scenario: 'Given existing table schema_a.users in source_a
 
     When CREATE TABLE schema_a.users AS SELECT ...
@@ -28892,7 +28944,8 @@
 
     '
 - id: REQ-999
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 6. Cross-Source Data Movement
   category: Name Resolution
@@ -28907,7 +28960,9 @@
     without overriding the model's catalog-free resolution. Explicit catalog allows users to self-document
     which source they are writing to; mismatch is an error, preventing accidental writes to wrong sources.
   code:
-  - provisa/executor/writable.py
+  - provisa/executor/ctas.py
+  tests:
+  - tests/unit/test_ctas.py
   scenario: 'Given schema_a maps to source_snowflake
 
     When CREATE TABLE snowflake.schema_a.new_table AS SELECT ...
@@ -28932,7 +28987,8 @@
 
     '
 - id: REQ-1000
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 6. Cross-Source Data Movement
   category: Name Resolution
@@ -28946,7 +29002,9 @@
     on two different engines). Explicit catalog requirement prevents silent mis-targeting while allowing
     valid operations when placement is unambiguous.
   code:
-  - provisa/executor/writable.py
+  - provisa/executor/ctas.py
+  tests:
+  - tests/unit/test_ctas.py
   scenario: 'Given schema_shared maps to sources [snowflake_prod, snowflake_staging]
 
     When CREATE TABLE schema_shared.new_table AS SELECT ...
@@ -28967,7 +29025,8 @@
 
     '
 - id: REQ-1001
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 6. Cross-Source Data Movement
   category: Transaction Safety
@@ -28980,6 +29039,9 @@
     data.
   code:
   - provisa/federation/store_writer.py
+  - provisa/executor/ctas.py
+  tests:
+  - tests/unit/test_ctas.py
   scenario: 'Given a cross-engine CTAS with large result set
 
     When rows are bulk-loading and an error occurs at 50% completion
@@ -28990,7 +29052,8 @@
 
     '
 - id: REQ-1002
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 6. Cross-Source Data Movement
   category: Type Coercion
@@ -29004,6 +29067,10 @@
     that the target table DDL is valid and preserves logical semantics.
   code:
   - provisa/federation/store_writer.py
+  - provisa/executor/ctas.py
+  - provisa/core/ir_types.py
+  tests:
+  - tests/unit/test_ctas.py
   scenario: 'Given SELECT returns ARRAY<STRUCT<name STRING, value INT>> from Snowflake
 
     When creating target table in BigQuery
@@ -29088,7 +29155,8 @@
 
     '
 - id: REQ-1005
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
@@ -29107,6 +29175,8 @@
     the tier model and how to extend their installation.
   code:
   - packaging/windows/first-launch-native.ps1
+  tests:
+  - tests/unit/test_desktop_install.py
   related_reqs:
   - REQ-979
   - REQ-889

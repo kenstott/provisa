@@ -18,7 +18,7 @@ Builds on buenavista's socketserver-based handler, adding:
 - Multi-statement simple-query support
 """
 # Requirements: REQ-001, REQ-002, REQ-120, REQ-124, REQ-125, REQ-266, REQ-273
-# complexity-gate: allow-ble=4 reason="wire-protocol request-handler boundary: an arbitrary user query / DDL / COPY / describe can raise any exception type from the pluggable engine (DuckDB/buenavista/extensions) — each is caught and converted to a PostgreSQL SQLSTATE error response (send_error / _send_pg_error) so one bad statement returns a protocol error instead of crashing the connection handler; catching a narrower set would let an unmapped type kill the session"
+# complexity-gate: allow-ble=5 reason="wire-protocol request-handler boundary: an arbitrary user query / DDL / COPY / CTAS / describe can raise any exception type from the pluggable engine (DuckDB/buenavista/extensions) — each is caught and converted to a PostgreSQL SQLSTATE error response (send_error / _send_pg_error) so one bad statement returns a protocol error instead of crashing the connection handler; catching a narrower set would let an unmapped type kill the session"
 
 from __future__ import annotations
 
@@ -57,6 +57,12 @@ _TXN_TAG_RE = re.compile(
 )
 
 _COPY_RE = re.compile(r"^\s*COPY\b", re.IGNORECASE)
+# CTAS: CREATE TABLE ... AS SELECT — a physical data move (REQ-996), NOT plain DDL. Routed to the
+# CTAS handler ahead of _DDL_RE, whose column-def path cannot parse an AS-SELECT body.
+_CTAS_RE = re.compile(
+    r"^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?.+?\bAS\b\s+(?:WITH\b|SELECT\b|\()",
+    re.IGNORECASE | re.DOTALL,
+)
 _DDL_RE = re.compile(
     r"^\s*(CREATE\s+(TABLE|VIEW|INDEX|UNIQUE\s+INDEX|SEQUENCE|SCHEMA)"
     r"|ALTER\s+(TABLE|INDEX|SEQUENCE|VIEW)"
@@ -526,6 +532,33 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 try:
                     nrows = CopyHandler(self).handle(ctx, stmt)  # type: ignore[arg-type]
                     self.send_command_complete(f"COPY {nrows}\x00")
+                except PermissionError as exc:
+                    self._send_pg_error("ERROR", "42501", str(exc))
+                    ctx.mark_error()
+                except Exception as exc:
+                    self._send_pg_error("ERROR", "0A000", str(exc))
+                    ctx.mark_error()
+                break
+            if _CTAS_RE.match(stmt):
+                from provisa.executor.ctas import run_ctas
+
+                # role_id lives on the session, not the handler; the loop may be unset.
+                role = ctx.session.role_id  # type: ignore[attr-defined]
+                if not role:
+                    self._send_pg_error("ERROR", "28000", "Not authenticated")
+                    ctx.mark_error()
+                    break
+                with _loop_lock:
+                    _ctas_loop = _loop
+                if _ctas_loop is None:
+                    self._send_pg_error("ERROR", "58000", "Event loop not available")
+                    ctx.mark_error()
+                    break
+                try:
+                    tag = asyncio.run_coroutine_threadsafe(run_ctas(stmt, role), _ctas_loop).result(
+                        timeout=120
+                    )
+                    self.send_command_complete(f"{tag}\x00")
                 except PermissionError as exc:
                     self._send_pg_error("ERROR", "42501", str(exc))
                     ctx.mark_error()
