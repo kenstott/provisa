@@ -825,7 +825,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             from provisa.mv.refresh import refresh_mv
 
             assert state.federation_engine is not None
-            await refresh_mv(state.federation_engine, mv, state.mv_registry)
+            # REQ-879: coordinate the refresh across the fleet via the shared control-plane catalog.
+            await refresh_mv(state.federation_engine, mv, state.mv_registry, store=state.tenant_db)
             return MutationResult(success=True, message=f"MV {mv_id!r} refreshed")
         except Exception as e:
             logging.getLogger(__name__).exception("refresh_mv %r failed", mv_id)

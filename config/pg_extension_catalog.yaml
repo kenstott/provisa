@@ -1,0 +1,106 @@
+# Curated, prebuilt PostgreSQL extension catalog (REQ-898).
+#
+# A pinned inventory of the OOTB extension/FDW set that layers onto the pip-installed pgserver runtime
+# WITHOUT any runtime build toolchain. Every row is a concrete prebuilt artifact keyed by the two pin
+# axes the loader must match: the Postgres MAJOR (ABI) and the target OS/platform tag. CI publishes one
+# bundle per (extension x pg_major x platform); the resolver (provisa/pg_extensions/catalog.py) selects
+# the row for THIS deployment's (pg_major, platform) and FAILS LOUD when none exists — never a source
+# build (project rule: no silent fallback).
+#
+# platform tags (packaging axis, REQ-898): manylinux_x86_64 | manylinux_aarch64 |
+#                                          macos_arm64 | macos_x86_64 | windows_amd64
+# pg_major: pgserver's pinned Postgres major (16, 17).
+#
+# Iceberg/Parquet/DuckDB engines are Unix-only builds (see config/capabilities.yaml — pg_duckdb is not
+# native Windows); their rows deliberately omit windows_amd64, so a Windows deployment resolves them
+# fail-closed rather than pretending an artifact exists.
+
+schema_version: 1
+
+extensions:
+
+  sqlite_fdw:
+    kind: fdw
+    source_types: [sqlite]
+    native_deps: [libsqlite3]
+    builds:
+      - {pg_major: 16, platform: manylinux_x86_64,  artifact: sqlite_fdw-pg16-manylinux_x86_64.tar.gz}
+      - {pg_major: 16, platform: manylinux_aarch64, artifact: sqlite_fdw-pg16-manylinux_aarch64.tar.gz}
+      - {pg_major: 16, platform: macos_arm64,       artifact: sqlite_fdw-pg16-macos_arm64.tar.gz}
+      - {pg_major: 16, platform: macos_x86_64,      artifact: sqlite_fdw-pg16-macos_x86_64.tar.gz}
+      - {pg_major: 16, platform: windows_amd64,     artifact: sqlite_fdw-pg16-windows_amd64.zip}
+      - {pg_major: 17, platform: manylinux_x86_64,  artifact: sqlite_fdw-pg17-manylinux_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_aarch64, artifact: sqlite_fdw-pg17-manylinux_aarch64.tar.gz}
+      - {pg_major: 17, platform: macos_arm64,       artifact: sqlite_fdw-pg17-macos_arm64.tar.gz}
+      - {pg_major: 17, platform: macos_x86_64,      artifact: sqlite_fdw-pg17-macos_x86_64.tar.gz}
+      - {pg_major: 17, platform: windows_amd64,     artifact: sqlite_fdw-pg17-windows_amd64.zip}
+
+  parquet_fdw:
+    kind: fdw
+    source_types: [parquet]
+    native_deps: [libarrow, libparquet]
+    builds:
+      - {pg_major: 16, platform: manylinux_x86_64,  artifact: parquet_fdw-pg16-manylinux_x86_64.tar.gz}
+      - {pg_major: 16, platform: manylinux_aarch64, artifact: parquet_fdw-pg16-manylinux_aarch64.tar.gz}
+      - {pg_major: 16, platform: macos_arm64,       artifact: parquet_fdw-pg16-macos_arm64.tar.gz}
+      - {pg_major: 16, platform: macos_x86_64,      artifact: parquet_fdw-pg16-macos_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_x86_64,  artifact: parquet_fdw-pg17-manylinux_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_aarch64, artifact: parquet_fdw-pg17-manylinux_aarch64.tar.gz}
+      - {pg_major: 17, platform: macos_arm64,       artifact: parquet_fdw-pg17-macos_arm64.tar.gz}
+      - {pg_major: 17, platform: macos_x86_64,      artifact: parquet_fdw-pg17-macos_x86_64.tar.gz}
+
+  parquet_s3_fdw:
+    kind: fdw
+    source_types: [parquet, s3]
+    native_deps: [libarrow, libparquet, aws-sdk-cpp]
+    builds:
+      - {pg_major: 16, platform: manylinux_x86_64,  artifact: parquet_s3_fdw-pg16-manylinux_x86_64.tar.gz}
+      - {pg_major: 16, platform: manylinux_aarch64, artifact: parquet_s3_fdw-pg16-manylinux_aarch64.tar.gz}
+      - {pg_major: 16, platform: macos_arm64,       artifact: parquet_s3_fdw-pg16-macos_arm64.tar.gz}
+      - {pg_major: 16, platform: macos_x86_64,      artifact: parquet_s3_fdw-pg16-macos_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_x86_64,  artifact: parquet_s3_fdw-pg17-manylinux_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_aarch64, artifact: parquet_s3_fdw-pg17-manylinux_aarch64.tar.gz}
+      - {pg_major: 17, platform: macos_arm64,       artifact: parquet_s3_fdw-pg17-macos_arm64.tar.gz}
+      - {pg_major: 17, platform: macos_x86_64,      artifact: parquet_s3_fdw-pg17-macos_x86_64.tar.gz}
+
+  pg_lake:
+    kind: iceberg
+    source_types: [iceberg]
+    native_deps: [libduckdb]
+    builds:
+      - {pg_major: 16, platform: manylinux_x86_64,  artifact: pg_lake-pg16-manylinux_x86_64.tar.gz}
+      - {pg_major: 16, platform: manylinux_aarch64, artifact: pg_lake-pg16-manylinux_aarch64.tar.gz}
+      - {pg_major: 16, platform: macos_arm64,       artifact: pg_lake-pg16-macos_arm64.tar.gz}
+      - {pg_major: 16, platform: macos_x86_64,      artifact: pg_lake-pg16-macos_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_x86_64,  artifact: pg_lake-pg17-manylinux_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_aarch64, artifact: pg_lake-pg17-manylinux_aarch64.tar.gz}
+      - {pg_major: 17, platform: macos_arm64,       artifact: pg_lake-pg17-macos_arm64.tar.gz}
+      - {pg_major: 17, platform: macos_x86_64,      artifact: pg_lake-pg17-macos_x86_64.tar.gz}
+
+  pg_duckdb:
+    kind: analytics
+    source_types: [parquet, iceberg, delta_lake]
+    native_deps: [libduckdb]
+    builds:
+      - {pg_major: 16, platform: manylinux_x86_64,  artifact: pg_duckdb-pg16-manylinux_x86_64.tar.gz}
+      - {pg_major: 16, platform: manylinux_aarch64, artifact: pg_duckdb-pg16-manylinux_aarch64.tar.gz}
+      - {pg_major: 16, platform: macos_arm64,       artifact: pg_duckdb-pg16-macos_arm64.tar.gz}
+      - {pg_major: 16, platform: macos_x86_64,      artifact: pg_duckdb-pg16-macos_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_x86_64,  artifact: pg_duckdb-pg17-manylinux_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_aarch64, artifact: pg_duckdb-pg17-manylinux_aarch64.tar.gz}
+      - {pg_major: 17, platform: macos_arm64,       artifact: pg_duckdb-pg17-macos_arm64.tar.gz}
+      - {pg_major: 17, platform: macos_x86_64,      artifact: pg_duckdb-pg17-macos_x86_64.tar.gz}
+
+  pg_analytics:
+    kind: analytics
+    source_types: [parquet, iceberg, delta_lake]
+    native_deps: [libduckdb, datafusion]
+    builds:
+      - {pg_major: 16, platform: manylinux_x86_64,  artifact: pg_analytics-pg16-manylinux_x86_64.tar.gz}
+      - {pg_major: 16, platform: manylinux_aarch64, artifact: pg_analytics-pg16-manylinux_aarch64.tar.gz}
+      - {pg_major: 16, platform: macos_arm64,       artifact: pg_analytics-pg16-macos_arm64.tar.gz}
+      - {pg_major: 16, platform: macos_x86_64,      artifact: pg_analytics-pg16-macos_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_x86_64,  artifact: pg_analytics-pg17-manylinux_x86_64.tar.gz}
+      - {pg_major: 17, platform: manylinux_aarch64, artifact: pg_analytics-pg17-manylinux_aarch64.tar.gz}
+      - {pg_major: 17, platform: macos_arm64,       artifact: pg_analytics-pg17-macos_arm64.tar.gz}
+      - {pg_major: 17, platform: macos_x86_64,      artifact: pg_analytics-pg17-macos_x86_64.tar.gz}

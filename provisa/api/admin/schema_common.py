@@ -370,7 +370,8 @@ async def activate_view_mv(table_name: str) -> None:
     if mv is None:
         return
     # refresh_mv catches its own exceptions and marks the MV refresh-failed — no guard needed here.
-    await refresh_mv(state.federation_engine, mv, state.mv_registry)
+    # REQ-879: pass the shared control-plane catalog so a fleet coordinates the refresh (atomic claim).
+    await refresh_mv(state.federation_engine, mv, state.mv_registry, store=state.tenant_db)
 
     scheduler = getattr(state, "_scheduler", None)
     if scheduler is not None:

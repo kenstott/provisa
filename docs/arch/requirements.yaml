@@ -22898,10 +22898,15 @@
     requiring Docker or an external Postgres.
   code:
   - provisa/core/db.py
+  - provisa/core/database.py
+  - provisa/core/duckdb_async.py
   - provisa/core/repositories/source.py
   - provisa/core/schema.sql
+  - provisa/core/schema_org.py
   - provisa/api/app.py
   - provisa/openapi/pg_cache.py
+  tests:
+  - tests/unit/test_admin_store.py
   related_reqs:
   - REQ-825
   - REQ-826
@@ -24717,7 +24722,8 @@
   - REQ-826
   - REQ-874
 - id: REQ-879
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 4. Source Connectors
   category: Materialization Store
   priority: MUST
@@ -24758,7 +24764,10 @@
   code:
   - provisa/mv/registry.py
   - provisa/mv/refresh.py
+  - provisa/mv/coordination.py
   - provisa/core/schema_org.py
+  tests:
+  - tests/unit/test_mv_fleet_coordination.py
   related_reqs:
   - REQ-826
   - REQ-830
@@ -25583,7 +25592,13 @@
   - REQ-894
   - REQ-895
 - id: REQ-898
-  status: proposed
+  status: complete
+  since: 2026-07
+  code:
+  - provisa/pg_extensions/catalog.py
+  - config/pg_extension_catalog.yaml
+  tests:
+  - tests/unit/test_pg_extension_catalog.py
   target: 2026-Q4
   group: 3. Federation Engines & Data Sources
   category: PostgreSQL Deployment
@@ -27210,7 +27225,8 @@
 
     '
 - id: REQ-954
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 4. Source Connectors
   category: Replica Strategy
@@ -27224,6 +27240,11 @@
     engine's own connectors, making them reachable via pgwire bridge.
   code:
   - provisa/federation/strategy.py
+  - provisa/federation/pgwire_replica.py
+  - provisa/events/source_loader.py
+  - provisa/events/app_wiring.py
+  tests:
+  - tests/unit/test_replica_strategy.py
   scenario: 'Given a files/sharepoint/splunk source registered in federation config
 
     When the replica strategy selects _CONNECTOR_PGWIRE_REPLICA
@@ -27238,7 +27259,7 @@
   related_reqs:
   - REQ-947
 - id: REQ-955
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q3
   group: 4. Source Connectors
@@ -27259,6 +27280,9 @@
     sources.
   code:
   - provisa/federation/strategy.py
+  - provisa/federation/pgwire_replica.py
+  tests:
+  - tests/unit/test_replica_strategy.py
   scenario: 'Given a files source with backing-store config (directory or S3)
 
     When the replica strategy starts the pgwire server
@@ -27273,7 +27297,7 @@
 
     '
 - id: REQ-956
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q3
   group: 4. Source Connectors
@@ -27287,6 +27311,9 @@
     lean by fetching connector bundles on-demand.
   code:
   - provisa/runtime_deps
+  - provisa/federation/pgwire_replica.py
+  tests:
+  - tests/unit/test_replica_strategy.py
   scenario: 'Given a Provisa instance that needs to materialize a files/sharepoint/splunk source
 
     When the pgwire replica strategy is triggered

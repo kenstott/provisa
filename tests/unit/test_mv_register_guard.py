@@ -33,7 +33,12 @@ def fake_state(monkeypatch):
         register=lambda mv: registered.append(mv),
         unregister=lambda _: None,
     )
-    state = types.SimpleNamespace(mv_registry=registry, org_id="test", engine=None)
+    fed = types.SimpleNamespace(
+        materialize_store_target=lambda _org: ("postgresql", "mv_cache"),
+    )
+    state = types.SimpleNamespace(
+        mv_registry=registry, org_id="test", engine=None, federation_engine=fed
+    )
     fake_app = types.ModuleType("provisa.api.app")
     fake_app.state = state  # type: ignore[attr-defined]
     monkeypatch.setitem(__import__("sys").modules, "provisa.api.app", fake_app)

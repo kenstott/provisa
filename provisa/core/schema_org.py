@@ -247,6 +247,15 @@ materialized_views = Table(
     Column("last_refresh_at", DateTime(timezone=True)),
     Column("row_count", Integer),
     Column("last_error", Text),
+    # REQ-879: authoritative SHARED refresh-coordination state for a load-balanced fleet.
+    # writer = the instance owning the in-flight refresh; lease_until = when its claim expires
+    # (a crashed refresher's lease times out so the MV is reclaimable). The version stamps are
+    # the REQ-862 dedup key: a claim skips when materialized_input_version already == target.
+    Column("writer", Text),
+    Column("lease_until", DateTime(timezone=True)),
+    Column("materialized_definition_version", Text),
+    Column("materialized_input_version", Text),
+    Column("snapshot_id", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "status IN ('fresh', 'stale', 'refreshing', 'disabled')",
