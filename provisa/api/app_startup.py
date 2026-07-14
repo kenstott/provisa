@@ -73,20 +73,22 @@ def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
 
 async def _start_background_tasks(_log: logging.Logger) -> None:
     """Start MV storage reclamation, warm-table, hot-table refresh, and SQLite staleness tasks."""
-    # Start the MV reclamation loop whenever an engine terminal exists — not gated on MVs already
+    # Start the MV reclamation loop whenever the engine is connected — not gated on MVs already
     # being registered. It idles cheaply on an empty registry and reaps removed/orphaned MV tables.
     # MV COMPUTE is the event loop's job now (REQ-966); this loop no longer refreshes MVs, so the two
     # never double-compute the same target table (Phase 6: legacy periodic CTAS refresh retired).
+    # Gate on engine connectivity, not state.engine_conn: the latter is the Trino-only terminal and
+    # is None for native engines (DuckDB), which still register MVs and accumulate orphan tables.
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
 
-    if state.engine_conn:
+    if state.federation_engine.is_connected():
         from provisa.mv.refresh import reclamation_loop
 
         state._mv_refresh_task = asyncio.create_task(
             reclamation_loop(state.federation_engine, state.mv_registry),
         )
 
-    if state.engine_conn:
+    if state.federation_engine.is_connected():
         from provisa.compiler.sql_gen import query_counter as _qc
 
         # REQ-240: warm-tier thresholds + sweep interval come from config (warm_tables.*),
@@ -134,7 +136,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
 
         state._warm_task = asyncio.create_task(_warm_loop())
 
-    if state.hot_manager is not None and state.engine_conn:
+    if state.hot_manager is not None and state.federation_engine.is_connected():
         from provisa.cache.hot_tables import HotTableManager
 
         hot_mgr = state.hot_manager
