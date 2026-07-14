@@ -126,6 +126,9 @@ registered_tables = Table(
     # REQ-963 live-MV debounce (event-loop path). quiet=0 → real-time recompute.
     Column("mv_debounce_quiet", Float, nullable=False, server_default="0"),
     Column("mv_debounce_max_delay", Float, nullable=False, server_default="5"),
+    # REQ-879: MV cross-instance consistency tier — "shared" (fleet-coordinated refresh) or
+    # "distributed" (per-instance).
+    Column("mv_consistency", Text, nullable=False, server_default="shared"),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
     Column("live", JSON),
@@ -247,6 +250,15 @@ materialized_views = Table(
     Column("last_refresh_at", DateTime(timezone=True)),
     Column("row_count", Integer),
     Column("last_error", Text),
+    # REQ-879: authoritative SHARED refresh-coordination state for a load-balanced fleet.
+    # writer = the instance owning the in-flight refresh; lease_until = when its claim expires
+    # (a crashed refresher's lease times out so the MV is reclaimable). The version stamps are
+    # the REQ-862 dedup key: a claim skips when materialized_input_version already == target.
+    Column("writer", Text),
+    Column("lease_until", DateTime(timezone=True)),
+    Column("materialized_definition_version", Text),
+    Column("materialized_input_version", Text),
+    Column("snapshot_id", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "status IN ('fresh', 'stale', 'refreshing', 'disabled')",
@@ -438,6 +450,10 @@ tracked_functions = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("kind", Text, nullable=False, server_default="mutation"),
     Column("return_schema", JSON),
+    # REQ-885: implementation kind + swappable binding, decoupled from addressing.
+    Column("impl_kind", Text, nullable=False, server_default="source_procedure"),
+    Column("binding", JSON, nullable=False, default=dict, server_default="{}"),
+    Column("materialize", Boolean, nullable=False, server_default=false()),
 )
 
 tracked_webhooks = Table(
@@ -540,6 +556,9 @@ query_audit_log = Table(
     Column("source", Text, nullable=False),
     Column("status_code", Integer, nullable=False),
     Column("duration_ms", Integer, nullable=False),
+    # REQ-886: correlation id of the UDF invocation this row was written under, joining the
+    # audit row back to the engine-side UDF trace. Null for non-UDF queries.
+    Column("trace_id", Text),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

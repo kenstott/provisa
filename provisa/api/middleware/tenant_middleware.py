@@ -54,7 +54,15 @@ class TenantMiddleware(BaseHTTPMiddleware):  # REQ-456, REQ-462
 
         request.state.tenant_id = tenant_id
         request.state.tenant_context = ctx
-        return await call_next(request)
+        # REQ-828: bind the tenant to the app-layer meta-RLS guard for this request, so every
+        # control-plane read/write is confined to it store-independently. Reset on the way out.
+        from provisa.core.meta_rls import reset_meta_tenant, set_meta_tenant
+
+        _meta_token = set_meta_tenant(tenant_id)
+        try:
+            return await call_next(request)
+        finally:
+            reset_meta_tenant(_meta_token)
 
 
 async def _build_tenant_context(

@@ -574,6 +574,7 @@ if [ "$DEMO" = true ]; then
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  [ -n "${PROVISA_MCP_PORT:-}" ] && echo "  mcp:     http://localhost:${PROVISA_MCP_PORT}/mcp  (Model Context Protocol; role via OAuth or PROVISA_MCP_ROLE)"
   echo ""
   echo "Demo sources:"
   echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
@@ -587,6 +588,7 @@ else
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  [ -n "${PROVISA_MCP_PORT:-}" ] && echo "  mcp:     http://localhost:${PROVISA_MCP_PORT}/mcp  (Model Context Protocol; role via OAuth or PROVISA_MCP_ROLE)"
   echo ""
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."
 fi

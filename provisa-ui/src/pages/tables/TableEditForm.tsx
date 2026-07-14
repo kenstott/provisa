@@ -351,6 +351,40 @@ export function TableEditForm({
                 </div>
               </label>
             )}
+            {editingTable.materialize && (
+              <label>
+                <span
+                  style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
+                >
+                  Consistency{" "}
+                  <span
+                    title="REQ-879 cross-instance refresh coordination. shared = fleet-coordinated — one instance refreshes at a time via a CAS lease on the shared catalog, so every instance reads one snapshot-consistent copy. distributed = each instance materializes its own copy independently (eventually consistent; only safe for a deterministic view over a source that quiesces within a refresh cycle)."
+                    style={{
+                      cursor: "help",
+                      color: "var(--text-muted)",
+                      fontSize: "0.75rem",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ⓘ
+                  </span>
+                </span>
+                <select
+                  aria-label="MV consistency tier"
+                  data-testid="mv-consistency"
+                  value={editingTable.mvConsistency}
+                  onChange={(e) =>
+                    setEditingTable({
+                      ...editingTable,
+                      mvConsistency: e.target.value,
+                    })
+                  }
+                >
+                  <option value="shared">shared (fleet-coordinated)</option>
+                  <option value="distributed">distributed (per-instance)</option>
+                </select>
+              </label>
+            )}
           </>
         )}
         <label

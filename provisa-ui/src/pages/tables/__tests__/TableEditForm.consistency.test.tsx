@@ -1,0 +1,100 @@
+// Copyright (c) 2026 Kenneth Stott
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+// REQ-879: the MV consistency selector renders for a materialized view and
+// stages the chosen tier through the shared setEditingTable save path.
+
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { TableEditForm } from "../TableEditForm";
+import type { RegisteredTable } from "../../../types/admin";
+
+function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
+  return {
+    id: 1,
+    sourceId: "src",
+    domainId: "dom",
+    schemaName: "public",
+    tableName: "orders_view",
+    alias: null,
+    description: null,
+    cacheTtl: null,
+    preferMaterialized: null,
+    gqlNamingConvention: null,
+    watermarkColumn: null,
+    changeSignal: null,
+    probeQuery: null,
+    probeType: null,
+    columns: [],
+    columnPresets: [],
+    apiEndpoint: null,
+    viewSql: "SELECT 1",
+    materialize: true,
+    mvRefreshInterval: 300,
+    mvDebounceQuiet: 0,
+    mvDebounceMaxDelay: 5,
+    mvConsistency: "shared",
+    dataProduct: false,
+    enableAggregates: false,
+    enableGroupBy: false,
+    canDeployToDb: false,
+    live: null,
+    ...overrides,
+  };
+}
+
+function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
+  render(
+    <TableEditForm
+      editingTable={table}
+      setEditingTable={setEditingTable}
+      editingColumnTypes={{}}
+      cacheTtlEdits={{}}
+      setCacheTtlEdits={vi.fn()}
+      sources={[]}
+      roles={[]}
+      settings={null}
+      saving={false}
+      generatingDesc={false}
+      setGeneratingDesc={vi.fn()}
+      generatingColDesc={null}
+      setGeneratingColDesc={vi.fn()}
+      generateTableDescription={vi.fn()}
+      generateColumnDescription={vi.fn()}
+      cancelEditing={vi.fn()}
+      handleSaveEdit={vi.fn()}
+      updateEditCol={vi.fn()}
+    />,
+  );
+  return setEditingTable;
+}
+
+describe("TableEditForm — MV consistency (REQ-879)", () => {
+  it("renders the selector with the current tier for a materialized view", () => {
+    renderForm(makeTable({ mvConsistency: "distributed" }));
+    const sel = screen.getByTestId("mv-consistency") as HTMLSelectElement;
+    expect(sel).toBeTruthy();
+    expect(sel.value).toBe("distributed");
+  });
+
+  it("stages the chosen tier through setEditingTable", () => {
+    const setEditingTable = renderForm(makeTable());
+    fireEvent.change(screen.getByTestId("mv-consistency"), {
+      target: { value: "distributed" },
+    });
+    expect(setEditingTable).toHaveBeenCalledWith(
+      expect.objectContaining({ mvConsistency: "distributed" }),
+    );
+  });
+
+  it("hides the selector when the table is not materialized", () => {
+    renderForm(makeTable({ materialize: false }));
+    expect(screen.queryByTestId("mv-consistency")).toBeNull();
+  });
+});

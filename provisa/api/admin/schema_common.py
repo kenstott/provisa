@@ -298,8 +298,14 @@ def _sync_view_mv(
     *,
     debounce_quiet: float = 0.0,
     debounce_max_delay: float | None = None,
+    consistency: str = "shared",  # REQ-879
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view."""
+    # REQ-879: consistency tier is a closed set — reject anything else loudly (no silent default).
+    if consistency not in ("shared", "distributed"):
+        raise ValueError(
+            f"invalid MV consistency {consistency!r}: expected 'shared' or 'distributed'"
+        )
     from provisa.api.app import state
     from provisa.mv.models import MVDefinition, MVStatus
     from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
@@ -336,6 +342,7 @@ def _sync_view_mv(
         freshness_mode=freshness,
         debounce_quiet=debounce_quiet,  # REQ-963
         debounce_max_delay=debounce_max_delay,  # REQ-963
+        consistency=consistency,  # REQ-879
     )
     state.mv_registry.register(mv)
 
@@ -370,7 +377,8 @@ async def activate_view_mv(table_name: str) -> None:
     if mv is None:
         return
     # refresh_mv catches its own exceptions and marks the MV refresh-failed — no guard needed here.
-    await refresh_mv(state.federation_engine, mv, state.mv_registry)
+    # REQ-879: pass the shared control-plane catalog so a fleet coordinates the refresh (atomic claim).
+    await refresh_mv(state.federation_engine, mv, state.mv_registry, store=state.tenant_db)
 
     scheduler = getattr(state, "_scheduler", None)
     if scheduler is not None:

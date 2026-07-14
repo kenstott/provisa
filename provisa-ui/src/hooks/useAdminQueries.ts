@@ -73,6 +73,7 @@ import {
   ToggleMv,
   ToggleScheduledTask,
   CreateScheduledTask,
+  DeleteScheduledTask,
   PurgeCacheByTable,
   InvalidateFileSource,
   PurgeCache,
@@ -772,15 +773,52 @@ export function useToggleScheduledTask() {
   };
 }
 
+export interface CreateScheduledTaskInput {
+  id: string;
+  name: string;
+  cron: string;
+  kind: "webhook" | "sql";
+  webhookName?: string;
+  argsJson?: string;
+  sql?: string;
+}
+
 export function useCreateScheduledTask() {
   const [createScheduledTask, { loading }] = useMutation<{ createScheduledTask: MutationResult }>(
     CreateScheduledTask,
     { refetchQueries: [{ query: SCHEDULED_TASKS_QUERY }] },
   );
   return {
-    createScheduledTask: async (id: string, name: string, cron: string, webhookName: string, argsJson?: string) => {
-      const result = await createScheduledTask({ variables: { id, name, cron, webhookName, argsJson } });
+    createScheduledTask: async (input: CreateScheduledTaskInput) => {
+      const result = await createScheduledTask({
+        variables: {
+          id: input.id,
+          name: input.name,
+          cron: input.cron,
+          kind: input.kind,
+          webhookName: input.webhookName ?? null,
+          argsJson: input.argsJson ?? null,
+          sql: input.sql ?? null,
+        },
+      });
       return (result.data?.createScheduledTask ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useDeleteScheduledTask() {
+  const [deleteScheduledTask, { loading }] = useMutation<{ deleteScheduledTask: MutationResult }>(
+    DeleteScheduledTask,
+    { refetchQueries: [{ query: SCHEDULED_TASKS_QUERY }] },
+  );
+  return {
+    deleteScheduledTask: async (taskId: string) => {
+      const result = await deleteScheduledTask({ variables: { taskId } });
+      return (result.data?.deleteScheduledTask ?? {
         success: false,
         message: "",
       }) as MutationResult;

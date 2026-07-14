@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     probe_type TEXT,     -- REQ-982: input-probe method; NULL = resolve per source class
     mv_debounce_quiet     DOUBLE PRECISION NOT NULL DEFAULT 0,  -- MV NRT debounce quiet window (s)
     mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- MV NRT debounce max delay (s)
+    mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -131,6 +132,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_quiet DOUBLE PRECISION NOT NULL DEFAULT 0;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_consistency TEXT NOT NULL DEFAULT 'shared';  -- REQ-879
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_aggregates BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_group_by BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS live JSONB;
@@ -228,6 +230,14 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     last_refresh_at TIMESTAMPTZ,
     row_count       INTEGER,
     last_error      TEXT,
+    -- REQ-879: authoritative SHARED refresh-coordination state for a load-balanced fleet.
+    -- writer owns the in-flight refresh; lease_until is when its claim expires (crash reclaim).
+    -- The version stamps are the REQ-862 dedup key for the atomic claim (skip when already current).
+    writer          TEXT,
+    lease_until     TIMESTAMPTZ,
+    materialized_definition_version TEXT,
+    materialized_input_version      TEXT,
+    snapshot_id     TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -426,6 +436,15 @@ END $$;
 -- Migration: add return_schema to tracked_functions (custom shape for non-table returns)
 DO $$ BEGIN
     ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS return_schema JSONB;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- REQ-885: implementation-kind dimension + swappable binding (transport+location),
+-- decoupled from addressing (name/function_name). materialize selects DEFINER vs INVOKER.
+DO $$ BEGIN
+    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS impl_kind TEXT NOT NULL DEFAULT 'source_procedure';
+    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS binding JSONB NOT NULL DEFAULT '{}';
+    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

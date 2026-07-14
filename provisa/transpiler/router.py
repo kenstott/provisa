@@ -20,8 +20,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from provisa.executor.drivers.registry import has_driver
+
+if TYPE_CHECKING:
+    from provisa.federation.engine import FederationEngine
 
 # Requirements: REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-151, REQ-152
 
@@ -80,6 +84,7 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     source_dsns: dict[str, str] | None = None,
     cache_hit: bool = False,
     no_cache: bool = False,
+    engine: FederationEngine | None = None,
 ) -> RouteDecision:
     """Decide whether to route a query cached, direct, or through the engine.
 
@@ -94,6 +99,10 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             governance-normalized IR) holds an entry for this query.
         no_cache: True when the @noCache/no_cache bypass (REQ-544) removes CACHED
             from the candidate set for this query.
+        engine: The bound FederationEngine whose DECLARED capability traits (REQ-897) refine
+            the ENGINE-routed decision — e.g. its ``file_native`` trait distinguishes a file
+            source read in place (SCAN) from one that must be landed. When None, the decision is
+            engine-agnostic as before (the traits are planner inputs, never guessed).
 
     Returns:
         RouteDecision with route, target source (if direct), and reason.
@@ -182,7 +191,7 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             route=Route.ENGINE,
             source_id=None,
             dialect=None,
-            reason=f"virtual source ({stype})",
+            reason=_engine_source_reason(engine, stype),
         )
 
     # JSON path extraction — PG supports ->> natively; other dialects may not
@@ -213,3 +222,22 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
         dialect=None,
         reason=f"no direct driver for source type ({stype})",
     )
+
+
+# File/object source types the engine reads IN PLACE only when it declares the file_native trait
+# (REQ-897) — otherwise the source is LANDED before the engine can read it.
+_FILE_SOURCES: frozenset[str] = frozenset(
+    {"delta_lake", "iceberg", "hive", "hive_s3", "google_sheets"}
+)
+
+
+def _engine_source_reason(engine: FederationEngine | None, stype: str) -> str:
+    """Reason for an ENGINE-routed connector source, refined by the engine's DECLARED file_native
+    trait (REQ-897). For a file/object source the trait is the planner INPUT that decides read-in-
+    place (SCAN) vs land: a file_native engine scans it live; a non-file_native engine must land it.
+    Fails loud (UndeclaredTrait) if the trait is unset — never a guessed default."""
+    if engine is None or stype not in _FILE_SOURCES:
+        return f"virtual source ({stype})"
+    if engine.file_native:
+        return f"file source scanned in place on file_native engine {engine.name!r} ({stype})"
+    return f"file source landed — engine {engine.name!r} is not file_native ({stype})"

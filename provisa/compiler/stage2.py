@@ -504,3 +504,45 @@ def extract_sources(
                 break
 
     return sources
+
+
+def reduce_sources_for_routing(  # REQ-863
+    sql: str,
+    gov_ctx: GovernanceContext,
+    ctx: CompilationContext,
+    inlined_table_names: set[str],
+) -> set[str]:
+    """Routing source set AFTER the post-governance optimization stage (REQ-863).
+
+    The optimization stage may REMOVE sources — hot/API tables inlined as VALUES CTEs, or
+    union-pruned. Routing (decide_route) MUST consume this reduced set, not the pre-optimization
+    governed source set, so a query whose second source is fully inlined collapses to a single
+    live source and routes DIRECT instead of federated.
+
+    A source is dropped only when every one of its tables referenced by the query was inlined or
+    pruned; a source with any remaining live table stays. ``inlined_table_names`` are physical
+    optimizer-side names; the query may carry the same tables under semantic names, so identity is
+    reconciled through ``table_id`` (table_map keys both name forms to the same id).
+    """
+    tree = sqlglot.parse_one(sql, read="postgres")
+
+    inlined_tids: set[int] = set()
+    for nm in inlined_table_names:
+        tid = gov_ctx.table_map.get(nm) or gov_ctx.table_map.get(nm.split(".")[-1])
+        if tid is not None:
+            inlined_tids.add(tid)
+
+    live: set[str] = set()
+    for tbl in physical_tables(tree):
+        name = tbl.name
+        db = tbl.db
+        full = f"{db}.{name}" if db else name
+        tid = gov_ctx.table_map.get(full) or gov_ctx.table_map.get(name)
+        if tid is None or tid in inlined_tids:
+            continue
+        for meta in ctx.tables.values():
+            if meta.table_id == tid:
+                live.add(meta.source_id)
+                break
+
+    return live

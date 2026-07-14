@@ -88,6 +88,25 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         if _gql_sources:
             _adapter_loaders["graphql_remote"] = make_graphql_remote_loader(_gql_sources)
 
+        # files/sharepoint/splunk on an engine with NO connector for them are landed through the
+        # connector's bundled Calcite pgwire server (REQ-954): resolve+cache the bundle, start it,
+        # and SELECT as generic Postgres. Registered per pgwire-replica source; a shared allocator
+        # hands each server a unique port (REQ-955). Skipped on engines that reach them natively.
+        from provisa.federation.pgwire_replica import (
+            PortAllocator,
+            make_pgwire_loader,
+            needs_pgwire_replica,
+        )
+
+        _bare_engine = getattr(engine, "engine", engine)
+        _port_allocator = PortAllocator()
+        for _src in config.sources:
+            _stype = _src.type.value if hasattr(_src.type, "value") else str(_src.type)
+            if _stype in _adapter_loaders:
+                continue  # a type-level loader (openapi/graphql/pgwire) is already registered
+            if needs_pgwire_replica(_src, _bare_engine):
+                _adapter_loaders[_stype] = make_pgwire_loader(allocator=_port_allocator)
+
         row_loader = SourceRowLoader(engine, adapter_loaders=_adapter_loaders)
 
         def source_fetch(src: Any, tbl: Any) -> Any:

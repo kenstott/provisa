@@ -428,8 +428,14 @@ class Connection:
     # -- portable Core helpers (dialect-agnostic; used by migrated repositories) --
     async def execute_core(self, stmt: Any) -> Any:
         """Execute a SQLAlchemy Core statement (select/insert/update/delete)
-        and return the CursorResult. Autocommits outside a transaction."""
-        result = await self._ac.execute(stmt)
+        and return the CursorResult. Autocommits outside a transaction.
+
+        REQ-828: every control-plane statement passes through the app-layer meta-RLS guard here —
+        the single, un-bypassable seam that enforces tenant isolation store-independently (a no-op
+        when no tenant is in scope)."""
+        from provisa.core.meta_rls import apply_meta_tenant_guard
+
+        result = await self._ac.execute(apply_meta_tenant_guard(stmt))
         await self._commit_if_autocommit()
         return result
 
@@ -738,25 +744,85 @@ def create_engine(
     )
 
 
+# Control-plane store backends selectable by SQLAlchemy URI (REQ-828). The value is the
+# async driver each dialect must use; an embedded engine (sqlite/duckdb) gives the desktop
+# deployment model zero external infra, Postgres backs production — one abstraction, same schema.
+_ADMIN_ASYNC_DRIVER: dict[str, str] = {
+    "postgresql": "asyncpg",
+    "sqlite": "aiosqlite",
+    "duckdb": "aioduckdb",
+    "mysql": "aiomysql",
+    "mariadb": "aiomysql",
+}
+
+
+def _normalize_admin_url(url: str) -> str:
+    """Resolve a control-plane URI to its async driver, failing loud on an unsupported
+    or misconfigured backend (REQ-828 — no silent fallback to a default store).
+
+    A bare backend (``duckdb://…``) is pinned to the one supported async driver; an
+    explicit async driver is passed through; a known sync driver is rejected with the
+    async form to use; an unknown backend is rejected outright."""
+    from sqlalchemy import make_url
+    from sqlalchemy.exc import ArgumentError
+
+    try:
+        parsed = make_url(url)
+    except ArgumentError as exc:
+        raise ValueError(f"invalid control-plane store URI {url!r}: {exc}") from exc
+
+    backend = parsed.get_backend_name()
+    # ``drivername`` is the raw ``backend[+driver]`` token; ``get_driver_name()`` would
+    # substitute the dialect's default sync driver, hiding that none was requested.
+    driver = parsed.drivername.split("+", 1)[1] if "+" in parsed.drivername else ""
+    if backend not in _ADMIN_ASYNC_DRIVER:
+        raise ValueError(
+            f"unsupported control-plane store backend {backend!r} in URI {url!r}; "
+            f"supported: {', '.join(sorted(_ADMIN_ASYNC_DRIVER))}"
+        )
+    async_driver = _ADMIN_ASYNC_DRIVER[backend]
+    if not driver:
+        return str(parsed.set(drivername=f"{backend}+{async_driver}"))
+    if driver != async_driver:
+        raise ValueError(
+            f"control-plane store {backend!r} requires the async driver "
+            f"{backend}+{async_driver}, got {backend}+{driver} in URI {url!r}"
+        )
+    return url
+
+
 def create_engine_from_url(
     url: str,
     *,
     pool_size: int = 5,
     max_overflow: int = 5,
 ) -> AsyncEngine:
-    """Create a control-plane AsyncEngine from a full SQLAlchemy async URL.
+    """Create a control-plane AsyncEngine from a SQLAlchemy URI (REQ-828).
 
     The platform and tenant control planes are each configured by an independent
     SQLAlchemy URI (``postgresql+asyncpg://…``, ``sqlite+aiosqlite:///…``,
-    ``mysql+aiomysql://…``), so neither is tied to PostgreSQL. On PostgreSQL the
-    jsonb/json codecs the former asyncpg pool used are registered per connection.
+    ``duckdb:///…``, ``mysql+aiomysql://…``), so neither is tied to PostgreSQL. The
+    URI selects the backend; an embedded engine (SQLite/DuckDB) runs the store with
+    zero external infra on a developer desktop, Postgres in production — same schema,
+    same behavior. An unsupported/misconfigured URI fails loud (no default store).
+    On PostgreSQL the jsonb/json codecs the former asyncpg pool used are registered
+    per connection.
     """
-    engine = create_async_engine(
-        url,
-        pool_pre_ping=True,
-        pool_size=pool_size,
-        max_overflow=max_overflow,
-    )
+    from sqlalchemy import make_url
+
+    normalized = _normalize_admin_url(url)
+    if normalized.startswith("duckdb"):
+        # Ensure the async DuckDB driver is registered before the engine is built.
+        import provisa.core.duckdb_async  # noqa: F401
+
+    # An in-memory embedded store (sqlite/duckdb ``:memory:``) lives only inside a
+    # single connection, so its dialect forces a StaticPool — which rejects sizing
+    # kwargs. File and server backends take the sized async pool.
+    kwargs: dict[str, Any] = {"pool_pre_ping": True}
+    if make_url(normalized).database not in (None, "", ":memory:"):
+        kwargs["pool_size"] = pool_size
+        kwargs["max_overflow"] = max_overflow
+    engine = create_async_engine(normalized, **kwargs)
     if engine.dialect.name == "postgresql":
         event.listen(engine.sync_engine, "connect", _on_pg_connect)
 

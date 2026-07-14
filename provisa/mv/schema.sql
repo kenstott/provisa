@@ -18,6 +18,14 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     last_refresh_at TIMESTAMPTZ,
     row_count       INTEGER,
     last_error      TEXT,
+    -- REQ-879: authoritative SHARED refresh-coordination state for a load-balanced fleet.
+    -- writer owns the in-flight refresh; lease_until is when its claim expires (crash reclaim).
+    -- The version stamps are the REQ-862 dedup key for the atomic claim (skip when already current).
+    writer          TEXT,
+    lease_until     TIMESTAMPTZ,
+    materialized_definition_version TEXT,
+    materialized_input_version      TEXT,
+    snapshot_id     TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

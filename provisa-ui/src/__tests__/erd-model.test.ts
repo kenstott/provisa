@@ -63,6 +63,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvRefreshInterval: 0,
     mvDebounceQuiet: 0,
     mvDebounceMaxDelay: 5,
+    mvConsistency: "shared",
     dataProduct: false,
     enableAggregates: false,
     enableGroupBy: false,

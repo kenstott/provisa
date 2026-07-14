@@ -67,8 +67,13 @@ class RuntimeDep:  # REQ-948
 
 
 @dataclass(frozen=True)
-class Capability:  # REQ-842
-    """What a connector's engine can do with a source of this type."""
+class Capability:  # REQ-842, REQ-897
+    """What a connector's engine can do with a source of this type.
+
+    This is the connector-level PUSHDOWN capability trait of REQ-897 (predicate/join/aggregate) — a
+    per (engine, source_type) planner INPUT, read via ``FederationEngine.connector_pushdown()`` and
+    by promote.should_promote / plan_mask_evaluation. Orthogonal to the engine-wide DECLARED traits
+    (reach/mpp/file_native/pooled/transactional/streaming) carried on ``EngineTraits``."""
 
     predicate_pushdown: bool = False
     join_pushdown: bool = False

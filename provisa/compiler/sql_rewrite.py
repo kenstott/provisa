@@ -296,4 +296,21 @@ def qualify_with_catalogs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     return _apply_replacements(sql, replacements)
 
 
+def strip_catalog(sql: str) -> str:  # REQ-863
+    """Drop the catalog segment from every table ref: "cat"."schema"."table" → "schema"."table".
+
+    Structural, AST-only (REQ-913): used to lower a post-governance-optimized catalog-physical
+    query onto the DIRECT route, where a native driver addresses schema.table (no catalog).
+    VALUES-CTE relations left by inlining carry no catalog and are untouched.
+    """
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    for tbl in tree.find_all(exp.Table):
+        if tbl.args.get("catalog") is not None:
+            tbl.set("catalog", None)
+    return tree.sql(dialect="postgres")
+
+
 # --- Main compilation ---

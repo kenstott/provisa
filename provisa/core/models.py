@@ -453,6 +453,10 @@ class Table(
     mv_debounce_max_delay: float = (
         5.0  # hard cap: never more than this stale under continuous churn
     )
+    # REQ-879: cross-instance MV consistency tier. "shared" = one fleet-coordinated copy (CAS on
+    # the shared materialized_views catalog; one instance refreshes at a time). "distributed" =
+    # legacy per-instance materialization (eventually consistent).
+    mv_consistency: str = "shared"
     data_product: bool = False  # publish as a Data Product (catalog export)
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
@@ -598,6 +602,11 @@ class FunctionArgument(BaseModel):
 
     name: str
     type: str  # GraphQL scalar type name: String, Int, Float, Boolean, DateTime
+    # REQ-885: relation-argument kind for Provisa-hosted functions.
+    #   column_value = scalar, passed row-wise (default; existing behaviour)
+    #   table_ref    = lazy reference (relation name/metadata passed, not materialized)
+    #   result_set   = eager, referenced relation materialized to an Arrow buffer
+    arg_kind: str = "column_value"
 
 
 class InlineType(BaseModel):
@@ -625,6 +634,19 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
+    # REQ-885: implementation-kind dimension. Addressing (name/function_name) is decoupled
+    # from binding (transport + location, swappable). ``source_procedure`` is the existing
+    # REQ-205–208 path; the others are Provisa-hosted / external implementations.
+    #   source_procedure | script | http | grpc | python
+    impl_kind: str = "source_procedure"
+    # Per-kind transport+location. Never a fallback: dispatch fails loud when a hosted kind
+    # is registered without the binding keys its transport requires (REQ-885).
+    #   script: {"argv": [...]}   http: {"url", "method"?}   grpc: {"target", "method"}
+    #   python: {"callable": "module:attr"}   source_procedure: {} (uses source_id/function_name)
+    binding: dict = Field(default_factory=dict)
+    # REQ-885 identity model: True ⇒ admin/DEFINER, output-governed; False ⇒ user/INVOKER,
+    # input-governed. Selects the identity context stamped into the invocation trace (REQ-886).
+    materialize: bool = False
 
     model_config = ConfigDict(populate_by_name=True)
 

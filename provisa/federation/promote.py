@@ -28,6 +28,7 @@ projection- or join-only gap does not, since it need not shrink the scan.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from provisa.federation.cardinality import Estimate
 from provisa.federation.connector import Capability
@@ -59,6 +60,64 @@ def unmet_reducing_pushdown(cap: Capability, demand: PushdownDemand) -> bool:
     """
     return (demand.predicate and not cap.predicate_pushdown) or (
         demand.aggregate and not cap.aggregate_pushdown
+    )
+
+
+class MaskEval(str, Enum):  # REQ-971
+    """Where a column mask (a projection expression in the governed IR) is evaluated."""
+
+    SOURCE = (
+        "source"  # pushed down: the source evaluates the mask; raw value never crosses the wire
+    )
+    STREAM = "stream"  # not pushable: bounded-memory streaming eval (engine-side or per-batch tier)
+
+
+@dataclass(frozen=True)
+class MaskPlan:  # REQ-971
+    """The evaluation decision for a mask, plus the reason (a compliance receipt)."""
+
+    eval: MaskEval
+    reason: str
+
+    @property
+    def confidentiality_fallback(self) -> bool:
+        """True when the raw value must transit to the engine/tier because the source cannot
+        evaluate the mask — the planner acknowledges this and it is surfaced, never silent."""
+        return self.eval is MaskEval.STREAM
+
+
+def plan_mask_evaluation(cap: Capability, *, can_stream: bool = True) -> MaskPlan:  # REQ-971
+    """Decide where a column mask evaluates, from the EXISTING connector capability query.
+
+    A mask is a scalar SQL projection expression carried in the governed IR (REQ-263), so it
+    participates in projection pushdown exactly as an RLS predicate participates in predicate
+    pushdown. A connector that can evaluate expressions at the source — reported by the existing
+    ``Capability.predicate_pushdown`` (a WHERE predicate is itself a scalar expression; no
+    mask-specific trait is introduced) — evaluates the mask in place, so the raw unmasked value
+    never crosses the wire into the middle tier (SOURCE).
+
+    Where the source cannot evaluate the mask, it MUST be computed in a bounded-memory streaming
+    stage (STREAM) — engine-side or per-event/per-batch in the tier (the subscription path's
+    ``_mask_row`` over an async event stream). This makes masking correctness independent of
+    pushdown capability: a capability gap is never a data leak, and tier memory is bounded to
+    O(batch), not O(relation).
+
+    Fail loud (REQ-971): if a mask can neither push down nor stream, refuse — it is FORBIDDEN to
+    materialize the full unmasked relation in the tier to mask it (no fetchall-then-mask buffer).
+    """
+    if cap.predicate_pushdown:
+        return MaskPlan(
+            MaskEval.SOURCE,
+            "connector evaluates expressions at source; mask pushes down in the projection",
+        )
+    if can_stream:
+        return MaskPlan(
+            MaskEval.STREAM,
+            "mask not pushable at source — bounded-memory streaming evaluation (O(batch))",
+        )
+    raise ValueError(
+        "REQ-971: mask can neither push down to the source nor stream — refusing to buffer "
+        "the unmasked relation in the middle tier (no fetchall-then-mask)"
     )
 
 

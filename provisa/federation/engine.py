@@ -28,6 +28,7 @@ re-projects from the registry — never a fallback or error-and-continue.
 from __future__ import annotations
 
 from enum import Enum
+from dataclasses import dataclass
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -35,6 +36,7 @@ from provisa.federation.connector_base import CatalogEntry, Connector
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
+    from provisa.federation.connector_base import Capability
 
 
 class UnreachableSource(Exception):  # REQ-841
@@ -62,6 +64,34 @@ class DriverClass(str, Enum):  # REQ-840
     BROAD = "broad"  # reaches many external source types (Trino)
     PARTIAL = "partial"  # reaches a subset (DuckDB)
     SELF_ONLY = "self_only"  # reaches only its own store (Snowflake)
+
+
+class UndeclaredTrait(Exception):  # REQ-897
+    """A DECLARED capability trait was read where a planner decision needs it, but the engine never
+    declared it. Traits are planner INPUTS (REQ-897); a decision on an unset trait is a declaration
+    gap, never a silently-guessed default — fail loud (CLAUDE.md: no fallback on a missing value)."""
+
+    def __init__(self, engine: str, trait: str) -> None:
+        self.engine = engine
+        self.trait = trait
+        super().__init__(f"engine {engine!r} did not declare capability trait {trait!r}")
+
+
+@dataclass(frozen=True)
+class EngineTraits:  # REQ-897
+    """The DECLARED capability traits of a federation engine — a first-class descriptor the planner
+    reads as INPUTS (REQ-897), not inferred from incidental plumbing (connector count / driver class
+    alone). Orthogonal dimensions: reach (driver_class), scale (mpp), storage (file_native / pooled /
+    transactional), transport (streaming). Connector-level pushdown is per (engine, source_type) and
+    lives on connector ``Capability`` (REQ-842) — read via ``FederationEngine.connector_pushdown()``,
+    the same Capability promote.should_promote / plan_mask_evaluation read (no duplicate trait)."""
+
+    reach: DriverClass  # reach dimension — BROAD (native federation) / PARTIAL / SELF_ONLY
+    mpp: bool  # scale dimension — distributes execution across a cluster
+    file_native: bool  # storage — scans file/object sources IN PLACE (no landing)
+    pooled: bool  # storage — server-side connection pooling for the engine's own store
+    transactional: bool  # storage — the engine's own store supports transactional writes
+    streaming: bool  # transport — lazy Arrow record-batch streaming (EngineCapability.ARROW_STREAM)
 
 
 class EngineCatalog:  # REQ-843
@@ -98,6 +128,9 @@ class FederationEngine:  # REQ-840
         native_store: str | None = None,
         driver_class: DriverClass | None = None,
         mpp: bool = False,
+        file_native: bool | None = None,
+        pooled: bool | None = None,
+        transactional: bool | None = None,
         backend_factory: Any = None,
         capabilities: Any = None,
         default_materialize_store: Any = None,
@@ -132,6 +165,15 @@ class FederationEngine:  # REQ-840
         # yet are single-node. Informational today; a planner input later (e.g. push a large
         # federated join to an MPP engine, or gate the single-node→MPP tier graduation).
         self.mpp = mpp
+        # DECLARED storage traits (REQ-897) — first-class planner INPUTS, not inferred from plumbing.
+        # None ⇒ undeclared: reading one where a decision needs it raises UndeclaredTrait (fail loud).
+        # file_native: the engine scans file/object sources in place (a SCAN reach) with no landing.
+        # pooled: the engine's own store does server-side connection pooling. transactional: that
+        # store supports transactional (atomic) writes. Consolidated with reach/mpp/streaming into the
+        # ``traits`` descriptor the planner reads.
+        self._file_native = file_native
+        self._pooled = pooled
+        self._transactional = transactional
 
     # -- backend (REQ-825/840): the engine's concrete terminal implementation ---
 
@@ -157,6 +199,56 @@ class FederationEngine:  # REQ-840
         from provisa.federation.runtime import EngineCapability
 
         return self._capabilities or frozenset({EngineCapability.ROWS})
+
+    # -- DECLARED capability traits (REQ-897): first-class planner inputs -------
+
+    def _trait(self, value: bool | None, name: str) -> bool:
+        """Read a DECLARED trait, failing loud when a decision needs one the engine never set."""
+        if value is None:
+            raise UndeclaredTrait(self.name, name)
+        return value
+
+    @property
+    def file_native(self) -> bool:
+        """DECLARED: the engine scans file/object sources in place (a SCAN reach), no landing."""
+        return self._trait(self._file_native, "file_native")
+
+    @property
+    def pooled(self) -> bool:
+        """DECLARED: the engine's own store does server-side connection pooling."""
+        return self._trait(self._pooled, "pooled")
+
+    @property
+    def transactional(self) -> bool:
+        """DECLARED: the engine's own store supports transactional (atomic) writes."""
+        return self._trait(self._transactional, "transactional")
+
+    @property
+    def streaming(self) -> bool:
+        """DERIVED transport trait: the engine advertises lazy Arrow record-batch streaming."""
+        from provisa.federation.runtime import EngineCapability
+
+        return EngineCapability.ARROW_STREAM in self.capabilities
+
+    @property
+    def traits(self) -> EngineTraits:
+        """The engine's DECLARED capability descriptor (REQ-897) — the consolidated planner input.
+        Fails loud if any storage trait is undeclared (UndeclaredTrait)."""
+        return EngineTraits(
+            reach=self.driver_class(),
+            mpp=self.mpp,
+            file_native=self.file_native,
+            pooled=self.pooled,
+            transactional=self.transactional,
+            streaming=self.streaming,
+        )
+
+    def connector_pushdown(self, source_type: str) -> Capability:
+        """The DECLARED connector-level pushdown capability (predicate/join/aggregate) for a source
+        type (REQ-897/842) — the planner's pushdown INPUT. Reconciles with promote.should_promote and
+        plan_mask_evaluation, which read the same connector ``Capability``; no duplicate trait is
+        introduced. Fails loud (UnreachableSource) when the engine cannot reach the type."""
+        return self.connector_for(source_type).capability()
 
     # -- reachability (REQ-840) ------------------------------------------------
 
@@ -340,6 +432,9 @@ def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
         build_trino_connectors(),  # the complete Trino reach — one connector per catalogable type
         driver_class=DriverClass.BROAD,  # many external source types
         mpp=True,  # distributes across a Trino worker cluster
+        file_native=True,  # Hive/Iceberg/Delta lakehouse catalogs scan files in place (REQ-897)
+        pooled=True,  # coordinator holds server-side pools per catalog
+        transactional=False,  # DML is connector-dependent; not a general transactional store
         backend_factory=TrinoBackend,  # the only backend that references Trino
         capabilities=frozenset(
             {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
@@ -387,6 +482,9 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         native_store="duckdb",
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node embedded engine (REQ-894)
+        file_native=True,  # read_csv/read_parquet/iceberg_scan read files in place (REQ-897)
+        pooled=False,  # embedded single-writer connection — no server-side pool
+        transactional=True,  # DuckDB is ACID
         backend_factory=DuckDBBackend,  # in-process execution terminal (the engine's own model)
         capabilities=frozenset(
             {
@@ -473,6 +571,9 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         native_store="postgres",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node: cross-server joins materialize locally (REQ-894)
+        file_native=True,  # pg_duckdb / file_fdw scan csv/parquet/iceberg in place (REQ-897)
+        pooled=True,  # server-side connection pooling
+        transactional=True,  # PostgreSQL is ACID
         backend_factory=PgBackend,  # in-process terminal driving PgFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
     )
@@ -518,6 +619,9 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         native_store="clickhouse",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
         mpp=True,  # ClickHouse distributes across shards/replicas
+        file_native=True,  # S3/URL/File + Iceberg/DeltaLake table engines scan in place (REQ-897)
+        pooled=True,  # server-side connection handling
+        transactional=False,  # OLAP store — no general multi-statement transactions
         backend_factory=ClickHouseBackend,  # in-process terminal driving ClickHouseFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
         capabilities=frozenset(
@@ -563,6 +667,9 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
         native_store=backend,
         driver_class=DriverClass.SELF_ONLY,  # reaches only its own store; everything lands in
         mpp=False,
+        file_native=False,  # no file scanner — every source lands into the store (REQ-897)
+        pooled=True,  # SQLAlchemy engine holds a server-side connection pool
+        transactional=True,  # a generic RDB store is transactional
         backend_factory=SqlAlchemyBackend,  # in-process terminal driving SqlAlchemyFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
     )
@@ -584,6 +691,9 @@ def build_snowflake_engine() -> FederationEngine:  # REQ-988 self-only MPP wareh
         native_store="snowflake",
         driver_class=DriverClass.PARTIAL,  # attaches cloud object/lake sources live + lands the rest
         mpp=True,  # Snowflake distributes across virtual-warehouse compute
+        file_native=True,  # external tables/stages scan cloud object/lake sources in place (REQ-897)
+        pooled=True,  # server-side connection pooling
+        transactional=True,  # Snowflake is ACID
         backend_factory=SnowflakeBackend,
         capabilities=frozenset(
             {
@@ -612,6 +722,9 @@ def build_databricks_engine() -> FederationEngine:  # REQ-987 self-only MPP ware
         native_store="databricks",
         driver_class=DriverClass.PARTIAL,  # attaches cloud object/lake sources live + lands the rest
         mpp=True,  # Databricks distributes across its SQL-warehouse cluster
+        file_native=True,  # UC external tables scan cloud object/lake sources in place (REQ-897)
+        pooled=True,  # SQL-warehouse holds server-side pools
+        transactional=True,  # Delta Lake ACID
         backend_factory=DatabricksBackend,
         capabilities=frozenset(
             {
@@ -639,6 +752,9 @@ def build_bigquery_engine() -> FederationEngine:  # REQ — BigQuery federation 
         native_store="bigquery",
         driver_class=DriverClass.PARTIAL,  # attaches cloud object/lake sources live + lands the rest
         mpp=True,  # Dremel distributes across BigQuery slots
+        file_native=True,  # external tables (BigLake) scan GCS object/lake sources in place (REQ-897)
+        pooled=True,  # BigQuery API multiplexes server-side
+        transactional=False,  # analytics warehouse — no general multi-statement transactions
         backend_factory=BigQueryBackend,
         capabilities=frozenset(
             {
@@ -666,6 +782,11 @@ def _build_mssql_warehouse_engine(name: str) -> FederationEngine:  # Fabric / Sy
         native_store=name,
         driver_class=DriverClass.PARTIAL,  # attaches OneLake/ADLS object/lake sources live + lands the rest
         mpp=True,  # Fabric/Synapse distribute across their compute
+        file_native=True,  # OPENROWSET scans OneLake/ADLS object/lake sources in place (REQ-897)
+        pooled=True,  # server-side connection pooling over TDS/ODBC
+        transactional=(
+            name == "fabric"
+        ),  # Fabric Warehouse is transactional; Synapse serverless is read-only
         backend_factory=(FabricBackend if name == "fabric" else SynapseBackend),
         capabilities=frozenset(
             {

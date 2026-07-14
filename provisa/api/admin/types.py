@@ -113,6 +113,9 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_refresh_interval: int = 300
     mv_debounce_quiet: float = 0.0  # REQ-963: seconds of quiet before firing; 0 = real-time
     mv_debounce_max_delay: float = 5.0  # REQ-963: staleness cap under continuous churn
+    mv_consistency: str = (
+        "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
+    )
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False
@@ -313,6 +316,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_refresh_interval: int = 300
     mv_debounce_quiet: float = 0.0  # REQ-963: seconds of quiet before firing; 0 = real-time
     mv_debounce_max_delay: float = 5.0  # REQ-963: staleness cap under continuous churn
+    mv_consistency: str = (
+        "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
+    )
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False
@@ -439,6 +445,8 @@ class ScheduledTaskType:  # REQ-533
     name: str
     cron_expression: str
     webhook_url: str | None
+    kind: str  # REQ-1003: "webhook" | "sql"
+    sql: str | None  # REQ-1003: SQL statement for a SQL trigger
     enabled: bool
     last_run_at: str | None
     next_run_at: str | None

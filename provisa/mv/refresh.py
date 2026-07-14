@@ -135,30 +135,77 @@ async def _probe_source_count(engine, mv: MVDefinition) -> int:  # REQ-235
     return res.rows[0][0]
 
 
-async def refresh_mv(  # REQ-135, REQ-160, REQ-235
+async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
     engine,
     mv: MVDefinition,
     registry: MVRegistry,
+    store=None,
+    writer: str | None = None,
 ) -> None:
     """Refresh a single MV through the engine terminal.
 
     First refresh: CREATE TABLE AS SELECT.
     Subsequent: DELETE FROM target; INSERT INTO target SELECT.
     Skips materialization if source row count exceeds max_rows.
-    """
-    registry.mark_refreshing(mv.id)
+
+    REQ-879: when ``store`` (the shared control-plane catalog) is provided and the MV is on the
+    ``shared`` consistency tier, the refresh is driven off an ATOMIC CLAIM on the shared
+    ``materialized_views`` row — exactly one fleet instance refreshes a given MV at a time. A
+    second concurrent instance sees the live lease, its claim returns 0 rows, and it skips. The
+    result is finalized with a FENCED COMMIT (only while this instance still owns a live lease);
+    a lost lease discards the result rather than clobbering a newer refresh. When ``store`` is
+    None or the MV is ``distributed``, refresh is per-instance (unchanged legacy path)."""
+    from provisa.mv.input_signals import gather_input_signals, input_token  # noqa: PLC0415
+
+    coordinated = store is not None and mv.consistency == "shared"
+    if coordinated and writer is None:
+        from provisa.mv.coordination import INSTANCE_WRITER  # noqa: PLC0415
+
+        writer = INSTANCE_WRITER
+
     target = _target_ref(mv)
-
     start = time.time()
-    try:
-        from provisa.mv.input_signals import gather_input_signals, input_token  # noqa: PLC0415
 
-        input_signals = await gather_input_signals(engine, mv.source_tables)  # REQ-862
+    # Input signals are gathered up front: the input token is both the REQ-881 probe key and
+    # the REQ-879 claim dedup key (the REQ-862 stamp of the source state being materialized).
+    input_signals = await gather_input_signals(engine, mv.source_tables)  # REQ-862
+    target_token = input_token(input_signals, mv.source_tables)
+
+    if coordinated:
+        assert store is not None and writer is not None  # coordinated ⇒ both set (see above)
+        from provisa.mv.coordination import claim_refresh  # noqa: PLC0415
+
+        claimed = await claim_refresh(store, mv.id, writer, target_token)
+        if not claimed:
+            # 0 rows: another fleet instance owns this refresh, or the store already holds this
+            # exact input version. Skip — never race a second writer onto the same relation.
+            log.info(
+                "MV %s: refresh claim not won (owned by another instance or already current) — skip",
+                mv.id,
+            )
+            return
+
+    registry.mark_refreshing(mv.id)
+
+    try:
         # REQ-881: probe-freshness gate — skip the expensive rebuild when every source reports
         # an unchanged input token. Runs before the size-count probe so even that is skipped.
         if mv.freshness_mode in ("probe", "ttl_probe"):
-            token = input_token(input_signals, mv.source_tables)
-            if token is not None and token == mv.last_input_token:
+            if target_token is not None and target_token == mv.last_input_token:
+                if coordinated:
+                    assert store is not None and writer is not None
+                    # Advance the shared version + release the lease without a rebuild.
+                    from provisa.mv.coordination import commit_refresh  # noqa: PLC0415
+
+                    await commit_refresh(
+                        store,
+                        mv.id,
+                        writer,
+                        row_count=mv.row_count if mv.row_count is not None else 0,
+                        input_version=target_token,
+                        definition_version=_mv_definition_version(mv),
+                        snapshot_id=None,
+                    )
                 registry.mark_unchanged(mv.id)
                 log.info("MV %s: sources unchanged (probe) — skipped rebuild", mv.id)
                 return
@@ -172,6 +219,11 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
                 source_count,
                 mv.max_rows,
             )
+            if coordinated:
+                assert store is not None and writer is not None
+                from provisa.mv.coordination import release_refresh  # noqa: PLC0415
+
+                await release_refresh(store, mv.id, writer, None)
             mv.status = MVStatus.SKIPPED_SIZE
             mv.last_error = f"Source row count {source_count} exceeds max_rows {mv.max_rows}"
             return
@@ -226,8 +278,26 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
         row_count = (await engine.execute_engine(f"SELECT COUNT(*) FROM {target}")).rows[0][0]
 
         duration = time.time() - start
+        if coordinated:
+            assert store is not None and writer is not None
+            # FENCED COMMIT: finalize only while this instance still owns a live lease. A lost
+            # lease (slow / crashed-then-revived) discards the result — never clobber a newer refresh.
+            from provisa.mv.coordination import commit_refresh  # noqa: PLC0415
+
+            committed = await commit_refresh(
+                store,
+                mv.id,
+                writer,
+                row_count=row_count,
+                input_version=target_token,
+                definition_version=_mv_definition_version(mv),
+                snapshot_id=None,
+            )
+            if not committed:
+                log.warning("MV %s: lease lost during refresh — result discarded (fencing)", mv.id)
+                return
         registry.mark_refreshed(mv.id, row_count)
-        mv.last_input_token = input_token(input_signals, mv.source_tables)  # REQ-881
+        mv.last_input_token = target_token  # REQ-881
         log.info(
             "Refreshed MV %s: %d rows in %.1fs",
             mv.id,
@@ -235,6 +305,11 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
             duration,
         )
     except Exception as e:
+        if coordinated:
+            assert store is not None and writer is not None
+            from provisa.mv.coordination import release_refresh  # noqa: PLC0415
+
+            await release_refresh(store, mv.id, writer, str(e))
         registry.mark_refresh_failed(mv.id, str(e))
         log.exception("Failed to refresh MV %s", mv.id)
 

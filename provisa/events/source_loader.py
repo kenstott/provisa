@@ -74,14 +74,17 @@ class SourceRowLoader:
 
     async def load(self, source: Any, table: Any) -> list[dict]:
         stype = _source_type(source)
-        if stype in _ADAPTER_FETCH_ONLY:
-            loader = self._adapter_loaders.get(stype)
-            if loader is None:
-                raise UnsupportedSourceFetch(
-                    f"source type {stype!r} has no engine-scannable table and no adapter row-fetch "
-                    f"is wired (source {source.id!r})"
-                )
+        # A registered adapter loader always wins: it is the type's OWN row-fetch (openapi call,
+        # connector pgwire replica SELECT, REQ-954), used in preference to the engine terminal even
+        # for a type the engine could otherwise scan — the wiring registers one only when needed.
+        loader = self._adapter_loaders.get(stype)
+        if loader is not None:
             return await loader(source, table)
+        if stype in _ADAPTER_FETCH_ONLY:
+            raise UnsupportedSourceFetch(
+                f"source type {stype!r} has no engine-scannable table and no adapter row-fetch "
+                f"is wired (source {source.id!r})"
+            )
         from provisa.compiler.naming import source_to_catalog
 
         catalog = source_to_catalog(source.id)

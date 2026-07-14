@@ -712,12 +712,15 @@ class Query:  # REQ-021, REQ-042
             next_run = None
             if job is not None and job.next_run_time is not None:
                 next_run = job.next_run_time.isoformat()
+            sql = t.get("sql")
             result.append(
                 ScheduledTaskType(
                     id=tid,
                     name=t.get("name", tid),
                     cron_expression=t["cron"],
                     webhook_url=t.get("url"),
+                    kind="sql" if sql else "webhook",  # REQ-1003
+                    sql=sql,
                     enabled=t.get("enabled", True),
                     last_run_at=None,
                     next_run_at=next_run,

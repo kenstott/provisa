@@ -38,6 +38,7 @@ import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 import { ObservabilityTab } from "../components/admin/ObservabilityTab";
 import { FederationEngineTab } from "../components/admin/FederationEngineTab";
+import { McpServerTab } from "../components/admin/McpServerTab";
 import { EncryptionTab } from "../components/admin/EncryptionTab";
 import { AuthTab } from "../components/admin/AuthTab";
 import { LocalUsersTab } from "../components/admin/LocalUsersTab";
@@ -56,6 +57,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/auth": "Authentication",
   "/admin/system-health": "Health",
   "/admin/observability": "Observability",
+  "/admin/mcp-server": "MCP Server",
   "/admin/local-users": "Local Users",
   "/admin/orgs": "Orgs",
 };
@@ -727,6 +729,7 @@ export function AdminPage() {
         {activeTab === "Observability" && settings && (
           <ObservabilityTab settings={settings} setSettings={setSettings} />
         )}
+        {activeTab === "MCP Server" && <McpServerTab />}
         {activeTab === "Local Users" && (
           <LocalUsersTab allRoles={allRoles} allDomains={allDomains} />
         )}

@@ -404,6 +404,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.change_signal,
                     debounce_quiet=input.mv_debounce_quiet,  # REQ-963
                     debounce_max_delay=input.mv_debounce_max_delay,  # REQ-963
+                    consistency=input.mv_consistency,  # REQ-879
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
                 return MutationResult(success=False, message=str(_det_err))
@@ -825,7 +826,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             from provisa.mv.refresh import refresh_mv
 
             assert state.federation_engine is not None
-            await refresh_mv(state.federation_engine, mv, state.mv_registry)
+            # REQ-879: coordinate the refresh across the fleet via the shared control-plane catalog.
+            await refresh_mv(state.federation_engine, mv, state.mv_registry, store=state.tenant_db)
             return MutationResult(success=True, message=f"MV {mv_id!r} refreshed")
         except Exception as e:
             logging.getLogger(__name__).exception("refresh_mv %r failed", mv_id)
@@ -959,6 +961,27 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             success=True,
             message=f"Task {task_id!r} {'enabled' if enabled else 'disabled'}",
         )
+
+    @strawberry.mutation
+    async def create_scheduled_task(  # REQ-1003, REQ-1004
+        self,
+        id: str,
+        name: str,
+        cron: str,
+        kind: str,
+        webhook_name: Optional[str] = None,
+        args_json: Optional[str] = None,
+        sql: Optional[str] = None,
+    ) -> MutationResult:
+        """Create a scheduled trigger (webhook or SQL) and register it live (REQ-1003/1004)."""
+        return await _ops.create_scheduled_task_op(
+            id, name, cron, kind, webhook_name, args_json, sql
+        )
+
+    @strawberry.mutation
+    async def delete_scheduled_task(self, task_id: str) -> MutationResult:  # REQ-1003
+        """Remove a scheduled trigger from config and the live scheduler."""
+        return await _ops.delete_scheduled_task_op(task_id)
 
     async def refresh_source_statistics(self, source_id: str) -> MutationResult:  # REQ-276
         """Run ANALYZE on all registered tables for a source (Phase AL).
