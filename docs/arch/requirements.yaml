@@ -25041,7 +25041,8 @@
   - REQ-074
   - REQ-527
 - id: REQ-885
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 5. Query Languages, Compilation & Operations
   category: Extensible Functions
   priority: SHOULD
@@ -25062,9 +25063,13 @@
     Preserves existing source-procedure tracked-function contract while extending to Provisa-hosted and
     external implementations.
   code:
-  - provisa/compiler/
-  - provisa/executor/
+  - provisa/executor/function_dispatch.py
+  - provisa/api/data/action_exec.py
   - provisa/core/models.py
+  - provisa/core/repositories/function.py
+  - provisa/core/schema_org.py
+  tests:
+  - tests/unit/test_extensible_functions.py
   scenario: 'Given a user registers a function with implementation kind=http and argument kinds=[table_ref,
     column_value]
 
@@ -25113,7 +25118,8 @@
   - REQ-884
   - REQ-886
 - id: REQ-886
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 3. Governance & Observability
   category: Observability
   priority: MUST
@@ -25132,6 +25138,9 @@
     data-access audit rows.
   code:
   - provisa/otel_compat.py
+  - provisa/executor/function_dispatch.py
+  tests:
+  - tests/unit/test_udf_tracing.py
   scenario: 'Given a user invokes a UDF (transformer or custom function) via pgwire or SQL
 
     When the UDF executes and accesses tables via pgwire data derefs
@@ -25562,7 +25571,15 @@
   - REQ-894
   - REQ-895
 - id: REQ-897
-  status: proposed
+  status: complete
+  since: 2026-07
+  code:
+  - provisa/federation/engine.py
+  - provisa/federation/connector_base.py
+  - provisa/federation/plan.py
+  - provisa/transpiler/router.py
+  tests:
+  - tests/unit/test_engine_capability_traits.py
   target: 2026-Q4
   group: 0. Architecture & Design Principles
   category: Federation Architecture

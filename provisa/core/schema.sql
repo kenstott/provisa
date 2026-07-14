@@ -437,6 +437,15 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-885: implementation-kind dimension + swappable binding (transport+location),
+-- decoupled from addressing (name/function_name). materialize selects DEFINER vs INVOKER.
+DO $$ BEGIN
+    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS impl_kind TEXT NOT NULL DEFAULT 'source_procedure';
+    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS binding JSONB NOT NULL DEFAULT '{}';
+    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- Bridge table: every registered user table → its meta:registered_tables row
 -- Populated automatically on register_table; enables REGISTERED_AS Cypher edges
 CREATE TABLE IF NOT EXISTS table_meta_links (

@@ -45,6 +45,20 @@ class Route(str, Enum):  # REQ-825
     ENGINE = "engine"  # hand the query to the federation engine
 
 
+class UnscannableSource(Exception):  # REQ-897
+    """A source resolved to a SCAN (read a file/object in place) on an engine that does NOT declare
+    the ``file_native`` capability trait. The DECLARED trait is the planner input; a SCAN without it
+    is a declaration/connector inconsistency, never a silently-materialized fallback."""
+
+    def __init__(self, engine: str, source_id: str) -> None:
+        self.engine = engine
+        self.source_id = source_id
+        super().__init__(
+            f"engine {engine!r} resolved source {source_id!r} to a SCAN but does not declare the "
+            "file_native trait (REQ-897)"
+        )
+
+
 @dataclass(frozen=True)
 class PrepStep:  # REQ-825 residency prerequisite
     """A side-effecting residency prep: load/refresh a MATERIALIZED source into the store."""
@@ -111,6 +125,12 @@ def build_execution_plan(
         )
         if prefer and strategy is Strategy.MATERIALIZED:
             _require_materialization_backend(engine, materialization_backend, s.id)
+        if strategy is Strategy.SCAN and not engine.file_native:
+            # REQ-897: a SCAN resolves a file/object source read IN PLACE — only a file_native engine
+            # can. The DECLARED ``file_native`` trait is the authoritative planner INPUT here; a SCAN
+            # on an engine that does not declare it is a trait/connector inconsistency, never a
+            # silently-accepted plan. Fail loud (also raises UndeclaredTrait if the trait is unset).
+            raise UnscannableSource(engine.name, s.id)
         strategies[s.id] = strategy
     prep = [
         PrepStep(s.id, strategies[s.id])

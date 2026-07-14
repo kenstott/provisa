@@ -447,6 +447,10 @@ tracked_functions = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("kind", Text, nullable=False, server_default="mutation"),
     Column("return_schema", JSON),
+    # REQ-885: implementation kind + swappable binding, decoupled from addressing.
+    Column("impl_kind", Text, nullable=False, server_default="source_procedure"),
+    Column("binding", JSON, nullable=False, default=dict, server_default="{}"),
+    Column("materialize", Boolean, nullable=False, server_default=false()),
 )
 
 tracked_webhooks = Table(
@@ -549,6 +553,9 @@ query_audit_log = Table(
     Column("source", Text, nullable=False),
     Column("status_code", Integer, nullable=False),
     Column("duration_ms", Integer, nullable=False),
+    # REQ-886: correlation id of the UDF invocation this row was written under, joining the
+    # audit row back to the engine-side UDF trace. Null for non-UDF queries.
+    Column("trace_id", Text),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

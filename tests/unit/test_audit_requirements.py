@@ -279,6 +279,47 @@ class TestREQ596AuditLogSchema:
         assert params["status_code"] == 200
         assert params["duration_ms"] == 15
 
+    def test_log_query_adopts_ambient_udf_correlation_into_trace_id(self):
+        # REQ-886: an audit row written under a UDF's minted session adopts the invocation's
+        # ambient correlation id into trace_id, so the row joins back to the engine-side trace.
+        import asyncio
+
+        from provisa.audit.query_log import log_query
+        from provisa.encryption import NullEncryption
+        from provisa.otel_compat import udf_invocation_trace
+
+        def _run(**extra):
+            pool, conn = _acquire_pool()
+            asyncio.run(
+                log_query(
+                    pool,
+                    tenant_id="t",
+                    user_id="u",
+                    role_id="r",
+                    query_text="SELECT 1",
+                    table_ids=[],
+                    source="udf",
+                    status_code=200,
+                    duration_ms=1,
+                    encryption=NullEncryption(),
+                    **extra,
+                )
+            )
+            return conn.execute_core.await_args.args[0].compile().params
+
+        # Inside a UDF invocation → trace_id adopts the ambient correlation id.
+        with udf_invocation_trace(
+            udf_name="f", transport="sql", identity="definer", input_refs=[], correlation_id="CID9"
+        ):
+            assert _run()["trace_id"] == "CID9"
+        # Outside any UDF invocation → no correlation, trace_id is None.
+        assert _run()["trace_id"] is None
+        # An explicit trace_id always wins over the ambient one.
+        with udf_invocation_trace(
+            udf_name="f", transport="sql", identity="definer", input_refs=[], correlation_id="CID9"
+        ):
+            assert _run(trace_id="EXPLICIT")["trace_id"] == "EXPLICIT"
+
 
 # ---------------------------------------------------------------------------
 # REQ-613: Every query touching a domain asset is logged; log fields; append-only

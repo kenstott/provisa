@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS query_audit_log (
     source TEXT NOT NULL,
     status_code INT NOT NULL,
     duration_ms INT NOT NULL,
+    trace_id TEXT,
     logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -86,10 +87,17 @@ async def log_query(  # REQ-074, REQ-689
     status_code: int,
     duration_ms: int,
     encryption: "EncryptionService",
+    trace_id: str | None = None,
 ) -> None:
     """Append an audit row. The query text is stored ENCRYPTED (REQ-689) — query text
     can reveal schema shape and data intent — and the plaintext SHA hash is kept for
-    indexing/dedup. Pass NullEncryption in dev/test; a real provider in production."""
+    indexing/dedup. Pass NullEncryption in dev/test; a real provider in production.
+
+    REQ-886: when this row is written under a UDF's minted session, trace_id adopts the
+    invocation's ambient correlation id so the audit row joins back to the engine-side UDF
+    trace. An explicit trace_id wins; otherwise the ambient UDF correlation id (if any) is used."""
+    from provisa.otel_compat import current_udf_correlation_id
+
     query_hash = hashlib.sha256(query_text.encode()).hexdigest()
     query_text_enc = encryption.encrypt(query_text.encode("utf-8"))
     async with pool.acquire() as conn:
@@ -105,6 +113,7 @@ async def log_query(  # REQ-074, REQ-689
                 source=source,
                 status_code=status_code,
                 duration_ms=duration_ms,
+                trace_id=trace_id if trace_id is not None else current_udf_correlation_id(),
             )
         )
 
