@@ -664,7 +664,9 @@ export function TableEditForm({
       {(() => {
         const NOSQL = new Set(["mongodb", "cassandra"]);
         const src = sources.find((s) => s.id === editingTable.sourceId);
-        const isMutable = src && !NOSQL.has((src.type ?? "").toLowerCase());
+        // Views and materialized views are read-only — no INSERT/UPDATE path, so presets never apply.
+        const isReadOnlyView = editingTable.viewSql != null;
+        const isMutable = src && !NOSQL.has((src.type ?? "").toLowerCase()) && !isReadOnlyView;
         return isMutable ? (
           <ColumnPresetsEditor
             presets={editingTable.columnPresets}
