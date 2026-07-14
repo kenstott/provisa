@@ -157,24 +157,31 @@ Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\u
 ; ssPostInstall; first-launch then just stages the runtime and starts (config already present).
 [Code]
 var
+  DemoPage: TInputOptionWizardPage;
   EnginePage: TInputOptionWizardPage;
   EngineUrlPage: TInputQueryWizardPage;
   ObsPage: TInputOptionWizardPage;
   ObsEndpointPage: TInputQueryWizardPage;
-  DemoPage: TInputOptionWizardPage;
 
 procedure InitializeWizard;
 begin
-  EnginePage := CreateInputOptionPage(wpWelcome,
-    'Federation engine', 'Choose how Provisa federates your data.',
-    'Trino and the Docker observability/demo stacks require the separate Container installer.',
+  { Demo first: it is a complete, curated experience, so choosing it locks a known-good deployment
+    (embedded DuckDB + built-in telemetry) and the remaining choice pages are skipped. }
+  DemoPage := CreateInputOptionPage(wpWelcome,
+    'Demo', 'Try Provisa with sample data and a guided tour.',
+    'The demo is self-contained (embedded DuckDB, built-in telemetry). Check it to skip the deployment options below.',
+    False, False);
+  DemoPage.Add('Install the demo dataset and guided tour');
+
+  EnginePage := CreateInputOptionPage(DemoPage.ID,
+    'Federation engine', 'Choose how Provisa federates your data.', '',
     True, False);
-  EnginePage.Add('DuckDB - native, zero-config (recommended)');
-  EnginePage.Add('External engine (connect to an existing engine)');
+  EnginePage.Add('DuckDB - embedded, zero-config (recommended)');
+  EnginePage.Add('External engine (PostgreSQL, Trino, Oracle, SQL Server, ...)');
   EnginePage.SelectedValueIndex := 0;
 
   EngineUrlPage := CreateInputQueryPage(EnginePage.ID,
-    'External engine', 'Connection details (only used if you chose External engine).', '');
+    'External engine', 'Connection details.', '');
   EngineUrlPage.Add('Engine URL (e.g. postgresql+psycopg://user:pass@host:5432/db):', False);
   EngineUrlPage.Add('Materialization store URL (optional):', False);
 
@@ -187,13 +194,24 @@ begin
   ObsPage.SelectedValueIndex := 0;
 
   ObsEndpointPage := CreateInputQueryPage(ObsPage.ID,
-    'Collector endpoint', 'Only used if you chose Export to my collector.', '');
+    'Collector endpoint', 'OTLP export target.', '');
   ObsEndpointPage.Add('OTLP endpoint (e.g. http://host:4317):', False);
   ObsEndpointPage.Values[0] := 'http://localhost:4317';
+end;
 
-  DemoPage := CreateInputOptionPage(ObsEndpointPage.ID,
-    'Demo dataset', 'Optional sample data.', '', False, False);
-  DemoPage.Add('Install the demo dataset and open the guided tour');
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  { Demo locks the deployment → skip every engine/obs page. }
+  if DemoPage.Values[0] then begin
+    if (PageID = EnginePage.ID) or (PageID = EngineUrlPage.ID) or
+       (PageID = ObsPage.ID) or (PageID = ObsEndpointPage.ID) then
+      Result := True;
+    exit;
+  end;
+  { Follow-ups only when their parent option was chosen. }
+  if (PageID = EngineUrlPage.ID) and (EnginePage.SelectedValueIndex <> 1) then Result := True;
+  if (PageID = ObsEndpointPage.ID) and (ObsPage.SelectedValueIndex <> 1) then Result := True;
 end;
 
 function BoolToStr2(B: Boolean): String;
@@ -203,25 +221,28 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  Dir, Cfg, Eng, EUrl, MUrl, Obs, Otlp, S: String;
+  Dir, Cfg, Eng, EUrl, MUrl, Obs, Otlp, DemoV, S: String;
 begin
   if CurStep <> ssPostInstall then exit;
   Dir := AddBackslash(GetEnv('USERPROFILE')) + '.provisa';
   if not DirExists(Dir) then CreateDir(Dir);
   Cfg := AddBackslash(Dir) + 'config.yaml';
 
-  if EnginePage.SelectedValueIndex = 1 then begin
-    Eng := 'sqlalchemy';
-    EUrl := EngineUrlPage.Values[0];
-    MUrl := EngineUrlPage.Values[1];
+  if DemoPage.Values[0] then begin
+    { Demo locks a known-good, self-contained deployment. }
+    Eng := 'duckdb'; EUrl := ''; MUrl := ''; Obs := 'none'; Otlp := ''; DemoV := 'true';
   end else begin
-    Eng := 'duckdb'; EUrl := ''; MUrl := '';
-  end;
-
-  if ObsPage.SelectedValueIndex = 1 then begin
-    Obs := 'collector'; Otlp := ObsEndpointPage.Values[0];
-  end else begin
-    Obs := 'none'; Otlp := '';
+    if EnginePage.SelectedValueIndex = 1 then begin
+      Eng := 'sqlalchemy'; EUrl := EngineUrlPage.Values[0]; MUrl := EngineUrlPage.Values[1];
+    end else begin
+      Eng := 'duckdb'; EUrl := ''; MUrl := '';
+    end;
+    if ObsPage.SelectedValueIndex = 1 then begin
+      Obs := 'collector'; Otlp := ObsEndpointPage.Values[0];
+    end else begin
+      Obs := 'none'; Otlp := '';
+    end;
+    DemoV := 'false';
   end;
 
   S := 'hostname: localhost' + #13#10 +
@@ -234,7 +255,7 @@ begin
     'materialize_url: "' + MUrl + '"' + #13#10 +
     'obs_mode: ' + Obs + #13#10 +
     'otlp_endpoint: "' + Otlp + '"' + #13#10 +
-    'demo: ' + BoolToStr2(DemoPage.Values[0]) + #13#10 +
+    'demo: ' + DemoV + #13#10 +
     'demo_mode: native' + #13#10;
   SaveStringToFile(Cfg, S, False);
 end;
