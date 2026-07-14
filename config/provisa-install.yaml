@@ -7,7 +7,6 @@ auth:
 cache:
   default_ttl: 300
   enabled: true
-  redis_url: redis://${env:REDIS_HOST:-localhost}:6379
 discovery:
   api_key: ${env:ANTHROPIC_API_KEY}
   min_confidence: 0.7

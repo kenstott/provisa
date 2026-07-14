@@ -444,7 +444,7 @@ export interface CacheStorageState {
     max_bytes: number;
     refresh_interval: number | null;
   };
-  materialize: { store_url: string };
+  materialize: { store_url: string; default_store_url: string };
   restart_required_note: string;
 }
 
