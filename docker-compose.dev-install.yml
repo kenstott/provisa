@@ -4,19 +4,19 @@
 services:
   postgres:
     ports:
-      - "5432:5432"
+      - "${PG_PORT:-5432}:5432"
 
   pgbouncer:
     ports:
-      - "6432:6432"
+      - "${PGBOUNCER_PORT:-6432}:6432"
 
   redis:
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
 
   trino:
     ports:
-      - "8080:8080"
+      - "${TRINO_PORT:-8080}:8080"
     volumes:
       - ./trino/catalog-install:/etc/trino/catalog
 
@@ -26,6 +26,6 @@ services:
 
   zaychik:
     ports:
-      - "8480:8480"
+      - "${ZAYCHIK_PORT:-8480}:8480"
 
 

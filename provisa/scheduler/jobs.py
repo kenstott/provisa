@@ -10,6 +10,7 @@ Registers cron-based jobs from config. Supports webhook URLs and
 internal function names. Reuses existing async patterns.
 """
 # Requirements: REQ-216, REQ-177, REQ-302, REQ-303
+# complexity-gate: allow-ble=2 reason="best-effort Iceberg maintenance DDL (partition-spec evolution, snapshot expiration) over a pluggable engine backend whose failure taxonomy is unbounded; each logs exc_info and continues so OTEL signal compaction is never aborted by a maintenance step"
 
 from __future__ import annotations
 
@@ -43,6 +44,35 @@ async def _execute_webhook(
             logger.info("Trigger %s: webhook %s returned %s", trigger_id, url, resp.status_code)
     except Exception:
         logger.exception("Trigger %s: webhook %s failed", trigger_id, url)
+
+
+# The "admin" role is the platform's well-known system execution role for governed
+# internal SQL (same default used by the Flight server, provisa/api/flight/server.py).
+# Scheduled triggers carry no per-run identity, so scheduled SQL runs under it.
+# REQ-1003: governed execution requires a role; this is the documented system role.
+_SCHEDULER_ROLE = "admin"
+
+
+async def _execute_sql(sql: str, trigger_id: str) -> None:  # REQ-1003, REQ-1004
+    """Execute a scheduled SQL statement against the federated engine.
+
+    Substitutes date/timestamp tokens with this run's execution time (REQ-1004),
+    routes the statement through the shared governance pipeline (REQ-1003), and
+    executes the resulting plan. Failures are logged and re-raised — never
+    silently swallowed.
+    """
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
+    from provisa.scheduler.templating import substitute_date_tokens
+
+    run_at = datetime.now(timezone.utc)
+    rendered = substitute_date_tokens(sql, run_at)
+    try:
+        plan = await _govern_and_route(rendered, _SCHEDULER_ROLE)
+        result = await _execute_plan(plan)
+    except Exception:
+        logger.exception("Trigger %s: scheduled SQL failed: %s", trigger_id, rendered)
+        raise
+    logger.info("Trigger %s: scheduled SQL executed (%d rows)", trigger_id, len(result.rows))
 
 
 async def compact_otel_signals() -> None:  # REQ-302, REQ-303
@@ -458,6 +488,12 @@ def build_scheduler(
     scheduler = AsyncIOScheduler()
 
     for trigger in enabled:
+        # Mutual exclusivity: exactly one action type per trigger (REQ-1003).
+        _set = [n for n in ("url", "function", "sql") if getattr(trigger, n)]
+        if len(_set) > 1:
+            raise ValueError(
+                f"Trigger {trigger.id}: url/function/sql are mutually exclusive, got {_set}"
+            )
         cron = CronTrigger.from_crontab(trigger.cron)
         if trigger.url:
             scheduler.add_job(
@@ -469,6 +505,16 @@ def build_scheduler(
                 replace_existing=True,
             )
             logger.info("Scheduled trigger %s: %s -> %s", trigger.id, trigger.cron, trigger.url)
+        elif trigger.sql:  # REQ-1003, REQ-1004
+            scheduler.add_job(
+                _execute_sql,
+                trigger=cron,
+                args=[trigger.sql, trigger.id],
+                id=trigger.id,
+                name=f"trigger:{trigger.id}",
+                replace_existing=True,
+            )
+            logger.info("Scheduled trigger %s: %s -> SQL", trigger.id, trigger.cron)
         elif trigger.function:
             logger.warning(
                 "Trigger %s: internal function %s not yet supported",

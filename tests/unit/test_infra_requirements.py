@@ -1073,3 +1073,95 @@ class TestREQ634DevHostNotContainerized:
         assert "docker-compose.airgap.yml" not in start_ui_content, (
             "start-ui.sh must not include docker-compose.airgap.yml (packaged-product only)"
         )
+
+
+# ---------------------------------------------------------------------------
+# REQ-876: Compose host-port parameterization for stack coexistence.
+#           Every published host port in every docker-compose*.yml must be
+#           expressed as ${VAR:-default} so a second stack can bind a
+#           different host port while the default preserves current behavior.
+# ---------------------------------------------------------------------------
+
+# Matches a published host-port token. Docker maps are strings of the form:
+#   "hostport:container", "ip:hostport:container", "hostport:container/proto".
+# The host side is the segment immediately left of the container port.
+_PARAM_RE = re.compile(r"^\$\{[A-Z0-9_]+:-\d+\}$")
+
+
+def _split_top_level(token: str) -> list[str]:
+    """Split a compose port token on ':' delimiters that sit outside a
+    ${...} expansion (the :- inside ${VAR:-default} must not be split)."""
+    parts: list[str] = []
+    buf = ""
+    depth = 0
+    i = 0
+    while i < len(token):
+        if token[i : i + 2] == "${":
+            depth += 1
+            buf += "${"
+            i += 2
+            continue
+        ch = token[i]
+        if ch == "}" and depth > 0:
+            depth -= 1
+        elif ch == ":" and depth == 0:
+            parts.append(buf)
+            buf = ""
+            i += 1
+            continue
+        buf += ch
+        i += 1
+    parts.append(buf)
+    return parts
+
+
+def _published_host_ports(mapping: object) -> list[tuple[str, str]]:
+    """Yield (service, host_side) for every published port mapping.
+
+    Short syntax is "[ip:]host:container[/proto]"; the host side is the
+    segment immediately left of the container port. Long syntax uses a
+    'published' key. Container-only entries publish nothing."""
+    results: list[tuple[str, str]] = []
+    services = mapping.get("services", {}) if isinstance(mapping, dict) else {}
+    for name, svc in services.items():
+        if not isinstance(svc, dict):
+            continue
+        for entry in svc.get("ports", []) or []:
+            if isinstance(entry, dict):
+                published = entry.get("published")
+                if published is not None:
+                    results.append((name, str(published)))
+                continue
+            token = str(entry).split("/", 1)[0]  # strip /proto
+            parts = _split_top_level(token)
+            if len(parts) == 1:
+                continue  # container-only, ephemeral host port
+            results.append((name, parts[-2]))
+    return results
+
+
+class TestREQ876ComposePortParameterization:
+    """REQ-876"""
+
+    def test_every_published_host_port_is_parameterized(self):
+        # REQ-876 — every published host port must be ${VAR:-default}
+        violations: list[str] = []
+        for compose in sorted(REPO_ROOT.glob("docker-compose*.yml")):
+            doc = yaml.safe_load(compose.read_text())
+            for service, host_side in _published_host_ports(doc):
+                if not _PARAM_RE.match(host_side):
+                    violations.append(f"{compose.name}:{service} -> {host_side!r}")
+        assert not violations, "Published host ports must be ${VAR:-default}: " + ", ".join(
+            violations
+        )
+
+    def test_defaults_preserve_current_ports(self):
+        # REQ-876 — the ${VAR:-default} default must be a bare integer so
+        # current behavior is preserved when the var is unset.
+        for compose in sorted(REPO_ROOT.glob("docker-compose*.yml")):
+            doc = yaml.safe_load(compose.read_text())
+            for _service, host_side in _published_host_ports(doc):
+                default = host_side.split(":-", 1)[1].rstrip("}")
+                assert default.isdigit(), (
+                    f"{compose.name}: default {default!r} is not a port number"
+                )

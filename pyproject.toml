@@ -23,6 +23,7 @@ dependencies = [
     "redis[hiredis]",
     "fakeredis",
     "anthropic",
+    "mcp>=1.2.0",
     "aisuite>=0.1",
     "apscheduler>=3.10",
     "inflect",

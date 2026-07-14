@@ -38,6 +38,7 @@ from provisa.core.schema_org import (
     tracked_functions as _tracked_functions_t,
 )
 from provisa.core.secrets import resolve_secrets
+from provisa.api._meta_views import _OPS_LOG_TABLE_ALIAS  # REQ-884
 from provisa.api.admin.db_queries import parse_mask_value as _parse_mask_value
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.models import ProvisaConfig  # noqa: F401
@@ -872,7 +873,11 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
             source_types=state.source_types,
             source_catalogs=state.source_catalogs,
             domain_prefix=domain_prefix,
-            physical_table_map={**_META_TABLE_ALIAS, **(kafka_physical or {})},
+            physical_table_map={
+                **_META_TABLE_ALIAS,
+                **_OPS_LOG_TABLE_ALIAS,
+                **(kafka_physical or {}),
+            },
             functions=tracked_functions,
             webhooks=tracked_webhooks,
             enum_types=state.pg_enum_types,

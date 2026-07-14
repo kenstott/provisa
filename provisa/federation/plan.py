@@ -24,6 +24,7 @@ query's sources, the engine, and a staleness oracle, it produces that Plan; the 
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
     from provisa.federation.cardinality import Estimate
     from provisa.federation.engine import FederationEngine
     from provisa.federation.promote import PushdownDemand
+    from provisa.freshness.subject import FreshnessSubject
 
 
 class Route(str, Enum):  # REQ-825
@@ -68,6 +70,8 @@ def build_execution_plan(
     estimate_of: Callable[[str], Estimate] | None = None,
     prefer_materialized_of: Callable[[str], bool] | None = None,
     materialization_backend: str | None = None,
+    freshness_subject_of: Callable[[str], FreshnessSubject] | None = None,
+    now: float | None = None,
 ) -> Plan:
     """Compose the PLAN stage output for a query over ``sources`` (REQ-825).
 
@@ -86,6 +90,14 @@ def build_execution_plan(
     source to the store, ``materialization_backend`` MUST name a backend the engine can read back
     — else the override resolves to MATERIALIZED with nowhere to land. The guard fails loud here
     at plan time rather than silently at execute (see validate_materialization_backend, REQ-846).
+
+    ``freshness_subject_of`` arms the REQ-860 SOURCE-level freshness gate: for a source with
+    ``freshness_gate=True`` it supplies that source's observed residency state as a
+    FreshnessSubject, and the source's own ``change_signal`` + ``cache_ttl`` freshness predicate —
+    not the generic ``is_stale`` oracle — decides whether it needs a residency refresh. A
+    stale/failed verdict lands the source in the prep phase (the existing refresh/produce path);
+    fresh skips it. ``now`` is the evaluation clock (defaulted to wall time when a gated source is
+    present); the decision itself stays pure (predicate has no side effects, REQ-856).
     """
     strategies: dict[str, Strategy] = {}
     for s in sources:
@@ -103,7 +115,8 @@ def build_execution_plan(
     prep = [
         PrepStep(s.id, strategies[s.id])
         for s in sources
-        if requires_residency(strategies[s.id]) and is_stale(s.id)
+        if requires_residency(strategies[s.id])
+        and _needs_refresh(s, is_stale, freshness_subject_of, now)
     ]
     route = (
         Route.DIRECT
@@ -111,6 +124,28 @@ def build_execution_plan(
         else Route.ENGINE
     )
     return Plan(prep=prep, route=route)
+
+
+def _needs_refresh(
+    source: Source,
+    is_stale: Callable[[str], bool],
+    freshness_subject_of: Callable[[str], FreshnessSubject] | None,
+    now: float | None,
+) -> bool:
+    """Whether a MATERIALIZED source needs a residency refresh before this query reads it.
+
+    REQ-860: a source with ``freshness_gate=True`` is decided by its OWN freshness predicate
+    (built from change_signal + cache_ttl) over its observed residency state — a stale/failed
+    verdict triggers the refresh. Every other source uses the generic ``is_stale`` oracle. When
+    a gated source is present but no ``now`` was supplied, the wall clock is the evaluation
+    time (the decision is pure; sampling the clock here is the caller's effect).
+    """
+    if source.freshness_gate and freshness_subject_of is not None:
+        from provisa.freshness.source_gate import gate_source
+
+        eval_now = now if now is not None else time.time()
+        return not gate_source(source, freshness_subject_of(source.id), eval_now).is_fresh
+    return is_stale(source.id)
 
 
 def _require_materialization_backend(

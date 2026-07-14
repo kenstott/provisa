@@ -25,6 +25,7 @@ from provisa.freshness.predicate import (
     TtlThenProbe,
     evaluate,
 )
+from provisa.freshness.source_gate import gate_source, source_strategy, source_subject
 from provisa.freshness.subject import FreshnessSubject
 
 __all__ = [
@@ -37,4 +38,7 @@ __all__ = [
     "Transitive",
     "TtlThenProbe",
     "evaluate",
+    "gate_source",
+    "source_strategy",
+    "source_subject",
 ]

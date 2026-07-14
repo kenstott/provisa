@@ -329,6 +329,18 @@ async def _start_servers(_log: logging.Logger) -> None:
         except Exception:
             _log.exception("bolt server startup failed")
 
+    # REQ-1008: MCP server (opt-in via PROVISA_MCP_PORT). Isolated one-line hook;
+    # touches no scheduler/freshness/audit/meta-view code.
+    try:
+        from provisa.api.mcp import start_mcp_server
+
+        start_mcp_server(state, _log)
+    except (ImportError, OSError, RuntimeError, ValueError):
+        # Opt-in server (PROVISA_MCP_PORT). Missing SDK (ImportError), port bind (OSError),
+        # config/validation (ValueError/RuntimeError) must not abort app boot; anything else is
+        # unexpected and propagates loudly.
+        _log.exception("MCP server startup failed")
+
     try:
         from provisa.live.engine import LiveEngine
 

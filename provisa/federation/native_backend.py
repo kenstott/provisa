@@ -125,6 +125,8 @@ class NativeEngineBackend(EngineBackend):
         is_stale: Any,
         prefer_materialized_of: Any = None,
         materialization_backend: str | None = None,
+        freshness_subject_of: Any = None,
+        now: float | None = None,
     ) -> list[tuple[str, str]]:
         """Land every MATERIALIZED source table that is stale, before execute (REQ-825/932).
 
@@ -150,6 +152,8 @@ class NativeEngineBackend(EngineBackend):
             is_stale,
             prefer_materialized_of=prefer_materialized_of,
             materialization_backend=materialization_backend,
+            freshness_subject_of=freshness_subject_of,
+            now=now,
         )
         if not plan.prep:
             return []

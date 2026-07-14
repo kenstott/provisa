@@ -83,3 +83,27 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM tracked_functions
     """,
 }
+
+# REQ-884: Internal operational/observability logs exposed as first-class tables in
+# the built-in ``ops`` domain, so telemetry is queryable through the governed pipeline
+# (pgwire/SQL/GraphQL/Cypher) under role + domain access control — not only via the
+# Python export path or raw control-plane JDBC, which bypass governance.
+#
+# Registry: to expose another internal log, add one ``source_table -> exposed_view``
+# entry here plus its view DDL in ``_OPS_LOG_TABLE_VIEWS``. The seed
+# (``startup_seed._seed_ops_domain``) and catalog population handle the rest — no new
+# subsystem. The encrypted ``query_text_enc`` column is deliberately NOT exposed; its
+# plaintext is only reachable via the authorised admin decrypt path (REQ-689).
+_OPS_LOG_TABLE_ALIAS: dict[str, str] = {
+    "query_audit_log": "query_audit_log_ops",
+}
+
+_OPS_LOG_TABLE_VIEWS: dict[str, str] = {
+    "query_audit_log": """
+        DROP VIEW IF EXISTS query_audit_log_ops;
+        CREATE VIEW query_audit_log_ops AS
+        SELECT id, tenant_id, user_id, role_id, query_hash,
+               table_ids, source, status_code, duration_ms, logged_at
+        FROM query_audit_log
+    """,
+}

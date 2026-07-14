@@ -27,7 +27,11 @@ from typing import Any
 
 from sqlalchemy import delete as _delete, func as _sa_func, select, update
 
-from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._meta_views import (
+    _META_TABLE_VIEWS,
+    _OPS_LOG_TABLE_ALIAS,
+    _OPS_LOG_TABLE_VIEWS,
+)
 from provisa.core.control_plane import bring_up_platform
 from provisa.core.database import Connection, Database, create_engine_from_url
 from provisa.core.db import init_schema
@@ -184,6 +188,61 @@ async def _seed_meta_domain(
             index_elements=["id"],
             update_columns=[],
         )
+
+
+async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:  # REQ-884
+    """Expose internal operational logs (query_audit_log, …) as first-class tables in
+    the built-in ``ops`` domain, reusing the meta-domain view+seed mechanism.
+
+    Each internal log gets a curated view (safe columns only — the encrypted
+    ``query_text_enc`` is excluded per REQ-689) registered under source
+    ``provisa-admin`` / domain ``ops``, so it routes through the same role + domain
+    access control as any business table. Adding another log is a registry entry in
+    ``_OPS_LOG_TABLE_VIEWS`` — not a new subsystem."""
+    schema_name = f"org_{org_id}"
+    for ddl in _OPS_LOG_TABLE_VIEWS.values():
+        await conn.execute(ddl)
+
+    for tbl, view_name in _OPS_LOG_TABLE_ALIAS.items():
+        table_id = await conn.upsert_returning(
+            _registered_tables_t,
+            {
+                "source_id": "provisa-admin",
+                "domain_id": "ops",
+                "schema_name": schema_name,
+                "table_name": tbl,
+            },
+            index_elements=["source_id", "schema_name", "table_name"],
+            returning="id",
+            update_columns=["domain_id"],
+        )
+        # PKs from the physical table; exposed columns from the curated view.
+        pk_cols = {
+            c["column_name"]
+            for c in await conn.reflect_columns(tbl, schema=schema_name)
+            if c["is_primary_key"]
+        }
+        cols = await conn.reflect_columns(view_name, schema=schema_name)
+        col_names = {col["column_name"] for col in cols}
+        await conn.execute_core(
+            _delete(_table_columns_t).where(
+                _table_columns_t.c.table_id == table_id,
+                _table_columns_t.c.column_name.not_in(list(col_names)),
+            )
+        )
+        for col in cols:
+            await conn.upsert(
+                _table_columns_t,
+                {
+                    "table_id": table_id,
+                    "column_name": col["column_name"],
+                    "visible_to": [],
+                    "data_type": col["data_type"],
+                    "is_primary_key": col["column_name"] in pk_cols,
+                },
+                index_elements=["table_id", "column_name"],
+                update_columns=[],
+            )
 
 
 async def _seed_meta_relationships(conn: "Connection") -> None:
@@ -455,6 +514,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         )
         await _seed_meta_domain(_conn, org_id=state.org_id)
         await _seed_ops_pg(_conn)
+        await _seed_ops_domain(_conn, org_id=state.org_id)  # REQ-884
         await _seed_meta_relationships(_conn)
         needs_clusters = (
             await _conn.execute_core(

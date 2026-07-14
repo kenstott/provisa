@@ -164,6 +164,11 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # table's watermark_column (which gates the poll subscription path + append landing, REQ-926/927).
     # Pull: ttl | probe | ttl_probe. Push: native | debezium | kafka. Tables inherit unless overriding.
     change_signal: str = "ttl"
+    # REQ-860: opt-in source-level freshness gate. When true, a query reading a table from this
+    # source is gated by a freshness decision (built from change_signal + cache_ttl via the
+    # freshness module, REQ-856/858) before execution; a stale/failed verdict triggers the caller's
+    # refresh/produce path. Default off — gating requires a declared change_signal + cache_ttl.
+    freshness_gate: bool = False
     cache_catalog: str | None = (
         None  # the engine catalog for API cache; None = source's own catalog
     )
@@ -650,6 +655,10 @@ class ScheduledTrigger(BaseModel):
     webhook_name: str | None = None  # display name for the webhook
     args: dict = Field(default_factory=dict)  # arg name → value for webhook POST body
     function: str | None = None  # internal function name
+    # REQ-1003: SQL statement executed against the federated engine on the cron schedule.
+    # Mutually exclusive with url/function. REQ-1004: the text may contain {{date-token}}
+    # placeholders substituted with the run's execution date/time before execution.
+    sql: str | None = None
     enabled: bool = True
 
 
