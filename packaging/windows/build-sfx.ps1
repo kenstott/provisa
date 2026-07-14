@@ -150,6 +150,94 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa
 
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\uninstall.ps1"""; RunOnceId: "ProvUninstall"
+
+; ── Deployment choices, shown as wizard pages during every install (REQ-972..979) ──
+; These render in the Inno Setup wizard itself — no hidden window, no first-launch dialog, no
+; dependency on prior %USERPROFILE%\.provisa state. The choices are written to config.yaml on
+; ssPostInstall; first-launch then just stages the runtime and starts (config already present).
+[Code]
+var
+  EnginePage: TInputOptionWizardPage;
+  EngineUrlPage: TInputQueryWizardPage;
+  ObsPage: TInputOptionWizardPage;
+  ObsEndpointPage: TInputQueryWizardPage;
+  DemoPage: TInputOptionWizardPage;
+
+procedure InitializeWizard;
+begin
+  EnginePage := CreateInputOptionPage(wpWelcome,
+    'Federation engine', 'Choose how Provisa federates your data.',
+    'Trino and the Docker observability/demo stacks require the separate Container installer.',
+    True, False);
+  EnginePage.Add('DuckDB - native, zero-config (recommended)');
+  EnginePage.Add('External engine (connect to an existing engine)');
+  EnginePage.SelectedValueIndex := 0;
+
+  EngineUrlPage := CreateInputQueryPage(EnginePage.ID,
+    'External engine', 'Connection details (only used if you chose External engine).', '');
+  EngineUrlPage.Add('Engine URL (e.g. postgresql+psycopg://user:pass@host:5432/db):', False);
+  EngineUrlPage.Add('Materialization store URL (optional):', False);
+
+  ObsPage := CreateInputOptionPage(EngineUrlPage.ID,
+    'Observability', 'Where should telemetry go?',
+    'Built-in telemetry is always on; this only redirects OTLP export.',
+    True, False);
+  ObsPage.Add('Built-in only');
+  ObsPage.Add('Export to my OpenTelemetry collector');
+  ObsPage.SelectedValueIndex := 0;
+
+  ObsEndpointPage := CreateInputQueryPage(ObsPage.ID,
+    'Collector endpoint', 'Only used if you chose Export to my collector.', '');
+  ObsEndpointPage.Add('OTLP endpoint (e.g. http://host:4317):', False);
+  ObsEndpointPage.Values[0] := 'http://localhost:4317';
+
+  DemoPage := CreateInputOptionPage(ObsEndpointPage.ID,
+    'Demo dataset', 'Optional sample data.', '', False, False);
+  DemoPage.Add('Install the demo dataset and open the guided tour');
+end;
+
+function BoolToStr2(B: Boolean): String;
+begin
+  if B then Result := 'true' else Result := 'false';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Dir, Cfg, Eng, EUrl, MUrl, Obs, Otlp, S: String;
+begin
+  if CurStep <> ssPostInstall then exit;
+  Dir := AddBackslash(GetEnv('USERPROFILE')) + '.provisa';
+  if not DirExists(Dir) then CreateDir(Dir);
+  Cfg := AddBackslash(Dir) + 'config.yaml';
+
+  if EnginePage.SelectedValueIndex = 1 then begin
+    Eng := 'sqlalchemy';
+    EUrl := EngineUrlPage.Values[0];
+    MUrl := EngineUrlPage.Values[1];
+  end else begin
+    Eng := 'duckdb'; EUrl := ''; MUrl := '';
+  end;
+
+  if ObsPage.SelectedValueIndex = 1 then begin
+    Obs := 'collector'; Otlp := ObsEndpointPage.Values[0];
+  end else begin
+    Obs := 'none'; Otlp := '';
+  end;
+
+  S := 'hostname: localhost' + #13#10 +
+    'ui_port: 3000' + #13#10 +
+    'api_port: 8000' + #13#10 +
+    'auto_open_browser: true' + #13#10 +
+    'runtime: native' + #13#10 +
+    'engine: ' + Eng + #13#10 +
+    'engine_url: "' + EUrl + '"' + #13#10 +
+    'materialize_url: "' + MUrl + '"' + #13#10 +
+    'obs_mode: ' + Obs + #13#10 +
+    'otlp_endpoint: "' + Otlp + '"' + #13#10 +
+    'demo: ' + BoolToStr2(DemoPage.Values[0]) + #13#10 +
+    'demo_mode: native' + #13#10;
+  SaveStringToFile(Cfg, S, False);
+end;
 "@
 
 [System.IO.File]::WriteAllText($IssPath, $IssContent, [System.Text.Encoding]::UTF8)

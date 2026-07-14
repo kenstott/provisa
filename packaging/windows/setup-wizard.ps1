@@ -11,15 +11,18 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProvisaHome = Join-Path $env:USERPROFILE '.provisa'
-$Sentinel    = Join-Path $ProvisaHome '.setup-complete'
+$ConfigPath  = Join-Path $ProvisaHome 'config.yaml'
 
 function Start-App {
+  # first-launch stages the runtime on first run (config already present), then starts the app.
   & powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden `
-    -File (Join-Path $ScriptDir 'provisa-native.ps1') start
+    -File (Join-Path $ScriptDir 'first-launch-native.ps1')
 }
 
-# Already set up → just start the app (no wizard, no console).
-if (Test-Path $Sentinel) { Start-App; return }
+# The installer's wizard pages write config.yaml with the chosen deployment. When it exists we are
+# already configured → just start. This GUI wizard is only a FALLBACK for a launch with no config
+# (e.g. a silent/unattended install that skipped the wizard pages).
+if (Test-Path $ConfigPath) { Start-App; return }
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
