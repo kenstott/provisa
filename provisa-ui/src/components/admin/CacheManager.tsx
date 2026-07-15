@@ -36,6 +36,7 @@ import {
   useTables,
   useToggleMV,
 } from "../../hooks/useAdminQueries";
+import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 import { CacheStorageTab } from "./CacheStorageTab";
 import { FilterInput } from "./FilterInput";
 import { displayMvName } from "./mvDisplay";
@@ -78,6 +79,33 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
   );
 }
 
+type SortDir = "asc" | "desc";
+
+function SortableTh({
+  label,
+  active,
+  dir,
+  onSort,
+}: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+  onSort: () => void;
+}) {
+  const Icon = !active ? ChevronsUpDown : dir === "asc" ? ChevronUp : ChevronDown;
+  return (
+    <Table.Th
+      onClick={onSort}
+      style={{ cursor: "pointer", userSelect: "none" }}
+    >
+      <Group gap={4} wrap="nowrap">
+        {label}
+        <Icon size={14} opacity={active ? 1 : 0.4} />
+      </Group>
+    </Table.Th>
+  );
+}
+
 export function CacheManager() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<TabKey>("response");
@@ -117,6 +145,18 @@ function ResponseCacheTab() {
   const [msg, setMsg] = useState("");
   const [tableSearch, setTableSearch] = useState("");
   const [tablePage, setTablePage] = useState(0);
+  const [sortKey, setSortKey] = useState<"table" | "domain" | "entries">("table");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const toggleSort = (key: "table" | "domain" | "entries") => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+    setTablePage(0);
+  };
 
   const handlePurgeAll = async () => {
     setPurging(true);
@@ -165,9 +205,20 @@ function ResponseCacheTab() {
       (tbl.alias || tbl.tableName).toLowerCase().includes(q) ||
       (tbl.domainId ?? "").toLowerCase().includes(q),
   );
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp: number;
+    if (sortKey === "entries") {
+      cmp = (entriesByTable.get(a.id) ?? 0) - (entriesByTable.get(b.id) ?? 0);
+    } else if (sortKey === "domain") {
+      cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
+    } else {
+      cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
+    }
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const safePage = Math.min(tablePage, totalPages - 1);
-  const paged = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const paged = sorted.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   return (
     <Stack gap="md">
@@ -220,9 +271,24 @@ function ResponseCacheTab() {
           <Table striped highlightOnHover withTableBorder>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>{t("cacheManager.response.table")}</Table.Th>
-                <Table.Th>{t("cacheManager.response.domain")}</Table.Th>
-                <Table.Th>{t("cacheManager.response.cachedEntries")}</Table.Th>
+                <SortableTh
+                  label={t("cacheManager.response.table")}
+                  active={sortKey === "table"}
+                  dir={sortDir}
+                  onSort={() => toggleSort("table")}
+                />
+                <SortableTh
+                  label={t("cacheManager.response.domain")}
+                  active={sortKey === "domain"}
+                  dir={sortDir}
+                  onSort={() => toggleSort("domain")}
+                />
+                <SortableTh
+                  label={t("cacheManager.response.cachedEntries")}
+                  active={sortKey === "entries"}
+                  dir={sortDir}
+                  onSort={() => toggleSort("entries")}
+                />
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>
