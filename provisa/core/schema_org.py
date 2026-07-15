@@ -41,6 +41,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -259,10 +260,45 @@ materialized_views = Table(
     Column("materialized_definition_version", Text),
     Column("materialized_input_version", Text),
     Column("snapshot_id", Text),
+    # REQ-961/962: temporal-processing declaration. calendar/grain name the shared, versioned
+    # boundary source that yields [start,end) windows; allowed_lateness (seconds) extends the claim
+    # deadline past window.end; expected_events is the freshness contract (inputs that must be
+    # fresh-through window.end; NULL = default to all SQL-lineage inputs); business_day_grain gates
+    # window existence on the calendar's business days. All NULL/false = a non-temporal MV.
+    Column("calendar", Text),
+    Column("grain", Text),
+    Column("allowed_lateness", Integer, nullable=False, server_default="0"),
+    Column("expected_events", JSON),
+    Column("business_day_grain", Boolean, nullable=False, server_default=false()),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "status IN ('fresh', 'stale', 'refreshing', 'disabled')",
         name="materialized_views_status_check",
+    ),
+)
+
+# REQ-962: named, shared, VERSIONED calendars — the temporal-window boundary source. An MV declares
+# (calendar, grain) and the calendar deterministically yields [start,end) windows. The holiday/
+# business-day set is captured per version so a replay reproduces the same window existence. V1:
+# schema-defined, no migration.
+calendars = Table(
+    "calendars",
+    metadata,
+    Column("name", Text, primary_key=True),
+    Column("version", Text, primary_key=True),
+    # gregorian | fiscal | retail_445
+    Column("base_system", Text, nullable=False, server_default="gregorian"),
+    Column("tz", Text, nullable=False, server_default="UTC"),  # IANA zone (DST-aware boundaries)
+    Column("fiscal_anchor_month", Integer, nullable=False, server_default="1"),
+    Column("fiscal_anchor_day", Integer, nullable=False, server_default="1"),
+    Column("retail_anchor", Date),  # retail_445: the reference retail-year start date
+    Column("week_start", Integer, nullable=False, server_default="0"),  # 0 = Monday
+    Column("holidays", JSON, default=list, server_default="[]"),  # ISO dates, versioned/immutable
+    Column("weekend", JSON, default=list, server_default="[5, 6]"),  # weekday ints (Sat, Sun)
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint(
+        "base_system IN ('gregorian', 'fiscal', 'retail_445')",
+        name="calendars_base_system_check",
     ),
 )
 

@@ -238,7 +238,31 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     materialized_definition_version TEXT,
     materialized_input_version      TEXT,
     snapshot_id     TEXT,
+    -- REQ-961/962: temporal-processing declaration (calendar-bounded windows + freshness contract).
+    calendar          TEXT,
+    grain             TEXT,
+    allowed_lateness  INTEGER NOT NULL DEFAULT 0,
+    expected_events   JSONB,          -- freshness-contract inputs; NULL = all SQL-lineage inputs
+    business_day_grain BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- REQ-962: named, shared, VERSIONED calendars — the temporal-window boundary source. Holiday/
+-- business-day set is captured per version so a replay reproduces the same window existence.
+CREATE TABLE IF NOT EXISTS calendars (
+    name                TEXT NOT NULL,
+    version             TEXT NOT NULL,
+    base_system         TEXT NOT NULL DEFAULT 'gregorian'
+                        CHECK (base_system IN ('gregorian', 'fiscal', 'retail_445')),
+    tz                  TEXT NOT NULL DEFAULT 'UTC',
+    fiscal_anchor_month INTEGER NOT NULL DEFAULT 1,
+    fiscal_anchor_day   INTEGER NOT NULL DEFAULT 1,
+    retail_anchor       DATE,
+    week_start          INTEGER NOT NULL DEFAULT 0,
+    holidays            JSONB NOT NULL DEFAULT '[]',
+    weekend             JSONB NOT NULL DEFAULT '[5, 6]',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (name, version)
 );
 
 CREATE TABLE IF NOT EXISTS mv_refresh_log (

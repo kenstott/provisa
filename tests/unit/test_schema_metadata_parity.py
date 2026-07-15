@@ -23,6 +23,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     Integer,
@@ -81,14 +82,16 @@ def _strip_schema_prefix(name: str) -> str:
 
 
 def _split_top_level(body: str) -> list[str]:
-    """Split a CREATE TABLE body on top-level commas (ignoring parens)."""
-    parts, depth, cur = [], 0, []
+    """Split a CREATE TABLE body on top-level commas (ignoring parens and single-quoted literals)."""
+    parts, depth, cur, in_quote = [], 0, [], False
     for ch in body:
-        if ch == "(":
+        if ch == "'":
+            in_quote = not in_quote
+        elif not in_quote and ch == "(":
             depth += 1
-        elif ch == ")":
+        elif not in_quote and ch == ")":
             depth -= 1
-        if ch == "," and depth == 0:
+        if ch == "," and depth == 0 and not in_quote:
             parts.append("".join(cur))
             cur = []
         else:
@@ -138,6 +141,8 @@ def _sql_type_family(coldef: str) -> str:
         return "float"
     if "TIMESTAMP" in d:
         return "timestamp"
+    if re.search(r"\bDATE\b", d):
+        return "date"
     if re.search(r"\bBIGINT\b", d):
         return "bigint"
     if re.search(r"\bINTEGER\b", d) or re.search(r"\bINT\b", d):
@@ -161,6 +166,8 @@ def _metadata_type_family(col) -> str:
         return "float"
     if isinstance(t, DateTime):
         return "timestamp"
+    if isinstance(t, Date):
+        return "date"
     if isinstance(t, BigInteger):
         return "bigint"
     if isinstance(t, Integer):

@@ -453,6 +453,18 @@ class Table(
     mv_debounce_max_delay: float = (
         5.0  # hard cap: never more than this stale under continuous churn
     )
+    # REQ-962: temporal-window boundary source. calendar names a registered, versioned calendar;
+    # grain ∈ daily/weekly/monthly/quarterly/annual. Declaring a calendar makes the MV PERIODIC
+    # (calendar-boundary trigger, REQ-961) instead of live-debounce — the two are mutually exclusive.
+    mv_calendar: str | None = None
+    mv_grain: str | None = None
+    mv_business_day_grain: bool = False  # gate window existence on the calendar's business days
+    # REQ-961: allowed_lateness (seconds) extends the claim deadline past window.end.
+    mv_allowed_lateness: float = 0.0
+    # REQ-961: the freshness-contract inputs — the inputs that must be fresh-through window.end for
+    # the periodic output to be trusted. None = default to ALL SQL-lineage inputs (extract_inputs,
+    # REQ-939); [] = calendar-only (verify nothing).
+    mv_expected_events: list[str] | None = None
     # REQ-879: cross-instance MV consistency tier. "shared" = one fleet-coordinated copy (CAS on
     # the shared materialized_views catalog; one instance refreshes at a time). "distributed" =
     # per-instance materialization, the distributed tier (eventually consistent).

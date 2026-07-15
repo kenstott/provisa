@@ -25,21 +25,18 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from provisa.events import injector, queue
+from provisa.events.calendars import Window
+from provisa.events.deadlines import DeadlineSource, LiveDebounce
+from provisa.events.freshness_contract import evaluate_contract
+from provisa.freshness.subject import FreshnessSubject
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _as_utc(dt: datetime) -> datetime:
-    """Normalize a stored ``created_at`` to a UTC-aware datetime. events.created_at is DateTime(tz):
-    Postgres returns it aware, SQLite returns it naive — coerce the naive case to UTC (its authored
-    zone) so debounce comparisons against _now() are dialect-safe."""
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 class OwnershipLost(Exception):
@@ -61,8 +58,11 @@ class NodeContext:
 
     Carries what the hook may inspect — node identity/kind, the claimed-event summary, the landing
     columns/schema, the forced-refresh flag, and the last-landed content hash — plus the ``warn``
-    channel. ``window``/``frontier`` are placeholders for windowed processing (REQ-958), None until a
-    window is opened. ``warn`` is the ONLY mutation: it records advisory reasons the loop emits as a
+    channel. ``window``/``window_id``/``frontier`` are the REQ-958 windowed-processing peg: the
+    half-open ``[start, end)`` and its calendar-addressable id, set at fire from the node's deadline
+    source (None for a live/real-time node with no calendar peg). ``produce`` reads as-of
+    ``window[1]`` (window.end) to stay deterministic/replayable, and the result lands keyed on
+    ``window_id``. ``warn`` is the ONLY mutation: it records advisory reasons the loop emits as a
     non-fatal ``warn`` event; every data field is informational."""
 
     node: str
@@ -72,6 +72,7 @@ class NodeContext:
     forced: bool = False
     columns: list[tuple[str, str]] | None = None
     window: tuple[datetime, datetime] | None = None
+    window_id: str | None = None
     frontier: dict[str, Any] | None = None
     warns: list[str] = field(default_factory=list)
 
@@ -104,6 +105,9 @@ class TableProcessor(ABC):
         probe_type: str | None = None,
         debounce_quiet: float = 0.0,
         debounce_max_delay: float | None = None,
+        deadline_source: DeadlineSource | None = None,
+        expected_events: list[str] | None = None,
+        freshness_of: Callable[[str], FreshnessSubject] | None = None,
         preprocess: Callable[..., Any] | None = None,
         emit_outcomes: frozenset[str] | None = None,
         subscribers_of: Callable[[str, str], list[str]] | None = None,
@@ -131,11 +135,26 @@ class TableProcessor(ABC):
         self._dependents_of = dependents_of
         self._db = db
         self.name = name
-        # REQ-963 live-MV debounce. quiet<=0 → fire immediately (real-time, no debounce). Otherwise a
-        # burst of fan-ins waits for min(last_change+quiet, first_change+max_delay) and collapses into
-        # one recompute; max_delay is the mandatory staleness cap that guarantees a fire under churn.
-        self._debounce_quiet = debounce_quiet
-        self._debounce_max_delay = debounce_max_delay
+        # The claim's deadline SOURCE (REQ-961/962/963): periodic (calendar boundary + lateness) or
+        # live (trailing-edge debounce with mandatory cap) — both feed the SAME REQ-959 claim
+        # primitive; only the deadline derivation differs. An explicit ``deadline_source`` wins;
+        # otherwise a ``debounce_quiet > 0`` builds the live source (mandatory max_delay cap). None =
+        # real-time / event-driven fire.
+        if deadline_source is not None:
+            self._deadline: DeadlineSource | None = deadline_source
+        elif debounce_quiet > 0:
+            if debounce_max_delay is None:
+                raise ValueError(
+                    f"{node}: REQ-963 live debounce (quiet>0) requires a max_delay staleness cap"
+                )
+            self._deadline = LiveDebounce(quiet=debounce_quiet, max_delay=debounce_max_delay)
+        else:
+            self._deadline = None
+        # REQ-961 freshness contract: the declared expected-events input list (verified fresh-through
+        # window.end at fire) + the per-input freshness-state reader. None = no contract (live/event
+        # nodes verify nothing). Requires a window (periodic) to be meaningful.
+        self._expected_events = expected_events
+        self._freshness_of = freshness_of
 
     # -- lifecycle -------------------------------------------------------------
     async def stop(self) -> None:
@@ -209,13 +228,18 @@ class TableProcessor(ABC):
                 conn, dependent_table=self.node, processor_name=self.name, now=now
             )
         else:
-            # REQ-963 debounce gate: peek the unclaimed work WITHOUT claiming; if the quiet/max_delay
-            # deadline has not passed, defer (leave it unclaimed so more fan-ins coalesce). quiet<=0
-            # fires immediately. Deferring here is what collapses a burst into one recompute.
+            # REQ-962 existence gate: a business-day grain on a holiday has NO window → the periodic
+            # MV deterministically does not fire and raises no alarm. Applies only to NEW work; a
+            # resumed in-flight claim already opened its window.
+            if self._deadline is not None and self._deadline.gated(now):
+                return None
+            # REQ-958/963 window/debounce gate: peek the unclaimed fan-ins WITHOUT claiming; if the
+            # deadline (calendar boundary+lateness, or debounce quiet/max_delay) has not passed, defer
+            # (leave them unclaimed so more fan-ins coalesce into ONE recompute — fan-in collapse).
             peeked = await queue.peek_pending(conn, dependent_table=self.node)
             if not peeked:
                 return None
-            if not self._debounce_ready(peeked, now):
+            if not self._ready(peeked, now):
                 return None
         newly = await queue.claim(
             conn,
@@ -238,6 +262,10 @@ class TableProcessor(ABC):
             )
         prior = await queue.get_node_state(conn, self.node)
         prior_hash = prior["content_hash"] if prior else None
+        # REQ-958: open the processing window this fire is pegged to (calendar-addressable for a
+        # periodic node; None for a live node with no peg). ``produce`` reads as-of window.end and the
+        # result lands keyed on window_id.
+        window = self._deadline.window(now) if self._deadline is not None else None
         ctx = NodeContext(
             node=self.node,
             kind=self.kind,
@@ -246,7 +274,15 @@ class TableProcessor(ABC):
                 for e in pending
             ],
             prior_hash=prior_hash,
+            window=(window.start, window.end) if window is not None else None,
+            window_id=window.window_id if window is not None else None,
         )
+        # REQ-961: the freshness CONTRACT — a PULL against per-input freshness at fire time (NOT
+        # event receipt). A listed input not fresh-through window.end is an outage → warn/hold, no
+        # seal, no ripple (never a silent skip). Only meaningful with a window (periodic).
+        if window is not None and self._expected_events is not None:
+            if await self._contract_outage(conn, window, claimed, now, ctx):
+                return None
         # LAND runs inside ``handle`` against the STORE database — outside the control-plane
         # transaction below (different DB, no shared txn) and idempotent on the node key, so a
         # re-run after a crash re-lands harmlessly. (event_type, payload, content_hash|None) | None.
@@ -339,36 +375,48 @@ class TableProcessor(ABC):
                 conn, source_table=self.node, event_type="warn", payload={"reasons": ctx.warns}
             )
 
-    def _debounce_deadline(self, peeked: list[dict]) -> datetime | None:
-        """REQ-963 trailing-edge debounce deadline = min(last_change + quiet, first_change + max_delay),
-        or None when debounce is off (quiet<=0 → fire immediately). ``first_change``/``last_change`` are
-        the earliest/latest ``created_at`` of the coalescing fan-ins. max_delay is the mandatory cap:
-        under continuous churn the quiet window never elapses, so the cap guarantees a fire and is the
-        staleness SLA. Absent max_delay falls back to first+quiet so a deadline always exists."""
-        if self._debounce_quiet <= 0:
-            return None
-        stamps = [_as_utc(p["created_at"]) for p in peeked if p.get("created_at") is not None]
-        if not stamps:
-            return None  # no timestamps to reason about → do not defer
-        first, last = min(stamps), max(stamps)
-        quiet_deadline = last + timedelta(seconds=self._debounce_quiet)
-        if self._debounce_max_delay is None:
-            return quiet_deadline
-        return min(quiet_deadline, first + timedelta(seconds=self._debounce_max_delay))
-
-    def _debounce_ready(self, peeked: list[dict], now: datetime) -> bool:
-        """True when the debounce deadline has passed (or debounce is off) → fire now; False → defer so
-        more fan-ins coalesce into the same recompute (REQ-963)."""
-        deadline = self._debounce_deadline(peeked)
+    def _ready(self, peeked: list[dict], now: datetime) -> bool:
+        """True when the deadline SOURCE says fire now (deadline passed, or no source → real-time);
+        False → defer so more fan-ins coalesce into the SAME recompute (REQ-958 fan-in collapse /
+        REQ-961 calendar boundary / REQ-963 debounce)."""
+        if self._deadline is None:
+            return True
+        deadline = self._deadline.deadline(now, peeked)
         return deadline is None or now >= deadline
 
     def _claim_deadline(self, now: datetime) -> datetime | None:
-        """The per-claim fire-by stamped on the claim for the REQ-959 reaper. For a debounced live MV
-        it is now + max_delay (a stuck recompute past it is reclaimable); None otherwise (heartbeat
-        lapse is the only reclaim trigger)."""
-        if self._debounce_quiet > 0 and self._debounce_max_delay is not None:
-            return now + timedelta(seconds=self._debounce_max_delay)
-        return None
+        """The per-claim fire-by stamped on the claim for the REQ-959 reaper — derived from the
+        deadline source (calendar boundary+lateness, or now+max_delay); None with no source."""
+        return None if self._deadline is None else self._deadline.claim_deadline(now)
+
+    async def _contract_outage(
+        self, conn: Any, window: Window, claimed: list[int], now: datetime, ctx: NodeContext
+    ) -> bool:
+        """REQ-961: verify the expected-events freshness contract by a PULL against per-input
+        freshness at fire time. Every listed input fresh-through window.end → trusted (return False,
+        proceed to seal). Any not fresh-through → an OUTAGE: emit a warn (expected-but-absent) and
+        HOLD — complete the claim with NO land and NO ripple, never a silent skip (return True)."""
+        assert self._expected_events is not None  # guarded by the caller
+        if self._freshness_of is None:
+            raise ValueError(
+                f"{self.node}: an expected-events freshness contract requires a freshness_of reader"
+            )
+        result = evaluate_contract(
+            self._expected_events, self._freshness_of, window.end.timestamp()
+        )
+        if result.trusted:
+            return False
+        ctx.warn(
+            f"REQ-961 outage: inputs not fresh-through {window.window_id}: "
+            f"{', '.join(result.outages)}"
+        )
+        try:
+            async with conn.transaction():
+                await self._emit_warns(conn, ctx, now)
+                await self._complete_all(conn, claimed, now)
+        except OwnershipLost:
+            return True
+        return True
 
     async def _complete_all(self, conn: Any, claimed: list[int], now: datetime) -> None:
         """Complete every claimed item under the REQ-959 ownership CAS. A failed CAS on ANY item means

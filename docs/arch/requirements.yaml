@@ -27397,7 +27397,7 @@
   - REQ-940
   - REQ-939
 - id: REQ-958
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27426,7 +27426,10 @@
   code:
   - provisa/events/lineage.py
   - provisa/events/processor.py
+  - provisa/events/deadlines.py
   - provisa/federation/store_writer.py
+  tests:
+  - tests/unit/test_live_temporal.py
   scenario: 'Given an MV whose lineage requires inputs A and B
 
     And a processing window with a deadline
@@ -27532,7 +27535,7 @@
   - REQ-959
   - REQ-958
 - id: REQ-961
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27562,8 +27565,11 @@
     than by an event.
   code:
   - provisa/events/processor.py
-  - provisa/federation/freshness_gate.py
+  - provisa/events/freshness_contract.py
+  - provisa/events/deadlines.py
   - provisa/events/lineage.py
+  tests:
+  - tests/unit/test_live_temporal.py
   scenario: 'Given a daily-sales MV with expected-events list [transactions] and a business-day calendar
 
     When the day is a business day and transactions are fresh-through-end-of-day
@@ -27588,7 +27594,7 @@
   - REQ-962
   - REQ-932
 - id: REQ-962
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27613,8 +27619,12 @@
     from one shared calendar registry, and holidays become a deterministic "no window" rather than a silent
     gap or a spurious deadline alarm.
   code:
-  - provisa/events/supervisor.py
+  - provisa/events/calendars.py
+  - provisa/events/deadlines.py
   - provisa/events/processor.py
+  - provisa/events/boot.py
+  tests:
+  - tests/unit/test_live_temporal.py
   scenario: 'Given an MV declaring (fiscal-us calendar, quarterly grain)
 
     When fiscal Q1 closes
@@ -27641,7 +27651,7 @@
   - REQ-961
   - REQ-959
 - id: REQ-963
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27670,8 +27680,11 @@
     calendar-derived one.
   code:
   - provisa/events/processor.py
+  - provisa/events/deadlines.py
   - provisa/events/queue.py
-  - provisa/events/supervisor.py
+  tests:
+  - tests/unit/test_live_temporal.py
+  - tests/unit/test_processor.py
   scenario: 'Given a live MV over 10 frequently-changing tables with debounce quiet=2s max_delay=30s
 
     When a burst of changes arrives across several tables within 2s

@@ -52,6 +52,11 @@ class NodeSpec:
     probe_type: str = "none"  # REQ-982: input-probe method (drives the injected event shape)
     debounce_quiet: float = 0.0  # REQ-963: live-MV debounce quiet window; 0 = real-time
     debounce_max_delay: float | None = None  # REQ-963: staleness-SLA cap under churn
+    # REQ-961/962: the periodic deadline source (calendar boundary + lateness) — mutually exclusive
+    # with debounce; its freshness contract (expected-events list) and the per-input freshness reader.
+    deadline_source: Any | None = None
+    expected_events: list[str] | None = None
+    freshness_of: Callable[[str], Any] | None = None
     # REQ-965: the declared downstream emit-outcome SET (None = default single-shape fan-out) and the
     # demand-driven per-shape router (dependents that subscribe to each shape).
     emit_outcomes: frozenset[str] | None = None
@@ -83,6 +88,36 @@ def _probe_factory(
     return factory
 
 
+def _resolve_mv_deadline(
+    mv: Any, calendar_registry: Any, freshness_of: Callable[[str], Any] | None, dialect: str
+) -> tuple[Any | None, list[str] | None, Callable[[str], Any] | None, float, float | None]:
+    """Resolve an MV's deadline source (REQ-961/962/963). A declared ``calendar`` → a periodic
+    :class:`PeriodicCalendar` source with its freshness contract (declared expected-events, else all
+    SQL-lineage inputs) and a required registry + freshness reader; otherwise the live debounce knobs
+    flow through unchanged. Returns (deadline_source, expected_events, freshness_of, quiet, max_delay)."""
+    calendar = getattr(mv, "calendar", None)
+    if calendar is None:
+        return None, None, None, mv.debounce_quiet, mv.debounce_max_delay
+    from provisa.events.calendars import parse_grain
+    from provisa.events.deadlines import PeriodicCalendar
+    from provisa.events.lineage import extract_inputs
+
+    if calendar_registry is None:
+        raise ValueError(f"MV {mv.target_table!r} declares calendar {calendar!r} but no registry")
+    grain = getattr(mv, "grain", None)
+    if grain is None:
+        raise ValueError(f"MV {mv.target_table!r}: calendar declared without a grain (REQ-962)")
+    source = PeriodicCalendar(
+        calendar=calendar_registry.get(calendar),
+        grain=parse_grain(grain).value,
+        allowed_lateness=float(getattr(mv, "allowed_lateness", 0.0)),
+        business_day=bool(getattr(mv, "business_day_grain", False)),
+    )
+    declared = getattr(mv, "expected_events", None)
+    expected = declared if declared is not None else sorted(extract_inputs(mv.sql, dialect))
+    return source, expected, freshness_of, 0.0, None
+
+
 def specs_from_config(
     *,
     sources: list[Any],
@@ -96,6 +131,8 @@ def specs_from_config(
     store_schema: str = "mat",
     probe_scalar: Callable[[Any, Any], Any] | None = None,
     subscribers_of: Callable[[str, str], list[str]] | None = None,
+    calendar_registry: Any | None = None,
+    freshness_of: Callable[[str], Any] | None = None,
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
@@ -214,6 +251,12 @@ def specs_from_config(
             if is_poll(mv.freshness_mode)
             else None
         )
+        # REQ-961/962: a declared calendar makes the MV PERIODIC (calendar-boundary trigger + a
+        # freshness contract), mutually exclusive with REQ-963 live debounce. Undeclared expected-
+        # events default to ALL SQL-lineage inputs (extract_inputs, REQ-939).
+        deadline_source, expected, fresh_reader, quiet, max_delay = _resolve_mv_deadline(
+            mv, calendar_registry, freshness_of, engine.dialect
+        )
         specs.append(
             NodeSpec(
                 node=node,
@@ -224,8 +267,11 @@ def specs_from_config(
                 poll_seconds=mv.refresh_interval,
                 probe_factory=mv_probe_factory,
                 probe_type="none",
-                debounce_quiet=mv.debounce_quiet,  # REQ-963
-                debounce_max_delay=mv.debounce_max_delay,  # REQ-963
+                debounce_quiet=quiet,  # REQ-963 (0 when periodic)
+                debounce_max_delay=max_delay,  # REQ-963
+                deadline_source=deadline_source,  # REQ-961/962 periodic
+                expected_events=expected,  # REQ-961 freshness contract
+                freshness_of=fresh_reader,
                 emit_outcomes=emit_set,  # REQ-965 (None → default single-shape fan-out)
                 subscribers_of=subscribers_of if emit_set is not None else None,
             )
@@ -250,6 +296,9 @@ def build_processors(
             "probe_type": spec.probe_type,
             "debounce_quiet": spec.debounce_quiet,  # REQ-963
             "debounce_max_delay": spec.debounce_max_delay,  # REQ-963
+            "deadline_source": spec.deadline_source,  # REQ-961/962 periodic
+            "expected_events": spec.expected_events,  # REQ-961 freshness contract
+            "freshness_of": spec.freshness_of,  # REQ-961 per-input freshness reader
         }
         if spec.kind == "source":
             processors.append(SourceTableProcessor(spec.node, land=spec.handle, **common))
