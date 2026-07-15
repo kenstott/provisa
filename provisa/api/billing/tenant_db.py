@@ -31,7 +31,7 @@ def _row_to_tenant(row) -> Tenant:
     return Tenant(
         id=d["id"],
         kms_key_arn=d["kms_key_arn"],
-        stripe_customer_id=d["stripe_customer_id"],
+        ls_customer_id=d["ls_customer_id"],
         plan=Plan(d["plan"]),
         source_limit=d["source_limit"],
         created_at=d["created_at"],
@@ -70,12 +70,12 @@ async def get_tenant(pool: "Database", tenant_id: str) -> Tenant | None:  # REQ-
     return _row_to_tenant(row)
 
 
-async def get_tenant_by_stripe_customer(  # REQ-592
-    pool: "Database", stripe_customer_id: str
+async def get_tenant_by_ls_customer(  # REQ-592, REQ-1015
+    pool: "Database", ls_customer_id: str
 ) -> Tenant | None:
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(tenants).where(tenants.c.stripe_customer_id == stripe_customer_id)
+            select(tenants).where(tenants.c.ls_customer_id == ls_customer_id)
         )
         row = result.fetchone()
     if row is None:
@@ -94,14 +94,14 @@ async def update_tenant_plan(  # REQ-592
         )
 
 
-async def update_tenant_stripe_customer(  # REQ-592
-    pool: "Database", tenant_id: str, stripe_customer_id: str
+async def update_tenant_ls_customer(  # REQ-592, REQ-1015
+    pool: "Database", tenant_id: str, ls_customer_id: str
 ) -> None:
     async with pool.acquire() as conn:
         await conn.execute_core(
             update(tenants)
             .where(tenants.c.id == uuid.UUID(tenant_id))
-            .values(stripe_customer_id=stripe_customer_id)
+            .values(ls_customer_id=ls_customer_id)
         )
 
 

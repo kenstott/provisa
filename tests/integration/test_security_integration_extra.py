@@ -249,8 +249,8 @@ class TestReq594TenantMiddlewareSkipPaths:
         assert resp.status_code in [200, 404, 405]  # Depends on implementation
 
     def test_billing_nested_endpoint_no_tenant_required(self, client):
-        """GET /billing/stripe/webhooks should not require tenant context."""
-        resp = client.post("/billing/stripe/webhooks", json={})
+        """A nested /billing/* path should not require tenant context."""
+        resp = client.post("/billing/webhook/ping", json={})
         assert resp.status_code in [400, 401, 404, 405]  # No 403 tenant error
 
 

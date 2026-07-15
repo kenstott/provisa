@@ -12,7 +12,8 @@
 
 The core runtime image set (docker-compose.core.yml + OVA/Lima bundles) must:
 - include busybox as a core dependency;
-- keep stripe-mock DEV-ONLY (docker-compose.dev.yml, never core or airgap);
+- bundle NO third-party billing mock service in ANY compose (REQ-1015: Lemon Squeezy is
+  Merchant-of-Record over the public REST API; tests stub it via HTTP fixtures);
 - exclude python:3.12-slim from the packaged/airgap image set — it is BUILD-TIME only
   (Dockerfiles), never a shipped service image.
 
@@ -53,19 +54,21 @@ def test_busybox_is_present_in_the_core_image_set():
     assert any(img == "busybox" or img.startswith("busybox:") for img in images), images
 
 
-# ---- stripe-mock is dev-only (REQ-854) --------------------------------------
+# ---- no bundled billing mock service anywhere (REQ-854, REQ-1015) -----------
 
 
-def test_stripe_mock_is_defined_in_dev():
-    assert "stripe-mock" in _service_names("docker-compose.dev.yml")
-
-
-def test_stripe_mock_absent_from_core_and_airgap():
-    for compose in ("docker-compose.core.yml", "docker-compose.airgap.yml"):
+def test_no_billing_mock_service_bundled():
+    # Lemon Squeezy (MoR) is called over the public REST API; no stripe-mock (or any billing
+    # mock) ships in dev, core, or airgap. Tests stub Lemon Squeezy via HTTP fixtures.
+    for compose in (
+        "docker-compose.dev.yml",
+        "docker-compose.core.yml",
+        "docker-compose.airgap.yml",
+    ):
         images = _service_images(compose)
         names = _service_names(compose)
         assert "stripe-mock" not in names, compose
-        assert not any("stripe" in img for img in images), compose
+        assert not any("stripe" in img or "lemonsqueezy" in img for img in images), compose
 
 
 # ---- python:3.12-slim is build-time only (REQ-854) --------------------------

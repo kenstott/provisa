@@ -106,12 +106,8 @@ services:
       - prometheus
       - tempo
 
-  # Mock Stripe API — a demo/example data source, not a core dependency.
-  stripe-mock:
-    restart: unless-stopped
-    image: stripe/stripe-mock:latest
-    ports:
-      - "${STRIPE_MOCK_PORT:-12111}:12111"
+  # Billing (Lemon Squeezy, REQ-1015) is Merchant-of-Record over the public REST API; there is no
+  # bundled billing mock service. Tests stub Lemon Squeezy via HTTP fixtures (LEMONSQUEEZY_BASE_URL).
 
 volumes:
   tempo_data:

@@ -113,7 +113,7 @@ class TestPlatformSchemaIsolation:
             _mapping={
                 "id": "11111111-0000-0000-0000-000000000001",
                 "kms_key_arn": "arn:aws:kms:us-east-1:123:key/abc",
-                "stripe_customer_id": None,
+                "ls_customer_id": None,
                 "plan": "trial",
                 "source_limit": 2,
                 "created_at": None,

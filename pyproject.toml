@@ -35,7 +35,6 @@ dependencies = [
     "aiokafka",
     "websockets>=11.0",
     "boto3",
-    "stripe",
     "cryptography",
     "sqlalchemy>=2",
     "duckdb-engine",
