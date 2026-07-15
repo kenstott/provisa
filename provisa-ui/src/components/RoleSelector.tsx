@@ -40,7 +40,7 @@ export function RoleSelector() {
         >
           {t("roleSelector.role", { role: label })}
           {devMode && (
-            <Badge ml="xs" size="xs" color="orange" variant="filled">
+            <Badge ml="xs" size="xs" color="orange" variant="filled" autoContrast>
               {t("roleSelector.dev")}
             </Badge>
           )}

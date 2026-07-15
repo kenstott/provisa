@@ -9,7 +9,10 @@
  *   --text-muted #55596b on --surface #fff -> 4.9:1
  *   white on --primary #4f46e5            -> 6.3:1
  */
-html[data-mantine-color-scheme="light"] {
+/* Selector matches Mantine's own `:root[data-mantine-color-scheme]` specificity
+ * (0,2,0); this file loads after @mantine/core/styles.css so it wins on order,
+ * letting us override both the legacy tokens and Mantine vars like --mantine-color-dimmed. */
+:root[data-mantine-color-scheme="light"] {
   --bg: #ffffff;
   --surface: #ffffff;
   --surface-alt: #f1f3f9;
@@ -18,13 +21,17 @@ html[data-mantine-color-scheme="light"] {
   --text-muted: #55596b;
   --primary: #4f46e5;
   --primary-hover: #4338ca;
+  /* Indigo background that carries WHITE text at >= AA (nav-active etc.). */
+  --primary-strong: #4f46e5;
   --destructive: #dc2626;
   --approve: #16a34a;
+  /* Mantine dimmed text — kept >= 4.5:1 on white (REQ-1013). */
+  --mantine-color-dimmed: #5c6270;
 }
 
 /* Keep the explicit dark block in sync with App.css `:root` so the tokens are
  * correct even once the scheme attribute is present on first paint. */
-html[data-mantine-color-scheme="dark"] {
+:root[data-mantine-color-scheme="dark"] {
   --bg: #0f1117;
   --surface: #1a1d27;
   --surface-alt: #20243a;
@@ -33,6 +40,12 @@ html[data-mantine-color-scheme="dark"] {
   --text-muted: #8b8fa3;
   --primary: #6366f1;
   --primary-hover: #818cf8;
+  /* Indigo background that carries WHITE text at >= AA (nav-active etc.).
+   * white on #4f46e5 = 6.3:1; the brand-500 #6366f1 only reaches 3.5:1. */
+  --primary-strong: #4f46e5;
   --destructive: #ef4444;
   --approve: #22c55e;
+  /* Mantine dimmed text — brand default #828282 fails (4.37:1 on --surface);
+   * lift to >= 4.5:1 on both --bg and --surface (REQ-1013). */
+  --mantine-color-dimmed: #9ca3af;
 }
