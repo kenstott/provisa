@@ -9,7 +9,24 @@
 // permission from the copyright holder.
 
 import { useState, useEffect } from "react";
-import { Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Collapse,
+  Group,
+  Pagination,
+  Select,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  PasswordInput,
+  Title,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { ChevronDown, ChevronRight, Trash2, X } from "lucide-react";
 import {
   fetchLocalUsers,
   createLocalUser,
@@ -28,17 +45,17 @@ interface LocalUsersTabProps {
 }
 
 export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
+  const { t } = useTranslation();
   const [localUsers, setLocalUsers] = useState<LocalUser[]>([]);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
-  const [userMsg, setUserMsg] = useState("");
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [userAssignments, setUserAssignments] = useState<Record<string, UserAssignment[]>>({});
-  const [assignRole, setAssignRole] = useState("");
-  const [assignDomain, setAssignDomain] = useState("");
-  const [userPage, setUserPage] = useState(0);
+  const [assignRole, setAssignRole] = useState<string | null>(null);
+  const [assignDomain, setAssignDomain] = useState<string>("*");
+  const [userPage, setUserPage] = useState(1);
 
   useEffect(() => {
     fetchLocalUsers()
@@ -48,7 +65,6 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
 
   const handleAddUser = async () => {
     if (!newUsername.trim() || !newPassword.trim()) return;
-    setUserMsg("");
     try {
       await createLocalUser({
         username: newUsername.trim(),
@@ -58,13 +74,17 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
       });
       const updated = await fetchLocalUsers();
       setLocalUsers(updated);
+      const created = newUsername.trim();
       setNewUsername("");
       setNewPassword("");
       setNewEmail("");
       setNewDisplayName("");
-      setUserMsg(`Created "${newUsername.trim()}"`);
+      notifications.show({ color: "green", message: t("localUsers.created", { username: created }) });
     } catch (e: unknown) {
-      setUserMsg(e instanceof Error ? e.message : "Create failed");
+      notifications.show({
+        color: "red",
+        message: e instanceof Error ? e.message : t("localUsers.createFailed"),
+      });
     }
   };
 
@@ -72,7 +92,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
     await deleteLocalUser(userId);
     setLocalUsers((prev) => prev.filter((u) => u.id !== userId));
     if (expandedUserId === userId) setExpandedUserId(null);
-    setUserMsg(`Deleted "${username}"`);
+    notifications.show({ message: t("localUsers.deleted", { username }) });
   };
 
   const handleExpandUser = async (userId: string) => {
@@ -81,7 +101,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
       return;
     }
     setExpandedUserId(userId);
-    setAssignRole(allRoles[0] ?? "");
+    setAssignRole(allRoles[0] ?? null);
     setAssignDomain("*");
     if (!userAssignments[userId]) {
       const rows = await fetchUserAssignments(userId);
@@ -96,7 +116,10 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
       const rows = await fetchUserAssignments(userId);
       setUserAssignments((prev) => ({ ...prev, [userId]: rows }));
     } catch (e: unknown) {
-      setUserMsg(e instanceof Error ? e.message : "Assignment failed");
+      notifications.show({
+        color: "red",
+        message: e instanceof Error ? e.message : t("localUsers.assignmentFailed"),
+      });
     }
   };
 
@@ -108,281 +131,179 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
     }));
   };
 
+  const totalPages = Math.max(1, Math.ceil(localUsers.length / PAGE_SIZE));
+  const paged = localUsers.slice((userPage - 1) * PAGE_SIZE, userPage * PAGE_SIZE);
+  const domainOptions = [
+    { value: "*", label: t("localUsers.allDomains") },
+    ...allDomains.map((d) => ({ value: d, label: d })),
+  ];
+
   return (
-    <>
-      {userMsg && (
-        <div className="success" style={{ marginBottom: "0.5rem" }}>
-          {userMsg}
-        </div>
-      )}
-      {(() => {
-        const totalPages = Math.max(1, Math.ceil(localUsers.length / PAGE_SIZE));
-        const paged = localUsers.slice(userPage * PAGE_SIZE, (userPage + 1) * PAGE_SIZE);
-        return (
-          <div>
-            <table className="data-table" style={{ marginBottom: "1rem" }}>
-              <thead>
-                <tr>
-                  <th>Username</th>
-                  <th>Email</th>
-                  <th>Display Name</th>
-                  <th>Active</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {localUsers.length === 0 && (
-                  <tr>
-                    <td colSpan={5} style={{ color: "var(--text-muted)", textAlign: "center" }}>
-                      No local users
-                    </td>
-                  </tr>
-                )}
-                {paged.map((u) => (
-                  <>
-                    <tr key={u.id}>
-                      <td style={{ fontFamily: "monospace" }}>
-                        <button
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "var(--accent)",
-                            cursor: "pointer",
-                            padding: 0,
-                            fontFamily: "monospace",
-                          }}
-                          onClick={() => handleExpandUser(u.id)}
-                        >
-                          {expandedUserId === u.id ? "▾" : "▸"} {u.username}
-                        </button>
-                      </td>
-                      <td>{u.email || "—"}</td>
-                      <td>{u.display_name || "—"}</td>
-                      <td>{u.is_active ? "Yes" : "No"}</td>
-                      <td>
-                        <button
-                          className="btn-icon-danger"
-                          title="Delete"
-                          onClick={() => handleDeleteUser(u.id, u.username)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                    {expandedUserId === u.id && (
-                      <tr key={`${u.id}-assign`}>
-                        <td
-                          colSpan={5}
-                          style={{
-                            paddingLeft: "2rem",
-                            background: "var(--bg-alt, var(--bg))",
-                          }}
-                        >
-                          <div style={{ padding: "0.75rem 0" }}>
-                            <strong style={{ fontSize: "0.85rem" }}>Role:Domain Assignments</strong>
-                            <div
-                              style={{
-                                marginTop: "0.5rem",
-                                display: "flex",
-                                flexWrap: "wrap",
-                                gap: "0.4rem",
-                              }}
-                            >
-                              {(userAssignments[u.id] ?? []).length === 0 && (
-                                <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                                  No assignments
-                                </span>
-                              )}
-                              {(userAssignments[u.id] ?? []).map((a) => (
-                                <span
-                                  key={a.id}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "0.25rem",
-                                    background: "var(--border)",
-                                    borderRadius: "4px",
-                                    padding: "0.2rem 0.5rem",
-                                    fontSize: "0.8rem",
-                                  }}
-                                >
-                                  {a.role_id}:{a.domain_id}
-                                  <button
-                                    style={{
-                                      background: "none",
-                                      border: "none",
-                                      color: "var(--danger, #e55)",
-                                      cursor: "pointer",
-                                      padding: 0,
-                                      lineHeight: 1,
-                                    }}
-                                    onClick={() => handleRemoveAssignment(u.id, a.id)}
-                                    title="Remove"
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                            <div
-                              style={{
-                                marginTop: "0.5rem",
-                                display: "flex",
-                                gap: "0.5rem",
-                                alignItems: "center",
-                              }}
-                            >
-                              <select
-                                value={assignRole}
-                                onChange={(e) => setAssignRole(e.target.value)}
-                                style={{
-                                  background: "var(--bg)",
-                                  color: "var(--text)",
-                                  border: "1px solid var(--border)",
-                                  padding: "0.3rem",
-                                  borderRadius: "4px",
-                                  fontSize: "0.85rem",
-                                }}
-                              >
-                                {allRoles.map((r) => (
-                                  <option key={r} value={r}>
-                                    {r}
-                                  </option>
-                                ))}
-                              </select>
-                              <select
-                                value={assignDomain}
-                                onChange={(e) => setAssignDomain(e.target.value)}
-                                style={{
-                                  background: "var(--bg)",
-                                  color: "var(--text)",
-                                  border: "1px solid var(--border)",
-                                  padding: "0.3rem",
-                                  borderRadius: "4px",
-                                  fontSize: "0.85rem",
-                                }}
-                              >
-                                <option value="*">* (all domains)</option>
-                                {allDomains.map((d) => (
-                                  <option key={d} value={d}>
-                                    {d}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                className="btn-primary"
-                                style={{ fontSize: "0.8rem", padding: "0.3rem 0.7rem" }}
-                                onClick={() => handleAddAssignment(u.id)}
-                                disabled={!assignRole}
-                              >
-                                Add
-                              </button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-            </table>
-            {totalPages > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  padding: "0.5rem 0",
-                  marginBottom: "1rem",
-                }}
-              >
-                <button onClick={() => setUserPage(0)} disabled={userPage === 0}>
-                  «
-                </button>
-                <button onClick={() => setUserPage((p) => p - 1)} disabled={userPage === 0}>
-                  ‹
-                </button>
-                <span>
-                  Page {userPage + 1} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setUserPage((p) => p + 1)}
-                  disabled={userPage >= totalPages - 1}
-                >
-                  ›
-                </button>
-                <button
-                  onClick={() => setUserPage(totalPages - 1)}
-                  disabled={userPage >= totalPages - 1}
-                >
-                  »
-                </button>
-              </div>
+    <Stack gap="md">
+      <Table.ScrollContainer minWidth={640}>
+        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("localUsers.colUsername")}</Table.Th>
+              <Table.Th>{t("localUsers.colEmail")}</Table.Th>
+              <Table.Th>{t("localUsers.colDisplayName")}</Table.Th>
+              <Table.Th>{t("localUsers.colActive")}</Table.Th>
+              <Table.Th>
+                <Text span visibleFrom="xs" fz="sm" fw={600}>
+                  {t("localUsers.actions")}
+                </Text>
+              </Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {localUsers.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={5} ta="center" c="dimmed">
+                  {t("localUsers.empty")}
+                </Table.Td>
+              </Table.Tr>
             )}
-          </div>
-        );
-      })()}
-      <h4 style={{ marginBottom: "0.5rem" }}>Create User</h4>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "480px" }}>
-        <input
+            {paged.map((u) => {
+              const expanded = expandedUserId === u.id;
+              return (
+                <Table.Tr key={u.id}>
+                  <Table.Td>
+                    <Button
+                      variant="subtle"
+                      size="compact-sm"
+                      leftSection={
+                        expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />
+                      }
+                      aria-expanded={expanded}
+                      aria-label={t("localUsers.expandUser", { username: u.username })}
+                      onClick={() => handleExpandUser(u.id)}
+                      styles={{ label: { fontFamily: "monospace" } }}
+                    >
+                      {u.username}
+                    </Button>
+                    <Collapse in={expanded}>
+                      <Stack gap="xs" pl="md" py="sm">
+                        <Text fw={600} fz="sm">
+                          {t("localUsers.assignmentsHeading")}
+                        </Text>
+                        <Group gap="xs">
+                          {(userAssignments[u.id] ?? []).length === 0 && (
+                            <Text c="dimmed" fz="sm">
+                              {t("localUsers.noAssignments")}
+                            </Text>
+                          )}
+                          {(userAssignments[u.id] ?? []).map((a) => (
+                            <Badge
+                              key={a.id}
+                              variant="light"
+                              rightSection={
+                                <ActionIcon
+                                  variant="transparent"
+                                  size="xs"
+                                  color="red"
+                                  aria-label={t("localUsers.removeAssignment", {
+                                    role: a.role_id,
+                                    domain: a.domain_id,
+                                  })}
+                                  onClick={() => handleRemoveAssignment(u.id, a.id)}
+                                >
+                                  <X size={12} />
+                                </ActionIcon>
+                              }
+                            >
+                              {a.role_id}:{a.domain_id}
+                            </Badge>
+                          ))}
+                        </Group>
+                        <Group gap="xs" align="flex-end">
+                          <Select
+                            label={t("localUsers.roleLabel")}
+                            size="xs"
+                            data={allRoles}
+                            value={assignRole}
+                            onChange={setAssignRole}
+                            allowDeselect={false}
+                          />
+                          <Select
+                            label={t("localUsers.domainLabel")}
+                            size="xs"
+                            data={domainOptions}
+                            value={assignDomain}
+                            onChange={(v) => setAssignDomain(v ?? "*")}
+                            allowDeselect={false}
+                          />
+                          <Button
+                            size="xs"
+                            onClick={() => handleAddAssignment(u.id)}
+                            disabled={!assignRole}
+                          >
+                            {t("localUsers.add")}
+                          </Button>
+                        </Group>
+                      </Stack>
+                    </Collapse>
+                  </Table.Td>
+                  <Table.Td>{u.email || t("localUsers.none")}</Table.Td>
+                  <Table.Td>{u.display_name || t("localUsers.none")}</Table.Td>
+                  <Table.Td>{u.is_active ? t("localUsers.yes") : t("localUsers.no")}</Table.Td>
+                  <Table.Td>
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      aria-label={t("localUsers.deleteUser", { username: u.username })}
+                      onClick={() => handleDeleteUser(u.id, u.username)}
+                    >
+                      <Trash2 size={14} />
+                    </ActionIcon>
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+      {totalPages > 1 && (
+        <Group justify="flex-end">
+          <Pagination total={totalPages} value={userPage} onChange={setUserPage} size="sm" />
+        </Group>
+      )}
+
+      <Title order={4}>{t("localUsers.createHeading")}</Title>
+      <Stack gap="sm" maw={480}>
+        <TextInput
+          label={t("localUsers.username")}
+          placeholder={t("localUsers.usernameRequired")}
+          required
           value={newUsername}
-          onChange={(e) => setNewUsername(e.target.value)}
-          placeholder="Username *"
-          style={{
-            background: "var(--bg)",
-            color: "var(--text)",
-            border: "1px solid var(--border)",
-            padding: "0.5rem",
-            borderRadius: "4px",
-          }}
+          onChange={(e) => setNewUsername(e.currentTarget.value)}
         />
-        <input
-          type="password"
+        <PasswordInput
+          label={t("localUsers.password")}
+          placeholder={t("localUsers.passwordRequired")}
+          required
           value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="Password *"
-          style={{
-            background: "var(--bg)",
-            color: "var(--text)",
-            border: "1px solid var(--border)",
-            padding: "0.5rem",
-            borderRadius: "4px",
-          }}
+          onChange={(e) => setNewPassword(e.currentTarget.value)}
         />
-        <input
+        <TextInput
+          label={t("localUsers.email")}
+          placeholder={t("localUsers.emailOptional")}
           value={newEmail}
-          onChange={(e) => setNewEmail(e.target.value)}
-          placeholder="Email (optional)"
-          style={{
-            background: "var(--bg)",
-            color: "var(--text)",
-            border: "1px solid var(--border)",
-            padding: "0.5rem",
-            borderRadius: "4px",
-          }}
+          onChange={(e) => setNewEmail(e.currentTarget.value)}
         />
-        <input
+        <TextInput
+          label={t("localUsers.displayName")}
+          placeholder={t("localUsers.displayNameOptional")}
           value={newDisplayName}
-          onChange={(e) => setNewDisplayName(e.target.value)}
-          placeholder="Display name (optional)"
-          style={{
-            background: "var(--bg)",
-            color: "var(--text)",
-            border: "1px solid var(--border)",
-            padding: "0.5rem",
-            borderRadius: "4px",
-          }}
+          onChange={(e) => setNewDisplayName(e.currentTarget.value)}
         />
-        <button
-          className="btn-primary"
+        <Button
           onClick={handleAddUser}
           disabled={!newUsername.trim() || !newPassword.trim()}
           style={{ alignSelf: "flex-start" }}
         >
-          + User
-        </button>
-      </div>
-    </>
+          {t("localUsers.createButton")}
+        </Button>
+      </Stack>
+    </Stack>
   );
 }

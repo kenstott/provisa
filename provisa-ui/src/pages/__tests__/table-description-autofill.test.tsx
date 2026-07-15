@@ -9,7 +9,9 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+// Uses the provider-wrapping render (MantineProvider + i18n) required now that
+// the form embeds Mantine components (REQ-1016).
+import { render, screen, waitFor } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import { Fragment } from "react";
 

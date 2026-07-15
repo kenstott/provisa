@@ -10,6 +10,8 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { Button, Group, Modal, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   title: string;
@@ -18,8 +20,11 @@ interface Props {
   children: (open: () => void) => ReactNode;
 }
 
-/** Confirmation dialog for destructive actions with consequence summary (REQ-061). */
+/** Confirmation dialog for destructive actions with consequence summary (REQ-061).
+ *  Backed by Mantine Modal for focus-trap, `role="dialog"`, aria-modal, ESC /
+ *  overlay dismissal, and focus restoration on close (REQ-1013). */
 export function ConfirmDialog({ title, consequence, onConfirm, children }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -36,30 +41,25 @@ export function ConfirmDialog({ title, consequence, onConfirm, children }: Props
   return (
     <>
       {children(() => setOpen(true))}
-      {open && (
-        <div className="modal-overlay" onClick={() => setOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>{title}</h3>
-            <p className="consequence">{consequence}</p>
-            <div className="modal-actions">
-              <button
-                aria-label="Cancel"
-                onClick={() => setOpen(false)}
-                disabled={loading}
-              >
-                ✕
-              </button>
-              <button
-                className="destructive"
-                onClick={handleConfirm}
-                disabled={loading}
-              >
-                {loading ? "Processing..." : "Confirm"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        opened={open}
+        onClose={() => setOpen(false)}
+        title={title}
+        centered
+        closeOnClickOutside={!loading}
+        closeOnEscape={!loading}
+        withCloseButton={false}
+      >
+        <Text mb="md">{consequence}</Text>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => setOpen(false)} disabled={loading}>
+            {t("common.cancel")}
+          </Button>
+          <Button color="red" onClick={handleConfirm} loading={loading}>
+            {loading ? t("common.processing") : t("common.confirm")}
+          </Button>
+        </Group>
+      </Modal>
     </>
   );
 }

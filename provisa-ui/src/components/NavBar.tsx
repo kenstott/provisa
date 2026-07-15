@@ -15,6 +15,7 @@ import { CapabilityGate } from "./CapabilityGate";
 import { useTour } from "../tour/useTour";
 import { RoleSelector } from "./RoleSelector";
 import { OrgSwitcher } from "./OrgSwitcher";
+import { ColorSchemeToggle } from "../theme/ColorSchemeToggle";
 import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
@@ -229,6 +230,7 @@ export function NavBar() {
           <NavLink to="/docs" data-tour="nav-docs">Docs</NavLink>
         </div>
         <div className="navbar-role">
+          <ColorSchemeToggle />
           <OrgSwitcher />
           {domainsEnabled && onTablesPage && domains.length > 0 && (
             <div className="navbar-domain-wrapper" ref={domainRef}>

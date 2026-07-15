@@ -9,6 +9,22 @@
     <meta name="theme-color" content="#1F2933" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Provisa</title>
+    <script>
+      // Set the Mantine color-scheme attribute before first paint to avoid a
+      // light/dark flash (REQ-1011). Mirrors @mantine/core's ColorSchemeScript
+      // for this non-SSR Vite app. Key + default must match MantineProvider.
+      (function () {
+        try {
+          var stored = localStorage.getItem("provisa-color-scheme");
+          document.documentElement.setAttribute(
+            "data-mantine-color-scheme",
+            stored === "light" || stored === "dark" ? stored : "dark",
+          );
+        } catch (e) {
+          document.documentElement.setAttribute("data-mantine-color-scheme", "dark");
+        }
+      })();
+    </script>
     <style>
       /* Convergence flow-field splash — painted on first paint, before the JS bundle
          loads, and faded out when the React app signals ready (window.__provisaHideSplash).

@@ -1,0 +1,57 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "processing": "Processing..."
+  },
+  "app": {
+    "apiUnreachable": "Could not reach the Provisa API.",
+    "notAuthorized": "You do not have permission to view this page."
+  },
+  "theme": {
+    "toggle": "Toggle color scheme",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "multiSelect": {
+    "defaultLabel": "Select options",
+    "all": "all"
+  },
+  "localUsers": {
+    "colUsername": "Username",
+    "colEmail": "Email",
+    "colDisplayName": "Display Name",
+    "colActive": "Active",
+    "actions": "Actions",
+    "empty": "No local users",
+    "yes": "Yes",
+    "no": "No",
+    "none": "—",
+    "expandUser": "Show assignments for {{username}}",
+    "deleteUser": "Delete user {{username}}",
+    "assignmentsHeading": "Role:Domain Assignments",
+    "noAssignments": "No assignments",
+    "removeAssignment": "Remove assignment {{role}}:{{domain}}",
+    "roleLabel": "Role",
+    "domainLabel": "Domain",
+    "allDomains": "* (all domains)",
+    "add": "Add",
+    "createHeading": "Create User",
+    "username": "Username",
+    "usernameRequired": "Username *",
+    "password": "Password",
+    "passwordRequired": "Password *",
+    "email": "Email",
+    "emailOptional": "Email (optional)",
+    "displayName": "Display name",
+    "displayNameOptional": "Display name (optional)",
+    "createButton": "Create user",
+    "created": "Created \"{{username}}\"",
+    "deleted": "Deleted \"{{username}}\"",
+    "createFailed": "Create failed",
+    "assignmentFailed": "Assignment failed"
+  }
+}
