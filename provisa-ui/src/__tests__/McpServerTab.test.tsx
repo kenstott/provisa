@@ -8,7 +8,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '../test-utils/render';
 import { McpServerTab } from '../components/admin/McpServerTab';
 import type { McpServerStatus } from '../api/admin';
 

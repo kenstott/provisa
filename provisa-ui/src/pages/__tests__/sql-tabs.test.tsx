@@ -9,9 +9,12 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import { Fragment } from "react";
+import i18n from "../../i18n";
+
+const t = i18n.getFixedT("en");
 
 vi.mock("react-router-dom", () => ({
   MemoryRouter: ({ children }: { children: React.ReactNode }) => <Fragment>{children}</Fragment>,
@@ -104,7 +107,7 @@ describe("SQL explore query tabs", () => {
     await user.type(editor(), "select a");
     expect(editor()).toHaveValue("select a");
 
-    await user.click(screen.getByRole("button", { name: "New query tab" }));
+    await user.click(screen.getByRole("button", { name: t("sqlEditorPanel.newTab") }));
     await waitFor(() => screen.getByText("Query 2"));
     expect(editor()).toHaveValue(""); // new tab is blank
 
@@ -135,7 +138,7 @@ describe("SQL explore query tabs", () => {
     const first = renderPage();
     await waitFor(() => screen.getByText("Query 1"));
     await user.type(editor(), "select restored");
-    await user.click(screen.getByRole("button", { name: "New query tab" }));
+    await user.click(screen.getByRole("button", { name: t("sqlEditorPanel.newTab") }));
     await waitFor(() => screen.getByText("Query 2"));
     first.unmount();
 
@@ -150,15 +153,15 @@ describe("SQL explore query tabs", () => {
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => screen.getByText("Query 1"));
-    await user.click(screen.getByRole("button", { name: "New query tab" }));
+    await user.click(screen.getByRole("button", { name: t("sqlEditorPanel.newTab") }));
     await waitFor(() => screen.getByText("Query 2"));
 
-    await user.click(screen.getByRole("button", { name: "Close Query 2" }));
+    await user.click(screen.getByRole("button", { name: t("sqlEditorPanel.closeTab", { title: "Query 2" }) }));
     await waitFor(() => expect(screen.queryByText("Query 2")).not.toBeInTheDocument());
     expect(screen.getByText("Query 1")).toBeInTheDocument();
 
     // closing the last tab resets it rather than removing it
-    await user.click(screen.getByRole("button", { name: "Close Query 1" }));
+    await user.click(screen.getByRole("button", { name: t("sqlEditorPanel.closeTab", { title: "Query 1" }) }));
     expect(screen.getByText("Query 1")).toBeInTheDocument();
   });
 
