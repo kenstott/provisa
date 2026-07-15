@@ -1,6 +1,7 @@
-/* Provisa indigo theme for GraphiQL */
-body.graphiql-dark .graphiql-container,
-body.graphiql-dark .graphiql-dialog {
+/* Provisa indigo accent for GraphiQL — applies in both light and dark; the
+ * light/dark switch itself is driven by GraphiQL's `forcedTheme` prop. */
+.graphiql-container,
+.graphiql-dialog {
   --color-primary: 239, 84%, 67%;
   --color-secondary: 224, 76%, 48%;
   --color-tertiary: 199, 89%, 48%;

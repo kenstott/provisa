@@ -11,7 +11,7 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Checkbox, Group, NumberInput, Select, Text } from "@mantine/core";
+import { ActionIcon, Alert, Checkbox, Group, NumberInput, Select, Text, useMantineColorScheme } from "@mantine/core";
 import { X } from "lucide-react";
 import * as monaco from "monaco-editor";
 import { GraphiQL } from "graphiql";
@@ -523,6 +523,9 @@ function AutoRunFromNav({ query }: { query: string }) {
 /** Query development page — embeds GraphiQL with Explorer (REQ-062). */
 export function QueryPage() {
   const { t } = useTranslation();
+  const { colorScheme } = useMantineColorScheme();
+  // GraphiQL has its own light/dark theme — force it to follow the app scheme.
+  const graphiqlTheme = colorScheme === "light" ? "light" : "dark";
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
   const location = useLocation();
@@ -861,7 +864,7 @@ export function QueryPage() {
       <GraphiQL
         fetcher={fetcher}
         plugins={plugins}
-        forcedTheme="dark"
+        forcedTheme={graphiqlTheme}
         schema={domainSchema ?? undefined}
         visiblePlugin={initialVisiblePlugin}
         onTogglePluginVisibility={onPluginVisibilityChange}
