@@ -215,8 +215,11 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
 
     if coordinated:
         assert store is not None and writer is not None  # coordinated ⇒ both set (see above)
-        from provisa.mv.coordination import claim_refresh  # noqa: PLC0415
+        from provisa.mv.coordination import claim_refresh, ensure_mv_row  # noqa: PLC0415
 
+        # The in-memory registry never writes the control-plane catalog row; seed it here so
+        # the atomic claim below has a row to elect on (else 0 rows → permanent STALE).
+        await ensure_mv_row(store, mv)
         claimed = await claim_refresh(store, mv.id, writer, target_token)
         if not claimed:
             # 0 rows: another fleet instance owns this refresh, or the store already holds this

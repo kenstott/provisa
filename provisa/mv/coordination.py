@@ -42,12 +42,44 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import and_, or_, update
+from sqlalchemy import and_, insert, or_, update
+from sqlalchemy.exc import IntegrityError
 
 from provisa.core.schema_org import materialized_views as _mvt
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
+    from provisa.mv.models import MVDefinition
+
+
+async def ensure_mv_row(store: "Database", mv: "MVDefinition") -> None:
+    """Seed the shared coordination row for ``mv`` if absent (idempotent).
+
+    The MV registry is in-memory; the control-plane ``materialized_views`` catalog row —
+    the one ``claim_refresh`` runs its atomic election on — is created lazily here on the
+    first coordinated refresh. Without it a ``shared``-tier MV has no row to claim, so the
+    claim UPDATE matches 0 rows and the MV can never refresh (stays STALE forever).
+
+    Dialect-agnostic (the control plane is PostgreSQL in production, SQLite in tests): a
+    plain INSERT whose duplicate-key IntegrityError — the row already exists, or a concurrent
+    fleet instance seeded it first — is the success case and is swallowed."""
+    stmt = insert(_mvt).values(
+        id=mv.id,
+        source_tables=mv.source_tables,
+        target_catalog=mv.target_catalog,
+        target_schema=mv.target_schema,
+        target_table=mv.target_table,
+        refresh_interval=mv.refresh_interval,
+        enabled=mv.enabled,
+        custom_sql=mv.sql,
+        status="stale",
+    )
+    try:
+        async with store.acquire() as conn:
+            await conn.execute_core(stmt)
+    except IntegrityError:
+        pass  # row already present (or seeded concurrently) — the desired end state
+
 
 # One stable id per process: this instance's fencing/ownership token.
 INSTANCE_WRITER: str = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
