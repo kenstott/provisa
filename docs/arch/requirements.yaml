@@ -29718,7 +29718,7 @@
     Accessibility scanning must run against the real DOM tree rendered in the browser; static analysis cannot
     detect color contrast, focus order, or semantic issues.
 
-- id: REQ-1015
+- id: REQ-1074
   status: proposed
   group: 11. Frontend UI & UX
   category: Design System
