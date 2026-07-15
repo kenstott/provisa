@@ -23,7 +23,8 @@ the base. The variants supply only ``handle``:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -47,11 +48,49 @@ class OwnershipLost(Exception):
     the loop treats it as a no-op (the peer now owns the work)."""
 
 
+class PreprocessError(Exception):
+    """REQ-957: a user ``preprocess`` hook raised — a FATAL data outcome, not an infra crash. The loop
+    catches it, emits an ``error`` event about the node, short-circuits the land, and fans the error to
+    dependents (poison propagation). Distinct from any other exception, which is a genuine crash that
+    MUST propagate for at-least-once resume (REQ-960)."""
+
+
+@dataclass
+class NodeContext:
+    """REQ-957: the read-only processing envelope handed to a node's ``preprocess(rows, ctx)`` hook.
+
+    Carries what the hook may inspect — node identity/kind, the claimed-event summary, the landing
+    columns/schema, the forced-refresh flag, and the last-landed content hash — plus the ``warn``
+    channel. ``window``/``frontier`` are placeholders for windowed processing (REQ-958), None until a
+    window is opened. ``warn`` is the ONLY mutation: it records advisory reasons the loop emits as a
+    non-fatal ``warn`` event; every data field is informational."""
+
+    node: str
+    kind: str
+    claimed: list[dict]
+    prior_hash: str | None
+    forced: bool = False
+    columns: list[tuple[str, str]] | None = None
+    window: tuple[datetime, datetime] | None = None
+    frontier: dict[str, Any] | None = None
+    warns: list[str] = field(default_factory=list)
+
+    def warn(self, reasons: str | Iterable[str]) -> None:
+        """REQ-957: record advisory reason(s). Non-fatal — the loop emits a single ``warn`` event and
+        still lands the rows. Accepts a string or an iterable of strings."""
+        if isinstance(reasons, str):
+            self.warns.append(reasons)
+        else:
+            self.warns.extend(reasons)
+
+
 class TableProcessor(ABC):
     """Base: owns a node, its lifecycle, and the common claim→handle→complete→re-post loop.
 
     ``dependents_of(node) -> list[str]`` is the SQLGlot-derived fan-out target set (lineage). ``name``
     is the lease owner. The queue runs on the control-plane ``Database`` (``db``)."""
+
+    kind = "node"  # REQ-957: node kind surfaced on NodeContext (overridden: source / mv)
 
     def __init__(
         self,
@@ -65,8 +104,13 @@ class TableProcessor(ABC):
         probe_type: str | None = None,
         debounce_quiet: float = 0.0,
         debounce_max_delay: float | None = None,
+        preprocess: Callable[..., Any] | None = None,
     ) -> None:
         self.node = node
+        # REQ-957: the one optional user hook preprocess(rows, ctx) -> rows, run after produce and
+        # before land. None = identity. Honored by the variant handle, which threads it into the
+        # produce→land closure so it runs between the two.
+        self._preprocess = preprocess
         self.change_signal = change_signal
         self.watermark_column = watermark_column
         self.probe_type = (

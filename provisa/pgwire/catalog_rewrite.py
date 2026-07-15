@@ -14,10 +14,11 @@ Rewrites intercepted information_schema / pg_catalog queries to run against the
 in-memory DuckDB catalog tables. Extracted from catalog.py; leaf module.
 """
 
-# complexity-gate: allow-cc=87 allow-ble=2 reason="_rewrite_for_duckdb relocated verbatim from catalog.py (REQ-127); the high CC is the single pg_catalog->DuckDB rewrite dispatch, and the two broad excepts fail-open to the raw SQL so a catalog query never crashes the pgwire session"
+# complexity-gate: allow-cc=89 allow-ble=2 reason="_rewrite_for_duckdb relocated verbatim from catalog.py (REQ-127); the high CC is the single pg_catalog->DuckDB rewrite dispatch (incl. pg_is_in_recovery/txid_current), and the two broad excepts fail-open to the raw SQL so a catalog query never crashes the pgwire session"
 
 from __future__ import annotations
 
+import itertools
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -28,6 +29,15 @@ from provisa.pgwire.catalog_data import (
     _KNOWN_SETTINGS,
     _TABLE_MAP,
 )
+
+# Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
+# transaction ids; txid_current() clients only require a stable increasing bigint.
+_TXID_COUNTER = itertools.count(1)
+
+
+def next_txid() -> int:
+    """Return the next monotonic bigint transaction id for txid_current()."""
+    return next(_TXID_COUNTER)
 
 
 def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
@@ -165,6 +175,10 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                 return exp.null()
             if "pg_postmaster_start_time" in fn or "pg_conf_load_time" in fn:
                 return exp.null()
+            if "pg_is_in_recovery" in fn:
+                return exp.false()
+            if "txid_current" in fn:
+                return exp.Literal.number(next_txid())
             if "pg_is_other_temp_schema" in fn:
                 return exp.false()
             if (

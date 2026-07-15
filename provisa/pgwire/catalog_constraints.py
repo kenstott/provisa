@@ -251,3 +251,53 @@ def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex
             f"INSERT INTO _is_key_column_usage VALUES ({','.join(['?'] * 9)})",
             is_kcu_rows,
         )
+    is_rc_rows = _build_referential_rows(constraint_rows, oid_to_ns)
+    if is_rc_rows:
+        db.executemany(
+            f"INSERT INTO _is_referential_constraints VALUES ({','.join(['?'] * 9)})",
+            is_rc_rows,
+        )
+
+
+def _build_referential_rows(
+    constraint_rows: list[tuple],
+    oid_to_ns: dict[int, str],
+) -> list[tuple]:
+    """One information_schema.referential_constraints row per FK constraint.
+
+    Joins each FK (confrelid) to the referenced table's primary-key constraint.
+    Fails loud if a referenced PK constraint cannot be resolved.
+    """
+    pk_by_relid: dict[int, tuple[str, str]] = {
+        con_row[7]: (con_row[1], oid_to_ns.get(con_row[2], "public"))
+        for con_row in constraint_rows
+        if con_row[3] == "p"
+    }
+    rc_rows: list[tuple] = []
+    for con_row in constraint_rows:
+        if con_row[3] != "f":
+            continue
+        fk_name: str = con_row[1]
+        fk_schema: str = oid_to_ns.get(con_row[2], "public")
+        confrelid: int = con_row[11]
+        referenced = pk_by_relid.get(confrelid)
+        if referenced is None:
+            raise ValueError(
+                f"referential_constraints: FK {fk_name!r} references table oid "
+                f"{confrelid} with no resolvable primary-key constraint"
+            )
+        uniq_name, uniq_schema = referenced
+        rc_rows.append(
+            (
+                "provisa",
+                fk_schema,
+                fk_name,
+                "provisa",
+                uniq_schema,
+                uniq_name,
+                "NONE",
+                "NO ACTION",
+                "NO ACTION",
+            )
+        )
+    return rc_rows
