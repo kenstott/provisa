@@ -881,6 +881,41 @@ _TRINO_EXEC_FIELDS: list[dict] = [
         "required": False,
         "placeholder": "/data/provisa/exchange",
     },
+    # S3-backed spool for multi-host clusters (a local dir is not shared across hosts). A blank
+    # endpoint keeps the local-filesystem spool at exchange_spool_dir.
+    {
+        "config_key": "exchange_spool_s3_endpoint",
+        "label": "Exchange Spool S3 Endpoint",
+        "type": "string",
+        "required": False,
+        "placeholder": "blank = local filesystem spool",
+    },
+    {
+        "config_key": "exchange_spool_bucket",
+        "label": "Exchange Spool S3 Bucket",
+        "type": "string",
+        "required": False,
+        "placeholder": "provisa-exchange",
+    },
+    {
+        "config_key": "exchange_spool_s3_region",
+        "label": "Exchange Spool S3 Region",
+        "type": "string",
+        "required": False,
+        "placeholder": "us-east-1",
+    },
+    {
+        "config_key": "exchange_spool_s3_access_key",
+        "label": "Exchange Spool S3 Access Key",
+        "type": "string",
+        "required": False,
+    },
+    {
+        "config_key": "exchange_spool_s3_secret_key",
+        "label": "Exchange Spool S3 Secret Key",
+        "type": "string",
+        "required": False,
+    },
 ]
 
 ENGINE_REGISTRY: list[dict] = [

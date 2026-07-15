@@ -48,6 +48,8 @@ export function CacheStorageTab() {
       const res = await setCacheStorage({
         cache: s.cache,
         hot_tables: s.hot_tables,
+        warm_tables: s.warm_tables,
+        materialized_views: s.materialized_views,
         materialize: s.materialize,
       });
       setMsg(
@@ -129,6 +131,87 @@ export function CacheStorageTab() {
           }
         />
       </Stack>
+
+      <Title order={4}>{t("cacheStorageTab.warmHeading")}</Title>
+      <Text c="dimmed" size="sm">
+        {t("cacheStorageTab.warmIntro")}
+      </Text>
+      <Stack gap="sm">
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
+          <NumberInput
+            label={t("cacheStorageTab.warmQueryThresholdLabel")}
+            value={s.warm_tables.query_threshold}
+            onChange={(v) =>
+              setS({ ...s, warm_tables: { ...s.warm_tables, query_threshold: Number(v) } })
+            }
+          />
+          <NumberInput
+            label={t("cacheStorageTab.warmMaxRowsLabel")}
+            value={s.warm_tables.max_rows}
+            onChange={(v) =>
+              setS({ ...s, warm_tables: { ...s.warm_tables, max_rows: Number(v) } })
+            }
+          />
+          <NumberInput
+            label={t("cacheStorageTab.warmRefreshLabel")}
+            value={s.warm_tables.refresh_interval ?? ""}
+            onChange={(v) =>
+              setS({
+                ...s,
+                warm_tables: {
+                  ...s.warm_tables,
+                  refresh_interval: v === "" ? null : Number(v),
+                },
+              })
+            }
+          />
+        </SimpleGrid>
+        <Checkbox
+          label={t("cacheStorageTab.fsCacheEnabledLabel")}
+          checked={s.warm_tables.fs_cache_enabled}
+          onChange={(e) =>
+            setS({
+              ...s,
+              warm_tables: { ...s.warm_tables, fs_cache_enabled: e.currentTarget.checked },
+            })
+          }
+        />
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
+          <TextInput
+            label={t("cacheStorageTab.fsCacheDirsLabel")}
+            value={s.warm_tables.fs_cache_directories}
+            onChange={(e) =>
+              setS({
+                ...s,
+                warm_tables: { ...s.warm_tables, fs_cache_directories: e.currentTarget.value },
+              })
+            }
+          />
+          <TextInput
+            label={t("cacheStorageTab.fsCacheMaxSizesLabel")}
+            value={s.warm_tables.fs_cache_max_sizes}
+            onChange={(e) =>
+              setS({
+                ...s,
+                warm_tables: { ...s.warm_tables, fs_cache_max_sizes: e.currentTarget.value },
+              })
+            }
+          />
+        </SimpleGrid>
+      </Stack>
+
+      <Title order={4}>{t("cacheStorageTab.mvHeading")}</Title>
+      <NumberInput
+        label={t("cacheStorageTab.mvDefaultTtlLabel")}
+        description={t("cacheStorageTab.mvDefaultTtlHint")}
+        value={s.materialized_views.default_ttl ?? ""}
+        onChange={(v) =>
+          setS({
+            ...s,
+            materialized_views: { default_ttl: v === "" ? null : Number(v) },
+          })
+        }
+      />
 
       <Title order={4}>{t("cacheStorageTab.materializeHeading")}</Title>
       <Text c="dimmed" size="sm">

@@ -91,11 +91,11 @@
       <div class="provisa-splash-mark">
         <svg viewBox="0 0 100 100" width="76" height="76" role="img" aria-label="Provisa">
           <g fill="#e1e4ed">
-            <rect x="30" y="18" width="15" height="64" rx="7" />
-            <circle cx="52" cy="35" r="22" />
+            <rect x="28" y="18" width="15" height="64" rx="7" />
+            <circle cx="50" cy="35" r="22" />
           </g>
-          <circle cx="52" cy="34" r="10.5" fill="#0f1117" />
-          <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          <circle cx="50" cy="34" r="10.5" fill="#0f1117" />
+          <circle cx="50" cy="34" r="4.5" fill="#10B981" />
         </svg>
         <div class="provisa-splash-word">PROVISA</div>
       </div>
@@ -124,14 +124,27 @@
             spawnR = 0,
             coreR = 0;
 
+          // The P logo's on-screen centre — the halo converges here so the mark sits exactly in it.
+          // Measured from the SVG rect (canvas is inset:0, so client coords == viewport coords);
+          // falls back to the prior fixed anchor if the mark isn't laid out yet.
+          var markSvg = document.querySelector(".provisa-splash-mark svg");
+          function markCenter() {
+            if (markSvg) {
+              var r = markSvg.getBoundingClientRect();
+              if (r.width) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            }
+            return { x: W / 2, y: H * 0.45 };
+          }
+
           function resize() {
             W = canvas.clientWidth;
             H = canvas.clientHeight;
             canvas.width = W * dpr;
             canvas.height = H * dpr;
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            cx = W / 2;
-            cy = H * 0.45;
+            var c = markCenter();
+            cx = c.x;
+            cy = c.y;
             spawnR = Math.max(W, H) * 0.72;
             coreR = Math.max(56, Math.min(W, H) * 0.13);
             ctx.fillStyle = "#0f1117";
@@ -139,6 +152,15 @@
           }
           window.addEventListener("resize", resize);
           resize();
+          // Re-anchor once the mark's entrance animation has settled and after first layout,
+          // so the halo centre matches the P's final resting position exactly.
+          function reanchor() {
+            var c = markCenter();
+            cx = c.x;
+            cy = c.y;
+          }
+          requestAnimationFrame(reanchor);
+          setTimeout(reanchor, 760);
 
           var N = Math.max(140, Math.min(320, Math.round((W * H) / 5200)));
           var P = [];

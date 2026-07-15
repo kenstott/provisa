@@ -273,6 +273,78 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
             onChange={(v) => update("sample_rate", typeof v === "number" ? v : 0)}
             description={t("observabilityTab.sampleRateHelp")}
           />
+          <TextInput
+            label={t("observabilityTab.logLevelLabel")}
+            value={settings.otel.log_level}
+            onChange={(e) => update("log_level", e.target.value)}
+            placeholder="WARNING"
+            description={t("observabilityTab.logLevelHelp")}
+          />
+        </Stack>
+
+        <Title order={4} mt="lg">{t("observabilityTab.pipelineTitle")}</Title>
+        <Text c="dimmed" size="sm" mb="md">
+          {t("observabilityTab.pipelineIntro")}
+        </Text>
+        <Stack gap="md">
+          <TextInput
+            label={t("observabilityTab.s3EndpointLabel")}
+            value={settings.otel.s3_endpoint}
+            onChange={(e) => update("s3_endpoint", e.target.value)}
+            placeholder="http://minio:9000"
+            description={t("observabilityTab.s3EndpointHelp")}
+          />
+          <TextInput
+            label={t("observabilityTab.compactCronLabel")}
+            value={settings.otel.compact_cron}
+            onChange={(e) => update("compact_cron", e.target.value)}
+            placeholder="* * * * *"
+            description={t("observabilityTab.compactCronHelp")}
+          />
+          <NumberInput
+            label={t("observabilityTab.compactBatchSizeLabel")}
+            min={1}
+            value={settings.otel.compact_batch_size}
+            onChange={(v) => update("compact_batch_size", typeof v === "number" ? v : 0)}
+            description={t("observabilityTab.compactBatchSizeHelp")}
+          />
+          <NumberInput
+            label={t("observabilityTab.compactFileChunkLabel")}
+            min={1}
+            value={settings.otel.compact_file_chunk}
+            onChange={(v) => update("compact_file_chunk", typeof v === "number" ? v : 0)}
+            description={t("observabilityTab.compactFileChunkHelp")}
+          />
+          <NumberInput
+            label={t("observabilityTab.opsSnapshotRetentionLabel")}
+            min={0}
+            value={settings.otel.ops_snapshot_retention_hours ?? ""}
+            onChange={(v) =>
+              update("ops_snapshot_retention_hours", v === "" ? null : Number(v))
+            }
+            description={t("observabilityTab.opsSnapshotRetentionHelp")}
+          />
+          <NumberInput
+            label={t("observabilityTab.spanExportDelayLabel")}
+            min={0}
+            value={settings.otel.span_export_delay_millis}
+            onChange={(v) => update("span_export_delay_millis", typeof v === "number" ? v : 0)}
+            description={t("observabilityTab.spanExportDelayHelp")}
+          />
+          <NumberInput
+            label={t("observabilityTab.otlp2parquetMaxAgeLabel")}
+            min={0}
+            value={settings.otel.otlp2parquet_max_age_secs}
+            onChange={(v) => update("otlp2parquet_max_age_secs", typeof v === "number" ? v : 0)}
+            description={t("observabilityTab.otlp2parquetMaxAgeHelp")}
+          />
+          <NumberInput
+            label={t("observabilityTab.collectorBatchTimeoutLabel")}
+            min={0}
+            value={settings.otel.collector_batch_timeout_ms}
+            onChange={(v) => update("collector_batch_timeout_ms", typeof v === "number" ? v : 0)}
+            description={t("observabilityTab.collectorBatchTimeoutHelp")}
+          />
         </Stack>
         <Group mt="md" gap="0.75rem" align="center">
           <ActionIcon

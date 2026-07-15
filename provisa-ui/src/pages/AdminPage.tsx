@@ -59,10 +59,9 @@ import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 import { ObservabilityTab } from "../components/admin/ObservabilityTab";
 import { FederationEngineTab } from "../components/admin/FederationEngineTab";
 import { McpServerTab } from "../components/admin/McpServerTab";
-import { EncryptionTab } from "../components/admin/EncryptionTab";
-import { AuthTab } from "../components/admin/AuthTab";
-import { LocalUsersTab } from "../components/admin/LocalUsersTab";
 import { OrgsTab } from "../components/admin/OrgsTab";
+import { AiModelsTab } from "../components/admin/AiModelsTab";
+import { SecurityManager } from "../components/admin/SecurityManager";
 import { ConfigDiffView } from "../components/admin/ConfigDiffView";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
@@ -73,14 +72,26 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/cache": "Cache",
   "/admin/scheduled-tasks": "Scheduler",
   "/admin/federation-engine": "Federation",
-  "/admin/encryption": "Encryption",
-  "/admin/auth": "Authentication",
   "/admin/system-health": "Health",
   "/admin/observability": "Observability",
   "/admin/mcp-server": "MCP Server",
-  "/admin/local-users": "Local Users",
   "/admin/orgs": "Orgs",
+  "/admin/ai-models": "AI Models",
+  // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
+  // Legacy routes deep-link to the matching sub-tab.
+  "/admin/security": "Security",
+  "/admin/encryption": "Security",
+  "/admin/auth": "Security",
+  "/admin/local-users": "Security",
 };
+
+// Which Security sub-tab a route opens on.
+const SECURITY_SUBTAB: Record<string, "posture" | "encryption" | "authentication" | "localUsers"> =
+  {
+    "/admin/encryption": "encryption",
+    "/admin/auth": "authentication",
+    "/admin/local-users": "localUsers",
+  };
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
@@ -483,6 +494,56 @@ export function AdminPage() {
                   />
                 </Card>
 
+                <Card withBorder padding="md">
+                  <Title order={4} mb="sm">
+                    {t("adminPage.graphqlRemote")}
+                  </Title>
+                  <Stack gap="sm">
+                    <NumberInput
+                      label={t("adminPage.maxObjectDepth")}
+                      min={1}
+                      value={settings.graphql_remote.max_object_depth}
+                      onChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          graphql_remote: {
+                            ...settings.graphql_remote,
+                            max_object_depth: typeof v === "number" ? v : 0,
+                          },
+                        })
+                      }
+                    />
+                    <NumberInput
+                      label={t("adminPage.maxListDepth")}
+                      min={1}
+                      value={settings.graphql_remote.max_list_depth}
+                      onChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          graphql_remote: {
+                            ...settings.graphql_remote,
+                            max_list_depth: typeof v === "number" ? v : 0,
+                          },
+                        })
+                      }
+                    />
+                    <NumberInput
+                      label={t("adminPage.maxListItems")}
+                      min={1}
+                      value={settings.graphql_remote.max_list_items}
+                      onChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          graphql_remote: {
+                            ...settings.graphql_remote,
+                            max_list_items: typeof v === "number" ? v : 0,
+                          },
+                        })
+                      }
+                    />
+                  </Stack>
+                </Card>
+
                 <Group gap="sm" align="center">
                   <ActionIcon
                     variant="filled"
@@ -667,17 +728,20 @@ export function AdminPage() {
         {activeTab === "Cache" && <CacheManager />}
         {activeTab === "Scheduler" && <ScheduledTasks />}
         {activeTab === "Federation" && <FederationEngineTab />}
-        {activeTab === "Encryption" && <EncryptionTab />}
-        {activeTab === "Authentication" && <AuthTab />}
+        {activeTab === "Security" && (
+          <SecurityManager
+            allRoles={allRoles}
+            allDomains={allDomains}
+            initialTab={SECURITY_SUBTAB[location.pathname]}
+          />
+        )}
         {activeTab === "Health" && <SystemHealth />}
         {activeTab === "Observability" && settings && (
           <ObservabilityTab settings={settings} setSettings={setSettings} />
         )}
         {activeTab === "MCP Server" && <McpServerTab />}
-        {activeTab === "Local Users" && (
-          <LocalUsersTab allRoles={allRoles} allDomains={allDomains} />
-        )}
         {activeTab === "Orgs" && isSuperAdmin && <OrgsTab />}
+        {activeTab === "AI Models" && <AiModelsTab />}
       </Stack>
 
       <Modal

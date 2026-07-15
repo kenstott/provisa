@@ -4,6 +4,8 @@
     "intro": "Column encryption at rest. Choose a provider and manage its master key. Envelope encryption wraps a per-column data key with the master key.",
     "providerLabel": "Provider",
     "providerCurrentSuffix": " (current)",
+    "providerComingSoonSuffix": " (coming soon)",
+    "unavailableNote": "This provider's runtime is not yet available and cannot be selected. Fields shown for reference.",
     "keyIdLabel": "Key ID",
     "keyIdPlaceholder": "master",
     "masterKeyLabel": "Master key:",

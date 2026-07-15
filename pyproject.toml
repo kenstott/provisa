@@ -92,6 +92,13 @@ oracle = ["oracledb"]
 all-drivers = ["aiomysql", "aioodbc", "oracledb"]
 govdata = ["askamerica[engine]"]
 firebase = ["firebase-admin"]
+# Encryption master-key providers (REQ-690-694). boto3 (AWS KMS) is a base dependency,
+# so aws_kms needs no extra. These optional SDKs auto-enable their provider in the
+# registry (provisa/encryption/registry.py) once installed.
+vault = ["hvac"]                      # HashiCorp Vault Transit
+azure = ["azure-keyvault-keys"]       # Azure Key Vault (azure-identity is a base dep)
+gcp = ["google-cloud-kms"]            # Google Cloud KMS
+kms-all = ["hvac", "azure-keyvault-keys", "google-cloud-kms"]
 dev = [
     "pytest",
     "pytest-asyncio",

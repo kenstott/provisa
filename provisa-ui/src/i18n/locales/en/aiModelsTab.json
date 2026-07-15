@@ -1,0 +1,29 @@
+{
+  "aiModelsTab": {
+    "modelsHeading": "AI Model Assignments",
+    "modelsIntro": "Model used for each AI-assisted operation. Enter a model name (e.g. claude-haiku-4-5-20251001). Leave blank to reset to the default.",
+    "role_table_description": "Table description",
+    "role_column_description": "Column description",
+    "role_relationship_inference": "Relationship inference",
+    "role_sql_generation": "SQL generation",
+    "role_table_selection": "Table selection",
+    "dictNotEditable": "(configured as full vendor/model form — edit in the config YAML)",
+    "nlHeading": "Natural-Language Query",
+    "nlIntro": "Requests per minute per role for NL-to-SQL. Leave empty for unlimited.",
+    "rateLimitLabel": "Rate limit (req/min per role)",
+    "vectorHeading": "Vector (Embedding) Models",
+    "vectorIntro": "Registered embedding models available for semantic search. The registry is an allowlist.",
+    "vectorId": "Model ID",
+    "vectorProvider": "Provider",
+    "vectorDimensions": "Dimensions",
+    "vectorApiKeyEnv": "API key env var",
+    "vectorBaseUrl": "Base URL",
+    "vectorEnabled": "Enabled",
+    "addVectorModel": "Add vector model",
+    "removeVectorModel": "Remove",
+    "saveButtonLabel": "Save AI model settings",
+    "loading": "Loading…",
+    "saved": "Saved.",
+    "savedRestartRequired": "Saved. Restart the service to apply."
+  }
+}

@@ -25,6 +25,8 @@ export function EncryptionTab() {
   const [s, setS] = useState<EncryptionState | null>(null);
   const [provider, setProvider] = useState("null");
   const [keyId, setKeyId] = useState("");
+  // Per-provider config field values (keyed by provider → config_key).
+  const [config, setConfig] = useState<Record<string, Record<string, string>>>({});
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [msg, setMsg] = useState("");
@@ -37,6 +39,14 @@ export function EncryptionTab() {
         setS(e);
         setProvider(e.provider);
         setKeyId(e.key_id ?? "");
+        const seeded: Record<string, Record<string, string>> = {};
+        for (const p of e.providers) {
+          const vals = e.config[p.key] ?? {};
+          seeded[p.key] = Object.fromEntries(
+            p.config_fields.map((f) => [f.config_key, String(vals[f.config_key] ?? "")]),
+          );
+        }
+        setConfig(seeded);
       })
       .catch((e) => setError(String(e)));
 
@@ -45,13 +55,24 @@ export function EncryptionTab() {
   }, []);
 
   const current = useMemo(() => s?.providers.find((p) => p.key === provider), [s, provider]);
+  const unavailable = current ? !current.available : false;
+  const missingRequired = (current?.config_fields ?? []).some(
+    (f) => f.required && !(config[provider]?.[f.config_key] ?? "").trim(),
+  );
+
+  const setField = (key: string, value: string) =>
+    setConfig((c) => ({ ...c, [provider]: { ...(c[provider] ?? {}), [key]: value } }));
 
   const save = async () => {
     setSaving(true);
     setMsg("");
     setError("");
     try {
-      const res = await setEncryption({ provider, key_id: keyId || null });
+      const res = await setEncryption({
+        provider,
+        key_id: keyId || null,
+        config: config[provider] ?? {},
+      });
       setMsg(res.restart_required ? t("encryptionTab.savedRestartRequired") : t("encryptionTab.saved"));
       load();
     } catch (e) {
@@ -87,7 +108,11 @@ export function EncryptionTab() {
 
   const providerData = s.providers.map((p) => ({
     value: p.key,
-    label: p.label + (p.key === s.provider ? t("encryptionTab.providerCurrentSuffix") : ""),
+    label:
+      p.label +
+      (p.key === s.provider ? t("encryptionTab.providerCurrentSuffix") : "") +
+      (p.available ? "" : t("encryptionTab.providerComingSoonSuffix")),
+    disabled: !p.available,
   }));
 
   return (
@@ -104,6 +129,26 @@ export function EncryptionTab() {
           data-testid="encryption-provider-select"
         />
         {current && <Text c="dimmed" fz="xs">{current.description}</Text>}
+
+        {unavailable && (
+          <Alert color="yellow" variant="light" data-testid="encryption-unavailable">
+            {t("encryptionTab.unavailableNote")}
+          </Alert>
+        )}
+
+        {/* Generic per-provider config fields (e.g. KMS key ARN / region) driven by the registry. */}
+        {(current?.config_fields ?? []).map((f) => (
+          <TextInput
+            key={f.config_key}
+            label={f.label}
+            required={f.required}
+            placeholder={f.placeholder}
+            type={f.secret ? "password" : "text"}
+            value={config[provider]?.[f.config_key] ?? ""}
+            onChange={(e) => setField(f.config_key, e.currentTarget.value)}
+            data-testid={`encryption-field-${f.config_key}`}
+          />
+        ))}
 
         {provider === "local" && (
           <>
@@ -156,6 +201,7 @@ export function EncryptionTab() {
         <Button
           onClick={save}
           loading={saving}
+          disabled={unavailable || missingRequired}
           title={t("encryptionTab.saveTitle")}
           aria-label={t("encryptionTab.saveTitle")}
           data-testid="save-encryption-button"

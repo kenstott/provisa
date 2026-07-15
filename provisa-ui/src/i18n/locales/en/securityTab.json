@@ -1,0 +1,12 @@
+{
+  "securityTab": {
+    "intro": "Controls the platform security posture. High (zero-trust) mode is impactful — read the warning before enabling.",
+    "modeLabel": "Security mode",
+    "highWarningTitle": "High (zero-trust) mode is impactful",
+    "highWarning": "The pgwire server will not start, and REST & GraphQL data endpoints will return 403. Only clients that decrypt locally (kms_key_arn configured) can reach data. Verify your clients are configured before enabling.",
+    "loading": "Loading…",
+    "saved": "Saved.",
+    "savedRestartRequired": "Saved. Restart the service to apply.",
+    "saveTitle": "Save security posture"
+  }
+}

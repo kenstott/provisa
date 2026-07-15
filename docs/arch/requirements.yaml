@@ -29799,6 +29799,8 @@
   use_case: >-
     Lemon Squeezy MoR consolidates global sales-tax/VAT compliance, chargebacks, and fraud handling in one
     system Provisa does not build; per-tenant plan gating via source_limit maps to LS subscription variants.
+  tests:
+    - tests/unit/test_billing_lemonsqueezy.py
   scenario: |
     Given a tenant initiates checkout with tenant_id in custom_data
     When POST /v1/checkouts is called to Lemon Squeezy API
@@ -29807,6 +29809,48 @@
     And Given a subscription_created webhook from Lemon Squeezy with valid HMAC-SHA256 signature
     When the webhook signature is verified against LEMONSQUEEZY_SIGNING_SECRET
     Then the tenant's plan and source_limit are updated from the variant name; unrecognized variants reject the webhook
+- id: REQ-1076
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Federation Configuration
+  priority: MUST
+  type: structural
+  since: 2026-07
+  description: >-
+    Databricks federation TLS trust is configurable via environment variables to enable the databricks-sql connector to work behind a TLS-intercepting proxy. Honored in precedence order: DATABRICKS_TLS_NO_VERIFY=1 (disable verification, local dev only), DATABRICKS_TLS_CA_FILE (custom CA certificate), REQUESTS_CA_BUNDLE, SSL_CERT_FILE. If all are absent, connector keeps its default verified behavior. Values passed as _tls_trusted_ca_file and _tls_verify to dbsql.connect().
+  use_case: >-
+    Organizations with TLS-intercepting proxies (compliance/security gateways) require the ability to supply custom certificate authorities or disable verification in development environments. Provisa must support this pattern to work in corporate proxy environments.
+  code:
+    - provisa/federation/databricks_tls.py
+    - provisa/federation/databricks_runtime.py
+    - provisa/executor/drivers/databricks.py
+- id: REQ-1077
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Warehouse Configuration
+  priority: SHOULD
+  type: structural
+  since: 2026-07
+  description: >-
+    MSSQL warehouse (Azure Synapse/Fabric) login timeout is configurable via PROVISA_MSSQL_LOGIN_TIMEOUT environment variable (seconds, default 120). Applied at both pyodbc connection sites (provisa/federation/mssql_warehouse_runtime.py and provisa/executor/drivers/mssql_warehouse.py) via the ConnectionTimeout keyword argument.
+  use_case: >-
+    Serverless SQL pools in Azure Synapse auto-pause and require wake-up time before accepting connections. A configurable timeout prevents false connection failures when the pool is resuming from auto-pause.
+  code:
+    - provisa/federation/mssql_warehouse_runtime.py
+    - provisa/executor/drivers/mssql_warehouse.py
+- id: REQ-1078
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Testing Infrastructure
+  priority: SHOULD
+  type: structural
+  since: 2026-07
+  description: >-
+    The scripts/test-all runner auto-loads .env file before executing test lanes, with caller-exported variables taking precedence. This allows credential-gated warehouse test lanes (e.g., Databricks, Snowflake, MSSQL) to run instead of skipping.
+  use_case: >-
+    Enables CI/CD pipelines to load external warehouse credentials from .env (not checked in) and run full warehouse integration tests. Caller-exported variables can still override .env values for CI/CD systems that inject credentials via environment.
+  code:
+    - scripts/test-all
   code:
     - provisa/api/billing/router.py
     - provisa/api/billing/lemonsqueezy_client.py
@@ -30642,3 +30686,189 @@
     - REQ-1070
     - REQ-1071
     - REQ-1072
+- id: REQ-1079
+  status: complete
+  group: "10. Admin Console & Governance"
+  category: Admin Configuration
+  priority: SHOULD
+  type: ui
+  since: "2026-07"
+  description: >-
+    Admin UI can view and edit the security posture (security.mode: standard | high) via GET/PUT /admin/security, with changes applied on restart.
+  use_case: >-
+    Enables operators to adjust security enforcement level without code deployment.
+  relates_to:
+    - REQ-693
+- id: REQ-1080
+  status: complete
+  group: "10. Admin Console & Governance"
+  category: Admin Configuration
+  priority: SHOULD
+  type: ui
+  since: "2026-07"
+  description: >-
+    Admin UI can view and edit AI model assignments (ai_models), the embedding/vector-model registry (vector_models), and the natural-language rate limit (nl.rate_limit) via GET/PUT /admin/ai-models, with changes applied on restart.
+  use_case: >-
+    Allows dynamic model and rate-limit tuning without redeployment.
+  relates_to:
+    - REQ-464
+    - REQ-419
+    - REQ-500
+    - REQ-370
+- id: REQ-1081
+  status: complete
+  group: "10. Admin Console & Governance"
+  category: Admin Configuration
+  priority: SHOULD
+  type: ui
+  since: "2026-07"
+  description: >-
+    Admin UI cache-storage settings now also cover warm-tier promotion and engine filesystem read-cache (warm_tables), plus the default materialized-view refresh TTL (materialized_views.default_ttl).
+  use_case: >-
+    Centralizes cache and materialized-view refresh configuration in the admin console.
+  relates_to:
+    - REQ-240
+    - REQ-543
+- id: REQ-1082
+  status: complete
+  group: "10. Admin Console & Governance"
+  category: Admin Configuration
+  priority: SHOULD
+  type: ui
+  since: "2026-07"
+  description: >-
+    Admin UI observability settings expose the full OpenTelemetry tracing-pipeline tuning surface (log_level, compact_cron, compact_batch_size, compact_file_chunk, ops_snapshot_retention_hours, span_export_delay_millis, otlp2parquet_max_age_secs, collector_batch_timeout_ms, s3_endpoint).
+  use_case: >-
+    Operators can fine-tune telemetry collection and export without redeployment.
+  relates_to:
+    - REQ-545
+- id: REQ-1083
+  status: complete
+  group: "10. Admin Console & Governance"
+  category: Admin Configuration
+  priority: SHOULD
+  type: ui
+  since: "2026-07"
+  description: >-
+    Admin UI platform settings now expose remote-GraphQL traversal limits (graphql_remote.max_object_depth, max_list_depth, max_list_items) and make the default query sample size editable.
+  use_case: >-
+    Operators can constrain GraphQL complexity and adjust sampling without redeployment.
+  relates_to:
+    - REQ-165
+- id: REQ-1084
+  status: complete
+  group: "10. Admin Console & Governance"
+  category: Admin Configuration
+  priority: SHOULD
+  type: ui
+  since: "2026-07"
+  description: >-
+    The federation-engine tab now exposes S3 exchange-spool fields (exchange_spool_s3_endpoint, exchange_spool_bucket, exchange_spool_s3_region, exchange_spool_s3_access_key, exchange_spool_s3_secret_key).
+  use_case: >-
+    Enables S3-backed exchange-spool configuration in the admin UI.
+  relates_to:
+    - REQ-916
+- id: REQ-1085
+  status: complete
+  group: "10. Admin Console & Governance"
+  category: Admin Navigation
+  priority: SHOULD
+  type: ui
+  since: "2026-07"
+  description: >-
+    Admin navigation consolidates security posture, encryption, authentication, and local users under a single Security section with sub-tabs.
+  use_case: >-
+    Improves discoverability and grouping of security-related admin settings.
+- id: REQ-1086
+  status: complete
+  group: "15. Proposed Features"
+  category: Encryption
+  priority: SHOULD
+  type: structural
+  since: "2026-07"
+  description: >-
+    Extensible encryption provider registry (provisa/encryption/registry.py) with pluggable implementations. Each provider is a spec with UI config_fields, an availability probe, and a builder. build_encryption_service dispatches via the registry and fails closed on unknown/unavailable providers.
+  use_case: >-
+    Decouples provider implementation from core service, enabling built-in (LocalKeychain, AwsKms, AzureKeyVault, Vault) and custom providers (via env var, entry-point, or API) to coexist without code changes.
+  code:
+    - provisa/encryption/registry.py
+  relates_to:
+    - REQ-684
+    - REQ-685
+- id: REQ-1087
+  status: complete
+  group: "15. Proposed Features"
+  category: Encryption
+  priority: SHOULD
+  type: structural
+  since: "2026-07"
+  description: >-
+    AWS KMS encryption provider (envelope wrapping via KMS Encrypt/Decrypt) with support for custom endpoint_url for KMS-compatible private endpoints. Available whenever boto3 is present.
+  use_case: >-
+    Enterprises can use AWS-managed KMS keys without re-implementing envelope encryption logic. Private endpoint support enables airgapped deployments.
+  code:
+    - provisa/encryption/providers/aws_kms.py
+  relates_to:
+    - REQ-684
+- id: REQ-1088
+  status: complete
+  group: "15. Proposed Features"
+  category: Encryption
+  priority: SHOULD
+  type: structural
+  since: "2026-07"
+  description: >-
+    HashiCorp Vault (Transit engine) encryption provider with auto-availability when hvac package is installed. Vault address is configurable as a custom endpoint.
+  use_case: >-
+    Enterprises using Vault can leverage existing HSM or encryption backends without provisioning cloud KMS. Custom Vault endpoint supports private/airgapped deployments.
+  code:
+    - provisa/encryption/providers/vault.py
+  relates_to:
+    - REQ-684
+- id: REQ-1089
+  status: complete
+  group: "15. Proposed Features"
+  category: Encryption
+  priority: SHOULD
+  type: structural
+  since: "2026-07"
+  description: >-
+    Azure Key Vault encryption provider (RSA-OAEP-256 key wrap) with auto-availability when azure-keyvault-keys package is installed.
+  use_case: >-
+    Azure-native deployments can leverage customer-managed keys in Azure Key Vault without running separate KMS infrastructure.
+  code:
+    - provisa/encryption/providers/azure_keyvault.py
+  relates_to:
+    - REQ-684
+- id: REQ-1090
+  status: complete
+  group: "15. Proposed Features"
+  category: Encryption
+  priority: SHOULD
+  type: behavioral
+  since: "2026-07"
+  description: >-
+    Enterprises can register custom encryption providers (e.g., in-house KMS/HSM endpoints) without core changes via register_encryption_provider() API, PROVISA_ENCRYPTION_PROVIDER_MODULES environment variable, or provisa.encryption_providers entry-point group.
+  use_case: >-
+    Organizations with proprietary KMS or HSM deployments can integrate them without maintaining a Provisa fork.
+  code:
+    - provisa/encryption/registry.py
+  relates_to:
+    - REQ-684
+  scenario: |
+    Given a custom KMS provider module is installed
+    When build_encryption_service is called with the custom provider name
+    Then the custom provider is instantiated and used for encryption operations
+- id: REQ-1091
+  status: complete
+  group: "10. Admin Console & Governance"
+  category: Admin Configuration
+  priority: SHOULD
+  type: ui
+  since: "2026-07"
+  description: >-
+    Admin encryption tab derives its provider list live from the encryption registry. Built-in and custom providers appear automatically with their declared config fields. Unavailable providers are shown but not selectable.
+  use_case: >-
+    Operators can configure encryption without code changes; custom providers are discoverable in the UI without redeploy.
+  relates_to:
+    - REQ-1086
