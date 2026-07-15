@@ -9,6 +9,17 @@
 // permission from the copyright holder.
 
 import { useState, useEffect, Fragment } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  Button,
+  Checkbox,
+  Select,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { toSnakeCase } from "../../naming";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
@@ -59,6 +70,7 @@ export function RegisterTableForm({
   onSuccess,
   setError,
 }: RegisterTableFormProps) {
+  const { t } = useTranslation();
   const [sourceId, setSourceId] = useState("");
   const [domainId, setDomainId] = useState("");
   const [schemaName, setSchemaName] = useState("");
@@ -192,11 +204,11 @@ export function RegisterTableForm({
         scope: c.scope || "domain",
       }));
     if (!sourceId || !schemaName || !tableName) {
-      setError("Source, schema, and table name are required.");
+      setError(t("registerTableForm.errorRequiredFields"));
       return;
     }
     if (selectedCols.length === 0) {
-      setError("At least one column must be selected.");
+      setError(t("registerTableForm.errorNoColumnsSelected"));
       return;
     }
     try {
@@ -230,288 +242,321 @@ export function RegisterTableForm({
     }
   };
 
+  const isRegistered = (tbl: { name: string }) =>
+    tables.some(
+      (rt) => rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(tbl.name),
+    );
+  const allTablesRegistered =
+    !loadingTables && !!schemaName && availableTables.length > 0 && availableTables.every(isRegistered);
+
+  const sourceType = sources.find((s) => s.id === sourceId)?.type ?? "";
+  const isCdcSource = CDC_TYPES.has(sourceType);
+
   return (
-    <div data-tour="tables-form" className="form-card">
-      <label>
-        Source
-        <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
-          <option value="">Select source...</option>
-          {sources
+    <Stack data-tour="tables-form" gap="md">
+      <SimpleGrid cols={{ base: 1, sm: 2 }}>
+        <Select
+          label={t("registerTableForm.sourceLabel")}
+          placeholder={t("registerTableForm.sourcePlaceholder")}
+          data={sources
             .filter(
               (s) =>
                 s.allowedDomains.length === 0 ||
                 s.allowedDomains.some((d) => checkedDomains.has(d)),
             )
-            .map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.id}
-              </option>
-            ))}
-        </select>
-      </label>
-      {domainsEnabled && (
-        <label>
-          Domain
-          <select value={domainId} onChange={(e) => setDomainId(e.target.value)}>
-            <option value="">Select domain...</option>
-            {domainHints
+            .map((s) => ({ value: s.id, label: s.id }))}
+          value={sourceId || null}
+          onChange={(v) => setSourceId(v ?? "")}
+          data-testid="register-table-source-select"
+        />
+        {domainsEnabled && (
+          <Select
+            label={t("registerTableForm.domainLabel")}
+            placeholder={t("registerTableForm.domainPlaceholder")}
+            data={domainHints
               .filter((d) => d !== "" && d !== "meta" && d !== "ops")
               .filter((d) => domainAccess.includes("*") || domainAccess.includes(d))
-              .map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-          </select>
-        </label>
-      )}
-      <label>
-        Schema
-        {(() => {
-          return (
-            <select
-              value={schemaName}
-              onChange={(e) => setSchemaName(e.target.value)}
-              disabled={!sourceId || loadingSchemas || isFixedSchema}
-              style={isFixedSchema ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
-            >
-              <option value="">{loadingSchemas ? "Loading..." : "Select schema..."}</option>
-              {availableSchemas.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          );
-        })()}
-      </label>
-      <label>
-        Table
-        {(() => {
-          const isRegistered = (t: { name: string }) =>
-            tables.some(
-              (rt) =>
-                rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(t.name),
-            );
-          const allRegistered =
-            !loadingTables &&
-            schemaName &&
-            availableTables.length > 0 &&
-            availableTables.every(isRegistered);
-          return (
-            <select
-              value={tableName}
-              onChange={(e) => setTableName(e.target.value)}
-              disabled={!schemaName || loadingTables || !!allRegistered}
-            >
-              <option value="">
-                {loadingTables
-                  ? "Loading..."
-                  : allRegistered
-                    ? "All tables already registered"
-                    : "Select table..."}
-              </option>
-              {availableTables.map((t) => (
-                <option key={t.name} value={t.name} disabled={isRegistered(t)}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          );
-        })()}
-      </label>
-      <label>
-        SQL Alias{" "}
-        <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</span>
-        <input
-          value={tableAlias}
-          onChange={(e) => setTableAlias(e.target.value)}
-          placeholder="Semantic name override"
-        />
-      </label>
-      <label>
-        Description{" "}
-        <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</span>
-        <input
-          value={tableDescription}
-          onChange={(e) => setTableDescription(e.target.value)}
-          placeholder="Appears in SDL docs"
-        />
-      </label>
-      <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
-        <input
-          type="checkbox"
-          checked={dataProduct}
-          onChange={(e) => setDataProduct(e.target.checked)}
-          style={{ width: "auto" }}
-        />
-        Data Product
-        <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
-          (publish to catalog / export to Atlas, Atlan, etc.)
-        </span>
-      </label>
-      {sourceId && (
-        <label>
-          Watermark Column{" "}
-          <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
-            {CDC_TYPES.has(sources.find((s) => s.id === sourceId)?.type ?? "")
-              ? "(optional — polling fallback if triggers unavailable)"
-              : "(required for subscriptions)"}
-          </span>
-          <select
-            value={watermarkColumn}
-            onChange={(e) => setWatermarkColumn(e.target.value)}
-            disabled={columns.length === 0}
-          >
-            <option value="">
-              {CDC_TYPES.has(sources.find((s) => s.id === sourceId)?.type ?? "")
-                ? "None (use triggers)"
-                : "None (no subscriptions)"}
-            </option>
-            {columns
-              .filter((c) => c.selected && isWatermarkEligible(c.dataType))
-              .map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name} ({c.dataType})
-                </option>
-              ))}
-          </select>
-        </label>
-      )}
-      <label style={{ gridColumn: "1 / -1" }}>
-        Columns {loadingColumns && "(loading...)"}
-        {columns.length > 0 && (
-          <div className="column-editor">
-            <div className="column-editor-header">
-              <span style={{ width: 28 }}></span>
-              <span className="col-name-header">Column</span>
-              <span style={{ width: 32, textAlign: "center" }}>PK</span>
-              <span className="col-flex-header">Visible To (Read)</span>
-              <span className="col-flex-header">Writable By (R/W)</span>
-              <span className="col-flex-header">Masking</span>
-              <span className="col-flex-header">SQL Alias</span>
-              <span className="col-flex-header">Description</span>
-              <span className="col-flex-header">Scope</span>
-            </div>
-            {columns.map((col, i) => (
-              <Fragment key={col.name}>
-                <div className="column-editor-row">
-                  <input
-                    type="checkbox"
-                    checked={col.selected}
-                    onChange={(e) => updateCol(i, "selected", e.target.checked)}
-                  />
-                  <span className="col-name">{col.name}</span>
-                  <input
-                    type="checkbox"
-                    title="Primary Key"
-                    checked={col.isPrimaryKey}
-                    onChange={(e) => updateCol(i, "isPrimaryKey", e.target.checked)}
-                    style={{ width: 32, justifySelf: "center" }}
-                  />
-                  <MultiSelect
-                    options={roles.map((r) => ({ id: r.id, label: r.id }))}
-                    value={col.visibleTo}
-                    onChange={(selected) => updateCol(i, "visibleTo", selected)}
-                    className="col-flex-input"
-                  />
-                  <MultiSelect
-                    options={roles.map((r) => ({ id: r.id, label: r.id }))}
-                    value={col.writableBy}
-                    onChange={(selected) => updateCol(i, "writableBy", selected)}
-                    className="col-flex-input"
-                  />
-                  <select
-                    value={col.maskType}
-                    onChange={(e) => updateCol(i, "maskType", e.target.value)}
-                    className="col-flex-input"
-                  >
-                    <option value="">None</option>
-                    <option value="regex">Regex</option>
-                    <option value="constant">Constant</option>
-                    <option value="truncate">Truncate</option>
-                  </select>
-                  <input
-                    value={col.alias || ""}
-                    onChange={(e) => updateCol(i, "alias", e.target.value)}
-                    className="col-flex-input"
-                  />
-                  <input
-                    value={col.description}
-                    onChange={(e) => updateCol(i, "description", e.target.value)}
-                    placeholder="description"
-                    className="col-flex-input"
-                  />
-                  <select
-                    value={col.scope}
-                    onChange={(e) => updateCol(i, "scope", e.target.value)}
-                    className="col-flex-input"
-                  >
-                    <option value="domain">domain</option>
-                    <option value="public">public</option>
-                    <option value="restricted">restricted</option>
-                  </select>
-                </div>
-                {col.maskType && (
-                  <div className="column-editor-row column-mask-row">
-                    <span style={{ width: 28 }}></span>
-                    <span
-                      className="col-name"
-                      style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}
-                    >
-                      ↳ masking
-                    </span>
-                    {col.maskType === "regex" && (
-                      <>
-                        <input
-                          value={col.maskPattern}
-                          onChange={(e) => updateCol(i, "maskPattern", e.target.value)}
-                          placeholder="regex pattern"
-                          className="col-flex-input"
-                        />
-                        <input
-                          value={col.maskReplace}
-                          onChange={(e) => updateCol(i, "maskReplace", e.target.value)}
-                          placeholder="replacement"
-                          className="col-flex-input"
-                        />
-                      </>
-                    )}
-                    {col.maskType === "constant" && (
-                      <input
-                        value={col.maskValue}
-                        onChange={(e) => updateCol(i, "maskValue", e.target.value)}
-                        placeholder="constant value (NULL, 0, ***)"
-                        className="col-flex-input"
-                      />
-                    )}
-                    {col.maskType === "truncate" && (
-                      <select
-                        value={col.maskPrecision}
-                        onChange={(e) => updateCol(i, "maskPrecision", e.target.value)}
-                        className="col-flex-input"
-                      >
-                        <option value="">Select precision...</option>
-                        <option value="year">Year</option>
-                        <option value="month">Month</option>
-                        <option value="day">Day</option>
-                        <option value="hour">Hour</option>
-                      </select>
-                    )}
-                    <input
-                      value={col.unmaskedTo}
-                      onChange={(e) => updateCol(i, "unmaskedTo", e.target.value)}
-                      placeholder="unmasked roles (csv)"
-                      className="col-flex-input"
-                    />
-                  </div>
-                )}
-              </Fragment>
-            ))}
-          </div>
+              .map((d) => ({ value: d, label: d }))}
+            value={domainId || null}
+            onChange={(v) => setDomainId(v ?? "")}
+            data-testid="register-table-domain-select"
+          />
         )}
-      </label>
-      <button onClick={handleSubmit}>+ Table</button>
-    </div>
+        <Select
+          label={t("registerTableForm.schemaLabel")}
+          placeholder={
+            loadingSchemas
+              ? t("registerTableForm.schemaLoading")
+              : t("registerTableForm.schemaPlaceholder")
+          }
+          data={availableSchemas.map((s) => ({ value: s, label: s }))}
+          value={schemaName || null}
+          onChange={(v) => setSchemaName(v ?? "")}
+          disabled={!sourceId || loadingSchemas || isFixedSchema}
+          data-testid="register-table-schema-select"
+        />
+        <Select
+          label={t("registerTableForm.tableLabel")}
+          placeholder={
+            loadingTables
+              ? t("registerTableForm.tableLoading")
+              : allTablesRegistered
+                ? t("registerTableForm.tableAllRegistered")
+                : t("registerTableForm.tablePlaceholder")
+          }
+          data={availableTables.map((tbl) => ({
+            value: tbl.name,
+            label: tbl.name,
+            disabled: isRegistered(tbl),
+          }))}
+          value={tableName || null}
+          onChange={(v) => setTableName(v ?? "")}
+          disabled={!schemaName || loadingTables || allTablesRegistered}
+          data-testid="register-table-table-select"
+        />
+        <TextInput
+          label={
+            <>
+              {t("registerTableForm.aliasLabel")}{" "}
+              <Text span fw="normal" c="dimmed" fz="xs">
+                {t("registerTableForm.aliasOptional")}
+              </Text>
+            </>
+          }
+          value={tableAlias}
+          onChange={(e) => setTableAlias(e.currentTarget.value)}
+          placeholder={t("registerTableForm.aliasPlaceholder")}
+        />
+        <TextInput
+          label={
+            <>
+              {t("registerTableForm.descriptionLabel")}{" "}
+              <Text span fw="normal" c="dimmed" fz="xs">
+                {t("registerTableForm.descriptionOptional")}
+              </Text>
+            </>
+          }
+          value={tableDescription}
+          onChange={(e) => setTableDescription(e.currentTarget.value)}
+          placeholder={t("registerTableForm.descriptionPlaceholder")}
+        />
+      </SimpleGrid>
+      <Checkbox
+        checked={dataProduct}
+        onChange={(e) => setDataProduct(e.currentTarget.checked)}
+        label={
+          <>
+            {t("registerTableForm.dataProductLabel")}{" "}
+            <Text span fw="normal" c="dimmed" fz="xs">
+              {t("registerTableForm.dataProductHint")}
+            </Text>
+          </>
+        }
+      />
+      {sourceId && (
+        <Select
+          label={
+            <>
+              {t("registerTableForm.watermarkLabel")}{" "}
+              <Text span fw="normal" c="dimmed" fz="xs">
+                {isCdcSource
+                  ? t("registerTableForm.watermarkHintOptional")
+                  : t("registerTableForm.watermarkHintRequired")}
+              </Text>
+            </>
+          }
+          placeholder={
+            isCdcSource
+              ? t("registerTableForm.watermarkNoneTriggers")
+              : t("registerTableForm.watermarkNoneSubscriptions")
+          }
+          data={columns
+            .filter((c) => c.selected && isWatermarkEligible(c.dataType))
+            .map((c) => ({ value: c.name, label: `${c.name} (${c.dataType})` }))}
+          value={watermarkColumn || null}
+          onChange={(v) => setWatermarkColumn(v ?? "")}
+          disabled={columns.length === 0}
+          clearable
+          data-testid="register-table-watermark-select"
+        />
+      )}
+      <Stack gap="xs">
+        <Text fw={600} fz="sm">
+          {t("registerTableForm.columnsLabel")} {loadingColumns && t("registerTableForm.columnsLoading")}
+        </Text>
+        {columns.length > 0 && (
+          <Table.ScrollContainer minWidth={900}>
+            <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th></Table.Th>
+                  <Table.Th>{t("registerTableForm.colHeaderColumn")}</Table.Th>
+                  <Table.Th ta="center">{t("registerTableForm.colHeaderPk")}</Table.Th>
+                  <Table.Th>{t("registerTableForm.colHeaderVisibleTo")}</Table.Th>
+                  <Table.Th>{t("registerTableForm.colHeaderWritableBy")}</Table.Th>
+                  <Table.Th>{t("registerTableForm.colHeaderMasking")}</Table.Th>
+                  <Table.Th>{t("registerTableForm.colHeaderAlias")}</Table.Th>
+                  <Table.Th>{t("registerTableForm.colHeaderDescription")}</Table.Th>
+                  <Table.Th>{t("registerTableForm.colHeaderScope")}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {columns.map((col, i) => (
+                  <Fragment key={col.name}>
+                    <Table.Tr>
+                      <Table.Td>
+                        <Checkbox
+                          checked={col.selected}
+                          onChange={(e) => updateCol(i, "selected", e.currentTarget.checked)}
+                          aria-label={t("registerTableForm.includeColumnAriaLabel", {
+                            name: col.name,
+                          })}
+                          data-testid={`register-table-col-selected-${col.name}`}
+                        />
+                      </Table.Td>
+                      <Table.Td ff="monospace" fz="sm">
+                        {col.name}
+                      </Table.Td>
+                      <Table.Td ta="center">
+                        <Checkbox
+                          checked={col.isPrimaryKey}
+                          onChange={(e) => updateCol(i, "isPrimaryKey", e.currentTarget.checked)}
+                          title={t("registerTableForm.primaryKeyTitle")}
+                          aria-label={t("registerTableForm.primaryKeyAriaLabel", {
+                            name: col.name,
+                          })}
+                          data-testid={`register-table-col-pk-${col.name}`}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <MultiSelect
+                          options={roles.map((r) => ({ id: r.id, label: r.id }))}
+                          value={col.visibleTo}
+                          onChange={(selected) => updateCol(i, "visibleTo", selected)}
+                          label={t("registerTableForm.colHeaderVisibleTo")}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <MultiSelect
+                          options={roles.map((r) => ({ id: r.id, label: r.id }))}
+                          value={col.writableBy}
+                          onChange={(selected) => updateCol(i, "writableBy", selected)}
+                          label={t("registerTableForm.colHeaderWritableBy")}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <Select
+                          aria-label={t("registerTableForm.colHeaderMasking")}
+                          data={[
+                            { value: "", label: t("registerTableForm.maskNone") },
+                            { value: "regex", label: t("registerTableForm.maskRegex") },
+                            { value: "constant", label: t("registerTableForm.maskConstant") },
+                            { value: "truncate", label: t("registerTableForm.maskTruncate") },
+                          ]}
+                          value={col.maskType}
+                          onChange={(v) => updateCol(i, "maskType", v ?? "")}
+                          allowDeselect={false}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <TextInput
+                          aria-label={t("registerTableForm.colHeaderAlias")}
+                          value={col.alias || ""}
+                          onChange={(e) => updateCol(i, "alias", e.currentTarget.value)}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <TextInput
+                          aria-label={t("registerTableForm.colHeaderDescription")}
+                          value={col.description}
+                          onChange={(e) => updateCol(i, "description", e.currentTarget.value)}
+                          placeholder={t("registerTableForm.descriptionColPlaceholder")}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <Select
+                          aria-label={t("registerTableForm.colHeaderScope")}
+                          data={[
+                            { value: "domain", label: t("registerTableForm.scopeDomain") },
+                            { value: "public", label: t("registerTableForm.scopePublic") },
+                            { value: "restricted", label: t("registerTableForm.scopeRestricted") },
+                          ]}
+                          value={col.scope}
+                          onChange={(v) => updateCol(i, "scope", v ?? "domain")}
+                          allowDeselect={false}
+                        />
+                      </Table.Td>
+                    </Table.Tr>
+                    {col.maskType && (
+                      <Table.Tr>
+                        <Table.Td></Table.Td>
+                        <Table.Td c="dimmed" fz="xs">
+                          {t("registerTableForm.maskingRowLabel")}
+                        </Table.Td>
+                        {col.maskType === "regex" && (
+                          <Table.Td colSpan={3}>
+                            <Stack gap={4}>
+                              <TextInput
+                                value={col.maskPattern}
+                                onChange={(e) => updateCol(i, "maskPattern", e.currentTarget.value)}
+                                placeholder={t("registerTableForm.maskPatternPlaceholder")}
+                                aria-label={t("registerTableForm.maskPatternPlaceholder")}
+                              />
+                              <TextInput
+                                value={col.maskReplace}
+                                onChange={(e) => updateCol(i, "maskReplace", e.currentTarget.value)}
+                                placeholder={t("registerTableForm.maskReplacePlaceholder")}
+                                aria-label={t("registerTableForm.maskReplacePlaceholder")}
+                              />
+                            </Stack>
+                          </Table.Td>
+                        )}
+                        {col.maskType === "constant" && (
+                          <Table.Td colSpan={3}>
+                            <TextInput
+                              value={col.maskValue}
+                              onChange={(e) => updateCol(i, "maskValue", e.currentTarget.value)}
+                              placeholder={t("registerTableForm.maskValuePlaceholder")}
+                              aria-label={t("registerTableForm.maskValuePlaceholder")}
+                            />
+                          </Table.Td>
+                        )}
+                        {col.maskType === "truncate" && (
+                          <Table.Td colSpan={3}>
+                            <Select
+                              aria-label={t("registerTableForm.maskPrecisionPlaceholder")}
+                              placeholder={t("registerTableForm.maskPrecisionPlaceholder")}
+                              data={[
+                                { value: "year", label: t("registerTableForm.precisionYear") },
+                                { value: "month", label: t("registerTableForm.precisionMonth") },
+                                { value: "day", label: t("registerTableForm.precisionDay") },
+                                { value: "hour", label: t("registerTableForm.precisionHour") },
+                              ]}
+                              value={col.maskPrecision || null}
+                              onChange={(v) => updateCol(i, "maskPrecision", v ?? "")}
+                            />
+                          </Table.Td>
+                        )}
+                        <Table.Td colSpan={4}>
+                          <TextInput
+                            value={col.unmaskedTo}
+                            onChange={(e) => updateCol(i, "unmaskedTo", e.currentTarget.value)}
+                            placeholder={t("registerTableForm.unmaskedToPlaceholder")}
+                            aria-label={t("registerTableForm.unmaskedToPlaceholder")}
+                          />
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Fragment>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Stack>
+      <Button onClick={handleSubmit} style={{ alignSelf: "flex-start" }} data-testid="register-table-submit">
+        {t("registerTableForm.submitButton")}
+      </Button>
+    </Stack>
   );
 }

@@ -10,6 +10,8 @@
 
 import { useState } from "react";
 import { Sparkles, X } from "lucide-react";
+import { ActionIcon, Group, Stack, Textarea, Tooltip } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { CopyButton } from "../../components/CopyButton";
 
 export function DescriptionField({
@@ -27,33 +29,51 @@ export function DescriptionField({
   onGenerate?: () => void;
   generating?: boolean;
 }) {
+  const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
   return (
-    <div className="desc-field">
-      <textarea
+    <Stack gap={4} className="desc-field">
+      <Textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         rows={rows}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        style={
-          focused
+        styles={{
+          input: focused
             ? { height: 300, transition: "height 0.15s ease" }
-            : { transition: "height 0.15s ease" }
-        }
+            : { transition: "height 0.15s ease" },
+        }}
       />
-      <div className="desc-field-toolbar">
+      <Group gap={4} justify="flex-end" className="desc-field-toolbar">
         <CopyButton text={value} size={11} />
         {onGenerate && (
-          <button type="button" title="Generate with AI" onClick={onGenerate} disabled={generating}>
-            <Sparkles size={11} />
-          </button>
+          <Tooltip label={t("descriptionField.generateWithAi")}>
+            <ActionIcon
+              type="button"
+              variant="transparent"
+              aria-label={t("descriptionField.generateWithAi")}
+              data-testid="description-field-generate"
+              onClick={onGenerate}
+              disabled={generating}
+            >
+              <Sparkles size={11} />
+            </ActionIcon>
+          </Tooltip>
         )}
-        <button type="button" title="Clear" onClick={() => onChange("")}>
-          <X size={11} />
-        </button>
-      </div>
-    </div>
+        <Tooltip label={t("descriptionField.clear")}>
+          <ActionIcon
+            type="button"
+            variant="transparent"
+            aria-label={t("descriptionField.clear")}
+            data-testid="description-field-clear"
+            onClick={() => onChange("")}
+          >
+            <X size={11} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+    </Stack>
   );
 }

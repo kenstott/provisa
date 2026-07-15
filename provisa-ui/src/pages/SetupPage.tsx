@@ -10,6 +10,20 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  Alert,
+  Box,
+  Button,
+  Group,
+  List,
+  Radio,
+  Stack,
+  Text,
+  TextInput,
+  PasswordInput,
+  Title,
+} from "@mantine/core";
 import { runSetup } from "../api/setup";
 
 interface SetupPageProps {
@@ -17,6 +31,7 @@ interface SetupPageProps {
 }
 
 export function SetupPage({ onSetupComplete }: SetupPageProps) {
+  const { t } = useTranslation();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [mode, setMode] = useState<"single" | "multi">("single");
   const [provider, setProvider] = useState<"basic" | "firebase" | "none">("basic");
@@ -33,7 +48,7 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
     e.preventDefault();
     setError(null);
     if (provider === "basic" && adminPassword !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("setupPage.passwordMismatch"));
       return;
     }
     setLoading(true);
@@ -49,196 +64,279 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
       });
       onSetupComplete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Setup failed");
+      setError(err instanceof Error ? err.message : t("setupPage.setupFailed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompleteNoAuth = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await runSetup({
+        provider: "none",
+        mode,
+        use_domains: useDomains,
+        default_domain: defaultDomain,
+      });
+      onSetupComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("setupPage.setupFailed"));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="page" style={{ maxWidth: 480, margin: "80px auto" }}>
-      <h2>Provisa Setup</h2>
-      <div style={{ marginBottom: 24, color: "var(--muted-foreground)", fontSize: 13 }}>
-        Step {step} of 3
-      </div>
+    <Box maw={480} mx="auto" my={80}>
+      <Title order={2}>{t("setupPage.title")}</Title>
+      <Text c="dimmed" size="sm" mb="lg">
+        {t("setupPage.stepIndicator", { step })}
+      </Text>
 
       {step === 1 && (
-        <div>
-          <h3>Deployment Mode</h3>
-          <label style={{ display: "block", marginBottom: 12, cursor: "pointer" }}>
-            <input type="radio" name="mode" value="single" checked={mode === "single"}
-              onChange={() => setMode("single")} style={{ marginRight: 8 }} />
-            <strong>Single-tenant</strong>
-            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
-              One organization. All users share a single workspace.
-            </div>
-          </label>
-          <label style={{ display: "block", marginBottom: 24, cursor: "pointer" }}>
-            <input type="radio" name="mode" value="multi" checked={mode === "multi"}
-              onChange={() => setMode("multi")} style={{ marginRight: 8 }} />
-            <strong>Multi-tenant</strong>
-            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
-              Multiple organizations with isolated access. Users are assigned to orgs via invite links.
-            </div>
-          </label>
+        <Stack gap="md">
+          <Title order={3}>{t("setupPage.deploymentModeHeading")}</Title>
+          <Radio.Group
+            value={mode}
+            onChange={(v) => setMode(v as "single" | "multi")}
+            name="mode"
+          >
+            <Stack gap="md">
+              <Radio
+                value="single"
+                data-testid="setup-mode-single"
+                label={
+                  <Box>
+                    <Text fw={700}>{t("setupPage.singleTenantLabel")}</Text>
+                    <Text size="sm" c="dimmed">
+                      {t("setupPage.singleTenantDesc")}
+                    </Text>
+                  </Box>
+                }
+              />
+              <Radio
+                value="multi"
+                data-testid="setup-mode-multi"
+                label={
+                  <Box>
+                    <Text fw={700}>{t("setupPage.multiTenantLabel")}</Text>
+                    <Text size="sm" c="dimmed">
+                      {t("setupPage.multiTenantDesc")}
+                    </Text>
+                  </Box>
+                }
+              />
+            </Stack>
+          </Radio.Group>
 
-          <h3>Domain Model</h3>
-          <label style={{ display: "block", marginBottom: 12, cursor: "pointer" }}>
-            <input type="radio" name="domains" value="simple" checked={useDomains === false}
-              onChange={() => setUseDomains(false)} style={{ marginRight: 8 }} />
-            <strong>Simple (no domains)</strong>
-            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
-              All tables live in a single domain. Simplest model.
-            </div>
-          </label>
-          {useDomains === false && (
-            <div style={{ marginLeft: 24, marginBottom: 12 }}>
-              <label htmlFor="setup-default-domain">Default domain name</label>
-              <input id="setup-default-domain" type="text" value={defaultDomain}
-                onChange={(e) => setDefaultDomain(e.target.value)} required
-                pattern="[A-Za-z_][A-Za-z0-9_]*"
-                style={{ display: "block", width: "100%", marginTop: 4 }} />
-            </div>
-          )}
-          <label style={{ display: "block", marginBottom: 12, cursor: "pointer" }}>
-            <input type="radio" name="domains" value="namespaced" checked={useDomains === true}
-              onChange={() => setUseDomains(true)} style={{ marginRight: 8 }} />
-            <strong>Namespaced domains</strong>
-            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
-              Tables are organized into multiple named domains.
-            </div>
-          </label>
-          <label style={{ display: "block", marginBottom: 24, cursor: "pointer" }}>
-            <input type="radio" name="domains" value="legacy" checked={useDomains === null}
-              onChange={() => setUseDomains(null)} style={{ marginRight: 8 }} />
-            <strong>Legacy / decide later</strong>
-            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
-              Leave the domain policy unset and decide later.
-            </div>
-          </label>
+          <Title order={3}>{t("setupPage.domainModelHeading")}</Title>
+          <Radio.Group
+            value={useDomains === false ? "simple" : useDomains === true ? "namespaced" : "legacy"}
+            onChange={(v) => setUseDomains(v === "simple" ? false : v === "namespaced" ? true : null)}
+            name="domains"
+          >
+            <Stack gap="md">
+              <Radio
+                value="simple"
+                data-testid="setup-domains-simple"
+                label={
+                  <Box>
+                    <Text fw={700}>{t("setupPage.simpleDomainLabel")}</Text>
+                    <Text size="sm" c="dimmed">
+                      {t("setupPage.simpleDomainDesc")}
+                    </Text>
+                  </Box>
+                }
+              />
+              {useDomains === false && (
+                <Box ml="lg">
+                  <TextInput
+                    id="setup-default-domain"
+                    label={t("setupPage.defaultDomainNameLabel")}
+                    value={defaultDomain}
+                    onChange={(e) => setDefaultDomain(e.currentTarget.value)}
+                    required
+                    pattern="[A-Za-z_][A-Za-z0-9_]*"
+                  />
+                </Box>
+              )}
+              <Radio
+                value="namespaced"
+                data-testid="setup-domains-namespaced"
+                label={
+                  <Box>
+                    <Text fw={700}>{t("setupPage.namespacedDomainLabel")}</Text>
+                    <Text size="sm" c="dimmed">
+                      {t("setupPage.namespacedDomainDesc")}
+                    </Text>
+                  </Box>
+                }
+              />
+              <Radio
+                value="legacy"
+                data-testid="setup-domains-legacy"
+                label={
+                  <Box>
+                    <Text fw={700}>{t("setupPage.legacyDomainLabel")}</Text>
+                    <Text size="sm" c="dimmed">
+                      {t("setupPage.legacyDomainDesc")}
+                    </Text>
+                  </Box>
+                }
+              />
+            </Stack>
+          </Radio.Group>
 
-          <button className="btn-primary" onClick={() => setStep(2)}>Next</button>
-        </div>
+          <Group>
+            <Button data-testid="setup-next-1" onClick={() => setStep(2)}>
+              {t("setupPage.next")}
+            </Button>
+          </Group>
+        </Stack>
       )}
 
       {step === 2 && (
-        <div>
-          <h3>Identity Provider</h3>
-          <label style={{ display: "block", marginBottom: 12, cursor: "pointer" }}>
-            <input type="radio" name="provider" value="basic" checked={provider === "basic"}
-              onChange={() => setProvider("basic")} style={{ marginRight: 8 }} />
-            <strong>Basic Auth</strong>
-            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
-              Username and password stored in Provisa. Self-service registration or invite-based.
-            </div>
-          </label>
-          <label style={{ display: "block", marginBottom: 12, cursor: "pointer" }}>
-            <input type="radio" name="provider" value="firebase" checked={provider === "firebase"}
-              onChange={() => setProvider("firebase")} style={{ marginRight: 8 }} />
-            <strong>Firebase (Google)</strong>
-            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
-              Sign in with Google via Firebase Authentication. Requires Firebase project configuration.
-            </div>
-          </label>
-          <label style={{ display: "block", marginBottom: 24, cursor: "pointer" }}>
-            <input type="radio" name="provider" value="none" checked={provider === "none"}
-              onChange={() => setProvider("none")} style={{ marginRight: 8 }} />
-            <strong>None (no authentication)</strong>
-            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
-              All users have full access. Suitable for local development only.
-            </div>
-          </label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setStep(1)}>Back</button>
+        <Stack gap="md">
+          <Title order={3}>{t("setupPage.identityProviderHeading")}</Title>
+          <Radio.Group
+            value={provider}
+            onChange={(v) => setProvider(v as "basic" | "firebase" | "none")}
+            name="provider"
+          >
+            <Stack gap="md">
+              <Radio
+                value="basic"
+                data-testid="setup-provider-basic"
+                label={
+                  <Box>
+                    <Text fw={700}>{t("setupPage.basicAuthLabel")}</Text>
+                    <Text size="sm" c="dimmed">
+                      {t("setupPage.basicAuthDesc")}
+                    </Text>
+                  </Box>
+                }
+              />
+              <Radio
+                value="firebase"
+                data-testid="setup-provider-firebase"
+                label={
+                  <Box>
+                    <Text fw={700}>{t("setupPage.firebaseLabel")}</Text>
+                    <Text size="sm" c="dimmed">
+                      {t("setupPage.firebaseDesc")}
+                    </Text>
+                  </Box>
+                }
+              />
+              <Radio
+                value="none"
+                data-testid="setup-provider-none"
+                label={
+                  <Box>
+                    <Text fw={700}>{t("setupPage.noneLabel")}</Text>
+                    <Text size="sm" c="dimmed">
+                      {t("setupPage.noneDesc")}
+                    </Text>
+                  </Box>
+                }
+              />
+            </Stack>
+          </Radio.Group>
+          <Group>
+            <Button variant="default" data-testid="setup-back-2" onClick={() => setStep(1)}>
+              {t("setupPage.back")}
+            </Button>
             {provider === "none" ? (
-              <button
-                className="btn-primary"
-                disabled={loading}
-                onClick={async () => {
-                  setError(null);
-                  setLoading(true);
-                  try {
-                    await runSetup({
-                      provider: "none",
-                      mode,
-                      use_domains: useDomains,
-                      default_domain: defaultDomain,
-                    });
-                    onSetupComplete();
-                  } catch (err) {
-                    setError(err instanceof Error ? err.message : "Setup failed");
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
+              <Button
+                data-testid="setup-complete-noauth"
+                loading={loading}
+                onClick={handleCompleteNoAuth}
               >
-                {loading ? "Setting up..." : "Complete Setup"}
-              </button>
+                {loading ? t("setupPage.settingUp") : t("setupPage.completeSetup")}
+              </Button>
             ) : (
-              <button className="btn-primary" onClick={() => setStep(3)}>Next</button>
+              <Button data-testid="setup-next-2" onClick={() => setStep(3)}>
+                {t("setupPage.next")}
+              </Button>
             )}
-          </div>
-        </div>
+          </Group>
+        </Stack>
       )}
 
       {step === 3 && (
         <form onSubmit={handleFinish}>
-          {provider === "basic" && (
-            <>
-              <h3>Admin Account</h3>
-              <div style={{ marginBottom: 12 }}>
-                <label htmlFor="setup-username">Username</label>
-                <input id="setup-username" type="text" value={adminUsername}
-                  onChange={(e) => setAdminUsername(e.target.value)} required
+          <Stack gap="md">
+            {provider === "basic" && (
+              <>
+                <Title order={3}>{t("setupPage.adminAccountHeading")}</Title>
+                <TextInput
+                  id="setup-username"
+                  label={t("setupPage.username")}
+                  value={adminUsername}
+                  onChange={(e) => setAdminUsername(e.currentTarget.value)}
+                  required
                   autoComplete="username"
-                  style={{ display: "block", width: "100%", marginTop: 4 }} />
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <label htmlFor="setup-password">Password</label>
-                <input id="setup-password" type="password" value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)} required
+                />
+                <PasswordInput
+                  id="setup-password"
+                  label={t("setupPage.password")}
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.currentTarget.value)}
+                  required
                   autoComplete="new-password"
-                  style={{ display: "block", width: "100%", marginTop: 4 }} />
-              </div>
-              <div style={{ marginBottom: 20 }}>
-                <label htmlFor="setup-confirm">Confirm Password</label>
-                <input id="setup-confirm" type="password" value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)} required
+                />
+                <PasswordInput
+                  id="setup-confirm"
+                  label={t("setupPage.confirmPassword")}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+                  required
                   autoComplete="new-password"
-                  style={{ display: "block", width: "100%", marginTop: 4 }} />
-              </div>
-            </>
-          )}
-          {provider === "firebase" && (
-            <>
-              <h3>Firebase Configuration</h3>
-              <div style={{ marginBottom: 12 }}>
-                <label htmlFor="setup-project-id">Firebase Project ID</label>
-                <input id="setup-project-id" type="text" value={firebaseProjectId}
-                  onChange={(e) => setFirebaseProjectId(e.target.value)} required
-                  placeholder="my-firebase-project"
-                  style={{ display: "block", width: "100%", marginTop: 4 }} />
-              </div>
-              <div style={{ marginBottom: 20, padding: 12, background: "var(--muted)", borderRadius: 4, fontSize: 13 }}>
-                <strong>Required environment variables:</strong>
-                <ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
-                  <li>VITE_FIREBASE_API_KEY</li>
-                  <li>VITE_FIREBASE_AUTH_DOMAIN</li>
-                  <li>VITE_FIREBASE_PROJECT_ID</li>
-                  <li>FIREBASE_PROJECT_ID (backend)</li>
-                </ul>
-              </div>
-            </>
-          )}
-          {error && <div style={{ color: "var(--destructive)", marginBottom: 12 }}>{error}</div>}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={() => setStep(2)}>Back</button>
-            <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? "Setting up..." : "Complete Setup"}
-            </button>
-          </div>
+                />
+              </>
+            )}
+            {provider === "firebase" && (
+              <>
+                <Title order={3}>{t("setupPage.firebaseConfigHeading")}</Title>
+                <TextInput
+                  id="setup-project-id"
+                  label={t("setupPage.firebaseProjectId")}
+                  value={firebaseProjectId}
+                  onChange={(e) => setFirebaseProjectId(e.currentTarget.value)}
+                  required
+                  placeholder={t("setupPage.firebaseProjectIdPlaceholder")}
+                />
+                <Alert variant="light" color="gray">
+                  <Text fw={700} size="sm">
+                    {t("setupPage.requiredEnvVars")}
+                  </Text>
+                  <List size="sm" mt="xs">
+                    <List.Item>VITE_FIREBASE_API_KEY</List.Item>
+                    <List.Item>VITE_FIREBASE_AUTH_DOMAIN</List.Item>
+                    <List.Item>VITE_FIREBASE_PROJECT_ID</List.Item>
+                    <List.Item>FIREBASE_PROJECT_ID (backend)</List.Item>
+                  </List>
+                </Alert>
+              </>
+            )}
+            {error && (
+              <Alert variant="light" color="red" data-testid="setup-error">
+                {error}
+              </Alert>
+            )}
+            <Group>
+              <Button type="button" variant="default" data-testid="setup-back-3" onClick={() => setStep(2)}>
+                {t("setupPage.back")}
+              </Button>
+              <Button type="submit" data-testid="setup-submit" loading={loading}>
+                {loading ? t("setupPage.settingUp") : t("setupPage.completeSetup")}
+              </Button>
+            </Group>
+          </Stack>
         </form>
       )}
-    </div>
+    </Box>
   );
 }

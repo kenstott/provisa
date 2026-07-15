@@ -1,16 +1,18 @@
 // Copyright (c) 2026 Kenneth Stott
 // Canary: placeholder
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
+import { Button, Menu, Text } from "@mantine/core";
+import { Check, ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { fetchOrgs } from "../api/admin";
 import type { Org } from "../api/admin";
 
 export function OrgSwitcher() {
+  const { t } = useTranslation();
   const { capabilities, orgMemberships, activeOrgId, selectOrg } = useAuth();
-  const [open, setOpen] = useState(false);
   const [allOrgs, setAllOrgs] = useState<Org[]>([]);
-  const ref = useRef<HTMLDivElement>(null);
 
   const isSuperAdmin = capabilities.includes("superadmin") || capabilities.includes("admin");
 
@@ -18,17 +20,6 @@ export function OrgSwitcher() {
     if (!isSuperAdmin) return;
     fetchOrgs().then(setAllOrgs).catch(() => {});
   }, [isSuperAdmin]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
 
   const orgs: Array<{ id: string; name: string }> = isSuperAdmin
     ? allOrgs.map((o) => ({ id: o.id, name: o.name }))
@@ -39,40 +30,42 @@ export function OrgSwitcher() {
 
   if (!isSuperAdmin && orgMemberships.length <= 1) {
     if (orgMemberships.length === 0) return null;
-    return <span className="role-selector">Org: {orgName}</span>;
+    return <Text data-testid="org-switcher-static">{t("orgSwitcher.org", { org: orgName })}</Text>;
   }
 
   function handleSelect(orgId: string) {
     selectOrg(orgId);
-    setOpen(false);
   }
 
   return (
-    <div className="role-selector" ref={ref}>
-      <button
-        type="button"
-        className="role-selector-trigger"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-      >
-        <span className="role-selector-label">Org: {orgName}</span>
-        <span className="role-selector-arrow">{open ? "▴" : "▾"}</span>
-      </button>
-      {open && (
-        <div className="role-selector-dropdown">
-          {orgs.map((o) => (
-            <div
+    <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+      <Menu.Target>
+        <Button
+          variant="default"
+          size="compact-sm"
+          rightSection={<ChevronDown size={14} aria-hidden />}
+          data-testid="org-switcher-trigger"
+        >
+          {t("orgSwitcher.org", { org: orgName })}
+        </Button>
+      </Menu.Target>
+      <Menu.Dropdown>
+        {orgs.map((o) => {
+          const selected = o.id === activeOrgId;
+          return (
+            <Menu.Item
               key={o.id}
-              className={`role-selector-option${o.id === activeOrgId ? " role-selector-option--selected" : ""}`}
-              onClick={() => handleSelect(o.id)}
               role="option"
-              aria-selected={o.id === activeOrgId}
+              aria-selected={selected}
+              aria-current={selected ? "true" : undefined}
+              leftSection={selected ? <Check size={14} aria-hidden /> : undefined}
+              onClick={() => handleSelect(o.id)}
             >
               {o.name}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            </Menu.Item>
+          );
+        })}
+      </Menu.Dropdown>
+    </Menu>
   );
 }

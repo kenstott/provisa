@@ -9,6 +9,9 @@
 // permission from the copyright holder.
 
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { Alert, Box, Loader, Stack, Text } from "@mantine/core";
+import { AlertCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 
@@ -19,6 +22,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
  * When a domain is selected, filters to that domain + relationship-reachable tables.
  */
 export function SchemaExplorer() {
+  const { t } = useTranslation();
   const { role } = useAuth();
   const { domains, checkedDomains } = useDomainFilter();
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
@@ -73,9 +77,31 @@ setTimeout(function() {
        depend on role.id only; the full role object identity changes on unrelated auth refreshes and would refetch needlessly */
   }, [role?.id, domainParam]);
 
-  if (!role) return <div className="page">Select a role to view schema.</div>;
-  if (error) return <div className="page error">Failed to load schema: {error}</div>;
-  if (loading || !srcDoc) return <div className="page">Loading schema...</div>;
+  if (!role)
+    return (
+      <Box className="page" p="md">
+        <Text>{t("schemaExplorer.selectRole")}</Text>
+      </Box>
+    );
+
+  if (error)
+    return (
+      <Box className="page error" p="md">
+        <Alert
+          color="red"
+          icon={<AlertCircle size={16} />}
+          title={t("schemaExplorer.loadFailed", { error })}
+        />
+      </Box>
+    );
+
+  if (loading || !srcDoc)
+    return (
+      <Stack className="page" align="center" justify="center" p="md">
+        <Loader size="sm" aria-label={t("schemaExplorer.loading")} />
+        <Text>{t("schemaExplorer.loading")}</Text>
+      </Stack>
+    );
 
   return (
     <div className="schema-explorer-page">

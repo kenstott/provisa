@@ -1,0 +1,7 @@
+{
+  "sqlCanvasTableCard": {
+    "removeTable": "Remove {{tableName}} from canvas",
+    "toggleColumn": "Toggle selection of column {{columnName}}",
+    "connectColumn": "Start relationship from {{columnName}}"
+  }
+}

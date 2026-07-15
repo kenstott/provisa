@@ -8,12 +8,28 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Code,
+  Group,
+  Loader,
+  NumberInput,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { Check, TriangleAlert } from "lucide-react";
 import { fetchCacheStorage, setCacheStorage, type CacheStorageState } from "../../api/admin";
 
 // REQ-917: configure the Redis hot cache + materialize store. Both bind connections at startup,
 // so changes take effect on the next service restart.
 export function CacheStorageTab() {
+  const { t } = useTranslation();
   const [s, setS] = useState<CacheStorageState | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -34,7 +50,11 @@ export function CacheStorageTab() {
         hot_tables: s.hot_tables,
         materialize: s.materialize,
       });
-      setMsg(res.restart_required ? "Saved. Restart the service to apply." : "Saved.");
+      setMsg(
+        res.restart_required
+          ? t("cacheStorageTab.savedRestartRequired")
+          : t("cacheStorageTab.saved")
+      );
     } catch (e) {
       setError(String(e));
     } finally {
@@ -42,130 +62,130 @@ export function CacheStorageTab() {
     }
   };
 
-  if (error && !s) return <div className="error-banner">{error}</div>;
-  if (!s) return <div>Loading…</div>;
-
-  const num = (v: string) => (v.trim() === "" ? null : Number(v));
+  if (error && !s) return <Alert color="red">{error}</Alert>;
+  if (!s)
+    return (
+      <Group gap="xs">
+        <Loader size="sm" />
+        <Text>{t("cacheStorageTab.loading")}</Text>
+      </Group>
+    );
 
   return (
-    <div className="cache-storage-tab" style={{ maxWidth: 720 }}>
-      <h3>Hot Cache (Redis)</h3>
-      <p className="muted">
-        The hot cache promotes frequently-queried tables into cache. Leave the URL empty to use the
-        embedded in-process cache.
-      </p>
+    <Stack maw={720} gap="md">
+      <Title order={4}>{t("cacheStorageTab.hotCacheHeading")}</Title>
+      <Text c="dimmed" size="sm">
+        {t("cacheStorageTab.hotCacheIntro")}
+      </Text>
 
-      <div className="form-card">
-        <label style={{ gridColumn: "1 / -1" }}>
-          <input
-            type="checkbox"
-            checked={s.cache.enabled}
-            onChange={(e) => setS({ ...s, cache: { ...s.cache, enabled: e.target.checked } })}
-          />
-          Enable hot cache
-        </label>
+      <Stack gap="sm">
+        <Checkbox
+          label={t("cacheStorageTab.enableHotCache")}
+          checked={s.cache.enabled}
+          onChange={(e) => setS({ ...s, cache: { ...s.cache, enabled: e.currentTarget.checked } })}
+        />
 
-        <label style={{ gridColumn: "1 / -1" }}>
-          Redis URL
-          <input
-            type="text"
-            value={s.cache.redis_url}
-            placeholder="redis://:password@host:6379/0  (empty → embedded)"
-            onChange={(e) => setS({ ...s, cache: { ...s.cache, redis_url: e.target.value } })}
-          />
-        </label>
+        <TextInput
+          label={t("cacheStorageTab.redisUrlLabel")}
+          placeholder={t("cacheStorageTab.redisUrlPlaceholder")}
+          value={s.cache.redis_url}
+          onChange={(e) => setS({ ...s, cache: { ...s.cache, redis_url: e.currentTarget.value } })}
+        />
 
-        <label>
-          Default TTL (s)
-          <input
-            type="number"
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
+          <NumberInput
+            label={t("cacheStorageTab.defaultTtlLabel")}
             value={s.cache.default_ttl ?? ""}
-            onChange={(e) => setS({ ...s, cache: { ...s.cache, default_ttl: num(e.target.value) } })}
-          />
-        </label>
-        <label>
-          Promote after N queries
-          <input
-            type="number"
-            value={s.hot_tables.auto_threshold}
-            onChange={(e) =>
+            onChange={(v) =>
               setS({
                 ...s,
-                hot_tables: { ...s.hot_tables, auto_threshold: Number(e.target.value) },
+                cache: { ...s.cache, default_ttl: v === "" ? null : Number(v) },
               })
             }
           />
-        </label>
-        <label>
-          Max rows
-          <input
-            type="number"
+          <NumberInput
+            label={t("cacheStorageTab.promoteThresholdLabel")}
+            value={s.hot_tables.auto_threshold}
+            onChange={(v) =>
+              setS({
+                ...s,
+                hot_tables: { ...s.hot_tables, auto_threshold: Number(v) },
+              })
+            }
+          />
+          <NumberInput
+            label={t("cacheStorageTab.maxRowsLabel")}
             value={s.hot_tables.max_rows}
-            onChange={(e) =>
-              setS({ ...s, hot_tables: { ...s.hot_tables, max_rows: Number(e.target.value) } })
+            onChange={(v) =>
+              setS({ ...s, hot_tables: { ...s.hot_tables, max_rows: Number(v) } })
             }
           />
-        </label>
-        <label>
-          Max bytes
-          <input
-            type="number"
-            value={s.hot_tables.max_bytes}
-            onChange={(e) =>
-              setS({ ...s, hot_tables: { ...s.hot_tables, max_bytes: Number(e.target.value) } })
-            }
-          />
-        </label>
-      </div>
+        </SimpleGrid>
+        <NumberInput
+          label={t("cacheStorageTab.maxBytesLabel")}
+          value={s.hot_tables.max_bytes}
+          onChange={(v) =>
+            setS({ ...s, hot_tables: { ...s.hot_tables, max_bytes: Number(v) } })
+          }
+        />
+      </Stack>
 
-      <h3>Materialize Store</h3>
-      <p className="muted">
-        Durable store where non-attachable sources (OpenAPI, GraphQL) and materialized views are
-        landed. Leave empty to use the active federation engine's default
+      <Title order={4}>{t("cacheStorageTab.materializeHeading")}</Title>
+      <Text c="dimmed" size="sm">
+        {t("cacheStorageTab.materializeIntroPrefix")}
         {s.materialize.default_store_url ? (
-          <> — <code>{s.materialize.default_store_url}</code></>
+          <>
+            {" "}
+            —{" "}
+            <Code>{s.materialize.default_store_url}</Code>
+          </>
         ) : (
-          <> — this engine declares none, so a URL is required</>
+          t("cacheStorageTab.materializeIntroNoDefault")
         )}
-        . Set a URL to override.
-      </p>
-      <div className="form-card">
-        <label style={{ gridColumn: "1 / -1" }}>
-          Store URL
-          <input
-            type="text"
-            value={s.materialize.store_url}
-            placeholder={
-              s.materialize.default_store_url
-                ? `empty → ${s.materialize.default_store_url}`
-                : "postgresql://user:pass@host:5432/materialize (required)"
-            }
-            onChange={(e) =>
-              setS({ ...s, materialize: { ...s.materialize, store_url: e.target.value } })
-            }
-          />
-        </label>
-      </div>
+        {t("cacheStorageTab.materializeIntroSuffix")}
+      </Text>
+      <TextInput
+        label={t("cacheStorageTab.storeUrlLabel")}
+        placeholder={
+          s.materialize.default_store_url
+            ? t("cacheStorageTab.storeUrlPlaceholderDefault", {
+                url: s.materialize.default_store_url,
+              })
+            : t("cacheStorageTab.storeUrlPlaceholderRequired")
+        }
+        value={s.materialize.store_url}
+        onChange={(e) =>
+          setS({ ...s, materialize: { ...s.materialize, store_url: e.currentTarget.value } })
+        }
+      />
 
-      <div
-        className="warn-banner"
-        style={{ marginTop: "1rem", padding: "0.5rem 0.75rem", border: "1px solid #b8860b", borderRadius: 4 }}
-      >
-        ⚠ {s.restart_required_note}
-      </div>
+      <Alert color="yellow" icon={<TriangleAlert size={16} />}>
+        {s.restart_required_note}
+      </Alert>
 
-      <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
-        <button
-          className="btn-primary"
+      <Group gap="sm" align="center">
+        <Button
           onClick={save}
           disabled={saving}
-          title="Save cache & storage settings"
+          loading={saving}
+          title={t("cacheStorageTab.saveButtonLabel")}
+          aria-label={t("cacheStorageTab.saveButtonLabel")}
+          data-testid="cache-storage-save"
+          leftSection={saving ? undefined : <Check size={14} />}
         >
-          {saving ? <span className="btn-spinner" /> : <Check size={14} />}
-        </button>
-        {msg && <span className="success-text">{msg}</span>}
-        {error && <span className="error-text">{error}</span>}
-      </div>
-    </div>
+          {t("cacheStorageTab.saveButtonLabel")}
+        </Button>
+        {msg && (
+          <Text c="green" size="sm">
+            {msg}
+          </Text>
+        )}
+        {error && (
+          <Text c="red" size="sm">
+            {error}
+          </Text>
+        )}
+      </Group>
+    </Stack>
   );
 }

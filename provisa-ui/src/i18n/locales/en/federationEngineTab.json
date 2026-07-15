@@ -1,0 +1,11 @@
+{
+  "federationEngineTab": {
+    "intro": "The federation engine executes every federated query. Pick the engine and configure it; other components (routing, governance, cache) are unchanged.",
+    "loading": "Loading…",
+    "engineLabel": "Engine",
+    "current": " (current)",
+    "saveButton": "Save engine selection",
+    "saved": "Saved.",
+    "savedRestartRequired": "Saved. Restart the service to apply the new federation engine."
+  }
+}

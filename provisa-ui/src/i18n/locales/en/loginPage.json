@@ -1,0 +1,24 @@
+{
+  "loginPage": {
+    "loginTitle": "Login",
+    "authNotConfigured": "Authentication not configured",
+    "loading": "Loading...",
+    "signInTitle": "Sign In",
+    "signInWithGoogle": "Sign in with Google",
+    "signingIn": "Signing in...",
+    "createAccountTitle": "Create Account",
+    "username": "Username",
+    "email": "Email",
+    "displayName": "Display Name",
+    "organization": "Organization",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "creating": "Creating...",
+    "createAccount": "Create Account",
+    "backToLogin": "Back to Login",
+    "loggingIn": "Logging in...",
+    "passwordsDoNotMatch": "Passwords do not match",
+    "registrationFailed": "Registration failed",
+    "firebaseSignInFailed": "Firebase sign-in failed"
+  }
+}

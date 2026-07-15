@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "SQL Modeling",
+    "description": "Extract JOIN conditions as new relationship candidates — existing relationships are excluded",
+    "close": "Close",
+    "tabSql": "SQL",
+    "tabCanvas": "Canvas",
+    "nlPlaceholder": "Ask in plain English — generates SQL…",
+    "nlLoading": "Loading",
+    "generateSql": "Generate SQL",
+    "generating": "Generating…",
+    "copySql": "Copy SQL",
+    "copied": "Copied",
+    "copy": "Copy",
+    "run": "Sample >",
+    "runningLabel": "Running…",
+    "sampleModeLabel": "Sample mode",
+    "sampleModeFirst": "First",
+    "sampleModeLast": "Last",
+    "sampleModeRandom": "Random",
+    "sampleSizeLabel": "Row count",
+    "roleLabel": "Role",
+    "extractJoins": "Extract Joins",
+    "tabResults": "Results",
+    "tabProfile": "Profile",
+    "tabCandidates": "Candidates",
+    "tabErrors": "Errors",
+    "tabHistory": "History",
+    "execMs": "{{ms}}ms"
+  }
+}

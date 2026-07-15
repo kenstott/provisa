@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "Entity Relationship Diagram",
+    "domains": "Domains",
+    "domainsTooltip": "Show / hide domains",
+    "columnDetailLabel": "Column detail",
+    "columnDetailAll": "All cols",
+    "columnDetailKey": "Keys only",
+    "columnDetailNone": "No cols",
+    "edgeRoutingLabel": "Edge routing",
+    "edgeRoutingBezier": "Curved edges",
+    "edgeRoutingTaxi": "Right-angle edges",
+    "gridSnapLabel": "Snap to grid",
+    "gridSnapNone": "No snap",
+    "gridSnap5": "Snap 5px",
+    "gridSnap10": "Snap 10px",
+    "gridSnap15": "Snap 15px",
+    "gridSnap20": "Snap 20px",
+    "orphans": "Orphans",
+    "collapseAll": "Collapse all",
+    "expandAll": "Expand all",
+    "fitAll": "Fit all",
+    "downloadSvg": "Download SVG",
+    "downloadPng": "Download PNG",
+    "downloadJpeg": "Download JPEG",
+    "close": "Close",
+    "hint": "Click a domain group to collapse / expand · dashed lines connect collapsed domains",
+    "resizeHandle": "Resize domain box ({{corner}})"
+  }
+}

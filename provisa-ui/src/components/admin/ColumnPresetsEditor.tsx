@@ -9,6 +9,9 @@
 // permission from the copyright holder.
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { ActionIcon, Button, Group, Select, Stack, Table, Text, TextInput, Tooltip } from "@mantine/core";
+import { Info, Plus, X } from "lucide-react";
 import type { ColumnPreset } from "../../types/admin";
 
 interface Props {
@@ -17,12 +20,6 @@ interface Props {
   columnTypes?: Record<string, string>;
   onChange: (presets: ColumnPreset[]) => void;
 }
-
-const SOURCES: { value: ColumnPreset["source"]; label: string }[] = [
-  { value: "now", label: "now (UTC timestamp)" },
-  { value: "header", label: "header (HTTP request header)" },
-  { value: "literal", label: "literal (fixed value)" },
-];
 
 const TIMESTAMP_TYPES = new Set(["timestamp", "timestamp with time zone", "timestamp without time zone", "timestamptz", "datetime"]);
 const DATE_TYPES = new Set(["date"]);
@@ -39,39 +36,90 @@ function isTemporalType(t: string): boolean {
   return TIMESTAMP_TYPES.has(n) || DATE_TYPES.has(n) || TIME_TYPES.has(n);
 }
 
-function getLiteralInput(colType: string | undefined, value: string | null, onChange: (v: string | null) => void) {
-  if (!colType) {
-    return <input placeholder="Literal value" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
-  }
-  const n = normalizeType(colType);
-  if (NUMERIC_TYPES.has(n)) {
-    return <input type="number" placeholder="Numeric value" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
-  }
-  if (TIMESTAMP_TYPES.has(n)) {
-    return <input type="datetime-local" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
-  }
-  if (DATE_TYPES.has(n)) {
-    return <input type="date" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
-  }
-  if (TIME_TYPES.has(n)) {
-    return <input type="time" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
-  }
-  if (BOOL_TYPES.has(n)) {
-    return (
-      <select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
-        <option value="">— select —</option>
-        <option value="true">true</option>
-        <option value="false">false</option>
-      </select>
-    );
-  }
-  return <input placeholder="Literal value" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
-}
-
 const EMPTY: ColumnPreset = { column: "", source: "now", name: null, value: null, dataType: null };
 
 export function ColumnPresetsEditor({ presets, columns, columnTypes, onChange }: Props) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<ColumnPreset>({ ...EMPTY });
+
+  const SOURCES: { value: ColumnPreset["source"]; label: string }[] = [
+    { value: "now", label: t("columnPresetsEditor.sourceNow") },
+    { value: "header", label: t("columnPresetsEditor.sourceHeaderOption") },
+    { value: "literal", label: t("columnPresetsEditor.sourceLiteral") },
+  ];
+
+  function getLiteralInput(colType: string | undefined, value: string | null, onChangeValue: (v: string | null) => void) {
+    const n = colType ? normalizeType(colType) : null;
+    if (n && NUMERIC_TYPES.has(n)) {
+      return (
+        <TextInput
+          type="number"
+          aria-label={t("columnPresetsEditor.numericValuePlaceholder")}
+          placeholder={t("columnPresetsEditor.numericValuePlaceholder")}
+          value={value ?? ""}
+          onChange={(e) => onChangeValue(e.currentTarget.value || null)}
+          data-testid="column-presets-literal-input"
+        />
+      );
+    }
+    if (n && TIMESTAMP_TYPES.has(n)) {
+      return (
+        <TextInput
+          type="datetime-local"
+          aria-label={t("columnPresetsEditor.valueHeader")}
+          value={value ?? ""}
+          onChange={(e) => onChangeValue(e.currentTarget.value || null)}
+          data-testid="column-presets-literal-input"
+        />
+      );
+    }
+    if (n && DATE_TYPES.has(n)) {
+      return (
+        <TextInput
+          type="date"
+          aria-label={t("columnPresetsEditor.valueHeader")}
+          value={value ?? ""}
+          onChange={(e) => onChangeValue(e.currentTarget.value || null)}
+          data-testid="column-presets-literal-input"
+        />
+      );
+    }
+    if (n && TIME_TYPES.has(n)) {
+      return (
+        <TextInput
+          type="time"
+          aria-label={t("columnPresetsEditor.valueHeader")}
+          value={value ?? ""}
+          onChange={(e) => onChangeValue(e.currentTarget.value || null)}
+          data-testid="column-presets-literal-input"
+        />
+      );
+    }
+    if (n && BOOL_TYPES.has(n)) {
+      return (
+        <Select
+          aria-label={t("columnPresetsEditor.valueHeader")}
+          placeholder={t("columnPresetsEditor.selectPlaceholder")}
+          value={value ?? null}
+          onChange={(v) => onChangeValue(v)}
+          data={[
+            { value: "true", label: t("columnPresetsEditor.trueLabel") },
+            { value: "false", label: t("columnPresetsEditor.falseLabel") },
+          ]}
+          data-testid="column-presets-literal-input"
+        />
+      );
+    }
+    return (
+      <TextInput
+        aria-label={t("columnPresetsEditor.literalValuePlaceholder")}
+        placeholder={t("columnPresetsEditor.literalValuePlaceholder")}
+        value={value ?? ""}
+        onChange={(e) => onChangeValue(e.currentTarget.value || null)}
+        data-testid="column-presets-literal-input"
+      />
+    );
+  }
 
   const remove = (i: number) => {
     const next = presets.filter((_, idx) => idx !== i);
@@ -85,65 +133,88 @@ export function ColumnPresetsEditor({ presets, columns, columnTypes, onChange }:
   };
 
   return (
-    <div className="cp-editor">
-      <div className="cp-editor-label" style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-        Column Presets
-        <span title="Inject computed or constant values into every row returned for this table. Useful for adding domain identifiers, role-scoped flags, or derived fields without modifying the source schema. 'source' can be: constant, sql_expression, or role_claim." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem", lineHeight: 1 }}>ⓘ</span>
-      </div>
+    <Stack gap="xs" data-testid="column-presets-editor">
+      <Group gap={4} align="center">
+        <Text size="sm" c="dimmed">
+          {t("columnPresetsEditor.label")}
+        </Text>
+        <Tooltip label={t("columnPresetsEditor.infoTooltip")} multiline w={320}>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="xs"
+            aria-label={t("columnPresetsEditor.infoTooltip")}
+          >
+            <Info size={12} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
       {presets.length > 0 && (
-        <table className="cp-table">
-          <thead>
-            <tr>
-              <th>Column</th>
-              <th>Source</th>
-              <th>Header / Value</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("columnPresetsEditor.columnHeader")}</Table.Th>
+              <Table.Th>{t("columnPresetsEditor.sourceHeader")}</Table.Th>
+              <Table.Th>{t("columnPresetsEditor.valueHeader")}</Table.Th>
+              <Table.Th></Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
             {presets.map((p, i) => (
-              <tr key={i}>
-                <td>{p.column}</td>
-                <td>{p.source}</td>
-                <td>{p.source === "header" ? p.name : p.source === "literal" ? p.value : "—"}</td>
-                <td>
-                  <button className="cp-remove-btn" onClick={() => remove(i)} title="Remove">✕</button>
-                </td>
-              </tr>
+              <Table.Tr key={i}>
+                <Table.Td>{p.column}</Table.Td>
+                <Table.Td>{p.source}</Table.Td>
+                <Table.Td>{p.source === "header" ? p.name : p.source === "literal" ? p.value : "—"}</Table.Td>
+                <Table.Td>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    aria-label={t("columnPresetsEditor.removeAction")}
+                    onClick={() => remove(i)}
+                    data-testid={`column-presets-remove-${i}`}
+                  >
+                    <X size={14} />
+                  </ActionIcon>
+                </Table.Td>
+              </Table.Tr>
             ))}
-          </tbody>
-        </table>
+          </Table.Tbody>
+        </Table>
       )}
-      <div className="cp-add-row">
-        <select
-          value={draft.column}
-          onChange={(e) => {
-            const col = e.target.value;
-            const colType = columnTypes?.[col] ?? null;
+      <Group gap="sm" align="center" wrap="wrap">
+        <Select
+          aria-label={t("columnPresetsEditor.columnHeader")}
+          placeholder={t("columnPresetsEditor.columnPlaceholder")}
+          value={draft.column || null}
+          onChange={(col) => {
+            const colValue = col ?? "";
+            const colType = columnTypes?.[colValue] ?? null;
             const temporal = colType ? isTemporalType(colType) : true;
             const nextSource = draft.source === "now" && !temporal ? "literal" : draft.source;
-            setDraft((d) => ({ ...d, column: col, source: nextSource as ColumnPreset["source"], name: null, value: null, dataType: colType }));
+            setDraft((d) => ({ ...d, column: colValue, source: nextSource as ColumnPreset["source"], name: null, value: null, dataType: colType }));
           }}
-        >
-          <option value="">— column —</option>
-          {columns.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select
+          data={columns.map((c) => ({ value: c, label: c }))}
+          data-testid="column-presets-column-select"
+        />
+        <Select
+          aria-label={t("columnPresetsEditor.sourceHeader")}
           value={draft.source}
-          onChange={(e) => setDraft((d) => ({ ...d, source: e.target.value as ColumnPreset["source"], name: null, value: null }))}
-        >
-          {SOURCES.filter((s) => {
+          onChange={(v) => setDraft((d) => ({ ...d, source: (v ?? "now") as ColumnPreset["source"], name: null, value: null }))}
+          data={SOURCES.filter((s) => {
             if (s.value === "now" && draft.column && columnTypes?.[draft.column]) {
               return isTemporalType(columnTypes[draft.column]);
             }
             return true;
-          }).map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
+          }).map((s) => ({ value: s.value, label: s.label }))}
+          data-testid="column-presets-source-select"
+        />
         {draft.source === "header" && (
-          <input
-            placeholder="Header name (e.g. X-User-Id)"
+          <TextInput
+            aria-label={t("columnPresetsEditor.headerNamePlaceholder")}
+            placeholder={t("columnPresetsEditor.headerNamePlaceholder")}
             value={draft.name ?? ""}
-            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value || null }))}
+            onChange={(e) => setDraft((d) => ({ ...d, name: e.currentTarget.value || null }))}
+            data-testid="column-presets-header-name-input"
           />
         )}
         {draft.source === "literal" && getLiteralInput(
@@ -151,8 +222,15 @@ export function ColumnPresetsEditor({ presets, columns, columnTypes, onChange }:
           draft.value,
           (v) => setDraft((d) => ({ ...d, value: v }))
         )}
-        <button onClick={add} disabled={!draft.column}>+</button>
-      </div>
-    </div>
+        <Button
+          onClick={add}
+          disabled={!draft.column}
+          leftSection={<Plus size={14} />}
+          data-testid="column-presets-add-button"
+        >
+          {t("columnPresetsEditor.addAction")}
+        </Button>
+      </Group>
+    </Stack>
   );
 }

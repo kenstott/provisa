@@ -10,9 +10,25 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation, Trans } from "react-i18next";
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  Paper,
+  ScrollArea,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  Textarea,
+  UnstyledButton,
+} from "@mantine/core";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
-import "./NlPage.css";
 
 const EXPLORER_ROUTES: Record<string, { path: string; stateKey: string }> = {
   sql: { path: "/sql", stateKey: "sql" },
@@ -25,16 +41,17 @@ const EXPLORER_ROUTES: Record<string, { path: string; stateKey: string }> = {
 
 const GUIDE_KEY = "provisa.nl.guide.collapsed";
 
-const EXAMPLES = [
-  "Show all customers whose orders total more than 10,000, grouped by region",
-  "List the top 5 products by revenue in the last 30 days",
-  "Find all users who have never placed an order",
-];
-
 function GuidanceBanner() {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(GUIDE_KEY) === "1",
   );
+
+  const examples = [
+    t("nlPage.example1"),
+    t("nlPage.example2"),
+    t("nlPage.example3"),
+  ];
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
@@ -44,30 +61,48 @@ function GuidanceBanner() {
     });
   }, []);
   return (
-    <div className="nl-guide" data-collapsed={collapsed ? "true" : "false"}>
-      <button className="nl-guide-toggle" onClick={toggle} aria-expanded={!collapsed}>
-        <span className="nl-guide-title">How to write a good question</span>
-        <span className="nl-guide-chevron">{collapsed ? "▸" : "▾"}</span>
-      </button>
-      <div className="nl-guide-body">
-        <p className="nl-guide-desc">
-          This tool generates queries directly from your schema — it does not reason over
-          free-form text or general knowledge. Phrase your question as a composition of the
-          tables, fields, and relationships that exist in your data.
-        </p>
-        <ul className="nl-guide-rules">
-          <li>Use the names of your entities, not synonyms (<em>Orders</em>, not <em>purchases</em>)</li>
-          <li>Specify filters, groupings, and aggregations the way you would in a query</li>
-          <li>If a field or relationship is not in your schema, it cannot be queried</li>
-        </ul>
-        <div className="nl-guide-examples-label">Examples</div>
-        <ul className="nl-guide-examples">
-          {EXAMPLES.map((ex) => (
-            <li key={ex} className="nl-guide-example">{ex}</li>
-          ))}
-        </ul>
-      </div>
-    </div>
+    <Paper withBorder radius="md" data-testid="nl-guide">
+      <UnstyledButton
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        data-testid="nl-guide-toggle"
+        p="sm"
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+      >
+        <Text fw={600} size="sm">{t("nlPage.guideTitle")}</Text>
+        {collapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+      </UnstyledButton>
+      {!collapsed && (
+        <Stack gap="sm" p="sm" pt={0}>
+          <Text size="sm" c="dimmed">
+            {t("nlPage.guideDesc")}
+          </Text>
+          <Stack component="ul" gap={4} style={{ margin: 0, paddingLeft: 18 }}>
+            <Text component="li" size="sm" c="dimmed">
+              <Trans i18nKey="nlPage.guideRuleNames" t={t}>
+                Use the names of your entities, not synonyms (<Text component="em" fs="normal" c="blue" span>Orders</Text>, not <Text component="em" fs="normal" c="blue" span>purchases</Text>)
+              </Trans>
+            </Text>
+            <Text component="li" size="sm" c="dimmed">
+              {t("nlPage.guideRuleFilters")}
+            </Text>
+            <Text component="li" size="sm" c="dimmed">
+              {t("nlPage.guideRuleSchema")}
+            </Text>
+          </Stack>
+          <Text size="xs" fw={700} tt="uppercase" c="dimmed">
+            {t("nlPage.guideExamplesLabel")}
+          </Text>
+          <Stack component="ul" gap={4} style={{ margin: 0, paddingLeft: 18 }}>
+            {examples.map((ex) => (
+              <Text component="li" key={ex} size="sm" fs="italic" c="indigo">
+                {ex}
+              </Text>
+            ))}
+          </Stack>
+        </Stack>
+      )}
+    </Paper>
   );
 }
 
@@ -89,6 +124,7 @@ const LABELS: Record<Target, string> = {
 };
 
 export function NlPage() {
+  const { t } = useTranslation();
   const { role } = useAuth();
   const navigate = useNavigate();
   const NL_QUESTION_KEY = "nl-question";
@@ -206,15 +242,19 @@ export function NlPage() {
   }, [navigate]);
 
   return (
-    <div className="nl-page">
+    <Stack gap="md" p="md" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
       <GuidanceBanner />
-      <div className="nl-input-bar">
-        <textarea
-          className="nl-textarea"
-          placeholder="Ask a question in plain English…"
+      <Group align="flex-start" gap="sm" wrap="nowrap">
+        <Textarea
+          aria-label={t("nlPage.questionLabel")}
+          placeholder={t("nlPage.questionPlaceholder")}
           value={question}
           rows={2}
-          onChange={(e) => { setQuestion(e.target.value); localStorage.setItem(NL_QUESTION_KEY, e.target.value); }}
+          autosize
+          minRows={2}
+          style={{ flex: 1 }}
+          data-testid="nl-question-input"
+          onChange={(e) => { setQuestion(e.currentTarget.value); localStorage.setItem(NL_QUESTION_KEY, e.currentTarget.value); }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -222,25 +262,30 @@ export function NlPage() {
             }
           }}
         />
-        <button
-          className="nl-submit-btn"
+        <Button
           disabled={submitting || !question.trim()}
           onClick={() => void handleSubmit()}
+          loading={submitting}
+          data-testid="nl-submit-button"
         >
-          {submitting ? "Generating…" : "Generate"}
-        </button>
-      </div>
+          {submitting ? t("nlPage.generating") : t("nlPage.generate")}
+        </Button>
+      </Group>
 
-      {globalError && <div className="nl-global-error">{globalError}</div>}
+      {globalError && (
+        <Alert color="red" variant="light" data-testid="nl-global-error">
+          {globalError}
+        </Alert>
+      )}
 
       {hasResults && (
-        <div className="nl-panels">
-          {TARGETS.map((t) => (
-            <BranchPanel key={t} label={LABELS[t]} target={t} branch={branches[t]} onOpen={openInExplorer} />
+        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+          {TARGETS.map((tk) => (
+            <BranchPanel key={tk} label={LABELS[tk]} target={tk} branch={branches[tk]} onOpen={openInExplorer} />
           ))}
-        </div>
+        </SimpleGrid>
       )}
-    </div>
+    </Stack>
   );
 }
 
@@ -255,83 +300,102 @@ function BranchPanel({
   branch: BranchState;
   onOpen: (target: Target, query: string) => void;
 }) {
+  const { t } = useTranslation();
   const notApplicable = branch.error === "NOT_APPLICABLE";
   return (
-    <div className="nl-branch-panel">
-      <div className="nl-branch-header">
-        <span className="nl-branch-label">{label}</span>
+    <Paper withBorder radius="md" style={{ display: "flex", flexDirection: "column", minHeight: 200, maxHeight: 400, overflow: "hidden" }} data-testid={`nl-branch-panel-${target}`}>
+      <Group justify="space-between" px="sm" py={6} style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
+        <Badge variant="light" size="sm">{label}</Badge>
         {!branch.loading && branch.query && (
-          <button
-            className="nl-open-btn"
-            title={`Open in ${label} explorer`}
+          <Button
+            size="compact-xs"
+            variant="light"
+            title={t("nlPage.openInExplorer", { label })}
             onClick={() => onOpen(target, branch.query!)}
+            data-testid={`nl-open-button-${target}`}
           >
-            Open in {label}
-          </button>
+            {t("nlPage.openIn", { label })}
+          </Button>
         )}
-      </div>
-      <div className="nl-branch-body">
-        {branch.loading && (
-          <div className="nl-branch-loading" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-            <span className="btn-spinner" style={{ flexShrink: 0 }} />
-            Generating…
-          </div>
-        )}
-        {!branch.loading && notApplicable && (
-          <div className="nl-branch-na">Not applicable for this query type</div>
-        )}
-        {!branch.loading && !notApplicable && branch.error && (
-          <div className="nl-branch-error">{branch.error}</div>
-        )}
-        {!branch.loading && branch.query && (
-          <pre className="nl-branch-query">{branch.query}</pre>
-        )}
-        {!branch.loading && !branch.query && !branch.error && (
-          <div className="nl-branch-empty">No query generated</div>
-        )}
-        {!branch.loading && branch.result != null && (
-          <ResultTable result={branch.result} />
-        )}
-      </div>
-    </div>
+      </Group>
+      <ScrollArea style={{ flex: 1 }} p="sm">
+        <Stack gap="xs">
+          {branch.loading && (
+            <Group gap={6}>
+              <Loader size="xs" />
+              <Text size="sm" c="dimmed" fs="italic">{t("nlPage.generating")}</Text>
+            </Group>
+          )}
+          {!branch.loading && notApplicable && (
+            <Text size="sm" c="dimmed" fs="italic">{t("nlPage.notApplicable")}</Text>
+          )}
+          {!branch.loading && !notApplicable && branch.error && (
+            <Text size="sm" c="red">{branch.error}</Text>
+          )}
+          {!branch.loading && branch.query && (
+            <Text
+              component="pre"
+              size="xs"
+              c="cyan"
+              style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "var(--mantine-font-family-monospace, monospace)" }}
+            >
+              {branch.query}
+            </Text>
+          )}
+          {!branch.loading && !branch.query && !branch.error && (
+            <Text size="sm" c="dimmed" fs="italic">{t("nlPage.noQueryGenerated")}</Text>
+          )}
+          {!branch.loading && branch.result != null && (
+            <ResultTable result={branch.result} />
+          )}
+        </Stack>
+      </ScrollArea>
+    </Paper>
   );
 }
 
 function ResultTable({ result }: { result: unknown }) {
+  const { t } = useTranslation();
   if (
     typeof result !== "object" ||
     result === null ||
     !Array.isArray((result as { rows?: unknown }).rows)
   ) {
-    return <pre className="nl-branch-result-raw">{JSON.stringify(result, null, 2)}</pre>;
+    return (
+      <Text component="pre" size="xs" c="dimmed" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+        {JSON.stringify(result, null, 2)}
+      </Text>
+    );
   }
 
   const { columns, rows } = result as { columns: string[]; rows: Record<string, unknown>[] };
-  if (!rows.length) return <div className="nl-branch-empty">No rows returned</div>;
+  if (!rows.length) return <Text size="sm" c="dimmed" fs="italic">{t("nlPage.noRowsReturned")}</Text>;
 
   return (
-    <div className="nl-result-table-wrap">
-      <table className="nl-result-table">
-        <thead>
-          <tr>
+    <Paper withBorder radius="sm" style={{ overflow: "auto" }}>
+      <Table striped fz="xs">
+        <Table.Thead>
+          <Table.Tr>
             {columns.map((c) => (
-              <th key={c}>{c}</th>
+              <Table.Th key={c}>{c}</Table.Th>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
           {rows.slice(0, 100).map((row, i) => (
-            <tr key={i}>
+            <Table.Tr key={i}>
               {columns.map((c, j) => (
-                <td key={j}>{row[c] == null ? "" : String(row[c])}</td>
+                <Table.Td key={j}>{row[c] == null ? "" : String(row[c])}</Table.Td>
               ))}
-            </tr>
+            </Table.Tr>
           ))}
-        </tbody>
-      </table>
+        </Table.Tbody>
+      </Table>
       {rows.length > 100 && (
-        <div className="nl-result-truncated">Showing 100 of {rows.length} rows</div>
+        <Text size="xs" c="dimmed" px="xs" py={4}>
+          {t("nlPage.showingRows", { shown: 100, total: rows.length })}
+        </Text>
       )}
-    </div>
+    </Paper>
   );
 }

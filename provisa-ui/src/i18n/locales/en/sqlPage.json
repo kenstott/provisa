@@ -1,0 +1,9 @@
+{
+  "sqlPage": {
+    "title": "SQL Explorer",
+    "tabSql": "sql",
+    "tabCanvas": "canvas",
+    "execMs": "{{ms}} ms",
+    "queryStats": "Query Stats"
+  }
+}

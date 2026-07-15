@@ -14,6 +14,8 @@
    ref reads/writes during render are intentional throughout this module. */
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { ActionIcon, Loader, Menu, Select } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import type { Relationship } from "../../types/admin";
 import { extractElements, injectExclusion } from "./graph-model";
 import type { GNode, GEdge, GraphStats, RelLineOverride, FrameData } from "./graph-model";
@@ -98,6 +100,7 @@ export function GraphFrame({
   onPin,
   onEffectiveDataChange,
 }: GraphFrameProps) {
+  const { t } = useTranslation();
   const [view, setView] = useState<"graph" | "table" | "json" | "graphstats" | "code">("graph");
   const [selected, setSelectedRaw] = useState<
     { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null
@@ -144,7 +147,6 @@ export function GraphFrame({
     [onRerun],
   );
   const [showDlMenu, setShowDlMenu] = useState(false);
-  const [dlMenuPos, setDlMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [clusterLevel, setClusterLevel] = useLocalStorage<ClusterLevel>(
     `provisa.graph.clusterLevel.${frame.id}`,
     "none",
@@ -508,142 +510,193 @@ export function GraphFrame({
             basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
           />
         )}
-        <CopySymbolButton text={editQuery} className="gf-copy-query-btn" title="Copy query" />
+        <CopySymbolButton text={editQuery} className="gf-copy-query-btn" title={t("graphFrame.copyQuery")} />
       </div>
       <div className="gf-header-right">
         <div className="gf-header-top">
           <div className="gf-header-meta">
-            {frame.status === "loading" && <span className="gf-loading">Running…</span>}
+            {frame.status === "loading" && (
+              <span className="gf-loading">{t("graphFrame.running")}</span>
+            )}
             {frame.status === "done" && (
               <span className="gf-meta-text">
-                {frame.nodes.size} nodes · {frame.edges.size} rels
-                {frame.elapsed !== undefined && ` · ${frame.elapsed}ms`}
+                {frame.elapsed !== undefined
+                  ? t("graphFrame.metaCountElapsed", {
+                      nodes: frame.nodes.size,
+                      edges: frame.edges.size,
+                      elapsed: frame.elapsed,
+                    })
+                  : t("graphFrame.metaCount", {
+                      nodes: frame.nodes.size,
+                      edges: frame.edges.size,
+                    })}
               </span>
             )}
-            {frame.status === "error" && <span className="gf-meta-error">Error</span>}
+            {frame.status === "error" && (
+              <span className="gf-meta-error">{t("graphFrame.error")}</span>
+            )}
           </div>
           {!isModal && (
-            <button className="gf-icon-btn" onClick={() => setExpanded(true)} title="Expand">
+            <ActionIcon
+              variant="subtle"
+              className="gf-icon-btn"
+              onClick={() => setExpanded(true)}
+              title={t("graphFrame.expand")}
+              aria-label={t("graphFrame.expand")}
+              data-testid="graph-frame-expand-btn"
+            >
               <ExpandModalIcon size={14} />
-            </button>
+            </ActionIcon>
           )}
           {isModal && (
-            <button
+            <ActionIcon
+              variant="subtle"
               className="gf-icon-btn"
               onClick={() => setExpanded(false)}
-              title="Exit full screen"
+              title={t("graphFrame.exitFullScreen")}
+              aria-label={t("graphFrame.exitFullScreen")}
+              data-testid="graph-frame-exit-fullscreen-btn"
             >
               <CollapseModalIcon size={14} />
-            </button>
+            </ActionIcon>
           )}
           {!isModal && (
-            <button
+            <ActionIcon
+              variant="subtle"
               className="gf-icon-btn"
               onClick={() => setCollapsed((c) => !c)}
-              title={collapsed ? "Expand" : "Collapse"}
+              title={collapsed ? t("graphFrame.expand") : t("graphFrame.collapse")}
+              aria-label={collapsed ? t("graphFrame.expand") : t("graphFrame.collapse")}
+              data-testid="graph-frame-collapse-btn"
             >
               {collapsed ? <ExpandQueryIcon size={14} /> : <CollapseQueryIcon size={14} />}
-            </button>
+            </ActionIcon>
           )}
           {!isModal && onPin && (
-            <button
+            <ActionIcon
+              variant="subtle"
               className={`gf-icon-btn${frame.pinned ? " gf-icon-btn--on" : ""}`}
               onClick={() => onPin(frame.id)}
-              title={frame.pinned ? "Unpin (unpin to allow sorting)" : "Pin to top"}
+              title={frame.pinned ? t("graphFrame.unpinHint") : t("graphFrame.pinToTop")}
+              aria-label={frame.pinned ? t("graphFrame.unpinHint") : t("graphFrame.pinToTop")}
+              aria-current={frame.pinned ? "true" : undefined}
+              data-testid="graph-frame-pin-btn"
             >
               <PushPinIcon size={14} />
-            </button>
+            </ActionIcon>
           )}
           {!isModal && (
-            <button className="gf-icon-btn" onClick={() => onClose(frame.id)} title="Close">
-              ✕
-            </button>
+            <ActionIcon
+              variant="subtle"
+              className="gf-icon-btn"
+              onClick={() => onClose(frame.id)}
+              title={t("graphFrame.close")}
+              aria-label={t("graphFrame.close")}
+              data-testid="graph-frame-close-btn"
+            >
+              <span aria-hidden="true">✕</span>
+            </ActionIcon>
           )}
         </div>
         <div className="gf-header-actions">
-        <button
+        <ActionIcon
+          variant="subtle"
           className="gf-run-inline-btn"
           onClick={() => handleRerun(frame.id, editQuery.trim())}
-          title="Run"
+          title={t("graphFrame.run")}
+          aria-label={t("graphFrame.run")}
+          data-testid="graph-frame-run-btn"
         >
-          ▶
-        </button>
+          <span aria-hidden="true">▶</span>
+        </ActionIcon>
         {onAddFavorite && (
-          <button
+          <ActionIcon
+            variant="subtle"
             className={`gf-icon-btn${isFavorited?.(editQuery.trim()) ? " gf-icon-btn--on" : ""}`}
-            title={isFavorited?.(editQuery.trim()) ? "Remove from favorites" : "Add to favorites"}
+            title={isFavorited?.(editQuery.trim()) ? t("graphFrame.removeFromFavorites") : t("graphFrame.addToFavorites")}
+            aria-label={isFavorited?.(editQuery.trim()) ? t("graphFrame.removeFromFavorites") : t("graphFrame.addToFavorites")}
+            aria-current={isFavorited?.(editQuery.trim()) ? "true" : undefined}
             onClick={() => onAddFavorite(editQuery.trim())}
+            data-testid="graph-frame-favorite-btn"
           >
-            ★
-          </button>
+            <span aria-hidden="true">★</span>
+          </ActionIcon>
         )}
         {hasGraph && frame.status === "done" && (
-          <button
+          <ActionIcon
+            variant="subtle"
             className={`gf-run-inline-btn${autoImpute ? " gf-run-inline-btn--on" : ""}`}
             onClick={() => setAutoImpute((v) => !v)}
-            title={
-              autoImpute
-                ? "Auto-impute relationships ON — click to disable"
-                : "Auto-impute relationships between visible nodes"
-            }
+            title={autoImpute ? t("graphFrame.autoImputeOn") : t("graphFrame.autoImputeOff")}
+            aria-label={autoImpute ? t("graphFrame.autoImputeOn") : t("graphFrame.autoImputeOff")}
+            aria-current={autoImpute ? "true" : undefined}
+            data-testid="graph-frame-auto-impute-btn"
           >
-            ⊕
-          </button>
+            <span aria-hidden="true">⊕</span>
+          </ActionIcon>
         )}
         {hasGraph && frame.status === "done" && groupableAttrs.length > 0 && (
-          <select
+          <Select
+            aria-label={t("graphFrame.groupTooltip")}
+            title={t("graphFrame.groupTooltip")}
             className={`gf-attr-select${groupableAttrs.includes(clusterLevel) ? " gf-icon-btn--on" : ""}`}
-            value={groupableAttrs.includes(clusterLevel) ? clusterLevel : ""}
-            onChange={(e) => setClusterLevel(e.target.value || "none")}
-            title="Group nodes by attribute (double-click a hull to collapse; double-click collapsed node to expand)"
-          >
-            <option value="">⬡ group</option>
-            {groupableAttrs.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
+            size="xs"
+            placeholder={t("graphFrame.groupPlaceholder")}
+            value={groupableAttrs.includes(clusterLevel) ? clusterLevel : null}
+            onChange={(val) => setClusterLevel((val ?? "none") as ClusterLevel)}
+            data={groupableAttrs.map((a) => ({ value: a, label: a }))}
+            clearable
+            comboboxProps={{ withinPortal: true }}
+            data-testid="graph-frame-group-select"
+          />
         )}
         {activeView === "table" && frame.rows.length > 0 && (
-          <button
+          <ActionIcon
+            variant="subtle"
             className={`gf-icon-btn${tableWrap ? " gf-icon-btn--on" : ""}`}
-            title="Wrap cell text"
+            title={t("graphFrame.wrapCellText")}
+            aria-label={t("graphFrame.wrapCellText")}
+            aria-current={tableWrap ? "true" : undefined}
             onClick={() => setTableWrap((v) => !v)}
+            data-testid="graph-frame-table-wrap-btn"
           >
-            ⇌
-          </button>
+            <span aria-hidden="true">⇌</span>
+          </ActionIcon>
         )}
         {frame.status === "done" && (frame.rows.length > 0 || hasGraph) && (
           <div className="gf-dl-wrap">
-            <button
-              className="gf-icon-btn"
-              title="Download"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setDlMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-                setShowDlMenu((v) => !v);
-              }}
+            <Menu
+              position="bottom-end"
+              withinPortal
+              transitionProps={{ duration: 0 }}
+              opened={showDlMenu}
+              onChange={setShowDlMenu}
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path d="M8 10.5L4.5 7h2V2h3v5h2L8 10.5z" />
-                <rect x="2" y="12" width="12" height="1.5" rx="0.75" />
-              </svg>
-            </button>
-            {showDlMenu && dlMenuPos && createPortal(
-              <div
-                className="gf-dl-menu"
-                style={{ position: "fixed", top: dlMenuPos.top, right: dlMenuPos.right, left: "unset" }}
-                onMouseLeave={() => setShowDlMenu(false)}
-              >
+              <Menu.Target>
+                <ActionIcon
+                  variant="subtle"
+                  className="gf-icon-btn"
+                  title={t("graphFrame.download")}
+                  aria-label={t("graphFrame.download")}
+                  onClick={() => setShowDlMenu((v) => !v)}
+                  data-testid="graph-frame-download-btn"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                  >
+                    <path d="M8 10.5L4.5 7h2V2h3v5h2L8 10.5z" />
+                    <rect x="2" y="12" width="12" height="1.5" rx="0.75" />
+                  </svg>
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown className="gf-dl-menu">
                 {frame.rows.length > 0 && (
-                  <button
+                  <Menu.Item
                     className="gf-dl-item"
                     onClick={() => {
                       const json = JSON.stringify(frame.rows, null, 2);
@@ -651,11 +704,11 @@ export function GraphFrame({
                       setShowDlMenu(false);
                     }}
                   >
-                    JSON
-                  </button>
+                    {t("graphFrame.downloadJson")}
+                  </Menu.Item>
                 )}
                 {frame.rows.length > 0 && (
-                  <button
+                  <Menu.Item
                     className="gf-dl-item"
                     onClick={() => {
                       const csv = toCSV(frame.columns, frame.rows);
@@ -663,11 +716,11 @@ export function GraphFrame({
                       setShowDlMenu(false);
                     }}
                   >
-                    CSV
-                  </button>
+                    {t("graphFrame.downloadCsv")}
+                  </Menu.Item>
                 )}
                 {hasGraph && activeView === "graph" && (
-                  <button
+                  <Menu.Item
                     className="gf-dl-item"
                     onClick={() => {
                       const cy = canvasCyRef.current;
@@ -676,11 +729,11 @@ export function GraphFrame({
                       setShowDlMenu(false);
                     }}
                   >
-                    PNG
-                  </button>
+                    {t("graphFrame.downloadPng")}
+                  </Menu.Item>
                 )}
                 {hasGraph && activeView === "graph" && (
-                  <button
+                  <Menu.Item
                     className="gf-dl-item"
                     onClick={() => {
                       const cy = canvasCyRef.current;
@@ -689,11 +742,11 @@ export function GraphFrame({
                       setShowDlMenu(false);
                     }}
                   >
-                    JPG
-                  </button>
+                    {t("graphFrame.downloadJpg")}
+                  </Menu.Item>
                 )}
                 {hasGraph && activeView === "graph" && (
-                  <button
+                  <Menu.Item
                     className="gf-dl-item"
                     onClick={() => {
                       const cy = canvasCyRef.current;
@@ -702,12 +755,11 @@ export function GraphFrame({
                       setShowDlMenu(false);
                     }}
                   >
-                    SVG
-                  </button>
+                    {t("graphFrame.downloadSvg")}
+                  </Menu.Item>
                 )}
-              </div>,
-              document.body,
-            )}
+              </Menu.Dropdown>
+            </Menu>
           </div>
         )}
         </div>
@@ -718,45 +770,30 @@ export function GraphFrame({
   const frameBody = (
     <div className="gf-body" style={expanded ? undefined : { height: graphAreaHeight }}>
       <div className="gf-view-bar">
-        {hasGraph && (
-          <button
-            className={`gf-view-bar-btn ${activeView === "graph" ? "active" : ""}`}
-            onClick={() => setView("graph")}
-            title="Graph"
-          >
-            <GraphViewIcon size={15} />
-          </button>
+        {(
+          [
+            { key: "graph" as const, label: t("graphFrame.viewGraph"), Icon: GraphViewIcon, show: hasGraph, onClick: () => setView("graph") },
+            { key: "table" as const, label: t("graphFrame.viewTable"), Icon: TableViewIcon, show: true, onClick: () => setView("table") },
+            { key: "json" as const, label: t("graphFrame.viewJson"), Icon: JsonViewIcon, show: true, onClick: () => setView("json") },
+            { key: "graphstats" as const, label: t("graphFrame.viewGraphStats"), Icon: StatsViewIcon, show: hasGraph, onClick: () => setView(activeView === "graphstats" ? "graph" : "graphstats") },
+            { key: "code" as const, label: t("graphFrame.viewCode"), Icon: CodeViewIcon, show: true, onClick: () => setView("code") },
+          ]
+        ).map(({ key, label, Icon, show, onClick }) =>
+          show && (
+            <ActionIcon
+              key={key}
+              variant="subtle"
+              className={`gf-view-bar-btn ${activeView === key ? "active" : ""}`}
+              onClick={onClick}
+              title={label}
+              aria-label={label}
+              aria-current={activeView === key ? "true" : undefined}
+              data-testid={`graph-frame-view-${key}-btn`}
+            >
+              <Icon size={15} />
+            </ActionIcon>
+          ),
         )}
-        <button
-          className={`gf-view-bar-btn ${activeView === "table" ? "active" : ""}`}
-          onClick={() => setView("table")}
-          title="Table"
-        >
-          <TableViewIcon size={15} />
-        </button>
-        <button
-          className={`gf-view-bar-btn ${activeView === "json" ? "active" : ""}`}
-          onClick={() => setView("json")}
-          title="JSON"
-        >
-          <JsonViewIcon size={15} />
-        </button>
-        {hasGraph && (
-          <button
-            className={`gf-view-bar-btn ${activeView === "graphstats" ? "active" : ""}`}
-            onClick={() => setView(activeView === "graphstats" ? "graph" : "graphstats")}
-            title="Graph statistics"
-          >
-            <StatsViewIcon size={15} />
-          </button>
-        )}
-        <button
-          className={`gf-view-bar-btn ${activeView === "code" ? "active" : ""}`}
-          onClick={() => setView("code")}
-          title="Code"
-        >
-          <CodeViewIcon size={15} />
-        </button>
       </div>
       <div className="gf-body-content">
       {frame.status === "loading" && (
@@ -771,8 +808,8 @@ export function GraphFrame({
             fontSize: "0.85rem",
           }}
         >
-          <span className="btn-spinner" style={{ flexShrink: 0 }} />
-          Running…
+          <Loader size="xs" />
+          {t("graphFrame.running")}
         </div>
       )}
       {frame.status === "error" && (
@@ -781,7 +818,7 @@ export function GraphFrame({
           <CopySymbolButton
             text={frame.error ?? ""}
             className="gf-error-copy-btn"
-            title="Copy error"
+            title={t("graphFrame.copyErrorTitle")}
           />
         </div>
       )}
@@ -826,13 +863,16 @@ export function GraphFrame({
             isExpanded={expanded}
           />
           {!inspectorVisible && (
-            <button
+            <ActionIcon
+              variant="subtle"
               className="gf-insp-show-btn"
               onClick={() => setInspectorVisible(true)}
-              title="Show properties panel"
+              title={t("graphFrame.showPropertiesPanel")}
+              aria-label={t("graphFrame.showPropertiesPanel")}
+              data-testid="graph-frame-show-inspector-btn"
             >
-              ‹
-            </button>
+              <span aria-hidden="true">‹</span>
+            </ActionIcon>
           )}
           {inspectorVisible && (
             <Inspector
@@ -970,9 +1010,18 @@ export function GraphFrame({
       </div>
       {expanded &&
         createPortal(
-          <div className="gf-modal-overlay" onClick={() => setExpanded(false)}>
+          <div
+            className="gf-modal-overlay"
+            onClick={() => setExpanded(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setExpanded(false);
+            }}
+          >
             <div
               className="gf-modal-frame"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("graphFrame.expandedDialogLabel")}
               onClick={(e) => e.stopPropagation()}
               ref={(el) => {
                 if (!el) return;

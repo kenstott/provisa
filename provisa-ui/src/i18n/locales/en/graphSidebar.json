@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "Database",
+    "tabHistory": "History",
+    "tabFavorites": "Favorites",
+    "tabExport": "Export to Neo4j",
+    "domainLabels": "Domain Labels",
+    "nodeLabels": "Node Labels",
+    "relationshipTypes": "Relationship Types",
+    "propertyKeys": "Property Keys",
+    "loading": "Loading…",
+    "noLabelsFound": "No labels found",
+    "noRelTypesFound": "No relationship types found",
+    "history": "History",
+    "noHistory": "No history yet",
+    "favorites": "Favorites",
+    "noFavorites": "No favorites yet — click ★ in a result frame",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "First page",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "lastPage": "Last page",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "Run",
+    "rename": "Rename",
+    "remove": "Remove",
+    "renameFavoriteInput": "Favorite name",
+    "resizeSidebar": "Resize sidebar"
+  }
+}

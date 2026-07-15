@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import React from "react";
+import { useTranslation } from "react-i18next";
+import { ActionIcon, Group, Stack, Text, Tooltip } from "@mantine/core";
 import { Pencil, Trash2, ArrowRight } from "lucide-react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import type { Source } from "../../types/admin";
@@ -31,8 +33,29 @@ export function SourceDetailPanel({
   onNavigate,
   onDelete,
 }: SourceDetailPanelProps) {
+  const { t } = useTranslation();
+
+  const rows: [string, string | number][] = [
+    ["description", s.description || "—"],
+    ["type", SOURCE_TYPES.find((ty) => ty.value === s.type)?.label ?? s.type],
+    ["host", s.host || "—"],
+    ["port", s.port || "—"],
+    ["database", s.database || "—"],
+    ["username", s.username || "—"],
+    ["naming", s.gqlNamingConvention || t("sourceDetailPanel.namingInherit")],
+    ["cache", s.cacheEnabled ? t("sourceDetailPanel.cacheEnabled") : t("sourceDetailPanel.cacheDisabled")],
+    ["cacheTtl", s.cacheTtl != null ? `${s.cacheTtl}s` : t("sourceDetailPanel.ttlInherit")],
+    ["effectiveTtl", getEffectiveTtl(s)],
+    [
+      "allowedDomains",
+      (s.allowedDomains ?? []).length
+        ? (s.allowedDomains ?? []).join(", ")
+        : t("sourceDetailPanel.domainsUnrestricted"),
+    ],
+  ];
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+    <Stack gap="sm">
       <dl
         style={{
           display: "grid",
@@ -42,95 +65,71 @@ export function SourceDetailPanel({
           color: "var(--text)",
         }}
       >
-        {(
-          [
-            ["Description", s.description || "—"],
-            [
-              "Type",
-              SOURCE_TYPES.find((t) => t.value === s.type)?.label ?? s.type,
-            ],
-            ["Host", s.host || "—"],
-            ["Port", s.port || "—"],
-            ["Database", s.database || "—"],
-            ["Username", s.username || "—"],
-            ["Naming", s.gqlNamingConvention || "inherit (global)"],
-            ["Cache", s.cacheEnabled ? "enabled" : "disabled"],
-            ["Cache TTL", s.cacheTtl != null ? `${s.cacheTtl}s` : "inherit"],
-            ["Effective TTL", getEffectiveTtl(s)],
-            [
-              "Allowed Domains",
-              (s.allowedDomains ?? []).length
-                ? (s.allowedDomains ?? []).join(", ")
-                : "unrestricted",
-            ],
-          ] as [string, string | number][]
-        )
-          .filter(([k]) => domainsEnabled || k !== "Allowed Domains")
+        {rows
+          .filter(([k]) => domainsEnabled || k !== "allowedDomains")
           .map(([k, v]) => (
-          <React.Fragment key={k}>
-            <dt
-              style={{
-                color: "var(--text-muted)",
-                fontWeight: 500,
-                fontSize: "0.875rem",
-              }}
-            >
-              {k}
-            </dt>
-            <dd
-              style={{
-                color: "var(--text)",
-                margin: 0,
-                fontSize: "0.875rem",
-              }}
-            >
-              {v}
-            </dd>
-          </React.Fragment>
-        ))}
+            <React.Fragment key={k}>
+              <Text component="dt" c="dimmed" fw={500} size="sm">
+                {t(`sourceDetailPanel.field.${k}`)}
+              </Text>
+              <Text component="dd" m={0} size="sm">
+                {v}
+              </Text>
+            </React.Fragment>
+          ))}
       </dl>
-      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-        <button
-          className="btn-icon"
-          title="Edit"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-        >
-          <Pencil size={14} />
-        </button>
-        {s.id !== "provisa-otel" && (
-          <button
-            className="btn-icon"
-            title="View registered tables"
+      <Group gap="xs" mt={4}>
+        <Tooltip label={t("sourceDetailPanel.editTitle")}>
+          <ActionIcon
+            variant="subtle"
+            aria-label={t("sourceDetailPanel.editTitle")}
+            data-testid="source-detail-edit"
             onClick={(e) => {
               e.stopPropagation();
-              onNavigate();
+              onEdit();
             }}
           >
-            <ArrowRight size={14} />
-          </button>
+            <Pencil size={14} />
+          </ActionIcon>
+        </Tooltip>
+        {s.id !== "provisa-otel" && (
+          <Tooltip label={t("sourceDetailPanel.navigateTitle")}>
+            <ActionIcon
+              variant="subtle"
+              aria-label={t("sourceDetailPanel.navigateTitle")}
+              data-testid="source-detail-navigate"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigate();
+              }}
+            >
+              <ArrowRight size={14} />
+            </ActionIcon>
+          </Tooltip>
         )}
         <ConfirmDialog
-          title={`Delete source "${s.id}"?`}
-          consequence={`This will remove the data source "${s.id}" and may break tables that reference it.`}
+          title={t("sourceDetailPanel.deleteTitle", { id: s.id })}
+          consequence={t("sourceDetailPanel.deleteConsequence", { id: s.id })}
           onConfirm={onDelete}
         >
           {(open) => (
-            <button
-              className="btn-icon-danger"
-              title="Delete"
-              onClick={(e) => {
-                e.stopPropagation();
-                open();
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
+            <Tooltip label={t("sourceDetailPanel.deleteTitleShort")}>
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                aria-label={t("sourceDetailPanel.deleteTitleShort")}
+                data-testid="source-detail-delete"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  open();
+                }}
+              >
+                <Trash2 size={14} />
+              </ActionIcon>
+            </Tooltip>
           )}
         </ConfirmDialog>
-      </div>
-    </div>
+      </Group>
+    </Stack>
   );
 }

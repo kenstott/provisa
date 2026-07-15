@@ -10,6 +10,20 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Group,
+  Pagination,
+  SimpleGrid,
+  Stack,
+  Table,
+  Tabs,
+  Text,
+} from "@mantine/core";
 import {
   useCacheStats,
   useCacheTableStats,
@@ -28,8 +42,8 @@ import { displayMvName } from "./mvDisplay";
 
 const PAGE_SIZE = 50;
 
-function fmtBytes(n: number | null): string {
-  if (n == null) return "—";
+function fmtBytes(n: number | null, unknown: string): string {
+  if (n == null) return unknown;
   const units = ["B", "KB", "MB", "GB", "TB"];
   let v = n;
   let i = 0;
@@ -42,35 +56,46 @@ function fmtBytes(n: number | null): string {
 
 type TabKey = "response" | "hot" | "materialized" | "setup";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "response", label: "Response Cache" },
-  { key: "hot", label: "Hot Tables" },
-  { key: "materialized", label: "Materialized Store" },
-  { key: "setup", label: "Setup" },
-];
+const TAB_KEYS: TabKey[] = ["response", "hot", "materialized", "setup"];
+
+const MV_STATUS_COLOR: Record<string, string> = {
+  fresh: "green",
+  stale: "yellow",
+  refreshing: "blue",
+  disabled: "gray",
+};
+
+function StatCard({ value, label }: { value: string | number; label: string }) {
+  return (
+    <Card withBorder padding="sm" radius="md" data-testid="stat-card">
+      <Text fw={700} size="lg">
+        {value}
+      </Text>
+      <Text size="xs" c="dimmed">
+        {label}
+      </Text>
+    </Card>
+  );
+}
 
 export function CacheManager() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<TabKey>("response");
   return (
     <div>
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              fontSize: "0.8125rem",
-              padding: "0.25rem 0.75rem",
-              borderRadius: "4px",
-              background: tab === t.key ? "var(--primary)" : "transparent",
-              color: tab === t.key ? "#fff" : "var(--text-muted)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        value={tab}
+        onChange={(v) => setTab((v as TabKey) ?? "response")}
+        mb="md"
+      >
+        <Tabs.List>
+          {TAB_KEYS.map((k) => (
+            <Tabs.Tab key={k} value={k} data-testid={`cache-tab-${k}`}>
+              {t(`cacheManager.tabs.${k}`)}
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+      </Tabs>
       {tab === "response" && <ResponseCacheTab />}
       {tab === "hot" && <HotTablesTab />}
       {tab === "materialized" && <MaterializedStoreTab />}
@@ -80,6 +105,8 @@ export function CacheManager() {
 }
 
 function ResponseCacheTab() {
+  const { t } = useTranslation();
+  const unknown = t("cacheManager.response.unknown");
   const { cacheStats: stats, refetch: refetchStats } = useCacheStats();
   const { cacheTableStats, refetch: refetchTableStats } = useCacheTableStats();
   const { tables } = useTables();
@@ -109,11 +136,11 @@ function ResponseCacheTab() {
     await refetchTableStats();
   };
 
-  if (!stats) return <p>Loading cache stats...</p>;
+  if (!stats) return <Text>{t("cacheManager.response.loading")}</Text>;
 
   const hitRate = stats.hitCount + stats.missCount > 0
     ? ((stats.hitCount / (stats.hitCount + stats.missCount)) * 100).toFixed(1)
-    : "—";
+    : unknown;
 
   // Logical cached-result count. stats.totalKeys is a raw Redis DBSIZE (data + :meta
   // per entry + one table-index set per referenced table), so it overcounts entries by
@@ -123,197 +150,169 @@ function ResponseCacheTab() {
   const isRedis = stats.storeType === "redis";
   // "memory" = embedded fakeredis: an enabled store, just without Redis INFO metrics.
   const isEnabled = stats.storeType !== "noop";
-  const memUsed = fmtBytes(stats.usedMemoryBytes);
+  const memUsed = fmtBytes(stats.usedMemoryBytes, unknown);
   const memPct = stats.usedMemoryBytes != null && stats.maxMemoryBytes
     ? ` / ${((stats.usedMemoryBytes / stats.maxMemoryBytes) * 100).toFixed(0)}%`
     : "";
 
+  const q = tableSearch.toLowerCase();
+  // Hide Provisa's own internal catalog (meta/ops system views) — matches TablesPage.
+  const userTables = tables.filter(
+    (tbl) => tbl.sourceId !== "provisa-admin" && tbl.sourceId !== "provisa-otel",
+  );
+  const filtered = userTables.filter(
+    (tbl) =>
+      (tbl.alias || tbl.tableName).toLowerCase().includes(q) ||
+      (tbl.domainId ?? "").toLowerCase().includes(q),
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(tablePage, totalPages - 1);
+  const paged = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
   return (
-    <div>
+    <Stack gap="md">
       {!isEnabled && (
-        <div
-          style={{
-            marginBottom: "1rem",
-            padding: "0.6rem 0.9rem",
-            borderRadius: "6px",
-            background: "var(--warning-bg, rgba(255,196,0,0.1))",
-            color: "var(--text-muted)",
-            fontSize: "0.9rem",
-          }}
-        >
-          Query-response cache disabled (store: <strong>{stats.storeType}</strong>). Query results
-          are not cached in Redis, so the counters below stay at zero. Hot-table and
-          materialized-store caching are separate layers (see the other tabs) and are unaffected.
-        </div>
+        <Alert color="yellow" data-testid="response-cache-disabled-banner">
+          {t("cacheManager.response.disabledBanner", { storeType: stats.storeType })}
+        </Alert>
       )}
-      <div className="stats-grid" style={{ marginBottom: "1rem" }}>
-        <div className="stat-card">
-          <div className="stat-count">{totalEntries}</div>
-          <div className="stat-label">Cached Entries</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-count">{hitRate}%</div>
-          <div className="stat-label">Hit Rate</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-count">{stats.hitCount}</div>
-          <div className="stat-label">Hits</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-count">{stats.missCount}</div>
-          <div className="stat-label">Misses</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-count">{stats.storeType}</div>
-          <div className="stat-label">Store</div>
-        </div>
+      <SimpleGrid cols={{ base: 2, sm: 3, md: isRedis ? 6 : 5 }}>
+        <StatCard value={totalEntries} label={t("cacheManager.response.cachedEntries")} />
+        <StatCard value={`${hitRate}%`} label={t("cacheManager.response.hitRate")} />
+        <StatCard value={stats.hitCount} label={t("cacheManager.response.hits")} />
+        <StatCard value={stats.missCount} label={t("cacheManager.response.misses")} />
+        <StatCard value={stats.storeType} label={t("cacheManager.response.store")} />
         {isRedis && (
           <>
-            <div className="stat-card">
-              <div className="stat-count">{stats.totalKeys}</div>
-              <div className="stat-label">Redis Keys (raw)</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-count">{memUsed}{memPct}</div>
-              <div className="stat-label">Memory</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-count">{stats.evictedKeys ?? "—"}</div>
-              <div className="stat-label">Evicted</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-count">{stats.expiredKeys ?? "—"}</div>
-              <div className="stat-label">Expired</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-count">{stats.connectedClients ?? "—"}</div>
-              <div className="stat-label">Clients</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-count">{stats.opsPerSec ?? "—"}</div>
-              <div className="stat-label">Ops/sec</div>
-            </div>
+            <StatCard value={stats.totalKeys} label={t("cacheManager.response.redisKeysRaw")} />
+            <StatCard value={`${memUsed}${memPct}`} label={t("cacheManager.response.memory")} />
+            <StatCard value={stats.evictedKeys ?? unknown} label={t("cacheManager.response.evicted")} />
+            <StatCard value={stats.expiredKeys ?? unknown} label={t("cacheManager.response.expired")} />
+            <StatCard value={stats.connectedClients ?? unknown} label={t("cacheManager.response.clients")} />
+            <StatCard value={stats.opsPerSec ?? unknown} label={t("cacheManager.response.opsPerSec")} />
           </>
         )}
-      </div>
+      </SimpleGrid>
 
-      {tables.length > 0 && (() => {
-        const q = tableSearch.toLowerCase();
-        // Hide Provisa's own internal catalog (meta/ops system views) — matches TablesPage.
-        const userTables = tables.filter(
-          (t) => t.sourceId !== "provisa-admin" && t.sourceId !== "provisa-otel",
-        );
-        const filtered = userTables.filter(
-          (t) =>
-            (t.alias || t.tableName).toLowerCase().includes(q) ||
-            (t.domainId ?? "").toLowerCase().includes(q),
-        );
-        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-        const safePage = Math.min(tablePage, totalPages - 1);
-        const paged = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
-        return (
-          <div>
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.5rem" }}>
-              <FilterInput
-                value={tableSearch}
-                onChange={(v) => { setTableSearch(v); setTablePage(0); }}
-                placeholder="Filter by table or domain…"
-              />
-              {msg && <span style={{ color: "var(--text-muted)", fontSize: "0.85rem", whiteSpace: "nowrap" }}>{msg}</span>}
-              <button className="destructive" onClick={handlePurgeAll} disabled={purging} style={{ whiteSpace: "nowrap" }}>
-                {purging ? "Purging..." : "Purge All Cache"}
-              </button>
-            </div>
-            <table className="data-table">
-              <thead>
-                <tr><th>Table</th><th>Domain</th><th>Cached Entries</th><th></th></tr>
-              </thead>
-              <tbody>
-                {paged.map((t) => (
-                  <tr key={t.id}>
-                    <td>{t.alias || t.tableName}</td>
-                    <td>{t.domainId}</td>
-                    <td>{entriesByTable.get(t.id) ?? 0}</td>
-                    <td>
-                      <button
-                        onClick={() => handlePurgeTable(t.id, t.tableName)}
-                        style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                      >
-                        Purge
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {totalPages > 1 && (
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
-                <button onClick={() => setTablePage(0)} disabled={safePage === 0}>«</button>
-                <button onClick={() => setTablePage(p => p - 1)} disabled={safePage === 0}>‹</button>
-                <span>Page {safePage + 1} / {totalPages}</span>
-                <button onClick={() => setTablePage(p => p + 1)} disabled={safePage >= totalPages - 1}>›</button>
-                <button onClick={() => setTablePage(totalPages - 1)} disabled={safePage >= totalPages - 1}>»</button>
-              </div>
+      {tables.length > 0 && (
+        <Stack gap="sm">
+          <Group gap="sm" align="center">
+            <FilterInput
+              value={tableSearch}
+              onChange={(v) => { setTableSearch(v); setTablePage(0); }}
+              placeholder={t("cacheManager.response.filterPlaceholder")}
+            />
+            {msg && (
+              <Text size="sm" c="dimmed" data-testid="response-cache-msg">
+                {msg}
+              </Text>
             )}
-          </div>
-        );
-      })()}
-    </div>
+            <Button
+              color="red"
+              variant="light"
+              onClick={handlePurgeAll}
+              disabled={purging}
+              data-testid="purge-all-cache-btn"
+            >
+              {purging ? t("cacheManager.response.purging") : t("cacheManager.response.purgeAll")}
+            </Button>
+          </Group>
+          <Table striped highlightOnHover withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("cacheManager.response.table")}</Table.Th>
+                <Table.Th>{t("cacheManager.response.domain")}</Table.Th>
+                <Table.Th>{t("cacheManager.response.cachedEntries")}</Table.Th>
+                <Table.Th />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {paged.map((tbl) => (
+                <Table.Tr key={tbl.id}>
+                  <Table.Td>{tbl.alias || tbl.tableName}</Table.Td>
+                  <Table.Td>{tbl.domainId}</Table.Td>
+                  <Table.Td>{entriesByTable.get(tbl.id) ?? 0}</Table.Td>
+                  <Table.Td>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      onClick={() => handlePurgeTable(tbl.id, tbl.tableName)}
+                      data-testid={`purge-table-btn-${tbl.id}`}
+                    >
+                      {t("cacheManager.response.purgeTable")}
+                    </Button>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+          {totalPages > 1 && (
+            <Group justify="flex-end">
+              <Pagination
+                total={totalPages}
+                value={safePage + 1}
+                onChange={(p) => setTablePage(p - 1)}
+                size="sm"
+              />
+            </Group>
+          )}
+        </Stack>
+      )}
+    </Stack>
   );
 }
 
 function HotTablesTab() {
+  const { t } = useTranslation();
+  const unknown = t("cacheManager.hot.unknown");
   const { hotTables } = useHotTables();
   const loaded = hotTables.filter((h) => h.loaded);
   const totalRows = loaded.reduce((n, h) => n + h.rowCount, 0);
   return (
-    <div>
-      <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
-        Small lookup tables mirrored in Redis (or in-memory) and inlined as VALUES CTEs to optimize
-        JOINs. Always available regardless of the response-cache store.
-      </p>
-      <div className="stats-grid" style={{ marginBottom: "1rem" }}>
-        <div className="stat-card">
-          <div className="stat-count">{loaded.length}</div>
-          <div className="stat-label">Loaded Tables</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-count">{hotTables.length - loaded.length}</div>
-          <div className="stat-label">Candidates</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-count">{totalRows}</div>
-          <div className="stat-label">Cached Rows</div>
-        </div>
-      </div>
+    <Stack gap="md">
+      <Text size="sm" c="dimmed">
+        {t("cacheManager.hot.description")}
+      </Text>
+      <SimpleGrid cols={{ base: 2, sm: 3 }}>
+        <StatCard value={loaded.length} label={t("cacheManager.hot.loadedTables")} />
+        <StatCard value={hotTables.length - loaded.length} label={t("cacheManager.hot.candidates")} />
+        <StatCard value={totalRows} label={t("cacheManager.hot.cachedRows")} />
+      </SimpleGrid>
       {hotTables.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No hot tables loaded or registered as candidates.</p>
+        <Text c="dimmed">{t("cacheManager.hot.empty")}</Text>
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Table</th><th>Catalog</th><th>Schema</th><th>Rows</th><th>Kind</th><th>State</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table striped highlightOnHover withTableBorder>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("cacheManager.hot.table")}</Table.Th>
+              <Table.Th>{t("cacheManager.hot.catalog")}</Table.Th>
+              <Table.Th>{t("cacheManager.hot.schema")}</Table.Th>
+              <Table.Th>{t("cacheManager.hot.rows")}</Table.Th>
+              <Table.Th>{t("cacheManager.hot.kind")}</Table.Th>
+              <Table.Th>{t("cacheManager.hot.state")}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
             {hotTables.map((h) => (
-              <tr key={`${h.catalog}.${h.schemaName}.${h.tableName}`}>
-                <td>{h.tableName}</td>
-                <td>{h.catalog}</td>
-                <td>{h.schemaName}</td>
-                <td>{h.loaded ? h.rowCount : "—"}</td>
-                <td>{h.isApi ? "API" : "engine"}</td>
-                <td>{h.loaded ? "loaded" : "candidate"}</td>
-              </tr>
+              <Table.Tr key={`${h.catalog}.${h.schemaName}.${h.tableName}`}>
+                <Table.Td>{h.tableName}</Table.Td>
+                <Table.Td>{h.catalog}</Table.Td>
+                <Table.Td>{h.schemaName}</Table.Td>
+                <Table.Td>{h.loaded ? h.rowCount : unknown}</Table.Td>
+                <Table.Td>{h.isApi ? t("cacheManager.hot.kindApi") : t("cacheManager.hot.kindEngine")}</Table.Td>
+                <Table.Td>{h.loaded ? t("cacheManager.hot.stateLoaded") : t("cacheManager.hot.stateCandidate")}</Table.Td>
+              </Table.Tr>
             ))}
-          </tbody>
-        </table>
+          </Table.Tbody>
+        </Table>
       )}
-    </div>
+    </Stack>
   );
 }
 
 function MaterializedStoreTab() {
+  const { t } = useTranslation();
+  const unknown = t("cacheManager.materialized.unknown");
   const navigate = useNavigate();
   const { materializeStoreInfo: info } = useMaterializeStoreInfo();
   const { mvList } = useMVList();
@@ -332,124 +331,109 @@ function MaterializedStoreTab() {
   const paged = mvList.slice(mvPage * PAGE_SIZE, (mvPage + 1) * PAGE_SIZE);
 
   return (
-    <div>
-      <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
-        Durable store where non-attachable sources land and materialized views are written. Distinct
-        from the response cache and the hot tier; a query can use any combination of the three.
-      </p>
-      <div className="stats-grid" style={{ marginBottom: "1rem" }}>
-        <div className="stat-card">
-          <div className="stat-count">{info?.engineName ?? "—"}</div>
-          <div className="stat-label">Federation Engine</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-count">{info?.mvCount ?? "—"}</div>
-          <div className="stat-label">Materialized Views</div>
-        </div>
-      </div>
+    <Stack gap="md">
+      <Text size="sm" c="dimmed">
+        {t("cacheManager.materialized.description")}
+      </Text>
+      <SimpleGrid cols={{ base: 2, sm: 2 }}>
+        <StatCard value={info?.engineName ?? unknown} label={t("cacheManager.materialized.federationEngine")} />
+        <StatCard value={info?.mvCount ?? unknown} label={t("cacheManager.materialized.materializedViews")} />
+      </SimpleGrid>
       {info?.storeRef && (
-        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-          Store: <code>{info.storeRef}</code>
-        </p>
+        <Text size="sm" c="dimmed">
+          {t("cacheManager.materialized.storeLabel")} <code>{info.storeRef}</code>
+        </Text>
       )}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
-        <button onClick={() => navigate("/sql")}>+ View</button>
-      </div>
+      <Group justify="flex-end">
+        <Button variant="light" onClick={() => navigate("/sql")} data-testid="mv-view-btn">
+          {t("cacheManager.materialized.viewButton")}
+        </Button>
+      </Group>
       {mvList.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No materialized views defined.</p>
+        <Text c="dimmed">{t("cacheManager.materialized.empty")}</Text>
       ) : (
         <>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>View</th>
-                <th>Source Tables</th>
-                <th>Target</th>
-                <th>Status</th>
-                <th>Rows</th>
-                <th>Last Refresh</th>
-                <th>Interval</th>
-                <th>Error</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table striped highlightOnHover withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("cacheManager.materialized.view")}</Table.Th>
+                <Table.Th>{t("cacheManager.materialized.sourceTables")}</Table.Th>
+                <Table.Th>{t("cacheManager.materialized.target")}</Table.Th>
+                <Table.Th>{t("cacheManager.materialized.status")}</Table.Th>
+                <Table.Th>{t("cacheManager.materialized.rows")}</Table.Th>
+                <Table.Th>{t("cacheManager.materialized.lastRefresh")}</Table.Th>
+                <Table.Th>{t("cacheManager.materialized.interval")}</Table.Th>
+                <Table.Th>{t("cacheManager.materialized.error")}</Table.Th>
+                <Table.Th />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
               {paged.map((mv) => (
-                <tr key={mv.id}>
-                  <td>
+                <Table.Tr key={mv.id}>
+                  <Table.Td>
                     {/* Show the user's alias; mv.id stays the action key below. */}
                     <code>{displayMvName(mv.id)}</code>
-                  </td>
-                  <td>{mv.sourceTables.join(", ")}</td>
-                  <td>
+                  </Table.Td>
+                  <Table.Td>{mv.sourceTables.join(", ")}</Table.Td>
+                  <Table.Td>
                     <code>{mv.targetTable}</code>
-                  </td>
-                  <td>
-                    <span className={`status-badge status-${mv.status}`}>{mv.status}</span>
-                  </td>
-                  <td>{mv.rowCount ?? "—"}</td>
-                  <td>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge color={MV_STATUS_COLOR[mv.status] ?? "gray"} variant="light">
+                      {mv.status}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>{mv.rowCount ?? unknown}</Table.Td>
+                  <Table.Td>
                     {mv.lastRefreshAt
                       ? new Date(mv.lastRefreshAt * 1000).toLocaleTimeString()
-                      : "never"}
-                  </td>
-                  <td>{mv.refreshInterval}s</td>
-                  <td className="reasoning-cell" style={{ color: "var(--error)", maxWidth: 200 }}>
+                      : t("cacheManager.materialized.never")}
+                  </Table.Td>
+                  <Table.Td>{mv.refreshInterval}s</Table.Td>
+                  <Table.Td maw={200} c="red">
                     {mv.lastError || ""}
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: "0.25rem" }}>
-                      <button
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs" wrap="nowrap">
+                      <Button
+                        size="xs"
+                        variant="subtle"
                         onClick={() => handleRefresh(mv.id)}
                         disabled={refreshing === mv.id}
-                        style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                        data-testid={`mv-refresh-btn-${mv.id}`}
                       >
-                        {refreshing === mv.id ? "..." : "Refresh"}
-                      </button>
-                      <button
+                        {refreshing === mv.id
+                          ? t("cacheManager.materialized.refreshing")
+                          : t("cacheManager.materialized.refresh")}
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="subtle"
                         onClick={() => toggleMV(mv.id, !mv.enabled)}
-                        style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                        data-testid={`mv-toggle-btn-${mv.id}`}
                       >
-                        {mv.enabled ? "Disable" : "Enable"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                        {mv.enabled
+                          ? t("cacheManager.materialized.disable")
+                          : t("cacheManager.materialized.enable")}
+                      </Button>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
               ))}
-            </tbody>
-          </table>
+            </Table.Tbody>
+          </Table>
           {totalPages > 1 && (
-            <div
-              style={{
-                display: "flex",
-                gap: "0.5rem",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                padding: "0.5rem 0",
-              }}
-            >
-              <button onClick={() => setMvPage(0)} disabled={mvPage === 0}>
-                «
-              </button>
-              <button onClick={() => setMvPage((p) => p - 1)} disabled={mvPage === 0}>
-                ‹
-              </button>
-              <span>
-                Page {mvPage + 1} / {totalPages}
-              </span>
-              <button onClick={() => setMvPage((p) => p + 1)} disabled={mvPage >= totalPages - 1}>
-                ›
-              </button>
-              <button
-                onClick={() => setMvPage(totalPages - 1)}
-                disabled={mvPage >= totalPages - 1}
-              >
-                »
-              </button>
-            </div>
+            <Group justify="flex-end">
+              <Pagination
+                total={totalPages}
+                value={mvPage + 1}
+                onChange={(p) => setMvPage(p - 1)}
+                size="sm"
+              />
+            </Group>
           )}
         </>
       )}
-    </div>
+    </Stack>
   );
 }

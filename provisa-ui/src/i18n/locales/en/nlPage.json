@@ -1,0 +1,23 @@
+{
+  "nlPage": {
+    "guideTitle": "How to write a good question",
+    "guideDesc": "This tool generates queries directly from your schema — it does not reason over free-form text or general knowledge. Phrase your question as a composition of the tables, fields, and relationships that exist in your data.",
+    "guideRuleNames": "Use the names of your entities, not synonyms ({{entity}}, not {{synonym}})",
+    "guideRuleFilters": "Specify filters, groupings, and aggregations the way you would in a query",
+    "guideRuleSchema": "If a field or relationship is not in your schema, it cannot be queried",
+    "guideExamplesLabel": "Examples",
+    "example1": "Show all customers whose orders total more than 10,000, grouped by region",
+    "example2": "List the top 5 products by revenue in the last 30 days",
+    "example3": "Find all users who have never placed an order",
+    "questionPlaceholder": "Ask a question in plain English…",
+    "questionLabel": "Natural language question",
+    "generate": "Generate",
+    "generating": "Generating…",
+    "openInExplorer": "Open in {{label}} explorer",
+    "openIn": "Open in {{label}}",
+    "notApplicable": "Not applicable for this query type",
+    "noQueryGenerated": "No query generated",
+    "noRowsReturned": "No rows returned",
+    "showingRows": "Showing {{shown}} of {{total}} rows"
+  }
+}

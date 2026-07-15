@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "Exclude this node from the query",
+    "excludeDisabledTooltip": "No primary key configured — cannot exclude",
+    "excludeFromQuery": "Exclude from query",
+    "excludeCount": "Exclude {{count}} nodes",
+    "unfixPosition": "Unfix position",
+    "showChildren": "Show children",
+    "hideChildren": "Hide children",
+    "showChildrenCircularTooltip": "Arrange children in a ring around this node",
+    "noOutgoingTooltip": "No outgoing relationships for this node type",
+    "showChildrenCircular": "Show children (circular)",
+    "hideChildrenCircular": "Hide children (circular)",
+    "showParents": "Show parents",
+    "hideParents": "Hide parents",
+    "showParentsCircularTooltip": "Arrange parents in a ring around this node",
+    "noIncomingTooltip": "No incoming relationships for this node type",
+    "showParentsCircular": "Show parents (circular)",
+    "hideParentsCircular": "Hide parents (circular)",
+    "invertSelection": "Invert selection",
+    "select": "Select",
+    "selectAll": "All",
+    "selectAllOfType": "All of this type",
+    "selectConnected": "Connected",
+    "selectChildren": "Children",
+    "selectParents": "Parents",
+    "removeNode": "Remove node",
+    "removeCount": "Remove {{count}} nodes"
+  }
+}

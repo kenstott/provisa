@@ -8,6 +8,8 @@
 // permission from the copyright holder.
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Alert, Badge, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Check } from "lucide-react";
 import {
   fetchEncryption,
@@ -19,6 +21,7 @@ import {
 // REQ-918: manage the encryption provider + master key. The provider binds at startup, so provider
 // changes take effect on restart; generating a key stores it in the OS keychain immediately.
 export function EncryptionTab() {
+  const { t } = useTranslation();
   const [s, setS] = useState<EncryptionState | null>(null);
   const [provider, setProvider] = useState("null");
   const [keyId, setKeyId] = useState("");
@@ -49,7 +52,7 @@ export function EncryptionTab() {
     setError("");
     try {
       const res = await setEncryption({ provider, key_id: keyId || null });
-      setMsg(res.restart_required ? "Saved. Restart the service to apply." : "Saved.");
+      setMsg(res.restart_required ? t("encryptionTab.savedRestartRequired") : t("encryptionTab.saved"));
       load();
     } catch (e) {
       setError(String(e));
@@ -66,12 +69,10 @@ export function EncryptionTab() {
     try {
       const res = await generateEncryptionKey({ key_id: keyId || null });
       if (res.stored) {
-        setMsg(`Master key generated and stored in the OS keychain (key id: ${res.key_id}).`);
+        setMsg(t("encryptionTab.keyGeneratedStored", { keyId: res.key_id }));
       } else {
         setGeneratedKey(res.key_b64);
-        setMsg(
-          `No OS keychain available — copy this key and set it as ${res.env_var}. It will not be shown again.`,
-        );
+        setMsg(t("encryptionTab.keyGeneratedNoKeychain", { envVar: res.env_var }));
       }
       load();
     } catch (e) {
@@ -81,105 +82,89 @@ export function EncryptionTab() {
     }
   };
 
-  if (error && !s) return <div className="error-banner">{error}</div>;
-  if (!s) return <div>Loading…</div>;
+  if (error && !s) return <Alert color="red">{error}</Alert>;
+  if (!s) return <Text>{t("encryptionTab.loading")}</Text>;
+
+  const providerData = s.providers.map((p) => ({
+    value: p.key,
+    label: p.label + (p.key === s.provider ? t("encryptionTab.providerCurrentSuffix") : ""),
+  }));
 
   return (
-    <div className="encryption-tab" style={{ maxWidth: 720 }}>
-      <p className="muted">
-        Column encryption at rest. Choose a provider and manage its master key. Envelope encryption
-        wraps a per-column data key with the master key.
-      </p>
+    <Stack gap="md" maw={720}>
+      <Text c="dimmed">{t("encryptionTab.intro")}</Text>
 
-      <div className="form-card">
-        <label style={{ gridColumn: "1 / -1" }}>
-          Provider
-          <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-            {s.providers.map((p) => (
-              <option key={p.key} value={p.key}>
-                {p.label}
-                {p.key === s.provider ? " (current)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        {current && (
-          <p className="muted" style={{ gridColumn: "1 / -1", margin: 0, fontSize: "0.8rem" }}>
-            {current.description}
-          </p>
-        )}
+      <Stack gap="sm">
+        <Select
+          label={t("encryptionTab.providerLabel")}
+          data={providerData}
+          value={provider}
+          onChange={(v) => v && setProvider(v)}
+          allowDeselect={false}
+          data-testid="encryption-provider-select"
+        />
+        {current && <Text c="dimmed" fz="xs">{current.description}</Text>}
 
         {provider === "local" && (
           <>
-            <label style={{ gridColumn: "1 / -1" }}>
-              Key ID
-              <input
-                type="text"
-                value={keyId}
-                placeholder="master"
-                onChange={(e) => setKeyId(e.target.value)}
-              />
-            </label>
+            <TextInput
+              label={t("encryptionTab.keyIdLabel")}
+              placeholder={t("encryptionTab.keyIdPlaceholder")}
+              value={keyId}
+              onChange={(e) => setKeyId(e.currentTarget.value)}
+            />
 
-            <div
-              style={{
-                gridColumn: "1 / -1",
-                display: "flex",
-                gap: "0.75rem",
-                alignItems: "center",
-              }}
-            >
-              <span>
-                Master key:{" "}
+            <Group gap="sm" align="center">
+              <Text>
+                {t("encryptionTab.masterKeyLabel")}{" "}
                 {s.key_present ? (
-                  <strong style={{ color: "#2e7d32" }}>present</strong>
+                  <Badge color="green" variant="light">
+                    {t("encryptionTab.masterKeyPresent")}
+                  </Badge>
                 ) : (
-                  <strong style={{ color: "#c62828" }}>missing</strong>
+                  <Badge color="red" variant="light">
+                    {t("encryptionTab.masterKeyMissing")}
+                  </Badge>
                 )}
-              </span>
-              <button className="btn-secondary" onClick={generate} disabled={generating}>
-                {generating
-                  ? "Generating…"
-                  : s.key_present
-                    ? "Rotate master key"
-                    : "Generate master key"}
-              </button>
-            </div>
+              </Text>
+              <Button
+                variant="default"
+                onClick={generate}
+                loading={generating}
+                data-testid="generate-key-button"
+              >
+                {s.key_present ? t("encryptionTab.rotateKey") : t("encryptionTab.generateKey")}
+              </Button>
+            </Group>
 
             {generatedKey && (
-              <div
-                style={{
-                  gridColumn: "1 / -1",
-                  padding: "0.5rem 0.75rem",
-                  border: "1px solid #c62828",
-                  borderRadius: 4,
-                  wordBreak: "break-all",
-                  fontFamily: "monospace",
-                  fontSize: "0.85rem",
-                }}
-              >
-                {generatedKey}
-              </div>
+              <Alert color="red" variant="outline">
+                <Text ff="monospace" fz="sm" style={{ wordBreak: "break-all" }}>
+                  {generatedKey}
+                </Text>
+              </Alert>
             )}
           </>
         )}
-      </div>
+      </Stack>
 
-      <div
-        className="warn-banner"
-        style={{ marginTop: "1rem", padding: "0.5rem 0.75rem", border: "1px solid #b8860b", borderRadius: 4 }}
-      >
-        ⚠ {s.restart_required_note} Rotating a master key while encrypted data exists may make prior
-        rows unreadable — rotate before storing sensitive data, or plan a re-encryption.
-      </div>
+      <Alert color="yellow" variant="light">
+        {t("encryptionTab.restartWarning", { note: s.restart_required_note })}
+      </Alert>
 
-      <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
-        <button className="btn-primary" onClick={save} disabled={saving} title="Save encryption settings">
-          {saving ? <span className="btn-spinner" /> : <Check size={14} />}
-        </button>
-        {msg && <span className="success-text">{msg}</span>}
-        {error && <span className="error-text">{error}</span>}
-      </div>
-    </div>
+      <Group gap="sm" align="center">
+        <Button
+          onClick={save}
+          loading={saving}
+          title={t("encryptionTab.saveTitle")}
+          aria-label={t("encryptionTab.saveTitle")}
+          data-testid="save-encryption-button"
+        >
+          <Check size={14} />
+        </Button>
+        {msg && <Text c="green">{msg}</Text>}
+        {error && <Text c="red">{error}</Text>}
+      </Group>
+    </Stack>
   );
 }

@@ -9,7 +9,9 @@
 // permission from the copyright holder.
 
 import { Fragment } from "react";
+import { useTranslation } from "react-i18next";
 import { Trash2, Pencil } from "lucide-react";
+import { ActionIcon, Badge, Box, Button, Group, Table, Text } from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
 import type { RegisteredTable } from "../../types/admin";
 import { computeProfile } from "./helpers";
@@ -39,7 +41,7 @@ interface TableReadViewProps {
 }
 
 export function TableReadView({
-  t,
+  t: table,
   navigate,
   viewsOnly,
   deploying,
@@ -53,354 +55,307 @@ export function TableReadView({
   handleDelete,
   handleProfile,
 }: TableReadViewProps) {
+  const { t } = useTranslation();
+
   return (
     <>
-      {t.description && (
-        <div
-          style={{
-            padding: "0.5rem 0.75rem",
-            fontSize: "0.85rem",
-            color: "var(--text-muted)",
-            borderBottom: "1px solid var(--border)",
-          }}
+      {table.description && (
+        <Box
+          px="0.75rem"
+          py="0.5rem"
+          fz="0.85rem"
+          c="dimmed"
+          style={{ borderBottom: "1px solid var(--border)" }}
         >
-          {t.description}
-        </div>
+          {table.description}
+        </Box>
       )}
-      <table className="data-table" style={{ margin: 0 }}>
-        <thead>
-          <tr>
-            <th>Column</th>
-            <th>PK</th>
-            <th>SQL Alias</th>
-            <th>Description</th>
-            <th>Visible To (Read)</th>
-            <th>Writable By (R/W)</th>
-            <th>Masking</th>
-            <th>Scope</th>
-          </tr>
-        </thead>
-        <tbody>
-          {t.columns.map((c) => (
-            <Fragment key={c.id}>
-              <tr>
-                <td>
-                  <code>{c.columnName}</code>
-                  {c.nativeFilterType && (
-                    <span
-                      style={{
-                        marginLeft: "0.4rem",
-                        fontSize: "0.65rem",
-                        padding: "0.1rem 0.35rem",
-                        borderRadius: "0.25rem",
-                        background:
-                          c.nativeFilterType === "path_param"
-                            ? "hsl(var(--color-warning) / 0.2)"
-                            : "hsl(var(--color-info) / 0.2)",
-                        color:
-                          c.nativeFilterType === "path_param"
-                            ? "hsl(var(--color-warning))"
-                            : "hsl(var(--color-info))",
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      {c.nativeFilterType === "path_param" ? "path" : "query"}
-                    </span>
-                  )}
-                  {c.isForeignKey && (
-                    <span
-                      style={{
-                        marginLeft: "0.4rem",
-                        fontSize: "0.65rem",
-                        padding: "0.1rem 0.35rem",
-                        borderRadius: "0.25rem",
-                        background: "hsl(var(--color-success) / 0.2)",
-                        color: "hsl(var(--color-success))",
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      FK
-                    </span>
-                  )}
-                  {c.isAlternateKey && (
-                    <span
-                      style={{
-                        marginLeft: "0.4rem",
-                        fontSize: "0.65rem",
-                        padding: "0.1rem 0.35rem",
-                        borderRadius: "0.25rem",
-                        background: "hsl(var(--color-warning) / 0.2)",
-                        color: "hsl(var(--color-warning))",
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      AK
-                    </span>
-                  )}
-                </td>
-                <td style={{ textAlign: "center" }}>
-                  {c.isPrimaryKey && (
-                    <span style={{ color: "hsl(var(--color-info))" }}>&#10003;</span>
-                  )}
-                </td>
-                <td style={{ color: c.alias ? "white" : "var(--text-muted)" }}>
-                  {c.computedSqlAlias}
-                </td>
-                <td className="reasoning-cell">{c.description || ""}</td>
-                <td>{c.visibleTo.length > 0 ? c.visibleTo.join(", ") : "all"}</td>
-                <td>{c.writableBy.length > 0 ? c.writableBy.join(", ") : "none"}</td>
-                <td>{c.maskType || "none"}</td>
-                <td>{c.scope || "domain"}</td>
-              </tr>
-              {c.maskType && (
-                <tr>
-                  <td
-                    colSpan={2}
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: "0.75rem",
-                      paddingLeft: "1.5rem",
-                    }}
-                  >
-                    ↳{" "}
-                    {c.maskType === "regex"
-                      ? `/${c.maskPattern}/ → ${c.maskReplace}`
-                      : c.maskType === "constant"
-                        ? `= ${c.maskValue ?? "NULL"}`
-                        : `truncate(${c.maskPrecision})`}
-                  </td>
-                  <td
-                    colSpan={4}
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: "0.75rem",
-                    }}
-                  >
-                    unmasked:{" "}
-                    {c.unmaskedTo.length > 0 ? c.unmaskedTo.join(", ") : "none"}
-                  </td>
-                </tr>
-              )}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-      {t.apiEndpoint && (
-        <div
-          style={{
-            padding: "0.5rem 0.75rem",
-            fontSize: "0.85rem",
-            color: "var(--text-muted)",
-          }}
-        >
-          API endpoint: <code>{t.apiEndpoint}</code>
-        </div>
+      <Table.ScrollContainer minWidth={640}>
+        <Table className="data-table" style={{ margin: 0 }}>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("tableReadView.colColumn")}</Table.Th>
+              <Table.Th>{t("tableReadView.colPk")}</Table.Th>
+              <Table.Th>{t("tableReadView.colSqlAlias")}</Table.Th>
+              <Table.Th>{t("tableReadView.colDescription")}</Table.Th>
+              <Table.Th>{t("tableReadView.colVisibleTo")}</Table.Th>
+              <Table.Th>{t("tableReadView.colWritableBy")}</Table.Th>
+              <Table.Th>{t("tableReadView.colMasking")}</Table.Th>
+              <Table.Th>{t("tableReadView.colScope")}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {table.columns.map((c) => (
+              <Fragment key={c.id}>
+                <Table.Tr>
+                  <Table.Td>
+                    <code>{c.columnName}</code>
+                    {c.nativeFilterType && (
+                      <Badge
+                        ml="0.4rem"
+                        size="xs"
+                        variant="light"
+                        color={c.nativeFilterType === "path_param" ? "yellow" : "blue"}
+                        style={{ fontFamily: "monospace" }}
+                      >
+                        {c.nativeFilterType === "path_param"
+                          ? t("tableReadView.pathBadge")
+                          : t("tableReadView.queryBadge")}
+                      </Badge>
+                    )}
+                    {c.isForeignKey && (
+                      <Badge
+                        ml="0.4rem"
+                        size="xs"
+                        variant="light"
+                        color="green"
+                        style={{ fontFamily: "monospace" }}
+                      >
+                        {t("tableReadView.fkBadge")}
+                      </Badge>
+                    )}
+                    {c.isAlternateKey && (
+                      <Badge
+                        ml="0.4rem"
+                        size="xs"
+                        variant="light"
+                        color="yellow"
+                        style={{ fontFamily: "monospace" }}
+                      >
+                        {t("tableReadView.akBadge")}
+                      </Badge>
+                    )}
+                  </Table.Td>
+                  <Table.Td ta="center">
+                    {c.isPrimaryKey && (
+                      <Text span c="blue">
+                        &#10003;
+                      </Text>
+                    )}
+                  </Table.Td>
+                  <Table.Td c={c.alias ? "white" : "dimmed"}>{c.computedSqlAlias}</Table.Td>
+                  <Table.Td className="reasoning-cell">{c.description || ""}</Table.Td>
+                  <Table.Td>
+                    {c.visibleTo.length > 0 ? c.visibleTo.join(", ") : t("tableReadView.all")}
+                  </Table.Td>
+                  <Table.Td>
+                    {c.writableBy.length > 0 ? c.writableBy.join(", ") : t("tableReadView.none")}
+                  </Table.Td>
+                  <Table.Td>{c.maskType || t("tableReadView.maskNone")}</Table.Td>
+                  <Table.Td>{c.scope || t("tableReadView.scopeDomain")}</Table.Td>
+                </Table.Tr>
+                {c.maskType && (
+                  <Table.Tr>
+                    <Table.Td colSpan={2} c="dimmed" fz="0.75rem" pl="1.5rem">
+                      ↳{" "}
+                      {c.maskType === "regex"
+                        ? t("tableReadView.maskRegex", {
+                            pattern: c.maskPattern,
+                            replace: c.maskReplace,
+                          })
+                        : c.maskType === "constant"
+                          ? t("tableReadView.maskConstant", {
+                              value: c.maskValue ?? t("tableReadView.maskConstantNull"),
+                            })
+                          : t("tableReadView.maskTruncate", { precision: c.maskPrecision })}
+                    </Table.Td>
+                    <Table.Td colSpan={4} c="dimmed" fz="0.75rem">
+                      {t("tableReadView.unmaskedTo", {
+                        list:
+                          c.unmaskedTo.length > 0
+                            ? c.unmaskedTo.join(", ")
+                            : t("tableReadView.none"),
+                      })}
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+              </Fragment>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+      {table.apiEndpoint && (
+        <Box px="0.75rem" py="0.5rem" fz="0.85rem" c="dimmed">
+          {t("tableReadView.apiEndpoint")} <code>{table.apiEndpoint}</code>
+        </Box>
       )}
-      {t.watermarkColumn && (
-        <div
-          style={{
-            padding: "0.5rem 0.75rem",
-            fontSize: "0.85rem",
-            color: "var(--text-muted)",
-          }}
-        >
-          Watermark column: <code>{t.watermarkColumn}</code>
-        </div>
+      {table.watermarkColumn && (
+        <Box px="0.75rem" py="0.5rem" fz="0.85rem" c="dimmed">
+          {t("tableReadView.watermarkColumn")} <code>{table.watermarkColumn}</code>
+        </Box>
       )}
-      {t.viewSql && (
-        <div style={{ padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}>
-          <span style={{ color: "var(--text-muted)", marginRight: "0.5rem" }}>View SQL:</span>
+      {table.viewSql && (
+        <Box px="0.75rem" py="0.5rem" fz="0.85rem">
+          <Text span c="dimmed" mr="0.5rem">
+            {t("tableReadView.viewSql")}
+          </Text>
           <code style={{ fontSize: "0.78rem", wordBreak: "break-all" }}>
-            {t.viewSql.length > 120 ? t.viewSql.slice(0, 120) + "…" : t.viewSql}
+            {table.viewSql.length > 120 ? table.viewSql.slice(0, 120) + "…" : table.viewSql}
           </code>
-        </div>
+        </Box>
       )}
-      <div
-        style={{
-          padding: "0.5rem 0.75rem",
-          fontSize: "0.85rem",
-          display: "flex",
-          alignItems: "center",
-          gap: "0.4rem",
-        }}
-      >
-        <span style={{ color: "var(--text-muted)" }}>Data Product:</span>
-        {t.dataProduct ? (
-          <span
-            style={{
-              color: "var(--color-success, #22c55e)",
-              fontWeight: 600,
-            }}
-          >
-            Yes
-          </span>
+      <Group px="0.75rem" py="0.5rem" gap="0.4rem">
+        <Text c="dimmed">{t("tableReadView.dataProduct")}</Text>
+        {table.dataProduct ? (
+          <Text c="var(--color-success, #22c55e)" fw={600}>
+            {t("tableReadView.dataProductYes")}
+          </Text>
         ) : (
-          <span style={{ color: "var(--text-muted)" }}>No</span>
+          <Text c="dimmed">{t("tableReadView.dataProductNo")}</Text>
         )}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-start",
-          padding: "0.5rem",
-          gap: "0.5rem",
-          flexWrap: "wrap",
-        }}
-      >
-        {t.viewSql && (
-          <button
+      </Group>
+      <Group justify="flex-start" p="0.5rem" gap="0.5rem" wrap="wrap">
+        {table.viewSql && (
+          <Button
+            size="compact-sm"
+            variant="default"
+            data-testid="table-read-view-edit-sql"
             onClick={(e) => {
               e.stopPropagation();
-              navigate("/sql", { state: { sql: t.viewSql, viewTable: t } });
+              navigate("/sql", { state: { sql: table.viewSql, viewTable: table } });
             }}
-            style={{ padding: "0.25rem 0.6rem", fontSize: "0.78rem" }}
-            title="Edit this view's SQL in the Explorer"
+            title={t("tableReadView.editSqlTitle")}
           >
-            {viewsOnly ? "Edit SQL" : "Open in Explorer"}
-          </button>
+            {viewsOnly ? t("tableReadView.editSqlButton") : t("tableReadView.openInExplorerButton")}
+          </Button>
         )}
-        {t.canDeployToDb && (
-          <button
+        {table.canDeployToDb && (
+          <Button
+            size="compact-sm"
+            variant="default"
+            data-testid="table-read-view-deploy"
             onClick={async (e) => {
               e.stopPropagation();
-              setDeploying((prev) => ({ ...prev, [t.id]: true }));
+              setDeploying((prev) => ({ ...prev, [table.id]: true }));
               setDeployMsg((prev) => {
                 const next = { ...prev };
-                delete next[t.id];
+                delete next[table.id];
                 return next;
               });
-              const result = await deployViewToDb(t.id);
-              setDeploying((prev) => ({ ...prev, [t.id]: false }));
-              setDeployMsg((prev) => ({ ...prev, [t.id]: result }));
+              const result = await deployViewToDb(table.id);
+              setDeploying((prev) => ({ ...prev, [table.id]: false }));
+              setDeployMsg((prev) => ({ ...prev, [table.id]: result }));
               if (result.success) reload();
             }}
-            style={{ padding: "0.25rem 0.6rem", fontSize: "0.78rem" }}
-            title="Promote this virtual view to a real database view"
-            disabled={deploying[t.id]}
+            title={t("tableReadView.deployToDbTitle")}
+            disabled={deploying[table.id]}
           >
-            {deploying[t.id] ? "Deploying…" : "Deploy to DB"}
-          </button>
+            {deploying[table.id]
+              ? t("tableReadView.deployingButton")
+              : t("tableReadView.deployToDbButton")}
+          </Button>
         )}
-        <button
+        <Button
+          size="compact-sm"
+          variant="default"
+          data-testid="table-read-view-profile"
           onClick={(e) => {
             e.stopPropagation();
-            handleProfile(t.id);
+            handleProfile(table.id);
           }}
-          style={{ padding: "0.25rem 0.6rem", fontSize: "0.78rem" }}
-          title="Sample and profile this table's columns"
-          disabled={tableProfiles[t.id] === "loading"}
+          title={t("tableReadView.profileTitle")}
+          disabled={tableProfiles[table.id] === "loading"}
         >
-          {tableProfiles[t.id] === "loading" ? "Profiling…" : "Profile"}
-        </button>
-        <button
-          className="btn-icon"
-          title="View RLS policies for this table"
+          {tableProfiles[table.id] === "loading"
+            ? t("tableReadView.profilingButton")
+            : t("tableReadView.profileButton")}
+        </Button>
+        <Button
+          size="compact-sm"
+          variant="subtle"
+          data-testid="table-read-view-policies"
+          title={t("tableReadView.policiesTitle")}
           onClick={(e) => {
             e.stopPropagation();
             navigate("/security/rls", {
-              state: { tableFilter: t.tableName },
+              state: { tableFilter: table.tableName },
             });
           }}
         >
-          Policies
-        </button>
-        <button
-          className="btn-icon"
-          title="Edit"
+          {t("tableReadView.policiesButton")}
+        </Button>
+        <ActionIcon
+          variant="subtle"
+          aria-label={t("tableReadView.editButtonLabel", { name: table.tableName })}
+          data-testid="table-read-view-edit"
           onClick={(e) => {
             e.stopPropagation();
-            startEditing(t);
+            startEditing(table);
           }}
         >
           <Pencil size={14} />
-        </button>
-        <button
-          className="btn-icon-danger"
-          title="Delete"
+        </ActionIcon>
+        <ActionIcon
+          variant="subtle"
+          color="red"
+          aria-label={t("tableReadView.deleteButtonLabel", { name: table.tableName })}
+          data-testid="table-read-view-delete"
           onClick={(e) => {
             e.stopPropagation();
-            handleDelete(t.id);
+            handleDelete(table.id);
           }}
         >
           <Trash2 size={14} />
-        </button>
-      </div>
-      {deployMsg[t.id] && (
-        <div
-          style={{
-            padding: "0.5rem 0.75rem",
-            fontSize: "0.8rem",
-            color: deployMsg[t.id].success
-              ? "var(--color-success, #22c55e)"
-              : "var(--destructive)",
-          }}
+        </ActionIcon>
+      </Group>
+      {deployMsg[table.id] && (
+        <Box
+          px="0.75rem"
+          py="0.5rem"
+          fz="0.8rem"
+          c={deployMsg[table.id].success ? "var(--color-success, #22c55e)" : "var(--destructive)"}
         >
-          {deployMsg[t.id].message}
-        </div>
+          {deployMsg[table.id].message}
+        </Box>
       )}
       {(() => {
-        const p = tableProfiles[t.id];
+        const p = tableProfiles[table.id];
         if (!p || p === "loading") return null;
         if (typeof p === "string")
           return (
-            <div
-              style={{
-                padding: "0.5rem 0.75rem",
-                color: "var(--destructive)",
-                fontSize: "0.8rem",
-              }}
-            >
+            <Box px="0.75rem" py="0.5rem" c="var(--destructive)" fz="0.8rem">
               {p}
-            </div>
+            </Box>
           );
         const prof = computeProfile(p.columns, p.rows);
         return (
-          <div
-            style={{
-              borderTop: "1px solid var(--border)",
-              padding: "0.5rem 0.75rem",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--text-muted)",
-                marginBottom: "0.4rem",
-              }}
-            >
-              Profile — {p.rowCount} sampled rows
-            </div>
-            <div style={{ overflowX: "auto" }}>
-              <table className="data-table" style={{ fontSize: "0.72rem" }}>
-                <thead>
-                  <tr>
-                    <th>Column</th>
-                    <th title="Null values">Nulls</th>
-                    <th title="Empty strings">Blanks</th>
-                    <th title="Unique values">Distinct</th>
-                    <th>Min</th>
-                    <th>Max</th>
-                    <th>Mean</th>
-                    <th>Top values</th>
-                  </tr>
-                </thead>
-                <tbody>
+          <Box style={{ borderTop: "1px solid var(--border)" }} px="0.75rem" py="0.5rem">
+            <Box fz="0.75rem" c="dimmed" mb="0.4rem">
+              {t("tableReadView.profileHeading", { count: p.rowCount })}
+            </Box>
+            <Table.ScrollContainer minWidth={640}>
+              <Table className="data-table" style={{ fontSize: "0.72rem" }}>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("tableReadView.colColumn")}</Table.Th>
+                    <Table.Th title={t("tableReadView.colNullsTitle")}>
+                      {t("tableReadView.colNulls")}
+                    </Table.Th>
+                    <Table.Th title={t("tableReadView.colBlanksTitle")}>
+                      {t("tableReadView.colBlanks")}
+                    </Table.Th>
+                    <Table.Th title={t("tableReadView.colDistinctTitle")}>
+                      {t("tableReadView.colDistinct")}
+                    </Table.Th>
+                    <Table.Th>{t("tableReadView.colMin")}</Table.Th>
+                    <Table.Th>{t("tableReadView.colMax")}</Table.Th>
+                    <Table.Th>{t("tableReadView.colMean")}</Table.Th>
+                    <Table.Th>{t("tableReadView.colTopValues")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
                   {prof.map((c) => {
                     const nullPct =
                       p.rowCount > 0 ? Math.round((c.nullCount / p.rowCount) * 100) : 0;
                     const isHighNull = nullPct >= 50;
                     return (
-                      <tr key={c.col}>
-                        <td style={{ fontFamily: "monospace", fontWeight: 600 }}>{c.col}</td>
-                        <td>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.4rem",
-                            }}
-                          >
-                            <div
+                      <Table.Tr key={c.col}>
+                        <Table.Td style={{ fontFamily: "monospace", fontWeight: 600 }}>
+                          {c.col}
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap="0.4rem" wrap="nowrap">
+                            <Box
                               style={{
                                 width: 52,
                                 height: 5,
@@ -411,7 +366,7 @@ export function TableReadView({
                               }}
                             >
                               {c.nullCount > 0 && (
-                                <div
+                                <Box
                                   style={{
                                     position: "absolute",
                                     left: 0,
@@ -425,40 +380,37 @@ export function TableReadView({
                                   }}
                                 />
                               )}
-                            </div>
-                            <span
-                              style={{
-                                color: isHighNull
+                            </Box>
+                            <Text
+                              span
+                              fz="0.7rem"
+                              c={
+                                isHighNull
                                   ? "var(--destructive)"
                                   : c.nullCount > 0
-                                    ? "var(--text)"
-                                    : "var(--text-muted)",
-                                fontSize: "0.7rem",
-                              }}
+                                    ? undefined
+                                    : "dimmed"
+                              }
                             >
                               {c.nullCount > 0 ? `${nullPct}%` : "—"}
-                            </span>
-                          </div>
-                        </td>
-                        <td
-                          style={{
-                            color: c.blankCount > 0 ? "var(--text)" : "var(--text-muted)",
-                          }}
-                        >
+                            </Text>
+                          </Group>
+                        </Table.Td>
+                        <Table.Td c={c.blankCount > 0 ? undefined : "dimmed"}>
                           {c.blankCount > 0 ? c.blankCount : "—"}
-                        </td>
-                        <td>{c.distinctCount}</td>
-                        <td style={{ fontFamily: "monospace" }}>
+                        </Table.Td>
+                        <Table.Td>{c.distinctCount}</Table.Td>
+                        <Table.Td style={{ fontFamily: "monospace" }}>
                           {c.min !== null ? String(c.min).slice(0, 16) : "—"}
-                        </td>
-                        <td style={{ fontFamily: "monospace" }}>
+                        </Table.Td>
+                        <Table.Td style={{ fontFamily: "monospace" }}>
                           {c.max !== null ? String(c.max).slice(0, 16) : "—"}
-                        </td>
-                        <td style={{ fontFamily: "monospace" }}>
+                        </Table.Td>
+                        <Table.Td style={{ fontFamily: "monospace" }}>
                           {c.mean !== null ? c.mean.toFixed(2) : "—"}
-                        </td>
-                        <td>
-                          <div
+                        </Table.Td>
+                        <Table.Td>
+                          <Box
                             style={{
                               display: "flex",
                               flexDirection: "column",
@@ -472,15 +424,8 @@ export function TableReadView({
                                   ? (count / c.topValues[0].count) * 100
                                   : 0;
                               return (
-                                <div
-                                  key={value}
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "0.3rem",
-                                  }}
-                                >
-                                  <div
+                                <Group key={value} gap="0.3rem" wrap="nowrap">
+                                  <Box
                                     style={{
                                       width: 52,
                                       height: 5,
@@ -490,7 +435,7 @@ export function TableReadView({
                                       flexShrink: 0,
                                     }}
                                   >
-                                    <div
+                                    <Box
                                       style={{
                                         position: "absolute",
                                         left: 0,
@@ -501,8 +446,9 @@ export function TableReadView({
                                         background: "var(--primary)",
                                       }}
                                     />
-                                  </div>
-                                  <span
+                                  </Box>
+                                  <Text
+                                    span
                                     style={{
                                       fontFamily: "monospace",
                                       fontSize: "0.68rem",
@@ -514,29 +460,22 @@ export function TableReadView({
                                     title={value}
                                   >
                                     {value.slice(0, 22)}
-                                  </span>
-                                  <span
-                                    style={{
-                                      color: "var(--text-muted)",
-                                      fontSize: "0.65rem",
-                                      marginLeft: "auto",
-                                      flexShrink: 0,
-                                    }}
-                                  >
+                                  </Text>
+                                  <Text span c="dimmed" fz="0.65rem" ml="auto" style={{ flexShrink: 0 }}>
                                     ×{count}
-                                  </span>
-                                </div>
+                                  </Text>
+                                </Group>
                               );
                             })}
-                          </div>
-                        </td>
-                      </tr>
+                          </Box>
+                        </Table.Td>
+                      </Table.Tr>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Box>
         );
       })()}
     </>

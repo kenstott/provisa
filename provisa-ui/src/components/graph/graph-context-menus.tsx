@@ -9,6 +9,20 @@
 // permission from the copyright holder.
 
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import {
+  Button,
+  Group,
+  Modal,
+  NumberInput,
+  SegmentedControl,
+  Select,
+  Slider,
+  Stack,
+  Text,
+  TextInput,
+  UnstyledButton,
+} from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { labelColor, PALETTE } from "./graph-model";
 import type { RelLineOverride } from "./graph-model";
 
@@ -58,6 +72,7 @@ export function NodeContextMenu({
   onSizeMultiplierChange,
   onClose,
 }: NodeContextMenuProps) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const currentColor = colorOverrides[menu.compoundLabel] ?? labelColor(menu.compoundLabel);
   const currentSize = sizeOverrides[menu.compoundLabel] ?? 44;
@@ -96,89 +111,98 @@ export function NodeContextMenu({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="node-ctx-title">{menu.tableLabel}</div>
-      <div className="node-ctx-section-label">Color</div>
-      <div className="node-ctx-palette">
-        {PALETTE.map((c) => (
-          <button
-            key={c}
-            className={`node-ctx-swatch${currentColor === c ? " active" : ""}`}
-            style={{ background: c }}
-            onClick={() => {
-              onColorChange(menu.compoundLabel, c);
-              onClose();
-            }}
+      <Stack gap={4}>
+        <Text className="node-ctx-section-label">{t("graphContextMenus.color")}</Text>
+        <Group gap={4} wrap="wrap" role="group" aria-label={t("graphContextMenus.color")}>
+          {PALETTE.map((c) => (
+            <UnstyledButton
+              key={c}
+              className={`node-ctx-swatch${currentColor === c ? " active" : ""}`}
+              style={{ background: c }}
+              aria-label={t("graphContextMenus.colorSwatchLabel", { color: c })}
+              aria-current={currentColor === c}
+              onClick={() => {
+                onColorChange(menu.compoundLabel, c);
+                onClose();
+              }}
+            />
+          ))}
+        </Group>
+
+        <Text className="node-ctx-section-label">{t("graphContextMenus.size")}</Text>
+        <Group className="node-ctx-size-row" gap="sm" wrap="nowrap">
+          <Slider
+            aria-label={t("graphContextMenus.size")}
+            style={{ flex: 1 }}
+            min={20}
+            max={120}
+            value={currentSize}
+            onChange={(v) => onSizeChange(menu.compoundLabel, v)}
+            label={null}
           />
-        ))}
-      </div>
-      <div className="node-ctx-section-label">Size</div>
-      <div className="node-ctx-size-row">
-        <input
-          type="range"
-          min={20}
-          max={120}
-          value={currentSize}
-          onChange={(e) => onSizeChange(menu.compoundLabel, Number(e.target.value))}
-        />
-        <span>{currentSize}px</span>
-      </div>
-      {menu.properties.length > 0 && (
-        <>
-          <div className="node-ctx-section-label">Label by</div>
-          <select
-            className="node-ctx-select"
-            value={currentProp}
-            onChange={(e) => {
-              onLabelPropertyChange(menu.compoundLabel, e.target.value);
-              onClose();
-            }}
-          >
-            <option value="">default</option>
-            {menu.properties.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </>
-      )}
-      {menu.numericProperties.length > 0 && (
-        <>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div className="node-ctx-section-label" style={{ margin: 0 }}>Size by</div>
-            {currentSizeByProp && (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>×</span>
-                <input
-                  type="number"
+          <span>{currentSize}px</span>
+        </Group>
+
+        {menu.properties.length > 0 && (
+          <>
+            <Text className="node-ctx-section-label">{t("graphContextMenus.labelBy")}</Text>
+            <Select
+              aria-label={t("graphContextMenus.labelBy")}
+              data={[
+                { value: "", label: t("graphContextMenus.labelByDefault") },
+                ...menu.properties.map((p) => ({ value: p, label: p })),
+              ]}
+              value={currentProp}
+              onChange={(v) => {
+                onLabelPropertyChange(menu.compoundLabel, v ?? "");
+                onClose();
+              }}
+              allowDeselect={false}
+              comboboxProps={{ withinPortal: false }}
+            />
+          </>
+        )}
+
+        {menu.numericProperties.length > 0 && (
+          <>
+            <Group justify="space-between" align="center">
+              <Text className="node-ctx-section-label" style={{ margin: 0 }}>
+                {t("graphContextMenus.sizeBy")}
+              </Text>
+              {currentSizeByProp && (
+                <NumberInput
+                  aria-label={t("graphContextMenus.sizeMultiplier")}
                   min={1}
                   max={10}
                   step={0.5}
                   value={currentMultiplier}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    if (!isNaN(v) && v >= 1) onSizeMultiplierChange(menu.compoundLabel, v);
+                  onChange={(v) => {
+                    const num = typeof v === "number" ? v : parseFloat(v);
+                    if (!isNaN(num) && num >= 1) onSizeMultiplierChange(menu.compoundLabel, num);
                   }}
                   className="node-ctx-select"
-                  style={{ width: 52 }}
+                  style={{ width: 68 }}
+                  size="xs"
                 />
-              </div>
-            )}
-          </div>
-          <select
-            className="node-ctx-select"
-            value={currentSizeByProp}
-            onChange={(e) => {
-              onSizeByPropertyChange(menu.compoundLabel, e.target.value);
-              onClose();
-            }}
-          >
-            <option value="">fixed size</option>
-            {menu.numericProperties.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </>
-      )}
+              )}
+            </Group>
+            <Select
+              aria-label={t("graphContextMenus.sizeBy")}
+              data={[
+                { value: "", label: t("graphContextMenus.sizeByFixed") },
+                ...menu.numericProperties.map((p) => ({ value: p, label: p })),
+              ]}
+              value={currentSizeByProp}
+              onChange={(v) => {
+                onSizeByPropertyChange(menu.compoundLabel, v ?? "");
+                onClose();
+              }}
+              allowDeselect={false}
+              comboboxProps={{ withinPortal: false }}
+            />
+          </>
+        )}
+      </Stack>
     </div>
   );
 }
@@ -192,11 +216,6 @@ interface RelContextMenuProps {
 }
 
 const LINE_STYLES: Array<RelLineOverride["style"]> = ["solid", "dashed", "dotted"];
-const LINE_STYLE_LABELS: Record<RelLineOverride["style"], string> = {
-  solid: "—",
-  dashed: "╌",
-  dotted: "···",
-};
 
 export function RelContextMenu({
   menu,
@@ -204,8 +223,15 @@ export function RelContextMenu({
   onRelLineChange,
   onClose,
 }: RelContextMenuProps) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const current = relLineOverrides[menu.type] ?? { width: 1.5, style: "solid" as const };
+
+  const lineStyleLabels: Record<RelLineOverride["style"], string> = {
+    solid: t("graphContextMenus.lineStyleSolid"),
+    dashed: t("graphContextMenus.lineStyleDashed"),
+    dotted: t("graphContextMenus.lineStyleDotted"),
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -238,31 +264,30 @@ export function RelContextMenu({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="node-ctx-title">{menu.type}</div>
-      <div className="node-ctx-section-label">Line Style</div>
-      <div className="rel-ctx-style-row">
-        {LINE_STYLES.map((s) => (
-          <button
-            key={s}
-            className={`rel-ctx-style-btn${current.style === s ? " active" : ""}`}
-            onClick={() => onRelLineChange(menu.type, { ...current, style: s })}
-            title={s}
-          >
-            {LINE_STYLE_LABELS[s]}
-          </button>
-        ))}
-      </div>
-      <div className="node-ctx-section-label">Line Width</div>
-      <div className="node-ctx-size-row">
-        <input
-          type="range"
-          min={0.5}
-          max={8}
-          step={0.5}
-          value={current.width}
-          onChange={(e) => onRelLineChange(menu.type, { ...current, width: Number(e.target.value) })}
+      <Stack gap={4}>
+        <Text className="node-ctx-section-label">{t("graphContextMenus.lineStyle")}</Text>
+        <SegmentedControl
+          aria-label={t("graphContextMenus.lineStyle")}
+          value={current.style}
+          onChange={(v) => onRelLineChange(menu.type, { ...current, style: v as RelLineOverride["style"] })}
+          data={LINE_STYLES.map((s) => ({ value: s, label: lineStyleLabels[s] }))}
         />
-        <span>{current.width}px</span>
-      </div>
+
+        <Text className="node-ctx-section-label">{t("graphContextMenus.lineWidth")}</Text>
+        <Group className="node-ctx-size-row" gap="sm" wrap="nowrap">
+          <Slider
+            aria-label={t("graphContextMenus.lineWidth")}
+            style={{ flex: 1 }}
+            min={0.5}
+            max={8}
+            step={0.5}
+            value={current.width}
+            onChange={(v) => onRelLineChange(menu.type, { ...current, width: v })}
+            label={null}
+          />
+          <span>{current.width}px</span>
+        </Group>
+      </Stack>
     </div>
   );
 }
@@ -281,6 +306,7 @@ export function NativeFilterModal({
   onConfirm,
   onCancel,
 }: NativeFilterModalProps) {
+  const { t } = useTranslation();
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(filterColumns.map((c) => [c.name, ""])),
   );
@@ -291,32 +317,32 @@ export function NativeFilterModal({
   };
 
   return (
-    <div className="nf-modal-backdrop" onClick={onCancel}>
-      <div className="nf-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="nf-modal-title">Parameters for {label}</div>
-        <form onSubmit={handleSubmit}>
+    <Modal
+      opened
+      onClose={onCancel}
+      title={t("graphContextMenus.filterParametersTitle", { label })}
+      centered
+    >
+      <form onSubmit={handleSubmit}>
+        <Stack gap="sm">
           {filterColumns.map((col) => (
-            <div key={col.name} className="nf-modal-field">
-              <label className="nf-modal-label">{col.name}</label>
-              <input
-                className="nf-modal-input"
-                value={values[col.name]}
-                onChange={(e) => setValues((v) => ({ ...v, [col.name]: e.target.value }))}
-                placeholder={col.name}
-                autoFocus={filterColumns[0].name === col.name}
-              />
-            </div>
+            <TextInput
+              key={col.name}
+              label={col.name}
+              value={values[col.name]}
+              onChange={(e) => setValues((v) => ({ ...v, [col.name]: e.target.value }))}
+              placeholder={col.name}
+              autoFocus={filterColumns[0].name === col.name}
+            />
           ))}
-          <div className="nf-modal-actions">
-            <button type="button" className="nf-modal-cancel" onClick={onCancel}>
-              ✕
-            </button>
-            <button type="submit" className="nf-modal-run">
-              Run
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={onCancel}>
+              {t("graphContextMenus.cancel")}
+            </Button>
+            <Button type="submit">{t("graphContextMenus.run")}</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
   );
 }

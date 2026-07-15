@@ -10,11 +10,13 @@
 
 import { useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./OpenApiPage.css";
 
 export function OpenApiPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
@@ -75,7 +77,7 @@ export function OpenApiPage() {
         key={`${roleId}:${domainsParam}`}
         src={src}
         className="openapi-frame"
-        title="OpenAPI / Swagger UI"
+        title={t("openApiPage.frameTitle")}
         sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups"
         onLoad={handleIframeLoad}
       />

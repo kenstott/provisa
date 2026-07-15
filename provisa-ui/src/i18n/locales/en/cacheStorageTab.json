@@ -1,0 +1,25 @@
+{
+  "cacheStorageTab": {
+    "hotCacheHeading": "Hot Cache (Redis)",
+    "hotCacheIntro": "The hot cache promotes frequently-queried tables into cache. Leave the URL empty to use the embedded in-process cache.",
+    "enableHotCache": "Enable hot cache",
+    "redisUrlLabel": "Redis URL",
+    "redisUrlPlaceholder": "redis://:password@host:6379/0  (empty → embedded)",
+    "defaultTtlLabel": "Default TTL (s)",
+    "promoteThresholdLabel": "Promote after N queries",
+    "maxRowsLabel": "Max rows",
+    "maxBytesLabel": "Max bytes",
+    "materializeHeading": "Materialize Store",
+    "materializeIntroPrefix": "Durable store where non-attachable sources (OpenAPI, GraphQL) and materialized views are landed. Leave empty to use the active federation engine's default",
+    "materializeIntroWithDefault": " — {{url}}",
+    "materializeIntroNoDefault": " — this engine declares none, so a URL is required",
+    "materializeIntroSuffix": ". Set a URL to override.",
+    "storeUrlLabel": "Store URL",
+    "storeUrlPlaceholderRequired": "postgresql://user:pass@host:5432/materialize (required)",
+    "storeUrlPlaceholderDefault": "empty → {{url}}",
+    "saveButtonLabel": "Save cache & storage settings",
+    "loading": "Loading…",
+    "saved": "Saved.",
+    "savedRestartRequired": "Saved. Restart the service to apply."
+  }
+}

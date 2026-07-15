@@ -1,0 +1,27 @@
+{
+  "sourceDetailPanel": {
+    "field": {
+      "description": "Description",
+      "type": "Type",
+      "host": "Host",
+      "port": "Port",
+      "database": "Database",
+      "username": "Username",
+      "naming": "Naming",
+      "cache": "Cache",
+      "cacheTtl": "Cache TTL",
+      "effectiveTtl": "Effective TTL",
+      "allowedDomains": "Allowed Domains"
+    },
+    "namingInherit": "inherit (global)",
+    "cacheEnabled": "enabled",
+    "cacheDisabled": "disabled",
+    "ttlInherit": "inherit",
+    "domainsUnrestricted": "unrestricted",
+    "editTitle": "Edit",
+    "navigateTitle": "View registered tables",
+    "deleteTitle": "Delete source \"{{id}}\"?",
+    "deleteTitleShort": "Delete",
+    "deleteConsequence": "This will remove the data source \"{{id}}\" and may break tables that reference it."
+  }
+}

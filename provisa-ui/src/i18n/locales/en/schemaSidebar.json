@@ -1,0 +1,11 @@
+{
+  "schemaSidebar": {
+    "title": "Schema",
+    "collapse": "Collapse schema panel",
+    "expand": "Expand schema panel",
+    "dragToCanvas": "Drag to canvas",
+    "doubleClickToInsert": "Double-click to insert qualified name",
+    "insertTableReference": "Insert table reference in SQL editor",
+    "clickToInsertColumn": "Click to insert quoted column"
+  }
+}

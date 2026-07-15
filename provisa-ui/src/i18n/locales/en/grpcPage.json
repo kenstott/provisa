@@ -1,0 +1,19 @@
+{
+  "grpcPage": {
+    "serverBadge": "gRPC • :50051",
+    "operationType": "Operation type",
+    "query": "Query",
+    "mutation": "Mutation",
+    "method": "Method",
+    "noMethods": "No methods",
+    "cancel": "◼ Cancel",
+    "send": "▶ Send",
+    "body": "Body",
+    "proto": ".proto",
+    "response": "Response",
+    "selectMethodPlaceholder": "Select a method to edit the request body.",
+    "loading": "Loading…",
+    "waiting": "Waiting for response…",
+    "sendPrompt": "Send a request to see the response."
+  }
+}

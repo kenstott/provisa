@@ -1,0 +1,9 @@
+{
+  "docsPage": {
+    "nav": "Documentation",
+    "loading": "Loading…",
+    "manifestError": "Documentation index could not be loaded.",
+    "docUnavailable": "This document is not available offline. Reconnect to load it.",
+    "liveNote": "Showing the latest version from the public repository."
+  }
+}

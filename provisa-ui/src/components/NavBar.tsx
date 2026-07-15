@@ -11,6 +11,8 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass } from "lucide-react";
+import { ActionIcon, Badge, Checkbox, Menu, Stack, Text, Tooltip } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { CapabilityGate } from "./CapabilityGate";
 import { useTour } from "../tour/useTour";
 import { RoleSelector } from "./RoleSelector";
@@ -25,7 +27,7 @@ const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
 
 interface DropdownItem {
   to: string;
-  label: string;
+  labelKey: string;
   capability: Capability;
   comingSoon?: boolean;
   separatorBefore?: boolean;
@@ -33,58 +35,67 @@ interface DropdownItem {
 
 interface NavGroup {
   id: string;
-  label: string;
+  labelKey: string;
   items: DropdownItem[];
 }
 
 const NAV_GROUPS: NavGroup[] = [
   {
     id: "model",
-    label: "Model",
+    labelKey: "navBar.groupModel",
     items: [
-      { to: "/views", label: "Views", capability: "table_registration" },
-      { to: "/commands", label: "Commands", capability: "admin" },
+      { to: "/views", labelKey: "navBar.itemViews", capability: "table_registration" },
+      { to: "/commands", labelKey: "navBar.itemCommands", capability: "admin" },
     ],
   },
   {
     id: "security",
-    label: "Security",
+    labelKey: "navBar.groupSecurity",
     items: [
-      { to: "/security/roles", label: "Roles", capability: "access_config" },
-      { to: "/security/rls", label: "RLS Rules", capability: "access_config" },
+      { to: "/security/roles", labelKey: "navBar.itemRoles", capability: "access_config" },
+      { to: "/security/rls", labelKey: "navBar.itemRlsRules", capability: "access_config" },
     ],
   },
   {
     id: "explore",
-    label: "Explore",
+    labelKey: "navBar.groupExplore",
     items: [
-      { to: "/schema", label: "Schema", capability: "query_development" },
-      { to: "/nl", label: "NL", capability: "query_development", separatorBefore: true },
-      { to: "/query", label: "GraphQL", capability: "query_development" },
-      { to: "/graph", label: "Cypher", capability: "query_development" },
-      { to: "/sql", label: "SQL", capability: "query_development" },
-      { to: "/grpc", label: "gRPC", capability: "query_development" },
-      { to: "/jsonapi", label: "JSON:API", capability: "query_development" },
-      { to: "/openapi", label: "OpenAPI", capability: "query_development" },
+      { to: "/schema", labelKey: "navBar.itemSchema", capability: "query_development" },
+      {
+        to: "/nl",
+        labelKey: "navBar.itemNl",
+        capability: "query_development",
+        separatorBefore: true,
+      },
+      { to: "/query", labelKey: "navBar.itemGraphql", capability: "query_development" },
+      { to: "/graph", labelKey: "navBar.itemCypher", capability: "query_development" },
+      { to: "/sql", labelKey: "navBar.itemSql", capability: "query_development" },
+      { to: "/grpc", labelKey: "navBar.itemGrpc", capability: "query_development" },
+      { to: "/jsonapi", labelKey: "navBar.itemJsonApi", capability: "query_development" },
+      { to: "/openapi", labelKey: "navBar.itemOpenApi", capability: "query_development" },
     ],
   },
   {
     id: "admin",
-    label: "Admin",
+    labelKey: "navBar.groupAdmin",
     items: [
-      { to: "/admin/orgs", label: "Orgs", capability: "admin" },
-      { to: "/admin/overview", label: "Overview", capability: "admin" },
-      { to: "/admin/domains", label: "Domains", capability: "admin" },
-      { to: "/admin/cache", label: "Cache", capability: "admin" },
-      { to: "/admin/scheduled-tasks", label: "Scheduler", capability: "admin" },
-      { to: "/admin/federation-engine", label: "Federation", capability: "admin" },
-      { to: "/admin/encryption", label: "Encryption", capability: "admin" },
-      { to: "/admin/auth", label: "Authentication", capability: "admin" },
-      { to: "/admin/system-health", label: "Health", capability: "admin" },
-      { to: "/admin/observability", label: "Observability", capability: "admin" },
-      { to: "/admin/mcp-server", label: "MCP Server", capability: "admin" },
-      { to: "/admin/local-users", label: "Local Users", capability: "admin" },
-      { to: "/admin/requests", label: "Requests", capability: "admin" },
+      { to: "/admin/orgs", labelKey: "navBar.itemOrgs", capability: "admin" },
+      { to: "/admin/overview", labelKey: "navBar.itemOverview", capability: "admin" },
+      { to: "/admin/domains", labelKey: "navBar.itemDomains", capability: "admin" },
+      { to: "/admin/cache", labelKey: "navBar.itemCache", capability: "admin" },
+      { to: "/admin/scheduled-tasks", labelKey: "navBar.itemScheduler", capability: "admin" },
+      {
+        to: "/admin/federation-engine",
+        labelKey: "navBar.itemFederation",
+        capability: "admin",
+      },
+      { to: "/admin/encryption", labelKey: "navBar.itemEncryption", capability: "admin" },
+      { to: "/admin/auth", labelKey: "navBar.itemAuthentication", capability: "admin" },
+      { to: "/admin/system-health", labelKey: "navBar.itemHealth", capability: "admin" },
+      { to: "/admin/observability", labelKey: "navBar.itemObservability", capability: "admin" },
+      { to: "/admin/mcp-server", labelKey: "navBar.itemMcpServer", capability: "admin" },
+      { to: "/admin/local-users", labelKey: "navBar.itemLocalUsers", capability: "admin" },
+      { to: "/admin/requests", labelKey: "navBar.itemRequests", capability: "admin" },
     ],
   },
 ];
@@ -103,19 +114,16 @@ function activeGroupId(pathname: string): string | null {
 }
 
 export function NavBar() {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
   const { displayName, email, devMode } = useAuth();
   const { startTour, canResume } = useTour();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
-  const [domainOpen, setDomainOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const subnavRef = useRef<HTMLElement>(null);
-  const domainRef = useRef<HTMLDivElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const routeGroup = activeGroupId(location.pathname);
 
@@ -135,21 +143,14 @@ export function NavBar() {
       ) {
         setPinnedGroup(null);
       }
-      if (domainOpen && !domainRef.current?.contains(e.target as Node)) {
-        setDomainOpen(false);
-      }
-      if (userMenuOpen && !userMenuRef.current?.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [pinnedGroup, domainOpen, userMenuOpen]);
+  }, [pinnedGroup]);
 
   function handleLogout() {
     localStorage.removeItem("provisa_token");
     localStorage.removeItem("provisa_org");
-    setUserMenuOpen(false);
     navigate("/login");
   }
 
@@ -186,7 +187,7 @@ export function NavBar() {
     <>
       <nav className="navbar" ref={navRef}>
         <div className="navbar-brand">
-          <NavLink to="/" aria-label="Provisa home">
+          <NavLink to="/" aria-label={t("navBar.home")}>
             <svg
               className="navbar-brand-mark"
               viewBox="0 0 100 100"
@@ -202,110 +203,128 @@ export function NavBar() {
               <circle cx="52" cy="34" r="10.5" fill="var(--surface)" />
               <circle cx="52" cy="34" r="4.5" fill="#10B981" />
             </svg>
-            <span>Provisa</span>
+            <span>{t("navBar.brand")}</span>
           </NavLink>
         </div>
         <div className="navbar-links">
           <CapabilityGate capability="source_registration">
-            <NavLink to="/sources" data-tour="nav-sources">Sources</NavLink>
+            <NavLink to="/sources" data-tour="nav-sources">{t("navBar.sources")}</NavLink>
           </CapabilityGate>
           <CapabilityGate capability="table_registration">
-            <NavLink to="/tables" data-tour="nav-tables">Tables</NavLink>
+            <NavLink to="/tables" data-tour="nav-tables">{t("navBar.tables")}</NavLink>
           </CapabilityGate>
-          <NavLink to="/relationships" data-tour="nav-relationships">Relationships</NavLink>
+          <NavLink to="/relationships" data-tour="nav-relationships">
+            {t("navBar.relationships")}
+          </NavLink>
           {NAV_GROUPS.map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
               <button
                 key={group.id}
+                type="button"
                 data-tour={`nav-${group.id}`}
+                data-testid={`nav-group-${group.id}`}
                 className={`nav-group-label${isActive ? " nav-group-active" : ""}`}
+                aria-expanded={isActive}
+                aria-current={isActive ? "true" : undefined}
                 onClick={() => toggleGroup(group.id)}
               >
-                {group.label}
+                {t(group.labelKey)}
               </button>
             );
           })}
           {/* Docs — ungated, available to everyone */}
-          <NavLink to="/docs" data-tour="nav-docs">Docs</NavLink>
+          <NavLink to="/docs" data-tour="nav-docs">{t("navBar.docs")}</NavLink>
         </div>
         <div className="navbar-role">
           <ColorSchemeToggle />
           <OrgSwitcher />
           {domainsEnabled && onTablesPage && domains.length > 0 && (
-            <div className="navbar-domain-wrapper" ref={domainRef}>
-              <button className="navbar-domain-btn" onClick={() => setDomainOpen((o) => !o)}>
-                Domains ({checkedDomains.size}/{domains.length}) ▾
-              </button>
-              {domainOpen && (
-                <div className="navbar-domain-panel">
-                  {domains.map((d) => (
-                    <label key={d} className="navbar-domain-item">
-                      <input
-                        type="checkbox"
+            <div className="navbar-domain-wrapper">
+              <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+                <Menu.Target>
+                  <button
+                    type="button"
+                    className="navbar-domain-btn"
+                    data-testid="navbar-domain-trigger"
+                  >
+                    {t("navBar.domainsToggle", {
+                      checked: checkedDomains.size,
+                      total: domains.length,
+                    })}
+                  </button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Label>{t("navBar.domainsLabel")}</Menu.Label>
+                  <Stack gap={4} px="sm" pb="xs">
+                    {domains.map((d) => (
+                      <Checkbox
+                        key={d}
+                        label={d}
+                        data-testid={`navbar-domain-item-${d}`}
                         checked={checkedDomains.has(d)}
                         onChange={() => toggleDomain(d)}
                       />
-                      {d}
-                    </label>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </Stack>
+                </Menu.Dropdown>
+              </Menu>
             </div>
           )}
           <RoleSelector />
-          <button
-            className="navbar-tour-btn"
-            title={canResume ? "Resume guided tour" : "Take a guided tour"}
-            aria-label={canResume ? "Resume guided tour" : "Take a guided tour"}
-            onClick={() => startTour()}
-          >
-            <Compass size={16} />
-          </button>
-          <div className="navbar-user-wrapper" ref={userMenuRef}>
-            <button
-              className="navbar-user-btn"
-              onClick={() => setUserMenuOpen((o) => !o)}
-              title={displayName ?? email ?? "User menu"}
+          <Tooltip label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}>
+            <ActionIcon
+              variant="default"
+              size="lg"
+              aria-label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}
+              className="navbar-tour-btn"
+              onClick={() => startTour()}
             >
-              <User size={16} />
-            </button>
-            {userMenuOpen && (
-              <div className="navbar-user-panel">
-                {(displayName || email) && (
-                  <div className="navbar-user-identity">
-                    {displayName && <span className="navbar-user-name">{displayName}</span>}
-                    {email && <span className="navbar-user-email">{email}</span>}
-                    {devMode && <span className="navbar-user-dev">DEV</span>}
-                  </div>
-                )}
-                <button
-                  className="navbar-user-item"
-                  onClick={() => {
-                    setProfileOpen(true);
-                    setUserMenuOpen(false);
-                  }}
+              <Compass size={16} aria-hidden />
+            </ActionIcon>
+          </Tooltip>
+          <div className="navbar-user-wrapper">
+            <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+              <Menu.Target>
+                <ActionIcon
+                  variant="default"
+                  size="lg"
+                  className="navbar-user-btn"
+                  aria-label={displayName ?? email ?? t("navBar.userMenu")}
+                  data-testid="navbar-user-trigger"
                 >
-                  Profile
-                </button>
+                  <User size={16} aria-hidden />
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                {(displayName || email) && (
+                  <Menu.Label>
+                    {displayName && <Text size="sm" fw={600}>{displayName}</Text>}
+                    {email && (
+                      <Text size="xs" c="dimmed">
+                        {email}
+                      </Text>
+                    )}
+                    {devMode && (
+                      <Badge mt="xs" size="xs" color="orange" variant="filled">
+                        {t("navBar.dev")}
+                      </Badge>
+                    )}
+                  </Menu.Label>
+                )}
+                <Menu.Item onClick={() => setProfileOpen(true)}>{t("navBar.profile")}</Menu.Item>
                 <CapabilityGate capability="admin">
-                  <button
-                    className="navbar-user-item"
-                    onClick={() => {
-                      navigate("/admin/overview");
-                      setUserMenuOpen(false);
-                    }}
-                  >
-                    Settings
-                  </button>
+                  <Menu.Item onClick={() => navigate("/admin/overview")}>
+                    {t("navBar.settings")}
+                  </Menu.Item>
                 </CapabilityGate>
                 {AUTH_ENABLED && (
-                  <button className="navbar-user-item navbar-user-logout" onClick={handleLogout}>
-                    Logout
-                  </button>
+                  <Menu.Item color="red" onClick={handleLogout}>
+                    {t("navBar.logout")}
+                  </Menu.Item>
                 )}
-              </div>
-            )}
+              </Menu.Dropdown>
+            </Menu>
           </div>
         </div>
       </nav>
@@ -315,10 +334,12 @@ export function NavBar() {
             <span key={item.to} className="subnav-item-wrapper">
               {item.separatorBefore && <span className="subnav-sep">|</span>}
               {item.comingSoon ? (
-                <span className="subnav-coming-soon">{item.label} — coming soon</span>
+                <span className="subnav-coming-soon">
+                  {t("navBar.comingSoon", { label: t(item.labelKey) })}
+                </span>
               ) : (
                 <CapabilityGate capability={item.capability}>
-                  <NavLink to={item.to}>{item.label}</NavLink>
+                  <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
                 </CapabilityGate>
               )}
             </span>

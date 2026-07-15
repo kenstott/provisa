@@ -9,6 +9,9 @@
 // permission from the copyright holder.
 
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { ActionIcon, Group, Pagination, Stack, Table, Text, Title } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { Trash2 } from "lucide-react";
 import { fetchOrgRoles, deleteOrgRole } from "../../api/admin";
 import type { Role } from "../../types/auth";
@@ -20,9 +23,9 @@ interface RolesTabProps {
 }
 
 export function RolesTab({ orgId }: RolesTabProps) {
+  const { t } = useTranslation();
   const [orgRoles, setOrgRoles] = useState<Role[]>([]);
-  const [roleMsg, setRoleMsg] = useState("");
-  const [rolePage, setRolePage] = useState(0);
+  const [rolePage, setRolePage] = useState(1);
 
   useEffect(() => {
     fetchOrgRoles(orgId)
@@ -33,79 +36,63 @@ export function RolesTab({ orgId }: RolesTabProps) {
   const handleDeleteOrgRole = async (roleId: string) => {
     await deleteOrgRole(orgId, roleId);
     setOrgRoles((prev) => prev.filter((r) => r.id !== roleId));
-    setRoleMsg(`Deleted "${roleId}"`);
+    notifications.show({ message: t("rolesTab.deleted", { roleId }) });
   };
 
+  const totalPages = Math.max(1, Math.ceil(orgRoles.length / PAGE_SIZE));
+  const paged = orgRoles.slice((rolePage - 1) * PAGE_SIZE, rolePage * PAGE_SIZE);
+
   return (
-    <div>
-      <h3>Roles — {orgId}</h3>
-      {roleMsg && <p className="form-msg">{roleMsg}</p>}
-      {(() => {
-        const totalPages = Math.max(1, Math.ceil(orgRoles.length / PAGE_SIZE));
-        const paged = orgRoles.slice(rolePage * PAGE_SIZE, (rolePage + 1) * PAGE_SIZE);
-        return (
-          <div>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Capabilities</th>
-                  <th>Domain Access</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.map((role) => (
-                  <tr key={role.id}>
-                    <td>{role.id}</td>
-                    <td>{role.capabilities.join(", ")}</td>
-                    <td>{role.domain_access.join(", ")}</td>
-                    <td>
-                      <button className="btn-danger" onClick={() => handleDeleteOrgRole(role.id)}>
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {totalPages > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  padding: "0.5rem 0",
-                  marginBottom: "1rem",
-                }}
-              >
-                <button onClick={() => setRolePage(0)} disabled={rolePage === 0}>
-                  «
-                </button>
-                <button onClick={() => setRolePage((p) => p - 1)} disabled={rolePage === 0}>
-                  ‹
-                </button>
-                <span>
-                  Page {rolePage + 1} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setRolePage((p) => p + 1)}
-                  disabled={rolePage >= totalPages - 1}
-                >
-                  ›
-                </button>
-                <button
-                  onClick={() => setRolePage(totalPages - 1)}
-                  disabled={rolePage >= totalPages - 1}
-                >
-                  »
-                </button>
-              </div>
+    <Stack gap="md">
+      <Title order={4}>{t("rolesTab.heading", { orgId })}</Title>
+      <Table.ScrollContainer minWidth={640}>
+        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("rolesTab.colId")}</Table.Th>
+              <Table.Th>{t("rolesTab.colCapabilities")}</Table.Th>
+              <Table.Th>{t("rolesTab.colDomainAccess")}</Table.Th>
+              <Table.Th>
+                <Text span visibleFrom="xs" fz="sm" fw={600}>
+                  {t("rolesTab.colActions")}
+                </Text>
+              </Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {orgRoles.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={4} ta="center" c="dimmed">
+                  {t("rolesTab.empty")}
+                </Table.Td>
+              </Table.Tr>
             )}
-          </div>
-        );
-      })()}
-    </div>
+            {paged.map((role) => (
+              <Table.Tr key={role.id}>
+                <Table.Td>{role.id}</Table.Td>
+                <Table.Td>{role.capabilities.join(", ")}</Table.Td>
+                <Table.Td>{role.domain_access.join(", ")}</Table.Td>
+                <Table.Td>
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    aria-label={t("rolesTab.deleteRole", { roleId: role.id })}
+                    data-testid={`delete-role-${role.id}`}
+                    onClick={() => handleDeleteOrgRole(role.id)}
+                  >
+                    <Trash2 size={14} />
+                  </ActionIcon>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+      {totalPages > 1 && (
+        <Group justify="flex-end">
+          <Pagination total={totalPages} value={rolePage} onChange={setRolePage} size="sm" />
+        </Group>
+      )}
+    </Stack>
   );
 }

@@ -11,9 +11,12 @@
 // stages the chosen tier through the shared setEditingTable save path.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "../../../test-utils/render";
 import { TableEditForm } from "../TableEditForm";
 import type { RegisteredTable } from "../../../types/admin";
+import i18n from "../../../i18n";
+
+const t = i18n.getFixedT("en");
 
 function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   return {
@@ -78,16 +81,22 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
 describe("TableEditForm — MV consistency (REQ-879)", () => {
   it("renders the selector with the current tier for a materialized view", () => {
     renderForm(makeTable({ mvConsistency: "distributed" }));
-    const sel = screen.getByTestId("mv-consistency") as HTMLSelectElement;
+    const sel = screen.getByRole("textbox", {
+      name: t("tableEditForm.mvConsistencyAria"),
+    }) as HTMLInputElement;
     expect(sel).toBeTruthy();
-    expect(sel.value).toBe("distributed");
+    expect(sel.value).toBe(t("tableEditForm.consistencyDistributed"));
   });
 
-  it("stages the chosen tier through setEditingTable", () => {
+  it("stages the chosen tier through setEditingTable", async () => {
     const setEditingTable = renderForm(makeTable());
-    fireEvent.change(screen.getByTestId("mv-consistency"), {
-      target: { value: "distributed" },
-    });
+    fireEvent.click(
+      screen.getByRole("textbox", { name: t("tableEditForm.mvConsistencyAria") }),
+    );
+    const listbox = await screen.findByRole("listbox");
+    fireEvent.click(
+      within(listbox).getByText(t("tableEditForm.consistencyDistributed")),
+    );
     expect(setEditingTable).toHaveBeenCalledWith(
       expect.objectContaining({ mvConsistency: "distributed" }),
     );
@@ -95,6 +104,8 @@ describe("TableEditForm — MV consistency (REQ-879)", () => {
 
   it("hides the selector when the table is not materialized", () => {
     renderForm(makeTable({ materialize: false }));
-    expect(screen.queryByTestId("mv-consistency")).toBeNull();
+    expect(
+      screen.queryByRole("textbox", { name: t("tableEditForm.mvConsistencyAria") }),
+    ).toBeNull();
   });
 });

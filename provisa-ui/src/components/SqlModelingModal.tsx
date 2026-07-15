@@ -15,6 +15,21 @@ import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import type { EditorView } from "@codemirror/view";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  Modal,
+  NumberInput,
+  SegmentedControl,
+  Select,
+  Tabs,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { runSql, nlToSql } from "../api/admin";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import type { Domain } from "../types/admin";
@@ -38,6 +53,7 @@ import { HistoryPanel } from "./sql-modeling/HistoryPanel";
 // ── SqlModelingModal ─────────────────────────────────────────────────────────
 
 export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: Props) {
+  const { t } = useTranslation();
   const [topTab, setTopTab] = useState<TopTab>("sql");
   const [sqlText, setSqlText] = useState("");
   const [role, setRole] = useState("admin");
@@ -451,75 +467,68 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   );
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal"
-        style={{
-          width: "90vw",
-          maxWidth: "90vw",
+    <Modal
+      opened
+      onClose={onClose}
+      withCloseButton={false}
+      centered
+      size="90vw"
+      styles={{
+        content: {
           height: "90vh",
           maxHeight: "90vh",
-          padding: 0,
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+        },
+        body: {
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          overflow: "hidden",
+        },
+      }}
+    >
+      <>
         {/* Header */}
-        <div
+        <Group
+          justify="space-between"
+          wrap="nowrap"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
             padding: "0.75rem 1rem",
             borderBottom: "1px solid var(--border)",
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <span style={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.02em" }}>
-              SQL Modeling
-            </span>
-            <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
-              Extract JOIN conditions as new relationship candidates — existing relationships are excluded
-            </span>
-            {/* SQL | Canvas toggle */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 0,
-                border: "1px solid var(--border)",
-                borderRadius: "5px",
-                overflow: "hidden",
-                marginLeft: "0.5rem",
-              }}
-            >
-              {(["sql", "canvas"] as TopTab[]).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setTopTab(tab)}
-                  style={{
-                    padding: "0.2rem 0.6rem",
-                    fontSize: "0.75rem",
-                    background: topTab === tab ? "var(--primary)" : "none",
-                    color: topTab === tab ? "#fff" : "var(--text-muted)",
-                    border: "none",
-                    cursor: "pointer",
-                    textTransform: "capitalize",
-                    fontWeight: topTab === tab ? 600 : 400,
-                  }}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button className="modal-close" onClick={onClose}>
+          <Group gap="0.75rem" wrap="nowrap">
+            <Text fw={600} size="0.9rem" style={{ letterSpacing: "0.02em" }}>
+              {t("sqlModelingModal.title")}
+            </Text>
+            <Text c="dimmed" size="0.75rem">
+              {t("sqlModelingModal.description")}
+            </Text>
+            <SegmentedControl
+              size="xs"
+              value={topTab}
+              onChange={(v) => setTopTab(v as TopTab)}
+              data={[
+                { value: "sql", label: t("sqlModelingModal.tabSql") },
+                { value: "canvas", label: t("sqlModelingModal.tabCanvas") },
+              ]}
+              data-testid="sql-modeling-top-tab"
+            />
+          </Group>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            aria-label={t("sqlModelingModal.close")}
+            onClick={onClose}
+            data-testid="sql-modeling-close"
+          >
             <X size={14} />
-          </button>
-        </div>
+          </ActionIcon>
+        </Group>
 
         {/* Body: sidebar + right pane */}
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -564,74 +573,50 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
             >
               <>
                 {/* NL prompt bar */}
-                <div
+                <Group
+                  gap="0.5rem"
+                  wrap="nowrap"
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
                     padding: "0.4rem 0.75rem",
                     borderBottom: "1px solid var(--border)",
                     flexShrink: 0,
                     background: "var(--surface)",
                   }}
                 >
-                  <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
-                    <input
-                      type="text"
-                      value={nlText}
-                      placeholder="Ask in plain English — generates SQL…"
-                      onChange={(e) => {
-                        setNlText(e.target.value);
+                  <TextInput
+                    value={nlText}
+                    placeholder={t("sqlModelingModal.nlPlaceholder")}
+                    aria-label={t("sqlModelingModal.nlPlaceholder")}
+                    onChange={(e) => {
+                      setNlText(e.target.value);
+                      setNlError("");
+                    }}
+                    onKeyDown={async (e) => {
+                      if (e.key === "Enter" && nlText.trim() && !nlLoading) {
+                        setNlLoading(true);
                         setNlError("");
-                      }}
-                      onKeyDown={async (e) => {
-                        if (e.key === "Enter" && nlText.trim() && !nlLoading) {
-                          setNlLoading(true);
-                          setNlError("");
-                          const result = await nlToSql(nlText.trim(), role);
-                          setNlLoading(false);
-                          if (result.error) {
-                            setNlError(result.error);
-                          } else {
-                            setSqlText(result.sql);
-                          }
+                        const result = await nlToSql(nlText.trim(), role);
+                        setNlLoading(false);
+                        if (result.error) {
+                          setNlError(result.error);
+                        } else {
+                          setSqlText(result.sql);
                         }
-                      }}
-                      style={{
-                        width: "100%",
-                        fontSize: "0.8rem",
-                        padding: "0.25rem 1.6rem 0.25rem 0.5rem",
-                        borderRadius: "4px",
-                        border: nlError
-                          ? "1px solid var(--destructive)"
-                          : "1px solid var(--border)",
-                        background: "var(--bg)",
-                        color: "var(--text)",
-                        outline: "none",
-                        opacity: nlLoading ? 0.6 : 1,
-                      }}
-                      disabled={nlLoading}
-                      title={nlError || undefined}
-                    />
-                    {nlLoading && (
-                      <span
-                        style={{
-                          position: "absolute",
-                          right: "0.4rem",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          fontSize: "0.7rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        …
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    className="btn-primary"
-                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem", flexShrink: 0 }}
+                      }
+                    }}
+                    rightSection={nlLoading ? <Loader size="xs" /> : null}
+                    disabled={nlLoading}
+                    error={!!nlError}
+                    title={nlError || undefined}
+                    aria-busy={nlLoading}
+                    size="xs"
+                    style={{ flex: 1 }}
+                    data-testid="sql-modeling-nl-input"
+                  />
+                  <Button
+                    size="xs"
                     disabled={!nlText.trim() || nlLoading}
+                    loading={nlLoading}
                     onClick={async () => {
                       if (!nlText.trim() || nlLoading) return;
                       setNlLoading(true);
@@ -644,10 +629,11 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                         setSqlText(result.sql);
                       }
                     }}
+                    data-testid="sql-modeling-generate-sql"
                   >
-                    {nlLoading ? "Generating…" : "Generate SQL"}
-                  </button>
-                </div>
+                    {nlLoading ? t("sqlModelingModal.generating") : t("sqlModelingModal.generateSql")}
+                  </Button>
+                </Group>
 
                 {/* Editor */}
                 <div
@@ -677,10 +663,21 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                     }}
                     style={{ fontSize: "0.8rem" }}
                   />
-                  <button
+                  <Button
                     className="copy-sql-btn"
                     onClick={handleCopy}
-                    title="Copy SQL"
+                    aria-label={t("sqlModelingModal.copySql")}
+                    title={t("sqlModelingModal.copySql")}
+                    variant="filled"
+                    color="gray"
+                    size="compact-xs"
+                    leftSection={
+                      copied ? (
+                        <Check size={11} style={{ color: "var(--approve)" }} />
+                      ) : (
+                        <Copy size={11} />
+                      )
+                    }
                     style={{
                       position: "absolute",
                       top: "0.4rem",
@@ -689,199 +686,157 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                       transition: "opacity 0.15s",
                       background: "rgba(30,30,40,0.85)",
                       border: "1px solid var(--border)",
-                      borderRadius: "4px",
-                      color: "var(--text-muted)",
-                      cursor: "pointer",
-                      padding: "0.2rem 0.35rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
                       fontSize: "0.72rem",
                     }}
+                    data-testid="sql-modeling-copy-sql"
                   >
-                    {copied ? (
-                      <Check size={11} style={{ color: "var(--approve)" }} />
-                    ) : (
-                      <Copy size={11} />
-                    )}
-                    {copied ? "Copied" : "Copy"}
-                  </button>
+                    {copied ? t("sqlModelingModal.copied") : t("sqlModelingModal.copy")}
+                  </Button>
                 </div>
 
                 {/* Toolbar */}
-                <div
+                <Group
+                  gap="0.5rem"
+                  wrap="nowrap"
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
                     padding: "0.4rem 0.75rem",
                     borderBottom: "1px solid var(--border)",
                     flexShrink: 0,
                     background: "var(--surface)",
                   }}
                 >
-                  <button
-                    className="btn-primary"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.3rem",
-                      fontSize: "0.8rem",
-                      padding: "0.25rem 0.6rem",
-                    }}
+                  <Button
+                    size="xs"
+                    leftSection={<Play size={11} />}
                     onClick={handleRun}
+                    loading={running}
                     disabled={running || !sqlText.trim()}
+                    data-testid="sql-modeling-run"
                   >
-                    <Play size={11} />
-                    {running ? "Running…" : "Sample >"}
-                  </button>
-                  <select
+                    {running ? t("sqlModelingModal.runningLabel") : t("sqlModelingModal.run")}
+                  </Button>
+                  <Select
+                    size="xs"
+                    aria-label={t("sqlModelingModal.sampleModeLabel")}
                     value={sampleMode}
-                    onChange={(e) => setSampleMode(e.target.value as "first" | "last" | "random")}
-                    style={{
-                      fontSize: "0.78rem",
-                      padding: "0.2rem 0.4rem",
-                      background: "var(--bg)",
-                      color: "var(--text)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "3px",
-                    }}
-                  >
-                    <option value="first">First</option>
-                    <option value="last">Last</option>
-                    <option value="random">Random</option>
-                  </select>
-                  <input
-                    type="number"
+                    onChange={(v) => v && setSampleMode(v as "first" | "last" | "random")}
+                    allowDeselect={false}
+                    data={[
+                      { value: "first", label: t("sqlModelingModal.sampleModeFirst") },
+                      { value: "last", label: t("sqlModelingModal.sampleModeLast") },
+                      { value: "random", label: t("sqlModelingModal.sampleModeRandom") },
+                    ]}
+                    w={100}
+                    data-testid="sql-modeling-sample-mode"
+                  />
+                  <NumberInput
+                    size="xs"
                     value={sampleSize}
                     min={1}
                     max={10000}
-                    onChange={(e) => setSampleSize(Math.max(1, parseInt(e.target.value) || 100))}
-                    style={{
-                      width: "60px",
-                      fontSize: "0.78rem",
-                      padding: "0.2rem 0.4rem",
-                      background: "var(--bg)",
-                      color: "var(--text)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "3px",
-                    }}
-                    title="Row count"
+                    onChange={(v) => setSampleSize(Math.max(1, typeof v === "number" ? v : 100))}
+                    aria-label={t("sqlModelingModal.sampleSizeLabel")}
+                    title={t("sqlModelingModal.sampleSizeLabel")}
+                    w={70}
+                    data-testid="sql-modeling-sample-size"
                   />
-                  <select
+                  <Select
+                    size="xs"
+                    aria-label={t("sqlModelingModal.roleLabel")}
                     value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    style={{
-                      fontSize: "0.78rem",
-                      padding: "0.2rem 0.4rem",
-                      background: "var(--bg)",
-                      color: "var(--text)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "3px",
-                    }}
-                  >
-                    {roles.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => v && setRole(v)}
+                    allowDeselect={false}
+                    data={roles.map((r) => ({ value: r, label: r }))}
+                    w={120}
+                    data-testid="sql-modeling-role"
+                  />
                   <div style={{ flex: 1 }} />
-                  <button
-                    className="btn-secondary"
-                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem", flexShrink: 0 }}
+                  <Button
+                    size="xs"
+                    variant="default"
                     onClick={handleExtractJoins}
                     disabled={!sqlText.trim()}
+                    data-testid="sql-modeling-extract-joins"
                   >
-                    Extract Joins
-                  </button>
-                </div>
+                    {t("sqlModelingModal.extractJoins")}
+                  </Button>
+                </Group>
 
                 {/* Results tabs + content */}
                 <div
                   style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 0,
-                      borderBottom: "1px solid var(--border)",
-                      flexShrink: 0,
-                      background: "var(--surface)",
-                    }}
+                  <Tabs
+                    value={resultTab}
+                    onChange={(v) => v && setResultTab(v as ResultTab)}
+                    keepMounted={false}
+                    variant="outline"
                   >
-                    {(["results", "profile", "candidates", "errors", "history"] as ResultTab[]).map(
-                      (tab) => {
-                        const count =
-                          tab === "results"
-                            ? resultRows.length
-                            : tab === "profile"
-                              ? profile.length
-                              : tab === "candidates"
-                                ? candidates.length
-                                : tab === "errors"
-                                  ? errors.length
-                                  : history.length;
-                        const active = resultTab === tab;
-                        return (
-                          <button
-                            key={tab}
-                            onClick={() => setResultTab(tab)}
-                            style={{
-                              padding: "0.35rem 0.8rem",
-                              fontSize: "0.75rem",
-                              background: "none",
-                              border: "none",
-                              borderBottom: active
-                                ? "2px solid var(--primary)"
-                                : "2px solid transparent",
-                              color: active ? "var(--text)" : "var(--text-muted)",
-                              cursor: "pointer",
-                              textTransform: "capitalize",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.3rem",
-                            }}
-                          >
-                            {tab === "history" ? (
-                              <History size={11} />
-                            ) : tab === "profile" ? (
-                              <BarChart2 size={11} />
-                            ) : null}
-                            {tab}
-                            {count > 0 && (
-                              <span
-                                style={{
-                                  background:
-                                    tab === "errors" ? "var(--destructive)" : "var(--primary)",
-                                  color: "#fff",
-                                  borderRadius: "8px",
-                                  fontSize: "0.65rem",
-                                  padding: "0 0.35rem",
-                                  lineHeight: "1.4",
-                                }}
-                              >
-                                {count}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      },
-                    )}
-                    {execMs !== null && (
-                      <span
-                        style={{
-                          marginLeft: "auto",
-                          paddingRight: "0.75rem",
-                          fontSize: "0.7rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {execMs}ms
-                      </span>
-                    )}
-                  </div>
+                    <Group
+                      justify="space-between"
+                      wrap="nowrap"
+                      style={{
+                        borderBottom: "1px solid var(--border)",
+                        flexShrink: 0,
+                        background: "var(--surface)",
+                      }}
+                    >
+                      <Tabs.List style={{ border: "none" }}>
+                        {(
+                          ["results", "profile", "candidates", "errors", "history"] as ResultTab[]
+                        ).map((tab) => {
+                          const count =
+                            tab === "results"
+                              ? resultRows.length
+                              : tab === "profile"
+                                ? profile.length
+                                : tab === "candidates"
+                                  ? candidates.length
+                                  : tab === "errors"
+                                    ? errors.length
+                                    : history.length;
+                          return (
+                            <Tabs.Tab
+                              key={tab}
+                              value={tab}
+                              leftSection={
+                                tab === "history" ? (
+                                  <History size={11} />
+                                ) : tab === "profile" ? (
+                                  <BarChart2 size={11} />
+                                ) : undefined
+                              }
+                              rightSection={
+                                count > 0 ? (
+                                  <Badge
+                                    size="xs"
+                                    circle
+                                    color={tab === "errors" ? "red" : "var(--primary)"}
+                                  >
+                                    {count}
+                                  </Badge>
+                                ) : undefined
+                              }
+                              data-testid={`sql-modeling-tab-${tab}`}
+                            >
+                              {t(
+                                `sqlModelingModal.tab${tab.charAt(0).toUpperCase()}${tab.slice(1)}`,
+                              )}
+                            </Tabs.Tab>
+                          );
+                        })}
+                      </Tabs.List>
+                      {execMs !== null && (
+                        <Text
+                          size="0.7rem"
+                          c="dimmed"
+                          style={{ paddingRight: "0.75rem" }}
+                        >
+                          {t("sqlModelingModal.execMs", { ms: execMs })}
+                        </Text>
+                      )}
+                    </Group>
+                  </Tabs>
 
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {resultTab === "results" && (
@@ -933,7 +888,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

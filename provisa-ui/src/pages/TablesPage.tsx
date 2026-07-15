@@ -10,7 +10,9 @@
 
 import { useState, useEffect, Fragment, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Network } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { Network, ArrowUp, ArrowDown, ArrowUpDown, Layers, X } from "lucide-react";
+import { ActionIcon, Alert, Button, Group, Table, Text, Title } from "@mantine/core";
 import { ErdModal } from "../components/erd/ErdModal";
 import { fetchSettings, profileTable } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
@@ -45,6 +47,7 @@ import { TableReadView } from "./tables/TableReadView";
 import { TableEditForm } from "./tables/TableEditForm";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
+  const { t: translate } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
@@ -368,38 +371,49 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     }
   };
 
-  if (loading || tablesLoading) return <div className="page">Loading tables...</div>;
+  if (loading || tablesLoading) return <div className="page">{translate("tablesPage.loading")}</div>;
 
   return (
     <div className="page">
       <div className="page-header">
-        <h2>{viewsOnly ? "Views" : "Registered Tables"}</h2>
+        <Title order={2}>{viewsOnly ? translate("tablesPage.titleViews") : translate("tablesPage.titleTables")}</Title>
         <FilterInput
           value={tableSearch}
           onChange={setTableSearch}
-          placeholder={viewsOnly ? "Filter views…" : "Filter by source, domain, or table…"}
+          placeholder={viewsOnly ? translate("tablesPage.filterPlaceholderViews") : translate("tablesPage.filterPlaceholderTables")}
         />
         <div className="page-actions">
           {!viewsOnly && (
-            <button data-tour="tables-add" onClick={() => setShowForm(!showForm)}>
-              {showForm ? "✕" : "+ Table"}
-            </button>
+            <Button
+              data-tour="tables-add"
+              data-testid="tables-add-toggle"
+              variant={showForm ? "outline" : "filled"}
+              onClick={() => setShowForm(!showForm)}
+              aria-label={showForm ? translate("tablesPage.closeForm") : undefined}
+            >
+              {showForm ? <X size={14} /> : translate("tablesPage.addTable")}
+            </Button>
           )}
-          <button onClick={() => navigate("/sql")} title="Create a new view in the SQL Explorer">
-            + View
-          </button>
-          <button
+          <Button variant="default" onClick={() => navigate("/sql")} title={translate("tablesPage.addViewTitle")}>
+            {translate("tablesPage.addView")}
+          </Button>
+          <ActionIcon
             data-tour="tables-erd"
-            className="btn-icon"
-            title="View ERD"
+            variant="subtle"
+            aria-label={translate("tablesPage.viewErd")}
+            title={translate("tablesPage.viewErd")}
             onClick={() => setShowErd(true)}
           >
             <Network size={14} />
-          </button>
+          </ActionIcon>
         </div>
       </div>
 
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <Alert color="red" mb="md" data-testid="tables-error">
+          {error}
+        </Alert>
+      )}
 
       {showForm && !viewsOnly && (
         <RegisterTableForm
@@ -421,87 +435,161 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         />
       )}
 
-      <table className="data-table">
-        <thead>
-          <tr>
+      <Table className="data-table">
+        <Table.Thead>
+          <Table.Tr>
             {(
               [
-                ["source", "Source"],
-                ["domain", "Domain"],
-                ["table", "Table"],
+                ["source", "tablesPage.colSource"],
+                ["domain", "tablesPage.colDomain"],
+                ["table", "tablesPage.colTable"],
               ] as const
             )
               .filter(([col]) => domainsEnabled || col !== "domain")
-              .map(([col, label]) => {
+              .map(([col, labelKey]) => {
+                const label = translate(labelKey);
                 const isGroupable = col === "source" || col === "domain";
                 const groupLevel = groupBy.indexOf(col as "source" | "domain");
                 const isGrouped = groupLevel !== -1;
+                const sortActive = sortCol === col;
+                const sortLabel = sortActive
+                  ? sortDir === "asc"
+                    ? translate("tablesPage.sortAscending")
+                    : translate("tablesPage.sortDescending")
+                  : translate("tablesPage.sortNone");
                 return (
-                  <th key={col} style={{ whiteSpace: "nowrap" }}>
-                    <span
-                      onClick={() => {
-                        if (sortCol !== col) {
-                          setSortCol(col);
-                          setSortDir("asc");
-                        } else if (sortDir === "asc") setSortDir("desc");
-                        else {
-                          setSortCol(null);
-                          setSortDir("asc");
-                        }
-                      }}
-                      style={{ cursor: "pointer", userSelect: "none" }}
-                    >
-                      {label}{" "}
-                      <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
-                        {sortCol === col ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
-                      </span>
-                    </span>
-                    {isGroupable && (
-                      <span
-                        title={
-                          isGrouped ? `Ungroup (level ${groupLevel + 1})` : `Group by ${label}`
-                        }
-                        onClick={() => toggleGroupBy(col)}
+                  <Table.Th key={col} style={{ whiteSpace: "nowrap" }}>
+                    <Group gap={4} wrap="nowrap" component="span">
+                      <button
+                        type="button"
+                        data-testid={`tables-sort-${col}`}
+                        onClick={() => {
+                          if (sortCol !== col) {
+                            setSortCol(col);
+                            setSortDir("asc");
+                          } else if (sortDir === "asc") setSortDir("desc");
+                          else {
+                            setSortCol(null);
+                            setSortDir("asc");
+                          }
+                        }}
+                        aria-label={`${label}, ${sortLabel}`}
                         style={{
-                          marginLeft: "0.3rem",
-                          fontSize: "0.65rem",
                           cursor: "pointer",
                           userSelect: "none",
-                          opacity: isGrouped ? 1 : 0.35,
-                          color: isGrouped ? "var(--primary, #6366f1)" : undefined,
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.25rem",
+                          font: "inherit",
+                          color: "inherit",
                         }}
                       >
-                        {isGrouped ? `⊞${groupLevel + 1}` : "⊞"}
-                      </span>
-                    )}
-                  </th>
+                        {label}
+                        {sortActive ? (
+                          sortDir === "asc" ? (
+                            <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
+                          ) : (
+                            <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                          )
+                        ) : (
+                          <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                        )}
+                      </button>
+                      {isGroupable && (
+                        <ActionIcon
+                          variant="transparent"
+                          size="xs"
+                          data-testid={`tables-group-${col}`}
+                          aria-label={
+                            isGrouped
+                              ? translate("tablesPage.ungroupLevel", { level: groupLevel + 1 })
+                              : translate("tablesPage.groupBy", { label })
+                          }
+                          title={
+                            isGrouped
+                              ? translate("tablesPage.ungroupLevel", { level: groupLevel + 1 })
+                              : translate("tablesPage.groupBy", { label })
+                          }
+                          onClick={() => toggleGroupBy(col)}
+                          style={{ opacity: isGrouped ? 1 : 0.35 }}
+                        >
+                          <Layers
+                            size={11}
+                            color={isGrouped ? "var(--primary, #6366f1)" : undefined}
+                            aria-hidden="true"
+                          />
+                        </ActionIcon>
+                      )}
+                      {isGroupable && isGrouped && (
+                        <Text span fz="0.65rem" c="var(--primary, #6366f1)">
+                          {groupLevel + 1}
+                        </Text>
+                      )}
+                    </Group>
+                  </Table.Th>
                 );
               })}
-            <th>Naming</th>
-            <th>Cache TTL</th>
-            <th>Effective TTL</th>
-            <th
-              onClick={() => {
-                if (sortCol !== "cols") {
-                  setSortCol("cols");
-                  setSortDir("asc");
-                } else if (sortDir === "asc") setSortDir("desc");
-                else {
-                  setSortCol(null);
-                  setSortDir("asc");
-                }
-              }}
-              style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
-            >
-              Cols{" "}
-              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
-                {sortCol === "cols" ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
-              </span>
-            </th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
+            <Table.Th>{translate("tablesPage.colNaming")}</Table.Th>
+            <Table.Th>{translate("tablesPage.colCacheTtl")}</Table.Th>
+            <Table.Th>{translate("tablesPage.colEffectiveTtl")}</Table.Th>
+            <Table.Th style={{ whiteSpace: "nowrap" }}>
+              {(() => {
+                const label = translate("tablesPage.colCols");
+                const sortActive = sortCol === "cols";
+                const sortLabel = sortActive
+                  ? sortDir === "asc"
+                    ? translate("tablesPage.sortAscending")
+                    : translate("tablesPage.sortDescending")
+                  : translate("tablesPage.sortNone");
+                return (
+                  <button
+                    type="button"
+                    data-testid="tables-sort-cols"
+                    onClick={() => {
+                      if (sortCol !== "cols") {
+                        setSortCol("cols");
+                        setSortDir("asc");
+                      } else if (sortDir === "asc") setSortDir("desc");
+                      else {
+                        setSortCol(null);
+                        setSortDir("asc");
+                      }
+                    }}
+                    aria-label={`${label}, ${sortLabel}`}
+                    style={{
+                      cursor: "pointer",
+                      userSelect: "none",
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      font: "inherit",
+                      color: "inherit",
+                    }}
+                  >
+                    {label}
+                    {sortActive ? (
+                      sortDir === "asc" ? (
+                        <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
+                      ) : (
+                        <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                      )
+                    ) : (
+                      <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                    )}
+                  </button>
+                );
+              })()}
+            </Table.Th>
+            <Table.Th></Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
           {(() => {
             const filtered = tables.filter((t) => {
               if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
@@ -594,18 +682,28 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             return items.map((item) => {
               if (item.type === "header") {
                 const isL1 = item.level === 1;
+                const isCollapsed = collapsedGroups.has(item.key);
+                const toggleCollapsed = () =>
+                  setCollapsedGroups((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(item.key)) next.delete(item.key);
+                    else next.add(item.key);
+                    return next;
+                  });
                 return (
-                  <tr key={`grp-${item.key}`}>
-                    <td
+                  <Table.Tr key={`grp-${item.key}`}>
+                    <Table.Td
                       colSpan={domainsEnabled ? 9 : 8}
-                      onClick={() =>
-                        setCollapsedGroups((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(item.key)) next.delete(item.key);
-                          else next.add(item.key);
-                          return next;
-                        })
-                      }
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={!isCollapsed}
+                      onClick={toggleCollapsed}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleCollapsed();
+                        }
+                      }}
                       style={{
                         fontWeight: isL1 ? 600 : 500,
                         fontSize: isL1 ? "0.8rem" : "0.75rem",
@@ -619,46 +717,48 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                         userSelect: "none",
                       }}
                     >
-                      {collapsedGroups.has(item.key) ? "▶" : "▼"} {item.label}{" "}
+                      {isCollapsed ? "▶" : "▼"} {item.label}{" "}
                       <span style={{ fontWeight: "normal", opacity: 0.7 }}>({item.count})</span>
-                    </td>
-                  </tr>
+                    </Table.Td>
+                  </Table.Tr>
                 );
               }
               const t = item.t;
               const isEditing = editingTable?.id === t.id;
               const row = (
                 <Fragment key={t.id}>
-                  <tr
+                  <Table.Tr
                     onClick={() => {
                       setExpanded(expanded === t.id ? null : t.id);
                       if (expanded === t.id) cancelEditing();
                     }}
                     className="clickable"
                   >
-                    <td>{t.sourceId}</td>
-                    {domainsEnabled && <td>{t.domainId ? normalizeDomain(t.domainId) : ""}</td>}
-                    <td
+                    <Table.Td>{t.sourceId}</Table.Td>
+                    {domainsEnabled && (
+                      <Table.Td>{t.domainId ? normalizeDomain(t.domainId) : ""}</Table.Td>
+                    )}
+                    <Table.Td
                       style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
                       title={t.description || undefined}
                     >
                       {t.alias || t.tableName}
-                    </td>
-                    <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                    </Table.Td>
+                    <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                       {NAMING_CONVENTIONS.find((nc) => nc.value === (t.gqlNamingConvention ?? ""))
                         ?.label ??
                         t.gqlNamingConvention ??
-                        "Inherit (source)"}
-                    </td>
-                    <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {t.cacheTtl != null ? `${t.cacheTtl}s` : "inherit"}
-                    </td>
-                    <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                        translate("tablesPage.inheritSource")}
+                    </Table.Td>
+                    <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                      {t.cacheTtl != null ? `${t.cacheTtl}s` : translate("tablesPage.inherit")}
+                    </Table.Td>
+                    <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                       {getEffectiveTableTtl(t)}
-                    </td>
-                    <td>{t.columns.length}</td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: "flex", gap: "0.25rem" }}>
+                    </Table.Td>
+                    <Table.Td>{t.columns.length}</Table.Td>
+                    <Table.Td onClick={(e) => e.stopPropagation()}>
+                      <Group gap="xs" wrap="nowrap">
                         {(() => {
                           const srcType = sources.find((s) => s.id === t.sourceId)?.type;
                           const hasCacheable =
@@ -669,32 +769,38 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                           return (
                             <>
                               {hasCacheable && (
-                                <button
+                                <Button
+                                  size="compact-xs"
+                                  variant="default"
                                   onClick={() => handlePurgeTableCache(t.id)}
                                   disabled={purging[t.id]}
-                                  style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
                                 >
-                                  {purging[t.id] ? "Purging..." : "Invalidate Cache"}
-                                </button>
+                                  {purging[t.id]
+                                    ? translate("tablesPage.purging")
+                                    : translate("tablesPage.invalidateCache")}
+                                </Button>
                               )}
                               {isFileBacked && (
-                                <button
+                                <Button
+                                  size="compact-xs"
+                                  variant="default"
                                   onClick={() => handleInvalidateFileSource(t.id)}
                                   disabled={invalidating[t.id]}
-                                  style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
                                 >
-                                  {invalidating[t.id] ? "Refreshing..." : "Refresh Data"}
-                                </button>
+                                  {invalidating[t.id]
+                                    ? translate("tablesPage.refreshing")
+                                    : translate("tablesPage.refreshData")}
+                                </Button>
                               )}
                             </>
                           );
                         })()}
-                      </div>
-                    </td>
-                  </tr>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
                   {expanded === t.id && (
-                    <tr key={`${t.id}-cols`}>
-                      <td colSpan={domainsEnabled ? 12 : 11} style={{ padding: 0 }}>
+                    <Table.Tr key={`${t.id}-cols`}>
+                      <Table.Td colSpan={domainsEnabled ? 12 : 11} style={{ padding: 0 }}>
                         {!isEditing ? (
                           <TableReadView
                             t={t}
@@ -735,16 +841,16 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             />
                           )
                         )}
-                      </td>
-                    </tr>
+                      </Table.Td>
+                    </Table.Tr>
                   )}
                 </Fragment>
               );
               return row;
             });
           })()}
-        </tbody>
-      </table>
+        </Table.Tbody>
+      </Table>
 
       {(() => {
         const filtered = tables.filter((t) => {
@@ -761,31 +867,41 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
         if (totalPages === 1) return null;
         return (
-          <div
-            style={{
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              padding: "0.5rem 0",
-            }}
-          >
-            <button onClick={() => setPage(0)} disabled={page === 0}>
+          <Group gap="sm" justify="flex-end" py="sm">
+            <ActionIcon
+              variant="default"
+              aria-label={translate("tablesPage.firstPage")}
+              onClick={() => setPage(0)}
+              disabled={page === 0}
+            >
               «
-            </button>
-            <button onClick={() => setPage((p) => p - 1)} disabled={page === 0}>
+            </ActionIcon>
+            <ActionIcon
+              variant="default"
+              aria-label={translate("tablesPage.prevPage")}
+              onClick={() => setPage((p) => p - 1)}
+              disabled={page === 0}
+            >
               ‹
-            </button>
-            <span>
-              Page {page + 1} / {totalPages}
-            </span>
-            <button onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages - 1}>
+            </ActionIcon>
+            <Text fz="sm">{translate("tablesPage.pageOf", { page: page + 1, totalPages })}</Text>
+            <ActionIcon
+              variant="default"
+              aria-label={translate("tablesPage.nextPage")}
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page >= totalPages - 1}
+            >
               ›
-            </button>
-            <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}>
+            </ActionIcon>
+            <ActionIcon
+              variant="default"
+              aria-label={translate("tablesPage.lastPage")}
+              onClick={() => setPage(totalPages - 1)}
+              disabled={page >= totalPages - 1}
+            >
               »
-            </button>
-          </div>
+            </ActionIcon>
+          </Group>
         );
       })()}
       {showErd && (

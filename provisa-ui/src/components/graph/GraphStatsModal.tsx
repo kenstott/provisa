@@ -9,6 +9,9 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { Card, Group, Loader, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import type { GNode, GEdge } from "./graph-model";
 
 interface GraphWideStats {
@@ -191,51 +194,46 @@ interface Props {
   queryStats?: unknown;
 }
 
-function Spinner() {
+function StatRow({ label, tooltip, value }: { label: string; tooltip?: string; value: ReactNode }) {
+  const labelNode = tooltip ? (
+    <Tooltip label={tooltip} multiline w={260} withArrow>
+      <Text size="sm" c="dimmed" style={{ cursor: "help", borderBottom: "1px dotted var(--text-muted)" }}>
+        {label}
+      </Text>
+    </Tooltip>
+  ) : (
+    <Text size="sm" c="dimmed">
+      {label}
+    </Text>
+  );
+
   return (
-    <span
-      style={{
-        display: "inline-block",
-        width: 12,
-        height: 12,
-        border: "2px solid var(--border)",
-        borderTopColor: "var(--primary)",
-        borderRadius: "50%",
-        animation: "gs-spin 0.7s linear infinite",
-      }}
-    />
+    <Group justify="space-between" wrap="nowrap" gap="xs">
+      {labelNode}
+      <Text size="sm" fw={500}>
+        {value}
+      </Text>
+    </Group>
   );
 }
 
-const TOOLTIPS: Record<string, string> = {
-  "Nodes": "Total number of nodes (entities) in the current graph.",
-  "Edges": "Total number of relationships between nodes.",
-  "Density": "Ratio of actual edges to the maximum possible edges. Near 0 = sparse; near 1 = fully connected. Most real-world graphs are sparse (<0.01).",
-  "Average": "Mean number of edges per node (in + out). Higher values indicate a more interconnected graph.",
-  "Maximum": "Degree of the most connected node — the top hub. A very high max relative to average suggests a hub-and-spoke structure.",
-  "Isolated nodes": "Nodes with no edges at all. In a data model these are orphaned entities with no modeled relationships — usually a data quality gap.",
-  "Components": "Number of disconnected subgraphs. More than one means some nodes cannot reach others by any path. Ideally this is 1 for a unified data model.",
-  "Largest component": "Percentage of nodes in the biggest connected subgraph. Low values mean your data is fragmented — entities that should be related aren't linked yet.",
-  "Diameter": "Longest shortest path between any two reachable nodes. Measures how 'wide' the graph is. A high diameter means some entities are many hops apart.",
-  "Avg path length": "Average number of hops between all reachable pairs of nodes. Lower values indicate a tighter, more navigable graph ('small world' property).",
-  "Top hubs by degree": "Nodes with the most connections. These are the most central entities in the graph — joins or traversals through them reach the widest set of neighbors.",
-  "Nodes by label": "Breakdown of node count by entity type.",
-  "Edges by type": "Breakdown of relationship count by relationship type.",
-};
-
-function StatRow({ label, value }: { label: string; value: React.ReactNode }) {
-  const tip = TOOLTIPS[label];
-  return (
-    <div className="gs-stat-row" title={tip}>
-      <span className="gs-stat-label" style={tip ? { cursor: "help", borderBottom: "1px dotted var(--text-muted)" } : undefined}>
-        {label}
-      </span>
-      <span className="gs-stat-value">{value}</span>
-    </div>
+function CardTitle({ children, tooltip }: { children: ReactNode; tooltip?: string }) {
+  const title = (
+    <Text fw={600} size="sm" mb="xs" style={tooltip ? { cursor: "help" } : undefined}>
+      {children}
+    </Text>
+  );
+  return tooltip ? (
+    <Tooltip label={tooltip} multiline w={260} withArrow>
+      {title}
+    </Tooltip>
+  ) : (
+    title
   );
 }
 
 export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
+  const { t } = useTranslation();
   const qs = queryStats as QueryStats | undefined;
   const [instant, setInstant] = useState<ReturnType<typeof computeInstant> | null>(null);
   const [components, setComponents] = useState<{ componentCount: number; largestComponentSize: number } | null>(null);
@@ -267,94 +265,175 @@ export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
   const pct = (v: number, total: number) =>
     total > 0 ? ` (${Math.round((v / total) * 100)}%)` : "";
 
+  if (!instant) {
+    return (
+      <Group gap="xs" p="md" data-testid="graph-stats-loading">
+        <Loader size="xs" />
+        <Text size="sm" c="dimmed">
+          {t("graphStatsPanel.computing")}
+        </Text>
+      </Group>
+    );
+  }
+
   return (
-    <div className="gs-panel">
-      <style>{`@keyframes gs-spin { to { transform: rotate(360deg); } }`}</style>
-      {!instant ? (
-        <div className="gs-loading"><Spinner /> Computing…</div>
-      ) : (
-        <div className="gs-grid">
-          <div className="gs-card">
-            <div className="gs-card-title">Size</div>
-            <StatRow label="Nodes" value={instant.nodeCount.toLocaleString()} />
-            <StatRow label="Edges" value={instant.edgeCount.toLocaleString()} />
-            <StatRow label="Density" value={instant.density.toExponential(2)} />
-          </div>
+    <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm" p="md" data-testid="graph-stats-grid">
+      <Card withBorder padding="sm" radius="md">
+        <CardTitle>{t("graphStatsPanel.size")}</CardTitle>
+        <Stack gap={4}>
+          <StatRow label={t("graphStatsPanel.nodes")} tooltip={t("graphStatsPanel.tooltipNodes")} value={instant.nodeCount.toLocaleString()} />
+          <StatRow label={t("graphStatsPanel.edges")} tooltip={t("graphStatsPanel.tooltipEdges")} value={instant.edgeCount.toLocaleString()} />
+          <StatRow label={t("graphStatsPanel.density")} tooltip={t("graphStatsPanel.tooltipDensity")} value={instant.density.toExponential(2)} />
+        </Stack>
+      </Card>
 
-          <div className="gs-card">
-            <div className="gs-card-title">Degree</div>
-            <StatRow label="Average" value={instant.avgDegree.toFixed(2)} />
-            <StatRow label="Maximum" value={instant.maxDegree} />
-            <StatRow label="Isolated nodes" value={`${instant.isolatedCount}${pct(instant.isolatedCount, instant.nodeCount)}`} />
-          </div>
+      <Card withBorder padding="sm" radius="md">
+        <CardTitle>{t("graphStatsPanel.degree")}</CardTitle>
+        <Stack gap={4}>
+          <StatRow label={t("graphStatsPanel.average")} tooltip={t("graphStatsPanel.tooltipAverage")} value={instant.avgDegree.toFixed(2)} />
+          <StatRow label={t("graphStatsPanel.maximum")} tooltip={t("graphStatsPanel.tooltipMaximum")} value={instant.maxDegree} />
+          <StatRow
+            label={t("graphStatsPanel.isolatedNodes")}
+            tooltip={t("graphStatsPanel.tooltipIsolatedNodes")}
+            value={`${instant.isolatedCount}${pct(instant.isolatedCount, instant.nodeCount)}`}
+          />
+        </Stack>
+      </Card>
 
-          <div className="gs-card">
-            <div className="gs-card-title">Connectivity</div>
-            <StatRow label="Components" value={components ? components.componentCount : <Spinner />} />
-            <StatRow
-              label="Largest component"
-              value={components ? `${components.largestComponentSize.toLocaleString()}${pct(components.largestComponentSize, instant.nodeCount)}` : <Spinner />}
-            />
-            <StatRow label="Diameter" value={pathRunning ? <Spinner /> : (pathStats?.diameter ?? "—")} />
-            <StatRow label="Avg path length" value={pathRunning ? <Spinner /> : (pathStats ? pathStats.avgPathLength.toFixed(2) : "—")} />
-          </div>
+      <Card withBorder padding="sm" radius="md">
+        <CardTitle>{t("graphStatsPanel.connectivity")}</CardTitle>
+        <Stack gap={4}>
+          <StatRow
+            label={t("graphStatsPanel.components")}
+            tooltip={t("graphStatsPanel.tooltipComponents")}
+            value={components ? components.componentCount : <Loader size="xs" />}
+          />
+          <StatRow
+            label={t("graphStatsPanel.largestComponent")}
+            tooltip={t("graphStatsPanel.tooltipLargestComponent")}
+            value={
+              components
+                ? `${components.largestComponentSize.toLocaleString()}${pct(components.largestComponentSize, instant.nodeCount)}`
+                : <Loader size="xs" />
+            }
+          />
+          <StatRow
+            label={t("graphStatsPanel.diameter")}
+            tooltip={t("graphStatsPanel.tooltipDiameter")}
+            value={pathRunning ? <Loader size="xs" /> : (pathStats?.diameter ?? "—")}
+          />
+          <StatRow
+            label={t("graphStatsPanel.avgPathLength")}
+            tooltip={t("graphStatsPanel.tooltipAvgPathLength")}
+            value={pathRunning ? <Loader size="xs" /> : pathStats ? pathStats.avgPathLength.toFixed(2) : "—"}
+          />
+        </Stack>
+      </Card>
 
-          <div className="gs-card">
-            <div className="gs-card-title" title={TOOLTIPS["Top hubs by degree"]} style={{ cursor: "help" }}>Top hubs by degree</div>
-            <div className="gs-hub-list">
-              {instant.topHubs.map((h, i) => (
-                <div key={i} className="gs-hub-row">
-                  <span className="gs-hub-label">{h.label}</span>
-                  <span className="gs-hub-name">{h.name}</span>
-                  <span className="gs-hub-degree">{h.degree}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+      <Card withBorder padding="sm" radius="md">
+        <CardTitle tooltip={t("graphStatsPanel.tooltipTopHubsByDegree")}>{t("graphStatsPanel.topHubsByDegree")}</CardTitle>
+        <Stack gap={4}>
+          {instant.topHubs.map((h, i) => (
+            <Group key={i} justify="space-between" wrap="nowrap" gap="xs">
+              <Text size="xs" c="dimmed">
+                {h.label}
+              </Text>
+              <Text size="xs" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {h.name}
+              </Text>
+              <Text size="xs" fw={500}>
+                {h.degree}
+              </Text>
+            </Group>
+          ))}
+        </Stack>
+      </Card>
 
-          <div className="gs-card">
-            <div className="gs-card-title" title={TOOLTIPS["Nodes by label"]} style={{ cursor: "help" }}>Nodes by label</div>
-            {instant.nodesByLabel.map(([lbl, cnt]) => (
-              <div key={lbl} className="gs-kv">
-                <span className="gs-kv-key">{lbl}</span>
-                <span className="gs-kv-val">{cnt.toLocaleString()}</span>
-              </div>
+      <Card withBorder padding="sm" radius="md">
+        <CardTitle tooltip={t("graphStatsPanel.tooltipNodesByLabel")}>{t("graphStatsPanel.nodesByLabel")}</CardTitle>
+        <Stack gap={4}>
+          {instant.nodesByLabel.map(([lbl, cnt]) => (
+            <Group key={lbl} justify="space-between" gap="xs">
+              <Text size="xs" c="dimmed">
+                {lbl}
+              </Text>
+              <Text size="xs" fw={500}>
+                {cnt.toLocaleString()}
+              </Text>
+            </Group>
+          ))}
+        </Stack>
+      </Card>
+
+      <Card withBorder padding="sm" radius="md">
+        <CardTitle tooltip={t("graphStatsPanel.tooltipEdgesByType")}>{t("graphStatsPanel.edgesByType")}</CardTitle>
+        <Stack gap={4}>
+          {instant.edgesByType.map(([type, cnt]) => (
+            <Group key={type} justify="space-between" gap="xs">
+              <Text size="xs" c="dimmed">
+                {type}
+              </Text>
+              <Text size="xs" fw={500}>
+                {cnt.toLocaleString()}
+              </Text>
+            </Group>
+          ))}
+        </Stack>
+      </Card>
+
+      {qs && (
+        <Card withBorder padding="sm" radius="md">
+          <CardTitle>{t("graphStatsPanel.queryExecution")}</CardTitle>
+          <Stack gap={4}>
+            {qs.total_elapsed_ms !== undefined && (
+              <StatRow label={t("graphStatsPanel.total")} value={`${qs.total_elapsed_ms.toFixed(1)} ms`} />
+            )}
+            {(qs.sources ?? []).map((s, i) => (
+              <Stack key={i} gap={2} mt={i > 0 ? "xs" : undefined}>
+                <Text size="xs" fw={600}>
+                  {s.field}
+                </Text>
+                {s.strategy !== "federated" && (
+                  <Group justify="space-between" gap="xs">
+                    <Text size="xs" c="dimmed">
+                      {t("graphStatsPanel.source")}
+                    </Text>
+                    <Text size="xs" ff="monospace">
+                      {s.source}
+                    </Text>
+                  </Group>
+                )}
+                <Group justify="space-between" gap="xs">
+                  <Text size="xs" c="dimmed">
+                    {t("graphStatsPanel.strategy")}
+                  </Text>
+                  <Text size="xs">{s.strategy}</Text>
+                </Group>
+                <Group justify="space-between" gap="xs">
+                  <Text size="xs" c="dimmed">
+                    {t("graphStatsPanel.elapsed")}
+                  </Text>
+                  <Text size="xs">{s.elapsed_ms.toFixed(1)} ms</Text>
+                </Group>
+                <Group justify="space-between" gap="xs">
+                  <Text size="xs" c="dimmed">
+                    {t("graphStatsPanel.rows")}
+                  </Text>
+                  <Text size="xs">{s.rows}</Text>
+                </Group>
+                {s.cache_hit !== undefined && (
+                  <Group justify="space-between" gap="xs">
+                    <Text size="xs" c="dimmed">
+                      {t("graphStatsPanel.cache")}
+                    </Text>
+                    <Text size="xs">{s.cache_hit ? t("graphStatsPanel.cacheHit") : t("graphStatsPanel.cacheMiss")}</Text>
+                  </Group>
+                )}
+              </Stack>
             ))}
-          </div>
-
-          <div className="gs-card">
-            <div className="gs-card-title" title={TOOLTIPS["Edges by type"]} style={{ cursor: "help" }}>Edges by type</div>
-            {instant.edgesByType.map(([type, cnt]) => (
-              <div key={type} className="gs-kv">
-                <span className="gs-kv-key">{type}</span>
-                <span className="gs-kv-val">{cnt.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-
-          {qs && (
-            <div className="gs-card">
-              <div className="gs-card-title">Query execution</div>
-              {qs.total_elapsed_ms !== undefined && (
-                <div className="gs-stat-row">
-                  <span className="gs-stat-label">Total</span>
-                  <span className="gs-stat-value">{qs.total_elapsed_ms.toFixed(1)} ms</span>
-                </div>
-              )}
-              {(qs.sources ?? []).map((s, i) => (
-                <div key={i} className="gs-qs-source">
-                  <div className="gs-qs-source-name">{s.field}</div>
-                  {s.strategy !== "federated" && <div className="gs-kv"><span className="gs-kv-key">source</span><span className="gs-kv-val gs-qs-mono">{s.source}</span></div>}
-                  <div className="gs-kv"><span className="gs-kv-key">strategy</span><span className="gs-kv-val">{s.strategy}</span></div>
-                  <div className="gs-kv"><span className="gs-kv-key">elapsed</span><span className="gs-kv-val">{s.elapsed_ms.toFixed(1)} ms</span></div>
-                  <div className="gs-kv"><span className="gs-kv-key">rows</span><span className="gs-kv-val">{s.rows}</span></div>
-                  {s.cache_hit !== undefined && <div className="gs-kv"><span className="gs-kv-key">cache</span><span className="gs-kv-val">{s.cache_hit ? "hit" : "—"}</span></div>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          </Stack>
+        </Card>
       )}
-    </div>
+    </SimpleGrid>
   );
 }

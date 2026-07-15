@@ -14,6 +14,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
+import { Group, SegmentedControl, Checkbox, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { runSql } from "../api/admin";
 import {
@@ -48,6 +50,7 @@ import { ViewModal } from "./sql/ViewModal";
 // ── SqlPage ──────────────────────────────────────────────────────────────────
 
 export function SqlPage() {
+  const { t } = useTranslation();
   const { checkedDomains } = useDomainFilter();
   const location = useLocation();
   const navigate = useNavigate();
@@ -719,71 +722,48 @@ export function SqlPage() {
       }}
     >
       {/* Header */}
-      <div
+      <Group
+        justify="space-between"
+        wrap="nowrap"
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
           padding: "0.75rem 1rem",
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <span style={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.02em" }}>
-            SQL Explorer
-          </span>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 0,
-              border: "1px solid var(--border)",
-              borderRadius: "5px",
-              overflow: "hidden",
-              marginLeft: "0.5rem",
-            }}
-          >
-            {(["sql", "canvas"] as TopTab[]).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setTopTab(tab)}
-                style={{
-                  padding: "0.2rem 0.6rem",
-                  fontSize: "0.75rem",
-                  background: topTab === tab ? "var(--primary)" : "none",
-                  color: topTab === tab ? "#fff" : "var(--text-muted)",
-                  border: "none",
-                  cursor: "pointer",
-                  textTransform: "capitalize",
-                  fontWeight: topTab === tab ? 600 : 400,
-                }}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginLeft: "auto" }}>
+        <Group gap="0.75rem" wrap="nowrap">
+          <Text fw={600} size="0.9rem" style={{ letterSpacing: "0.02em" }}>
+            {t("sqlPage.title")}
+          </Text>
+          <SegmentedControl
+            size="xs"
+            value={topTab}
+            onChange={(v) => setTopTab(v as TopTab)}
+            data={[
+              { label: t("sqlPage.tabSql"), value: "sql" },
+              { label: t("sqlPage.tabCanvas"), value: "canvas" },
+            ]}
+            data-testid="sql-page-top-tabs"
+          />
+        </Group>
+        <Group gap="0.75rem" wrap="nowrap" ml="auto">
           {execMs !== null && (
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-              {execMs} ms
-            </span>
+            <Text size="0.75rem" c="var(--text-muted)">
+              {t("sqlPage.execMs", { ms: execMs })}
+            </Text>
           )}
-          <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={statsEnabled}
-              onChange={(e) => {
-                setStatsEnabled(e.target.checked);
-                localStorage.setItem("sql:statsEnabled", String(e.target.checked));
-              }}
-              style={{ marginRight: 2 }}
-            />
-            Query Stats
-          </label>
-        </div>
-      </div>
+          <Checkbox
+            size="xs"
+            label={t("sqlPage.queryStats")}
+            checked={statsEnabled}
+            onChange={(e) => {
+              setStatsEnabled(e.currentTarget.checked);
+              localStorage.setItem("sql:statsEnabled", String(e.currentTarget.checked));
+            }}
+            data-testid="sql-page-stats-checkbox"
+          />
+        </Group>
+      </Group>
 
       {/* Body: sidebar + right pane */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>

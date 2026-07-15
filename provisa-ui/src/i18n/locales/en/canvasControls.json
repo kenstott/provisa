@@ -1,0 +1,13 @@
+{
+  "canvasControls": {
+    "toolbarLabel": "Canvas controls",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fitToScreen": "Fit to screen",
+    "switchToHierarchy": "Switch to hierarchical layout",
+    "switchToForce": "Switch to force layout",
+    "nudgeLayout": "Nudge layout — nudges selected nodes (or all if none selected); hold to keep iterating",
+    "edgeLength": "Edge length",
+    "edgeLengthValue": "{{value}}px"
+  }
+}

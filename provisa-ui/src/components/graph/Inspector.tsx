@@ -13,7 +13,9 @@
    alias inputs when the selected edge changes; this is intentional. */
 
 import { useRef, useState, useMemo, useCallback } from "react";
-import { Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { ActionIcon, Badge, Button, Menu, Table, Text, TextInput, Tooltip } from "@mantine/core";
+import { Braces, Check, ChevronRight, Copy, X } from "lucide-react";
 import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor, getStableNodeId } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
@@ -44,17 +46,6 @@ interface InspectorProps {
 
 const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "deg_in", "deg_out", "deg_total"]);
 
-function CopyIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
-      <path d="M4 4h7v1H4zM4 6h7v1H4zM4 8h5v1H4z" opacity="0.6"/>
-      <rect x="1" y="2" width="9" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2"/>
-      <rect x="5" y="5" width="9" height="9" rx="1" fill="#111318" stroke="currentColor" strokeWidth="1.2"/>
-      <path d="M7 7h5v1H7zM7 9h5v1H7zM7 11h3v1H7z"/>
-    </svg>
-  );
-}
-
 export function Inspector({
   selected,
   graphStats,
@@ -68,6 +59,7 @@ export function Inspector({
   onSaveEdgeAlias,
   pkMap,
 }: InspectorProps) {
+  const { t } = useTranslation();
   const [inspView, setInspView] = useState<"details" | "json">("details");
   const [showPalette, setShowPalette] = useState(false);
   const [edgeCql, setEdgeCql] = useState("");
@@ -144,116 +136,170 @@ export function Inspector({
   if (!selected) {
     return (
       <div className="gf-inspector" style={{ width, flexShrink: 0 }}>
-        <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
+        <div
+          className="gf-inspector-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("graphInspector.resizePanel")}
+          onMouseDown={onResizeStart}
+        />
         <div className="gf-insp-header">
-          <span className="gf-insp-header-title">Overview</span>
+          <Text component="span" className="gf-insp-header-title">
+            {t("graphInspector.overview")}
+          </Text>
           <div className="gf-insp-header-actions">
-            <button className="gf-insp-close" onClick={onClose} title="Hide panel">›</button>
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              className="gf-insp-close"
+              aria-label={t("graphInspector.hidePanel")}
+              onClick={onClose}
+              data-testid="inspector-hide"
+            >
+              <ChevronRight size={14} />
+            </ActionIcon>
           </div>
         </div>
         {overviewData && overviewData.nodeCount > 0 ? (
           <div className="gf-overview">
-            <div className="gf-overview-section-label">Node labels</div>
+            <div className="gf-overview-section-label">{t("graphInspector.nodeLabels")}</div>
             <div className="gf-overview-chips">
-              <span className="gf-overview-chip gf-overview-chip--all">
+              <Badge variant="filled" radius="xl" className="gf-overview-chip gf-overview-chip--all">
                 *({overviewData.nodeCount.toLocaleString()})
-              </span>
+              </Badge>
               {overviewData.nodesByLabel.map(([lbl, cnt]) => (
-                <span
+                <Badge
                   key={lbl}
+                  variant="filled"
+                  radius="xl"
                   className="gf-overview-chip"
                   style={{ background: colorOverrides[lbl] ?? labelColor(lbl) }}
                 >
                   {lbl} ({cnt.toLocaleString()})
-                </span>
+                </Badge>
               ))}
             </div>
-            <div className="gf-overview-section-label">Relationship types</div>
+            <div className="gf-overview-section-label">{t("graphInspector.relationshipTypes")}</div>
             <div className="gf-overview-chips">
-              <span className="gf-overview-chip gf-overview-chip--all">
+              <Badge variant="filled" radius="xl" className="gf-overview-chip gf-overview-chip--all">
                 *({overviewData.edgeCount.toLocaleString()})
-              </span>
+              </Badge>
               {overviewData.edgesByType.map(([type, cnt]) => (
-                <span key={type} className="gf-overview-chip gf-overview-chip--rel">
+                <Badge key={type} variant="filled" radius="sm" className="gf-overview-chip gf-overview-chip--rel">
                   {type} ({cnt.toLocaleString()})
-                </span>
+                </Badge>
               ))}
             </div>
             <div className="gf-overview-summary">
-              Displaying {overviewData.nodeCount.toLocaleString()} nodes, {overviewData.edgeCount.toLocaleString()} relationships.
+              {t("graphInspector.summary", {
+                nodeCount: overviewData.nodeCount.toLocaleString(),
+                edgeCount: overviewData.edgeCount.toLocaleString(),
+              })}
             </div>
           </div>
         ) : (
-          <div className="gf-inspector-hint">Click a node or edge to inspect its properties.</div>
+          <div className="gf-inspector-hint">{t("graphInspector.hint")}</div>
         )}
       </div>
     );
   }
 
-  const headerLabel = isN ? "Node properties" : "Relationship properties";
+  const headerLabel = isN ? t("graphInspector.nodeProperties") : t("graphInspector.relationshipProperties");
   const chipLabel = isN ? (typeName || label) : label;
 
   return (
     <div className="gf-inspector" style={{ width }}>
-      <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
+      <div
+        className="gf-inspector-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t("graphInspector.resizePanel")}
+        onMouseDown={onResizeStart}
+      />
       <div className="gf-insp-header">
-        <span className="gf-insp-header-title">{headerLabel}</span>
+        <Text component="span" className="gf-insp-header-title">
+          {headerLabel}
+        </Text>
         <div className="gf-insp-header-actions">
-          <button
-            className={`gf-insp-viewbtn gf-insp-copy-all${copiedKey === "__all__" ? " active" : ""}`}
-            onClick={handleCopyAll}
-            title="Copy all properties as JSON"
+          <Tooltip label={t("graphInspector.copyAll")} withinPortal>
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              className={`gf-insp-viewbtn gf-insp-copy-all${copiedKey === "__all__" ? " active" : ""}`}
+              aria-label={t("graphInspector.copyAll")}
+              onClick={handleCopyAll}
+              data-testid="inspector-copy-all"
+            >
+              <Copy size={12} />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={inspView === "json" ? t("graphInspector.showDetails") : t("graphInspector.showJson")} withinPortal>
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              className={`gf-insp-viewbtn ${inspView === "json" ? "active" : ""}`}
+              aria-label={inspView === "json" ? t("graphInspector.showDetails") : t("graphInspector.showJson")}
+              aria-pressed={inspView === "json"}
+              onClick={() => setInspView(inspView === "json" ? "details" : "json")}
+              data-testid="inspector-toggle-view"
+            >
+              <Braces size={14} />
+            </ActionIcon>
+          </Tooltip>
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            className="gf-insp-close"
+            aria-label={t("graphInspector.close")}
+            onClick={onClose}
+            data-testid="inspector-close"
           >
-            <CopyIcon />
-          </button>
-          <button
-            className={`gf-insp-viewbtn ${inspView === "json" ? "active" : ""}`}
-            onClick={() => setInspView(inspView === "json" ? "details" : "json")}
-            title={inspView === "json" ? "Show details" : "Show JSON"}
-          >
-            {}
-          </button>
-          <button className="gf-insp-close" onClick={onClose} title="Close">
-            ✕
-          </button>
+            <X size={14} />
+          </ActionIcon>
         </div>
       </div>
 
       <div className="gf-insp-chip-row">
         {isN && domainPrefix && (
-          <div
+          <Badge
+            variant="filled"
+            radius="xl"
             className="gf-inspector-badge"
             style={{ background: colorOverrides[domainPrefix] ?? labelColor(domainPrefix) }}
-            title="Domain"
+            title={t("graphInspector.domain")}
           >
             {domainPrefix}
-          </div>
+          </Badge>
         )}
-        <div style={{ position: "relative" }}>
-          <div
-            className={isN ? "gf-inspector-badge" : "graph-rel-badge"}
-            style={isN ? { background: color, cursor: "pointer" } : { cursor: "pointer" }}
-            title="Click to change color"
-            onClick={() => setShowPalette((p) => !p)}
-          >
-            {chipLabel}
-          </div>
-          {showPalette && (
-            <div className="gf-color-palette">
-              {PALETTE.map((c) => (
-                <button
-                  key={c}
-                  className="gf-color-swatch"
-                  style={{ background: c, outline: color === c ? "2px solid #fff" : "none" }}
-                  onClick={() => {
-                    onColorChange(label, c);
-                    setShowPalette(false);
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        <Menu position="bottom-start" withinPortal transitionProps={{ duration: 0 }} opened={showPalette} onChange={setShowPalette}>
+          <Menu.Target>
+            <Badge
+              component="button"
+              type="button"
+              variant="filled"
+              radius={isN ? "xl" : "sm"}
+              className={isN ? "gf-inspector-badge" : "graph-rel-badge"}
+              style={isN ? { background: color, cursor: "pointer" } : { cursor: "pointer" }}
+              title={t("graphInspector.changeColor")}
+              aria-label={t("graphInspector.changeColor")}
+              data-testid="inspector-color-trigger"
+            >
+              {chipLabel}
+            </Badge>
+          </Menu.Target>
+          <Menu.Dropdown className="gf-color-palette">
+            {PALETTE.map((c) => (
+              <Menu.Item
+                key={c}
+                className="gf-color-swatch"
+                aria-label={t("graphInspector.colorSwatch", { color: c })}
+                aria-current={color === c ? "true" : undefined}
+                style={{ background: c, outline: color === c ? "2px solid #fff" : "none" }}
+                onClick={() => onColorChange(label, c)}
+              />
+            ))}
+          </Menu.Dropdown>
+        </Menu>
       </div>
 
       {!isN && (
@@ -281,36 +327,41 @@ export function Inspector({
           </div>
           {matchedRel && onSaveEdgeAlias && (
             <div className="gf-insp-alias-form">
-              <label className="gf-insp-alias-label">
-                CQL Alias (UPPER_SNAKE)
-                <input
-                  className="gf-insp-alias-input"
-                  value={edgeCql}
-                  onChange={(e) => setEdgeCql(e.target.value)}
-                  placeholder={matchedRel.computedCypherAlias ?? (selected.data as GEdge).type}
-                />
-              </label>
-              <label className="gf-insp-alias-label">
-                GQL Alias (camelCase)
-                <input
-                  className="gf-insp-alias-input"
-                  value={edgeGql}
-                  onChange={(e) => setEdgeGql(e.target.value)}
-                  placeholder={matchedRel.graphqlAlias ?? ""}
-                />
-              </label>
-              <button
+              <TextInput
+                className="gf-insp-alias-label"
+                classNames={{ input: "gf-insp-alias-input" }}
+                size="xs"
+                label={t("graphInspector.cqlAliasLabel")}
+                value={edgeCql}
+                onChange={(e) => setEdgeCql(e.currentTarget.value)}
+                placeholder={matchedRel.computedCypherAlias ?? (selected.data as GEdge).type}
+                data-testid="inspector-cql-alias"
+              />
+              <TextInput
+                className="gf-insp-alias-label"
+                classNames={{ input: "gf-insp-alias-input" }}
+                size="xs"
+                label={t("graphInspector.gqlAliasLabel")}
+                value={edgeGql}
+                onChange={(e) => setEdgeGql(e.currentTarget.value)}
+                placeholder={matchedRel.graphqlAlias ?? ""}
+                data-testid="inspector-gql-alias"
+              />
+              <Button
                 className="gf-insp-alias-save"
-                title="Save"
-                disabled={savingAlias}
+                variant="default"
+                size="compact-xs"
+                aria-label={t("graphInspector.saveAlias")}
+                loading={savingAlias}
                 onClick={async () => {
                   setSavingAlias(true);
                   await onSaveEdgeAlias(matchedRel.id, edgeCql, edgeGql);
                   setSavingAlias(false);
                 }}
+                data-testid="inspector-save-alias"
               >
-                {savingAlias ? <span className="btn-spinner" /> : <Check size={14} />}
-              </button>
+                {!savingAlias && <Check size={14} />}
+              </Button>
             </div>
           )}
         </>
@@ -320,56 +371,60 @@ export function Inspector({
         <div className="gf-insp-props-section">
           {isN && graphStats && (
             <>
-              <div className="gf-insp-section-label">Graph stats</div>
-              <table className="gf-inspector-table">
-                <tbody>
+              <div className="gf-insp-section-label">{t("graphInspector.graphStats")}</div>
+              <Table className="gf-inspector-table">
+                <Table.Tbody>
                   {(Object.entries(graphStats) as [string, string | number][])
                     .sort(([a], [b]) => a.localeCompare(b))
                     .map(([k, v]) => {
                       const vs = String(v);
                       return (
-                        <tr key={k} className="gf-prop-row">
-                          <td className="gf-prop-key">{k}</td>
-                          <td className="gf-prop-val">{vs}</td>
-                          <td className="gf-prop-copy-cell">
-                            <button
+                        <Table.Tr key={k} className="gf-prop-row">
+                          <Table.Td className="gf-prop-key">{k}</Table.Td>
+                          <Table.Td className="gf-prop-val">{vs}</Table.Td>
+                          <Table.Td className="gf-prop-copy-cell">
+                            <ActionIcon
+                              variant="subtle"
+                              size="xs"
                               className={`gf-prop-copy${copiedKey === `stats:${k}` ? " copied" : ""}`}
-                              title="Copy value"
+                              aria-label={t("graphInspector.copyValue")}
                               onClick={() => handleCopy(`stats:${k}`, vs)}
                             >
-                              <CopyIcon />
-                            </button>
-                          </td>
-                        </tr>
+                              <Copy size={12} />
+                            </ActionIcon>
+                          </Table.Td>
+                        </Table.Tr>
                       );
                     })}
-                </tbody>
-              </table>
+                </Table.Tbody>
+              </Table>
             </>
           )}
-          <div className="gf-insp-section-label">Properties</div>
-          <table className="gf-inspector-table">
-            <tbody>
+          <div className="gf-insp-section-label">{t("graphInspector.properties")}</div>
+          <Table className="gf-inspector-table">
+            <Table.Tbody>
               {propRows.map(([k, v]) => {
                 const vs = v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
                 return (
-                  <tr key={k} className="gf-prop-row">
-                    <td className="gf-prop-key">{k}</td>
-                    <td className="gf-prop-val">{vs}</td>
-                    <td className="gf-prop-copy-cell">
-                      <button
+                  <Table.Tr key={k} className="gf-prop-row">
+                    <Table.Td className="gf-prop-key">{k}</Table.Td>
+                    <Table.Td className="gf-prop-val">{vs}</Table.Td>
+                    <Table.Td className="gf-prop-copy-cell">
+                      <ActionIcon
+                        variant="subtle"
+                        size="xs"
                         className={`gf-prop-copy${copiedKey === k ? " copied" : ""}`}
-                        title="Copy value"
+                        aria-label={t("graphInspector.copyValue")}
                         onClick={() => handleCopy(k, vs)}
                       >
-                        <CopyIcon />
-                      </button>
-                    </td>
-                  </tr>
+                        <Copy size={12} />
+                      </ActionIcon>
+                    </Table.Td>
+                  </Table.Tr>
                 );
               })}
-            </tbody>
-          </table>
+            </Table.Tbody>
+          </Table>
         </div>
       )}
 

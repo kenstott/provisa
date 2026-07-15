@@ -9,8 +9,11 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "../test-utils/render";
+import i18n from "../i18n";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
+
+const t = i18n.getFixedT("en");
 
 const createSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 const deleteSpy = vi.fn(async () => ({ success: true, message: "ok" }));
@@ -37,42 +40,43 @@ describe("ScheduledTasks — SQL trigger", () => {
     mockTasks = [];
   });
 
+  const selectKind = async (label: string) => {
+    fireEvent.click(screen.getByRole("textbox", { name: t("scheduledTasks.kindLabel") }));
+    const listbox = await screen.findByRole("listbox");
+    fireEvent.click(within(listbox).getByText(label));
+  };
+
   it("shows the SQL statement field only when kind is SQL", async () => {
     render(<ScheduledTasks />);
-    fireEvent.click(screen.getByText("+ Scheduled Task"));
+    fireEvent.click(screen.getByTestId("scheduled-tasks-toggle-form"));
 
     // Webhook kind by default: no SQL field.
-    expect(screen.queryByLabelText("SQL statement")).toBeNull();
+    expect(screen.queryByLabelText(t("scheduledTasks.sqlLabel"))).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Trigger kind"), {
-      target: { value: "sql" },
-    });
-    expect(screen.getByLabelText("SQL statement")).toBeTruthy();
+    await selectKind(t("scheduledTasks.kindSql"));
+    expect(await screen.findByLabelText(t("scheduledTasks.sqlLabel"))).toBeTruthy();
     // Date-token hint is visible.
     expect(screen.getByText(/\{\{YYYY-MM-DD\}\}/)).toBeTruthy();
   });
 
   it("creates a SQL trigger with the entered statement + cron", async () => {
     render(<ScheduledTasks />);
-    fireEvent.click(screen.getByText("+ Scheduled Task"));
-    fireEvent.change(screen.getByLabelText("Trigger kind"), {
-      target: { value: "sql" },
-    });
-    fireEvent.change(screen.getByPlaceholderText("my-task"), {
+    fireEvent.click(screen.getByTestId("scheduled-tasks-toggle-form"));
+    await selectKind(t("scheduledTasks.kindSql"));
+    fireEvent.change(screen.getByLabelText(t("scheduledTasks.idLabel")), {
       target: { value: "nightly" },
     });
-    fireEvent.change(screen.getByPlaceholderText("My Task"), {
+    fireEvent.change(screen.getByLabelText(t("scheduledTasks.nameLabel")), {
       target: { value: "Nightly Rollup" },
     });
-    fireEvent.change(screen.getByPlaceholderText("0 * * * *"), {
+    fireEvent.change(screen.getByLabelText(t("scheduledTasks.cronLabel")), {
       target: { value: "0 2 * * *" },
     });
-    fireEvent.change(screen.getByLabelText("SQL statement"), {
+    fireEvent.change(await screen.findByLabelText(t("scheduledTasks.sqlLabel")), {
       target: { value: "INSERT INTO audit.d SELECT '{{YYYY-MM-DD}}'" },
     });
 
-    // Form open → toggle button now reads "✕", so this matches the submit button.
-    fireEvent.click(screen.getByText("+ Scheduled Task"));
+    fireEvent.click(screen.getByTestId("scheduled-tasks-submit"));
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
     expect(createSpy).toHaveBeenCalledWith({
@@ -101,7 +105,7 @@ describe("ScheduledTasks — SQL trigger", () => {
     render(<ScheduledTasks />);
     expect(screen.getByText("INSERT INTO audit.d SELECT 1")).toBeTruthy();
 
-    fireEvent.click(screen.getByText("Delete"));
+    fireEvent.click(screen.getByRole("button", { name: t("scheduledTasks.delete") }));
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("nightly"));
   });
 });

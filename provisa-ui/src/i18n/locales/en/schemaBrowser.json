@@ -1,0 +1,15 @@
+{
+  "schemaBrowser": {
+    "collapsePanel": "Collapse schema panel",
+    "expandPanel": "Expand schema panel",
+    "heading": "Schema",
+    "dragToCanvas": "Drag to canvas",
+    "insertQualifiedName": "Double-click to insert qualified name",
+    "insertTableReference": "Insert table reference in SQL editor",
+    "tableAliasName": "Table alias/name",
+    "domainId": "Domain ID",
+    "insertQuotedColumn": "Click to insert quoted column",
+    "previousPage": "Previous page",
+    "nextPage": "Next page"
+  }
+}

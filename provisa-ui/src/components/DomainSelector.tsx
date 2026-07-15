@@ -8,66 +8,54 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useRef } from "react";
+import { Button, Menu } from "@mantine/core";
+import { Check, ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 
 export function DomainSelector() {
+  const { t } = useTranslation();
   const { selectedDomain, availableDomains, selectDomain } = useAuth();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  const label = selectedDomain ?? "All Domains";
+  const label = selectedDomain ?? t("domainSelector.all");
 
   function handleSelect(domain: string | null) {
     selectDomain(domain);
-    setOpen(false);
   }
 
   return (
-    <div className="domain-selector" ref={ref}>
-      <button
-        type="button"
-        className="domain-selector-trigger"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-      >
-        <span className="domain-selector-label">Domain: {label}</span>
-        <span className="domain-selector-arrow">{open ? "▴" : "▾"}</span>
-      </button>
-      {open && (
-        <div className="domain-selector-dropdown">
-          <div
-            className={`domain-selector-option${selectedDomain === null ? " domain-selector-option--selected" : ""}`}
-            onClick={() => handleSelect(null)}
-            role="option"
-            aria-selected={selectedDomain === null}
+    <Menu position="bottom-start" withinPortal transitionProps={{ duration: 0 }}>
+      <Menu.Target>
+        <Button
+          variant="default"
+          size="compact-sm"
+          rightSection={<ChevronDown size={14} aria-hidden />}
+          data-testid="domain-selector-trigger"
+        >
+          {t("domainSelector.label", { domain: label })}
+        </Button>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item
+          aria-label={t("domainSelector.all")}
+          aria-current={selectedDomain === null ? "true" : undefined}
+          leftSection={selectedDomain === null ? <Check size={14} aria-hidden /> : undefined}
+          onClick={() => handleSelect(null)}
+        >
+          {t("domainSelector.all")}
+        </Menu.Item>
+        {availableDomains.map((d) => (
+          <Menu.Item
+            key={d}
+            aria-label={d}
+            aria-current={selectedDomain === d ? "true" : undefined}
+            leftSection={selectedDomain === d ? <Check size={14} aria-hidden /> : undefined}
+            onClick={() => handleSelect(d)}
           >
-            All Domains
-          </div>
-          {availableDomains.map((d) => (
-            <div
-              key={d}
-              className={`domain-selector-option${selectedDomain === d ? " domain-selector-option--selected" : ""}`}
-              onClick={() => handleSelect(d)}
-              role="option"
-              aria-selected={selectedDomain === d}
-            >
-              {d}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            {d}
+          </Menu.Item>
+        ))}
+      </Menu.Dropdown>
+    </Menu>
   );
 }

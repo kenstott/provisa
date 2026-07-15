@@ -9,6 +9,21 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  Badge,
+  Button,
+  Card,
+  Group,
+  Pagination,
+  Select,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Textarea,
+} from "@mantine/core";
+import { X } from "lucide-react";
 import {
   useScheduledTasks,
   useToggleScheduledTask,
@@ -21,17 +36,15 @@ const PAGE_SIZE = 50;
 
 type TriggerKind = "webhook" | "sql";
 
-// REQ-1004: date/timestamp tokens substituted with the run's execution time.
-const SQL_TOKENS = "{{yyyymmdd}} · {{YYYY-MM-DD}} · {{iso8601}} · {{timestamp}}";
-
 export function ScheduledTasks() {
+  const { t } = useTranslation();
   const { scheduledTasks: tasks, loading } = useScheduledTasks();
   const { toggleScheduledTask } = useToggleScheduledTask();
   const { createScheduledTask } = useCreateScheduledTask();
   const { deleteScheduledTask } = useDeleteScheduledTask();
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [taskPage, setTaskPage] = useState(0);
+  const [taskPage, setTaskPage] = useState(1);
 
   const [webhooks, setWebhooks] = useState<TrackedWebhook[]>([]);
   useEffect(() => {
@@ -74,15 +87,15 @@ export function ScheduledTasks() {
 
   const handleCreate = async () => {
     if (!newId.trim() || !newName.trim() || !newCron.trim()) {
-      setFormMsg("ID, Name, and Cron are required.");
+      setFormMsg(t("scheduledTasks.validationRequired"));
       return;
     }
     if (newKind === "webhook" && !newWebhookName) {
-      setFormMsg("Webhook is required.");
+      setFormMsg(t("scheduledTasks.validationWebhookRequired"));
       return;
     }
     if (newKind === "sql" && !newSql.trim()) {
-      setFormMsg("SQL statement is required.");
+      setFormMsg(t("scheduledTasks.validationSqlRequired"));
       return;
     }
     setCreating(true);
@@ -116,194 +129,229 @@ export function ScheduledTasks() {
     }
   };
 
-  if (loading) return <p>Loading scheduled tasks...</p>;
+  if (loading) return <Text>{t("scheduledTasks.loading")}</Text>;
 
   const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE));
-  const paged = tasks.slice(taskPage * PAGE_SIZE, (taskPage + 1) * PAGE_SIZE);
+  const paged = tasks.slice((taskPage - 1) * PAGE_SIZE, taskPage * PAGE_SIZE);
 
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
-        <button onClick={() => { setShowForm((v) => !v); setFormMsg(""); }}>
-          {showForm ? "✕" : "+ Scheduled Task"}
-        </button>
-      </div>
+    <Stack gap="md">
+      <Group justify="flex-end">
+        <Button
+          data-testid="scheduled-tasks-toggle-form"
+          onClick={() => {
+            setShowForm((v) => !v);
+            setFormMsg("");
+          }}
+          leftSection={showForm ? <X size={14} /> : undefined}
+          aria-expanded={showForm}
+        >
+          {showForm ? t("scheduledTasks.close") : t("scheduledTasks.addButton")}
+        </Button>
+      </Group>
 
       {showForm && (
-        <div className="form-card" style={{ marginBottom: "1rem" }}>
-          <label>
-            Kind
-            <select
-              aria-label="Trigger kind"
+        <Card withBorder padding="md">
+          <Stack gap="sm" maw={480}>
+            <Select
+              label={t("scheduledTasks.kindLabel")}
+              aria-label={t("scheduledTasks.kindLabel")}
+              data={[
+                { value: "webhook", label: t("scheduledTasks.kindWebhook") },
+                { value: "sql", label: t("scheduledTasks.kindSql") },
+              ]}
               value={newKind}
-              onChange={(e) => {
-                setNewKind(e.target.value as TriggerKind);
+              onChange={(v) => {
+                setNewKind((v as TriggerKind) ?? "webhook");
                 setFormMsg("");
               }}
-            >
-              <option value="webhook">Webhook</option>
-              <option value="sql">SQL</option>
-            </select>
-          </label>
-          <label>
-            ID
-            <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="my-task" />
-          </label>
-          <label>
-            Name
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="My Task" />
-          </label>
-          <label>
-            Cron Expression
-            <input value={newCron} onChange={(e) => setNewCron(e.target.value)} placeholder="0 * * * *" />
-          </label>
+              allowDeselect={false}
+            />
+            <TextInput
+              label={t("scheduledTasks.idLabel")}
+              value={newId}
+              onChange={(e) => setNewId(e.currentTarget.value)}
+              placeholder={t("scheduledTasks.idPlaceholder")}
+            />
+            <TextInput
+              label={t("scheduledTasks.nameLabel")}
+              value={newName}
+              onChange={(e) => setNewName(e.currentTarget.value)}
+              placeholder={t("scheduledTasks.namePlaceholder")}
+            />
+            <TextInput
+              label={t("scheduledTasks.cronLabel")}
+              value={newCron}
+              onChange={(e) => setNewCron(e.currentTarget.value)}
+              placeholder={t("scheduledTasks.cronPlaceholder")}
+            />
 
-          {newKind === "webhook" ? (
-            <>
-              <label>
-                Webhook
-                <select
-                  value={newWebhookName}
-                  onChange={(e) => {
-                    setNewWebhookName(e.target.value);
+            {newKind === "webhook" ? (
+              <>
+                <Select
+                  label={t("scheduledTasks.webhookLabel")}
+                  placeholder={t("scheduledTasks.webhookPlaceholder")}
+                  data={webhooks.map((w) => ({ value: w.name, label: w.name }))}
+                  value={newWebhookName || null}
+                  onChange={(v) => {
+                    setNewWebhookName(v ?? "");
                     setArgValues({});
                   }}
-                >
-                  <option value="">Select webhook…</option>
-                  {webhooks.map((w) => (
-                    <option key={w.name} value={w.name}>{w.name}</option>
-                  ))}
-                </select>
-              </label>
-              {selectedWebhook?.arguments.map((arg) => (
-                <label key={arg.name}>
-                  {arg.name} <span style={{ color: "var(--text-muted)", fontSize: "0.8em" }}>({arg.type})</span>
-                  <input
+                />
+                {selectedWebhook?.arguments.map((arg) => (
+                  <TextInput
+                    key={arg.name}
+                    label={
+                      <>
+                        {arg.name}{" "}
+                        <Text span c="dimmed" fz="xs">
+                          ({arg.type})
+                        </Text>
+                      </>
+                    }
                     value={argValues[arg.name] ?? ""}
                     onChange={(e) =>
-                      setArgValues((prev) => ({ ...prev, [arg.name]: e.target.value }))
+                      setArgValues((prev) => ({ ...prev, [arg.name]: e.currentTarget.value }))
                     }
                     placeholder={arg.type}
                   />
-                </label>
-              ))}
-            </>
-          ) : (
-            <label>
-              SQL Statement
-              <textarea
-                aria-label="SQL statement"
-                value={newSql}
-                onChange={(e) => setNewSql(e.target.value)}
-                placeholder="INSERT INTO audit.runs SELECT * FROM ... WHERE d = '{{YYYY-MM-DD}}'"
-                rows={4}
-                style={{ fontFamily: "monospace", width: "100%" }}
-              />
-              <span style={{ color: "var(--text-muted)", fontSize: "0.8em" }}>
-                Date tokens: {SQL_TOKENS}
-              </span>
-            </label>
-          )}
+                ))}
+              </>
+            ) : (
+              <Stack gap={4}>
+                <Textarea
+                  label={t("scheduledTasks.sqlLabel")}
+                  aria-label={t("scheduledTasks.sqlLabel")}
+                  value={newSql}
+                  onChange={(e) => setNewSql(e.currentTarget.value)}
+                  placeholder={t("scheduledTasks.sqlPlaceholder")}
+                  rows={4}
+                  styles={{ input: { fontFamily: "monospace" } }}
+                />
+                <Text c="dimmed" fz="xs">
+                  {t("scheduledTasks.sqlTokensHint")}
+                </Text>
+              </Stack>
+            )}
 
-          {formMsg && <p style={{ color: "var(--error)" }}>{formMsg}</p>}
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button onClick={handleCreate} disabled={creating}>
-              {creating ? "Creating..." : "+ Scheduled Task"}
-            </button>
-          </div>
-        </div>
+            {formMsg && (
+              <Text c="red" fz="sm">
+                {formMsg}
+              </Text>
+            )}
+            <Group>
+              <Button
+                data-testid="scheduled-tasks-submit"
+                onClick={handleCreate}
+                disabled={creating}
+              >
+                {creating ? t("scheduledTasks.creating") : t("scheduledTasks.addButton")}
+              </Button>
+            </Group>
+          </Stack>
+        </Card>
       )}
 
       {tasks.length === 0 ? (
-        <p>No scheduled tasks configured.</p>
+        <Text c="dimmed">{t("scheduledTasks.empty")}</Text>
       ) : (
         <>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Cron Expression</th>
-                <th>Kind</th>
-                <th>Target</th>
-                <th>Enabled</th>
-                <th>Last Run</th>
-                <th>Next Run</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {paged.map((task) => (
-                <tr key={task.id}>
-                  <td>
-                    <code>{task.id}</code>
-                  </td>
-                  <td>{task.name}</td>
-                  <td>
-                    <code>{task.cronExpression}</code>
-                  </td>
-                  <td>
-                    <span className="status-badge">{task.kind}</span>
-                  </td>
-                  <td className="reasoning-cell" style={{ maxWidth: 300 }}>
-                    {task.kind === "sql" ? <code>{task.sql}</code> : task.webhookUrl || "—"}
-                  </td>
-                  <td>
-                    <span className={`status-badge status-${task.enabled ? "active" : "disabled"}`}>
-                      {task.enabled ? "enabled" : "disabled"}
-                    </span>
-                  </td>
-                  <td>{task.lastRunAt ? new Date(task.lastRunAt).toLocaleString() : "never"}</td>
-                  <td>{task.nextRunAt ? new Date(task.nextRunAt).toLocaleString() : "—"}</td>
-                  <td style={{ display: "flex", gap: "0.35rem" }}>
-                    <button
-                      onClick={() => handleToggle(task.id, !task.enabled)}
-                      disabled={toggling === task.id}
-                      style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                    >
-                      {toggling === task.id ? "..." : task.enabled ? "Disable" : "Enable"}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(task.id)}
-                      disabled={deleting === task.id}
-                      style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                    >
-                      {deleting === task.id ? "..." : "Delete"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Table.ScrollContainer minWidth={800}>
+            <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("scheduledTasks.colId")}</Table.Th>
+                  <Table.Th>{t("scheduledTasks.colName")}</Table.Th>
+                  <Table.Th>{t("scheduledTasks.colCron")}</Table.Th>
+                  <Table.Th>{t("scheduledTasks.colKind")}</Table.Th>
+                  <Table.Th>{t("scheduledTasks.colTarget")}</Table.Th>
+                  <Table.Th>{t("scheduledTasks.colEnabled")}</Table.Th>
+                  <Table.Th>{t("scheduledTasks.colLastRun")}</Table.Th>
+                  <Table.Th>{t("scheduledTasks.colNextRun")}</Table.Th>
+                  <Table.Th>
+                    <Text span visibleFrom="xs" fz="sm" fw={600}>
+                      {t("scheduledTasks.colActions")}
+                    </Text>
+                  </Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {paged.map((task) => (
+                  <Table.Tr key={task.id}>
+                    <Table.Td>
+                      <Text ff="monospace" fz="sm">
+                        {task.id}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>{task.name}</Table.Td>
+                    <Table.Td>
+                      <Text ff="monospace" fz="sm">
+                        {task.cronExpression}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="light">{task.kind}</Badge>
+                    </Table.Td>
+                    <Table.Td maw={300}>
+                      {task.kind === "sql" ? (
+                        <Text ff="monospace" fz="sm">
+                          {task.sql}
+                        </Text>
+                      ) : (
+                        task.webhookUrl || t("scheduledTasks.noTarget")
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge color={task.enabled ? "green" : "gray"} variant="light">
+                        {task.enabled ? t("scheduledTasks.enabled") : t("scheduledTasks.disabled")}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {task.lastRunAt
+                        ? new Date(task.lastRunAt).toLocaleString()
+                        : t("scheduledTasks.never")}
+                    </Table.Td>
+                    <Table.Td>
+                      {task.nextRunAt
+                        ? new Date(task.nextRunAt).toLocaleString()
+                        : t("scheduledTasks.noNextRun")}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" wrap="nowrap">
+                        <Button
+                          size="compact-xs"
+                          onClick={() => handleToggle(task.id, !task.enabled)}
+                          disabled={toggling === task.id}
+                        >
+                          {toggling === task.id
+                            ? t("scheduledTasks.working")
+                            : task.enabled
+                              ? t("scheduledTasks.disable")
+                              : t("scheduledTasks.enable")}
+                        </Button>
+                        <Button
+                          size="compact-xs"
+                          color="red"
+                          variant="light"
+                          onClick={() => handleDelete(task.id)}
+                          disabled={deleting === task.id}
+                        >
+                          {deleting === task.id ? t("scheduledTasks.working") : t("scheduledTasks.delete")}
+                        </Button>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
           {totalPages > 1 && (
-            <div
-              style={{
-                display: "flex",
-                gap: "0.5rem",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                padding: "0.5rem 0",
-              }}
-            >
-              <button onClick={() => setTaskPage(0)} disabled={taskPage === 0}>
-                «
-              </button>
-              <button onClick={() => setTaskPage((p) => p - 1)} disabled={taskPage === 0}>
-                ‹
-              </button>
-              <span>
-                Page {taskPage + 1} / {totalPages}
-              </span>
-              <button onClick={() => setTaskPage((p) => p + 1)} disabled={taskPage >= totalPages - 1}>
-                ›
-              </button>
-              <button onClick={() => setTaskPage(totalPages - 1)} disabled={taskPage >= totalPages - 1}>
-                »
-              </button>
-            </div>
+            <Group justify="flex-end">
+              <Pagination total={totalPages} value={taskPage} onChange={setTaskPage} size="sm" />
+            </Group>
           )}
         </>
       )}
-    </div>
+    </Stack>
   );
 }

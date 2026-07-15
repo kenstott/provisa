@@ -8,6 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { TextInput, PasswordInput } from "@mantine/core";
+import { useTranslation } from "react-i18next";
+
 /** Reusable auth fields for username/password */
 export function AuthUserPass({
   authFields,
@@ -16,25 +19,21 @@ export function AuthUserPass({
   authFields: Record<string, string>;
   setAuthFields: (f: Record<string, string>) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
-      <label>
-        Username{" "}
-        <input
-          required
-          value={authFields.username ?? ""}
-          onChange={(e) => setAuthFields({ ...authFields, username: e.target.value })}
-        />
-      </label>
-      <label>
-        Password{" "}
-        <input
-          type="password"
-          required
-          value={authFields.password ?? ""}
-          onChange={(e) => setAuthFields({ ...authFields, password: e.target.value })}
-        />
-      </label>
+      <TextInput
+        label={t("authUserPass.username")}
+        required
+        value={authFields.username ?? ""}
+        onChange={(e) => setAuthFields({ ...authFields, username: e.currentTarget.value })}
+      />
+      <PasswordInput
+        label={t("authUserPass.password")}
+        required
+        value={authFields.password ?? ""}
+        onChange={(e) => setAuthFields({ ...authFields, password: e.currentTarget.value })}
+      />
     </>
   );
 }

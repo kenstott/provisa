@@ -1,0 +1,18 @@
+{
+  "mcpServerTab": {
+    "intro": "The Model Context Protocol (MCP) server exposes governed catalog discovery and SQL execution to external AI agents. Every call is governed by the caller's role — the server never defaults to admin.",
+    "loading": "Loading…",
+    "statusLabel": "Status",
+    "statusEnabled": "Enabled",
+    "statusDisabled": "Disabled",
+    "endpointLabel": "Endpoint",
+    "transportLabel": "Transport",
+    "stdioRoleLabel": "Bound stdio role",
+    "stdioRoleNone": "none set — stdio calls require <code>{{envVar}}</code>",
+    "maxRowsLabel": "Row ceiling (run_sql)",
+    "enableHint": "The MCP server is opt-in. Set the <code>{{enableEnvVar}}</code> environment variable to a port and restart the service to enable it. For the local stdio transport, also set <code>{{roleEnvVar}}</code> to a provisa role.",
+    "toolsHeading": "Exposed Tools",
+    "colTool": "Tool",
+    "colDescription": "Description"
+  }
+}

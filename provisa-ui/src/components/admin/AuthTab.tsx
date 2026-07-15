@@ -8,12 +8,26 @@
 // permission from the copyright holder.
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Group,
+  PasswordInput,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { Check } from "lucide-react";
 import { fetchAuthConfig, setAuthConfig, type AuthConfigState } from "../../api/admin";
 
 // REQ-919: configure the authentication provider (firebase/keycloak/oauth/simple) + role settings.
 // The provider binds at startup, so changes take effect on restart.
 export function AuthTab() {
+  const { t } = useTranslation();
   const [s, setS] = useState<AuthConfigState | null>(null);
   const [provider, setProvider] = useState("none");
   const [config, setConfig] = useState<Record<string, Record<string, string>>>({});
@@ -60,7 +74,7 @@ export function AuthTab() {
         if (v !== "") providerConfig[f.config_key] = v;
       }
       const res = await setAuthConfig({ provider, config: providerConfig, common });
-      setMsg(res.restart_required ? "Saved. Restart the service to apply." : "Saved.");
+      setMsg(res.restart_required ? t("authTab.savedRestartRequired") : t("authTab.saved"));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -68,112 +82,122 @@ export function AuthTab() {
     }
   };
 
-  if (error && !s) return <div className="error-banner">{error}</div>;
-  if (!s || !common) return <div>Loading…</div>;
+  if (error && !s) return <Alert color="red">{error}</Alert>;
+  if (!s || !common) return <Text>{t("authTab.loading")}</Text>;
 
   const setField = (key: string, value: string) =>
     setConfig((c) => ({ ...c, [provider]: { ...(c[provider] ?? {}), [key]: value } }));
 
-  return (
-    <div className="auth-tab" style={{ maxWidth: 720 }}>
-      <p className="muted">
-        Authentication verifies who is calling; roles + RLS decide what they can see. Pick the
-        identity provider and configure its connection.
-      </p>
+  const providerOptions = s.providers.map((p) => ({
+    value: p.key,
+    label: p.key === s.provider ? `${p.label}${t("authTab.current")}` : p.label,
+  }));
 
-      <div className="form-card">
-        <label style={{ gridColumn: "1 / -1" }}>
-          Provider
-          <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-            {s.providers.map((p) => (
-              <option key={p.key} value={p.key}>
-                {p.label}
-                {p.key === s.provider ? " (current)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+  return (
+    <Stack gap="md" maw={720}>
+      <Text c="dimmed" size="sm">
+        {t("authTab.intro")}
+      </Text>
+
+      <Stack gap="sm">
+        <Select
+          label={t("authTab.providerLabel")}
+          data={providerOptions}
+          value={provider}
+          onChange={(v) => v && setProvider(v)}
+          allowDeselect={false}
+          data-testid="auth-provider-select"
+        />
         {current && (
-          <p className="muted" style={{ gridColumn: "1 / -1", margin: 0, fontSize: "0.8rem" }}>
+          <Text c="dimmed" size="xs">
             {current.description}
-          </p>
+          </Text>
         )}
 
-        {(current?.config_fields ?? []).map((f) => (
-          <label key={f.config_key} style={{ gridColumn: "1 / -1" }}>
-            {f.label}
-            {f.required ? " *" : ""}
-            <input
-              type={f.secret ? "password" : "text"}
+        {(current?.config_fields ?? []).map((f) =>
+          f.secret ? (
+            <PasswordInput
+              key={f.config_key}
+              label={f.label}
+              required={f.required}
               value={config[provider]?.[f.config_key] ?? ""}
               placeholder={f.placeholder}
-              autoComplete={f.secret ? "new-password" : "off"}
-              onChange={(e) => setField(f.config_key, e.target.value)}
+              autoComplete="new-password"
+              onChange={(e) => setField(f.config_key, e.currentTarget.value)}
             />
-          </label>
-        ))}
+          ) : (
+            <TextInput
+              key={f.config_key}
+              label={f.label}
+              required={f.required}
+              value={config[provider]?.[f.config_key] ?? ""}
+              placeholder={f.placeholder}
+              autoComplete="off"
+              onChange={(e) => setField(f.config_key, e.currentTarget.value)}
+            />
+          ),
+        )}
 
         {provider === "simple" && (
-          <label style={{ gridColumn: "1 / -1" }}>
-            <input
-              type="checkbox"
-              checked={common.allow_simple_auth}
-              onChange={(e) => setCommon({ ...common, allow_simple_auth: e.target.checked })}
-            />
-            Allow simple auth (production guard — required to enable username/password)
-          </label>
+          <Checkbox
+            label={t("authTab.allowSimpleAuth")}
+            checked={common.allow_simple_auth}
+            onChange={(e) => setCommon({ ...common, allow_simple_auth: e.currentTarget.checked })}
+          />
         )}
-      </div>
+      </Stack>
 
-      <h3>Roles</h3>
-      <div className="form-card">
-        <label>
-          Default role
-          <input
-            type="text"
-            value={common.default_role}
-            onChange={(e) => setCommon({ ...common, default_role: e.target.value })}
-          />
-        </label>
-        <label>
-          Role assignments from
-          <select
-            value={common.assignments_source}
-            onChange={(e) => setCommon({ ...common, assignments_source: e.target.value })}
-          >
-            <option value="claims">Token claims</option>
-            <option value="provisa">Provisa (local assignments)</option>
-          </select>
-        </label>
-        <label style={{ gridColumn: "1 / -1" }}>
-          <input
-            type="checkbox"
-            checked={common.trust_upstream}
-            onChange={(e) => setCommon({ ...common, trust_upstream: e.target.checked })}
-          />
-          Trust upstream proxy identity headers
-        </label>
-      </div>
+      <Title order={4}>{t("authTab.roles")}</Title>
+      <Stack gap="sm">
+        <TextInput
+          label={t("authTab.defaultRole")}
+          value={common.default_role}
+          onChange={(e) => setCommon({ ...common, default_role: e.currentTarget.value })}
+        />
+        <Select
+          label={t("authTab.assignmentsFrom")}
+          data={[
+            { value: "claims", label: t("authTab.assignmentsSourceClaims") },
+            { value: "provisa", label: t("authTab.assignmentsSourceProvisa") },
+          ]}
+          value={common.assignments_source}
+          onChange={(v) => v && setCommon({ ...common, assignments_source: v })}
+          allowDeselect={false}
+        />
+        <Checkbox
+          label={t("authTab.trustUpstream")}
+          checked={common.trust_upstream}
+          onChange={(e) => setCommon({ ...common, trust_upstream: e.currentTarget.checked })}
+        />
+      </Stack>
 
-      <div
-        className="warn-banner"
-        style={{ marginTop: "1rem", padding: "0.5rem 0.75rem", border: "1px solid #b8860b", borderRadius: 4 }}
-      >
-        ⚠ {s.restart_required_note}
-      </div>
+      <Alert color="yellow" variant="light">
+        {s.restart_required_note}
+      </Alert>
 
-      <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
-        <button
-          className="btn-primary"
+      <Group gap="sm" align="center">
+        <Button
           onClick={save}
           disabled={saving || missingRequired}
-          title="Save auth settings"
+          title={t("authTab.saveButton")}
+          aria-label={t("authTab.saveButton")}
+          loading={saving}
+          leftSection={saving ? undefined : <Check size={14} />}
+          data-testid="auth-save-button"
         >
-          {saving ? <span className="btn-spinner" /> : <Check size={14} />}
-        </button>
-        {msg && <span className="success-text">{msg}</span>}
-        {error && <span className="error-text">{error}</span>}
-      </div>
-    </div>
+          {t("authTab.saveButton")}
+        </Button>
+        {msg && (
+          <Text c="green" size="sm">
+            {msg}
+          </Text>
+        )}
+        {error && (
+          <Text c="red" size="sm">
+            {error}
+          </Text>
+        )}
+      </Group>
+    </Stack>
   );
 }
