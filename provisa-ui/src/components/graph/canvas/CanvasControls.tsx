@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import type { MutableRefObject } from "react";
-import { ActionIcon, Divider, Group, Slider, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Divider, Group, Text, Tooltip } from "@mantine/core";
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ZoomInIcon, ZoomOutIcon, FitScreenIcon } from "../GraphIcons";
@@ -90,7 +90,7 @@ export function CanvasControls({
           <FitScreenIcon size={15} />
         </ActionIcon>
       </Tooltip>
-      <Divider orientation="vertical" className="gf-ctrl-divider" />
+      <Divider orientation="horizontal" className="gf-ctrl-divider" />
       <Tooltip label={toggleLayoutLabel}>
         <ActionIcon
           variant={layoutMode === "hierarchy" ? "filled" : "subtle"}
@@ -128,23 +128,25 @@ export function CanvasControls({
           <RefreshCw size={15} aria-hidden />
         </ActionIcon>
       </Tooltip>
-      <Divider orientation="vertical" className="gf-ctrl-divider" />
+      <Divider orientation="horizontal" className="gf-ctrl-divider" />
       <Text component="label" htmlFor="canvas-edge-distance" size="sm" c="dimmed" title={t("canvasControls.edgeLength")}>
         ↔
       </Text>
-      <Slider
+      {/* Native vertical range — Mantine Slider has no vertical orientation, and
+          this control must stack in the narrow vertical canvas toolbar. */}
+      <input
+        type="range"
         id="canvas-edge-distance"
         className="gf-ctrl-slider"
-        w={90}
-        size="sm"
         min={40}
         max={400}
         step={10}
         value={edgeDistance}
-        label={(v) => t("canvasControls.edgeLengthValue", { value: v })}
+        title={t("canvasControls.edgeLengthValue", { value: edgeDistance })}
         aria-label={t("canvasControls.edgeLength")}
         data-testid="canvas-edge-distance"
-        onChange={(v) => {
+        onChange={(e) => {
+          const v = Number(e.currentTarget.value);
           edgeDistanceRef.current = v;
           setEdgeDistance(v);
           localStorage.setItem("provisa.graph.edgeDistance", String(v));

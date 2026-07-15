@@ -711,26 +711,17 @@
   color: #fff !important;
 }
 
+/* Mantine Select owns the input box; the class only constrains overall width
+ * and carries the "grouping active" highlight (applied to the input child). */
 .gf-attr-select {
-  height: 26px;
-  border-radius: 4px;
-  border: 1px solid #2a2d3e;
-  background: transparent;
-  color: var(--text-muted);
+  width: 132px;
+}
+.gf-attr-select .mantine-Select-input {
   font-size: 0.75rem;
-  cursor: pointer;
-  padding: 0 4px;
-  max-width: 90px;
 }
-
-.gf-attr-select:hover {
-  background: #1e2130;
-  color: var(--text);
-}
-
-.gf-attr-select.gf-icon-btn--on {
-  background: #2e5fa3 !important;
-  color: #fff !important;
+.gf-attr-select.gf-icon-btn--on .mantine-Select-input {
+  background: #2e5fa3;
+  color: #fff;
   border-color: #2e5fa3;
 }
 
@@ -892,11 +883,14 @@
   font-size: 0.85rem;
 }
 
+/* Native vertical range for the edge-distance picker (Mantine has no vertical
+ * Slider). writing-mode makes the range track vertical in the narrow toolbar. */
 .gf-ctrl-slider {
   writing-mode: vertical-lr;
   direction: rtl;
   width: 28px;
   height: 80px;
+  margin: 2px 0;
   cursor: pointer;
   accent-color: var(--primary);
 }
@@ -1068,11 +1062,14 @@
 }
 
 .gf-overview-chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   padding: 0.15rem 0.5rem;
   border-radius: 20px;
   font-size: 0.7rem;
   font-weight: 600;
+  line-height: 1.4;
   color: #fff;
   white-space: nowrap;
 }
