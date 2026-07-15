@@ -13,11 +13,22 @@ import LanguageDetector from "i18next-browser-languagedetector";
 import en from "./locales/en.json";
 
 // Frontend internationalization runtime (REQ-1012). English is the base
-// catalog and the source of truth for keys; additional locales are added by
-// dropping a sibling JSON file and registering it in `resources`.
+// catalog and the source of truth for keys. Core keys live in en.json; each
+// migrated component owns a per-namespace file under ./locales/en/*.json which
+// is glob-merged here — so parallel component migrations never edit a shared
+// catalog. Each file's top-level keys become translation namespaces.
+const perComponent = import.meta.glob<Record<string, unknown>>(
+  "./locales/en/*.json",
+  { eager: true, import: "default" },
+);
+const componentCatalog = Object.values(perComponent).reduce(
+  (acc, mod) => ({ ...acc, ...mod }),
+  {} as Record<string, unknown>,
+);
+
 export const defaultNS = "translation";
 export const resources = {
-  en: { translation: en },
+  en: { translation: { ...en, ...componentCatalog } },
 } as const;
 
 void i18n
