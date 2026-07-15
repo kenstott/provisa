@@ -107,6 +107,8 @@ OTLP_ENDPOINT=""
 [ "$OBS_MODE" = "collector" ] && OTLP_ENDPOINT=$(ask "OTLP collector endpoint (e.g. http://otel-gateway:4317)")
 
 echo
+echo "The demo is a complete, fully functional deployment — pick it with confidence; nothing is limited."
+echo "To reconfigure with other options later, just re-run this deploy script (or re-apply with different values)."
 DEMO_CHOICE=$(pick "Install the demo dataset with guided tour?" "No" "Yes")
 [ "$DEMO_CHOICE" = "Yes" ] && INSTALL_DEMO="true" || INSTALL_DEMO="false"
 

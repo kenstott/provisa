@@ -185,7 +185,9 @@ redis:
 
 # Demo add-on (parity with the desktop wizard's demo toggle). When enabled, the
 # demo mock-source servers are deployed and PROVISA_INSTALL_DEMO is set so the app
-# seeds the demo domains and the UI opens the guided tour.
+# seeds the demo domains and the UI opens the guided tour. The demo is a complete,
+# fully functional deployment — nothing is limited; set this to false and helm
+# upgrade to reconfigure with your own sources later.
 demo:
   enabled: false
   graphql:

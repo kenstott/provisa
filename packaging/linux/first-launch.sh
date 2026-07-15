@@ -324,6 +324,8 @@ resolve_deployment() {
     read -rp "$(printf "${CYAN}[provisa]${NC} OTLP collector endpoint: ")" OTLP_ENDPOINT
   fi
 
+  printf "${CYAN}[provisa]${NC} The demo is a complete, fully functional install — pick it with confidence; nothing is limited.\n"
+  printf "${CYAN}[provisa]${NC} To reconfigure with other options later, just run this setup again.\n"
   local dm; read -rp "$(printf "${CYAN}[provisa]${NC} Install the demo dataset with guided tour (y/N): ")" dm
   case "$dm" in [yY]|[yY][eE][sS]) INSTALL_DEMO="y" ;; *) INSTALL_DEMO="n" ;; esac
   ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}"

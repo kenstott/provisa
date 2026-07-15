@@ -136,7 +136,8 @@ $chkDemo.Size = New-Object System.Drawing.Size(500, 22)
 $form.Controls.Add($chkDemo)
 
 $note = New-Object System.Windows.Forms.Label
-$note.Text = 'Trino, the bundled Grafana/Prometheus stack, and the Docker demo require the Container installer.'
+$note.Text = 'The demo is a complete, fully functional install — pick it with confidence; rerun this installer ' +
+  'anytime to reconfigure. Trino / the Docker demo require the Container installer.'
 $note.Location = New-Object System.Drawing.Point(25, 378)
 $note.Size = New-Object System.Drawing.Size(505, 40)
 $note.ForeColor = [System.Drawing.Color]::Gray

@@ -70,6 +70,10 @@ struct DeploymentView: View {
                         .foregroundStyle(.white)
                 }
                 .toggleStyle(.checkbox)
+                Text("A complete, fully functional Provisa install — pick it with confidence; nothing is limited. To reconfigure with other options later, just run the installer again.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 60)
 

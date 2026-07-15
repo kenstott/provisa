@@ -103,6 +103,8 @@ function Resolve-Deployment {
     default { $script:ObsMode = 'none'; $script:OtlpEndpoint = '' }
   }
 
+  Write-Host 'The demo is a complete, fully functional install — pick it with confidence; nothing is limited.' -ForegroundColor DarkGray
+  Write-Host 'To reconfigure with other options later, just run this setup again.' -ForegroundColor DarkGray
   $script:Demo = if ((Read-Host 'Install the demo dataset with guided tour (y/N)') -match '^(y|Y)') { 'true' } else { 'false' }
 }
 

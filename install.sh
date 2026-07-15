@@ -163,6 +163,8 @@ resolve_deployment() {
     fi
 
     # ── Demo ──
+    echo "The demo is a complete, fully functional install — pick it with confidence; nothing is limited."
+    echo "To reconfigure with other options later, just run this installer again."
     local demo_ans
     demo_ans="$(prompt_or_default "Install the demo dataset with guided tour (y/n)" "n")"
     case "$demo_ans" in

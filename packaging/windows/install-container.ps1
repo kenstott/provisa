@@ -140,6 +140,8 @@ function Write-ContainerConfig {
     $demoFlag = if ($env:PROVISA_INSTALL_DEMO -match '^(y|Y|true)') { 'true' } else { 'false' }
   } else {
     $obsFlag  = if ((Read-Host 'Install bundled Grafana/Prometheus observability (y/N)') -match '^(y|Y)') { 'true' } else { 'false' }
+    Write-Host 'The demo is a complete, fully functional install — pick it with confidence; nothing is limited.' -ForegroundColor DarkGray
+    Write-Host 'To reconfigure with other options later, just run this installer again.' -ForegroundColor DarkGray
     $demoFlag = if ((Read-Host 'Install the demo dataset with guided tour (y/N)') -match '^(y|Y)') { 'true' } else { 'false' }
   }
   $keep += "obs: $obsFlag"

@@ -137,7 +137,7 @@ variable "otlp_endpoint" {
 }
 
 variable "install_demo" {
-  description = "Install the demo dataset and open the guided tour."
+  description = "Install the demo dataset and open the guided tour. A complete, fully functional deployment — nothing is limited; re-apply with false to reconfigure with your own sources later."
   type        = bool
   default     = false
 }
