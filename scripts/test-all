@@ -18,6 +18,22 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Load .env so credential-gated lanes (Snowflake/Databricks/BigQuery/Fabric/Synapse/…) see their
+# warehouse creds instead of skipping. `set -a` exports every var the file defines; skip cleanly
+# when absent. Pre-set environment wins — we don't clobber vars already exported by the caller.
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    [[ "$_line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$_line" =~ ^[[:space:]]*$ ]] && continue
+    _key="${_line%%=*}"
+    [[ -n "${!_key:-}" ]] && continue  # caller-provided value wins
+    eval "export $_line"
+  done < .env
+  set +a
+fi
+
 COV_ARGS=(--cov=provisa --cov-report= -p no:cacheprovider)
 rm -f .coverage .coverage.*
 
