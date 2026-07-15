@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Save, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { fetchSettings, fetchFederationEngine } from "../api/admin";
 import type { PlatformSettings, FederationEngineState } from "../api/admin";
@@ -891,7 +891,7 @@ export function SourcesPage() {
                                 <X size={14} />
                               </button>
                               <button type="submit" className="btn-icon-primary" title="Save">
-                                <Save size={14} />
+                                <Check size={14} />
                               </button>
                             </div>
                           </form>

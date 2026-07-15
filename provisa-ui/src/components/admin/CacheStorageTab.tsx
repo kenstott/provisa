@@ -8,7 +8,7 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
-import { Save } from "lucide-react";
+import { Check } from "lucide-react";
 import { fetchCacheStorage, setCacheStorage, type CacheStorageState } from "../../api/admin";
 
 // REQ-917: configure the Redis hot cache + materialize store. Both bind connections at startup,
@@ -161,7 +161,7 @@ export function CacheStorageTab() {
           disabled={saving}
           title="Save cache & storage settings"
         >
-          {saving ? <span className="btn-spinner" /> : <Save size={14} />}
+          {saving ? <span className="btn-spinner" /> : <Check size={14} />}
         </button>
         {msg && <span className="success-text">{msg}</span>}
         {error && <span className="error-text">{error}</span>}

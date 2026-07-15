@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
-import { Trash2, Save } from "lucide-react";
+import { Trash2, Check } from "lucide-react";
 import {
   useDomains,
   useTables,
@@ -504,7 +504,7 @@ export function AdminPage() {
                     disabled={settingsSaving}
                     title="Save settings"
                   >
-                    {settingsSaving ? <span className="btn-spinner" /> : <Save size={14} />}
+                    {settingsSaving ? <span className="btn-spinner" /> : <Check size={14} />}
                   </button>
                   {settingsMsg && <span className="upload-msg">{settingsMsg}</span>}
                 </div>

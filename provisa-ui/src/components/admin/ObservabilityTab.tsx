@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useEffect, useRef, type RefObject } from "react";
-import { Save } from "lucide-react";
+import { Check } from "lucide-react";
 import {
   updateSettings,
   reloadQueryEngineCatalog,
@@ -288,7 +288,7 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
         </label>
         <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
           <button className="btn-primary" onClick={save} disabled={saving} title="Save">
-            {saving ? <span className="btn-spinner" /> : <Save size={14} />}
+            {saving ? <span className="btn-spinner" /> : <Check size={14} />}
           </button>
           {msg && <span className="upload-msg">{msg}</span>}
         </div>

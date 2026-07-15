@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { Fragment } from "react";
-import { Save, X, Loader2 } from "lucide-react";
+import { Check, X, Loader2 } from "lucide-react";
 import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import type { RegisteredTable, Source } from "../../types/admin";
@@ -975,7 +975,7 @@ export function TableEditForm({
               style={{ animation: "spin 1s linear infinite" }}
             />
           ) : (
-            <Save size={14} />
+            <Check size={14} />
           )}
         </button>
       </div>

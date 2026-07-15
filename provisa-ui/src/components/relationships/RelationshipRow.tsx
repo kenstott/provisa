@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import React from "react";
-import { Trash2, Pencil, Save, X, ArrowLeftRight } from "lucide-react";
+import { Trash2, Pencil, Check, X, ArrowLeftRight } from "lucide-react";
 import type { Relationship, RegisteredTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import type { RelForm } from "./relationship-types";
@@ -561,7 +561,7 @@ export function RelationshipRow({
                     onClick={onEditSave}
                     disabled={!!saving}
                   >
-                    <Save size={14} />
+                    <Check size={14} />
                   </button>
                 </div>
               </div>

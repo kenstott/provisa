@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Trash2, Pencil, Save, X } from "lucide-react";
+import { Trash2, Pencil, Check, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import {
   fetchActions,
@@ -399,7 +399,7 @@ export function CommandsPage() {
                                 title="Save"
                                 disabled={saving}
                               >
-                                <Save size={14} />
+                                <Check size={14} />
                               </button>
                             </div>
                           </form>
@@ -653,7 +653,7 @@ export function CommandsPage() {
                                 title="Save"
                                 disabled={saving}
                               >
-                                <Save size={14} />
+                                <Check size={14} />
                               </button>
                             </div>
                           </form>

@@ -13,7 +13,7 @@
    alias inputs when the selected edge changes; this is intentional. */
 
 import { useRef, useState, useMemo, useCallback } from "react";
-import { Save } from "lucide-react";
+import { Check } from "lucide-react";
 import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor, getStableNodeId } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
@@ -309,7 +309,7 @@ export function Inspector({
                   setSavingAlias(false);
                 }}
               >
-                {savingAlias ? <span className="btn-spinner" /> : <Save size={14} />}
+                {savingAlias ? <span className="btn-spinner" /> : <Check size={14} />}
               </button>
             </div>
           )}

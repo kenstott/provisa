@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { Trash2, Pencil, Save, X } from "lucide-react";
+import { Trash2, Pencil, Check, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { createPortal } from "react-dom";
 import {
@@ -321,7 +321,7 @@ export function SecurityRolesPage() {
               onClick={handleSaveRole}
               disabled={saving}
             >
-              <Save size={14} />
+              <Check size={14} />
             </button>
           </div>
         </div>
@@ -466,7 +466,7 @@ export function SecurityRolesPage() {
                               onClick={handleSaveRole}
                               disabled={saving}
                             >
-                              <Save size={14} />
+                              <Check size={14} />
                             </button>
                           </div>
                         </div>
@@ -714,7 +714,7 @@ export function SecurityRlsPage() {
               onClick={handleSaveRule}
               disabled={saving}
             >
-              <Save size={14} />
+              <Check size={14} />
             </button>
           </div>
         </div>
@@ -958,7 +958,7 @@ export function SecurityRlsPage() {
                                 onClick={handleSaveRule}
                                 disabled={saving}
                               >
-                                <Save size={14} />
+                                <Check size={14} />
                               </button>
                             </div>
                           </div>
