@@ -11,15 +11,31 @@ from __future__ import annotations
 import re
 
 
-_ALIAS_RE = re.compile(r'\b(t|a|j|n|sub|cte)\d+\b', re.IGNORECASE)
+_ALIAS_RE = re.compile(r"\b(t|a|j|n|sub|cte)\d+\b", re.IGNORECASE)
 _QUOTED_ALIAS_RE = re.compile(r'"(t|a|j|n|sub|cte)\d+"', re.IGNORECASE)
 
 
 def _normalize_sql(sql: str) -> str:
     """Strip generated numeric aliases so assertions are alias-position-insensitive."""
-    sql = _QUOTED_ALIAS_RE.sub('__alias__', sql)
-    sql = _ALIAS_RE.sub('__alias__', sql)
-    return re.sub(r'\s+', ' ', sql).strip()
+    sql = _QUOTED_ALIAS_RE.sub("__alias__", sql)
+    sql = _ALIAS_RE.sub("__alias__", sql)
+    return re.sub(r"\s+", " ", sql).strip()
+
+
+def stub_materialization_noop(state) -> None:
+    """Pin the post-governance materialization inputs on a MagicMock AppState.
+
+    ``_materialize_api_to_engine_cache`` reads ``hot_manager``, ``api_endpoints``,
+    ``graphql_remote_sources`` and ``tenant_db`` per FROM/JOIN table. A bare MagicMock
+    auto-vivifies each into a truthy mock, faking an API/hot table and injecting a garbage
+    ``VALUES`` CTE (``() AS (VALUES )``) that fails to parse. A real ServerState has no hot
+    tier / API endpoints / GQL remotes in these tests, so set them to their real-state empties
+    to keep the direct-execution path a no-op.
+    """
+    state.hot_manager = None
+    state.api_endpoints = {}
+    state.graphql_remote_sources = {}
+    state.tenant_db = None
 
 
 def assert_sql_contains(sql: str, fragment: str) -> None:
@@ -31,9 +47,7 @@ def assert_sql_contains(sql: str, fragment: str) -> None:
     norm_sql = _normalize_sql(sql)
     norm_frag = _normalize_sql(fragment)
     assert norm_frag in norm_sql, (
-        f"SQL fragment not found.\n"
-        f"Fragment: {norm_frag}\n"
-        f"SQL:      {norm_sql}"
+        f"SQL fragment not found.\nFragment: {norm_frag}\nSQL:      {norm_sql}"
     )
 
 

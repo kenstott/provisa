@@ -299,6 +299,9 @@ class TestFlightDoGetWithRealData:
         state.masking_rules = {}
         state.flight_client = None
         state.engine_conn = None
+        from tests.helpers import stub_materialization_noop
+
+        stub_materialization_noop(state)
         from provisa.federation.engine import build_trino_engine
         from provisa.federation.runtime import EngineRuntime
 
