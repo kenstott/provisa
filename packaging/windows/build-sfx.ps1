@@ -196,7 +196,10 @@ begin
     (embedded database + built-in telemetry) and the remaining choice pages are skipped. }
   DemoPage := CreateInputOptionPage(wpWelcome,
     'Demo', 'Try Provisa with sample data and a guided tour.',
-    'The demo is self-contained (embedded database, built-in telemetry). Check it to skip the deployment options below.',
+    'The demo is a complete, fully functional Provisa install (embedded database, built-in telemetry)' + #13#10 +
+    'with sample data and a guided tour — pick it with confidence; nothing is limited or crippled.' + #13#10 + #13#10 +
+    'Checking it skips the deployment options below. To reconfigure later with other options, just run' + #13#10 +
+    'this installer again and leave the demo unchecked.',
     False, False);
   DemoPage.Add('Install the demo dataset and guided tour');
 
