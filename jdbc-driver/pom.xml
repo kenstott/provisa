@@ -108,6 +108,42 @@
       <version>2.10.1</version>
     </dependency>
 
+    <!-- REQ-690/REQ-694: cloud KMS SDKs for client-side DEK unwrap. provided (+optional): on the
+         compile and test classpath (so the AWS/Azure/GCP KmsProvider implementations compile and
+         unit-test with a mocked client) but NOT bundled into the fat JAR — provided scope keeps
+         the entire SDK transitive subtree out of the shade, so the shipped driver stays lean. The
+         deployer supplies the SDK for their cloud on the runtime classpath; a named provider whose
+         SDK is absent fails loud in KmsProviders (never a silent skip). optional=true stops the
+         SDKs leaking onto downstream consumers that depend on this driver. -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>kms</artifactId>
+      <version>2.48.0</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-security-keyvault-keys</artifactId>
+      <version>4.11.1</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-identity</artifactId>
+      <version>1.18.4</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.google.cloud</groupId>
+      <artifactId>google-cloud-kms</artifactId>
+      <version>2.51.0</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+
     <!-- Test -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>

@@ -57,9 +57,10 @@ public class ProvisaConnection extends AbstractConnection {
      * Configure client-side decryption from connection params (REQ-690, REQ-694).
      *
      * <p>{@code kms_provider}=local uses a base64 {@code kms_master_key} (tests / local). The
-     * cloud CMK providers (aws/azure/gcp — REQ-694) require their SDK on the classpath and are
-     * documented in {@code docs/arch/jdbc-client-side-encryption.md}; an unknown provider fails
-     * closed rather than silently disabling decryption.
+     * cloud CMK providers (aws/azure/gcp — REQ-694) unwrap the DEK via their cloud KMS Decrypt
+     * API and require their SDK on the runtime classpath; {@link KmsProviders} fails loud if the
+     * named provider's SDK is absent, and an unknown provider fails closed rather than silently
+     * disabling decryption. Documented in {@code docs/arch/jdbc-client-side-encryption.md}.
      */
     public void configureEncryption(String kmsProvider, String kmsKeyArn, String kmsMasterKeyB64)
             throws SQLException {
@@ -67,20 +68,12 @@ public class ProvisaConnection extends AbstractConnection {
             return; // decryption not requested
         }
         this.kmsKeyArn = kmsKeyArn;
-        String p = kmsProvider == null ? "" : kmsProvider.toLowerCase();
-        if ("local".equals(p)) {
-            if (kmsMasterKeyB64 == null) {
-                throw new SQLException("kms_provider=local requires kms_master_key (base64 32-byte key)");
-            }
-            byte[] master = Base64.getDecoder().decode(kmsMasterKeyB64);
-            this.encryptionService = new EnvelopeDecryptor(new LocalKmsProvider(master), 300);
-        } else if ("aws".equals(p) || "azure".equals(p) || "gcp".equals(p)) {
-            throw new SQLException(
-                "kms_provider=" + p + " requires the cloud SDK on the classpath; see "
-                + "docs/arch/jdbc-client-side-encryption.md (REQ-690 e2e, target 2027-Q1)");
-        } else {
-            throw new SQLException("Unknown kms_provider: " + kmsProvider);
+        Map<String, String> params = new HashMap<>();
+        if (kmsMasterKeyB64 != null) {
+            params.put("kms_master_key", kmsMasterKeyB64);
         }
+        KmsProvider provider = KmsProviders.forName(kmsProvider, kmsKeyArn, params);
+        this.encryptionService = new EnvelopeDecryptor(provider, 300);
     }
 
     private JsonObject authenticate(String user, String password) throws Exception {

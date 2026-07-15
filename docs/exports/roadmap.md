@@ -18,7 +18,3 @@
 ## 2026-Q4
 
 - **REQ-1008** [SHOULD] [proposed] MCP Server — Provisa exposes a Model Context Protocol (MCP) server so external AI agents (Claude Desktop, claude.ai connectors, Claude Code) can disco…
-
-## 2027-Q1
-
-- **REQ-690** [MAY] [proposed] Encryption — Client-side decryption in the JDBC driver. Provisa backend passes encrypted blobs through without decrypting. Driver decrypts result colu…

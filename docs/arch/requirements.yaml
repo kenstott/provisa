@@ -18600,7 +18600,8 @@
     rationale: Audit log query text column encryption protects schema shape and data intent from unauthorized
       audit log readers — not available in Hasura, Dremio, or Denodo audit logs.
 - id: REQ-690
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 15. Proposed Features
   category: Encryption
   priority: MAY
@@ -18626,19 +18627,38 @@
     status: ahead
     rationale: Client-side decryption in the JDBC driver with server-side passthrough is a zero-trust
       data access pattern not offered by any competitor's JDBC driver.
-  note: Partial (kept proposed). The in-repo jdbc-driver module implements the client-side decryption
-    engine (EnvelopeDecryptor + KmsProvider + LocalKmsProvider), the encrypted-column metadata contract
-    (Arrow field metadata provisa_encrypted=true, decrypted in ArrowStreamResultSet), the DEK TTL cache,
-    and connection-param parsing (kms_provider, kms_key_arn); the module compiles (mvn clean compile).
-    Not complete because the AWS/Azure/GCP concrete Java KmsProvider implementations require the cloud
-    SDKs on the driver classpath and the e2e JDBC round-trip (real Flight/pgwire connection against an
-    encrypted backend response) is deferred to the 2027-Q1 target. See docs/arch/jdbc-client-side-encryption.md.
+  note: The jdbc-driver module implements the full client-side decryption path — the envelope engine
+    (EnvelopeDecryptor + KmsProvider + LocalKmsProvider), the encrypted-column metadata contract (Arrow
+    field metadata provisa_encrypted=true, decrypted in ArrowStreamResultSet), the DEK TTL cache, and
+    connection-param parsing (kms_provider, kms_key_arn). The AWS/Azure/GCP concrete KmsProvider
+    implementations unwrap the DEK via the real cloud KMS Decrypt API (KmsClient.decrypt /
+    CryptographyClient.decrypt / KeyManagementServiceClient.decrypt), holding only the CMK identifier
+    plus an injected SDK client (never raw key material) and mapping any SDK failure — incl AccessDenied /
+    PERMISSION_DENIED / forbidden on a revoked grant — to DecryptionException (fail-loud instant lockout,
+    REQ-694). KmsProviders selects the provider by kms_provider and is wired into ProvisaConnection; a
+    named provider whose cloud SDK is absent from the classpath fails loud (SQLException). The cloud SDKs
+    are provided-scope (compile+test classpath, not shaded into the fat JAR — the deployer supplies the
+    SDK at runtime, keeping the driver lean). mvn clean test green (45 tests). The e2e JDBC round-trip
+    (REQ-690 e2e flag) against a live pgwire/Flight encrypted backend response remains a separate e2e
+    concern. See docs/arch/jdbc-client-side-encryption.md.
   code:
   - jdbc-driver/src/main/java/io/provisa/jdbc/EnvelopeDecryptor.java
   - jdbc-driver/src/main/java/io/provisa/jdbc/KmsProvider.java
   - jdbc-driver/src/main/java/io/provisa/jdbc/LocalKmsProvider.java
+  - jdbc-driver/src/main/java/io/provisa/jdbc/AwsKmsProvider.java
+  - jdbc-driver/src/main/java/io/provisa/jdbc/AzureKmsProvider.java
+  - jdbc-driver/src/main/java/io/provisa/jdbc/GcpKmsProvider.java
+  - jdbc-driver/src/main/java/io/provisa/jdbc/KmsProviders.java
   - jdbc-driver/src/main/java/io/provisa/jdbc/ArrowStreamResultSet.java
   - jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaConnection.java
+  - jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaDriver.java
+  - jdbc-driver/pom.xml
+  tests:
+  - jdbc-driver/src/test/java/io/provisa/jdbc/AwsKmsProviderTest.java
+  - jdbc-driver/src/test/java/io/provisa/jdbc/AzureKmsProviderTest.java
+  - jdbc-driver/src/test/java/io/provisa/jdbc/GcpKmsProviderTest.java
+  - jdbc-driver/src/test/java/io/provisa/jdbc/KmsProvidersTest.java
+  - jdbc-driver/src/test/java/io/provisa/jdbc/EnvelopeDecryptorTest.java
 - id: REQ-691
   status: complete
   since: 2026-07

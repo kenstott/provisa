@@ -42,16 +42,29 @@ jdbc:provisa://host:8001?kms_provider=aws&kms_key_arn=arn:aws:kms:us-east-1:...:
   `DecryptionException`; the driver never returns ciphertext.
 - `KmsProvider` — client-owned CMK operation (`unwrapDek`). `LocalKmsProvider` is the
   JDK-only implementation used for tests and local round-trips.
+- `AwsKmsProvider` — unwraps the DEK with `KmsClient.decrypt` (AWS SDK for Java v2).
+- `AzureKmsProvider` — unwraps the DEK with `CryptographyClient.decrypt`
+  (`RSA-OAEP-256`, Azure Key Vault Keys).
+- `GcpKmsProvider` — unwraps the DEK with `KeyManagementServiceClient.decrypt`
+  (google-cloud-kms).
+- `KmsProviders` — factory selecting the provider by `kms_provider`, wired into
+  `ProvisaConnection.configureEncryption`.
 
-## Deferred
+Each cloud provider holds only the CMK identifier plus an injected SDK client — never
+raw key material — and maps any SDK failure (including an `AccessDenied` /
+`PERMISSION_DENIED` / forbidden result on a revoked grant) to `DecryptionException`.
+Revoking the `kms:Decrypt` (or Key Vault / IAM) grant is an instant lockout kill
+switch (REQ-694).
 
-The AWS KMS, Azure Key Vault, and GCP KMS concrete `KmsProvider` implementations
-require the respective cloud SDK on the driver classpath and a live cross-account
-grant. Those, plus the end-to-end JDBC round-trip test (a real pgwire/Flight
-connection against an encrypted backend response), are deferred to the REQ-690 target
-of 2027-Q1. The envelope decryptor, the encrypted-column metadata contract, the
-connection-parameter parsing, and the `local` provider are implemented and compile in
-the in-repo `jdbc-driver` module.
+## Cloud SDK classpath
+
+The three cloud SDKs (`software.amazon.awssdk:kms`,
+`com.azure:azure-security-keyvault-keys`, `com.google.cloud:google-cloud-kms`) are
+`provided`-scope dependencies: on the compile and test classpath but not bundled into
+the shaded fat JAR, so the shipped driver stays lean. The deployer supplies the SDK
+for their cloud on the runtime classpath. Naming a `kms_provider` whose SDK is absent
+fails loud (`SQLException: kms_provider=<x> requires its cloud SDK on the classpath`),
+never a silent skip.
 
 ## High-security mode (REQ-693)
 
