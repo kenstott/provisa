@@ -204,7 +204,7 @@ async def _db(tmp_path):
 
 
 def _mv_proc(db, *, emit, subscribers, node="mv.a", deps=("d.replace", "d.append", "d.delta")):
-    async def generate(pending, *, prior_hash=None, ctx=None, preprocess=None):
+    async def generate(pending, *, prior_hash=None, ctx=None, preprocess=None, forced=False):
         return "replace", {"rows": 1}, "h1"
 
     return MVTableProcessor(

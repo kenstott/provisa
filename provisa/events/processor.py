@@ -39,6 +39,17 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _forced_payload(pending: list[dict]) -> dict | None:
+    """REQ-968: the payload of the first FORCED event in the claimed set (``payload.forced``), or
+    None when none of the claimed events is a forced regen. Carries ``reason``/``scope`` and, for a
+    window regen, ``window_id`` + ``as_of``."""
+    for e in pending:
+        payload = e.get("payload") or {}
+        if payload.get("forced"):
+            return payload
+    return None
+
+
 class OwnershipLost(Exception):
     """REQ-959: raised inside the commit transaction when the ownership CAS fails — a peer reclaimed
     this node's work (deadline/heartbeat) mid-flight. Aborts the commit so no ripple double-commits;
@@ -227,7 +238,10 @@ class TableProcessor(ABC):
             await queue.heartbeat(
                 conn, dependent_table=self.node, processor_name=self.name, now=now
             )
-        else:
+        elif not await queue.has_forced_pending(conn, dependent_table=self.node):
+            # REQ-968: a forced-regen event BYPASSES the defer/existence gates below — claim it
+            # immediately (an on-demand replay recomputes regardless of change, quiet, or holiday).
+            # Only NON-forced new work is gated.
             # REQ-962 existence gate: a business-day grain on a holiday has NO window → the periodic
             # MV deterministically does not fire and raises no alarm. Applies only to NEW work; a
             # resumed in-flight claim already opened its window.
@@ -262,10 +276,15 @@ class TableProcessor(ABC):
             )
         prior = await queue.get_node_state(conn, self.node)
         prior_hash = prior["content_hash"] if prior else None
+        # REQ-968: a forced regen skips the output gate and, for a WINDOW scope, pegs the recompute to
+        # the addressed period instead of the just-closed window.
+        forced_payload = _forced_payload(pending)
         # REQ-958: open the processing window this fire is pegged to (calendar-addressable for a
         # periodic node; None for a live node with no peg). ``produce`` reads as-of window.end and the
         # result lands keyed on window_id.
-        window = self._deadline.window(now) if self._deadline is not None else None
+        window = self._forced_window(forced_payload) if forced_payload else None
+        if window is None and self._deadline is not None:
+            window = self._deadline.window(now)
         ctx = NodeContext(
             node=self.node,
             kind=self.kind,
@@ -274,6 +293,7 @@ class TableProcessor(ABC):
                 for e in pending
             ],
             prior_hash=prior_hash,
+            forced=forced_payload is not None,
             window=(window.start, window.end) if window is not None else None,
             window_id=window.window_id if window is not None else None,
         )
@@ -375,6 +395,28 @@ class TableProcessor(ABC):
                 conn, source_table=self.node, event_type="warn", payload={"reasons": ctx.warns}
             )
 
+    def _forced_window(self, forced_payload: dict) -> Window | None:
+        """REQ-968: the calendar-addressable window a forced WINDOW-scope regen recomputes. Built from
+        the payload's ``as_of`` instant (a deterministic instant inside the period) via the deadline
+        source. Fails LOUD when the addressed window does not exist (a live node has no address, or a
+        business-day grain on a holiday) or when the built window's id disagrees with the requested
+        ``window_id`` — a mismatched address is never silently recomputed as a different period."""
+        as_of = forced_payload.get("as_of")
+        if as_of is None or self._deadline is None:
+            return None  # a source/node-scope forced regen has no window peg
+        window = self._deadline.window_for_instant(datetime.fromisoformat(as_of))
+        if window is None:
+            raise ValueError(
+                f"{self.node}: REQ-968 window regen — no calendar window exists for as_of {as_of}"
+            )
+        requested = forced_payload.get("window_id")
+        if requested is not None and window.window_id != requested:
+            raise ValueError(
+                f"{self.node}: REQ-968 window regen — as_of {as_of} resolves to window "
+                f"{window.window_id!r}, not the requested {requested!r}"
+            )
+        return window
+
     def _ready(self, peeked: list[dict], now: datetime) -> bool:
         """True when the deadline SOURCE says fire now (deadline passed, or no source → real-time);
         False → defer so more fan-ins coalesce into the SAME recompute (REQ-958 fan-in collapse /
@@ -465,10 +507,11 @@ class SourceTableProcessor(TableProcessor):
         preprocess hook is set it is threaded into the land closure (REQ-957: after fetch, before
         land)."""
         assert self._land is not None, "SourceTableProcessor.handle requires a land callable"
+        forced = ctx.forced if ctx is not None else False  # REQ-968: bypass the output gate
         if self._preprocess is None:
-            return await self._land(pending, prior_hash=prior_hash)
+            return await self._land(pending, prior_hash=prior_hash, forced=forced)
         return await self._land(
-            pending, prior_hash=prior_hash, ctx=ctx, preprocess=self._preprocess
+            pending, prior_hash=prior_hash, ctx=ctx, preprocess=self._preprocess, forced=forced
         )
 
 
@@ -491,8 +534,9 @@ class MVTableProcessor(TableProcessor):
         ``prior_hash`` (REQ-981 gate: an unchanged MV does not ripple its dependents). When a
         preprocess hook is set it is threaded into the generate closure (REQ-957: after the MV SQL,
         before land)."""
+        forced = ctx.forced if ctx is not None else False  # REQ-968: bypass the output gate
         if self._preprocess is None:
-            return await self._generate(pending, prior_hash=prior_hash)
+            return await self._generate(pending, prior_hash=prior_hash, forced=forced)
         return await self._generate(
-            pending, prior_hash=prior_hash, ctx=ctx, preprocess=self._preprocess
+            pending, prior_hash=prior_hash, ctx=ctx, preprocess=self._preprocess, forced=forced
         )

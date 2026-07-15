@@ -143,10 +143,10 @@ async def test_consume_kafka_posts_delta_per_message(tmp_path):
 async def test_variants_delegate_handle(tmp_path):
     async with _db(tmp_path) as db:
 
-        async def land(pending, *, prior_hash):
+        async def land(pending, *, prior_hash, forced=False):
             return ("append", {"n": len(pending)}, None)
 
-        async def generate(pending, *, prior_hash):
+        async def generate(pending, *, prior_hash, forced=False):
             return ("replace", {"g": 1}, "mvhash")
 
         src = SourceTableProcessor(

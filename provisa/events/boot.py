@@ -231,15 +231,32 @@ def specs_from_config(
         declared_emit = getattr(mv, "emit", None)
         emit_set = validate_emit(set(declared_emit)) if declared_emit is not None else None
         require_pk(persist, emit_set or set(), pk_cols or None)
-        handle = make_mv_generate(
-            store_dsn,
-            schema=mv.target_schema,
-            table=mv.target_table,
-            columns=cols,
-            run_query=mv_run_query(mv),
-            persist=persist,
-            pk_columns=pk_cols or None,
-        )
+        # REQ-969 (MAY): a declared incremental MV applies upstream deltas (feasibility checked in
+        # make_mv_incremental — PK + incrementalizable SQL, else an explicit error). Otherwise the
+        # REQ-966 recompute-to-current baseline (make_mv_generate).
+        if getattr(mv, "incremental", False):
+            from provisa.events.handlers import make_mv_incremental
+
+            handle = make_mv_incremental(
+                store_dsn,
+                schema=mv.target_schema,
+                table=mv.target_table,
+                columns=cols,
+                sql=mv.sql,
+                run_query=mv_run_query(mv),
+                pk_columns=pk_cols,
+                persist=persist if persist != "replace" else "upsert",
+            )
+        else:
+            handle = make_mv_generate(
+                store_dsn,
+                schema=mv.target_schema,
+                table=mv.target_table,
+                columns=cols,
+                run_query=mv_run_query(mv),
+                persist=persist,
+                pk_columns=pk_cols or None,
+            )
         # An MV's periodic cadence IS its poll job (register_runtime skips a poll node with no
         # probe_factory). Poll-mode MVs (ttl/probe/ttl_probe) recompute-to-current on cadence; the MV's
         # own change detection is the input-token (REQ-881) + output-hash (REQ-981) gate inside the

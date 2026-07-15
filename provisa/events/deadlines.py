@@ -44,6 +44,8 @@ class DeadlineSource(Protocol):
 
     def window(self, now: datetime) -> Window | None: ...
 
+    def window_for_instant(self, instant: datetime) -> Window | None: ...
+
     def gated(self, now: datetime) -> bool: ...
 
     def deadline(self, now: datetime, peeked: list[dict]) -> datetime | None: ...
@@ -72,6 +74,9 @@ class LiveDebounce:
 
     def window(self, now: datetime) -> Window | None:
         return None  # live computes as-of now, no calendar peg
+
+    def window_for_instant(self, instant: datetime) -> Window | None:
+        return None  # a live node has no calendar-addressable window (REQ-968 window regen n/a)
 
     def gated(self, now: datetime) -> bool:
         return False
@@ -118,6 +123,12 @@ class PeriodicCalendar:
         return window_for(
             self.calendar, self.grain, current.start - _EPSILON, business_day=self.business_day
         )
+
+    def window_for_instant(self, instant: datetime) -> Window | None:
+        """REQ-968: the calendar window CONTAINING ``instant`` (not the just-closed one) — the
+        addressable period a forced window-regen recomputes. None when the calendar gates the window
+        out of existence (a business-day grain on a holiday)."""
+        return window_for(self.calendar, self.grain, instant, business_day=self.business_day)
 
     def gated(self, now: datetime) -> bool:
         return self.window(now) is None

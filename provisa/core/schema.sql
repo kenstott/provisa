@@ -570,3 +570,16 @@ CREATE TABLE IF NOT EXISTS node_freshness_state (
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Preserved snapshots (REQ-983): a point-in-time dataset MATERIALIZED-AND-SEALED because it is NOT
+-- reconstructible from current state + retained event history — the one PIT form that departs from
+-- the NRT ideal. DECLARED (never inferred) and MUST be why-tagged. The row is the immutability
+-- record — a second seal of the same name fails loud. Mirrors schema_org.preserved_snapshots.
+CREATE TABLE IF NOT EXISTS preserved_snapshots (
+    name         TEXT PRIMARY KEY,       -- the declared snapshot identity
+    reason       TEXT NOT NULL,          -- REQ-983 mandatory why-tag (non-reconstructible reason)
+    location     TEXT NOT NULL,          -- the sealed store-table location
+    content_hash TEXT NOT NULL,          -- the frozen content digest (immutability proof)
+    window_id    TEXT,                   -- optional calendar-addressable period this snapshot froze
+    sealed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+

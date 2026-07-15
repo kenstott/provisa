@@ -27707,7 +27707,7 @@
   - REQ-961
   - REQ-958
 - id: REQ-964
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 0. Architecture & Design Principles
@@ -27734,6 +27734,18 @@
     because lineage is derived (cannot drift), outputs are addressable and deterministically replayable,
     and trust is explicit via the freshness contract, the whole data estate is auditable as a function
     of its declared inputs and rules.'
+  code:
+  - provisa/events/lineage.py
+  - provisa/events/boot.py
+  - provisa/events/handlers.py
+  tests:
+  - tests/unit/test_live_selfdescribing.py
+  scenario: 'Given an MV declared as SQL over shop.orders
+    When it is registered
+    Then lineage, fan-out, output schema, and PK are DERIVED from the SQL (nothing hand-orchestrated)
+    Given an MV whose SQL reads now()/current_timestamp/random()
+    Then registration is rejected — proof-obligation #1 (transform determinism) is enforced
+    mechanically so materialization stays addressable and replayable'
   related_reqs:
   - REQ-939
   - REQ-957
@@ -27832,7 +27844,7 @@
   - REQ-964
   - REQ-983
 - id: REQ-966
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 0. Architecture & Design Principles
@@ -27875,6 +27887,16 @@
     real-time, split into retireable-with-investment vs permanent-business-truth, and reducing that distance
     is a matter of retiring resource-driven config as infrastructure allows (never re-authoring process)
     down to the irreducible mandate floor.
+  code:
+  - provisa/events/boot.py
+  - provisa/events/lineage.py
+  - provisa/events/processor.py
+  tests:
+  - tests/unit/test_live_selfdescribing.py
+  scenario: 'Given an MV declared with ONLY its SQL (every other knob defaulted)
+    When a source it reads changes
+    Then lineage auto-derives, fan-out auto-wires, and the MV reprocesses in near-real-time
+    (replace-persist, single-shape emit, real-time fire) with no configuration beyond its SQL'
   related_reqs:
   - REQ-964
   - REQ-939
@@ -27885,7 +27907,7 @@
   - REQ-963
   - REQ-965
 - id: REQ-967
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 0. Architecture & Design Principles
@@ -27915,6 +27937,17 @@
     on — they are declared MVs over the streams the platform already emits, so they inherit the same governance,
     lineage, and reprocessing guarantees as the business data, and new operational views are added by
     declaration rather than engineering.
+  code:
+  - provisa/events/handlers.py
+  - provisa/events/processor.py
+  tests:
+  - tests/unit/test_live_selfdescribing.py
+  scenario: 'Given the warn/error events the machinery emits
+    When a DQ scorecard is declared as an MV over that stream
+    Then quality is a query over the emissions — no bespoke DQ subsystem
+    Given a replace-persist upstream that emits an append per fire
+    When a history MV persists that append
+    Then it accumulates each snapshot into an SCD-2 time series — no bespoke history subsystem'
   related_reqs:
   - REQ-964
   - REQ-965
@@ -27923,7 +27956,7 @@
   - REQ-960
   - REQ-966
 - id: REQ-968
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27948,7 +27981,9 @@
   - provisa/events/processor.py
   - provisa/events/injector.py
   - provisa/events/queue.py
-  - provisa/events/lineage.py
+  - provisa/events/deadlines.py
+  tests:
+  - tests/unit/test_live_regen_snapshots.py
   scenario: 'Given a sealed daily window 2026-07-08 with a corrected upstream
 
     When an operator forces regen by window-id 2026-07-08
@@ -27971,7 +28006,7 @@
   - REQ-965
   - REQ-967
 - id: REQ-969
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27995,9 +28030,13 @@
     making delta emission affordable and incremental propagation real — declared per MV where feasible,
     erroring explicitly where not, never silently degrading.
   code:
-  - provisa/events/processor.py
   - provisa/events/handlers.py
+  - provisa/events/lineage.py
+  - provisa/events/boot.py
   - provisa/federation/materialize_exec.py
+  - provisa/mv/models.py
+  tests:
+  - tests/unit/test_live_regen_snapshots.py
   scenario: 'Given an incrementally-maintained MV over a fact table with a PK
 
     When the fact posts a delta of changed rows
@@ -28457,7 +28496,8 @@
 
     '
 - id: REQ-983
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
   category: Derived / MV Processor
@@ -28497,6 +28537,12 @@
     is declared
 
     '
+  code:
+  - provisa/events/snapshots.py
+  - provisa/core/schema_org.py
+  - provisa/federation/materialize_exec.py
+  tests:
+  - tests/unit/test_live_regen_snapshots.py
   competitive_position:
     status: ahead
     rationale: dbt/Airflow snapshots are imperative jobs with no distinction between derivable and frozen

@@ -96,6 +96,7 @@ def make_source_land(
         prior_hash: str | None = None,
         ctx: NodeContext | None = None,
         preprocess: Callable[..., Any] | None = None,
+        forced: bool = False,
     ) -> tuple[str, dict, str | None] | None:
         rows = await fetch(pending)
         if not rows:
@@ -105,11 +106,12 @@ def make_source_land(
         if not rows:
             return None
         # REQ-981 output gate: a replace whose content is byte-identical to the prior land neither
-        # lands nor ripples. Append/CDC deltas are new rows by definition → no content hash.
+        # lands nor ripples. Append/CDC deltas are new rows by definition → no content hash. REQ-968:
+        # a forced regen BYPASSES the gate — it re-lands and ripples regardless of an unchanged hash.
         digest: str | None = None
         if shape == REPLACE:
             digest = content_hash(rows, pk_columns)
-            if digest == prior_hash:
+            if not forced and digest == prior_hash:
                 return None
         loc = await store_writer.land(
             store_dsn,
@@ -155,6 +157,7 @@ def make_mv_generate(
         prior_hash: str | None = None,
         ctx: NodeContext | None = None,
         preprocess: Callable[..., Any] | None = None,
+        forced: bool = False,
     ) -> tuple[str, dict, str | None] | None:
         del pending  # an MV refresh recomputes to current state; the claimed events are the trigger
         rows = await run_query()
@@ -166,7 +169,8 @@ def make_mv_generate(
             if not rows:
                 return None
         digest = content_hash(rows, pk_columns)  # PK-keyed hash when the derived table has identity
-        if digest == prior_hash:
+        # REQ-968: a forced regen recomputes + re-lands regardless of an unchanged hash (gate bypass).
+        if not forced and digest == prior_hash:
             return None  # recomputed output identical → no land, no downstream ripple
         loc = await store_writer.persist_land(
             store_dsn,
@@ -178,5 +182,100 @@ def make_mv_generate(
             pk_columns=pk_columns,
         )
         return "replace", {"rows": len(rows), "landed": loc}, digest
+
+    return generate
+
+
+def _collect_delta_rows(pending: list[dict]) -> list[dict]:
+    """REQ-969: the changed rows carried by the claimed delta/append events (``payload.delta`` — the
+    demand-driven delta emission of REQ-965). Empty when no upstream carried a delta (e.g. a full
+    ``replace`` input, or a probe token event) — the caller then documents a full recompute."""
+    out: list[dict] = []
+    for e in pending:
+        if e["event_type"] in ("delta", "append"):
+            rows = (e.get("payload") or {}).get("delta")
+            if isinstance(rows, list):
+                out.extend(rows)
+    return out
+
+
+def make_mv_incremental(
+    store_dsn: str,
+    *,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    sql: str,
+    run_query: Callable[[], Awaitable[list[dict]]],
+    pk_columns: list[str],
+    persist: str = "upsert",
+) -> Callable[..., Awaitable[tuple[str, dict, str | None] | None]]:
+    """REQ-969 (MAY): build an INCREMENTALLY-MAINTAINED ``MVTableProcessor.generate``. When an input
+    arrives as a delta/append carrying its changed rows, apply ONLY those rows to the MV's prior
+    landed state (``persist`` = upsert/append via ``apply_persistence``/``apply_cdc``) and emit the
+    resulting delta — NO full SELECT. The cost axis that makes emit=delta (REQ-965) worth declaring.
+
+    Feasibility is OPERATOR-DECLARED and checked at BUILD time (REQ-964: no silent downgrade): a PK is
+    required for row identity, and the SQL must admit a safe incremental form (``is_incrementalizable``
+    — a single-input bare-column projection). A declared-but-infeasible incremental MV is an EXPLICIT
+    ERROR here, never a silent fall-back to full recompute (that would hide cost / emit a wrong delta).
+
+    Per fire, when NO upstream delta is available (a full ``replace`` input, or a forced regen), the
+    closure DOCUMENTS a full recompute (run the SELECT, re-land, emit the full set as a delta) — an
+    explicit, commented fallback on the INPUT shape, distinct from the infeasible-declaration error."""
+    from provisa.events.lineage import is_incrementalizable
+    from provisa.events.outcomes import validate_persist
+
+    validate_persist(persist)
+    if not pk_columns:
+        raise ValueError(
+            "REQ-969: incremental maintenance requires a primary key for row identity — "
+            "refusing a silent full-recompute downgrade"
+        )
+    if not is_incrementalizable(sql):
+        raise ValueError(
+            f"REQ-969: {schema}.{table} declares incremental but its SQL has no safe incremental "
+            f"form (join/aggregate/filter/computed projection need delta-rule derivation, deferred) "
+            f"— an infeasible incremental declaration is an explicit error, not a full recompute"
+        )
+
+    async def generate(
+        pending: list[dict],
+        *,
+        prior_hash: str | None = None,
+        ctx: NodeContext | None = None,
+        preprocess: Callable[..., Any] | None = None,
+        forced: bool = False,
+    ) -> tuple[str, dict, str | None] | None:
+        del ctx, preprocess
+        delta_rows = _collect_delta_rows(pending)
+        if delta_rows and not forced:
+            loc = await store_writer.persist_land(
+                store_dsn,
+                schema=schema,
+                table=table,
+                columns=columns,
+                rows=delta_rows,
+                persist=persist,
+                pk_columns=pk_columns,
+            )
+            # emit the applied delta; delta rows are new-by-definition → no content hash (REQ-965).
+            return "delta", {"rows": len(delta_rows), "delta": delta_rows, "landed": loc}, None
+        # DOCUMENTED full recompute (REQ-969): no upstream delta to apply → run the whole SELECT and
+        # re-land. Explicit and gated (REQ-981), never a silent wrong delta.
+        rows = await run_query()
+        digest = content_hash(rows, pk_columns)
+        if not forced and digest == prior_hash:
+            return None
+        loc = await store_writer.persist_land(
+            store_dsn,
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            persist=persist,
+            pk_columns=pk_columns,
+        )
+        return "delta", {"rows": len(rows), "delta": rows, "landed": loc}, digest
 
     return generate

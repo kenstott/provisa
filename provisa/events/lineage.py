@@ -114,6 +114,65 @@ def infer_pk(sql: str, dialect: str = "postgres") -> list[str]:
     return keys if len(keys) == len(group.expressions) else []
 
 
+# REQ-964 proof-obligation #1 (transform determinism): a pure MV SQL must not read wall-clock or
+# randomness — those make replay/regen (REQ-968) non-reproducible. Rejected at registration.
+_NONDETERMINISTIC_FUNCS = frozenset(
+    {"now", "current_timestamp", "current_date", "current_time", "random", "rand", "uuid", "newid"}
+)
+
+
+def reject_nondeterministic(sql: str, dialect: str = "postgres") -> None:
+    """REQ-964 obligation #1 — mechanically enforce TRANSFORM DETERMINISM: an MV's SQL must be a pure
+    function of its inputs, so it rejects wall-clock / randomness (``now()``, ``current_timestamp``,
+    ``random()``, ``uuid()``, …). A non-deterministic transform breaks addressable, exactly-once
+    replay (REQ-968) — fail LOUD at registration, never sandbox silently."""
+    tree = sqlglot.parse_one(sql, read=dialect)
+    hits: set[str] = set()
+    for node in tree.walk():
+        name: str | None = None
+        if isinstance(node, exp.CurrentTimestamp):
+            name = "current_timestamp"
+        elif isinstance(node, exp.CurrentDate):
+            name = "current_date"
+        elif isinstance(node, exp.Anonymous):
+            name = node.name.lower()
+        elif isinstance(node, exp.Func):
+            name = type(node).__name__.lower()
+        if name in _NONDETERMINISTIC_FUNCS:
+            hits.add(name)
+    if hits:
+        raise ValueError(
+            f"REQ-964: MV SQL is non-deterministic ({sorted(hits)}); a pure transform is required "
+            f"for addressable/replayable materialization — remove wall-clock/random"
+        )
+
+
+def is_incrementalizable(sql: str, dialect: str = "postgres") -> bool:
+    """REQ-969: True when the SQL admits a SAFE row-wise incremental form — a single-input projection
+    of BARE columns with no filter/aggregation/join. For that shape an upstream delta of changed rows
+    maps 1:1 to the MV's own delta (upsert by PK), so applying only the delta is provably equivalent
+    to a full recompute. Anything richer (JOIN / GROUP BY / aggregate / DISTINCT / WHERE / computed
+    projection / set op / window) is NOT incrementalizable HERE — those need delta-rule derivation
+    (deferred); declaring incremental on them is an explicit error, never a silent wrong delta."""
+    tree = sqlglot.parse_one(sql, read=dialect)
+    if tree.find(exp.SetOperation) is not None:
+        return False
+    select = tree if isinstance(tree, exp.Select) else tree.find(exp.Select)
+    if select is None:
+        return False
+    if len(extract_inputs(sql, dialect)) != 1:
+        return False
+    if select.args.get("joins") or select.args.get("group") or select.args.get("where"):
+        return False
+    if select.args.get("distinct"):
+        return False
+    for proj in select.expressions:
+        expr = proj.unalias() if isinstance(proj, exp.Alias) else proj
+        if not isinstance(expr, exp.Column):
+            return False  # a computed projection has no 1:1 delta mapping
+    return tree.find(exp.AggFunc) is None and tree.find(exp.Window) is None
+
+
 def dependents(mvs: dict[str, str], dialect: str = "postgres") -> dict[str, list[str]]:
     """Invert the lineage: ``source_table -> [mv nodes that depend on it]`` — the fan-out target set
     the dispatcher uses when an event on ``source_table`` arrives. ``mvs`` maps mv node name → its

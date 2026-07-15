@@ -111,6 +111,12 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     consumes: list[str] = field(default_factory=lambda: ["replace"])
     primary_key: list[str] = field(default_factory=list)
 
+    # REQ-969 (MAY): incremental maintenance — apply upstream deltas to prior landed state instead of
+    # a full recompute. Operator-declared per MV; feasible only for an incrementalizable SQL shape
+    # with a PK (a declared-but-infeasible incremental MV is an explicit error, never a silent full
+    # recompute). Default False = recompute-to-current (the REQ-966 NRT baseline).
+    incremental: bool = False
+
     # Runtime state
     status: MVStatus = MVStatus.STALE
     last_refresh_at: float | None = None

@@ -685,3 +685,22 @@ event_status = Table(
         name="event_status_claim_status_check",
     ),
 )
+
+# REQ-983 preserved snapshots: a point-in-time dataset MATERIALIZED-AND-SEALED because it is NOT
+# reconstructible from current state + retained event history — the one PIT form that genuinely
+# departs from the NRT ideal (contrast the reconstructible PIT of REQ-958/965/967). DECLARED (never
+# inferred) and MUST be why-tagged (``reason`` — why the data cannot be reconstructed). One row per
+# sealed snapshot; the row IS the immutability record — a second seal of the same name fails loud.
+# V1: schema-defined, no migration.
+preserved_snapshots = Table(
+    "preserved_snapshots",
+    metadata,
+    Column("name", Text, primary_key=True),  # the declared snapshot identity
+    Column(
+        "reason", Text, nullable=False
+    ),  # REQ-983 mandatory why-tag (non-reconstructible reason)
+    Column("location", Text, nullable=False),  # the sealed store-table location
+    Column("content_hash", Text, nullable=False),  # the frozen content digest (immutability proof)
+    Column("window_id", Text),  # optional calendar-addressable period this snapshot froze
+    Column("sealed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
