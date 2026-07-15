@@ -394,6 +394,11 @@ main {
 .form-card label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; color: var(--text-muted); min-width: 0; }
 .form-card label:has(> input[type="checkbox"]) { flex-direction: row; align-items: center; gap: 0.5rem; }
 .form-card label:has(> input[type="checkbox"]) input[type="checkbox"] { width: auto; }
+/* Mantine InputWrapper owns its label layout and renders the required asterisk
+ * inline; the legacy `.form-card/.form-row label { flex-direction: column }`
+ * rules above would stack the `*` on its own line under the label text. */
+.form-card .mantine-InputWrapper-label,
+.form-row .mantine-InputWrapper-label { display: inline-block; }
 .form-card input, .form-card select, .form-card textarea, .column-editor input, .column-editor select {
   background: var(--bg);
   color: var(--text);
