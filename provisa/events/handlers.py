@@ -26,13 +26,43 @@ The engine is never the writer — landing always goes through ``store_writer``;
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from provisa.core.change_signal import APPEND, REPLACE, select_landing_shape
 from provisa.events.content_hash import content_hash
+from provisa.events.processor import NodeContext, PreprocessError
 from provisa.federation import store_writer
 
 _SHAPE_TO_EVENT = {APPEND: "append"}  # replace is the fallback below; delta is the push/CDC path
+
+
+async def _apply_preprocess(
+    preprocess: Callable[..., Any] | None,
+    rows: list[dict],
+    ctx: NodeContext | None,
+    columns: list[tuple[str, str]],
+) -> list[dict]:
+    """REQ-957: run the node's ``preprocess(rows, ctx)`` hook between produce and land. None = identity.
+    The hook may be sync or async. It feeds the content hash (must be deterministic), so it runs before
+    the digest is computed. A raise is a FATAL data outcome → re-raised as PreprocessError (the loop
+    turns it into an error event + poison fan-out); it is NOT a silent swallow."""
+    if preprocess is None:
+        return rows
+    if ctx is not None:
+        ctx.columns = columns  # enrich the envelope with the landing schema the closure knows
+    try:
+        out = preprocess(rows, ctx)
+        if inspect.isawaitable(out):
+            out = await out
+    except PreprocessError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — REQ-957: a user-hook raise is a fatal DATA outcome
+        # (error event + poison fan-out), not an infra crash. Fail loud INTO the event vocabulary
+        # via PreprocessError; the loop distinguishes it from a genuine crash (which must propagate).
+        raise PreprocessError(str(exc)) from exc
+    return out
 
 
 def make_source_land(
@@ -52,11 +82,19 @@ def make_source_land(
     landed or (replace) the content matches ``prior_hash`` (REQ-981 output gate)."""
 
     async def land(
-        pending: list[dict], *, prior_hash: str | None = None
+        pending: list[dict],
+        *,
+        prior_hash: str | None = None,
+        ctx: NodeContext | None = None,
+        preprocess: Callable[..., Any] | None = None,
     ) -> tuple[str, dict, str | None] | None:
         rows = await fetch(pending)
         if not rows:
             return None  # no delta to land → no downstream ripple
+        # REQ-957: preprocess after produce, before land. []→ row-level no-op (no land, no re-post).
+        rows = await _apply_preprocess(preprocess, rows, ctx, columns)
+        if not rows:
+            return None
         shape = select_landing_shape(change_signal, watermark_column)
         # REQ-981 output gate: a replace whose content is byte-identical to the prior land neither
         # lands nor ripples. Append/CDC deltas are new rows by definition → no content hash.
@@ -95,10 +133,21 @@ def make_mv_generate(
     ripple its dependents)."""
 
     async def generate(
-        pending: list[dict], *, prior_hash: str | None = None
+        pending: list[dict],
+        *,
+        prior_hash: str | None = None,
+        ctx: NodeContext | None = None,
+        preprocess: Callable[..., Any] | None = None,
     ) -> tuple[str, dict, str | None] | None:
         del pending  # an MV refresh recomputes to current state; the claimed events are the trigger
         rows = await run_query()
+        # REQ-957: preprocess after the MV SQL, before land. []→ row-level no-op (no land, no
+        # re-post) — but ONLY when the hook returned it; an empty MV recompute with no hook still
+        # lands an empty replace (a legitimately-emptied MV clears its table).
+        if preprocess is not None:
+            rows = await _apply_preprocess(preprocess, rows, ctx, columns)
+            if not rows:
+                return None
         digest = content_hash(rows)  # MVs have no PK → hash over each row's canonical form
         if digest == prior_hash:
             return None  # recomputed output identical → no land, no downstream ripple

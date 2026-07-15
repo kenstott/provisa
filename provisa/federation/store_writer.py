@@ -250,5 +250,6 @@ async def land(
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
         if shape == APPEND:
-            return await land_append(conn, tbl, rows)
+            # REQ-960: pass the key so the append is an idempotent upsert-by-key, not a blind append.
+            return await land_append(conn, tbl, rows, pk_columns=tuple(pk_columns or ()))
         return await land_replace(conn, tbl, rows)  # REPLACE, or a push signal's snapshot seed

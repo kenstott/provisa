@@ -216,12 +216,34 @@ class TableProcessor(ABC):
         if not claimed:
             return None
         pending = await queue.get_events(conn, claimed)
+        # REQ-957 pre-produce poison short-circuit (a built-in, NOT the hook): a claimed upstream
+        # ``error`` event skips produce entirely — this node emits its own error and fans it forward
+        # (poison propagation) without landing. Distinct from a preprocess-raised error.
+        if any(e["event_type"] == "error" for e in pending):
+            upstream = sorted({e["source_table"] for e in pending if e["event_type"] == "error"})
+            return await self._emit_error(
+                conn, claimed, now, {"poison": True, "upstream": upstream}
+            )
         prior = await queue.get_node_state(conn, self.node)
         prior_hash = prior["content_hash"] if prior else None
+        ctx = NodeContext(
+            node=self.node,
+            kind=self.kind,
+            claimed=[
+                {"id": e["id"], "event_type": e["event_type"], "source_table": e["source_table"]}
+                for e in pending
+            ],
+            prior_hash=prior_hash,
+        )
         # LAND runs inside ``handle`` against the STORE database — outside the control-plane
         # transaction below (different DB, no shared txn) and idempotent on the node key, so a
         # re-run after a crash re-lands harmlessly. (event_type, payload, content_hash|None) | None.
-        result = await self.handle(pending, prior_hash=prior_hash)
+        # REQ-957: preprocess runs inside handle (after produce, before land); a raise surfaces as
+        # PreprocessError → fatal error event; ctx.warn accumulates advisory reasons on ctx.
+        try:
+            result = await self.handle(pending, prior_hash=prior_hash, ctx=ctx)
+        except PreprocessError as exc:
+            return await self._emit_error(conn, claimed, now, {"error": str(exc)})
         # REQ-960: post + fan_out + complete run AFTER land in ONE control-plane transaction,
         # post-BEFORE-complete. A crash between land and this commit re-claims and re-runs (the
         # land is idempotent), so the downstream ripple is never lost and the claim never orphaned.
@@ -230,8 +252,9 @@ class TableProcessor(ABC):
         try:
             async with conn.transaction():
                 if result is None:
-                    # Gate hit (content unchanged / nothing landed): no ripple, but the claimed
-                    # events are processed — complete them so they do not re-fire.
+                    # Gate hit / preprocess []-no-op (content unchanged / nothing landed): no ripple,
+                    # but advisory warns still emit and the claimed events are completed.
+                    await self._emit_warns(conn, ctx, now)
                     await self._complete_all(conn, claimed, now)
                     return None
                 event_type, payload, new_hash = result
@@ -241,10 +264,40 @@ class TableProcessor(ABC):
                     conn, source_table=self.node, event_type=event_type, payload=payload
                 )
                 await queue.fan_out(conn, my_event, self._dependents_of(self.node))
+                await self._emit_warns(conn, ctx, now)
                 await self._complete_all(conn, claimed, now)
         except OwnershipLost:
             return None
         return my_event
+
+    async def _emit_error(
+        self, conn: Any, claimed: list[int], now: datetime, payload: dict
+    ) -> int | None:
+        """REQ-957: emit this node's ``error`` event and fan it to dependents (poison propagation),
+        then complete the claimed set — all in one REQ-960 CAS-guarded transaction (post-before-
+        complete, no land). Returns the error event id (so a drain keeps propagating), or None when a
+        peer had reclaimed the work (OwnershipLost)."""
+        try:
+            async with conn.transaction():
+                event_id = await queue.post_event(
+                    conn, source_table=self.node, event_type="error", payload=payload
+                )
+                await queue.fan_out(conn, event_id, self._dependents_of(self.node))
+                await self._complete_all(conn, claimed, now)
+        except OwnershipLost:
+            return None
+        return event_id
+
+    async def _emit_warns(self, conn: Any, ctx: NodeContext, now: datetime) -> None:
+        """REQ-957: if the hook called ctx.warn, post ONE advisory ``warn`` event about the node
+        (recorded in the event log for a quality MV to read; not fanned — a warn does not poison
+        dependents). Runs inside the same commit transaction as the land's ripple. ``now`` is unused
+        here but kept for a uniform commit-helper signature."""
+        del now
+        if ctx.warns:
+            await queue.post_event(
+                conn, source_table=self.node, event_type="warn", payload={"reasons": ctx.warns}
+            )
 
     def _debounce_deadline(self, peeked: list[dict]) -> datetime | None:
         """REQ-963 trailing-edge debounce deadline = min(last_change + quiet, first_change + max_delay),
@@ -294,17 +347,20 @@ class TableProcessor(ABC):
 
     @abstractmethod
     async def handle(
-        self, pending: list[dict], *, prior_hash: str | None
+        self, pending: list[dict], *, prior_hash: str | None, ctx: NodeContext | None = None
     ) -> tuple[str, dict, str | None] | None:
         """Do the node's work from its claimed events (land / generate). Return ``(event_type, payload,
         content_hash)`` when the node's table changed → re-post; None when unchanged. ``content_hash``
         is the digest of the landed replace-shaped content (None for append/CDC deltas, which are new
         by definition). ``prior_hash`` is the last land's digest — a replace matching it returns None
-        (the REQ-981 output gate)."""
+        (the REQ-981 output gate). ``ctx`` is the REQ-957 envelope; when a preprocess hook is set the
+        variant threads it into the produce→land closure (raising surfaces as PreprocessError)."""
 
 
 class SourceTableProcessor(TableProcessor):
     """Lands a data source's rows into the materialization store (the write face)."""
+
+    kind = "source"
 
     def __init__(self, *args: Any, land: Callable[..., Any] | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -313,17 +369,25 @@ class SourceTableProcessor(TableProcessor):
         self._land = land  # async (pending, *, prior_hash) -> (event_type, payload, hash) | None
 
     async def handle(
-        self, pending: list[dict], *, prior_hash: str | None
+        self, pending: list[dict], *, prior_hash: str | None, ctx: NodeContext | None = None
     ) -> tuple[str, dict, str | None] | None:
         """Coalesce the claimed events, land the source's rows via the write face, and report the
         landing shape as this node's change event (append/delta/replace) with the content hash — or
-        None if nothing landed or (replace) the content matched ``prior_hash`` (REQ-981 gate)."""
+        None if nothing landed or (replace) the content matched ``prior_hash`` (REQ-981 gate). When a
+        preprocess hook is set it is threaded into the land closure (REQ-957: after fetch, before
+        land)."""
         assert self._land is not None, "SourceTableProcessor.handle requires a land callable"
-        return await self._land(pending, prior_hash=prior_hash)
+        if self._preprocess is None:
+            return await self._land(pending, prior_hash=prior_hash)
+        return await self._land(
+            pending, prior_hash=prior_hash, ctx=ctx, preprocess=self._preprocess
+        )
 
 
 class MVTableProcessor(TableProcessor):
     """Generates an MV by running its SQL on the engine and landing the result."""
+
+    kind = "mv"
 
     def __init__(self, *args: Any, generate: Callable[..., Any], **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -332,9 +396,15 @@ class MVTableProcessor(TableProcessor):
         )
 
     async def handle(
-        self, pending: list[dict], *, prior_hash: str | None
+        self, pending: list[dict], *, prior_hash: str | None, ctx: NodeContext | None = None
     ) -> tuple[str, dict, str | None] | None:
         """Generate the MV (engine runs its SQL) and land the result; report the resulting change as
         this node's event (replace) with the content hash — or None if the recomputed output matched
-        ``prior_hash`` (REQ-981 gate: an unchanged MV does not ripple its dependents)."""
-        return await self._generate(pending, prior_hash=prior_hash)
+        ``prior_hash`` (REQ-981 gate: an unchanged MV does not ripple its dependents). When a
+        preprocess hook is set it is threaded into the generate closure (REQ-957: after the MV SQL,
+        before land)."""
+        if self._preprocess is None:
+            return await self._generate(pending, prior_hash=prior_hash)
+        return await self._generate(
+            pending, prior_hash=prior_hash, ctx=ctx, preprocess=self._preprocess
+        )

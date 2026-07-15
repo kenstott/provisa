@@ -117,13 +117,28 @@ async def land_replace(conn: StoreConn, table: Table, rows: list[dict]) -> str:
     return _qualified(table)
 
 
-async def land_append(conn: StoreConn, table: Table, rows: list[dict]) -> str:
-    """APPEND land: bulk-insert ``rows`` into an existing table without dropping it (REQ-932).
+async def land_append(
+    conn: StoreConn, table: Table, rows: list[dict], *, pk_columns: tuple[str, ...] | list[str] = ()
+) -> str:
+    """APPEND land: add ``rows`` to an existing table without dropping it (REQ-932).
 
     ``rows`` are the already-watermark-filtered delta (``WHERE watermark > cursor`` upstream), so
-    this only creates-if-absent and bulk-inserts (REQ-990) — no truncation. The caller advances the
-    cursor."""
+    this only creates-if-absent and adds them (REQ-990) — no truncation. The caller advances the
+    cursor.
+
+    REQ-960 idempotency: when ``pk_columns`` is given, the add is an UPSERT BY KEY (never a blind
+    append), so a re-run or a rare double-land after a mid-commit crash CONVERGES instead of doubling
+    rows. Without a key there is no identity to upsert on — the keyless append stays a blind bulk
+    insert, and its at-least-once idempotency is bounded by the watermark cursor (a per-event window
+    key for the keyless case is deferred to REQ-958's window-boundary stamping)."""
     await conn.execute_core(CreateTable(table, if_not_exists=True))
+    if pk_columns:
+        json_cols = _json_columns(table)
+        for row in rows:
+            await conn.upsert(
+                table, _coerce_json_row(dict(row), json_cols), index_elements=list(pk_columns)
+            )
+        return _qualified(table)
     await _bulk_insert(conn, table, rows)
     return _qualified(table)
 

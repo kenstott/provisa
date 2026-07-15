@@ -27349,7 +27349,7 @@
   related_reqs:
   - REQ-951
 - id: REQ-957
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27373,6 +27373,8 @@
   code:
   - provisa/events/processor.py
   - provisa/events/handlers.py
+  tests:
+  - tests/unit/test_live_core_loop.py
   scenario: 'Given an MV node with a preprocess(rows, ctx) hook
 
     When the node is claimed and produce yields rows
@@ -27450,7 +27452,7 @@
   - REQ-939
   - REQ-932
 - id: REQ-959
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27476,6 +27478,9 @@
   - provisa/events/queue.py
   - provisa/events/supervisor.py
   - provisa/events/processor.py
+  tests:
+  - tests/unit/test_live_core_loop.py
+  - tests/unit/test_processor.py
   scenario: 'Given a claim owned by a worker with a deadline and optional heartbeat
 
     When the owner crashes and its heartbeat lapses
@@ -27498,7 +27503,7 @@
   - REQ-960
   - REQ-941
 - id: REQ-960
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27520,6 +27525,9 @@
   - provisa/events/processor.py
   - provisa/federation/store_writer.py
   - provisa/federation/materialize_exec.py
+  tests:
+  - tests/unit/test_live_core_loop.py
+  - tests/unit/test_processor.py
   related_reqs:
   - REQ-959
   - REQ-958

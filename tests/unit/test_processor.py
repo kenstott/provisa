@@ -42,7 +42,7 @@ class _Proc(TableProcessor):
         self.seen = None
         self.seen_prior_hash = "<unset>"
 
-    async def handle(self, pending, *, prior_hash):
+    async def handle(self, pending, *, prior_hash, ctx=None):
         self.seen = pending
         self.seen_prior_hash = prior_hash
         return self._result
@@ -179,9 +179,9 @@ class _CrashProc(_Proc):
         super().__init__(*a, **k)
         self.handle_calls = 0
 
-    async def handle(self, pending, *, prior_hash):
+    async def handle(self, pending, *, prior_hash, ctx=None):
         self.handle_calls += 1
-        return await super().handle(pending, prior_hash=prior_hash)
+        return await super().handle(pending, prior_hash=prior_hash, ctx=ctx)
 
 
 @pytest.mark.asyncio
@@ -256,12 +256,12 @@ async def test_req959_ownership_cas_aborts_ripple_on_peer_takeover(tmp_path):
         # A handle that, DURING its run (after land), lets a peer reclaim + re-own the work —
         # models a stuck-but-alive owner whose deadline passed mid-compute.
         class _StolenProc(_Proc):
-            async def handle(self, pending, *, prior_hash):
+            async def handle(self, pending, *, prior_hash, ctx=None):
                 async with db.acquire() as c2:
                     future = datetime.now(timezone.utc) + timedelta(days=1)
                     await queue.reclaim(c2, now=future, heartbeat_cutoff=future)
                     await queue.claim(c2, dependent_table="mv.a", processor_name="peer", now=future)
-                return await super().handle(pending, prior_hash=prior_hash)
+                return await super().handle(pending, prior_hash=prior_hash, ctx=ctx)
 
         proc = _StolenProc(
             "mv.a",
