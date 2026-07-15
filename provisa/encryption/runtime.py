@@ -29,12 +29,18 @@ from provisa.encryption.service import EncryptionService, NullEncryption
 _service: EncryptionService | None = None
 
 
-def configure_encryption(provider: str | None, *, key_id: str | None = None) -> EncryptionService:
-    """Build and install the process-wide EncryptionService from config. Idempotent."""
+def configure_encryption(
+    provider: str | None, *, key_id: str | None = None, config: dict | None = None
+) -> EncryptionService:
+    """Build and install the process-wide EncryptionService from config. Idempotent.
+
+    ``config`` is the per-provider block (``encryption.<provider>``) carrying e.g.
+    the KMS key ARN / Vault address for the selected provider.
+    """
     global _service
     from provisa.encryption.factory import build_encryption_service  # noqa: PLC0415
 
-    _service = build_encryption_service(provider, key_id=key_id)
+    _service = build_encryption_service(provider, key_id=key_id, config=config)
     return _service
 
 

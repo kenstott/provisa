@@ -303,6 +303,8 @@ function App() {
                     "/admin/mcp-server",
                     "/admin/local-users",
                     "/admin/orgs",
+                    "/admin/ai-models",
+                    "/admin/security",
                   ].map((path) => (
                     <Route
                       key={path}

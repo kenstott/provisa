@@ -18,6 +18,12 @@ per-data-path applications (column/cache/redis/audit encryption) build on top.
 from provisa.encryption.envelope import EnvelopeEncryption, split_envelope
 from provisa.encryption.factory import build_encryption_service
 from provisa.encryption.providers import LocalKeychain, MasterKeyProvider, NullMasterKey
+from provisa.encryption.registry import (
+    EncryptionProviderSpec,
+    encryption_provider_registry,
+    get_provider_spec,
+    register_encryption_provider,
+)
 from provisa.encryption.runtime import (
     configure_encryption,
     encryption_service,
@@ -37,4 +43,9 @@ __all__ = [
     "configure_encryption",
     "encryption_service",
     "reset_encryption",
+    # Extension API — enterprises register custom providers (custom KMS/HSM endpoints) with these.
+    "register_encryption_provider",
+    "EncryptionProviderSpec",
+    "encryption_provider_registry",
+    "get_provider_spec",
 ]

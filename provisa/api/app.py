@@ -464,7 +464,12 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     from provisa.encryption import configure_encryption
 
     _enc_cfg = (raw_config or {}).get("encryption", {}) or {}
-    configure_encryption(_enc_cfg.get("provider"), key_id=_enc_cfg.get("key_id"))
+    _enc_provider = _enc_cfg.get("provider")
+    configure_encryption(
+        _enc_provider,
+        key_id=_enc_cfg.get("key_id"),
+        config=_enc_cfg.get(_enc_provider, {}) if _enc_provider else {},
+    )
 
     # Clear mutable state before rebuild
     state.masking_rules = {}
@@ -911,6 +916,12 @@ def create_app() -> FastAPI:
     from provisa.api.admin.settings_router import router as settings_router
 
     app.include_router(settings_router)
+    from provisa.api.admin.security_router import router as security_router
+
+    app.include_router(security_router)
+    from provisa.api.admin.ai_models_router import router as ai_models_router
+
+    app.include_router(ai_models_router)
     from provisa.api.admin.source_meta_router import router as source_meta_router
 
     app.include_router(source_meta_router)

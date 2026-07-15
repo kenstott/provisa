@@ -367,9 +367,23 @@ export interface PlatformSettings {
     endpoint: string;
     service_name: string;
     sample_rate: number;
+    log_level: string;
+    compact_cron: string;
+    compact_batch_size: number;
+    compact_file_chunk: number;
+    ops_snapshot_retention_hours: number | null;
+    span_export_delay_millis: number;
+    otlp2parquet_max_age_secs: number;
+    collector_batch_timeout_ms: number;
+    s3_endpoint: string;
     support_endpoint: string;
     support_redact_sql_literals: boolean;
     support_redact_attributes: string[];
+  };
+  graphql_remote: {
+    max_object_depth: number;
+    max_list_depth: number;
+    max_list_items: number;
   };
   cdc: {
     consumer_group_id: string;
@@ -468,6 +482,15 @@ export interface CacheStorageState {
     max_bytes: number;
     refresh_interval: number | null;
   };
+  warm_tables: {
+    query_threshold: number;
+    max_rows: number;
+    refresh_interval: number | null;
+    fs_cache_enabled: boolean;
+    fs_cache_directories: string;
+    fs_cache_max_sizes: string;
+  };
+  materialized_views: { default_ttl: number | null };
   materialize: { store_url: string; default_store_url: string };
   restart_required_note: string;
 }
@@ -482,6 +505,8 @@ export async function setCacheStorage(
   body: Partial<{
     cache: Partial<CacheStorageState["cache"]>;
     hot_tables: Partial<CacheStorageState["hot_tables"]>;
+    warm_tables: Partial<CacheStorageState["warm_tables"]>;
+    materialized_views: Partial<CacheStorageState["materialized_views"]>;
     materialize: { store_url: string };
   }>,
 ): Promise<{ success: boolean; updated: string[]; restart_required: boolean }> {
@@ -496,10 +521,22 @@ export async function setCacheStorage(
 
 // --- Encryption key management (REQ-918) ---
 
+export interface EncryptionProviderField {
+  config_key: string;
+  label: string;
+  type: "string";
+  required: boolean;
+  secret?: boolean;
+  placeholder?: string;
+}
+
 export interface EncryptionProvider {
   key: string;
   label: string;
   description: string;
+  /** False for providers whose runtime hasn't landed yet — shown but not selectable. */
+  available: boolean;
+  config_fields: EncryptionProviderField[];
 }
 
 export interface EncryptionState {
@@ -507,6 +544,8 @@ export interface EncryptionState {
   key_id: string | null;
   key_present: boolean | null;
   providers: EncryptionProvider[];
+  /** Per-provider persisted config (keyed by provider key). */
+  config: Record<string, Record<string, unknown>>;
   restart_required_note: string;
 }
 
@@ -517,7 +556,7 @@ export async function fetchEncryption(): Promise<EncryptionState> {
 }
 
 export async function setEncryption(
-  body: { provider: string; key_id?: string | null },
+  body: { provider: string; key_id?: string | null; config?: Record<string, unknown> },
 ): Promise<{ success: boolean; restart_required: boolean }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/encryption`, {
     method: "PUT",

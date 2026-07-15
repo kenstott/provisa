@@ -667,7 +667,12 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
     from provisa.encryption import build_encryption_service  # noqa: PLC0415
 
     _enc_cfg = raw_config.get("encryption", {}) or {}
-    encryption = build_encryption_service(_enc_cfg.get("provider"), key_id=_enc_cfg.get("key_id"))
+    _enc_provider = _enc_cfg.get("provider")
+    encryption = build_encryption_service(
+        _enc_provider,
+        key_id=_enc_cfg.get("key_id"),
+        config=_enc_cfg.get(_enc_provider, {}) if _enc_provider else {},
+    )
     hot_mgr = HotTableManager(
         redis_url=redis_url,
         auto_threshold=auto_threshold,

@@ -131,12 +131,13 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
     from provisa.compiler.sql_gen import _get_default_row_limit
     from provisa.api.app import state
 
-    from provisa.core.models import ProvisaConfig
+    from provisa.core.models import GraphQLRemoteConfig, OtelConfig, ProvisaConfig
 
     rc = RedirectConfig.from_env()
     cfg = read_config()
     naming_cfg = cfg.get("naming", {})
     otel_cfg = cfg.get("observability", {})
+    gqr_cfg = cfg.get("graphql_remote", {}) or {}
 
     def _eng(key: str):
         # Default lives in one place — the ProvisaConfig field default.
@@ -191,6 +192,44 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
             "service_name": os.environ.get("OTEL_SERVICE_NAME")
             or otel_cfg.get("service_name", "provisa"),
             "sample_rate": float(otel_cfg.get("sample_rate", 1.0)),
+            # REQ-545: tracing pipeline tuning. Defaults mirror OtelConfig field defaults.
+            "log_level": os.environ.get("OTEL_LOG_LEVEL")
+            or otel_cfg.get("log_level", OtelConfig.model_fields["log_level"].default),
+            "compact_cron": otel_cfg.get(
+                "compact_cron", OtelConfig.model_fields["compact_cron"].default
+            ),
+            "compact_batch_size": int(
+                otel_cfg.get(
+                    "compact_batch_size", OtelConfig.model_fields["compact_batch_size"].default
+                )
+            ),
+            "compact_file_chunk": int(
+                otel_cfg.get(
+                    "compact_file_chunk", OtelConfig.model_fields["compact_file_chunk"].default
+                )
+            ),
+            "ops_snapshot_retention_hours": otel_cfg.get("ops_snapshot_retention_hours"),
+            "span_export_delay_millis": int(
+                otel_cfg.get(
+                    "span_export_delay_millis",
+                    OtelConfig.model_fields["span_export_delay_millis"].default,
+                )
+            ),
+            "otlp2parquet_max_age_secs": int(
+                otel_cfg.get(
+                    "otlp2parquet_max_age_secs",
+                    OtelConfig.model_fields["otlp2parquet_max_age_secs"].default,
+                )
+            ),
+            "collector_batch_timeout_ms": int(
+                otel_cfg.get(
+                    "collector_batch_timeout_ms",
+                    OtelConfig.model_fields["collector_batch_timeout_ms"].default,
+                )
+            ),
+            "s3_endpoint": otel_cfg.get(
+                "s3_endpoint", OtelConfig.model_fields["s3_endpoint"].default
+            ),
             "support_endpoint": os.environ.get("PROVISA_SUPPORT_OTLP_ENDPOINT")
             or otel_cfg.get("support_endpoint", ""),
             "support_redact_sql_literals": bool(
@@ -198,6 +237,17 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
             ),
             "support_redact_attributes": list(
                 otel_cfg.get("support_telemetry_filter", {}).get("redact_attributes", [])
+            ),
+        },
+        "graphql_remote": {  # remote-GraphQL source traversal limits
+            "max_object_depth": gqr_cfg.get(
+                "max_object_depth", GraphQLRemoteConfig.model_fields["max_object_depth"].default
+            ),
+            "max_list_depth": gqr_cfg.get(
+                "max_list_depth", GraphQLRemoteConfig.model_fields["max_list_depth"].default
+            ),
+            "max_list_items": gqr_cfg.get(
+                "max_list_items", GraphQLRemoteConfig.model_fields["max_list_items"].default
             ),
         },
     }
@@ -236,6 +286,31 @@ def _apply_otel(o: dict, updated: list) -> None:
         if "sample_rate" in o:
             cfg["observability"]["sample_rate"] = float(o["sample_rate"])
             updated.append("otel.sample_rate")
+        # REQ-545: tracing pipeline tuning (applied on restart).
+        if "log_level" in o:
+            cfg["observability"]["log_level"] = o["log_level"]
+            os.environ["OTEL_LOG_LEVEL"] = str(o["log_level"])
+            updated.append("otel.log_level")
+        for _k in ("compact_cron", "s3_endpoint"):
+            if _k in o:
+                cfg["observability"][_k] = o[_k]
+                updated.append(f"otel.{_k}")
+        for _k in (
+            "compact_batch_size",
+            "compact_file_chunk",
+            "span_export_delay_millis",
+            "otlp2parquet_max_age_secs",
+            "collector_batch_timeout_ms",
+        ):
+            if _k in o:
+                cfg["observability"][_k] = int(o[_k])
+                updated.append(f"otel.{_k}")
+        if "ops_snapshot_retention_hours" in o:
+            v = o["ops_snapshot_retention_hours"]
+            cfg["observability"]["ops_snapshot_retention_hours"] = (
+                int(v) if v not in (None, "") else None
+            )
+            updated.append("otel.ops_snapshot_retention_hours")
         if "support_endpoint" in o:
             cfg["observability"]["support_endpoint"] = o["support_endpoint"]
             os.environ["PROVISA_SUPPORT_OTLP_ENDPOINT"] = o["support_endpoint"]
@@ -260,91 +335,120 @@ def _apply_otel(o: dict, updated: list) -> None:
         pass
 
 
+_ENGINE_KEYS = (
+    "jvm_heap_gb",
+    "query_max_memory",
+    "query_max_memory_per_node",
+    "query_max_total_memory",
+    "fault_tolerant_execution",
+    "fault_tolerant_task_memory",
+    "exchange_spool_dir",
+)
+
+
+def _apply_engine(e: dict, state, updated: list) -> bool:
+    """Apply execution-engine (federation) sizing keys. Returns True if a restart is needed.
+
+    Written to config + regenerated into the engine's config.properties, but only take effect
+    on an engine restart.
+    """
+    path = config_path()
+    cfg = read_config()
+    changed = False
+    for k in _ENGINE_KEYS:
+        if k in e:
+            cfg[k] = int(e[k]) if k == "jvm_heap_gb" else e[k]
+            updated.append(f"engine.{k}")
+            changed = True
+    if changed:
+        write_config(path, cfg)
+        state.federation_engine.write_config(str(path))
+    return changed
+
+
+def _apply_graphql_remote(g: dict, updated: list) -> None:
+    """Apply the remote-GraphQL traversal limits (applied on reload)."""
+    path = config_path()
+    cfg = read_config()
+    gqr = dict(cfg.get("graphql_remote", {}) or {})
+    for k in ("max_object_depth", "max_list_depth", "max_list_items"):
+        if k in g:
+            gqr[k] = int(g[k])
+            updated.append(f"graphql_remote.{k}")
+    cfg["graphql_remote"] = gqr
+    write_config(path, cfg)
+
+
+async def _apply_naming(n: dict, updated: list) -> str | None:
+    """Apply naming (domain_prefix / convention). Returns an error message on invalid input.
+
+    use_domains / default_domain are NOT editable here — changing the domain policy is
+    destructive and handled by POST /admin/domain-policy.
+    """
+    from provisa.api.app import _load_and_build
+
+    path = config_path()
+    cfg = read_config()
+    needs_reload = False
+    if "domain_prefix" in n:
+        cfg.setdefault("naming", {})["domain_prefix"] = bool(n["domain_prefix"])
+        updated.append("naming.domain_prefix")
+        needs_reload = True
+    if "convention" in n:
+        from provisa.compiler.naming import VALID_CONVENTIONS
+
+        if n["convention"] not in VALID_CONVENTIONS:
+            return f"Invalid convention: {n['convention']!r}"
+        cfg.setdefault("naming", {})["convention"] = n["convention"]
+        updated.append("naming.convention")
+        needs_reload = True
+    if needs_reload:
+        write_config(path, cfg)
+        try:
+            await _load_and_build(str(path))
+        except Exception:
+            pass
+    return None
+
+
+def _apply_scalars(body: dict, state, updated: list) -> None:
+    """Apply the simple env/state-backed scalar setting blocks (limits/cache/sampling/relationships)."""
+    if "limits" in body and "default_row_limit" in body["limits"]:
+        os.environ["PROVISA_DEFAULT_ROW_LIMIT"] = str(body["limits"]["default_row_limit"])
+        updated.append("limits.default_row_limit")
+    if "cache" in body and "default_ttl" in body["cache"]:
+        state.response_cache_default_ttl = int(body["cache"]["default_ttl"])
+        updated.append("cache.default_ttl")
+    if "sampling" in body and "default_sample_size" in body["sampling"]:
+        os.environ["PROVISA_SAMPLE_SIZE"] = str(int(body["sampling"]["default_sample_size"]))
+        updated.append("sampling.default_sample_size")
+    if "relationships" in body and "auto_track_fk" in body["relationships"]:
+        os.environ["PROVISA_AUTO_TRACK_FK"] = (
+            "true" if body["relationships"]["auto_track_fk"] else "false"
+        )
+        updated.append("relationships.auto_track_fk")
+
+
 @router.put("/admin/settings")
 async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-302, REQ-303, REQ-416
     """Update platform settings at runtime."""
-    from provisa.api.app import state, _load_and_build
+    from provisa.api.app import state
 
     body = await request.json()
-    updated = []
+    updated: list = []
     restart_required = False
 
     if "engine" in body:
-        # Execution-engine (federation) sizing + fault-tolerant execution. These are
-        # written to the config file and regenerate the engine's config.properties, but
-        # only take effect on an engine restart — the caller is told so.
-        e = body["engine"]
-        engine_keys = (
-            "jvm_heap_gb",
-            "query_max_memory",
-            "query_max_memory_per_node",
-            "query_max_total_memory",
-            "fault_tolerant_execution",
-            "fault_tolerant_task_memory",
-            "exchange_spool_dir",
-        )
-        path = config_path()
-        cfg = read_config()
-        changed = False
-        for k in engine_keys:
-            if k in e:
-                cfg[k] = int(e[k]) if k == "jvm_heap_gb" else e[k]
-                updated.append(f"engine.{k}")
-                changed = True
-        if changed:
-            write_config(path, cfg)
-            state.federation_engine.write_config(str(path))
-            restart_required = True
-
+        restart_required = _apply_engine(body["engine"], state, updated) or restart_required
     if "redirect" in body:
         _apply_redirect(body["redirect"], updated)
-
-    if "limits" in body:
-        s = body["limits"]
-        if "default_row_limit" in s:
-            os.environ["PROVISA_DEFAULT_ROW_LIMIT"] = str(s["default_row_limit"])
-            updated.append("limits.default_row_limit")
-
-    if "cache" in body:
-        c = body["cache"]
-        if "default_ttl" in c:
-            state.response_cache_default_ttl = int(c["default_ttl"])
-            updated.append("cache.default_ttl")
-
+    _apply_scalars(body, state, updated)
+    if "graphql_remote" in body:
+        _apply_graphql_remote(body["graphql_remote"], updated)
     if "naming" in body:
-        n = body["naming"]
-        needs_reload = False
-        path = config_path()
-        cfg = read_config()
-        if "domain_prefix" in n:
-            cfg.setdefault("naming", {})["domain_prefix"] = bool(n["domain_prefix"])
-            updated.append("naming.domain_prefix")
-            needs_reload = True
-        if "convention" in n:
-            from provisa.compiler.naming import VALID_CONVENTIONS
-
-            if n["convention"] not in VALID_CONVENTIONS:
-                return {"success": False, "message": f"Invalid convention: {n['convention']!r}"}
-            cfg.setdefault("naming", {})["convention"] = n["convention"]
-            updated.append("naming.convention")
-            needs_reload = True
-        # NOTE: use_domains / default_domain are NOT editable here. Changing the domain
-        # policy is destructive (it invalidates every registered table's domain) — it is
-        # handled by the dedicated POST /admin/domain-policy endpoint which backs up and
-        # resets the config.
-        if needs_reload:
-            write_config(path, cfg)
-            try:
-                await _load_and_build(str(path))
-            except Exception:
-                pass
-
-    if "relationships" in body:
-        r = body["relationships"]
-        if "auto_track_fk" in r:
-            os.environ["PROVISA_AUTO_TRACK_FK"] = "true" if r["auto_track_fk"] else "false"
-            updated.append("relationships.auto_track_fk")
-
+        err = await _apply_naming(body["naming"], updated)
+        if err is not None:
+            return {"success": False, "message": err}
     if "otel" in body:
         _apply_otel(body["otel"], updated)
 
@@ -515,14 +619,20 @@ async def get_cache_storage():  # REQ-917
     """Hot-cache (Redis) + materialize-store settings for the admin UI."""
     from provisa.api.app import state
 
+    from provisa.core.models import HotTablesConfig, MaterializedViewsConfig, WarmTablesConfig
+
     cfg = read_config()
     cache = cfg.get("cache", {}) or {}
     hot = cfg.get("hot_tables", {}) or {}
+    warm = cfg.get("warm_tables", {}) or {}
+    mv = cfg.get("materialized_views", {}) or {}
     # The DSN the active engine offers itself as its materialize target absent explicit config
     # (engine.py:_*_materialize_default). Reported so the UI shows the real "empty →" fallback
     # for THIS engine rather than a hardcoded string — None when the engine declares no default.
     default_store = state.federation_engine.engine.default_materialize_store()
-    # Defaults mirror the single source of truth — the reads in cache/hot_tables.py.
+    hf = HotTablesConfig.model_fields
+    wf = WarmTablesConfig.model_fields
+    # Defaults mirror the single source of truth — the model field defaults / reads in hot_tables.py.
     return {
         "cache": {
             "enabled": bool(cache.get("enabled", False)),
@@ -530,10 +640,27 @@ async def get_cache_storage():  # REQ-917
             "default_ttl": cache.get("default_ttl"),
         },
         "hot_tables": {
-            "auto_threshold": hot.get("auto_threshold", 1000),
-            "max_rows": hot.get("max_rows", hot.get("auto_threshold", 1000)),
-            "max_bytes": hot.get("max_bytes", 10 * 1024 * 1024),
+            "auto_threshold": hot.get("auto_threshold", hf["auto_threshold"].default),
+            "max_rows": hot.get(
+                "max_rows", hot.get("auto_threshold", hf["auto_threshold"].default)
+            ),
+            "max_bytes": hot.get("max_bytes", hf["max_bytes"].default),
             "refresh_interval": hot.get("refresh_interval"),
+        },
+        "warm_tables": {  # REQ-240: tier-promotion thresholds + engine filesystem read-cache
+            "query_threshold": warm.get("query_threshold", wf["query_threshold"].default),
+            "max_rows": warm.get("max_rows", wf["max_rows"].default),
+            "refresh_interval": warm.get("refresh_interval", wf["refresh_interval"].default),
+            "fs_cache_enabled": bool(warm.get("fs_cache_enabled", wf["fs_cache_enabled"].default)),
+            "fs_cache_directories": warm.get(
+                "fs_cache_directories", wf["fs_cache_directories"].default
+            ),
+            "fs_cache_max_sizes": warm.get("fs_cache_max_sizes", wf["fs_cache_max_sizes"].default),
+        },
+        "materialized_views": {  # REQ-543: default MV refresh TTL for MVs without their own
+            "default_ttl": mv.get(
+                "default_ttl", MaterializedViewsConfig.model_fields["default_ttl"].default
+            ),
         },
         "materialize": {
             "store_url": cfg.get("materialize_store_url") or "",
@@ -566,6 +693,26 @@ async def set_cache_storage(request: Request):  # REQ-917
                 hot[k] = int(v) if v not in (None, "") else None
                 updated.append(f"hot_tables.{k}")
         cfg["hot_tables"] = hot
+    if "warm_tables" in body:  # REQ-240
+        warm = dict(cfg.get("warm_tables", {}) or {})
+        for k in ("query_threshold", "max_rows", "refresh_interval"):
+            if k in body["warm_tables"]:
+                v = body["warm_tables"][k]
+                warm[k] = int(v) if v not in (None, "") else None
+                updated.append(f"warm_tables.{k}")
+        if "fs_cache_enabled" in body["warm_tables"]:
+            warm["fs_cache_enabled"] = bool(body["warm_tables"]["fs_cache_enabled"])
+            updated.append("warm_tables.fs_cache_enabled")
+        for k in ("fs_cache_directories", "fs_cache_max_sizes"):
+            if k in body["warm_tables"]:
+                warm[k] = body["warm_tables"][k]
+                updated.append(f"warm_tables.{k}")
+        cfg["warm_tables"] = warm
+    if "materialized_views" in body and "default_ttl" in body["materialized_views"]:  # REQ-543
+        v = body["materialized_views"]["default_ttl"]
+        cfg["materialized_views"] = dict(cfg.get("materialized_views", {}) or {})
+        cfg["materialized_views"]["default_ttl"] = int(v) if v not in (None, "") else None
+        updated.append("materialized_views.default_ttl")
     if "materialize" in body and "store_url" in body["materialize"]:
         cfg["materialize_store_url"] = body["materialize"]["store_url"] or None
         updated.append("materialize_store_url")
@@ -574,18 +721,27 @@ async def set_cache_storage(request: Request):  # REQ-917
     return {"success": True, "updated": updated, "restart_required": True}
 
 
-_ENCRYPTION_PROVIDERS = [
-    {
-        "key": "null",
-        "label": "None (passthrough)",
-        "description": "No encryption — data stored in plaintext. Development/test only.",
-    },
-    {
-        "key": "local",
-        "label": "Local keychain (AES-256-GCM)",
-        "description": "Envelope encryption with a 32-byte master key held on this host (OS keychain or PROVISA_ENCRYPTION_KEY).",
-    },
-]
+def _encryption_providers() -> list[dict]:
+    """UI view of the encryption-provider registry (REQ-918, REQ-690-694).
+
+    Derived live from the extensible registry, so built-in AND enterprise-registered
+    custom providers (custom KMS/HSM endpoints) surface automatically with their
+    declared config_fields. ``available`` reflects whether the provider's runtime is
+    installed — the UI shows-but-blocks unavailable ones, matching the factory's
+    fail-closed selection.
+    """
+    from provisa.encryption.registry import encryption_provider_registry
+
+    return [
+        {
+            "key": s.key,
+            "label": s.label,
+            "description": s.description,
+            "available": s.available(),
+            "config_fields": s.config_fields,
+        }
+        for s in encryption_provider_registry()
+    ]
 
 
 @router.get("/admin/encryption")
@@ -597,11 +753,14 @@ async def get_encryption():  # REQ-918
     enc = cfg.get("encryption", {}) or {}
     provider = enc.get("provider", "null")
     key_id = enc.get("key_id")
+    providers = _encryption_providers()
     return {
         "provider": provider,
         "key_id": key_id,
         "key_present": master_key_present(key_id) if provider == "local" else None,
-        "providers": _ENCRYPTION_PROVIDERS,
+        "providers": providers,
+        # Per-provider persisted config (mirrors /admin/auth). key_id stays top-level for `local`.
+        "config": {p["key"]: dict(enc.get(p["key"], {}) or {}) for p in providers},
         "restart_required_note": "The encryption provider binds at startup — changes take effect after a service restart.",
     }
 
@@ -609,16 +768,34 @@ async def get_encryption():  # REQ-918
 @router.put("/admin/encryption")
 async def set_encryption(request: Request):  # REQ-918
     """Persist the encryption provider + key id. Applied on service restart."""
+    from provisa.encryption.registry import get_provider_spec
+
     body = await request.json()
     provider = body.get("provider")
-    if provider not in {p["key"] for p in _ENCRYPTION_PROVIDERS}:
+    spec = get_provider_spec(provider)
+    if spec is None:
         raise HTTPException(status_code=400, detail=f"unknown encryption provider {provider!r}")
+    if not spec.available():
+        # Fail closed — the runtime (factory.build_encryption_service) can't build this.
+        raise HTTPException(
+            status_code=400,
+            detail=f"encryption provider {provider!r} is not available (its SDK/runtime is not installed)",
+        )
     path = config_path()
     cfg = read_config()
     enc = dict(cfg.get("encryption", {}) or {})
-    enc["provider"] = provider
+    # Persist the canonical key (spec.key), so aliases resolve consistently at boot.
+    enc["provider"] = spec.key
     if "key_id" in body:
         enc["key_id"] = body["key_id"] or None
+    # Persist only the keys this provider declares (mirrors /admin/auth).
+    allowed = {f["config_key"] for f in spec.config_fields}
+    pcfg = dict(enc.get(spec.key, {}) or {})
+    for k, v in (body.get("config") or {}).items():
+        if k in allowed:
+            pcfg[k] = v
+    if pcfg:
+        enc[spec.key] = pcfg
     cfg["encryption"] = enc
     write_config(path, cfg)
     return {"success": True, "restart_required": True}
