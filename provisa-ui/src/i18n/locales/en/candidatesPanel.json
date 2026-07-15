@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "Click \"Extract Joins\" to find new relationships. JOIN conditions that already have a registered relationship are excluded.",
+    "colId": "ID",
+    "colSource": "Source",
+    "colTarget": "Target",
+    "colCardinality": "Cardinality",
+    "colActions": "Actions",
+    "idLabel": "Candidate ID",
+    "cardinalityLabel": "Cardinality",
+    "manyToOne": "many-to-one",
+    "oneToMany": "one-to-many",
+    "promoted": "Promoted",
+    "promote": "Promote"
+  }
+}

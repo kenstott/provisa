@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { useTranslation } from "react-i18next";
+import { Button, Card, Checkbox, Group, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
 import type { RegisteredTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import type { RelForm } from "./relationship-types";
@@ -29,194 +31,165 @@ export function AddRelationshipForm({
   saving,
   onSave,
 }: AddRelationshipFormProps) {
+  const { t } = useTranslation();
+
+  const tableOptions = tables.map((tbl) => ({ value: tbl.tableName, label: tbl.tableName }));
+  const sourceColumnOptions = (
+    tables.find((tbl) => tbl.tableName === form.sourceTableId)?.columns ?? []
+  ).map((c) => ({ value: c.columnName, label: c.columnName }));
+  const targetColumnOptions = (
+    tables.find((tbl) => tbl.tableName === form.targetTableId)?.columns ?? []
+  ).map((c) => ({ value: c.columnName, label: c.columnName }));
+  const functionOptions = functions.map((f) => ({ value: f.name, label: f.name }));
+
   return (
-    <div className="form-card">
-      <div className="form-row">
-        <label>
-          ID
-          <input
+    <Card withBorder padding="md" data-testid="add-relationship-form">
+      <Stack gap="md">
+        <Group align="flex-end" wrap="wrap">
+          <TextInput
+            label={t("addRelationshipForm.idLabel")}
+            placeholder={t("addRelationshipForm.idPlaceholder")}
             value={form.id}
-            onChange={(e) => setForm({ ...form, id: e.target.value })}
-            placeholder="orders-to-customers"
+            onChange={(e) => setForm({ ...form, id: e.currentTarget.value })}
+            data-testid="rel-form-id"
           />
-        </label>
-        <label>
-          CQL Alias (UPPER_SNAKE)
-          <input
+          <TextInput
+            label={t("addRelationshipForm.aliasLabel")}
+            placeholder={t("addRelationshipForm.aliasPlaceholder")}
             value={form.alias}
-            onChange={(e) => setForm({ ...form, alias: e.target.value })}
-            placeholder="PLACED_BY"
+            onChange={(e) => setForm({ ...form, alias: e.currentTarget.value })}
+            data-testid="rel-form-alias"
           />
-        </label>
-        <label>
-          GQL Alias (camelCase)
-          <input
+          <TextInput
+            label={t("addRelationshipForm.graphqlAliasLabel")}
+            placeholder={t("addRelationshipForm.graphqlAliasPlaceholder")}
             value={form.graphqlAlias}
-            onChange={(e) => setForm({ ...form, graphqlAlias: e.target.value })}
-            placeholder="e.g. orders"
+            onChange={(e) => setForm({ ...form, graphqlAlias: e.currentTarget.value })}
+            data-testid="rel-form-graphql-alias"
           />
-        </label>
-        <label>
-          Source Table
-          <select
-            value={form.sourceTableId}
-            onChange={(e) => setForm({ ...form, sourceTableId: e.target.value })}
-          >
-            <option value="">Select...</option>
-            {tables.map((t) => (
-              <option key={t.id} value={t.tableName}>
-                {t.tableName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Source Column
-          <select
-            value={form.sourceColumn}
-            onChange={(e) => setForm({ ...form, sourceColumn: e.target.value })}
-          >
-            <option value="">Select...</option>
-            {(tables.find((t) => t.tableName === form.sourceTableId)?.columns ?? []).map((c) => (
-              <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="form-row">
-        <label>
-          Target Type
-          <select
+          <Select
+            label={t("addRelationshipForm.sourceTableLabel")}
+            placeholder={t("addRelationshipForm.selectPlaceholder")}
+            data={tableOptions}
+            value={form.sourceTableId || null}
+            onChange={(v) => setForm({ ...form, sourceTableId: v ?? "" })}
+            data-testid="rel-form-source-table"
+          />
+          <Select
+            label={t("addRelationshipForm.sourceColumnLabel")}
+            placeholder={t("addRelationshipForm.selectPlaceholder")}
+            data={sourceColumnOptions}
+            value={form.sourceColumn || null}
+            onChange={(v) => setForm({ ...form, sourceColumn: v ?? "" })}
+            data-testid="rel-form-source-column"
+          />
+        </Group>
+        <Group align="flex-end" wrap="wrap">
+          <Select
+            label={t("addRelationshipForm.targetTypeLabel")}
+            data={[
+              { value: "table", label: t("addRelationshipForm.targetTypeTable") },
+              { value: "function", label: t("addRelationshipForm.targetTypeFunction") },
+            ]}
             value={form.targetType}
-            onChange={(e) =>
+            allowDeselect={false}
+            onChange={(v) =>
               setForm({
                 ...form,
-                targetType: e.target.value as "table" | "function",
+                targetType: (v ?? "table") as "table" | "function",
                 targetTableId: "",
                 targetColumn: "",
                 targetFunctionName: "",
                 functionArg: "",
               })
             }
-          >
-            <option value="table">Table</option>
-            <option value="function">Function (computed)</option>
-          </select>
-        </label>
-        {form.targetType === "table" ? (
-          <>
-            <label>
-              Target Table
-              <select
-                value={form.targetTableId}
-                onChange={(e) => setForm({ ...form, targetTableId: e.target.value })}
-              >
-                <option value="">Select...</option>
-                {tables.map((t) => (
-                  <option key={t.id} value={t.tableName}>
-                    {t.tableName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Target Column
-              <select
-                value={form.targetColumn}
-                onChange={(e) => setForm({ ...form, targetColumn: e.target.value })}
-              >
-                <option value="">Select...</option>
-                {(tables.find((t) => t.tableName === form.targetTableId)?.columns ?? []).map((c) => (
-                  <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
-                ))}
-              </select>
-            </label>
-          </>
-        ) : (
-          <>
-            <label>
-              Function
-              <select
-                value={form.targetFunctionName}
-                onChange={(e) => setForm({ ...form, targetFunctionName: e.target.value })}
-              >
-                <option value="">Select...</option>
-                {functions.map((f) => (
-                  <option key={f.name} value={f.name}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Function Arg (receives source column)
-              <input
-                value={form.functionArg}
-                onChange={(e) => setForm({ ...form, functionArg: e.target.value })}
-                placeholder="arg name"
+            data-testid="rel-form-target-type"
+          />
+          {form.targetType === "table" ? (
+            <>
+              <Select
+                label={t("addRelationshipForm.targetTableLabel")}
+                placeholder={t("addRelationshipForm.selectPlaceholder")}
+                data={tableOptions}
+                value={form.targetTableId || null}
+                onChange={(v) => setForm({ ...form, targetTableId: v ?? "" })}
+                data-testid="rel-form-target-table"
               />
-            </label>
-          </>
-        )}
-      </div>
-      <div className="form-row">
+              <Select
+                label={t("addRelationshipForm.targetColumnLabel")}
+                placeholder={t("addRelationshipForm.selectPlaceholder")}
+                data={targetColumnOptions}
+                value={form.targetColumn || null}
+                onChange={(v) => setForm({ ...form, targetColumn: v ?? "" })}
+                data-testid="rel-form-target-column"
+              />
+            </>
+          ) : (
+            <>
+              <Select
+                label={t("addRelationshipForm.functionLabel")}
+                placeholder={t("addRelationshipForm.selectPlaceholder")}
+                data={functionOptions}
+                value={form.targetFunctionName || null}
+                onChange={(v) => setForm({ ...form, targetFunctionName: v ?? "" })}
+                data-testid="rel-form-function"
+              />
+              <TextInput
+                label={t("addRelationshipForm.functionArgLabel")}
+                placeholder={t("addRelationshipForm.functionArgPlaceholder")}
+                value={form.functionArg}
+                onChange={(e) => setForm({ ...form, functionArg: e.currentTarget.value })}
+                data-testid="rel-form-function-arg"
+              />
+            </>
+          )}
+        </Group>
         {form.targetType === "table" && (
-          <label>
-            Cardinality
-            <select
+          <Stack gap={4} maw={240}>
+            <Select
+              label={t("addRelationshipForm.cardinalityLabel")}
+              data={[
+                { value: "many-to-one", label: t("addRelationshipForm.cardinalityManyToOne") },
+                { value: "one-to-many", label: t("addRelationshipForm.cardinalityOneToMany") },
+              ]}
               value={form.cardinality}
-              onChange={(e) => setForm({ ...form, cardinality: e.target.value })}
-            >
-              <option value="many-to-one">many-to-one</option>
-              <option value="one-to-many">one-to-many</option>
-            </select>
-            {form.cardinality === "many-to-one" && (
-              <span
-                style={{
-                  color: "var(--warning, #b45309)",
-                  fontSize: "0.78rem",
-                  marginTop: "0.25rem",
-                  display: "block",
-                }}
-              >
-                Warning: if this join returns more than one row per parent, only the first value
-                will be used.
-              </span>
-            )}
-          </label>
-        )}
-      </div>
-      <div className="form-row">
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={form.materialize}
-            onChange={(e) => setForm({ ...form, materialize: e.target.checked })}
-          />
-          Materialize (auto-create MV for cross-source joins)
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={form.disableCypher}
-            onChange={(e) => setForm({ ...form, disableCypher: e.target.checked })}
-          />
-          Exclude from Cypher graph
-        </label>
-        {form.materialize && (
-          <label>
-            Refresh Interval (s)
-            <input
-              type="number"
-              value={form.refreshInterval}
-              onChange={(e) => setForm({ ...form, refreshInterval: e.target.value })}
+              allowDeselect={false}
+              onChange={(v) => setForm({ ...form, cardinality: v ?? "many-to-one" })}
+              data-testid="rel-form-cardinality"
             />
-          </label>
+            {form.cardinality === "many-to-one" && (
+              <Text c="var(--warning, #b45309)" fz="xs">
+                {t("addRelationshipForm.cardinalityWarning")}
+              </Text>
+            )}
+          </Stack>
         )}
-        <button className="btn-primary" onClick={onSave} disabled={saving === "new"}>
-          Save
-        </button>
-      </div>
-    </div>
+        <Group align="flex-end" wrap="wrap">
+          <Checkbox
+            label={t("addRelationshipForm.materializeLabel")}
+            checked={form.materialize}
+            onChange={(e) => setForm({ ...form, materialize: e.currentTarget.checked })}
+            data-testid="rel-form-materialize"
+          />
+          <Checkbox
+            label={t("addRelationshipForm.disableCypherLabel")}
+            checked={form.disableCypher}
+            onChange={(e) => setForm({ ...form, disableCypher: e.currentTarget.checked })}
+            data-testid="rel-form-disable-cypher"
+          />
+          {form.materialize && (
+            <NumberInput
+              label={t("addRelationshipForm.refreshIntervalLabel")}
+              value={form.refreshInterval}
+              onChange={(v) => setForm({ ...form, refreshInterval: String(v) })}
+              data-testid="rel-form-refresh-interval"
+            />
+          )}
+          <Button onClick={onSave} disabled={saving === "new"} data-testid="rel-form-save">
+            {t("addRelationshipForm.save")}
+          </Button>
+        </Group>
+      </Stack>
+    </Card>
   );
 }

@@ -344,22 +344,10 @@ main {
 .page-header .search-wrap { width: 100%; max-width: none; }
 
 /* Buttons — scoped to .page to avoid clobbering GraphiQL */
-.page button {
-  cursor: pointer;
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  background: var(--primary);
-  color: white;
-}
-.page button:hover { background: var(--primary-hover); }
-.page button:disabled { opacity: 0.5; cursor: not-allowed; }
-.page button.destructive { background: var(--destructive); }
-.page button.destructive:hover { background: #dc2626; }
-.page button.approve { background: var(--approve); }
-.page button.approve:hover { background: #16a34a; }
-.page button.reject { background: var(--destructive); }
+/* Global `.page button` styling removed during the Mantine migration: it
+ * overrode every Mantine Button/ActionIcon variant (painting transparent icon
+ * buttons solid indigo and hiding their glyphs). Mantine now owns all button
+ * styling. Non-migrated raw buttons carry their own component classes. */
 
 /* Data table */
 .data-table {
@@ -406,6 +394,11 @@ main {
 .form-card label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; color: var(--text-muted); min-width: 0; }
 .form-card label:has(> input[type="checkbox"]) { flex-direction: row; align-items: center; gap: 0.5rem; }
 .form-card label:has(> input[type="checkbox"]) input[type="checkbox"] { width: auto; }
+/* Mantine InputWrapper owns its label layout and renders the required asterisk
+ * inline; the legacy `.form-card/.form-row label { flex-direction: column }`
+ * rules above would stack the `*` on its own line under the label text. */
+.form-card .mantine-InputWrapper-label,
+.form-row .mantine-InputWrapper-label { display: inline-block; }
 .form-card input, .form-card select, .form-card textarea, .column-editor input, .column-editor select {
   background: var(--bg);
   color: var(--text);

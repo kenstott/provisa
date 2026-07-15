@@ -10,6 +10,8 @@
 
 import { useState, useEffect } from "react";
 import type { FormEvent } from "react";
+import { Alert, Button, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { fetchProviderType, registerAccount, fetchInviteInfo } from "../api/admin";
 import type { InviteInfo } from "../api/admin";
 
@@ -21,6 +23,7 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
+  const { t } = useTranslation();
   const [provider, setProvider] = useState<string | null>(null);
   const [providerLoading, setProviderLoading] = useState(true);
 
@@ -55,8 +58,8 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   if (authDisabled) {
     return (
       <div className="page">
-        <h2>Login</h2>
-        <p>Authentication not configured</p>
+        <Title order={2}>{t("loginPage.loginTitle")}</Title>
+        <Text>{t("loginPage.authNotConfigured")}</Text>
       </div>
     );
   }
@@ -64,7 +67,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   if (providerLoading) {
     return (
       <div className="page">
-        <p>Loading...</p>
+        <Text>{t("loginPage.loading")}</Text>
       </div>
     );
   }
@@ -94,7 +97,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     e.preventDefault();
     setError(null);
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("loginPage.passwordsDoNotMatch"));
       return;
     }
     setLoading(true);
@@ -111,7 +114,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       setConfirmPassword("");
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      setError(err instanceof Error ? err.message : t("loginPage.registrationFailed"));
     } finally {
       setLoading(false);
     }
@@ -126,7 +129,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       localStorage.setItem("provisa_token", idToken);
       onLoginSuccess(idToken);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Firebase sign-in failed");
+      setError(err instanceof Error ? err.message : t("loginPage.firebaseSignInFailed"));
     } finally {
       setLoading(false);
     }
@@ -135,11 +138,15 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   if (provider === "firebase") {
     return (
       <div className="page">
-        <h2>Sign In</h2>
-        {error && <div style={{ color: "var(--destructive)", marginBottom: 12 }}>{error}</div>}
-        <button className="btn-primary" onClick={handleFirebaseLogin} disabled={loading}>
-          {loading ? "Signing in..." : "Sign in with Google"}
-        </button>
+        <Title order={2}>{t("loginPage.signInTitle")}</Title>
+        {error && (
+          <Alert color="red" mb="md" data-testid="login-error">
+            {error}
+          </Alert>
+        )}
+        <Button data-testid="firebase-signin-button" onClick={handleFirebaseLogin} disabled={loading}>
+          {loading ? t("loginPage.signingIn") : t("loginPage.signInWithGoogle")}
+        </Button>
       </div>
     );
   }
@@ -147,93 +154,91 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   if (mode === "register" && provider === "basic") {
     return (
       <div className="page">
-        <h2>Create Account</h2>
+        <Title order={2}>{t("loginPage.createAccountTitle")}</Title>
         <form onSubmit={handleRegister} style={{ maxWidth: 360 }}>
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor="reg-username">Username</label>
-            <input
+          <Stack gap="md">
+            <TextInput
               id="reg-username"
-              type="text"
+              label={t("loginPage.username")}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
+              withAsterisk={false}
               autoComplete="username"
-              style={{ display: "block", width: "100%", marginTop: 4 }}
+              data-testid="reg-username-input"
             />
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor="reg-email">Email</label>
-            <input
+            <TextInput
               id="reg-email"
               type="email"
+              label={t("loginPage.email")}
               value={regEmail}
               onChange={(e) => setRegEmail(e.target.value)}
               autoComplete="email"
-              style={{ display: "block", width: "100%", marginTop: 4 }}
+              data-testid="reg-email-input"
             />
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor="reg-displayname">Display Name</label>
-            <input
+            <TextInput
               id="reg-displayname"
-              type="text"
+              label={t("loginPage.displayName")}
               value={regDisplayName}
               onChange={(e) => setRegDisplayName(e.target.value)}
-              style={{ display: "block", width: "100%", marginTop: 4 }}
+              data-testid="reg-displayname-input"
             />
-          </div>
-          {inviteInfo && (
-            <div style={{ marginBottom: 12 }}>
-              <label>Organization</label>
-              <input
-                type="text"
+            {inviteInfo && (
+              <TextInput
+                label={t("loginPage.organization")}
                 value={inviteInfo.org_name}
                 readOnly
-                style={{ display: "block", width: "100%", marginTop: 4, opacity: 0.7 }}
+                data-testid="reg-org-input"
               />
-            </div>
-          )}
-          {inviteError && (
-            <div style={{ color: "var(--destructive)", marginBottom: 12 }}>{inviteError}</div>
-          )}
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor="reg-password">Password</label>
-            <input
+            )}
+            {inviteError && (
+              <Alert color="red" data-testid="invite-error">
+                {inviteError}
+              </Alert>
+            )}
+            <PasswordInput
               id="reg-password"
-              type="password"
+              label={t("loginPage.password")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              withAsterisk={false}
               autoComplete="new-password"
-              style={{ display: "block", width: "100%", marginTop: 4 }}
+              data-testid="reg-password-input"
             />
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor="reg-confirm">Confirm Password</label>
-            <input
+            <PasswordInput
               id="reg-confirm"
-              type="password"
+              label={t("loginPage.confirmPassword")}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
+              withAsterisk={false}
               autoComplete="new-password"
-              style={{ display: "block", width: "100%", marginTop: 4 }}
+              data-testid="reg-confirm-input"
             />
-          </div>
-          {error && <div style={{ color: "var(--destructive)", marginBottom: 12 }}>{error}</div>}
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? "Creating..." : "Create Account"}
-          </button>
-          <button
-            type="button"
-            style={{ marginLeft: 8 }}
-            onClick={() => {
-              setMode("login");
-              setError(null);
-            }}
-          >
-            Back to Login
-          </button>
+            {error && (
+              <Alert color="red" data-testid="register-error">
+                {error}
+              </Alert>
+            )}
+            <div>
+              <Button type="submit" disabled={loading} data-testid="create-account-button">
+                {loading ? t("loginPage.creating") : t("loginPage.createAccount")}
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                ml="xs"
+                onClick={() => {
+                  setMode("login");
+                  setError(null);
+                }}
+                data-testid="back-to-login-button"
+              >
+                {t("loginPage.backToLogin")}
+              </Button>
+            </div>
+          </Stack>
         </form>
       </div>
     );
@@ -241,48 +246,54 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
 
   return (
     <div className="page">
-      <h2>Login</h2>
+      <Title order={2}>{t("loginPage.loginTitle")}</Title>
       <form onSubmit={handleBasicLogin} style={{ maxWidth: 360 }}>
-        <div style={{ marginBottom: 12 }}>
-          <label htmlFor="username">Username</label>
-          <input
+        <Stack gap="md">
+          <TextInput
             id="username"
-            type="text"
+            label={t("loginPage.username")}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
+            withAsterisk={false}
             autoComplete="username"
-            style={{ display: "block", width: "100%", marginTop: 4 }}
+            data-testid="username-input"
           />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label htmlFor="password">Password</label>
-          <input
+          <PasswordInput
             id="password"
-            type="password"
+            label={t("loginPage.password")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            withAsterisk={false}
             autoComplete="current-password"
-            style={{ display: "block", width: "100%", marginTop: 4 }}
+            data-testid="password-input"
           />
-        </div>
-        {error && <div style={{ color: "var(--destructive)", marginBottom: 12 }}>{error}</div>}
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? "Logging in..." : "Login"}
-        </button>
-        {provider === "basic" && (
-          <button
-            type="button"
-            style={{ marginLeft: 8 }}
-            onClick={() => {
-              setMode("register");
-              setError(null);
-            }}
-          >
-            Create Account
-          </button>
-        )}
+          {error && (
+            <Alert color="red" data-testid="login-error">
+              {error}
+            </Alert>
+          )}
+          <div>
+            <Button type="submit" disabled={loading} data-testid="login-button">
+              {loading ? t("loginPage.loggingIn") : t("loginPage.loginTitle")}
+            </Button>
+            {provider === "basic" && (
+              <Button
+                type="button"
+                variant="default"
+                ml="xs"
+                onClick={() => {
+                  setMode("register");
+                  setError(null);
+                }}
+                data-testid="create-account-link-button"
+              >
+                {t("loginPage.createAccount")}
+              </Button>
+            )}
+          </div>
+        </Stack>
       </form>
     </div>
   );

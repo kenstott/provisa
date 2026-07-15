@@ -11,6 +11,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useTranslation } from "react-i18next";
+import { Alert, Box, Loader, NavLink, Stack } from "@mantine/core";
+import { AlertCircle, Info } from "lucide-react";
 import "./DocsPage.css";
 
 interface DocEntry {
@@ -24,6 +27,7 @@ interface DocEntry {
 const RAW_BASE = "https://raw.githubusercontent.com/kenstott/provisa/main";
 
 export function DocsPage() {
+  const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
   const [manifest, setManifest] = useState<DocEntry[]>([]);
   const [content, setContent] = useState("");
@@ -46,7 +50,7 @@ export function DocsPage() {
         }
       })
       .catch(() => {
-        if (!cancelled) setError("Documentation index could not be loaded.");
+        if (!cancelled) setError(t("docsPage.manifestError"));
       });
     return () => {
       cancelled = true;
@@ -90,7 +94,7 @@ export function DocsPage() {
             setSource("live");
           }
         } catch {
-          if (!cancelled) setError("This document is not available offline. Reconnect to load it.");
+          if (!cancelled) setError(t("docsPage.docUnavailable"));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -115,25 +119,46 @@ export function DocsPage() {
 
   return (
     <div className="docs-page">
-      <nav className="docs-sidebar" aria-label="Documentation">
+      <Stack component="nav" className="docs-sidebar" gap={2} aria-label={t("docsPage.nav")}>
         {manifest.map((d) => (
-          <button
+          <NavLink
             key={d.slug}
-            className={`docs-nav-item${d.slug === activeSlug ? " docs-nav-active" : ""}`}
+            label={d.title}
+            active={d.slug === activeSlug}
+            aria-current={d.slug === activeSlug ? "page" : undefined}
+            data-testid={`docs-nav-item-${d.slug}`}
             onClick={() => setParams({ doc: d.slug })}
-          >
-            {d.title}
-          </button>
+          />
         ))}
-      </nav>
+      </Stack>
 
       <article className="docs-content">
-        {loading && <div className="docs-status">Loading…</div>}
-        {error && <div className="docs-status docs-error">{error}</div>}
+        {loading && (
+          <Box className="docs-status" data-testid="docs-loading">
+            <Loader size="sm" aria-label={t("docsPage.loading")} />
+          </Box>
+        )}
+        {error && (
+          <Alert
+            color="red"
+            icon={<AlertCircle size={16} />}
+            data-testid="docs-error"
+            className="docs-status"
+          >
+            {error}
+          </Alert>
+        )}
         {!loading && !error && (
           <>
             {source === "live" && (
-              <div className="docs-live-note">Showing the latest version from the public repository.</div>
+              <Alert
+                color="gray"
+                icon={<Info size={16} />}
+                data-testid="docs-live-note"
+                className="docs-live-note"
+              >
+                {t("docsPage.liveNote")}
+              </Alert>
             )}
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}

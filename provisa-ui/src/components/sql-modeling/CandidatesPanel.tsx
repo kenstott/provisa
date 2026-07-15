@@ -9,6 +9,9 @@
 // permission from the copyright holder.
 
 import React from "react";
+import { useTranslation } from "react-i18next";
+import { Badge, Button, Select, Table, Text, TextInput } from "@mantine/core";
+import { Check } from "lucide-react";
 import type { ModelingCandidate } from "./types";
 
 interface CandidatesPanelProps {
@@ -26,107 +29,101 @@ export function CandidatesPanel({
   onPromote,
   handlePromote,
 }: CandidatesPanelProps) {
+  const { t } = useTranslation();
+
   if (candidates.length === 0) {
     return (
-      <div
-        style={{
-          padding: "1.5rem",
-          textAlign: "center",
-          color: "var(--text-muted)",
-          fontSize: "0.85rem",
-        }}
-      >
-        Click "Extract Joins" to find new relationships. JOIN conditions that already have a
-        registered relationship are excluded.
-      </div>
+      <Text ta="center" c="dimmed" fz="sm" p="lg">
+        {t("candidatesPanel.empty")}
+      </Text>
     );
   }
 
   return (
-    <table className="data-table" style={{ fontSize: "0.78rem" }}>
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Source</th>
-          <th>Target</th>
-          <th>Cardinality</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {candidates.map((c, idx) => (
-          <tr key={idx}>
-            <td>
-              <input
-                value={c.id}
-                onChange={(e) =>
-                  setCandidates((prev) =>
-                    prev.map((item, i) =>
-                      i === idx ? { ...item, id: e.target.value } : item,
-                    ),
-                  )
-                }
-                style={{ width: "100%", fontSize: "0.78rem" }}
-              />
-            </td>
-            <td>
-              <span
-                style={{
-                  color: tableNameSet.has(c.sourceTable)
-                    ? "var(--text)"
-                    : "var(--destructive)",
-                }}
-              >
-                {c.sourceTable}
-              </span>
-              <span style={{ color: "var(--text-muted)" }}>.</span>
-              {c.sourceCol}
-            </td>
-            <td>
-              <span
-                style={{
-                  color: tableNameSet.has(c.targetTable)
-                    ? "var(--text)"
-                    : "var(--destructive)",
-                }}
-              >
-                {c.targetTable}
-              </span>
-              <span style={{ color: "var(--text-muted)" }}>.</span>
-              {c.targetCol}
-            </td>
-            <td>
-              <select
-                value={c.cardinality}
-                onChange={(e) =>
-                  setCandidates((prev) =>
-                    prev.map((item, i) =>
-                      i === idx ? { ...item, cardinality: e.target.value } : item,
-                    ),
-                  )
-                }
-                style={{ fontSize: "0.78rem" }}
-              >
-                <option value="many-to-one">many-to-one</option>
-                <option value="one-to-many">one-to-many</option>
-              </select>
-            </td>
-            <td>
-              {c.promoted ? (
-                <span style={{ color: "var(--approve)", fontSize: "0.78rem" }}>✓ Promoted</span>
-              ) : onPromote ? (
-                <button
-                  className="btn-primary"
-                  style={{ fontSize: "0.72rem", padding: "0.15rem 0.5rem" }}
-                  onClick={() => handlePromote(idx)}
-                >
-                  Promote
-                </button>
-              ) : null}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <Table.ScrollContainer minWidth={640}>
+      <Table withTableBorder verticalSpacing="xs" fz="sm">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>{t("candidatesPanel.colId")}</Table.Th>
+            <Table.Th>{t("candidatesPanel.colSource")}</Table.Th>
+            <Table.Th>{t("candidatesPanel.colTarget")}</Table.Th>
+            <Table.Th>{t("candidatesPanel.colCardinality")}</Table.Th>
+            <Table.Th>{t("candidatesPanel.colActions")}</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {candidates.map((c, idx) => (
+            <Table.Tr key={idx}>
+              <Table.Td>
+                <TextInput
+                  aria-label={t("candidatesPanel.idLabel")}
+                  value={c.id}
+                  size="xs"
+                  onChange={(e) =>
+                    setCandidates((prev) =>
+                      prev.map((item, i) =>
+                        i === idx ? { ...item, id: e.currentTarget.value } : item,
+                      ),
+                    )
+                  }
+                />
+              </Table.Td>
+              <Table.Td>
+                <Text span c={tableNameSet.has(c.sourceTable) ? undefined : "red"} fz="sm">
+                  {c.sourceTable}
+                </Text>
+                <Text span c="dimmed" fz="sm">
+                  .
+                </Text>
+                <Text span fz="sm">
+                  {c.sourceCol}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Text span c={tableNameSet.has(c.targetTable) ? undefined : "red"} fz="sm">
+                  {c.targetTable}
+                </Text>
+                <Text span c="dimmed" fz="sm">
+                  .
+                </Text>
+                <Text span fz="sm">
+                  {c.targetCol}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Select
+                  aria-label={t("candidatesPanel.cardinalityLabel")}
+                  size="xs"
+                  value={c.cardinality}
+                  data={[
+                    { value: "many-to-one", label: t("candidatesPanel.manyToOne") },
+                    { value: "one-to-many", label: t("candidatesPanel.oneToMany") },
+                  ]}
+                  allowDeselect={false}
+                  onChange={(value) =>
+                    setCandidates((prev) =>
+                      prev.map((item, i) =>
+                        i === idx ? { ...item, cardinality: value ?? item.cardinality } : item,
+                      ),
+                    )
+                  }
+                />
+              </Table.Td>
+              <Table.Td>
+                {c.promoted ? (
+                  <Badge color="green" variant="light" leftSection={<Check size={12} />}>
+                    {t("candidatesPanel.promoted")}
+                  </Badge>
+                ) : onPromote ? (
+                  <Button size="compact-xs" onClick={() => handlePromote(idx)}>
+                    {t("candidatesPanel.promote")}
+                  </Button>
+                ) : null}
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
   );
 }

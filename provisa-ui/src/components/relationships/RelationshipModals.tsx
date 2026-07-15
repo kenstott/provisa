@@ -8,7 +8,17 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { X } from "lucide-react";
+import {
+  Button,
+  Checkbox,
+  Group,
+  Modal,
+  NumberInput,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import type { Relationship } from "../../types/admin";
 import type { RelForm } from "./relationship-types";
 
@@ -18,59 +28,62 @@ interface ConflictModalProps {
 }
 
 export function ConflictModal({ rel, onClose }: ConflictModalProps) {
+  const { t } = useTranslation();
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal"
-        style={{ width: "500px", maxWidth: "500px" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h3>Relationship Already Exists</h3>
-          <button className="modal-close" onClick={onClose}>
-            <X size={14} />
-          </button>
-        </div>
-        <div className="form-card" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            A relationship with this source and target already exists:
-          </p>
-          <dl
-            style={{
-              margin: 0,
-              display: "grid",
-              gridTemplateColumns: "auto 1fr",
-              gap: "0.35rem 1rem",
-              fontSize: "0.82rem",
-            }}
-          >
-            <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>ID</dt>
-            <dd style={{ margin: 0, fontFamily: "monospace" }}>{rel.id}</dd>
-            <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Source</dt>
-            <dd style={{ margin: 0, fontFamily: "monospace" }}>
-              {rel.sourceTableName}.{rel.sourceColumn}
-            </dd>
-            <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Target</dt>
-            <dd style={{ margin: 0, fontFamily: "monospace" }}>
-              {rel.targetTableName}.{rel.targetColumn}
-            </dd>
-            <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Cardinality</dt>
-            <dd style={{ margin: 0 }}>{rel.cardinality}</dd>
-            {rel.alias && (
-              <>
-                <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Alias</dt>
-                <dd style={{ margin: 0, fontFamily: "monospace" }}>{rel.alias}</dd>
-              </>
-            )}
-          </dl>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button className="btn-secondary" onClick={onClose}>
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Modal opened onClose={onClose} title={t("relationshipModals.conflictTitle")} centered>
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          {t("relationshipModals.conflictIntro")}
+        </Text>
+        <Stack
+          gap={6}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr",
+            columnGap: "1rem",
+            rowGap: "0.35rem",
+          }}
+        >
+          <Text size="sm" fw={600} c="dimmed">
+            {t("relationshipModals.conflictId")}
+          </Text>
+          <Text size="sm" ff="monospace">
+            {rel.id}
+          </Text>
+          <Text size="sm" fw={600} c="dimmed">
+            {t("relationshipModals.conflictSource")}
+          </Text>
+          <Text size="sm" ff="monospace">
+            {rel.sourceTableName}.{rel.sourceColumn}
+          </Text>
+          <Text size="sm" fw={600} c="dimmed">
+            {t("relationshipModals.conflictTarget")}
+          </Text>
+          <Text size="sm" ff="monospace">
+            {rel.targetTableName}.{rel.targetColumn}
+          </Text>
+          <Text size="sm" fw={600} c="dimmed">
+            {t("relationshipModals.conflictCardinality")}
+          </Text>
+          <Text size="sm">{rel.cardinality}</Text>
+          {rel.alias && (
+            <>
+              <Text size="sm" fw={600} c="dimmed">
+                {t("relationshipModals.conflictAlias")}
+              </Text>
+              <Text size="sm" ff="monospace">
+                {rel.alias}
+              </Text>
+            </>
+          )}
+        </Stack>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose} data-testid="conflict-modal-close">
+            {t("relationshipModals.conflictClose")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }
 
@@ -87,74 +100,64 @@ export function ReverseRelationshipModal({
   saving,
   onSave,
 }: ReverseRelationshipModalProps) {
+  const { t } = useTranslation();
   return (
-    <div className="modal-overlay" onClick={() => setReverseForm(null)}>
-      <div
-        className="modal"
-        style={{ width: "730px", maxWidth: "730px" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h3>Generate Reverse Relationship</h3>
-          <button className="modal-close" onClick={() => setReverseForm(null)}>
-            <X size={14} />
-          </button>
-        </div>
-        <div className="form-card">
-          <div className="form-row">
-            <label>
-              ID
-              <input
-                value={reverseForm.id}
-                onChange={(e) => setReverseForm({ ...reverseForm, id: e.target.value })}
-              />
-            </label>
-            <label>
-              CQL Alias (UPPER_SNAKE)
-              <input
-                value={reverseForm.alias}
-                onChange={(e) => setReverseForm({ ...reverseForm, alias: e.target.value })}
-                placeholder="PLACED_BY"
-              />
-            </label>
-            <label>
-              GQL Alias (camelCase)
-              <input
-                value={reverseForm.graphqlAlias}
-                onChange={(e) => setReverseForm({ ...reverseForm, graphqlAlias: e.target.value })}
-              />
-            </label>
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={reverseForm.materialize}
-                onChange={(e) => setReverseForm({ ...reverseForm, materialize: e.target.checked })}
-              />
-              Materialize
-            </label>
-            {reverseForm.materialize && (
-              <label>
-                Refresh Interval (s)
-                <input
-                  type="number"
-                  value={reverseForm.refreshInterval}
-                  onChange={(e) =>
-                    setReverseForm({ ...reverseForm, refreshInterval: e.target.value })
-                  }
-                />
-              </label>
-            )}
-          </div>
-        </div>
-        <div className="modal-actions">
-          <button className="btn-secondary" onClick={() => setReverseForm(null)}>
-            ✕
-          </button>
-          <button className="btn-primary" onClick={onSave} disabled={saving === "reverse"}>
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
+    <Modal
+      opened
+      onClose={() => setReverseForm(null)}
+      title={t("relationshipModals.reverseTitle")}
+      centered
+      size="730px"
+    >
+      <Stack gap="sm">
+        <TextInput
+          label={t("relationshipModals.idLabel")}
+          value={reverseForm.id}
+          onChange={(e) => setReverseForm({ ...reverseForm, id: e.target.value })}
+          data-testid="reverse-rel-id"
+        />
+        <TextInput
+          label={t("relationshipModals.aliasLabel")}
+          placeholder={t("relationshipModals.aliasPlaceholder")}
+          value={reverseForm.alias}
+          onChange={(e) => setReverseForm({ ...reverseForm, alias: e.target.value })}
+          data-testid="reverse-rel-alias"
+        />
+        <TextInput
+          label={t("relationshipModals.graphqlAliasLabel")}
+          value={reverseForm.graphqlAlias}
+          onChange={(e) => setReverseForm({ ...reverseForm, graphqlAlias: e.target.value })}
+          data-testid="reverse-rel-graphql-alias"
+        />
+        <Checkbox
+          label={t("relationshipModals.materializeLabel")}
+          checked={reverseForm.materialize}
+          onChange={(e) => setReverseForm({ ...reverseForm, materialize: e.target.checked })}
+          data-testid="reverse-rel-materialize"
+        />
+        {reverseForm.materialize && (
+          <NumberInput
+            label={t("relationshipModals.refreshIntervalLabel")}
+            value={reverseForm.refreshInterval}
+            onChange={(value) =>
+              setReverseForm({ ...reverseForm, refreshInterval: String(value ?? "") })
+            }
+            data-testid="reverse-rel-refresh-interval"
+          />
+        )}
+      </Stack>
+      <Group justify="flex-end" mt="md">
+        <Button
+          variant="default"
+          onClick={() => setReverseForm(null)}
+          data-testid="reverse-rel-cancel"
+        >
+          {t("relationshipModals.cancel")}
+        </Button>
+        <Button onClick={onSave} loading={saving === "reverse"} data-testid="reverse-rel-save">
+          {t("relationshipModals.save")}
+        </Button>
+      </Group>
+    </Modal>
   );
 }

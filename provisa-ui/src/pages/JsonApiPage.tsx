@@ -10,6 +10,38 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Collapse,
+  Group,
+  NumberInput,
+  Select,
+  Table,
+  Tabs,
+  Text,
+  TextInput,
+  Title,
+  Tooltip,
+} from "@mantine/core";
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronUp,
+  Copy,
+  Download,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useDomains, useTables } from "../hooks/useAdminQueries";
@@ -51,12 +83,28 @@ interface PaginationLinks {
   last: string | null;
 }
 
-function ResourceCard({ item, i, includedSet }: { item: JsonApiResource; i: number; includedSet?: Set<string> }) {
+function ResourceCard({
+  item,
+  i,
+  includedSet,
+  relationshipTitle,
+}: {
+  item: JsonApiResource;
+  i: number;
+  includedSet?: Set<string>;
+  relationshipTitle: (rel: string, ref: JsonApiRelationshipRef) => string;
+}) {
   const rels = item.relationships
     ? Object.entries(item.relationships)
     : [];
   return (
-    <div id={`res-${item.type}-${item.id ?? i}`} className="jsonapi-resource-card">
+    <Card
+      id={`res-${item.type}-${item.id ?? i}`}
+      withBorder
+      padding={0}
+      radius="sm"
+      className="jsonapi-resource-card"
+    >
       <div className="jsonapi-resource-header">
         <span className="jsonapi-resource-type">{item.type}</span>
         <span className="jsonapi-resource-id">#{item.id}</span>
@@ -68,14 +116,14 @@ function ResourceCard({ item, i, includedSet }: { item: JsonApiResource; i: numb
               return refs
                 .filter((r: JsonApiRelationshipRef) => !includedSet || includedSet.has(`${r.type}::${r.id}`))
                 .map((r: JsonApiRelationshipRef) => (
-                  <a
+                  <Anchor
                     key={`${relName}-${r.id}`}
                     className="jsonapi-rel-link"
                     href={`#res-${r.type}-${r.id}`}
-                    title={`${relName} → ${r.type} #${r.id}`}
+                    title={relationshipTitle(relName, r)}
                   >
                     {relName} #{r.id}
-                  </a>
+                  </Anchor>
                 ));
             })}
           </span>
@@ -83,31 +131,41 @@ function ResourceCard({ item, i, includedSet }: { item: JsonApiResource; i: numb
       </div>
       {item.attributes && (
         <div className="jsonapi-attr-scroll">
-          <table className="jsonapi-attr-table">
-            <tbody>
+          <Table className="jsonapi-attr-table">
+            <Table.Tbody>
               {Object.entries(item.attributes as Record<string, unknown>)
                 .filter(([k]) => !k.startsWith("_"))
                 .map(([k, v]) => (
-                  <tr key={k}>
-                    <td className="jsonapi-attr-key">{k}</td>
-                    <td className="jsonapi-attr-val">
+                  <Table.Tr key={k}>
+                    <Table.Td className="jsonapi-attr-key">{k}</Table.Td>
+                    <Table.Td className="jsonapi-attr-val">
                       {v === null || v === undefined
                         ? <span className="jsonapi-attr-null">null</span>
                         : typeof v === "object"
                           ? JSON.stringify(v)
                           : String(v)}
-                    </td>
-                  </tr>
+                    </Table.Td>
+                  </Table.Tr>
                 ))}
-            </tbody>
-          </table>
+            </Table.Tbody>
+          </Table>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
-function SummaryView({ doc }: { doc: JsonApiDocument }) {
+function SummaryView({
+  doc,
+  noResultsLabel,
+  includedLabel,
+  relationshipTitle,
+}: {
+  doc: JsonApiDocument;
+  noResultsLabel: string;
+  includedLabel: string;
+  relationshipTitle: (rel: string, ref: JsonApiRelationshipRef) => string;
+}) {
   const items: JsonApiResource[] = Array.isArray(doc.data)
     ? doc.data
     : doc.data
@@ -116,18 +174,29 @@ function SummaryView({ doc }: { doc: JsonApiDocument }) {
   const included: JsonApiResource[] = Array.isArray(doc.included) ? doc.included : [];
   const includedSet = new Set<string>(included.map((r) => `${r.type}::${r.id}`));
   if (items.length === 0) {
-    return <div className="jsonapi-summary-empty">No results</div>;
+    return <div className="jsonapi-summary-empty">{noResultsLabel}</div>;
   }
   return (
     <div className="jsonapi-summary">
       {items.map((item, i) => (
-        <ResourceCard key={`${item.type}-${item.id ?? i}`} item={item} i={i} includedSet={includedSet} />
+        <ResourceCard
+          key={`${item.type}-${item.id ?? i}`}
+          item={item}
+          i={i}
+          includedSet={includedSet}
+          relationshipTitle={relationshipTitle}
+        />
       ))}
       {included.length > 0 && (
         <>
-          <div className="jsonapi-included-divider">Included</div>
+          <div className="jsonapi-included-divider">{includedLabel}</div>
           {included.map((item, i) => (
-            <ResourceCard key={`inc-${item.type}-${item.id ?? i}`} item={item} i={i} />
+            <ResourceCard
+              key={`inc-${item.type}-${item.id ?? i}`}
+              item={item}
+              i={i}
+              relationshipTitle={relationshipTitle}
+            />
           ))}
         </>
       )}
@@ -136,8 +205,10 @@ function SummaryView({ doc }: { doc: JsonApiDocument }) {
 }
 
 const JSONAPI_SETTINGS_KEY = "provisa.jsonapi.settings";
+const FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "like"];
 
 export function JsonApiPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const { role } = useAuth();
   const roleId = role?.id ?? "";
@@ -209,6 +280,21 @@ export function JsonApiPage() {
     return groups;
   }, [filteredTables]);
 
+  const tableSelectData = useMemo(
+    () =>
+      Object.entries(domainGroups).map(([domain, domainTables]) => {
+        const domainDesc = domainDescMap[domain];
+        return {
+          group: domainDesc ? `${domain} — ${domainDesc}` : domain,
+          items: domainTables.map((tbl) => ({
+            value: `${tbl.domainId}/${tbl.tableName}`,
+            label: tbl.alias ?? tbl.tableName,
+          })),
+        };
+      }),
+    [domainGroups, domainDescMap],
+  );
+
   // selectedTable is "domainId/tableName"
   const [selectedDomainId, selectedTableName] = selectedTable.includes("/")
     ? selectedTable.split("/", 2)
@@ -228,6 +314,15 @@ export function JsonApiPage() {
 
   const columnNames = useMemo(
     () => tableObj?.columns.map(toGqlName) ?? [],
+    [tableObj],
+  );
+
+  const columnSelectData = useMemo(
+    () =>
+      (tableObj?.columns ?? []).map((c) => ({
+        value: toGqlName(c),
+        label: c.alias ?? c.columnName,
+      })),
     [tableObj],
   );
 
@@ -428,49 +523,71 @@ export function JsonApiPage() {
     setTimeout(() => setCopied(false), 1500);
   }
 
+  const relationshipTitle = useCallback(
+    (rel: string, ref: JsonApiRelationshipRef) =>
+      t("jsonApiPage.relationshipTitle", { rel, type: ref.type, id: ref.id }),
+    [t],
+  );
+
   const displayUrl = activeUrl || url;
+
+  const fieldsSummary =
+    checkedFields.size === 0 || checkedFields.size === columnNames.length
+      ? t("jsonApiPage.fieldsAll")
+      : t("jsonApiPage.fieldsSelected", { count: checkedFields.size });
+
+  const includeSummary =
+    checkedIncludes.size === 0
+      ? t("jsonApiPage.includeNone")
+      : t("jsonApiPage.includeSelected", { count: checkedIncludes.size });
+
+  const resultCountText = resultMeta
+    ? resultMeta.rangeStart !== undefined && resultMeta.rangeEnd !== undefined
+      ? resultMeta.total !== undefined
+        ? t("jsonApiPage.resultRangeOfTotal", {
+            start: resultMeta.rangeStart,
+            end: resultMeta.rangeEnd,
+            total: resultMeta.total,
+          })
+        : t("jsonApiPage.resultRange", { start: resultMeta.rangeStart, end: resultMeta.rangeEnd })
+      : resultMeta.total !== undefined
+        ? t("jsonApiPage.resultCountOfTotal", { count: resultMeta.count, total: resultMeta.total })
+        : t("jsonApiPage.resultCount", { count: resultMeta.count })
+    : null;
 
   return (
     <div className="jsonapi-page page">
       <div className="jsonapi-layout">
         <div className="jsonapi-sidebar">
           <div className="jsonapi-sidebar-header">
-            <h2 className="jsonapi-section-title">JSON:API Explorer</h2>
-            <a className="jsonapi-spec-link" href={specUrl} download="jsonapi-openapi.json">
-              ⬇ Spec
-            </a>
+            <Title order={2} className="jsonapi-section-title">
+              {t("jsonApiPage.title")}
+            </Title>
+            <Anchor
+              className="jsonapi-spec-link"
+              href={specUrl}
+              download="jsonapi-openapi.json"
+              aria-label={t("jsonApiPage.downloadSpecAria")}
+            >
+              <Group gap={4} wrap="nowrap">
+                <Download size={12} />
+                {t("jsonApiPage.specLink")}
+              </Group>
+            </Anchor>
           </div>
-          <p className="jsonapi-desc">
-            Sparse fieldsets, filtering, sorting, and pagination. Governance
-            applies uniformly regardless of wire protocol.
-          </p>
+          <p className="jsonapi-desc">{t("jsonApiPage.description")}</p>
 
-          <label className="jsonapi-label">Table</label>
-          <select
-            className="jsonapi-select"
-            value={effectiveSelectedTable}
-            onChange={(e) => setSelectedTable(e.target.value)}
+          <Select
+            label={t("jsonApiPage.tableLabel")}
+            size="xs"
+            placeholder={loading ? t("jsonApiPage.loadingOption") : t("jsonApiPage.selectTablePlaceholder")}
+            data={tableSelectData}
+            value={effectiveSelectedTable || null}
+            onChange={(v) => setSelectedTable(v ?? "")}
             disabled={loading}
-          >
-            <option value="">{loading ? "Loading…" : "Select a table"}</option>
-            {Object.entries(domainGroups).map(([domain, domainTables]) => {
-              const domainDesc = domainDescMap[domain];
-              const groupLabel = domainDesc ? `${domain} — ${domainDesc}` : domain;
-              return (
-                <optgroup key={domain} label={groupLabel}>
-                  {domainTables.map((t) => (
-                    <option
-                      key={t.id}
-                      value={`${t.domainId}/${t.tableName}`}
-                      title={t.description ?? undefined}
-                    >
-                      {t.alias ?? t.tableName}
-                    </option>
-                  ))}
-                </optgroup>
-              );
-            })}
-          </select>
+            searchable
+            data-testid="jsonapi-table-select"
+          />
           {tableObj?.description && (
             <p className="jsonapi-table-desc">{tableObj.description}</p>
           )}
@@ -479,245 +596,292 @@ export function JsonApiPage() {
             <>
               <div className="jsonapi-dropdown-group">
                 <button
+                  type="button"
                   className="jsonapi-dropdown-trigger"
                   onClick={() => setFieldsOpen((o) => !o)}
+                  aria-expanded={fieldsOpen}
+                  data-testid="jsonapi-fields-trigger"
                 >
-                  <span>Fields</span>
+                  <span>{t("jsonApiPage.fieldsLabel")}</span>
                   <span className="jsonapi-dropdown-meta">
-                    {checkedFields.size === 0 || checkedFields.size === columnNames.length
-                      ? "all"
-                      : `${checkedFields.size} selected`}
-                    {" "}{fieldsOpen ? "▴" : "▾"}
+                    {fieldsSummary}{" "}
+                    {fieldsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                   </span>
                 </button>
-                {fieldsOpen && (
+                <Collapse in={fieldsOpen}>
                   <div className="jsonapi-field-list">
                     {(tableObj?.columns ?? []).map((col) => {
                       const gqlName = toGqlName(col);
                       return (
-                        <label
+                        <Checkbox
                           key={col.columnName}
                           className="jsonapi-field-item"
+                          size="xs"
                           title={col.description ?? undefined}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checkedFields.has(gqlName)}
-                            onChange={() => toggleField(gqlName)}
-                          />
-                          <span className="jsonapi-field-name">{col.alias ?? col.columnName}</span>
-                        </label>
+                          checked={checkedFields.has(gqlName)}
+                          onChange={() => toggleField(gqlName)}
+                          label={<span className="jsonapi-field-name">{col.alias ?? col.columnName}</span>}
+                        />
                       );
                     })}
                   </div>
-                )}
+                </Collapse>
               </div>
 
               {relationshipNames.length > 0 && (
                 <div className="jsonapi-dropdown-group">
                   <button
+                    type="button"
                     className="jsonapi-dropdown-trigger"
                     onClick={() => setIncludeOpen((o) => !o)}
+                    aria-expanded={includeOpen}
+                    data-testid="jsonapi-include-trigger"
                   >
-                    <span>Include</span>
+                    <span>{t("jsonApiPage.includeLabel")}</span>
                     <span className="jsonapi-dropdown-meta">
-                      {checkedIncludes.size === 0 ? "none" : `${checkedIncludes.size} selected`}
-                      {" "}{includeOpen ? "▴" : "▾"}
+                      {includeSummary}{" "}
+                      {includeOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     </span>
                   </button>
-                  {includeOpen && (
+                  <Collapse in={includeOpen}>
                     <div className="jsonapi-field-list">
                       {relationshipNames.map((rel) => (
-                        <label key={rel} className="jsonapi-field-item">
-                          <input
-                            type="checkbox"
-                            checked={checkedIncludes.has(rel)}
-                            onChange={() => toggleInclude(rel)}
-                          />
-                          <span className="jsonapi-field-name">{rel}</span>
-                        </label>
+                        <Checkbox
+                          key={rel}
+                          className="jsonapi-field-item"
+                          size="xs"
+                          checked={checkedIncludes.has(rel)}
+                          onChange={() => toggleInclude(rel)}
+                          label={<span className="jsonapi-field-name">{rel}</span>}
+                        />
                       ))}
                     </div>
-                  )}
+                  </Collapse>
                 </div>
               )}
 
               <div className="jsonapi-section-divider">
-                Filter <span className="jsonapi-section-hint">optional</span>
+                {t("jsonApiPage.filterSectionTitle")}{" "}
+                <span className="jsonapi-section-hint">{t("jsonApiPage.optionalHint")}</span>
               </div>
               <div className="jsonapi-row">
-                <select
-                  className="jsonapi-select jsonapi-select-flex"
-                  value={filterField}
-                  onChange={(e) => setFilterField(e.target.value)}
-                >
-                  <option value="">— field —</option>
-                  {(tableObj?.columns ?? []).map((c) => (
-                    <option
-                      key={c.columnName}
-                      value={toGqlName(c)}
-                      title={c.description ?? undefined}
-                    >
-                      {c.alias ?? c.columnName}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="jsonapi-select jsonapi-select-op"
+                <Select
+                  className="jsonapi-select-flex"
+                  size="xs"
+                  aria-label={t("jsonApiPage.filterSectionTitle")}
+                  placeholder={t("jsonApiPage.fieldPlaceholder")}
+                  data={columnSelectData}
+                  value={filterField || null}
+                  onChange={(v) => setFilterField(v ?? "")}
+                  clearable
+                  data-testid="jsonapi-filter-field-select"
+                />
+                <Select
+                  className="jsonapi-select-op"
+                  size="xs"
+                  aria-label={t("jsonApiPage.filterSectionTitle")}
+                  data={FILTER_OPS}
                   value={filterOp}
-                  onChange={(e) => setFilterOp(e.target.value)}
+                  onChange={(v) => setFilterOp(v ?? "eq")}
                   disabled={!filterField}
-                >
-                  {["eq", "neq", "gt", "gte", "lt", "lte", "like"].map((op) => (
-                    <option key={op} value={op}>{op}</option>
-                  ))}
-                </select>
+                  allowDeselect={false}
+                  data-testid="jsonapi-filter-op-select"
+                />
               </div>
-              <input
-                className="jsonapi-input"
-                placeholder="value"
+              <TextInput
+                size="xs"
+                placeholder={t("jsonApiPage.filterValuePlaceholder")}
+                aria-label={t("jsonApiPage.filterValuePlaceholder")}
                 value={filterValue}
-                onChange={(e) => setFilterValue(e.target.value)}
+                onChange={(e) => setFilterValue(e.currentTarget.value)}
                 disabled={!filterField}
+                data-testid="jsonapi-filter-value-input"
               />
 
               <div className="jsonapi-section-divider">
-                Sort <span className="jsonapi-section-hint">optional</span>
+                {t("jsonApiPage.sortSectionTitle")}{" "}
+                <span className="jsonapi-section-hint">{t("jsonApiPage.optionalHint")}</span>
               </div>
               <div className="jsonapi-row">
-                <select
-                  className="jsonapi-select jsonapi-select-flex"
-                  value={sortField}
-                  onChange={(e) => setSortField(e.target.value)}
-                >
-                  <option value="">— field —</option>
-                  {(tableObj?.columns ?? []).map((c) => (
-                    <option
-                      key={c.columnName}
-                      value={toGqlName(c)}
-                      title={c.description ?? undefined}
-                    >
-                      {c.alias ?? c.columnName}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="jsonapi-select jsonapi-select-op"
+                <Select
+                  className="jsonapi-select-flex"
+                  size="xs"
+                  aria-label={t("jsonApiPage.sortSectionTitle")}
+                  placeholder={t("jsonApiPage.fieldPlaceholder")}
+                  data={columnSelectData}
+                  value={sortField || null}
+                  onChange={(v) => setSortField(v ?? "")}
+                  clearable
+                  data-testid="jsonapi-sort-field-select"
+                />
+                <Select
+                  className="jsonapi-select-op"
+                  size="xs"
+                  aria-label={t("jsonApiPage.sortSectionTitle")}
+                  data={[
+                    { value: "asc", label: t("jsonApiPage.sortAsc") },
+                    { value: "desc", label: t("jsonApiPage.sortDesc") },
+                  ]}
                   value={sortDir}
-                  onChange={(e) => setSortDir(e.target.value as "asc" | "desc")}
+                  onChange={(v) => setSortDir((v as "asc" | "desc") ?? "asc")}
                   disabled={!sortField}
-                >
-                  <option value="asc">asc</option>
-                  <option value="desc">desc</option>
-                </select>
+                  allowDeselect={false}
+                  data-testid="jsonapi-sort-dir-select"
+                />
               </div>
             </>
           )}
 
           <div className="jsonapi-section-divider" style={{ marginTop: columnNames.length ? undefined : "0.5rem" }}>
-            Pagination
+            {t("jsonApiPage.paginationSectionTitle")}
           </div>
-          <label className="jsonapi-label">Page size</label>
-          <input
-            className="jsonapi-input"
-            type="number"
+          <NumberInput
+            label={t("jsonApiPage.pageSizeLabel")}
+            size="xs"
             min={1}
             max={1000}
-            value={pageSize}
-            onChange={(e) => setPageSize(e.target.value)}
+            value={pageSize === "" ? "" : Number(pageSize)}
+            onChange={(v) => setPageSize(v === "" ? "" : String(v))}
+            data-testid="jsonapi-page-size-input"
           />
 
-          <button
+          <Button
             className="jsonapi-run-btn"
             onClick={handleRun}
-            disabled={running || !effectiveSelectedTable}
+            disabled={!effectiveSelectedTable}
+            loading={running}
+            fullWidth
+            mt="sm"
+            data-testid="jsonapi-run-button"
           >
-            {running ? "Running…" : "▶ Execute"}
-          </button>
+            {running ? t("jsonApiPage.runningButton") : t("jsonApiPage.runButton")}
+          </Button>
         </div>
 
         <div className="jsonapi-main">
           <div className="jsonapi-url-bar">
-            <span className="jsonapi-method">GET</span>
+            <Badge className="jsonapi-method" color="green" variant="light" radius="sm">
+              {t("jsonApiPage.methodGet")}
+            </Badge>
             <span className="jsonapi-url">{displayUrl || "—"}</span>
             {displayUrl && (
-              <button className="jsonapi-copy-btn" onClick={handleCopy}>
-                {copied ? "✓" : "Copy"}
-              </button>
+              <Tooltip label={copied ? t("jsonApiPage.copied") : t("jsonApiPage.copyUrlAria")}>
+                <ActionIcon
+                  className="jsonapi-copy-btn"
+                  variant="default"
+                  size="sm"
+                  aria-label={copied ? t("jsonApiPage.copied") : t("jsonApiPage.copyUrlAria")}
+                  onClick={handleCopy}
+                  data-testid="jsonapi-copy-button"
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </ActionIcon>
+              </Tooltip>
             )}
           </div>
 
           <div className="jsonapi-panel">
             <div className="jsonapi-panel-header">
               <div className="jsonapi-panel-header-left">
-                <span>Response</span>
-                {resultMeta && (
-                  <span className="jsonapi-result-count">
-                    {resultMeta.rangeStart !== undefined && resultMeta.rangeEnd !== undefined
-                      ? `${resultMeta.rangeStart}–${resultMeta.rangeEnd}`
-                      : resultMeta.count}
-                    {resultMeta.total !== undefined ? ` of ${resultMeta.total}` : ""}
-                  </span>
+                <Text size="xs" fw={600} tt="uppercase">
+                  {t("jsonApiPage.responseLabel")}
+                </Text>
+                {resultCountText && (
+                  <span className="jsonapi-result-count">{resultCountText}</span>
                 )}
               </div>
               {parsedDoc && (
-                <div className="jsonapi-tab-bar">
-                  <button
-                    className={`jsonapi-tab${viewTab === "summary" ? " active" : ""}`}
-                    onClick={() => setViewTab("summary")}
-                  >
-                    Summary
-                  </button>
-                  <button
-                    className={`jsonapi-tab${viewTab === "raw" ? " active" : ""}`}
-                    onClick={() => setViewTab("raw")}
-                  >
-                    Raw
-                  </button>
-                </div>
+                <Tabs
+                  value={viewTab}
+                  onChange={(v) => setViewTab((v as "summary" | "raw") ?? "summary")}
+                  className="jsonapi-tab-bar"
+                >
+                  <Tabs.List>
+                    <Tabs.Tab value="summary" data-testid="jsonapi-summary-tab">
+                      {t("jsonApiPage.summaryTab")}
+                    </Tabs.Tab>
+                    <Tabs.Tab value="raw" data-testid="jsonapi-raw-tab">
+                      {t("jsonApiPage.rawTab")}
+                    </Tabs.Tab>
+                  </Tabs.List>
+                </Tabs>
               )}
             </div>
 
             {(paginationLinks?.prev || paginationLinks?.next) && (
               <div className="jsonapi-pagination-bar">
-                <button
+                <ActionIcon
                   className="jsonapi-page-btn"
+                  variant="default"
+                  size="sm"
                   disabled={!paginationLinks.first}
                   onClick={() => handlePaginate(paginationLinks!.first)}
-                  title="First page"
-                >⟪</button>
-                <button
+                  aria-label={t("jsonApiPage.firstPage")}
+                  data-testid="jsonapi-page-first"
+                >
+                  <ChevronsLeft size={14} />
+                </ActionIcon>
+                <Button
                   className="jsonapi-page-btn"
+                  variant="default"
+                  size="compact-xs"
+                  leftSection={<ChevronLeft size={12} />}
                   disabled={!paginationLinks.prev}
                   onClick={() => handlePaginate(paginationLinks!.prev)}
-                  title="Previous page"
-                >‹ Prev</button>
-                <button
+                  data-testid="jsonapi-page-prev"
+                >
+                  {t("jsonApiPage.previousPage")}
+                </Button>
+                <Button
                   className="jsonapi-page-btn"
+                  variant="default"
+                  size="compact-xs"
+                  rightSection={<ChevronRight size={12} />}
                   disabled={!paginationLinks.next}
                   onClick={() => handlePaginate(paginationLinks!.next)}
-                  title="Next page"
-                >Next ›</button>
-                <button
+                  data-testid="jsonapi-page-next"
+                >
+                  {t("jsonApiPage.nextPage")}
+                </Button>
+                <ActionIcon
                   className="jsonapi-page-btn"
+                  variant="default"
+                  size="sm"
                   disabled={!paginationLinks.last}
                   onClick={() => handlePaginate(paginationLinks!.last)}
-                  title="Last page"
-                >⟫</button>
+                  aria-label={t("jsonApiPage.lastPage")}
+                  data-testid="jsonapi-page-last"
+                >
+                  <ChevronsRight size={14} />
+                </ActionIcon>
               </div>
             )}
 
-            {error && <div className="jsonapi-error">{error}</div>}
+            {error && (
+              <Alert
+                className="jsonapi-error"
+                color="red"
+                icon={<AlertCircle size={16} />}
+                variant="light"
+              >
+                {error}
+              </Alert>
+            )}
 
             {parsedDoc && viewTab === "summary" ? (
-              <SummaryView doc={parsedDoc} />
+              <SummaryView
+                doc={parsedDoc}
+                noResultsLabel={t("jsonApiPage.noResults")}
+                includedLabel={t("jsonApiPage.includedDivider")}
+                relationshipTitle={relationshipTitle}
+              />
             ) : (
               <pre className="jsonapi-response-text">
                 {parsedDoc
                   ? JSON.stringify(parsedDoc, null, 2)
                   : running
-                    ? "Running…"
-                    : "Execute a query to see results."}
+                    ? t("jsonApiPage.rawPlaceholderRunning")
+                    : t("jsonApiPage.rawPlaceholderEmpty")}
               </pre>
             )}
           </div>

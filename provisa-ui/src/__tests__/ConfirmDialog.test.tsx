@@ -10,8 +10,11 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '../test-utils/render';
+import i18n from '../i18n';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+
+const t = i18n.getFixedT('en');
 
 describe('ConfirmDialog', () => {
   const defaultProps = {
@@ -24,150 +27,95 @@ describe('ConfirmDialog', () => {
     defaultProps.onConfirm.mockReset();
   });
 
-  it('renders only the trigger element when closed', () => {
+  const openDialog = () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Open Dialog' }));
+
+  const renderDialog = () =>
     render(
       <ConfirmDialog {...defaultProps}>
         {(open) => <button onClick={open}>Open Dialog</button>}
-      </ConfirmDialog>
+      </ConfirmDialog>,
     );
 
+  it('renders only the trigger element when closed', () => {
+    renderDialog();
     expect(screen.getByRole('button', { name: 'Open Dialog' })).toBeInTheDocument();
     expect(screen.queryByText('Delete this item?')).not.toBeInTheDocument();
     expect(screen.queryByText('This action cannot be undone.')).not.toBeInTheDocument();
   });
 
-  it('shows modal with title and consequence text when trigger is clicked', () => {
-    render(
-      <ConfirmDialog {...defaultProps}>
-        {(open) => <button onClick={open}>Open Dialog</button>}
-      </ConfirmDialog>
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Dialog' }));
-
+  it('opens an accessible dialog with title and consequence when triggered', async () => {
+    renderDialog();
+    openDialog();
+    // Mantine Modal exposes role="dialog" — the a11y win over the old div.
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Delete this item?')).toBeInTheDocument();
     expect(screen.getByText('This action cannot be undone.')).toBeInTheDocument();
   });
 
-  it('shows Cancel and Confirm buttons when open', () => {
-    render(
-      <ConfirmDialog {...defaultProps}>
-        {(open) => <button onClick={open}>Open Dialog</button>}
-      </ConfirmDialog>
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Dialog' }));
-
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument();
+  it('shows Cancel and Confirm buttons when open', async () => {
+    renderDialog();
+    openDialog();
+    expect(
+      await screen.findByRole('button', { name: t('common.cancel') }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: t('common.confirm') })).toBeInTheDocument();
   });
 
-  it('closes modal when Cancel is clicked', () => {
-    render(
-      <ConfirmDialog {...defaultProps}>
-        {(open) => <button onClick={open}>Open Dialog</button>}
-      </ConfirmDialog>
+  it('closes the dialog when Cancel is clicked', async () => {
+    renderDialog();
+    openDialog();
+    fireEvent.click(await screen.findByRole('button', { name: t('common.cancel') }));
+    await waitFor(() =>
+      expect(screen.queryByText('Delete this item?')).not.toBeInTheDocument(),
     );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Dialog' }));
-    expect(screen.getByText('Delete this item?')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-
-    expect(screen.queryByText('Delete this item?')).not.toBeInTheDocument();
   });
 
   it('calls onConfirm when Confirm is clicked', async () => {
     defaultProps.onConfirm.mockResolvedValue(undefined);
-
-    render(
-      <ConfirmDialog {...defaultProps}>
-        {(open) => <button onClick={open}>Open Dialog</button>}
-      </ConfirmDialog>
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Dialog' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    await waitFor(() => {
-      expect(defaultProps.onConfirm).toHaveBeenCalledTimes(1);
-    });
+    renderDialog();
+    openDialog();
+    fireEvent.click(await screen.findByRole('button', { name: t('common.confirm') }));
+    await waitFor(() => expect(defaultProps.onConfirm).toHaveBeenCalledTimes(1));
   });
 
-  it('closes modal after onConfirm resolves', async () => {
+  it('closes the dialog after onConfirm resolves', async () => {
     defaultProps.onConfirm.mockResolvedValue(undefined);
-
-    render(
-      <ConfirmDialog {...defaultProps}>
-        {(open) => <button onClick={open}>Open Dialog</button>}
-      </ConfirmDialog>
+    renderDialog();
+    openDialog();
+    fireEvent.click(await screen.findByRole('button', { name: t('common.confirm') }));
+    await waitFor(() =>
+      expect(screen.queryByText('Delete this item?')).not.toBeInTheDocument(),
     );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Dialog' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    await waitFor(() => {
-      expect(screen.queryByText('Delete this item?')).not.toBeInTheDocument();
-    });
   });
 
-  it('shows Processing... and disables buttons while onConfirm is in flight', async () => {
+  it('shows Processing... and disables actions while onConfirm is in flight', async () => {
     let resolveConfirm!: () => void;
-    const pendingConfirm = new Promise<void>((res) => {
-      resolveConfirm = res;
-    });
-    defaultProps.onConfirm.mockReturnValue(pendingConfirm);
-
-    render(
-      <ConfirmDialog {...defaultProps}>
-        {(open) => <button onClick={open}>Open Dialog</button>}
-      </ConfirmDialog>
+    defaultProps.onConfirm.mockReturnValue(
+      new Promise<void>((res) => {
+        resolveConfirm = res;
+      }),
     );
+    renderDialog();
+    openDialog();
+    fireEvent.click(await screen.findByRole('button', { name: t('common.confirm') }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Dialog' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Processing...' })).toBeInTheDocument();
-    });
-
-    const cancelBtn = screen.getByRole('button', { name: 'Cancel' });
-    expect(cancelBtn).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Processing...' })).toBeDisabled();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: t('common.processing') })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: t('common.cancel') })).toBeDisabled();
+    expect(screen.getByRole('button', { name: t('common.processing') })).toBeDisabled();
 
     resolveConfirm();
   });
 
-  it('closes modal when overlay background is clicked', () => {
-    render(
-      <ConfirmDialog {...defaultProps}>
-        {(open) => <button onClick={open}>Open Dialog</button>}
-      </ConfirmDialog>
+  it('closes the dialog on Escape', async () => {
+    renderDialog();
+    openDialog();
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' });
+    await waitFor(() =>
+      expect(screen.queryByText('Delete this item?')).not.toBeInTheDocument(),
     );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Dialog' }));
-    expect(screen.getByText('Delete this item?')).toBeInTheDocument();
-
-    // Click the overlay (modal-overlay div)
-    const overlay = document.querySelector('.modal-overlay') as HTMLElement;
-    fireEvent.click(overlay);
-
-    expect(screen.queryByText('Delete this item?')).not.toBeInTheDocument();
-  });
-
-  it('does not close modal when clicking inside the modal card', () => {
-    render(
-      <ConfirmDialog {...defaultProps}>
-        {(open) => <button onClick={open}>Open Dialog</button>}
-      </ConfirmDialog>
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Dialog' }));
-
-    const modalCard = document.querySelector('.modal') as HTMLElement;
-    fireEvent.click(modalCard);
-
-    // Title should still be visible — stopPropagation prevents overlay close
-    expect(screen.getByText('Delete this item?')).toBeInTheDocument();
   });
 });

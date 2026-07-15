@@ -11,6 +11,8 @@
 
 import { useState, useCallback } from "react";
 import { Copy, Check } from "lucide-react";
+import { ActionIcon, Tooltip } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 
 interface CopyButtonProps {
   text: string;
@@ -20,7 +22,8 @@ interface CopyButtonProps {
   children?: React.ReactNode;
 }
 
-export function CopyButton({ text, size = 11, className, title = "Copy", children }: CopyButtonProps) {
+export function CopyButton({ text, size = 11, className, title, children }: CopyButtonProps) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleClick = useCallback(() => {
@@ -30,14 +33,26 @@ export function CopyButton({ text, size = 11, className, title = "Copy", childre
     });
   }, [text]);
 
+  const label = copied ? t("copyButton.copied") : (title ?? t("copyButton.copy"));
+
   return (
-    <button type="button" title={copied ? "Copied!" : title} className={className} onClick={handleClick}>
-      {children ?? (copied ? <Check size={size} /> : <Copy size={size} />)}
-    </button>
+    <Tooltip label={label}>
+      <ActionIcon
+        type="button"
+        variant="transparent"
+        className={className}
+        aria-label={label}
+        data-testid="copy-button"
+        onClick={handleClick}
+      >
+        {children ?? (copied ? <Check size={size} /> : <Copy size={size} />)}
+      </ActionIcon>
+    </Tooltip>
   );
 }
 
-export function CopySymbolButton({ text, className, title = "Copy" }: { text: string; className?: string; title?: string }) {
+export function CopySymbolButton({ text, className, title }: { text: string; className?: string; title?: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleClick = useCallback(() => {
@@ -47,9 +62,20 @@ export function CopySymbolButton({ text, className, title = "Copy" }: { text: st
     });
   }, [text]);
 
+  const label = copied ? t("copyButton.copied") : (title ?? t("copyButton.copy"));
+
   return (
-    <button type="button" title={copied ? "Copied!" : title} className={className} onClick={handleClick}>
-      {copied ? "✓" : "⎘"}
-    </button>
+    <Tooltip label={label}>
+      <ActionIcon
+        type="button"
+        variant="transparent"
+        className={className}
+        aria-label={label}
+        data-testid="copy-symbol-button"
+        onClick={handleClick}
+      >
+        {copied ? "✓" : "⎘"}
+      </ActionIcon>
+    </Tooltip>
   );
 }

@@ -9,7 +9,9 @@
 // permission from the copyright holder.
 
 import React from "react";
-import { History, BarChart2, Copy, Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { ActionIcon, Badge, Box, Button, Table, Tabs, Text, TextInput } from "@mantine/core";
+import { History, BarChart2, Copy, Check, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
 import { COL_MIN, PAGE_SIZE } from "./types";
 import type { ResultTab, HistoryEntry, ColumnProfile } from "./types";
 
@@ -76,76 +78,68 @@ export function ResultsPanel({
   handleResizeStart,
   handleDownloadProfile,
 }: ResultsPanelProps) {
+  const { t } = useTranslation();
+
+  const tabLabels: Record<ResultTab, string> = {
+    results: t("sqlResultsPanel.tabResults"),
+    profile: t("sqlResultsPanel.tabProfile"),
+    errors: t("sqlResultsPanel.tabErrors"),
+    history: t("sqlResultsPanel.tabHistory"),
+    stats: t("sqlResultsPanel.tabStats"),
+  };
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 0,
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-          background: "var(--surface)",
-        }}
+      <Tabs
+        value={resultTab}
+        onChange={(value) => value && setResultTab(value as ResultTab)}
+        variant="outline"
+        keepMounted={false}
+        style={{ flexShrink: 0 }}
       >
-        {(["results", "profile", "errors", "history", "stats"] as ResultTab[]).map((tab) => {
-          const count =
-            tab === "results"
-              ? resultRows.length
-              : tab === "profile"
-                ? profile.length
-                : tab === "errors"
-                  ? errors.length
-                  : tab === "stats"
-                    ? 0
-                    : history.length;
-          const active = resultTab === tab;
-          if (tab === "stats" && !queryStats) return null;
-          return (
-            <button
-              key={tab}
-              onClick={() => setResultTab(tab)}
-              style={{
-                padding: "0.35rem 0.8rem",
-                fontSize: "0.75rem",
-                background: "none",
-                border: "none",
-                borderBottom: active
-                  ? "2px solid var(--primary)"
-                  : "2px solid transparent",
-                color: active ? "var(--text)" : "var(--text-muted)",
-                cursor: "pointer",
-                textTransform: "capitalize",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.3rem",
-              }}
-            >
-              {tab === "history" ? (
-                <History size={11} />
-              ) : tab === "profile" ? (
-                <BarChart2 size={11} />
-              ) : null}
-              {tab}
-              {count > 0 && (
-                <span
-                  style={{
-                    background:
-                      tab === "errors" ? "var(--destructive)" : "var(--primary)",
-                    color: "#fff",
-                    borderRadius: "8px",
-                    fontSize: "0.65rem",
-                    padding: "0 0.35rem",
-                    lineHeight: "1.4",
-                  }}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+        <Tabs.List>
+          {(["results", "profile", "errors", "history", "stats"] as ResultTab[]).map((tab) => {
+            const count =
+              tab === "results"
+                ? resultRows.length
+                : tab === "profile"
+                  ? profile.length
+                  : tab === "errors"
+                    ? errors.length
+                    : tab === "stats"
+                      ? 0
+                      : history.length;
+            if (tab === "stats" && !queryStats) return null;
+            return (
+              <Tabs.Tab
+                key={tab}
+                value={tab}
+                data-testid={`results-tab-${tab}`}
+                leftSection={
+                  tab === "history" ? (
+                    <History size={11} />
+                  ) : tab === "profile" ? (
+                    <BarChart2 size={11} />
+                  ) : undefined
+                }
+                rightSection={
+                  count > 0 ? (
+                    <Badge
+                      size="xs"
+                      circle
+                      color={tab === "errors" ? "red" : "blue"}
+                    >
+                      {count}
+                    </Badge>
+                  ) : undefined
+                }
+              >
+                {tabLabels[tab]}
+              </Tabs.Tab>
+            );
+          })}
+        </Tabs.List>
+      </Tabs>
 
       <div style={{ flex: 1, overflow: "auto" }}>
         {resultTab === "results" &&
@@ -162,7 +156,7 @@ export function ResultsPanel({
               }}
             >
               <span className="btn-spinner" style={{ flexShrink: 0 }} />
-              Running…
+              {t("sqlResultsPanel.running")}
             </div>
           ) : resultError ? (
             <pre
@@ -185,7 +179,7 @@ export function ResultsPanel({
                 fontSize: "0.85rem",
               }}
             >
-              {sqlText.trim() ? "No results." : "Write SQL and click Sample to execute."}
+              {sqlText.trim() ? t("sqlResultsPanel.noResults") : t("sqlResultsPanel.writeSqlPrompt")}
             </div>
           ) : (
             (() => {
@@ -210,113 +204,78 @@ export function ResultsPanel({
                       color: "var(--text-muted)",
                     }}
                   >
-                    <button
+                    <Button
+                      variant="default"
+                      size="compact-xs"
                       onClick={handleDownloadCsv}
-                      style={{
-                        fontSize: "0.72rem",
-                        padding: "0.15rem 0.45rem",
-                        background: "none",
-                        border: "1px solid var(--border)",
-                        borderRadius: "3px",
-                        color: "var(--text-muted)",
-                        cursor: "pointer",
-                      }}
+                      data-testid="download-csv-btn"
                     >
-                      ↓ CSV
-                    </button>
-                    <button
+                      {t("sqlResultsPanel.downloadCsv")}
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="compact-xs"
                       onClick={handleCopyResults}
-                      title="Copy results as TSV"
-                      style={{
-                        fontSize: "0.72rem",
-                        padding: "0.15rem 0.45rem",
-                        background: "none",
-                        border: "1px solid var(--border)",
-                        borderRadius: "3px",
-                        color: "var(--text-muted)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                      }}
+                      title={t("sqlResultsPanel.copyResultsTitle")}
+                      data-testid="copy-results-btn"
+                      leftSection={
+                        copiedResults ? (
+                          <Check size={11} style={{ color: "var(--approve)" }} />
+                        ) : (
+                          <Copy size={11} />
+                        )
+                      }
                     >
-                      {copiedResults ? (
-                        <Check size={11} style={{ color: "var(--approve)" }} />
-                      ) : (
-                        <Copy size={11} />
-                      )}
-                      {copiedResults ? "Copied" : "Copy"}
-                    </button>
-                    <span>
-                      {displayRows.length} row{displayRows.length !== 1 ? "s" : ""}
+                      {copiedResults ? t("sqlResultsPanel.copied") : t("sqlResultsPanel.copy")}
+                    </Button>
+                    <Text component="span" size="xs" c="dimmed">
+                      {t("sqlResultsPanel.rowCount", { count: displayRows.length })}
                       {displayRows.length < resultRows.length
-                        ? ` (filtered from ${resultRows.length})`
+                        ? t("sqlResultsPanel.filteredFrom", { count: resultRows.length })
                         : ""}
-                    </span>
+                    </Text>
                     <div style={{ flex: 1 }} />
                     {totalPages > 1 && (
                       <>
-                        <button
+                        <ActionIcon
+                          variant="subtle"
+                          size="sm"
+                          aria-label={t("sqlResultsPanel.firstPage")}
                           onClick={() => setPage(0)}
                           disabled={page === 0}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: page === 0 ? "var(--text-muted)" : "var(--text)",
-                            fontSize: "0.75rem",
-                          }}
                         >
-                          «
-                        </button>
-                        <button
+                          <ChevronsLeft size={13} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="subtle"
+                          size="sm"
+                          aria-label={t("sqlResultsPanel.previousPage")}
                           onClick={() => setPage((p) => Math.max(0, p - 1))}
                           disabled={page === 0}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: page === 0 ? "var(--text-muted)" : "var(--text)",
-                            fontSize: "0.75rem",
-                          }}
                         >
-                          ‹
-                        </button>
-                        <span>
-                          Page {page + 1} / {totalPages}
-                        </span>
-                        <button
+                          <ChevronLeft size={13} />
+                        </ActionIcon>
+                        <Text component="span" size="xs">
+                          {t("sqlResultsPanel.pageIndicator", { page: page + 1, total: totalPages })}
+                        </Text>
+                        <ActionIcon
+                          variant="subtle"
+                          size="sm"
+                          aria-label={t("sqlResultsPanel.nextPage")}
                           onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                           disabled={page >= totalPages - 1}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color:
-                              page >= totalPages - 1
-                                ? "var(--text-muted)"
-                                : "var(--text)",
-                            fontSize: "0.75rem",
-                          }}
                         >
-                          ›
-                        </button>
-                        <button
+                          <ChevronRight size={13} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="subtle"
+                          size="sm"
+                          aria-label={t("sqlResultsPanel.lastPage")}
                           onClick={() => setPage(totalPages - 1)}
                           disabled={page >= totalPages - 1}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color:
-                              page >= totalPages - 1
-                                ? "var(--text-muted)"
-                                : "var(--text)",
-                            fontSize: "0.75rem",
-                          }}
                         >
-                          »
-                        </button>
+                          <ChevronsRight size={13} />
+                        </ActionIcon>
                       </>
                     )}
                   </div>
@@ -385,20 +344,25 @@ export function ResultsPanel({
                                     </span>
                                   )}
                                 </div>
-                                <input
+                                <TextInput
+                                  size="xs"
+                                  variant="unstyled"
                                   className="th-filter"
+                                  aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${c}`}
                                   value={filters[c] ?? ""}
                                   onChange={(e) => {
                                     setFilters((prev) => ({
                                       ...prev,
-                                      [c]: e.target.value,
+                                      [c]: e.currentTarget.value,
                                     }));
                                     setPage(0);
                                   }}
                                   onClick={(e) => e.stopPropagation()}
-                                  placeholder="filter…"
+                                  placeholder={t("sqlResultsPanel.filterPlaceholder")}
                                 />
                                 <div
+                                  role="separator"
+                                  aria-label={t("sqlResultsPanel.resizeColumn")}
                                   onMouseDown={(e) => handleResizeStart(c, e)}
                                   style={{
                                     position: "absolute",
@@ -433,7 +397,7 @@ export function ResultsPanel({
                                   {v != null ? (
                                     String(v)
                                   ) : (
-                                    <span className="null-val">null</span>
+                                    <span className="null-val">{t("sqlResultsPanel.nullValue")}</span>
                                   )}
                                 </td>
                               );
@@ -458,7 +422,7 @@ export function ResultsPanel({
                 fontSize: "0.85rem",
               }}
             >
-              Sample a query to profile the result columns.
+              {t("sqlResultsPanel.profileEmpty")}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -472,37 +436,31 @@ export function ResultsPanel({
                   background: "var(--surface)",
                 }}
               >
-                <button
+                <Button
+                  variant="default"
+                  size="compact-xs"
                   onClick={handleDownloadProfile}
-                  style={{
-                    fontSize: "0.72rem",
-                    padding: "0.15rem 0.45rem",
-                    background: "none",
-                    border: "1px solid var(--border)",
-                    borderRadius: "3px",
-                    color: "var(--text-muted)",
-                    cursor: "pointer",
-                  }}
+                  data-testid="download-profile-btn"
                 >
-                  ↓ JSON
-                </button>
+                  {t("sqlResultsPanel.downloadJson")}
+                </Button>
               </div>
               <div style={{ flex: 1, overflow: "auto" }}>
-                <table className="data-table" style={{ fontSize: "0.75rem" }}>
-                  <thead>
-                    <tr>
-                      <th>Column</th>
-                      <th title="Rows where value is NULL">Nulls</th>
-                      <th title="Rows where value is empty string">Blanks</th>
-                      <th title="Number of unique values">Distinct</th>
-                      <th title="Column has only one unique value">Constant?</th>
-                      <th>Min</th>
-                      <th>Max</th>
-                      <th title="Mean of numeric values">Mean</th>
-                      <th>Top values</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table className="data-table" style={{ fontSize: "0.75rem" }}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t("sqlResultsPanel.colColumn")}</Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colNullsTitle")}>{t("sqlResultsPanel.colNulls")}</Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colBlanksTitle")}>{t("sqlResultsPanel.colBlanks")}</Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colDistinctTitle")}>{t("sqlResultsPanel.colDistinct")}</Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colConstantTitle")}>{t("sqlResultsPanel.colConstant")}</Table.Th>
+                      <Table.Th>{t("sqlResultsPanel.colMin")}</Table.Th>
+                      <Table.Th>{t("sqlResultsPanel.colMax")}</Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colMeanTitle")}>{t("sqlResultsPanel.colMean")}</Table.Th>
+                      <Table.Th>{t("sqlResultsPanel.colTopValues")}</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
                     {profile.map((p) => {
                       const total = resultRows.length;
                       const nullPct =
@@ -510,11 +468,11 @@ export function ResultsPanel({
                       const isHighNull = nullPct >= 50;
                       const isConstant = p.constantValue !== undefined;
                       return (
-                        <tr key={p.col}>
-                          <td style={{ fontFamily: "monospace", fontWeight: 600 }}>
+                        <Table.Tr key={p.col}>
+                          <Table.Td style={{ fontFamily: "monospace", fontWeight: 600 }}>
                             {p.col}
-                          </td>
-                          <td>
+                          </Table.Td>
+                          <Table.Td>
                             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
                               <div
                                 style={{
@@ -552,11 +510,11 @@ export function ResultsPanel({
                                   fontSize: "0.7rem",
                                 }}
                               >
-                                {p.nullCount > 0 ? `${nullPct}%` : "—"}
+                                {p.nullCount > 0 ? `${nullPct}%` : t("sqlResultsPanel.dash")}
                               </span>
                             </div>
-                          </td>
-                          <td
+                          </Table.Td>
+                          <Table.Td
                             style={{
                               color:
                                 p.blankCount > 0 ? "var(--text)" : "var(--text-muted)",
@@ -565,17 +523,17 @@ export function ResultsPanel({
                             {p.blankCount > 0 ? (
                               p.blankCount
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>—</span>
+                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
                             )}
-                          </td>
-                          <td
+                          </Table.Td>
+                          <Table.Td
                             style={{
                               color: isConstant ? "var(--text-muted)" : "var(--text)",
                             }}
                           >
                             {p.distinctCount}
-                          </td>
-                          <td
+                          </Table.Td>
+                          <Table.Td
                             style={{
                               color: isConstant
                                 ? "var(--destructive)"
@@ -584,34 +542,34 @@ export function ResultsPanel({
                           >
                             {isConstant ? (
                               <span title={String(p.constantValue)}>
-                                Yes ({String(p.constantValue).slice(0, 12)})
+                                {t("sqlResultsPanel.constantYes", { value: String(p.constantValue).slice(0, 12) })}
                               </span>
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>—</span>
+                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
                             )}
-                          </td>
-                          <td style={{ fontFamily: "monospace" }}>
+                          </Table.Td>
+                          <Table.Td style={{ fontFamily: "monospace" }}>
                             {p.min !== null ? (
                               String(p.min).slice(0, 16)
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>—</span>
+                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
                             )}
-                          </td>
-                          <td style={{ fontFamily: "monospace" }}>
+                          </Table.Td>
+                          <Table.Td style={{ fontFamily: "monospace" }}>
                             {p.max !== null ? (
                               String(p.max).slice(0, 16)
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>—</span>
+                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
                             )}
-                          </td>
-                          <td style={{ fontFamily: "monospace" }}>
+                          </Table.Td>
+                          <Table.Td style={{ fontFamily: "monospace" }}>
                             {p.mean !== null ? (
                               p.mean.toFixed(2)
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>—</span>
+                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
                             )}
-                          </td>
-                          <td>
+                          </Table.Td>
+                          <Table.Td>
                             <div style={{ display: "flex", flexDirection: "column", gap: "0.18rem", minWidth: 140 }}>
                               {p.topValues.map(({ value, count }) => {
                                 const barPct = p.topValues[0].count > 0
@@ -661,12 +619,12 @@ export function ResultsPanel({
                                 );
                               })}
                             </div>
-                          </td>
-                        </tr>
+                          </Table.Td>
+                        </Table.Tr>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </Table.Tbody>
+                </Table>
               </div>
             </div>
           ))}
@@ -681,7 +639,7 @@ export function ResultsPanel({
                 fontSize: "0.85rem",
               }}
             >
-              No unsupported conditions.
+              {t("sqlResultsPanel.errorsEmpty")}
             </div>
           ) : (
             <div style={{ padding: "0.75rem" }}>
@@ -693,7 +651,7 @@ export function ResultsPanel({
                   marginBottom: "0.5rem",
                 }}
               >
-                Unsupported ON conditions — simplify using a view:
+                {t("sqlResultsPanel.errorsHeading")}
               </p>
               <ul
                 style={{
@@ -730,21 +688,21 @@ export function ResultsPanel({
                 fontSize: "0.85rem",
               }}
             >
-              No queries run yet. History persists across sessions.
+              {t("sqlResultsPanel.historyEmpty")}
             </div>
           ) : (
-            <table className="data-table" style={{ fontSize: "0.75rem" }}>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Role</th>
-                  <th>Duration</th>
-                  <th>Rows</th>
-                  <th style={{ width: "50%" }}>SQL</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table className="data-table" style={{ fontSize: "0.75rem" }}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("sqlResultsPanel.colTime")}</Table.Th>
+                  <Table.Th>{t("sqlResultsPanel.colRole")}</Table.Th>
+                  <Table.Th>{t("sqlResultsPanel.colDuration")}</Table.Th>
+                  <Table.Th>{t("sqlResultsPanel.colRows")}</Table.Th>
+                  <Table.Th style={{ width: "50%" }}>{t("sqlResultsPanel.colSql")}</Table.Th>
+                  <Table.Th></Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
                 {history.map((h, i) => {
                   const ts = new Date(h.executedAt);
                   const timeLabel = ts.toLocaleTimeString([], {
@@ -758,33 +716,33 @@ export function ResultsPanel({
                   });
                   const isToday = ts.toDateString() === new Date().toDateString();
                   return (
-                    <tr key={i} style={{ verticalAlign: "top" }}>
-                      <td style={{ whiteSpace: "nowrap", color: "var(--text-muted)" }}>
+                    <Table.Tr key={i} style={{ verticalAlign: "top" }}>
+                      <Table.Td style={{ whiteSpace: "nowrap", color: "var(--text-muted)" }}>
                         <div>{timeLabel}</div>
                         {!isToday && (
                           <div style={{ fontSize: "0.68rem" }}>{dateLabel}</div>
                         )}
-                      </td>
-                      <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                      </Table.Td>
+                      <Table.Td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                         {h.role}
-                      </td>
-                      <td
+                      </Table.Td>
+                      <Table.Td
                         style={{
                           whiteSpace: "nowrap",
                           color: h.error ? "var(--destructive)" : "var(--text-muted)",
                         }}
                       >
                         {h.durationMs}ms
-                      </td>
-                      <td
+                      </Table.Td>
+                      <Table.Td
                         style={{
                           whiteSpace: "nowrap",
                           color: h.error ? "var(--destructive)" : "var(--text)",
                         }}
                       >
-                        {h.error ? <span title={h.error}>error</span> : h.rowCount}
-                      </td>
-                      <td>
+                        {h.error ? <span title={h.error}>{t("sqlResultsPanel.errorLabel")}</span> : h.rowCount}
+                      </Table.Td>
+                      <Table.Td>
                         <pre
                           style={{
                             margin: 0,
@@ -798,25 +756,26 @@ export function ResultsPanel({
                         >
                           {h.sql}
                         </pre>
-                      </td>
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        <button
-                          className="btn-secondary"
-                          style={{ fontSize: "0.7rem", padding: "0.15rem 0.45rem" }}
+                      </Table.Td>
+                      <Table.Td style={{ whiteSpace: "nowrap" }}>
+                        <Button
+                          variant="default"
+                          size="compact-xs"
+                          data-testid={`restore-history-${i}`}
                           onClick={() => {
                             setSqlText(h.sql);
                             setRole(h.role);
                             setResultTab("results");
                           }}
                         >
-                          Restore
-                        </button>
-                      </td>
-                    </tr>
+                          {t("sqlResultsPanel.restore")}
+                        </Button>
+                      </Table.Td>
+                    </Table.Tr>
                   );
                 })}
-              </tbody>
-            </table>
+              </Table.Tbody>
+            </Table>
           ))}
         {resultTab === "stats" &&
           (() => {
@@ -835,11 +794,11 @@ export function ResultsPanel({
             } | null;
             if (!stats) return null;
             return (
-              <div style={{ padding: "0.75rem 1rem", fontSize: "0.8rem" }}>
+              <Box style={{ padding: "0.75rem 1rem", fontSize: "0.8rem" }}>
                 <div style={{ marginBottom: "0.5rem", color: "var(--text-muted)" }}>
-                  Total:{" "}
+                  {t("sqlResultsPanel.statsTotal")}{" "}
                   <strong style={{ color: "var(--text)" }}>
-                    {stats.total_elapsed_ms} ms
+                    {t("sqlResultsPanel.statsTotalMs", { ms: stats.total_elapsed_ms })}
                   </strong>
                 </div>
                 {(stats.sources ?? []).map((s, i) => (
@@ -860,26 +819,26 @@ export function ResultsPanel({
                       }}
                     >
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>field:</span>{" "}
+                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsField")}</span>{" "}
                         {s.field}
                       </span>
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>source:</span>{" "}
+                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsSource")}</span>{" "}
                         {s.source}
                       </span>
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>strategy:</span>{" "}
+                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsStrategy")}</span>{" "}
                         {s.strategy}
                       </span>
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>elapsed:</span>{" "}
-                        {s.elapsed_ms} ms
+                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsElapsed")}</span>{" "}
+                        {t("sqlResultsPanel.statsElapsedMs", { ms: s.elapsed_ms })}
                       </span>
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>rows:</span> {s.rows}
+                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsRows")}</span> {s.rows}
                       </span>
                       {s.cache_hit && (
-                        <span style={{ color: "#4ade80" }}>cache hit</span>
+                        <span style={{ color: "#4ade80" }}>{t("sqlResultsPanel.statsCacheHit")}</span>
                       )}
                     </div>
                     {s.physical_sql && (
@@ -902,7 +861,7 @@ export function ResultsPanel({
                     )}
                   </div>
                 ))}
-              </div>
+              </Box>
             );
           })()}
       </div>

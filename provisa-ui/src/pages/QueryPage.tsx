@@ -10,6 +10,9 @@
 
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { ActionIcon, Alert, Checkbox, Group, NumberInput, Select, Text } from "@mantine/core";
+import { X } from "lucide-react";
 import * as monaco from "monaco-editor";
 import { GraphiQL } from "graphiql";
 import { createGraphiQLFetcher, type Fetcher } from "@graphiql/toolkit";
@@ -366,12 +369,12 @@ const syncedExplorerPlugin = {
 };
 
 const REDIRECT_FORMAT_OPTIONS = [
-  { value: "", label: "None", mime: "" },
-  { value: "parquet", label: "Parquet", mime: "application/vnd.apache.parquet" },
-  { value: "arrow", label: "Arrow", mime: "application/vnd.apache.arrow.stream" },
-  { value: "csv", label: "CSV", mime: "text/csv" },
-  { value: "ndjson", label: "NDJSON", mime: "application/x-ndjson" },
-  { value: "json", label: "JSON", mime: "application/json" },
+  { value: "", labelKey: "queryPage.formatNone", mime: "" },
+  { value: "parquet", labelKey: "queryPage.formatParquet", mime: "application/vnd.apache.parquet" },
+  { value: "arrow", labelKey: "queryPage.formatArrow", mime: "application/vnd.apache.arrow.stream" },
+  { value: "csv", labelKey: "queryPage.formatCsv", mime: "text/csv" },
+  { value: "ndjson", labelKey: "queryPage.formatNdjson", mime: "application/x-ndjson" },
+  { value: "json", labelKey: "queryPage.formatJson", mime: "application/json" },
 ] as const;
 
 interface RedirectInfo {
@@ -519,6 +522,7 @@ function AutoRunFromNav({ query }: { query: string }) {
 
 /** Query development page — embeds GraphiQL with Explorer (REQ-062). */
 export function QueryPage() {
+  const { t } = useTranslation();
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
   const location = useLocation();
@@ -749,132 +753,110 @@ export function QueryPage() {
     [provisaPlugin],
   );
 
-  const onFormatChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    localStorage.setItem("query:redirectFormat", e.target.value);
-    setRedirectFormat(e.target.value);
+  const onFormatChange = useCallback((value: string | null) => {
+    const v = value ?? "";
+    localStorage.setItem("query:redirectFormat", v);
+    setRedirectFormat(v);
   }, []);
-  const onThresholdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    localStorage.setItem("query:redirectThreshold", e.target.value);
-    setRedirectThreshold(e.target.value);
+  const onThresholdChange = useCallback((value: string | number) => {
+    const v = value === "" ? "" : String(value);
+    localStorage.setItem("query:redirectThreshold", v);
+    setRedirectThreshold(v);
   }, []);
   const onStatsChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setStatsEnabled(e.target.checked);
-    localStorage.setItem("query:statsEnabled", String(e.target.checked));
+    setStatsEnabled(e.currentTarget.checked);
+    localStorage.setItem("query:statsEnabled", String(e.currentTarget.checked));
   }, []);
   const onPluginVisibilityChange = useCallback(
     (plugin: { title: string } | null) => localStorage.setItem("query:visiblePlugin", plugin?.title ?? ""),
     [],
   );
 
-  if (!role || !fetcher || !plugins) return <div className="page">Select a role.</div>;
+  if (!role || !fetcher || !plugins) return <div className="page">{t("queryPage.selectRole")}</div>;
 
   return (
     <div className="query-page">
-      <div className="query-options">
-        <label className="query-option">
-          Redirect
-          <select value={redirectFormat} onChange={onFormatChange}>
-            {REDIRECT_FORMAT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label
-          className="query-option"
+      <Group className="query-options" gap="md" wrap="nowrap" px="sm" py={6}>
+        <Select
+          label={t("queryPage.redirectLabel")}
+          size="xs"
+          data-testid="redirect-format-select"
+          data={REDIRECT_FORMAT_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
+          value={redirectFormat}
+          onChange={onFormatChange}
+          allowDeselect={false}
+          w={140}
+        />
+        <NumberInput
+          label={t("queryPage.thresholdLabel")}
+          size="xs"
+          min={0}
+          placeholder={t("queryPage.thresholdPlaceholder")}
+          value={redirectThreshold === "" ? "" : Number(redirectThreshold)}
+          onChange={onThresholdChange}
+          data-testid="redirect-threshold-input"
+          w={100}
           style={{ visibility: redirectFormat ? "visible" : "hidden" }}
-        >
-          Threshold
-          <input
-            type="number"
-            min="0"
-            placeholder="all"
-            value={redirectThreshold}
-            onChange={onThresholdChange}
-            className="threshold-input"
-          />
-        </label>
-        <span
+        />
+        <Text
           className="query-hint"
+          size="xs"
+          fs="italic"
+          c="dimmed"
           style={{ visibility: redirectFormat && !redirectThreshold ? "visible" : "hidden" }}
         >
-          All results redirect to S3
-        </span>
+          {t("queryPage.redirectHint")}
+        </Text>
         {queryElapsedMs !== null && (
-          <span className="query-elapsed" style={{ marginLeft: "auto" }}>
+          <Text className="query-elapsed" size="xs" ml="auto">
             {Math.round(queryElapsedMs)} ms
-          </span>
+          </Text>
         )}
-        <label
-          className="query-option"
-          style={{ marginLeft: queryElapsedMs !== null ? undefined : "auto" }}
-        >
-          <input
-            type="checkbox"
-            checked={statsEnabled}
-            onChange={onStatsChange}
-            style={{ marginRight: 4 }}
-          />
-          Query Stats
-        </label>
-      </div>
+        <Checkbox
+          label={t("queryPage.queryStats")}
+          checked={statsEnabled}
+          onChange={onStatsChange}
+          data-testid="query-stats-checkbox"
+          ml={queryElapsedMs !== null ? undefined : "auto"}
+        />
+      </Group>
       {schemaError && (
-        <div
-          style={{
-            padding: "6px 12px",
-            background: "#3b1a1a",
-            color: "#f87171",
-            fontSize: 12,
-            borderBottom: "1px solid #5a2020",
-          }}
-        >
-          Schema error: {schemaError}
-        </div>
+        <Alert color="red" variant="light" py={4} radius={0}>
+          {t("queryPage.schemaError", { message: schemaError })}
+        </Alert>
       )}
       {redirectResult && (
-        <div
-          style={{
-            padding: "6px 12px",
-            background: "#0f2e1a",
-            color: "#4ade80",
-            fontSize: 12,
-            borderBottom: "1px solid #1a4a2a",
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <span>
-            Redirect ready — {redirectResult.row_count} rows ({redirectResult.content_type})
-          </span>
-          <a
-            href={redirectResult.url}
-            download
-            style={{
-              color: "#4ade80",
-              fontWeight: 600,
-              textDecoration: "underline",
-              cursor: "pointer",
-            }}
-          >
-            Download
-          </a>
-          <button
-            onClick={() => setRedirectResult(null)}
-            style={{
-              marginLeft: "auto",
-              background: "none",
-              border: "none",
-              color: "#4ade80",
-              cursor: "pointer",
-              fontSize: 14,
-              padding: 0,
-            }}
-          >
-            ✕
-          </button>
-        </div>
+        <Alert color="green" variant="light" py={4} radius={0}>
+          <Group gap="md" wrap="nowrap">
+            <Text size="xs" c="green">
+              {t("queryPage.redirectReady", {
+                rowCount: redirectResult.row_count,
+                contentType: redirectResult.content_type,
+              })}
+            </Text>
+            <Text
+              component="a"
+              href={redirectResult.url}
+              download
+              size="xs"
+              fw={600}
+              c="green"
+              td="underline"
+            >
+              {t("queryPage.download")}
+            </Text>
+            <ActionIcon
+              variant="transparent"
+              color="green"
+              size="sm"
+              ml="auto"
+              aria-label={t("queryPage.dismissRedirect")}
+              onClick={() => setRedirectResult(null)}
+            >
+              <X size={14} />
+            </ActionIcon>
+          </Group>
+        </Alert>
       )}
       <GraphiQL
         fetcher={fetcher}

@@ -9,7 +9,19 @@
 // permission from the copyright holder.
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Checkbox,
+  Group,
+  Popover,
+  Select,
+  Stack,
+  Text,
+} from "@mantine/core";
+import { Modal } from "@mantine/core";
 import { X, Download, ChevronDown, ChevronRight, Layers, Maximize2 } from "lucide-react";
 import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
@@ -21,7 +33,6 @@ import { downloadBlob } from "../graph/graph-export";
 import type { CyInstance, CyEvent, CyLayoutOptions } from "../graph/cytoscape-types";
 import { nodesWithEdges, resolveCompoundOverlaps, packDomains, placeIsolatedGrid } from "./sections/erd-layout";
 import { buildErdStylesheet } from "./sections/erd-stylesheet";
-import { TBtn } from "./sections/TBtn";
 import type { TooltipState, ErdModalProps } from "./sections/erd-types";
 
 // ── cytoscape plugin registration ────────────────────────────────────────────
@@ -35,9 +46,9 @@ type Pt = { x: number; y: number };
 
 // ── component ─────────────────────────────────────────────────────────────────
 export function ErdModal({ tables, relationships, domains, activeDomain, onClose }: ErdModalProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
-  const domainPickerRef = useRef<HTMLDivElement>(null);
   // nodeId → pinned model-space position (no Cytoscape lock — nodes stay draggable)
   const pinnedNodesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
@@ -120,18 +131,6 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       ),
     ),
   ];
-
-  // Close picker on outside click.
-  useEffect(() => {
-    if (!showDomainPicker) return;
-    const handler = (e: MouseEvent) => {
-      if (domainPickerRef.current && !domainPickerRef.current.contains(e.target as Node)) {
-        setShowDomainPicker(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showDomainPicker]);
 
   // ── initialise / rebuild on structural changes ────────────────────────────
   useEffect(() => {
@@ -687,179 +686,237 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
 
   const hiddenCount = hiddenDomains.size;
 
-  return createPortal(
-    <div
-      className="modal-overlay"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+  return (
+    <Modal
+      opened
+      onClose={onClose}
+      withCloseButton={false}
+      centered
+      size="92vw"
+      data-testid="erd-modal"
+      styles={{
+        content: {
+          height: "88vh",
+          maxHeight: "88vh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          background: "#0f172a",
+        },
+        body: {
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          overflow: "hidden",
+        },
+      }}
     >
-      <div
-        className="modal modal--erd"
-        style={{
-          width: "92vw", height: "88vh", maxWidth: "92vw",
-          display: "flex", flexDirection: "column",
-          background: "#0f172a", padding: 0, overflow: "hidden",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <>
         {/* ── header ── */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: "0.5rem",
-          padding: "0.6rem 0.75rem", borderBottom: "1px solid #1e293b",
-          flexShrink: 0, flexWrap: "wrap",
-        }}>
-          <span style={{ fontWeight: 600, color: "#e2e8f0", marginRight: "0.25rem" }}>
-            Entity Relationship Diagram
-          </span>
+        <Group
+          gap="0.5rem"
+          wrap="wrap"
+          style={{
+            padding: "0.6rem 0.75rem", borderBottom: "1px solid #1e293b",
+            flexShrink: 0,
+          }}
+        >
+          <Text fw={600} c="#e2e8f0" mr="0.25rem">
+            {t("erdModal.title")}
+          </Text>
 
           {/* domain picker */}
-          <div ref={domainPickerRef} style={{ position: "relative" }}>
-            <TBtn
-              onClick={() => setShowDomainPicker((v) => !v)}
-              active={showDomainPicker || hiddenCount > 0}
-              title="Show / hide domains"
-            >
-              <Layers size={11} />
-              Domains
-              {hiddenCount > 0 && (
-                <span style={{
-                  background: "#ef4444", color: "#fff",
-                  borderRadius: 8, padding: "0 4px", fontSize: 10, lineHeight: "14px",
-                }}>
-                  -{hiddenCount}
-                </span>
-              )}
-            </TBtn>
-            {showDomainPicker && (
-              <div style={{
-                position: "absolute", top: "calc(100% + 4px)", left: 0,
-                background: "#1e293b", border: "1px solid #334155",
-                borderRadius: 6, padding: "6px 0", zIndex: 100,
-                minWidth: 180, boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-              }}>
+          <Popover
+            opened={showDomainPicker}
+            onChange={setShowDomainPicker}
+            position="bottom-start"
+            withinPortal
+            transitionProps={{ duration: 0 }}
+          >
+            <Popover.Target>
+              <Button
+                size="compact-xs"
+                variant={showDomainPicker || hiddenCount > 0 ? "filled" : "default"}
+                color="gray"
+                onClick={() => setShowDomainPicker((v) => !v)}
+                title={t("erdModal.domainsTooltip")}
+                leftSection={<Layers size={11} />}
+                rightSection={
+                  hiddenCount > 0 ? (
+                    <Badge size="xs" color="red" circle>
+                      -{hiddenCount}
+                    </Badge>
+                  ) : undefined
+                }
+                data-testid="erd-domains-toggle"
+              >
+                {t("erdModal.domains")}
+              </Button>
+            </Popover.Target>
+            <Popover.Dropdown>
+              <Stack gap={4} miw={180}>
                 {allDomainIds.map((id) => (
-                  <label
+                  <Checkbox
                     key={id}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      padding: "4px 12px", cursor: "pointer", fontSize: 12,
-                      color: hiddenDomains.has(id) ? "#475569" : "#e2e8f0",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!hiddenDomains.has(id)}
-                      onChange={() => toggleHidden(id)}
-                      style={{ accentColor: labelColor(id) }}
-                    />
-                    <span
-                      style={{
-                        display: "inline-block", width: 8, height: 8,
-                        borderRadius: "50%", background: labelColor(id), flexShrink: 0,
-                      }}
-                    />
-                    {id}
-                  </label>
+                    label={
+                      <Group gap={6} wrap="nowrap">
+                        <span
+                          style={{
+                            display: "inline-block", width: 8, height: 8,
+                            borderRadius: "50%", background: labelColor(id), flexShrink: 0,
+                          }}
+                        />
+                        <Text size="xs" c={hiddenDomains.has(id) ? "dimmed" : undefined}>
+                          {id}
+                        </Text>
+                      </Group>
+                    }
+                    checked={!hiddenDomains.has(id)}
+                    onChange={() => toggleHidden(id)}
+                    color={labelColor(id)}
+                    size="xs"
+                    data-testid={`erd-domain-toggle-${id}`}
+                  />
                 ))}
-              </div>
-            )}
-          </div>
+              </Stack>
+            </Popover.Dropdown>
+          </Popover>
 
           {/* column detail select */}
-          <select
+          <Select
+            aria-label={t("erdModal.columnDetailLabel")}
             value={columnDetail}
-            onChange={(e) => setColumnDetail(e.target.value as ColumnDetail)}
-            style={{
-              padding: "2px 6px",
-              fontSize: 11,
-              background: "#1e293b",
-              color: "#e2e8f0",
-              border: "1px solid #334155",
-              borderRadius: 4,
-              cursor: "pointer",
-            }}
-          >
-            <option value="all">All cols</option>
-            <option value="key">Keys only</option>
-            <option value="none">No cols</option>
-          </select>
+            onChange={(v) => v && setColumnDetail(v as ColumnDetail)}
+            allowDeselect={false}
+            size="xs"
+            w={110}
+            data={[
+              { value: "all", label: t("erdModal.columnDetailAll") },
+              { value: "key", label: t("erdModal.columnDetailKey") },
+              { value: "none", label: t("erdModal.columnDetailNone") },
+            ]}
+            data-testid="erd-column-detail"
+          />
 
           {/* edge routing select */}
-          <select
+          <Select
+            aria-label={t("erdModal.edgeRoutingLabel")}
             value={edgeRouting}
-            onChange={(e) => setEdgeRouting(e.target.value as "bezier" | "taxi")}
-            style={{
-              padding: "2px 6px",
-              fontSize: 11,
-              background: "#1e293b",
-              color: "#e2e8f0",
-              border: "1px solid #334155",
-              borderRadius: 4,
-              cursor: "pointer",
-            }}
-          >
-            <option value="bezier">Curved edges</option>
-            <option value="taxi">Right-angle edges</option>
-          </select>
+            onChange={(v) => v && setEdgeRouting(v as "bezier" | "taxi")}
+            allowDeselect={false}
+            size="xs"
+            w={150}
+            data={[
+              { value: "bezier", label: t("erdModal.edgeRoutingBezier") },
+              { value: "taxi", label: t("erdModal.edgeRoutingTaxi") },
+            ]}
+            data-testid="erd-edge-routing"
+          />
 
           {/* snap to grid */}
-          <select
-            value={gridSnap}
-            onChange={(e) => setGridSnap(parseInt(e.target.value, 10))}
-            style={{ fontSize: 11, background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "1px 4px" }}
-          >
-            <option value={0}>No snap</option>
-            <option value={5}>Snap 5px</option>
-            <option value={10}>Snap 10px</option>
-            <option value={15}>Snap 15px</option>
-            <option value={20}>Snap 20px</option>
-          </select>
+          <Select
+            aria-label={t("erdModal.gridSnapLabel")}
+            value={String(gridSnap)}
+            onChange={(v) => v && setGridSnap(parseInt(v, 10))}
+            allowDeselect={false}
+            size="xs"
+            w={110}
+            data={[
+              { value: "0", label: t("erdModal.gridSnapNone") },
+              { value: "5", label: t("erdModal.gridSnap5") },
+              { value: "10", label: t("erdModal.gridSnap10") },
+              { value: "15", label: t("erdModal.gridSnap15") },
+              { value: "20", label: t("erdModal.gridSnap20") },
+            ]}
+            data-testid="erd-grid-snap"
+          />
 
           {/* show orphans */}
-          <label style={{
-            display: "flex", alignItems: "center", gap: 4,
-            fontSize: 11, color: showOrphans ? "#e2e8f0" : "#64748b",
-            cursor: "pointer", userSelect: "none",
-          }}>
-            <input
-              type="checkbox"
-              checked={showOrphans}
-              onChange={(e) => setShowOrphans(e.target.checked)}
-              style={{ accentColor: "#60a5fa" }}
-            />
-            Orphans
-          </label>
+          <Checkbox
+            label={t("erdModal.orphans")}
+            checked={showOrphans}
+            onChange={(e) => setShowOrphans(e.currentTarget.checked)}
+            size="xs"
+            data-testid="erd-show-orphans"
+          />
 
           {/* collapse/expand all */}
-          <TBtn onClick={toggleAll} title={allCollapsed ? "Expand all domains" : "Collapse all domains"}>
-            {allCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-            {allCollapsed ? "Expand all" : "Collapse all"}
-          </TBtn>
+          <Button
+            size="compact-xs"
+            variant="default"
+            onClick={toggleAll}
+            title={allCollapsed ? t("erdModal.expandAll") : t("erdModal.collapseAll")}
+            leftSection={allCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+            data-testid="erd-toggle-all"
+          >
+            {allCollapsed ? t("erdModal.expandAll") : t("erdModal.collapseAll")}
+          </Button>
 
           <div style={{ flex: 1 }} />
 
           {/* exports */}
-          <TBtn onClick={() => cyRef.current?.fit(undefined, 10)} title="Fit all"><Maximize2 size={11} /></TBtn>
-          <TBtn onClick={exportSvg} title="Download SVG"><Download size={11} /> SVG</TBtn>
-          <TBtn onClick={exportPng} title="Download PNG"><Download size={11} /> PNG</TBtn>
-          <TBtn onClick={exportJpeg} title="Download JPEG"><Download size={11} /> JPEG</TBtn>
+          <ActionIcon
+            variant="default"
+            aria-label={t("erdModal.fitAll")}
+            title={t("erdModal.fitAll")}
+            onClick={() => cyRef.current?.fit(undefined, 10)}
+            data-testid="erd-fit-all"
+          >
+            <Maximize2 size={13} />
+          </ActionIcon>
+          <Button
+            size="compact-xs"
+            variant="default"
+            leftSection={<Download size={11} />}
+            onClick={exportSvg}
+            title={t("erdModal.downloadSvg")}
+            data-testid="erd-export-svg"
+          >
+            SVG
+          </Button>
+          <Button
+            size="compact-xs"
+            variant="default"
+            leftSection={<Download size={11} />}
+            onClick={exportPng}
+            title={t("erdModal.downloadPng")}
+            data-testid="erd-export-png"
+          >
+            PNG
+          </Button>
+          <Button
+            size="compact-xs"
+            variant="default"
+            leftSection={<Download size={11} />}
+            onClick={exportJpeg}
+            title={t("erdModal.downloadJpeg")}
+            data-testid="erd-export-jpeg"
+          >
+            JPEG
+          </Button>
 
-          <button
-            className="modal-close"
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            aria-label={t("erdModal.close")}
             onClick={onClose}
-            style={{ color: "#64748b", marginLeft: "0.25rem" }}
+            ml="0.25rem"
+            data-testid="erd-close"
           >
             <X size={16} />
-          </button>
-        </div>
+          </ActionIcon>
+        </Group>
 
         {/* ── hint bar ── */}
         {allDomainIds.length > 0 && (
-          <div style={{
-            fontSize: 10, color: "#475569",
-            padding: "3px 12px", borderBottom: "1px solid #1e293b", flexShrink: 0,
-          }}>
-            Click a domain group to collapse / expand · dashed lines connect collapsed domains
-          </div>
+          <Text
+            size="10px"
+            c="#475569"
+            style={{ padding: "3px 12px", borderBottom: "1px solid #1e293b", flexShrink: 0 }}
+          >
+            {t("erdModal.hint")}
+          </Text>
         )}
 
         {/* domain resize handles */}
@@ -881,6 +938,8 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
             {(["nw", "ne", "sw", "se"] as const).map((corner) => (
               <div
                 key={corner}
+                role="button"
+                aria-label={t("erdModal.resizeHandle", { corner })}
                 onPointerDown={(e) => onResizePointerDown(corner, e)}
                 onPointerMove={onResizePointerMove}
                 onPointerUp={onResizePointerUp}
@@ -911,23 +970,25 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
 
         {/* ── canvas ── */}
         <div ref={containerRef} style={{ flex: 1, background: "#0f172a" }} />
-      </div>
 
-      {/* ── tooltip ── */}
-      {tooltip.visible && (
-        <div style={{
-          position: "fixed", left: tooltip.x, top: tooltip.y,
-          background: "#1e293b", border: "1px solid #334155",
-          borderRadius: 6, padding: "6px 10px", fontSize: 11,
-          color: "#e2e8f0", maxWidth: 260, pointerEvents: "none",
-          zIndex: 2000, boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-        }}>
-          <div style={{ fontWeight: 600, marginBottom: tooltip.body ? 4 : 0 }}>{tooltip.title}</div>
-          {tooltip.body && <div style={{ color: "#94a3b8", lineHeight: 1.4 }}>{tooltip.body}</div>}
-        </div>
-      )}
-    </div>,
-    document.body,
+        {/* ── tooltip ── */}
+        {tooltip.visible && (
+          <div
+            role="tooltip"
+            style={{
+              position: "fixed", left: tooltip.x, top: tooltip.y,
+              background: "#1e293b", border: "1px solid #334155",
+              borderRadius: 6, padding: "6px 10px", fontSize: 11,
+              color: "#e2e8f0", maxWidth: 260, pointerEvents: "none",
+              zIndex: 2000, boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: tooltip.body ? 4 : 0 }}>{tooltip.title}</div>
+            {tooltip.body && <div style={{ color: "#94a3b8", lineHeight: 1.4 }}>{tooltip.body}</div>}
+          </div>
+        )}
+      </>
+    </Modal>
   );
 }
 

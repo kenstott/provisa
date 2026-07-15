@@ -9,12 +9,38 @@
 // permission from the copyright holder.
 
 import '@testing-library/jest-dom/vitest';
-import { afterEach } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
 // @testing-library/react auto-cleanup doesn't reliably fire between tests in
 // vitest's vmThreads pool.  Register it explicitly so DOM state never leaks.
 afterEach(cleanup);
+
+// Mantine components (ScrollArea, Select, transitions) depend on browser APIs
+// jsdom does not implement. Provide the standard polyfills once, globally, so
+// every component test can render Mantine without per-test boilerplate.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.ResizeObserver = globalThis.ResizeObserver ?? (ResizeObserverStub as never);
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = vi.fn();
+}
 
 // @react-aria/interactions patches HTMLElement.prototype.focus at module-init time.
 // In jsdom vm contexts the property can be accessor-only; re-declare as a plain

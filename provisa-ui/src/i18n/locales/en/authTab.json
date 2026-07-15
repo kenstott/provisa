@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "Authentication verifies who is calling; roles + RLS decide what they can see. Pick the identity provider and configure its connection.",
+    "providerLabel": "Provider",
+    "current": " (current)",
+    "roles": "Roles",
+    "defaultRole": "Default role",
+    "assignmentsFrom": "Role assignments from",
+    "assignmentsSourceClaims": "Token claims",
+    "assignmentsSourceProvisa": "Provisa (local assignments)",
+    "trustUpstream": "Trust upstream proxy identity headers",
+    "allowSimpleAuth": "Allow simple auth (production guard — required to enable username/password)",
+    "saveButton": "Save auth settings",
+    "loading": "Loading…",
+    "saved": "Saved.",
+    "savedRestartRequired": "Saved. Restart the service to apply."
+  }
+}

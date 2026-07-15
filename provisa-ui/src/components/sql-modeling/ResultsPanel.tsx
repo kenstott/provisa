@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import React, { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { ActionIcon, Alert, Group, Table, Text, TextInput } from "@mantine/core";
 import { PAGE_SIZE, COL_MAX, COL_MIN, CHAR_PX } from "./types";
 
 interface ResultsPanelProps {
@@ -44,6 +46,8 @@ export function ResultsPanel({
   handleDownloadCsv,
   sqlText,
 }: ResultsPanelProps) {
+  const { t } = useTranslation();
+
   const autoWidths = useMemo(() => {
     const cols = resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {});
     const widths: Record<string, number> = {};
@@ -66,32 +70,26 @@ export function ResultsPanel({
 
   if (resultError) {
     return (
-      <pre
-        style={{
-          margin: "0.75rem",
-          fontSize: "0.8rem",
-          color: "var(--destructive)",
-          whiteSpace: "pre-wrap",
-          fontFamily: "monospace",
-        }}
-      >
-        {resultError}
-      </pre>
+      <Alert color="red" m="sm" p="xs" data-testid="sql-results-error">
+        <Text
+          component="pre"
+          size="xs"
+          c="red"
+          style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "monospace" }}
+        >
+          {resultError}
+        </Text>
+      </Alert>
     );
   }
 
   if (resultRows.length === 0) {
     return (
-      <div
-        style={{
-          padding: "1.5rem",
-          textAlign: "center",
-          color: "var(--text-muted)",
-          fontSize: "0.85rem",
-        }}
-      >
-        {sqlText.trim() ? "No results." : "Write SQL and click Sample to execute."}
-      </div>
+      <Text ta="center" c="dimmed" size="sm" p="lg" data-testid="sql-results-empty">
+        {sqlText.trim()
+          ? t("sqlModelingResultsPanel.noResults")
+          : t("sqlModelingResultsPanel.writeSqlPrompt")}
+      </Text>
     );
   }
 
@@ -105,12 +103,12 @@ export function ResultsPanel({
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Download + pagination bar */}
-      <div
+      <Group
+        gap="xs"
+        px="sm"
+        py={4}
+        wrap="nowrap"
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          padding: "0.25rem 0.75rem",
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
           background: "var(--surface)",
@@ -118,89 +116,72 @@ export function ResultsPanel({
           color: "var(--text-muted)",
         }}
       >
-        <button
+        <ActionIcon
+          variant="default"
+          size="sm"
           onClick={handleDownloadCsv}
-          style={{
-            fontSize: "0.72rem",
-            padding: "0.15rem 0.45rem",
-            background: "none",
-            border: "1px solid var(--border)",
-            borderRadius: "3px",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-          }}
+          aria-label={t("sqlModelingResultsPanel.downloadCsv")}
+          data-testid="sql-results-download-csv"
         >
-          ↓ CSV
-        </button>
-        <span>
-          {displayRows.length} row{displayRows.length !== 1 ? "s" : ""}
+          ↓
+        </ActionIcon>
+        <Text size="xs" c="dimmed">
+          {t("sqlModelingResultsPanel.rowCount", { count: displayRows.length })}
           {displayRows.length < resultRows.length
-            ? ` (filtered from ${resultRows.length})`
+            ? ` ${t("sqlModelingResultsPanel.filteredFrom", { count: resultRows.length })}`
             : ""}
-        </span>
+        </Text>
         <div style={{ flex: 1 }} />
         {totalPages > 1 && (
           <>
-            <button
+            <ActionIcon
+              variant="subtle"
+              size="sm"
               onClick={() => setPage(0)}
               disabled={page === 0}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: page === 0 ? "var(--text-muted)" : "var(--text)",
-                fontSize: "0.75rem",
-              }}
+              aria-label={t("sqlModelingResultsPanel.firstPage")}
+              data-testid="sql-results-first-page"
             >
               «
-            </button>
-            <button
+            </ActionIcon>
+            <ActionIcon
+              variant="subtle"
+              size="sm"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: page === 0 ? "var(--text-muted)" : "var(--text)",
-                fontSize: "0.75rem",
-              }}
+              aria-label={t("sqlModelingResultsPanel.previousPage")}
+              data-testid="sql-results-prev-page"
             >
               ‹
-            </button>
-            <span>
-              Page {page + 1} / {totalPages}
-            </span>
-            <button
+            </ActionIcon>
+            <Text size="xs" c="dimmed">
+              {t("sqlModelingResultsPanel.pageOf", { page: page + 1, total: totalPages })}
+            </Text>
+            <ActionIcon
+              variant="subtle"
+              size="sm"
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: page >= totalPages - 1 ? "var(--text-muted)" : "var(--text)",
-                fontSize: "0.75rem",
-              }}
+              aria-label={t("sqlModelingResultsPanel.nextPage")}
+              data-testid="sql-results-next-page"
             >
               ›
-            </button>
-            <button
+            </ActionIcon>
+            <ActionIcon
+              variant="subtle"
+              size="sm"
               onClick={() => setPage(totalPages - 1)}
               disabled={page >= totalPages - 1}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: page >= totalPages - 1 ? "var(--text-muted)" : "var(--text)",
-                fontSize: "0.75rem",
-              }}
+              aria-label={t("sqlModelingResultsPanel.lastPage")}
+              data-testid="sql-results-last-page"
             >
               »
-            </button>
+            </ActionIcon>
           </>
         )}
-      </div>
+      </Group>
       <div style={{ flex: 1, overflow: "auto" }}>
-        <table
+        <Table
           className="data-table sql-results-table"
           style={{
             fontSize: "0.78rem",
@@ -209,13 +190,13 @@ export function ResultsPanel({
             minWidth: "100%",
           }}
         >
-          <thead>
-            <tr>
+          <Table.Thead>
+            <Table.Tr>
               {displayCols.map((c) => {
                 const sortIdx = sorts.findIndex((s) => s.col === c);
                 const sortEntry = sortIdx !== -1 ? sorts[sortIdx] : null;
                 return (
-                  <th
+                  <Table.Th
                     key={c}
                     className={sortEntry ? "col-sorted" : undefined}
                     style={{
@@ -223,13 +204,36 @@ export function ResultsPanel({
                       minWidth: COL_MIN,
                       position: "relative",
                     }}
+                    aria-sort={
+                      sortEntry
+                        ? sortEntry.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : undefined
+                    }
                   >
-                    <div className="th-label" onClick={() => handleSort(c)}>
+                    <button
+                      type="button"
+                      className="th-label"
+                      onClick={() => handleSort(c)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        font: "inherit",
+                        color: "inherit",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        width: "100%",
+                      }}
+                    >
                       <span
                         style={{
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           flex: 1,
+                          textAlign: "left",
                         }}
                       >
                         {c}
@@ -248,10 +252,19 @@ export function ResultsPanel({
                           {sorts.length > 1 && (
                             <span style={{ opacity: 0.7 }}>{sortIdx + 1}</span>
                           )}
-                          <span>{sortEntry.dir === "asc" ? "▲" : "▼"}</span>
+                          <span
+                            aria-label={
+                              sortEntry.dir === "asc"
+                                ? t("sqlModelingResultsPanel.sortAscending")
+                                : t("sqlModelingResultsPanel.sortDescending")
+                            }
+                          >
+                            {sortEntry.dir === "asc" ? "▲" : "▼"}
+                          </span>
                         </span>
                       ) : (
                         <span
+                          aria-hidden="true"
                           style={{
                             fontSize: "0.6rem",
                             color: "var(--text-muted)",
@@ -261,8 +274,8 @@ export function ResultsPanel({
                           ⇅
                         </span>
                       )}
-                    </div>
-                    <input
+                    </button>
+                    <TextInput
                       className="th-filter"
                       value={filters[c] ?? ""}
                       onChange={(e) => {
@@ -273,9 +286,14 @@ export function ResultsPanel({
                         setPage(0);
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      placeholder="filter…"
+                      placeholder={t("sqlModelingResultsPanel.filterPlaceholder")}
+                      aria-label={t("sqlModelingResultsPanel.filterColumn", { column: c })}
+                      size="xs"
+                      variant="unstyled"
                     />
                     <div
+                      role="separator"
+                      aria-label={t("sqlModelingResultsPanel.resizeColumn", { column: c })}
                       onMouseDown={(e) => handleResizeStart(c, e)}
                       style={{
                         position: "absolute",
@@ -286,19 +304,19 @@ export function ResultsPanel({
                         cursor: "col-resize",
                       }}
                     />
-                  </th>
+                  </Table.Th>
                 );
               })}
-            </tr>
-          </thead>
-          <tbody>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
             {pagedRows.map((row, i) => (
-              <tr key={i}>
+              <Table.Tr key={i}>
                 {displayCols.map((c) => {
                   const v = row[c];
                   const isNum = typeof v === "number";
                   return (
-                    <td
+                    <Table.Td
                       key={c}
                       className={isNum ? "col-num" : undefined}
                       style={{
@@ -310,15 +328,15 @@ export function ResultsPanel({
                       {v != null ? (
                         String(v)
                       ) : (
-                        <span className="null-val">null</span>
+                        <span className="null-val">{t("sqlModelingResultsPanel.nullValue")}</span>
                       )}
-                    </td>
+                    </Table.Td>
                   );
                 })}
-              </tr>
+              </Table.Tr>
             ))}
-          </tbody>
-        </table>
+          </Table.Tbody>
+        </Table>
       </div>
     </div>
   );

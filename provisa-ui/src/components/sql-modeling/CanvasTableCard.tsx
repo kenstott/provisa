@@ -9,10 +9,14 @@
 // permission from the copyright holder.
 
 import React, { useRef } from "react";
+import { X } from "lucide-react";
+import { ActionIcon, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import type { CanvasTableCardProps } from "./types";
 import { CARD_W, CARD_HEADER_H, COL_ROW_H } from "./types";
 
 export function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTableCardProps) {
+  const { t } = useTranslation();
   const dragRef = useRef<{
     startMouseX: number;
     startMouseY: number;
@@ -79,26 +83,27 @@ export function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: C
           fontWeight: 600,
         }}
       >
-        <span
+        <Text
+          span
+          c="inherit"
+          fz="0.78rem"
+          fw={600}
           style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
         >
           {ct.tableName}
-        </span>
-        <button
+        </Text>
+        <ActionIcon
+          type="button"
+          variant="transparent"
+          size="xs"
+          c="rgba(255,255,255,0.7)"
+          aria-label={t("sqlModelingCanvasTableCard.removeTable", { tableName: ct.tableName })}
+          data-testid="canvas-table-card-remove"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={onRemove}
-          style={{
-            background: "none",
-            border: "none",
-            color: "rgba(255,255,255,0.7)",
-            cursor: "pointer",
-            padding: "0 0 0 4px",
-            lineHeight: 1,
-            fontSize: "0.75rem",
-          }}
         >
-          ✕
-        </button>
+          <X size={11} />
+        </ActionIcon>
       </div>
 
       {/* Columns */}
@@ -134,25 +139,31 @@ export function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: C
               pointerEvents: "none",
             }}
           />
-          <span
+          <Text
+            span
+            c="var(--text)"
+            fz="0.72rem"
+            ff="monospace"
             style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
           >
             {col.columnName}
-          </span>
+          </Text>
           {col.dataType && (
-            <span
-              style={{
-                fontSize: "0.6rem",
-                color: "var(--text-muted)",
-                opacity: 0.5,
-                marginLeft: 4,
-              }}
+            <Text
+              span
+              c="var(--text-muted)"
+              fz="0.6rem"
+              ff="monospace"
+              style={{ opacity: 0.5, marginLeft: 4 }}
             >
               {col.dataType}
-            </span>
+            </Text>
           )}
           {/* Right dot (connect handle) */}
-          <div
+          <button
+            type="button"
+            aria-label={t("sqlModelingCanvasTableCard.connectColumn", { columnName: col.columnName })}
+            data-testid={`canvas-table-card-connect-${col.columnName}`}
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -165,6 +176,7 @@ export function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: C
               transform: "translateY(-50%)",
               width: 9,
               height: 9,
+              padding: 0,
               borderRadius: "50%",
               background: "var(--primary)",
               border: "1px solid var(--primary)",

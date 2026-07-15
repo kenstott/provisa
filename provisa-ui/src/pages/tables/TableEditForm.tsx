@@ -10,6 +10,19 @@
 
 import { Fragment } from "react";
 import { Check, X, Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Badge,
+  Checkbox,
+  Group,
+  NumberInput,
+  Select,
+  Table,
+  Text,
+  TextInput,
+  Tooltip,
+} from "@mantine/core";
 import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import type { RegisteredTable, Source } from "../../types/admin";
@@ -47,6 +60,26 @@ interface TableEditFormProps {
   updateEditCol: (i: number, key: string, value: string | string[] | boolean) => void;
 }
 
+function FieldLabel({ text, help }: { text: string; help: string }) {
+  return (
+    <Group gap={4} wrap="nowrap">
+      <Text component="span" size="sm">
+        {text}
+      </Text>
+      <Tooltip label={help} multiline w={320}>
+        <Text
+          component="span"
+          size="xs"
+          c="dimmed"
+          style={{ cursor: "help", lineHeight: 1 }}
+        >
+          ⓘ
+        </Text>
+      </Tooltip>
+    </Group>
+  );
+}
+
 export function TableEditForm({
   editingTable,
   setEditingTable,
@@ -67,168 +100,111 @@ export function TableEditForm({
   handleSaveEdit,
   updateEditCol,
 }: TableEditFormProps) {
+  const { t } = useTranslation();
+  const roleOptions = roles.map((r) => ({ id: r.id, label: r.id }));
   return (
     <>
       <div className="form-card" style={{ marginBottom: "0.75rem" }}>
-        <label>
-          <span
-            style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
-          >
-            SQL Alias{" "}
-            <span
-              title="The GraphQL/Cypher field name exposed in the API. Defaults to the table name. Changing this renames the entity across all queries and SDL docs."
-              style={{
-                cursor: "help",
-                color: "var(--text-muted)",
-                fontSize: "0.75rem",
-                lineHeight: 1,
-              }}
-            >
-              ⓘ
-            </span>
-          </span>
-          <input
-            value={editingTable.alias || ""}
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                alias: e.target.value || null,
-              })
-            }
-            placeholder="Semantic name override"
+        <TextInput
+          label={
+            <FieldLabel
+              text={t("tableEditForm.sqlAliasLabel")}
+              help={t("tableEditForm.sqlAliasHelp")}
+            />
+          }
+          value={editingTable.alias || ""}
+          onChange={(e) =>
+            setEditingTable({
+              ...editingTable,
+              alias: e.target.value || null,
+            })
+          }
+          placeholder={t("tableEditForm.sqlAliasPlaceholder")}
+        />
+        <Select
+          label={
+            <FieldLabel
+              text={t("tableEditForm.namingConventionLabel")}
+              help={t("tableEditForm.namingConventionHelp")}
+            />
+          }
+          data={NAMING_CONVENTIONS.map((nc) => ({
+            value: nc.value,
+            label: nc.label,
+          }))}
+          value={editingTable.gqlNamingConvention ?? ""}
+          onChange={(v) =>
+            setEditingTable({
+              ...editingTable,
+              gqlNamingConvention: v || null,
+            })
+          }
+          comboboxProps={{ withinPortal: true }}
+          allowDeselect={false}
+        />
+        <NumberInput
+          label={
+            <FieldLabel
+              text={t("tableEditForm.cacheTtlLabel")}
+              help={t("tableEditForm.cacheTtlHelp")}
+            />
+          }
+          min={0}
+          value={
+            cacheTtlEdits[editingTable.id]?.value ??
+            (editingTable.cacheTtl != null ? editingTable.cacheTtl : "")
+          }
+          onChange={(v) =>
+            setCacheTtlEdits((prev) => ({
+              ...prev,
+              [editingTable.id]: {
+                ...prev[editingTable.id],
+                value: v === "" ? "" : String(v),
+                dirty: true,
+              },
+            }))
+          }
+          placeholder={t("tableEditForm.cacheTtlPlaceholder")}
+        />
+        <Select
+          label={
+            <FieldLabel
+              text={t("tableEditForm.preferMaterializedLabel")}
+              help={t("tableEditForm.preferMaterializedHelp")}
+            />
+          }
+          data={[
+            { value: "inherit", label: t("tableEditForm.inheritSource") },
+            { value: "on", label: t("tableEditForm.on") },
+            { value: "off", label: t("tableEditForm.off") },
+          ]}
+          value={
+            editingTable.preferMaterialized == null
+              ? "inherit"
+              : editingTable.preferMaterialized
+                ? "on"
+                : "off"
+          }
+          onChange={(v) =>
+            setEditingTable({
+              ...editingTable,
+              preferMaterialized: v === "inherit" ? null : v === "on",
+            })
+          }
+          comboboxProps={{ withinPortal: true }}
+          allowDeselect={false}
+        />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <FieldLabel
+            text={t("tableEditForm.descriptionLabel")}
+            help={t("tableEditForm.descriptionHelp")}
           />
-        </label>
-        <label>
-          <span
-            style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
-          >
-            Naming Convention{" "}
-            <span
-              title="Controls how the alias is cased in the API schema. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. 'Inherit' uses the source's convention. Affects GraphQL field names, Cypher labels, and SDL output."
-              style={{
-                cursor: "help",
-                color: "var(--text-muted)",
-                fontSize: "0.75rem",
-                lineHeight: 1,
-              }}
-            >
-              ⓘ
-            </span>
-          </span>
-          <select
-            value={editingTable.gqlNamingConvention ?? ""}
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                gqlNamingConvention: e.target.value || null,
-              })
-            }
-          >
-            {NAMING_CONVENTIONS.map((nc) => (
-              <option key={nc.value} value={nc.value}>
-                {nc.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span
-            style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
-          >
-            Cache TTL (seconds){" "}
-            <span
-              title="How long query results for this table are cached in memory. 0 disables caching. Leave blank to inherit the source-level TTL. Reduces load on the source database for frequently-queried tables."
-              style={{
-                cursor: "help",
-                color: "var(--text-muted)",
-                fontSize: "0.75rem",
-                lineHeight: 1,
-              }}
-            >
-              ⓘ
-            </span>
-          </span>
-          <input
-            type="number"
-            min={0}
-            value={
-              cacheTtlEdits[editingTable.id]?.value ??
-              (editingTable.cacheTtl != null ? String(editingTable.cacheTtl) : "")
-            }
-            onChange={(e) =>
-              setCacheTtlEdits((prev) => ({
-                ...prev,
-                [editingTable.id]: {
-                  ...prev[editingTable.id],
-                  value: e.target.value,
-                  dirty: true,
-                },
-              }))
-            }
-            placeholder="inherit"
-          />
-        </label>
-        <label>
-          <span
-            style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
-          >
-            Prefer Materialized{" "}
-            <span
-              title="Force this table to be materialized into the store and federated from there, instead of reached live. Use when the connector is a poor fit for this table's queries. Inherit = follow the source-level default."
-              style={{
-                cursor: "help",
-                color: "var(--text-muted)",
-                fontSize: "0.75rem",
-                lineHeight: 1,
-              }}
-            >
-              ⓘ
-            </span>
-          </span>
-          <select
-            value={
-              editingTable.preferMaterialized == null
-                ? "inherit"
-                : editingTable.preferMaterialized
-                  ? "on"
-                  : "off"
-            }
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                preferMaterialized:
-                  e.target.value === "inherit" ? null : e.target.value === "on",
-              })
-            }
-          >
-            <option value="inherit">Inherit source</option>
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </select>
-        </label>
-        <label style={{ gridColumn: "1 / -1" }}>
-          <span
-            style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
-          >
-            Description{" "}
-            <span
-              title="Human-readable description shown in the API schema (SDL), data catalog, and AI-assisted query generation. Good descriptions improve auto-generated SQL accuracy."
-              style={{
-                cursor: "help",
-                color: "var(--text-muted)",
-                fontSize: "0.75rem",
-                lineHeight: 1,
-              }}
-            >
-              ⓘ
-            </span>
-          </span>
           <DescriptionField
             value={editingTable.description || ""}
             onChange={(v) =>
               setEditingTable({ ...editingTable, description: v || null })
             }
-            placeholder="Appears in SDL docs"
+            placeholder={t("tableEditForm.descriptionPlaceholder")}
             rows={2}
             generating={generatingDesc}
             onGenerate={async () => {
@@ -241,269 +217,206 @@ export function TableEditForm({
               }
             }}
           />
-        </label>
+        </div>
         {editingTable.viewSql && (
           <>
-            <label
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: "0.5rem",
-                gridColumn: "1 / -1",
-              }}
+            <Group
+              gap="xs"
+              wrap="nowrap"
+              style={{ gridColumn: "1 / -1" }}
             >
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={editingTable.materialize}
                 onChange={(e) =>
                   setEditingTable({
                     ...editingTable,
-                    materialize: e.target.checked,
+                    materialize: e.currentTarget.checked,
                   })
                 }
-                style={{ width: "auto" }}
+                label={t("tableEditForm.materializedViewLabel")}
               />
-              Materialized View
-              <span
-                style={{ fontWeight: "normal", color: "var(--text-muted)" }}
-              >
-                (CTAS into mv_cache, refreshed periodically)
-              </span>
-              <span
-                title="Precompute THIS view's SQL into a stored cache table (CTAS into mv_cache) on the Refresh Interval below. Distinct from 'Prefer Materialized' above, which pulls a raw source table into the store — this materializes a Provisa-defined view."
-                style={{
-                  cursor: "help",
-                  color: "var(--text-muted)",
-                  fontSize: "0.75rem",
-                  lineHeight: 1,
-                }}
-              >
-                ⓘ
-              </span>
-            </label>
-            {editingTable.materialize && (
-              <label>
-                <span
-                  style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
+              <Text size="sm" c="dimmed">
+                {t("tableEditForm.materializedViewDesc")}
+              </Text>
+              <Tooltip label={t("tableEditForm.materializedViewHelp")} multiline w={320}>
+                <Text
+                  component="span"
+                  size="xs"
+                  c="dimmed"
+                  style={{ cursor: "help", lineHeight: 1 }}
                 >
-                  Refresh Interval (seconds){" "}
-                  <span
-                    title="How often the materialized view is rebuilt (CTAS into mv_cache). Governs freshness of the stored table that QUERIES read. Distinct from Cache TTL (which caches query results) and from Poll interval (which paces the live change stream to subscribers)."
-                    style={{
-                      cursor: "help",
-                      color: "var(--text-muted)",
-                      fontSize: "0.75rem",
-                      lineHeight: 1,
-                    }}
-                  >
-                    ⓘ
-                  </span>
-                </span>
-                <input
-                  type="number"
-                  min={30}
-                  value={editingTable.mvRefreshInterval}
-                  onChange={(e) =>
-                    setEditingTable({
-                      ...editingTable,
-                      mvRefreshInterval: parseInt(e.target.value, 10) || 300,
-                    })
-                  }
-                />
-              </label>
+                  ⓘ
+                </Text>
+              </Tooltip>
+            </Group>
+            {editingTable.materialize && (
+              <NumberInput
+                label={
+                  <FieldLabel
+                    text={t("tableEditForm.refreshIntervalLabel")}
+                    help={t("tableEditForm.refreshIntervalHelp")}
+                  />
+                }
+                min={30}
+                value={editingTable.mvRefreshInterval}
+                onChange={(v) =>
+                  setEditingTable({
+                    ...editingTable,
+                    mvRefreshInterval:
+                      typeof v === "number" ? v : parseInt(String(v), 10) || 300,
+                  })
+                }
+              />
             )}
             {editingTable.materialize && (
-              <label
-                title="REQ-963 NRT debounce: a burst of upstream changes collapses into one recompute. Quiet = seconds of calm before firing (0 = real-time). Max delay = the hard staleness cap under continuous churn."
-              >
-                NRT Debounce — quiet / max delay (seconds)
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <input
-                    type="number"
+              <div title={t("tableEditForm.nrtDebounceTitle")}>
+                <Text size="sm" c="dimmed" mb={4}>
+                  {t("tableEditForm.nrtDebounceLabel")}
+                </Text>
+                <Group gap="xs">
+                  <NumberInput
                     min={0}
                     step={0.5}
-                    placeholder="quiet"
-                    aria-label="NRT debounce quiet seconds"
+                    placeholder={t("tableEditForm.nrtQuietPlaceholder")}
+                    aria-label={t("tableEditForm.nrtQuietAria")}
                     data-testid="mv-debounce-quiet"
                     value={editingTable.mvDebounceQuiet}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       setEditingTable({
                         ...editingTable,
-                        mvDebounceQuiet: parseFloat(e.target.value) || 0,
+                        mvDebounceQuiet:
+                          typeof v === "number" ? v : parseFloat(String(v)) || 0,
                       })
                     }
                   />
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     step={0.5}
-                    placeholder="max delay"
-                    aria-label="NRT debounce max delay seconds"
+                    placeholder={t("tableEditForm.nrtMaxDelayPlaceholder")}
+                    aria-label={t("tableEditForm.nrtMaxDelayAria")}
                     data-testid="mv-debounce-max-delay"
                     value={editingTable.mvDebounceMaxDelay}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       setEditingTable({
                         ...editingTable,
-                        mvDebounceMaxDelay: parseFloat(e.target.value) || 0,
+                        mvDebounceMaxDelay:
+                          typeof v === "number" ? v : parseFloat(String(v)) || 0,
                       })
                     }
                   />
-                </div>
-              </label>
+                </Group>
+              </div>
             )}
             {editingTable.materialize && (
-              <label>
-                <span
-                  style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
-                >
-                  Consistency{" "}
-                  <span
-                    title="REQ-879 cross-instance refresh coordination. shared = fleet-coordinated — one instance refreshes at a time via a CAS lease on the shared catalog, so every instance reads one snapshot-consistent copy. distributed = each instance materializes its own copy independently (eventually consistent; only safe for a deterministic view over a source that quiesces within a refresh cycle)."
-                    style={{
-                      cursor: "help",
-                      color: "var(--text-muted)",
-                      fontSize: "0.75rem",
-                      lineHeight: 1,
-                    }}
-                  >
-                    ⓘ
-                  </span>
-                </span>
-                <select
-                  aria-label="MV consistency tier"
-                  data-testid="mv-consistency"
-                  value={editingTable.mvConsistency}
-                  onChange={(e) =>
-                    setEditingTable({
-                      ...editingTable,
-                      mvConsistency: e.target.value,
-                    })
-                  }
-                >
-                  <option value="shared">shared (fleet-coordinated)</option>
-                  <option value="distributed">distributed (per-instance)</option>
-                </select>
-              </label>
+              <Select
+                label={
+                  <FieldLabel
+                    text={t("tableEditForm.consistencyLabel")}
+                    help={t("tableEditForm.consistencyHelp")}
+                  />
+                }
+                aria-label={t("tableEditForm.mvConsistencyAria")}
+                data-testid="mv-consistency"
+                data={[
+                  { value: "shared", label: t("tableEditForm.consistencyShared") },
+                  {
+                    value: "distributed",
+                    label: t("tableEditForm.consistencyDistributed"),
+                  },
+                ]}
+                value={editingTable.mvConsistency}
+                onChange={(v) =>
+                  setEditingTable({
+                    ...editingTable,
+                    mvConsistency: v ?? editingTable.mvConsistency,
+                  })
+                }
+                comboboxProps={{ withinPortal: true }}
+                allowDeselect={false}
+              />
             )}
           </>
         )}
-        <label
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: "0.5rem",
-            gridColumn: "1 / -1",
-          }}
-        >
-          <input
-            type="checkbox"
+        <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
+          <Checkbox
             checked={editingTable.dataProduct}
             onChange={(e) =>
               setEditingTable({
                 ...editingTable,
-                dataProduct: e.target.checked,
+                dataProduct: e.currentTarget.checked,
               })
             }
-            style={{ width: "auto" }}
+            label={t("tableEditForm.dataProductLabel")}
           />
-          Data Product
-          <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
-            (publish to catalog / export to Atlas, Atlan, etc.)
-          </span>
-        </label>
-        <label
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: "0.5rem",
-            gridColumn: "1 / -1",
-          }}
-        >
-          <input
-            type="checkbox"
+          <Text size="sm" c="dimmed">
+            {t("tableEditForm.dataProductDesc")}
+          </Text>
+        </Group>
+        <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
+          <Checkbox
             checked={editingTable.enableAggregates}
             onChange={(e) =>
               setEditingTable({
                 ...editingTable,
-                enableAggregates: e.target.checked,
+                enableAggregates: e.currentTarget.checked,
               })
             }
-            style={{ width: "auto" }}
+            label={t("tableEditForm.enableAggregatesLabel")}
           />
-          Enable Aggregates
-          <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
-            (expose <code>_aggregate</code> root field in GraphQL)
-          </span>
-        </label>
-        <label
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: "0.5rem",
-            gridColumn: "1 / -1",
-          }}
-        >
-          <input
-            type="checkbox"
+          <Text size="sm" c="dimmed">
+            {t("tableEditForm.enableAggregatesDesc")}
+          </Text>
+        </Group>
+        <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
+          <Checkbox
             checked={editingTable.enableGroupBy}
             onChange={(e) =>
               setEditingTable({
                 ...editingTable,
-                enableGroupBy: e.target.checked,
+                enableGroupBy: e.currentTarget.checked,
               })
             }
-            style={{ width: "auto" }}
+            label={t("tableEditForm.enableGroupByLabel")}
           />
-          Enable Group By
-          <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
-            (expose <code>_group_by</code> root field in GraphQL)
-          </span>
-        </label>
+          <Text size="sm" c="dimmed">
+            {t("tableEditForm.enableGroupByDesc")}
+          </Text>
+        </Group>
         {editingTable.apiEndpoint && (
-          <label style={{ gridColumn: "1 / -1" }}>
-            API Endpoint
-            <input
-              readOnly
-              value={editingTable.apiEndpoint}
-              style={{ color: "var(--text-muted)", cursor: "default" }}
-            />
-          </label>
+          <TextInput
+            style={{ gridColumn: "1 / -1" }}
+            label={t("tableEditForm.apiEndpointLabel")}
+            readOnly
+            value={editingTable.apiEndpoint}
+            styles={{ input: { color: "var(--text-muted)", cursor: "default" } }}
+          />
         )}
-        <label>
-          <span
-            style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
-          >
-            Change Signal{" "}
-            <span
-              title="How Provisa learns rows changed. ttl = refresh on the Cache TTL timer; probe = source-native freshness query, re-pull only on change; ttl_probe = probe after the TTL floor elapses; native/debezium/kafka = source push. Inherit = follow the source-level default."
-              style={{
-                cursor: "help",
-                color: "var(--text-muted)",
-                fontSize: "0.75rem",
-                lineHeight: 1,
-              }}
-            >
-              ⓘ
-            </span>
-          </span>
-          <select
-            value={editingTable.changeSignal ?? ""}
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                changeSignal: e.target.value || null,
-              })
-            }
-          >
-            <option value="">Inherit source</option>
-            <option value="ttl">ttl (timer)</option>
-            <option value="probe">probe (freshness query)</option>
-            <option value="ttl_probe">probe + ttl</option>
-            <option value="native">native (source push)</option>
-            <option value="debezium">debezium</option>
-            <option value="kafka">kafka</option>
-          </select>
-        </label>
+        <Select
+          label={
+            <FieldLabel
+              text={t("tableEditForm.changeSignalLabel")}
+              help={t("tableEditForm.changeSignalHelp")}
+            />
+          }
+          data={[
+            { value: "", label: t("tableEditForm.csInherit") },
+            { value: "ttl", label: t("tableEditForm.csTtl") },
+            { value: "probe", label: t("tableEditForm.csProbe") },
+            { value: "ttl_probe", label: t("tableEditForm.csTtlProbe") },
+            { value: "native", label: t("tableEditForm.csNative") },
+            { value: "debezium", label: t("tableEditForm.csDebezium") },
+            { value: "kafka", label: t("tableEditForm.csKafka") },
+          ]}
+          value={editingTable.changeSignal ?? ""}
+          onChange={(v) =>
+            setEditingTable({
+              ...editingTable,
+              changeSignal: v || null,
+            })
+          }
+          comboboxProps={{ withinPortal: true }}
+          allowDeselect={false}
+        />
         {(editingTable.changeSignal === "ttl" ||
           editingTable.changeSignal === "ttl_probe") &&
           (() => {
@@ -520,29 +433,24 @@ export function TableEditForm({
             const effTtl = tableTtl ?? cs?.cacheTtl ?? null;
             const fromTable = tableTtl != null;
             return effTtl == null ? (
-              <p
-                style={{
-                  gridColumn: "1 / -1",
-                  margin: 0,
-                  color: "var(--warning, #d19a00)",
-                  fontSize: "0.8rem",
-                }}
+              <Text
+                style={{ gridColumn: "1 / -1" }}
+                size="xs"
+                c="var(--warning, #d19a00)"
               >
-                ttl needs an interval — set <strong>Cache TTL (seconds)</strong>{" "}
-                above (neither the table nor the source defines one).
-              </p>
+                {t("tableEditForm.ttlNeedsIntervalPre")}{" "}
+                <strong>{t("tableEditForm.cacheTtlLabel")}</strong>{" "}
+                {t("tableEditForm.ttlNeedsIntervalPost")}
+              </Text>
             ) : (
-              <p
-                style={{
-                  gridColumn: "1 / -1",
-                  margin: 0,
-                  color: "var(--text-muted)",
-                  fontSize: "0.8rem",
-                }}
-              >
-                Refreshes every {effTtl}s (from {fromTable ? "table" : "source"}{" "}
-                Cache TTL).
-              </p>
+              <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
+                {t("tableEditForm.refreshesEvery", {
+                  sec: effTtl,
+                  source: fromTable
+                    ? t("tableEditForm.sourceTable")
+                    : t("tableEditForm.sourceSource"),
+                })}
+              </Text>
             );
           })()}
         {(editingTable.changeSignal === "debezium" ||
@@ -560,46 +468,33 @@ export function TableEditForm({
             return (
               <>
                 {hasCdc ? (
-                  <p
-                    style={{
-                      gridColumn: "1 / -1",
-                      margin: 0,
-                      color: "var(--text-muted)",
-                      fontSize: "0.8rem",
-                    }}
-                  >
-                    Provisa consumes the source's CDC transport (
-                    {cs!.cdc!.bootstrapServers}); topic <code>{topic}</code>. No
-                    per-table transport config needed.
-                  </p>
+                  <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
+                    {t("tableEditForm.cdcTransportPre")}
+                    {cs!.cdc!.bootstrapServers}
+                    {t("tableEditForm.cdcTransportMid")}{" "}
+                    <code>{topic}</code>. {t("tableEditForm.cdcTransportPost")}
+                  </Text>
                 ) : (
-                  <p
-                    style={{
-                      gridColumn: "1 / -1",
-                      margin: 0,
-                      color: "var(--warning, #d19a00)",
-                      fontSize: "0.8rem",
-                    }}
+                  <Text
+                    style={{ gridColumn: "1 / -1" }}
+                    size="xs"
+                    c="var(--warning, #d19a00)"
                   >
-                    {editingTable.changeSignal} needs the source's CDC transport
-                    (bootstrap servers, topic prefix) — configure it on the{" "}
-                    <strong>source</strong>. It isn't set, so no change events
-                    will arrive.
-                  </p>
+                    {editingTable.changeSignal} {t("tableEditForm.cdcMissingPre")}{" "}
+                    <strong>{t("tableEditForm.cdcMissingBold")}</strong>.{" "}
+                    {t("tableEditForm.cdcMissingPost")}
+                  </Text>
                 )}
                 {!hasPk && (
-                  <p
-                    style={{
-                      gridColumn: "1 / -1",
-                      margin: 0,
-                      color: "var(--warning, #d19a00)",
-                      fontSize: "0.8rem",
-                    }}
+                  <Text
+                    style={{ gridColumn: "1 / -1" }}
+                    size="xs"
+                    c="var(--warning, #d19a00)"
                   >
-                    No primary key set — the receiver can't apply updates or
-                    deletes (tombstones) without one. Mark a <strong>PK</strong>{" "}
-                    column below.
-                  </p>
+                    {t("tableEditForm.noPkPre")}{" "}
+                    <strong>{t("tableEditForm.noPkBold")}</strong>{" "}
+                    {t("tableEditForm.noPkPost")}
+                  </Text>
                 )}
               </>
             );
@@ -611,81 +506,56 @@ export function TableEditForm({
             const caps = sourceProbeTypes(src?.type);
             if (caps.length === 0) return null;
             return (
-              <label style={{ gridColumn: "1 / -1" }}>
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.25rem",
-                  }}
-                >
-                  Probe type{" "}
-                  <span
-                    title="How the freshness probe detects change, gated by source type. watermark → append (fetch rows past MAX(watermark)); hash → replace (content token, e.g. ETag/checksum); count → replace (row-count delta, coarse); none → replace on cadence (the output content-hash still suppresses an unchanged ripple). Auto = resolve per source class."
-                    style={{
-                      cursor: "help",
-                      color: "var(--text-muted)",
-                      fontSize: "0.75rem",
-                      lineHeight: 1,
-                    }}
-                  >
-                    ⓘ
-                  </span>
-                </span>
-                <select
-                  value={editingTable.probeType ?? ""}
-                  onChange={(e) =>
-                    setEditingTable({
-                      ...editingTable,
-                      probeType: e.target.value || null,
-                    })
-                  }
-                >
-                  <option value="">Auto (per source type)</option>
-                  {caps.map((pt) => (
-                    <option key={pt} value={pt}>
-                      {pt}
-                      {pt === "watermark" ? " → append" : " → replace"}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                style={{ gridColumn: "1 / -1" }}
+                label={
+                  <FieldLabel
+                    text={t("tableEditForm.probeTypeLabel")}
+                    help={t("tableEditForm.probeTypeHelp")}
+                  />
+                }
+                data={[
+                  { value: "", label: t("tableEditForm.probeTypeAuto") },
+                  ...caps.map((pt) => ({
+                    value: pt,
+                    label:
+                      pt +
+                      (pt === "watermark"
+                        ? t("tableEditForm.probeAppendSuffix")
+                        : t("tableEditForm.probeReplaceSuffix")),
+                  })),
+                ]}
+                value={editingTable.probeType ?? ""}
+                onChange={(v) =>
+                  setEditingTable({
+                    ...editingTable,
+                    probeType: v || null,
+                  })
+                }
+                comboboxProps={{ withinPortal: true }}
+                allowDeselect={false}
+              />
             );
           })()}
         {(editingTable.changeSignal === "probe" ||
           editingTable.changeSignal === "ttl_probe") && (
-          <label style={{ gridColumn: "1 / -1" }}>
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.25rem",
-              }}
-            >
-              Freshness probe{" "}
-              <span
-                title="Source-native query returning one comparable token; blank → MAX(watermark). Provisa compares stored vs. fresh by equality and re-pulls only on change."
-                style={{
-                  cursor: "help",
-                  color: "var(--text-muted)",
-                  fontSize: "0.75rem",
-                  lineHeight: 1,
-                }}
-              >
-                ⓘ
-              </span>
-            </span>
-            <input
-              value={editingTable.probeQuery ?? ""}
-              onChange={(e) =>
-                setEditingTable({
-                  ...editingTable,
-                  probeQuery: e.target.value || null,
-                })
-              }
-              placeholder="SELECT MAX(id) FROM …"
-            />
-          </label>
+          <TextInput
+            style={{ gridColumn: "1 / -1" }}
+            label={
+              <FieldLabel
+                text={t("tableEditForm.freshnessProbeLabel")}
+                help={t("tableEditForm.freshnessProbeHelp")}
+              />
+            }
+            value={editingTable.probeQuery ?? ""}
+            onChange={(e) =>
+              setEditingTable({
+                ...editingTable,
+                probeQuery: e.target.value || null,
+              })
+            }
+            placeholder={t("tableEditForm.freshnessProbePlaceholder")}
+          />
         )}
         <LiveDeliveryFieldset
           editingTable={editingTable}
@@ -712,100 +582,85 @@ export function TableEditForm({
           />
         ) : null;
       })()}
-      <table className="data-table" style={{ margin: "0 0 0.5rem" }}>
-        <thead>
-          <tr>
-            <th>Column</th>
-            <th>PK</th>
-            <th>SQL Alias</th>
-            <th>Description</th>
-            <th>Visible To (Read)</th>
-            <th>Writable By (R/W)</th>
-            <th>Masking</th>
-            <th>Scope</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table className="data-table" style={{ margin: "0 0 0.5rem" }}>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>{t("tableEditForm.columnHeader")}</Table.Th>
+            <Table.Th>{t("tableEditForm.pkHeader")}</Table.Th>
+            <Table.Th>{t("tableEditForm.sqlAliasHeader")}</Table.Th>
+            <Table.Th>{t("tableEditForm.descriptionHeader")}</Table.Th>
+            <Table.Th>{t("tableEditForm.visibleToHeader")}</Table.Th>
+            <Table.Th>{t("tableEditForm.writableByHeader")}</Table.Th>
+            <Table.Th>{t("tableEditForm.maskingHeader")}</Table.Th>
+            <Table.Th>{t("tableEditForm.scopeHeader")}</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
           {editingTable.columns.map((c, i) => (
             <Fragment key={c.id}>
-              <tr>
-                <td>
+              <Table.Tr>
+                <Table.Td>
                   <code>{c.columnName}</code>
                   {c.nativeFilterType && (
-                    <span
-                      style={{
-                        marginLeft: "0.4rem",
-                        fontSize: "0.65rem",
-                        padding: "0.1rem 0.35rem",
-                        borderRadius: "0.25rem",
-                        background:
-                          c.nativeFilterType === "path_param"
-                            ? "hsl(var(--color-warning) / 0.2)"
-                            : "hsl(var(--color-info) / 0.2)",
-                        color:
-                          c.nativeFilterType === "path_param"
-                            ? "hsl(var(--color-warning))"
-                            : "hsl(var(--color-info))",
-                        fontFamily: "monospace",
-                      }}
+                    <Badge
+                      ml={6}
+                      size="xs"
+                      variant="light"
+                      color={c.nativeFilterType === "path_param" ? "yellow" : "blue"}
+                      style={{ fontFamily: "monospace" }}
                     >
-                      {c.nativeFilterType === "path_param" ? "path" : "query"}
-                    </span>
+                      {c.nativeFilterType === "path_param"
+                        ? t("tableEditForm.pathBadge")
+                        : t("tableEditForm.queryBadge")}
+                    </Badge>
                   )}
                   {c.isForeignKey && (
-                    <span
-                      style={{
-                        marginLeft: "0.4rem",
-                        fontSize: "0.65rem",
-                        padding: "0.1rem 0.35rem",
-                        borderRadius: "0.25rem",
-                        background: "hsl(var(--color-success) / 0.2)",
-                        color: "hsl(var(--color-success))",
-                        fontFamily: "monospace",
-                      }}
+                    <Badge
+                      ml={6}
+                      size="xs"
+                      variant="light"
+                      color="green"
+                      style={{ fontFamily: "monospace" }}
                     >
-                      FK
-                    </span>
+                      {t("tableEditForm.fkBadge")}
+                    </Badge>
                   )}
                   {c.isAlternateKey && (
-                    <span
-                      style={{
-                        marginLeft: "0.4rem",
-                        fontSize: "0.65rem",
-                        padding: "0.1rem 0.35rem",
-                        borderRadius: "0.25rem",
-                        background: "hsl(var(--color-warning) / 0.2)",
-                        color: "hsl(var(--color-warning))",
-                        fontFamily: "monospace",
-                      }}
+                    <Badge
+                      ml={6}
+                      size="xs"
+                      variant="light"
+                      color="yellow"
+                      style={{ fontFamily: "monospace" }}
                     >
-                      AK
-                    </span>
+                      {t("tableEditForm.akBadge")}
+                    </Badge>
                   )}
-                </td>
-                <td style={{ textAlign: "center" }}>
-                  <input
-                    type="checkbox"
-                    title="Primary Key"
+                </Table.Td>
+                <Table.Td style={{ textAlign: "center" }}>
+                  <Checkbox
+                    aria-label={t("tableEditForm.primaryKeyAria")}
+                    title={t("tableEditForm.primaryKeyAria")}
                     checked={c.isPrimaryKey || false}
                     onChange={(e) =>
-                      updateEditCol(i, "isPrimaryKey", e.target.checked)
+                      updateEditCol(i, "isPrimaryKey", e.currentTarget.checked)
                     }
                   />
-                </td>
-                <td>
-                  <input
+                </Table.Td>
+                <Table.Td>
+                  <TextInput
+                    aria-label={t("tableEditForm.sqlAliasHeader")}
                     value={c.alias || c.computedSqlAlias}
                     onChange={(e) =>
                       updateEditCol(i, "alias", e.target.value)
                     }
                   />
-                </td>
-                <td>
+                </Table.Td>
+                <Table.Td>
                   <DescriptionField
                     value={c.description || ""}
                     onChange={(v) => updateEditCol(i, "description", v)}
-                    placeholder="Column description"
+                    placeholder={t("tableEditForm.descriptionHeader")}
                     rows={1}
                     generating={generatingColDesc === c.columnName}
                     onGenerate={async () => {
@@ -826,54 +681,60 @@ export function TableEditForm({
                       }
                     }}
                   />
-                </td>
-                <td>
+                </Table.Td>
+                <Table.Td>
                   <MultiSelect
-                    options={roles.map((r) => ({ id: r.id, label: r.id }))}
+                    options={roleOptions}
                     value={c.visibleTo}
                     onChange={(selected) =>
                       updateEditCol(i, "visibleTo", selected)
                     }
+                    label={t("tableEditForm.visibleToHeader")}
                   />
-                </td>
-                <td>
+                </Table.Td>
+                <Table.Td>
                   <MultiSelect
-                    options={roles.map((r) => ({ id: r.id, label: r.id }))}
+                    options={roleOptions}
                     value={c.writableBy}
                     onChange={(selected) =>
                       updateEditCol(i, "writableBy", selected)
                     }
+                    label={t("tableEditForm.writableByHeader")}
                   />
-                </td>
-                <td>
-                  <select
+                </Table.Td>
+                <Table.Td>
+                  <Select
+                    aria-label={t("tableEditForm.maskingHeader")}
+                    data={[
+                      { value: "", label: t("tableEditForm.maskNone") },
+                      { value: "regex", label: t("tableEditForm.maskRegex") },
+                      { value: "constant", label: t("tableEditForm.maskConstant") },
+                      { value: "truncate", label: t("tableEditForm.maskTruncate") },
+                    ]}
                     value={c.maskType || ""}
-                    onChange={(e) =>
-                      updateEditCol(i, "maskType", e.target.value)
-                    }
-                  >
-                    <option value="">None</option>
-                    <option value="regex">Regex</option>
-                    <option value="constant">Constant</option>
-                    <option value="truncate">Truncate</option>
-                  </select>
-                </td>
-                <td>
-                  <select
+                    onChange={(v) => updateEditCol(i, "maskType", v ?? "")}
+                    comboboxProps={{ withinPortal: true }}
+                    allowDeselect={false}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Select
+                    aria-label={t("tableEditForm.scopeHeader")}
+                    data={[
+                      { value: "domain", label: t("tableEditForm.scopeDomain") },
+                      { value: "public", label: t("tableEditForm.scopePublic") },
+                      { value: "restricted", label: t("tableEditForm.scopeRestricted") },
+                    ]}
                     value={c.scope || "domain"}
-                    onChange={(e) =>
-                      updateEditCol(i, "scope", e.target.value)
-                    }
-                  >
-                    <option value="domain">domain</option>
-                    <option value="public">public</option>
-                    <option value="restricted">restricted</option>
-                  </select>
-                </td>
-              </tr>
+                    onChange={(v) => updateEditCol(i, "scope", v ?? "domain")}
+                    comboboxProps={{ withinPortal: true }}
+                    allowDeselect={false}
+                  />
+                </Table.Td>
+              </Table.Tr>
               {c.maskType && (
-                <tr>
-                  <td
+                <Table.Tr>
+                  <Table.Td
                     colSpan={2}
                     style={{
                       paddingLeft: "1.5rem",
@@ -881,104 +742,108 @@ export function TableEditForm({
                       fontSize: "0.75rem",
                     }}
                   >
-                    ↳ masking template
-                  </td>
+                    {t("tableEditForm.maskingTemplateLabel")}
+                  </Table.Td>
                   {c.maskType === "regex" && (
                     <>
-                      <td>
-                        <input
+                      <Table.Td>
+                        <TextInput
+                          aria-label={t("tableEditForm.regexPatternPlaceholder")}
                           value={c.maskPattern || ""}
                           onChange={(e) =>
                             updateEditCol(i, "maskPattern", e.target.value)
                           }
-                          placeholder="regex pattern"
+                          placeholder={t("tableEditForm.regexPatternPlaceholder")}
                         />
-                      </td>
-                      <td>
-                        <input
+                      </Table.Td>
+                      <Table.Td>
+                        <TextInput
+                          aria-label={t("tableEditForm.regexReplacementPlaceholder")}
                           value={c.maskReplace || ""}
                           onChange={(e) =>
                             updateEditCol(i, "maskReplace", e.target.value)
                           }
-                          placeholder="replacement"
+                          placeholder={t("tableEditForm.regexReplacementPlaceholder")}
                         />
-                      </td>
+                      </Table.Td>
                     </>
                   )}
                   {c.maskType === "constant" && (
-                    <td colSpan={2}>
-                      <input
+                    <Table.Td colSpan={2}>
+                      <TextInput
+                        aria-label={t("tableEditForm.constantValuePlaceholder")}
                         value={c.maskValue || ""}
                         onChange={(e) =>
                           updateEditCol(i, "maskValue", e.target.value)
                         }
-                        placeholder="constant value (NULL, 0, ***)"
+                        placeholder={t("tableEditForm.constantValuePlaceholder")}
                       />
-                    </td>
+                    </Table.Td>
                   )}
                   {c.maskType === "truncate" && (
-                    <td colSpan={2}>
-                      <select
-                        value={c.maskPrecision || ""}
-                        onChange={(e) =>
-                          updateEditCol(i, "maskPrecision", e.target.value)
-                        }
-                      >
-                        <option value="">Select precision...</option>
-                        <option value="year">Year</option>
-                        <option value="month">Month</option>
-                        <option value="day">Day</option>
-                        <option value="hour">Hour</option>
-                      </select>
-                    </td>
+                    <Table.Td colSpan={2}>
+                      <Select
+                        aria-label={t("tableEditForm.truncatePrecisionPlaceholder")}
+                        data={[
+                          { value: "year", label: t("tableEditForm.precisionYear") },
+                          { value: "month", label: t("tableEditForm.precisionMonth") },
+                          { value: "day", label: t("tableEditForm.precisionDay") },
+                          { value: "hour", label: t("tableEditForm.precisionHour") },
+                        ]}
+                        placeholder={t("tableEditForm.truncatePrecisionPlaceholder")}
+                        value={c.maskPrecision || null}
+                        onChange={(v) => updateEditCol(i, "maskPrecision", v ?? "")}
+                        comboboxProps={{ withinPortal: true }}
+                      />
+                    </Table.Td>
                   )}
-                  <td colSpan={2}>
+                  <Table.Td colSpan={2}>
                     <MultiSelect
-                      options={roles.map((r) => ({ id: r.id, label: r.id }))}
+                      options={roleOptions}
                       value={c.unmaskedTo}
                       onChange={(selected) =>
                         updateEditCol(i, "unmaskedTo", selected)
                       }
+                      label={t("tableEditForm.unmaskedToAria")}
                     />
-                  </td>
-                </tr>
+                  </Table.Td>
+                </Table.Tr>
               )}
             </Fragment>
           ))}
-        </tbody>
-      </table>
-      <div
-        style={{
-          display: "flex",
-          gap: "0.5rem",
-          justifyContent: "flex-end",
-          padding: "0.75rem 0.5rem",
-        }}
-      >
-        <button
-          className="btn-icon"
-          title="Cancel"
-          onClick={cancelEditing}
-          disabled={saving}
-        >
-          <X size={14} />
-        </button>
-        <button
-          className="btn-icon-primary"
-          title="Save"
-          onClick={handleSaveEdit}
-          disabled={saving}
-        >
-          {saving ? (
-            <Loader2
-              size={14}
-              style={{ animation: "spin 1s linear infinite" }}
-            />
-          ) : (
-            <Check size={14} />
-          )}
-        </button>
-      </div>
+        </Table.Tbody>
+      </Table>
+      <Group justify="flex-end" gap="sm" p="0.75rem 0.5rem">
+        <Tooltip label={t("tableEditForm.cancel")}>
+          <ActionIcon
+            variant="subtle"
+            aria-label={t("tableEditForm.cancel")}
+            data-testid="table-edit-cancel"
+            onClick={cancelEditing}
+            disabled={saving}
+          >
+            <X size={14} />
+          </ActionIcon>
+        </Tooltip>
+        <Tooltip label={t("tableEditForm.save")}>
+          <ActionIcon
+            variant="filled"
+            aria-label={t("tableEditForm.save")}
+            data-testid="table-edit-save"
+            onClick={handleSaveEdit}
+            disabled={saving}
+          >
+            {saving ? (
+              <Loader2
+                size={14}
+                style={{ animation: "spin 1s linear infinite" }}
+              />
+            ) : (
+              <Check size={14} />
+            )}
+          </ActionIcon>
+        </Tooltip>
+      </Group>
     </>
   );
 }

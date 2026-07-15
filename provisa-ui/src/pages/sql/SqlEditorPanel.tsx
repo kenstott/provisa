@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import React from "react";
+import { useTranslation } from "react-i18next";
+import { ActionIcon, Box, Button, Group, NumberInput, Select, TextInput } from "@mantine/core";
 import { Play, Copy, Check, X, Sparkles } from "lucide-react";
 import { format as formatSql } from "sql-formatter";
 import CodeMirror from "@uiw/react-codemirror";
@@ -104,6 +106,8 @@ export function SqlEditorPanel({
   canRequestView,
   onOpenViewModal,
 }: SqlEditorPanelProps) {
+  const { t } = useTranslation();
+
   return (
     <>
       {/* Query tab strip */}
@@ -119,17 +123,18 @@ export function SqlEditorPanel({
           overflowX: "auto",
         }}
       >
-        {tabs.map((t) => {
-          const isActive = t.id === activeTabId;
+        {tabs.map((t2) => {
+          const isActive = t2.id === activeTabId;
           return (
             <div
-              key={t.id}
-              onClick={() => switchTab(t.id)}
+              key={t2.id}
+              onClick={() => switchTab(t2.id)}
               onDoubleClick={() => {
-                setEditingTabId(t.id);
-                setEditingTitle(t.title);
+                setEditingTabId(t2.id);
+                setEditingTitle(t2.title);
               }}
-              title="Double-click to rename"
+              title={t("sqlEditorPanel.renameHint")}
+              data-testid={`sql-tab-${t2.id}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -148,99 +153,97 @@ export function SqlEditorPanel({
                 fontWeight: isActive ? 600 : 400,
               }}
             >
-              {editingTabId === t.id ? (
-                <input
+              {editingTabId === t2.id ? (
+                <TextInput
                   autoFocus
+                  size="xs"
+                  aria-label={t("sqlEditorPanel.renameHint")}
                   value={editingTitle}
                   onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setEditingTitle(e.target.value)}
+                  onChange={(e) => setEditingTitle(e.currentTarget.value)}
                   onBlur={() => {
                     const v = editingTitle.trim();
-                    if (v) renameTab(t.id, v);
+                    if (v) renameTab(t2.id, v);
                     setEditingTabId(null);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       const v = editingTitle.trim();
-                      if (v) renameTab(t.id, v);
+                      if (v) renameTab(t2.id, v);
                       setEditingTabId(null);
                     } else if (e.key === "Escape") {
                       setEditingTabId(null);
                     }
                   }}
-                  style={{
-                    width: "80px",
-                    fontSize: "0.75rem",
-                    padding: "0 0.2rem",
-                    border: "1px solid var(--primary)",
-                    borderRadius: "3px",
-                    background: "var(--bg)",
-                    color: "var(--text)",
-                    outline: "none",
-                  }}
+                  styles={{ input: { width: "80px", fontSize: "0.75rem", height: "22px", minHeight: "22px" } }}
                 />
               ) : (
-                <span>{t.title}</span>
+                <span>{t2.title}</span>
               )}
-              <span
-                role="button"
-                aria-label={`Close ${t.title}`}
+              <ActionIcon
+                variant="transparent"
+                size="xs"
+                aria-label={t("sqlEditorPanel.closeTab", { title: t2.title })}
                 onClick={(e) => {
                   e.stopPropagation();
-                  closeTab(t.id);
+                  closeTab(t2.id);
                 }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  opacity: 0.6,
-                  borderRadius: "3px",
-                }}
+                style={{ opacity: 0.6 }}
               >
                 <X size={11} />
-              </span>
+              </ActionIcon>
             </div>
           );
         })}
-        <button
+        <ActionIcon
+          variant="transparent"
           onClick={addTab}
-          aria-label="New query tab"
-          title="New query tab"
-          style={{
-            padding: "0.25rem 0.5rem",
-            fontSize: "0.85rem",
-            lineHeight: 1,
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-          }}
+          aria-label={t("sqlEditorPanel.newTab")}
+          title={t("sqlEditorPanel.newTab")}
+          data-testid="sql-new-tab"
         >
           +
-        </button>
+        </ActionIcon>
       </div>
 
       {/* NL-to-SQL strip */}
-      <div
+      <Group
+        gap="sm"
+        wrap="nowrap"
+        align="center"
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
           padding: "0.35rem 0.75rem",
           borderBottom: "1px solid var(--border)",
           background: "var(--surface)",
           flexShrink: 0,
         }}
       >
-        <div
-          className="nl-input-wrap"
-          style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}
-        >
-          <input
-            type="text"
-            placeholder="Ask in plain English — generates SQL…"
+        <Box style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
+          <TextInput
+            aria-label={t("sqlEditorPanel.nlPlaceholder")}
+            placeholder={t("sqlEditorPanel.nlPlaceholder")}
             value={nlText}
+            data-testid="sql-nl-input"
+            style={{ width: "100%" }}
+            size="xs"
+            rightSection={
+              nlText ? (
+                <ActionIcon
+                  variant="transparent"
+                  size="xs"
+                  aria-label={t("sqlEditorPanel.clear")}
+                  title={t("sqlEditorPanel.clear")}
+                  onClick={() => {
+                    setNlText("");
+                    setNlError("");
+                  }}
+                >
+                  <X size={12} />
+                </ActionIcon>
+              ) : null
+            }
             onChange={(e) => {
-              setNlText(e.target.value);
+              setNlText(e.currentTarget.value);
               setNlError("");
             }}
             onKeyDown={async (e) => {
@@ -256,45 +259,12 @@ export function SqlEditorPanel({
                 }
               }
             }}
-            style={{
-              width: "100%",
-              fontSize: "0.8rem",
-              padding: "0.25rem 1.6rem 0.25rem 0.5rem",
-              borderRadius: "4px",
-              border: "1px solid var(--border)",
-              background: "var(--bg)",
-              color: "var(--text)",
-              outline: "none",
-            }}
           />
-          {nlText && (
-            <button
-              onClick={() => {
-                setNlText("");
-                setNlError("");
-              }}
-              title="Clear"
-              className="nl-clear-btn"
-              style={{
-                position: "absolute",
-                right: "0.3rem",
-                background: "none",
-                border: "none",
-                padding: "0.1rem",
-                cursor: "pointer",
-                color: "var(--text-muted)",
-                display: "flex",
-                alignItems: "center",
-                lineHeight: 1,
-              }}
-            >
-              <X size={12} />
-            </button>
-          )}
-        </div>
-        <button
-          className="btn-primary"
+        </Box>
+        <Button
+          size="xs"
           disabled={nlLoading || !nlText.trim()}
+          data-testid="sql-nl-generate"
           onClick={async () => {
             setNlLoading(true);
             setNlError("");
@@ -306,12 +276,13 @@ export function SqlEditorPanel({
               setSqlText(result.sql);
             }
           }}
-          style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem", whiteSpace: "nowrap" }}
+          style={{ whiteSpace: "nowrap" }}
         >
-          {nlLoading ? "Generating…" : "Generate SQL"}
-        </button>
+          {nlLoading ? t("sqlEditorPanel.generating") : t("sqlEditorPanel.generate")}
+        </Button>
         {nlError && (
           <span
+            role="alert"
             style={{
               fontSize: "0.75rem",
               color: "var(--error)",
@@ -325,7 +296,7 @@ export function SqlEditorPanel({
             {nlError}
           </span>
         )}
-      </div>
+      </Group>
 
       {/* Editor */}
       <div
@@ -348,6 +319,7 @@ export function SqlEditorPanel({
       >
         {nlLoading && (
           <div
+            role="status"
             style={{
               position: "absolute",
               inset: 0,
@@ -373,7 +345,7 @@ export function SqlEditorPanel({
                 animation: "spin 0.7s linear infinite",
               }}
             />
-            Generating SQL…
+            {t("sqlEditorPanel.generatingSql")}
           </div>
         )}
         <CodeMirror
@@ -398,8 +370,10 @@ export function SqlEditorPanel({
               /* leave SQL unchanged if it can't be parsed */
             }
           }}
-          title="Prettify SQL"
+          title={t("sqlEditorPanel.prettify")}
+          aria-label={t("sqlEditorPanel.prettify")}
           disabled={!sqlText.trim()}
+          data-testid="sql-prettify"
           style={{
             position: "absolute",
             top: "0.4rem",
@@ -419,12 +393,14 @@ export function SqlEditorPanel({
           }}
         >
           <Sparkles size={11} />
-          Prettify
+          {t("sqlEditorPanel.prettify")}
         </button>
         <button
           className="hover-sql-btn"
           onClick={handleCopy}
-          title="Copy SQL"
+          title={t("sqlEditorPanel.copySql")}
+          aria-label={t("sqlEditorPanel.copySql")}
+          data-testid="sql-copy"
           style={{
             position: "absolute",
             top: "0.4rem",
@@ -448,43 +424,37 @@ export function SqlEditorPanel({
           ) : (
             <Copy size={11} />
           )}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("sqlEditorPanel.copied") : t("sqlEditorPanel.copy")}
         </button>
       </div>
 
       {/* Toolbar */}
-      <div
+      <Group
+        gap="sm"
+        wrap="nowrap"
+        align="center"
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
           padding: "0.4rem 0.75rem",
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
           background: "var(--surface)",
         }}
       >
-        <button
-          className="btn-primary"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.3rem",
-            fontSize: "0.8rem",
-            padding: "0.25rem 0.6rem",
-          }}
+        <Button
+          size="xs"
+          leftSection={<Play size={11} />}
           onClick={handleRun}
           disabled={running || !sqlText.trim()}
+          data-testid="sql-run"
         >
-          <Play size={11} />
-          {running ? "Running…" : "Sample >"}
-        </button>
+          {running ? t("sqlEditorPanel.running") : t("sqlEditorPanel.run")}
+        </Button>
         {viewTable && (
-          <button
-            className="btn-primary"
-            style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem" }}
-            title={`Save current SQL as the definition for view "${viewTable.tableName}"`}
+          <Button
+            size="xs"
+            title={t("sqlEditorPanel.saveViewTitle", { tableName: viewTable.tableName })}
             disabled={viewSaving || !sqlText.trim()}
+            data-testid="sql-update-view"
             onClick={async () => {
               setViewSaving(true);
               await updateTable({
@@ -519,50 +489,58 @@ export function SqlEditorPanel({
               setViewSaving(false);
             }}
           >
-            {viewSaving ? "Saving…" : `Update "${viewTable.tableName}"`}
-          </button>
+            {viewSaving
+              ? t("sqlEditorPanel.saving")
+              : t("sqlEditorPanel.updateView", { tableName: viewTable.tableName })}
+          </Button>
         )}
-        <select
+        <Select
+          aria-label={t("sqlEditorPanel.sampleModeLabel")}
+          size="xs"
+          data={[
+            { value: "first", label: t("sqlEditorPanel.sampleModeFirst") },
+            { value: "last", label: t("sqlEditorPanel.sampleModeLast") },
+            { value: "random", label: t("sqlEditorPanel.sampleModeRandom") },
+          ]}
           value={sampleMode}
-          onChange={(e) => setSampleMode(e.target.value as "first" | "last" | "random")}
-          className="toolbar-select"
-        >
-          <option value="first">First</option>
-          <option value="last">Last</option>
-          <option value="random">Random</option>
-        </select>
-        <input
-          type="number"
+          onChange={(v) => setSampleMode((v as "first" | "last" | "random") ?? "first")}
+          allowDeselect={false}
+          data-testid="sql-sample-mode"
+          style={{ width: "110px" }}
+        />
+        <NumberInput
+          aria-label={t("sqlEditorPanel.rowCountLabel")}
+          title={t("sqlEditorPanel.rowCountLabel")}
           value={sampleSize}
           min={1}
           max={10000}
-          onChange={(e) => setSampleSize(Math.max(1, parseInt(e.target.value) || 100))}
-          className="toolbar-input"
+          onChange={(v) => setSampleSize(Math.max(1, typeof v === "number" ? v : parseInt(String(v)) || 100))}
+          size="xs"
+          data-testid="sql-sample-size"
           style={{ width: "90px" }}
-          title="Row count"
         />
-        <select
+        <Select
+          aria-label={t("sqlEditorPanel.roleLabel")}
+          size="xs"
+          data={roles}
           value={role}
-          onChange={(e) => setRole(e.target.value)}
-          className="toolbar-select"
-        >
-          {roles.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setRole(v ?? role)}
+          allowDeselect={false}
+          data-testid="sql-role"
+          style={{ width: "140px" }}
+        />
         <div style={{ flex: 1 }} />
         {(canCreateView || canRequestView) && sqlText.trim() && (
-          <button
-            className="btn-secondary"
-            style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+          <Button
+            size="xs"
+            variant="default"
             onClick={onOpenViewModal}
+            data-testid="sql-open-view-modal"
           >
-            {canCreateView ? "+ View" : "Request View"}
-          </button>
+            {canCreateView ? t("sqlEditorPanel.createView") : t("sqlEditorPanel.requestView")}
+          </Button>
         )}
-      </div>
+      </Group>
     </>
   );
 }

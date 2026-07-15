@@ -1,0 +1,20 @@
+{
+  "graphContextMenus": {
+    "color": "Color",
+    "colorSwatchLabel": "Set color to {{color}}",
+    "size": "Size",
+    "labelBy": "Label by",
+    "labelByDefault": "default",
+    "sizeBy": "Size by",
+    "sizeByFixed": "fixed size",
+    "sizeMultiplier": "Size multiplier",
+    "lineStyle": "Line Style",
+    "lineStyleSolid": "Solid",
+    "lineStyleDashed": "Dashed",
+    "lineStyleDotted": "Dotted",
+    "lineWidth": "Line Width",
+    "filterParametersTitle": "Parameters for {{label}}",
+    "cancel": "Cancel",
+    "run": "Run"
+  }
+}

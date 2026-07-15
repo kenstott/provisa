@@ -9,7 +9,23 @@
 // permission from the copyright holder.
 
 import { useState, useEffect } from "react";
-import { Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Collapse,
+  Group,
+  Pagination,
+  Select,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { ChevronDown, ChevronRight, Trash2, X } from "lucide-react";
 import {
   fetchOrgs,
   createOrg,
@@ -27,23 +43,22 @@ import { FilterInput } from "./FilterInput";
 const PAGE_SIZE = 50;
 
 export function OrgsTab() {
+  const { t } = useTranslation();
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [newOrgId, setNewOrgId] = useState("");
   const [newOrgName, setNewOrgName] = useState("");
-  const [orgMsg, setOrgMsg] = useState("");
   const [showCreateOrg, setShowCreateOrg] = useState(false);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
   const [orgMembers, setOrgMembers] = useState<Record<string, OrgMember[]>>({});
   const [addMemberUserId, setAddMemberUserId] = useState("");
   const [orgSearch, setOrgSearch] = useState("");
-  const [orgPage, setOrgPage] = useState(0);
+  const [orgPage, setOrgPage] = useState(1);
   const [orgInvites, setOrgInvites] = useState<OrgInvite[]>([]);
-  const [inviteOrgId, setInviteOrgId] = useState("");
+  const [inviteOrgId, setInviteOrgId] = useState<string | null>(null);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteSearch, setInviteSearch] = useState("");
-  const [inviteMsg, setInviteMsg] = useState("");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
-  const [invitePage, setInvitePage] = useState(0);
+  const [invitePage, setInvitePage] = useState(1);
 
   useEffect(() => {
     fetchOrgs()
@@ -56,18 +71,19 @@ export function OrgsTab() {
 
   const handleCreateOrg = async () => {
     if (!newOrgId.trim() || !newOrgName.trim()) return;
-    await createOrg(newOrgId.trim(), newOrgName.trim());
+    const name = newOrgName.trim();
+    await createOrg(newOrgId.trim(), name);
     setOrgs(await fetchOrgs());
     setNewOrgId("");
     setNewOrgName("");
     setShowCreateOrg(false);
-    setOrgMsg(`Created "${newOrgName.trim()}"`);
+    notifications.show({ color: "green", message: t("orgsTab.created", { name }) });
   };
 
   const handleDeleteOrg = async (id: string) => {
     await deleteOrg(id);
     setOrgs(await fetchOrgs());
-    setOrgMsg(`Deleted "${id}"`);
+    notifications.show({ message: t("orgsTab.deleted", { id }) });
   };
 
   const handleExpandOrg = async (id: string) => {
@@ -99,13 +115,13 @@ export function OrgsTab() {
   };
 
   const handleCreateInvite = async () => {
-    if (!inviteOrgId.trim()) return;
+    if (!inviteOrgId || !inviteOrgId.trim()) return;
     const invite = await createInvite(inviteOrgId.trim());
     setOrgInvites(await fetchInvites());
     const url = `${window.location.origin}/register?invite=${invite.token}`;
     await navigator.clipboard.writeText(url);
-    setInviteMsg(`Invite created and copied: ${url}`);
-    setInviteOrgId("");
+    notifications.show({ color: "green", message: t("orgsTab.inviteCreated", { url }) });
+    setInviteOrgId(null);
     setShowInviteForm(false);
   };
 
@@ -126,8 +142,8 @@ export function OrgsTab() {
     (o) => o.id.toLowerCase().includes(q) || o.name.toLowerCase().includes(q),
   );
   const orgTotalPages = Math.max(1, Math.ceil(filteredOrgs.length / PAGE_SIZE));
-  const orgSafePage = Math.min(orgPage, orgTotalPages - 1);
-  const pagedOrgs = filteredOrgs.slice(orgSafePage * PAGE_SIZE, (orgSafePage + 1) * PAGE_SIZE);
+  const orgSafePage = Math.min(orgPage, orgTotalPages);
+  const pagedOrgs = filteredOrgs.slice((orgSafePage - 1) * PAGE_SIZE, orgSafePage * PAGE_SIZE);
 
   const iq = inviteSearch.toLowerCase();
   const filteredInvites = orgInvites.filter(
@@ -137,238 +153,275 @@ export function OrgsTab() {
       (i.created_by ?? "").toLowerCase().includes(iq),
   );
   const invTotalPages = Math.max(1, Math.ceil(filteredInvites.length / PAGE_SIZE));
-  const invSafePage = Math.min(invitePage, invTotalPages - 1);
-  const pagedInvites = filteredInvites.slice(invSafePage * PAGE_SIZE, (invSafePage + 1) * PAGE_SIZE);
+  const invSafePage = Math.min(invitePage, invTotalPages);
+  const pagedInvites = filteredInvites.slice((invSafePage - 1) * PAGE_SIZE, invSafePage * PAGE_SIZE);
+
+  const orgSelectData = orgs.map((o) => ({ value: o.id, label: `${o.name} (${o.id})` }));
 
   return (
-    <div>
-      {orgMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{orgMsg}</div>}
-
-      <div className="page-header">
-        <h3 style={{ margin: 0 }}>Organizations</h3>
+    <Stack gap="md">
+      <Group justify="space-between" wrap="wrap">
+        <Title order={3}>{t("orgsTab.orgsHeading")}</Title>
         <FilterInput
           value={orgSearch}
-          onChange={(v) => { setOrgSearch(v); setOrgPage(0); }}
-          placeholder="Filter by ID or name…"
+          onChange={(v) => { setOrgSearch(v); setOrgPage(1); }}
+          placeholder={t("orgsTab.orgsFilterPlaceholder")}
         />
-        <div className="page-actions">
-          <button onClick={() => setShowCreateOrg((v) => !v)}>
-            {showCreateOrg ? "✕" : "+ Org"}
-          </button>
-        </div>
-      </div>
+        <Button
+          variant={showCreateOrg ? "default" : "filled"}
+          onClick={() => setShowCreateOrg((v) => !v)}
+          data-testid="org-create-toggle"
+        >
+          {showCreateOrg ? t("orgsTab.closeForm") : t("orgsTab.addOrg")}
+        </Button>
+      </Group>
 
       {showCreateOrg && (
-        <div className="form-card" style={{ marginBottom: "1rem" }}>
-          <label>
-            ID (slug)
-            <input value={newOrgId} onChange={(e) => setNewOrgId(e.target.value)} placeholder="my-org" />
-          </label>
-          <label>
-            Name
-            <input value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} placeholder="My Org" />
-          </label>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button onClick={handleCreateOrg} disabled={!newOrgId.trim() || !newOrgName.trim()}>
-              + Org
-            </button>
-          </div>
-        </div>
+        <Stack gap="sm" maw={480}>
+          <TextInput
+            label={t("orgsTab.orgIdLabel")}
+            placeholder={t("orgsTab.orgIdPlaceholder")}
+            value={newOrgId}
+            onChange={(e) => setNewOrgId(e.currentTarget.value)}
+          />
+          <TextInput
+            label={t("orgsTab.orgNameLabel")}
+            placeholder={t("orgsTab.orgNamePlaceholder")}
+            value={newOrgName}
+            onChange={(e) => setNewOrgName(e.currentTarget.value)}
+          />
+          <Button
+            onClick={handleCreateOrg}
+            disabled={!newOrgId.trim() || !newOrgName.trim()}
+            style={{ alignSelf: "flex-start" }}
+          >
+            {t("orgsTab.createButton")}
+          </Button>
+        </Stack>
       )}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Members</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredOrgs.length === 0 && (
-            <tr>
-              <td colSpan={4} style={{ color: "var(--text-muted)", textAlign: "center" }}>
-                No organizations
-              </td>
-            </tr>
-          )}
-          {pagedOrgs.map((org) => (
-            <>
-              <tr key={org.id}>
-                <td>{org.id}</td>
-                <td>{org.name}</td>
-                <td>
-                  <button
-                    style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                    onClick={() => handleExpandOrg(org.id)}
-                  >
-                    {expandedOrgId === org.id ? "Hide" : "Members"}
-                  </button>
-                </td>
-                <td>
-                  {org.id !== "root" && (
-                    <button
-                      className="btn-icon-danger"
-                      title="Delete"
-                      onClick={() => handleDeleteOrg(org.id)}
+      <Table.ScrollContainer minWidth={640}>
+        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("orgsTab.colId")}</Table.Th>
+              <Table.Th>{t("orgsTab.colName")}</Table.Th>
+              <Table.Th>{t("orgsTab.colMembers")}</Table.Th>
+              <Table.Th>{t("orgsTab.colActions")}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {filteredOrgs.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={4} ta="center" c="dimmed">
+                  {t("orgsTab.empty")}
+                </Table.Td>
+              </Table.Tr>
+            )}
+            {pagedOrgs.map((org) => {
+              const expanded = expandedOrgId === org.id;
+              return (
+                <Table.Tr key={org.id}>
+                  <Table.Td>{org.id}</Table.Td>
+                  <Table.Td>{org.name}</Table.Td>
+                  <Table.Td>
+                    <Button
+                      variant="subtle"
+                      size="compact-xs"
+                      leftSection={expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      aria-expanded={expanded}
+                      aria-label={t("orgsTab.expandOrg", { name: org.name })}
+                      onClick={() => handleExpandOrg(org.id)}
                     >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </td>
-              </tr>
-              {expandedOrgId === org.id && (
-                <tr key={`${org.id}-members`}>
-                  <td colSpan={4} style={{ paddingLeft: "2rem", background: "var(--bg-alt, var(--bg))" }}>
-                    <div style={{ padding: "0.75rem 0" }}>
-                      <strong style={{ fontSize: "0.85rem" }}>Members</strong>
-                      <div style={{ marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-                        {(orgMembers[org.id] ?? []).length === 0 && (
-                          <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>No members</span>
-                        )}
-                        {(orgMembers[org.id] ?? []).map((m) => (
-                          <span
-                            key={m.user_id}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "0.25rem",
-                              background: "var(--border)",
-                              borderRadius: "4px",
-                              padding: "0.2rem 0.5rem",
-                              fontSize: "0.8rem",
-                            }}
+                      {expanded ? t("orgsTab.hideButton") : t("orgsTab.membersButton")}
+                    </Button>
+                    <Collapse in={expanded}>
+                      <Stack gap="xs" pl="md" py="sm">
+                        <Text fw={600} fz="sm">
+                          {t("orgsTab.membersHeading")}
+                        </Text>
+                        <Group gap="xs">
+                          {(orgMembers[org.id] ?? []).length === 0 && (
+                            <Text c="dimmed" fz="sm">
+                              {t("orgsTab.noMembers")}
+                            </Text>
+                          )}
+                          {(orgMembers[org.id] ?? []).map((m) => {
+                            const label = m.display_name ?? m.email ?? m.user_id;
+                            return (
+                              <Badge
+                                key={m.user_id}
+                                variant="light"
+                                rightSection={
+                                  <ActionIcon
+                                    variant="transparent"
+                                    size="xs"
+                                    color="red"
+                                    aria-label={t("orgsTab.removeMember", { member: label })}
+                                    onClick={() => handleRemoveOrgMember(org.id, m.user_id)}
+                                  >
+                                    <X size={12} />
+                                  </ActionIcon>
+                                }
+                              >
+                                {label}
+                              </Badge>
+                            );
+                          })}
+                        </Group>
+                        <Group gap="xs" align="flex-end">
+                          <TextInput
+                            aria-label={t("orgsTab.userIdPlaceholder")}
+                            placeholder={t("orgsTab.userIdPlaceholder")}
+                            size="xs"
+                            value={addMemberUserId}
+                            onChange={(e) => setAddMemberUserId(e.currentTarget.value)}
+                          />
+                          <Button
+                            size="xs"
+                            onClick={() => handleAddOrgMember(org.id)}
+                            disabled={!addMemberUserId.trim()}
                           >
-                            {m.display_name ?? m.email ?? m.user_id}
-                            <button
-                              style={{ background: "none", border: "none", color: "var(--danger, #e55)", cursor: "pointer", padding: 0, lineHeight: 1 }}
-                              onClick={() => handleRemoveOrgMember(org.id, m.user_id)}
-                              title="Remove"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                      <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                        <input
-                          placeholder="user_id"
-                          value={addMemberUserId}
-                          onChange={(e) => setAddMemberUserId(e.target.value)}
-                          style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.3rem", borderRadius: "4px", fontSize: "0.85rem" }}
-                        />
-                        <button
-                          style={{ fontSize: "0.8rem", padding: "0.3rem 0.7rem" }}
-                          onClick={() => handleAddOrgMember(org.id)}
-                          disabled={!addMemberUserId.trim()}
-                        >
-                          Add
-                        </button>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </>
-          ))}
-        </tbody>
-      </table>
+                            {t("orgsTab.addMemberButton")}
+                          </Button>
+                        </Group>
+                      </Stack>
+                    </Collapse>
+                  </Table.Td>
+                  <Table.Td>
+                    {org.id !== "root" && (
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        aria-label={t("orgsTab.deleteOrg", { name: org.name })}
+                        onClick={() => handleDeleteOrg(org.id)}
+                      >
+                        <Trash2 size={14} />
+                      </ActionIcon>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
       {orgTotalPages > 1 && (
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
-          <button onClick={() => setOrgPage(0)} disabled={orgSafePage === 0}>«</button>
-          <button onClick={() => setOrgPage((p) => p - 1)} disabled={orgSafePage === 0}>‹</button>
-          <span>Page {orgSafePage + 1} / {orgTotalPages}</span>
-          <button onClick={() => setOrgPage((p) => p + 1)} disabled={orgSafePage >= orgTotalPages - 1}>›</button>
-          <button onClick={() => setOrgPage(orgTotalPages - 1)} disabled={orgSafePage >= orgTotalPages - 1}>»</button>
-        </div>
+        <Group justify="flex-end">
+          <Pagination
+            total={orgTotalPages}
+            value={orgSafePage}
+            onChange={setOrgPage}
+            size="sm"
+            aria-label={t("orgsTab.orgPagination")}
+          />
+        </Group>
       )}
 
-      <div className="page-header" style={{ marginTop: "1.5rem" }}>
-        <h3 style={{ margin: 0 }}>Invite Links</h3>
+      <Group justify="space-between" wrap="wrap" mt="lg">
+        <Title order={3}>{t("orgsTab.invitesHeading")}</Title>
         <FilterInput
           value={inviteSearch}
-          onChange={(v) => { setInviteSearch(v); setInvitePage(0); }}
-          placeholder="Filter by org, token, or creator…"
+          onChange={(v) => { setInviteSearch(v); setInvitePage(1); }}
+          placeholder={t("orgsTab.invitesFilterPlaceholder")}
         />
-        <div className="page-actions">
-          <button onClick={() => setShowInviteForm((v) => !v)}>
-            {showInviteForm ? "✕" : "+ Invite Link"}
-          </button>
-        </div>
-      </div>
+        <Button
+          variant={showInviteForm ? "default" : "filled"}
+          onClick={() => setShowInviteForm((v) => !v)}
+          data-testid="invite-create-toggle"
+        >
+          {showInviteForm ? t("orgsTab.closeForm") : t("orgsTab.addInvite")}
+        </Button>
+      </Group>
 
       {showInviteForm && (
-        <div className="form-card" style={{ marginBottom: "1rem" }}>
-          <label>
-            Organization
-            <select value={inviteOrgId} onChange={(e) => setInviteOrgId(e.target.value)}>
-              <option value="">Select org…</option>
-              {orgs.map((o) => (
-                <option key={o.id} value={o.id}>{o.name} ({o.id})</option>
-              ))}
-            </select>
-          </label>
-          {inviteMsg && <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{inviteMsg}</p>}
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button onClick={handleCreateInvite} disabled={!inviteOrgId}>
-              Generate Invite Link
-            </button>
-          </div>
-        </div>
+        <Stack gap="sm" maw={480}>
+          <Select
+            label={t("orgsTab.orgSelectLabel")}
+            placeholder={t("orgsTab.orgSelectPlaceholder")}
+            data={orgSelectData}
+            value={inviteOrgId}
+            onChange={setInviteOrgId}
+          />
+          <Button
+            onClick={handleCreateInvite}
+            disabled={!inviteOrgId}
+            style={{ alignSelf: "flex-start" }}
+          >
+            {t("orgsTab.generateInvite")}
+          </Button>
+        </Stack>
       )}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Org</th>
-            <th>Token</th>
-            <th>Created By</th>
-            <th>Expires</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredInvites.length === 0 && (
-            <tr>
-              <td colSpan={6} style={{ color: "var(--text-muted)", textAlign: "center" }}>No invites</td>
-            </tr>
-          )}
-          {pagedInvites.map((inv) => (
-            <tr key={inv.token}>
-              <td>{inv.org_name}</td>
-              <td><code>{inv.token.slice(0, 8)}…</code></td>
-              <td>{inv.created_by}</td>
-              <td>{new Date(inv.expires_at).toLocaleDateString()}</td>
-              <td>{inv.used_at ? `Used ${new Date(inv.used_at).toLocaleDateString()}` : "Active"}</td>
-              <td>
-                <div style={{ display: "flex", gap: "0.25rem" }}>
-                  {!inv.used_at && (
-                    <button style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }} onClick={() => handleCopyInvite(inv.token)}>
-                      {copiedToken === inv.token ? "Copied!" : "Copy"}
-                    </button>
-                  )}
-                  {!inv.used_at && (
-                    <button className="destructive" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }} onClick={() => handleRevokeInvite(inv.token)}>
-                      Revoke
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <Table.ScrollContainer minWidth={640}>
+        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("orgsTab.colOrg")}</Table.Th>
+              <Table.Th>{t("orgsTab.colToken")}</Table.Th>
+              <Table.Th>{t("orgsTab.colCreatedBy")}</Table.Th>
+              <Table.Th>{t("orgsTab.colExpires")}</Table.Th>
+              <Table.Th>{t("orgsTab.colStatus")}</Table.Th>
+              <Table.Th>{t("orgsTab.colActions")}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {filteredInvites.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={6} ta="center" c="dimmed">
+                  {t("orgsTab.noInvites")}
+                </Table.Td>
+              </Table.Tr>
+            )}
+            {pagedInvites.map((inv) => (
+              <Table.Tr key={inv.token}>
+                <Table.Td>{inv.org_name}</Table.Td>
+                <Table.Td>
+                  <Text ff="monospace" span>{inv.token.slice(0, 8)}…</Text>
+                </Table.Td>
+                <Table.Td>{inv.created_by}</Table.Td>
+                <Table.Td>{new Date(inv.expires_at).toLocaleDateString()}</Table.Td>
+                <Table.Td>
+                  {inv.used_at
+                    ? t("orgsTab.usedStatus", { date: new Date(inv.used_at).toLocaleDateString() })
+                    : t("orgsTab.activeStatus")}
+                </Table.Td>
+                <Table.Td>
+                  <Group gap="xs">
+                    {!inv.used_at && (
+                      <Button size="compact-xs" variant="default" onClick={() => handleCopyInvite(inv.token)}>
+                        {copiedToken === inv.token ? t("orgsTab.copiedButton") : t("orgsTab.copyButton")}
+                      </Button>
+                    )}
+                    {!inv.used_at && (
+                      <Button
+                        size="compact-xs"
+                        color="red"
+                        variant="light"
+                        aria-label={t("orgsTab.revokeInvite", { org: inv.org_name })}
+                        onClick={() => handleRevokeInvite(inv.token)}
+                      >
+                        {t("orgsTab.revokeButton")}
+                      </Button>
+                    )}
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
       {invTotalPages > 1 && (
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
-          <button onClick={() => setInvitePage(0)} disabled={invSafePage === 0}>«</button>
-          <button onClick={() => setInvitePage((p) => p - 1)} disabled={invSafePage === 0}>‹</button>
-          <span>Page {invSafePage + 1} / {invTotalPages}</span>
-          <button onClick={() => setInvitePage((p) => p + 1)} disabled={invSafePage >= invTotalPages - 1}>›</button>
-          <button onClick={() => setInvitePage(invTotalPages - 1)} disabled={invSafePage >= invTotalPages - 1}>»</button>
-        </div>
+        <Group justify="flex-end">
+          <Pagination
+            total={invTotalPages}
+            value={invSafePage}
+            onChange={setInvitePage}
+            size="sm"
+            aria-label={t("orgsTab.invitePagination")}
+          />
+        </Group>
       )}
-    </div>
+    </Stack>
   );
 }

@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "Response Cache",
+      "hot": "Hot Tables",
+      "materialized": "Materialized Store",
+      "setup": "Setup"
+    },
+    "response": {
+      "loading": "Loading cache stats...",
+      "disabledBanner": "Query-response cache disabled (store: {{storeType}}). Query results are not cached in Redis, so the counters below stay at zero. Hot-table and materialized-store caching are separate layers (see the other tabs) and are unaffected.",
+      "cachedEntries": "Cached Entries",
+      "hitRate": "Hit Rate",
+      "hits": "Hits",
+      "misses": "Misses",
+      "store": "Store",
+      "redisKeysRaw": "Redis Keys (raw)",
+      "memory": "Memory",
+      "evicted": "Evicted",
+      "expired": "Expired",
+      "clients": "Clients",
+      "opsPerSec": "Ops/sec",
+      "filterPlaceholder": "Filter by table or domain…",
+      "purgeAll": "Purge All Cache",
+      "purging": "Purging...",
+      "table": "Table",
+      "domain": "Domain",
+      "purgeTable": "Purge",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "Small lookup tables mirrored in Redis (or in-memory) and inlined as VALUES CTEs to optimize JOINs. Always available regardless of the response-cache store.",
+      "loadedTables": "Loaded Tables",
+      "candidates": "Candidates",
+      "cachedRows": "Cached Rows",
+      "empty": "No hot tables loaded or registered as candidates.",
+      "table": "Table",
+      "catalog": "Catalog",
+      "schema": "Schema",
+      "rows": "Rows",
+      "kind": "Kind",
+      "state": "State",
+      "kindApi": "API",
+      "kindEngine": "engine",
+      "stateLoaded": "loaded",
+      "stateCandidate": "candidate",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "Durable store where non-attachable sources land and materialized views are written. Distinct from the response cache and the hot tier; a query can use any combination of the three.",
+      "federationEngine": "Federation Engine",
+      "materializedViews": "Materialized Views",
+      "storeLabel": "Store:",
+      "viewButton": "+ View",
+      "empty": "No materialized views defined.",
+      "view": "View",
+      "sourceTables": "Source Tables",
+      "target": "Target",
+      "status": "Status",
+      "rows": "Rows",
+      "lastRefresh": "Last Refresh",
+      "interval": "Interval",
+      "error": "Error",
+      "never": "never",
+      "refresh": "Refresh",
+      "refreshing": "...",
+      "disable": "Disable",
+      "enable": "Enable",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "First page",
+      "previous": "Previous page",
+      "next": "Next page",
+      "last": "Last page",
+      "pageOf": "Page {{page}} / {{total}}"
+    }
+  }
+}

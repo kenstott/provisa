@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "No queries run yet. History persists across sessions.",
+    "colTime": "Time",
+    "colRole": "Role",
+    "colDuration": "Duration",
+    "colRows": "Rows",
+    "colSql": "SQL",
+    "colActions": "Actions",
+    "error": "error",
+    "restore": "Restore",
+    "restoreLabel": "Restore query from {{time}}"
+  }
+}

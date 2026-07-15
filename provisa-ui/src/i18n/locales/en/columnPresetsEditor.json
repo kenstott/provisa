@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "Column Presets",
+    "infoTooltip": "Inject computed or constant values into every row returned for this table. Useful for adding domain identifiers, role-scoped flags, or derived fields without modifying the source schema. 'source' can be: constant, sql_expression, or role_claim.",
+    "columnHeader": "Column",
+    "sourceHeader": "Source",
+    "valueHeader": "Header / Value",
+    "removeAction": "Remove",
+    "columnPlaceholder": "— column —",
+    "selectPlaceholder": "— select —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "Header name (e.g. X-User-Id)",
+    "literalValuePlaceholder": "Literal value",
+    "numericValuePlaceholder": "Numeric value",
+    "addAction": "Add",
+    "sourceNow": "now (UTC timestamp)",
+    "sourceHeaderOption": "header (HTTP request header)",
+    "sourceLiteral": "literal (fixed value)"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "encryptionTab": {
+    "loading": "Loading…",
+    "intro": "Column encryption at rest. Choose a provider and manage its master key. Envelope encryption wraps a per-column data key with the master key.",
+    "providerLabel": "Provider",
+    "providerCurrentSuffix": " (current)",
+    "keyIdLabel": "Key ID",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "Master key:",
+    "masterKeyPresent": "present",
+    "masterKeyMissing": "missing",
+    "generating": "Generating…",
+    "rotateKey": "Rotate master key",
+    "generateKey": "Generate master key",
+    "restartWarning": "{{note}} Rotating a master key while encrypted data exists may make prior rows unreadable — rotate before storing sensitive data, or plan a re-encryption.",
+    "saveTitle": "Save encryption settings",
+    "keyGeneratedStored": "Master key generated and stored in the OS keychain (key id: {{keyId}}).",
+    "keyGeneratedNoKeychain": "No OS keychain available — copy this key and set it as {{envVar}}. It will not be shown again.",
+    "savedRestartRequired": "Saved. Restart the service to apply.",
+    "saved": "Saved."
+  }
+}

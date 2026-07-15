@@ -1,0 +1,27 @@
+{
+  "openApiFormSection": {
+    "specModeLegend": "OpenAPI spec source",
+    "specModePath": "Spec path / URL",
+    "specModeInline": "Write spec inline",
+    "specPathLabel": "Spec Path or URL",
+    "specPathPlaceholder": "https://api.example.com/openapi.json or ./spec.yaml",
+    "specInlineLabel": "OpenAPI Spec (YAML or JSON)",
+    "baseUrlLabel": "Base URL",
+    "baseUrlHint": "(leave blank to use servers[0].url from spec)",
+    "baseUrlPlaceholder": "https://api.example.com (optional override)",
+    "cacheTtlLabel": "Cache TTL (seconds)",
+    "cacheTtlPlaceholder": "300",
+    "authenticationLabel": "Authentication",
+    "tokenLabel": "Token",
+    "tokenPlaceholder": "${env:API_TOKEN}",
+    "headerNameLabel": "Header Name",
+    "headerNamePlaceholder": "X-API-Key",
+    "apiKeyLabel": "API Key",
+    "apiKeyPlaceholder": "${env:API_KEY}",
+    "previewButton": "Preview",
+    "previewLoading": "Loading...",
+    "queriesCount": "{{count}} queries",
+    "mutationsCount": "{{count}} mutations",
+    "none": "none"
+  }
+}

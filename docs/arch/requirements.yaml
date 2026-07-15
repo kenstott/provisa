@@ -29798,3 +29798,828 @@
     - tests/unit/test_billing_lemonsqueezy.py
     - tests/unit/test_org_isolation.py
 
+- id: REQ-1026
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: First-Customer Deployment
+  priority: MUST
+  type: infrastructure
+  target: 2026-Q3
+  description: >-
+    First-customer deployment target is a single GCP Compute Engine VM (e2-standard-4: 4 vCPU / 16GB, trimmable to e2-standard-2 / 8GB)
+    running the core docker-compose stack. GCP chosen for colocation with Firebase auth (single vendor/single bill) and one-time $300 free-tier credit.
+  use_case: >-
+    Trino's ~8GB JVM footprint rules out per-service PaaS (Fly/Railway/Render). A raw VM is the cheapest usable deployment platform.
+    GCP colocation with Firebase minimizes operational complexity and bill consolidation.
+  relates_to:
+    - REQ-854
+    - REQ-121
+- id: REQ-1027
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: First-Customer Deployment
+  priority: MUST
+  type: infrastructure
+  target: 2026-Q3
+  description: >-
+    Object storage externalized to Cloudflare R2 (Trino exchange/spill and any object storage), replacing bundled MinIO for first-customer profile.
+    R2 chosen for zero egress fees at low volume.
+  use_case: >-
+    MinIO adds operational overhead and state complexity. R2's zero-egress pricing aligns first-customer cost to actual usage.
+  relates_to:
+    - REQ-854
+- id: REQ-1028
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: First-Customer Deployment
+  priority: MUST
+  type: infrastructure
+  target: 2026-Q3
+  description: >-
+    Trimmed first-customer runtime profile: single-node Trino (coordinator-only, no separate trino-worker; heap reduced to 3-4GB), R2 for exchange, no MinIO.
+    Deliverable: docker-compose.first-customer.yml. The trino-worker service remains defined in compose (unused) for later multi-node scaling without re-architecture.
+  use_case: >-
+    Reduces memory footprint to fit e2-standard-2 (8GB). Preserves architecture for horizontal scaling when load justifies multi-node deployment.
+  relates_to:
+    - REQ-854
+    - REQ-1027
+- id: REQ-1029
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: First-Customer Deployment
+  priority: MUST
+  type: infrastructure
+  target: 2026-Q3
+  description: >-
+    Postgres data persists on a separate GCP persistent disk, mounted into the VM, enabling VM resize/reattach without control-plane data loss.
+  use_case: >-
+    Decouples compute lifecycle from data lifecycle. Allows VM scaling or migration while preserving schema and operational state.
+  relates_to:
+    - REQ-696
+    - REQ-697
+- id: REQ-1030
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: Email Delivery
+  priority: MUST
+  type: infrastructure
+  target: 2026-Q3
+  description: >-
+    Email transport for first customer: AWS SES (or equivalent SMTP) at low volume, matching the SMTP-only EmailProvider (REQ-1020).
+  use_case: >-
+    Removes dependency on GCP-only email services. SMTP provides portable, low-volume email delivery aligned with the pluggable EmailProvider abstraction.
+  relates_to:
+    - REQ-1020
+    - REQ-1021
+    - REQ-1022
+- id: REQ-1031
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: First-Customer Deployment
+  priority: SHOULD
+  type: infrastructure
+  target: 2026-Q3
+  description: >-
+    Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth) as the exit hatch when GCP steady-state cost is no longer preferred.
+    Deployment is plain docker-compose on any VM; only the Firebase project is GCP-pinned, compute is host-agnostic.
+  use_case: >-
+    Reduces vendor lock-in. Preserves operator freedom to migrate to lower-cost platforms as workload stabilizes and predictable costs justify optimization.
+  relates_to:
+    - REQ-1026
+    - REQ-121
+- id: REQ-1032
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: Cost Management
+  priority: MUST
+  type: constraint
+  target: 2026-Q3
+  description: >-
+    No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost limited to a domain and a free Firebase project.
+    Cold-start relies on REQ-854 OVA/Lima bundles for sub-hour spin-up.
+  use_case: >-
+    Minimizes pre-revenue spending. Defers fixed infrastructure costs until revenue justifies them, reducing financial risk during customer acquisition.
+  relates_to:
+    - REQ-854
+    - REQ-121
+- id: REQ-1033
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Demo Tiers & Onboarding
+  priority: MUST
+  type: infrastructure
+  target: 2026-Q3
+  description: >-
+    Provision two demo tiers on shared first-customer VM: (a) anonymous ephemeral sandbox requiring no signup; (b) persistent quota-limited free tier for Firebase-signed-up users. Both leverage schema-per-org tenancy on shared Trino/PG/Redis infrastructure; no per-user VMs provisioned.
+  use_case: >-
+    Converts cold-start friction into zero-friction "try it now" landing page. Ephemeral sandbox captures prospects instantly; persistent free tier captures those ready to commit an email. Scales to thousands of free accounts on single shared VM because idle orgs consume only disk (no compute).
+  relates_to:
+    - REQ-696
+    - REQ-697
+    - REQ-1017
+    - REQ-1026
+- id: REQ-1034
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Demo Tiers & Onboarding
+  priority: MUST
+  type: behavioral
+  target: 2026-Q3
+  description: >-
+    On ephemeral sandbox session start, clone a pre-seeded golden template schema (org_template, containing REQ-414 demo federated sources and sample data) into a session-scoped org schema (e.g. org_sandbox_<uid>) via the REQ-697 init_schema provisioning path.
+  use_case: >-
+    Pre-seeding the template avoids re-running full data registration and source discovery on every sandbox session. Prospects can immediately explore and create sources, views, and roles without setup lag.
+  scenario: |
+    Given a prospect visits the public landing page
+    When they click "Try Now" without signup
+    Then a Firebase anonymous session is created and a cloned schema is provisioned with demo sources + data
+    And the UI connects to that session-scoped org schema
+  relates_to:
+    - REQ-414
+    - REQ-696
+    - REQ-697
+    - REQ-121
+- id: REQ-1035
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Demo Tiers & Onboarding
+  priority: MUST
+  type: behavioral
+  target: 2026-Q3
+  description: >-
+    Ephemeral sandbox sessions are scoped by Firebase anonymous auth (REQ-121) without email collection. Prospects get a uid-based session identity with zero friction.
+  use_case: >-
+    Removes signup friction (email validation, password, ToS acceptance) for the "just looking" funnel. Firebase anonymous auth is stateless and session-scoped, aligning with ephemeral sandbox lifecycle (no user record persists).
+  scenario: |
+    Given a prospect clicks "Try Now"
+    When Firebase anonymous auth completes
+    Then the browser receives an anonymous auth token scoped to a uid
+    And the backend routes all org/schema lookups through that uid
+  relates_to:
+    - REQ-121
+    - REQ-1033
+- id: REQ-1036
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Demo Tiers & Onboarding
+  priority: MUST
+  type: behavioral
+  target: 2026-Q3
+  description: >-
+    Ephemeral sandbox schemas are dropped on explicit logout OR after an idle-TTL of inactivity. Teardown is self-resetting; a reaper process periodically sweeps expired sandbox schemas.
+  use_case: >-
+    Ensures sandbox cleanup without manual intervention. Eliminates abandonment debt (orphaned schemas)—each expired sandbox reclaims Postgres and Trino resources immediately. Prospect abandonment is costless.
+  scenario: |
+    Given a user logs out from an ephemeral sandbox
+    When the session ends
+    Then DROP SCHEMA CASCADE removes the org_sandbox_<uid> schema and all contents
+    Or: Given a sandbox reaches its idle-TTL
+    When the reaper runs
+    Then expired sandboxes are identified and dropped
+  relates_to:
+    - REQ-1034
+- id: REQ-1037
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Demo Tiers & Onboarding
+  priority: MUST
+  type: constraint
+  target: 2026-Q3
+  description: >-
+    Ephemeral sandbox sessions are subject to: (a) session-scoped TTL (e.g., 24h); (b) per-session query row limit and query cost caps; (c) data source registration restricted to bundled demo allowlist (no arbitrary outbound live sources). Platform-schema isolation (REQ-696) already guarantees tenant isolation.
+  use_case: >-
+    Prevents sandbox abuse (runaway queries, scanning arbitrary external data warehouses). Demo allowlist ensures predictable resource footprint and simplifies compliance.
+  relates_to:
+    - REQ-696
+    - REQ-1034
+- id: REQ-1038
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Demo Tiers & Onboarding
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Free tier orgs follow a reversible archive lifecycle to reclaim disk and Postgres resources without destructive loss: idle orgs are email-nudged (REQ-1020/1022) before any action; on continued inactivity, pg_dump'd to Cloudflare R2 (REQ-1027) and live schema dropped; restored on re-login from R2 archive; hard tombstone (delete R2 archive) only after long tail (e.g. 12 months) with final nudge.
+  use_case: >-
+    Dormant free accounts consume disk only (no idle compute on shared Trino/PG); archiving is disk-pressure-driven, not urgent. Reversible archive (vs. destructive delete) preserves user goodwill and simplifies re-engagement campaigns.
+  scenario: |
+    Given a free-tier org is inactive for 3 months
+    When the archival check runs
+    Then an email nudge is sent to the registered user
+    And if no response after 1 month, pg_dump is stored in R2 and the live Postgres schema is dropped
+    When the user logs in again
+    Then the schema is restored from R2 seamlessly
+    And after 12 months of archival with no login, a final retention email is sent
+    Then after 1 more month, the R2 archive is deleted (hard tombstone)
+  relates_to:
+    - REQ-1020
+    - REQ-1022
+    - REQ-1027
+    - REQ-696
+- id: REQ-1039
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Demo Tiers & Onboarding
+  priority: MUST
+  type: behavioral
+  target: 2026-Q3
+  description: >-
+    Funnel routing policy: "just looking" traffic (cold-start landing page) is routed to anonymous ephemeral sandbox (self-reaping, zero abandonment debt); persistent free tier requires deliberate Firebase signup, minimizing abandoned-account volume on shared infrastructure.
+  use_case: >-
+    Biases toward ephemeral first-contact (low infrastructure cost, self-cleaning) and requires a signal (email signup) before allocating a persistent schema. Maximizes conversion rate while minimizing accumulation of dormant free accounts.
+  scenario: |
+    Given a prospect visits the landing page without signin
+    When they click "Try Now"
+    Then they are routed to ephemeral sandbox without email collection
+    When they click "Create Account"
+    Then they are routed to Firebase signup, and on success, a persistent free-tier org and schema are provisioned
+  relates_to:
+    - REQ-1033
+    - REQ-1034
+    - REQ-1035
+    - REQ-1017
+- id: REQ-1040
+  status: proposed
+  group: "5. Query Languages, Compilation & Operations"
+  category: Trino Resource Management
+  priority: MUST
+  type: structural
+  target: 2026-Q4
+  description: >-
+    Per-tenant Trino resource groups enforce isolated CPU/memory ceilings and concurrency limits (maxRunning, maxQueued) per org_id, preventing noisy-neighbor contention on the shared cluster. Resource group configuration is generated via trino_setup.py keyed to org tier.
+  use_case: >-
+    Isolates tenant workloads within a shared Trino cluster. Runaway queries from one org are queued/throttled rather than starving interactive queries from other orgs. Tier-based tuning (free tier gets tight caps; premium gets relaxed limits) enables cost control at the resource-allocation layer.
+  relates_to:
+    - REQ-696
+    - REQ-1017
+- id: REQ-1041
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Trino Scaling & HA
+  priority: SHOULD
+  type: infrastructure
+  target: 2026-Q4
+  description: >-
+    Horizontal Trino worker scale-out path: staged from single-node (coordinator executes, worker replicas=0) -> dedicated workers (include-coordinator=false, trino-worker replicas>0, coordinator remains single) -> k8s HPA on workers autoscaling on CPU/queue depth. Coordinator is never scaled; workers are stateless and horizontally elastic.
+  use_case: >-
+    Allows cost-effective first-customer single-node deployment (coordinator handles query execution) while providing a clear path to scale workers independently as workload grows. Worker statelesness and HPA integration enable elastic resource response to query volume spikes.
+  relates_to:
+    - REQ-1026
+    - REQ-1028
+- id: REQ-1042
+  status: proposed
+  group: "5. Query Languages, Compilation & Operations"
+  category: Trino Resource Management
+  priority: SHOULD
+  type: structural
+  target: 2026-Q4
+  description: >-
+    Workload separation: interactive user queries and MV/batch-refresh workloads run under distinct Trino resource groups (and eventually distinct worker pools), preventing heavy MV rebuilds from inflating interactive query latency SLO.
+  use_case: >-
+    MV fleet (REQ-942/966) refresh cycles can spike memory and CPU; isolating batch workloads into a separate resource group with relaxed limits ensures interactive queries maintain predictable tail latency. Distinct worker pools (future) enable physical separation and independent scaling.
+  relates_to:
+    - REQ-942
+    - REQ-966
+- id: REQ-1043
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Multi-Tenancy & Scaling
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Tiered cluster routing for physical isolation: sandbox/free tenants route to a shared cluster with tight resource-group caps (best-effort); standard paid tenants route to a better-resourced shared cluster; whale/premium tenants route to a dedicated Trino cluster (or dedicated worker pool) pointed at that org's data sources. Routing is org-tier-aware.
+  use_case: >-
+    Isolates resource demand: free tier cannot degrade premium SLA. Enables differentiated pricing (shared cluster = included in all tiers; dedicated cluster = premium SKU). Simplifies compliance (isolated VPC, isolated infra, isolated audit logs for high-security tenants).
+  relates_to:
+    - REQ-1017
+    - REQ-696
+- id: REQ-1044
+  status: proposed
+  group: "5. Query Languages, Compilation & Operations"
+  category: Query Cost Control & Monetization
+  priority: MUST
+  type: constraint
+  target: 2026-Q4
+  description: >-
+    Hard query-cost caps as a monetization gate: each org tier enforces ceilings on query cost (CPU time, peak memory, bytes scanned, execution time). Queries exceeding the tier's ceiling are REJECTED with an explanatory error message indicating the operation requires a higher tier/premium SKU. Enforced via Trino resource-group limits and per-query guards (query.max-memory-per-node, query.max-execution-time, query.max-scan-physical-bytes) keyed to org entitlement. Free/standard tiers carry restrictive caps; expensive queries require acquiring a premium SKU.
+  use_case: >-
+    Primary monetization lever: caps are hard rejections, not silent degradation. Prevents free-tier abuse (e.g., scanning the entire data warehouse). Drives tier-upgrade conversion when users hit caps. Project rule: rejection must be explicit, never a silent cap-and-continue.
+  relates_to:
+    - REQ-1017
+    - REQ-1040
+- id: REQ-1045
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Demo Tiers & Onboarding
+  priority: MUST
+  type: constraint
+  target: 2026-Q3
+  description: >-
+    Sandbox and free-tier orgs receive the tightest resource-group and query-cost ceilings, enforced via the same tier-cap mechanism (REQ-1044) mapped to sandbox/free entitlements. Caps are applied at session provisioning and validated on every query submission.
+  use_case: >-
+    Limits abuse surface of sandbox/free tiers without manual intervention. Sandbox sessions (REQ-1034/1035/1036) are especially constrained (query-row limits, data-source allowlist, idle-TTL) to minimize resource drain from abandoned demo sessions. Free-tier orgs receive soft caps that nudge users toward upgrade without forcing abandonment.
+  relates_to:
+    - REQ-1033
+    - REQ-1034
+    - REQ-1035
+    - REQ-1036
+    - REQ-1044
+- id: REQ-1046
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Storage Management & Quotas
+  priority: MUST
+  type: constraint
+  target: 2026-Q4
+  description: >-
+    Per-tier storage quotas: each org tier enforces a hard ceiling on platform-side storage footprint (Postgres schema bytes for landed/materialized rows, MV output size, and R2 object bytes attributable to the org). Sandbox/free tiers receive the tightest ceilings; paid tiers larger; enforced and metered per org.
+  use_case: >-
+    Tiered storage model parallels query-cost caps (REQ-1044) as a primary monetization and resource-isolation lever. Platform storage (Postgres schema data, materialized rows, MV outputs, R2 object bytes) is the metered resource; federation keeps most source data external. Free tiers get tight bounds to prevent abuse accumulation; premium tiers permit larger workloads. Storage must be explicitly capped and enforced at ingestion/materialization time, never silently evicted.
+  relates_to:
+    - REQ-1027
+    - REQ-1044
+    - REQ-1045
+    - REQ-1037
+    - REQ-1033
+    - REQ-696
+    - REQ-942
+    - REQ-966
+- id: REQ-1047
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Storage Management & Quotas
+  priority: MUST
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Explicit rejection on storage-cap breach: operations that would push an org past its storage ceiling (MV materialization, landing/ingest, result persistence) are REJECTED with an explanatory error indicating a higher SKU or bring-your-own (BYO) storage is required — never silently truncated or evicted.
+  use_case: >-
+    Mirrors REQ-1044's monetization-gate semantics: hard rejection, not silent degradation. Prevents free-tier abuse and drives tier-upgrade conversion. Project rule (CRITICAL): enforcement must be explicit rejection, never a silent cap-and-continue. Error message guides customer toward upgrade path or BYO storage option.
+  relates_to:
+    - REQ-1044
+    - REQ-1046
+    - REQ-1048
+- id: REQ-1048
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Storage Management & Quotas
+  priority: SHOULD
+  type: structural
+  target: 2026-Q4
+  description: >-
+    Bring-your-own storage (BYO): premium/enterprise orgs may point their platform-side object storage (MV persistence, Trino exchange/spill, landing/results) at their own S3-compatible bucket (their cloud account, their bill), configured per org. Their bytes never count against platform storage and never reside on platform-owned R2. Org's BYO bucket credentials are scoped to that org only.
+  use_case: >-
+    Enables premium customers with large or unpredictable storage needs to avoid platform quota limits by supplying their own cloud storage. Isolates security/compliance (customer controls bucket permissions, encryption, audit logging) and cost (customer's infrastructure bill, not platform cost). Reduces platform resource strain from whales/large enterprises.
+  relates_to:
+    - REQ-1027
+    - REQ-1046
+- id: REQ-1049
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Storage Management & Quotas
+  priority: MUST
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Per-org storage metering/accounting: platform meters storage consumption per org (Postgres schema bytes + attributable R2 object bytes) to drive quota enforcement (REQ-1046), tier upgrade prompts, and billing.
+  use_case: >-
+    Storage metering is the storage analog of per-query cost accounting behind REQ-1044. Enables accurate billing per org (platform storage), identifies orgs approaching quota limits (triggering upgrade nudges), and feeds resource-capacity planning (platform storage forecasting). BYO orgs (REQ-1048) exclude their external bytes from platform metering.
+  relates_to:
+    - REQ-1044
+    - REQ-1046
+    - REQ-1047
+    - REQ-1048
+- id: REQ-1050
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Marketing & Presence
+  priority: SHOULD
+  type: structural
+  target: 2026-Q3
+  description: >-
+    Marketing website surface: a static marketing site (landing, features, pricing) hosted on Cloudflare Pages. Zero marginal cost at any traffic level; deployed independently of the app so it cannot affect app availability. Colocated with the Cloudflare R2 object storage vendor.
+  use_case: >-
+    Public-facing marketing presence decoupled from app infrastructure. Cloudflare Pages provides global CDN distribution and cost-free hosting (unlimited traffic, automatic DDoS mitigation). Static deployment eliminates operational overhead and risk of app unavailability cascading to marketing presence. R2 colocation reduces cross-zone latency for asset serving.
+  relates_to:
+    - REQ-1027
+    - REQ-1026
+- id: REQ-1051
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Documentation & Developer Experience
+  priority: SHOULD
+  type: structural
+  target: 2026-Q3
+  description: >-
+    Hosted documentation surface: product docs and API reference published on Cloudflare Pages (same deployment or docs subsite), sourced from doc-writer agent output. Static, free-hosted, independent of the app.
+  use_case: >-
+    Product documentation and API reference must be independently accessible and performant. Cloudflare Pages provides zero-cost, globally distributed static hosting. Decoupling from the app UI ensures docs remain available even during app maintenance or outages, improving developer experience and reducing support burden.
+  relates_to:
+    - REQ-1050
+    - REQ-1027
+- id: REQ-1052
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Onboarding & Entry Points
+  priority: MUST
+  type: behavioral
+  target: 2026-Q3
+  description: >-
+    Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-action) map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session (REQ-1034/1036, no signup required); "Sign up free" routes to Firebase self-serve org provisioning (REQ-1017); "Contact sales" triggers SES/SMTP email delivery to sales (REQ-1020).
+  use_case: >-
+    Converts marketing interest into activation (sandbox demo, free-tier signup, sales engagement). Clear entry-point routing ensures users experience the intended onboarding flow without friction. Marketing messaging and product capability must align (e.g., "try now" genuinely allows zero-friction exploration; "sign up free" uses self-serve Firebase, not manual approval).
+  scenario: |
+    Given a user is on the marketing site
+    When the user clicks "Try it now"
+    Then an anonymous ephemeral sandbox session (REQ-1034) is provisioned and the browser is redirected to the session
+
+    Given a user is on the marketing site
+    When the user clicks "Sign up free"
+    Then the browser redirects to the Firebase self-serve org signup flow (REQ-1017)
+
+    Given a user is on the marketing site
+    When the user submits a "Contact sales" form
+    Then an email is sent to the sales inbox via SES/SMTP (REQ-1020)
+  relates_to:
+    - REQ-1017
+    - REQ-1020
+    - REQ-1034
+    - REQ-1036
+    - REQ-1050
+  e2e: true
+  e2e_reason: Entry-point routing requires a live marketing site pointing to live app/sandbox infrastructure; clicking CTAs and verifying downstream provisioning is only testable end-to-end.
+- id: REQ-1053
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Pricing & Tiering
+  priority: MUST
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Pricing page reflects tier entitlements: the public pricing table renders the free/standard/premium tier limits directly from the query-cost caps (REQ-1044) and storage caps (REQ-1046) — the same entitlement definitions that gate runtime enforcement drive the marketing pricing presentation, eliminating manual sync.
+  use_case: >-
+    Single source of truth for tier limits: tier definitions (cost caps, storage quotas) exist once in the runtime entitlement system (REQ-1044/1046); the pricing page programmatically queries those limits and renders them to users. Eliminates marketing/product drift (manually updated pricing page drifting from actual runtime caps). Ensures all users see accurate tier terms before signup.
+  scenario: |
+    Given a tier definition specifies a query-cost cap and storage quota (via REQ-1044/1046)
+    When the pricing page is rendered
+    Then the tier card displays the same cap and quota values without manual entry or copy-paste
+
+    Given a tier definition is updated (e.g., free storage increased)
+    When the pricing page is refreshed
+    Then the new limit is visible without separate marketing update
+  relates_to:
+    - REQ-1044
+    - REQ-1046
+    - REQ-1050
+  e2e: true
+  e2e_reason: Accurate tier-limit rendering from runtime definitions requires the full stack (tier store, pricing page, live presentation); unit tests cannot verify marketing/product alignment without end-to-end execution.
+- id: REQ-1054
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Multi-Tenancy & Routing
+  priority: MUST
+  type: infrastructure
+  target: 2026-Q4
+  description: >-
+    Per-org wildcard subdomain routing: each org is addressable at {org}.provisa.io via a single wildcard DNS record (*.provisa.io) and wildcard TLS certificate, enabling zero-provisioning self-serve org creation (REQ-1017).
+  use_case: >-
+    Eliminates per-org DNS and certificate provisioning overhead. Any newly created org is instantly reachable at its subdomain without manual infrastructure steps, reducing onboarding friction and operational toil.
+  relates_to:
+    - REQ-1017
+    - REQ-594
+- id: REQ-1055
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Multi-Tenancy & Routing
+  priority: MUST
+  type: infrastructure
+  target: 2026-Q4
+  description: >-
+    Fixed per-protocol ports shared across all orgs: HTTP 443 (GraphQL/REST/UI), pgwire 5439, Bolt 7687, Arrow Flight 8480 are shared across all orgs, never varying per org. Org resolution comes from connection parameters (hostname, database name, username, auth principal), not from port multiplexing.
+  use_case: >-
+    Simplifies port management and connection strings. Standard ports improve discoverability and reduce client configuration complexity. Org is a logical namespace, not a network multiplexing dimension.
+  relates_to:
+    - REQ-1054
+- id: REQ-1056
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Multi-Tenancy & Routing
+  priority: MUST
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Per-surface org resolution: HTTP surfaces resolve org from Host subdomain and/or JWT tenant_id claim (REQ-594); pgwire and Bolt (which lack Host headers) resolve org from connection handshake parameters (database name, username, or auth principal).
+  use_case: >-
+    Accommodates wire protocol constraints (no Host header) while leveraging HTTP metadata where available. Ensures all surfaces can correctly identify the tenant without ambiguity or silent fallback.
+  scenario: |
+    Given an HTTP request with Host: org-a.provisa.io and a JWT without tenant_id claim
+    When the request reaches TenantMiddleware
+    Then the org is resolved to org-a
+
+    Given an HTTP request with Host: provisa.io and a JWT with tenant_id: org-b
+    When the request reaches TenantMiddleware
+    Then the org is resolved to org-b
+
+    Given a pgwire connection string specifying database: org-c
+    When the connection handshake completes
+    Then the org is resolved to org-c
+  relates_to:
+    - REQ-594
+    - REQ-1055
+- id: REQ-1057
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Multi-Tenancy & Routing
+  priority: SHOULD
+  type: infrastructure
+  target: 2026-Q4
+  description: >-
+    Cloudflare wildcard routing: HTTP traffic is proxied via Cloudflare (*.provisa.io -> VM:443); raw-TCP wire protocols are routed via Cloudflare Spectrum (TCP-by-SNI) or a wildcard A record, with org derived from connection parameters.
+  use_case: >-
+    Leverages Cloudflare's global edge for HTTP caching and DDoS protection. Spectrum enables low-latency TCP passthrough for pgwire and Bolt without origin-side port multiplexing. Single infrastructure path for all protocol surfaces.
+  relates_to:
+    - REQ-1054
+    - REQ-1055
+    - REQ-1056
+- id: REQ-1058
+  status: proposed
+  group: "1. Access Governance & Security"
+  category: Public Data Publishing
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Public-publish anonymous access: unauthenticated requests carry no tenant_id claim; the org is resolved from Host subdomain only, and the request is bound to a built-in read-only 'public' role scoped to that org. TenantMiddleware gains a Host-based resolution path for the no-claim case instead of returning 401.
+  use_case: >-
+    Enables orgs to publish datasets anonymously without requiring end-user authentication. Public role allows intentional, opt-in data sharing without building separate anonymous infrastructure. Distinct from the Firebase-anonymous sandbox uid (REQ-1034).
+  scenario: |
+    Given a request to org-a.provisa.io with no authentication
+    When the request reaches TenantMiddleware
+    Then the org is resolved to org-a and the user is bound to org-a's 'public' role (not 401)
+
+    Given the public role has zero visibility initially
+    When an asset is published to the public role
+    Then unauthenticated requests can read that asset via visibility/RLS/masking (REQ-039/040)
+  relates_to:
+    - REQ-594
+    - REQ-039
+    - REQ-040
+    - REQ-1019
+    - REQ-1034
+    - REQ-1054
+- id: REQ-1059
+  status: proposed
+  group: "1. Access Governance & Security"
+  category: Public Data Publishing
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Publishing is a governance grant, not new machinery: each org has a built-in 'public' role starting with ZERO visibility. Publishing an asset means granting that role visibility to a specific table/view; access then flows through existing visibility/RLS/masking (REQ-039/040) uniformly across GraphQL/SQL/pgwire/Bolt. Nothing is public by default; opt-in and explicit.
+  use_case: >-
+    Reuses existing access-control infrastructure (visibility, RLS, masking) uniformly across all surfaces. Eliminates special-case code for public access. Clear opt-in model prevents accidental data leaks.
+  scenario: |
+    Given a table orders in org-a
+    When an org admin grants the 'public' role visibility to orders
+    Then unauthenticated requests to org-a can query orders subject to its RLS and masking rules
+  relates_to:
+    - REQ-039
+    - REQ-040
+    - REQ-1019
+    - REQ-1058
+- id: REQ-1060
+  status: proposed
+  group: "1. Access Governance & Security"
+  category: Public Data Publishing
+  priority: MUST
+  type: constraint
+  target: 2026-Q4
+  description: >-
+    Hard caps on anonymous public traffic: unauthenticated published endpoints are internet-facing with no login gate, so they inherit the tightest rate limits and query-cost caps (REQ-1044/1045). High-volume public publishing requires a premium public-tier SKU.
+  use_case: >-
+    Protects shared infrastructure from resource exhaustion by anonymous users. Free-tier public endpoints are rate-limited; high-volume use is gated to premium. Prevents adversarial abuse or accidental DoS by published datasets.
+  relates_to:
+    - REQ-1044
+    - REQ-1045
+    - REQ-1058
+- id: REQ-1061
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Multi-Tenancy & Branding
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Subdomain-as-dedicated-channel value proposition: every org gets its own {org}.provisa.io endpoint, conveying dedicated tenancy and branding even though authenticated resolution does not require it.
+  use_case: >-
+    Improves perceived value and tenant isolation narrative. Org-branded subdomain increases engagement and data ownership perception. Leverages the wildcard infrastructure (REQ-1054) to provide this for zero per-org cost.
+  relates_to:
+    - REQ-1054
+    - REQ-1019
+- id: REQ-1062
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Multi-Tenancy & Branding
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Custom domain as a premium gate: premium/enterprise tiers may bind a custom domain (e.g. data.acme.com via CNAME) with custom TLS and white-label (no Provisa branding). Free/standard tiers use {org}.provisa.io only. Tier entitlements are surfaced on the pricing page (REQ-1052).
+  use_case: >-
+    Provides a premium branding differentiator. Custom domain + white-label appeals to enterprises embedding data apps in customer-facing portals. Clear tier gate monetizes the feature and simplifies operations (no per-org cert management for premium tenants).
+  relates_to:
+    - REQ-1052
+    - REQ-1019
+    - REQ-1054
+- id: REQ-1063
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Pricing & Tiering
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Usage-credit billing meter: metered consumption is billed as universal compute credits whose consumption is uniform across tiers, with the dollar price per credit rising by tier (bundling features/support) — the Starburst Galaxy model. Built on Stripe billing (REQ-594).
+  use_case: >-
+    Provides predictable, usage-based billing that aligns with customer consumption patterns. Tier-based credit pricing allows upsells (pay more per credit for premium support/features). Complements hard caps (REQ-1044/1046) which define ceilings; meter defines pay-as-you-go below them. Industry-proven model (Starburst, Apollo).
+  relates_to:
+    - REQ-594
+    - REQ-1044
+    - REQ-1046
+- id: REQ-1064
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Pricing & Tiering
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days) grants a fixed compute-credit balance; on expiry or non-payment, the account auto-downgrades to free tier (never silent charge).
+  use_case: >-
+    Lowers barrier to enterprise evaluation. Fixed credit budget prevents runaway costs; explicit downgrade on expiry prevents surprise billing and maintains customer trust. Encourages pilot-to-production conversion.
+  scenario: |
+    Given an enterprise trial is created with 30-day duration and 1000 credits
+    When 29 days have passed and credits are consumed
+    Then queries continue to work as long as credits remain
+
+    Given the trial duration expires
+    When the customer has not converted to a paid plan
+    Then the account auto-downgrades to free tier with no charge
+  relates_to:
+    - REQ-1063
+    - REQ-594
+- id: REQ-1065
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Pricing & Tiering
+  priority: MAY
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Signup usage credit: a small usage-credit grant on signup (Apollo $50-style) provides a soft on-ramp to exploration without a time-boxed trial expiration.
+  use_case: >-
+    Reduces friction for self-serve signup. Free users get compute credits to try real queries; if they exhaust credits, they can upgrade, not just expire. Increases conversion from free to paid by showcasing value through real usage.
+  scenario: |
+    Given a user signs up for the free tier
+    When signup completes
+    Then the user is granted a fixed credit balance (e.g., 50 credits) with no expiration
+
+    Given the user runs queries that consume credits
+    When all credits are exhausted
+    Then future queries fail with an upgrade prompt (not a time-based expiration)
+  relates_to:
+    - REQ-1063
+    - REQ-1017
+- id: REQ-1066
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Pricing & Tiering
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Premium feature gates beyond compute: SSO/SAML + fine-grained access control (ABAC/SCIM, leveraging REQ-122/123/203/204), longer audit/observability retention, private networking, and SLA-backed support are gated to premium tiers.
+  use_case: >-
+    Monetizes operational and compliance features that enterprises demand. Justifies premium tier beyond compute capacity alone. Clear feature gates drive upsell conversation and meet customer expectations for enterprise offerings.
+  relates_to:
+    - REQ-122
+    - REQ-123
+    - REQ-203
+    - REQ-204
+    - REQ-1019
+- id: REQ-1067
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Pricing & Tiering
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Bring-your-own compute / dedicated cluster as premium gate: premium tenants may run on a dedicated Trino cluster (extends tiered routing REQ-1043) and/or bring their own compute, complementing BYO storage (REQ-1048).
+  use_case: >-
+    Provides high-touch enterprise offering with dedicated resources and isolation. Extends tiered routing to allocate premium tenants to reserved clusters. Enables power customers to optimize and control compute independently of Provisa infrastructure. Competitive parity with Starburst Galaxy (dedicated clusters) and Apollo GraphOS (federation customization).
+  relates_to:
+    - REQ-1043
+    - REQ-1048
+    - REQ-1063
+- id: REQ-1068
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: structural
+  target: 2026-Q4
+  description: >-
+    Pluggable metadata egress provider pattern: an abstract MetadataEgress interface (mirroring AuthProvider/EmailProvider pattern) enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
+  use_case: >-
+    Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them. Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of record.
+  code:
+    - provisa/api/metadata_egress/provider.py
+  relates_to:
+    - REQ-120
+    - REQ-1020
+    - REQ-1066
+- id: REQ-1069
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: structural
+  target: 2026-Q4
+  description: >-
+    Standards-first metadata core: the MetadataEgress provider emits OpenLineage for lineage and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataEgress using the same internal metadata model.
+  use_case: >-
+    Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend to enterprises already on Atlan or Collibra.
+  relates_to:
+    - REQ-1068
+- id: REQ-1070
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Published metadata payload includes datasets/tables/columns, domains, stewards and ownership (REQ-609/020), approved relationships, and descriptions/aliases. Lineage is derived from actually-compiled queries and the MV DAG (provisa/lineage/, REQ-939/942), providing column-level + MV-DAG lineage more accurate than scanner/agent-based ingestion.
+  use_case: >-
+    Provisa's query-compilation and DAG-based lineage is derived from actual execution, making it more authoritative than external scanners or agent-based metadata collection. Publishing this accuracy to external catalogs elevates DG team's source-of-truth quality.
+  relates_to:
+    - REQ-609
+    - REQ-020
+    - REQ-039
+    - REQ-040
+    - REQ-939
+    - REQ-942
+    - REQ-1068
+    - REQ-1069
+- id: REQ-1071
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Governance-signal projection: enforcement facts Provisa already computes (which columns/tables are masked, RLS-restricted, or visibility-restricted per REQ-039/040) are projected outward as tags, classifications, or metadata properties on the corresponding assets in the target external catalog.
+  use_case: >-
+    Data-governance teams see Provisa's enforced governance policies reflected in their catalog of record, enabling data consumers to understand which data is restricted or transformed without context-switching to Provisa's UI. Strengthens audit and compliance narrative.
+  relates_to:
+    - REQ-039
+    - REQ-040
+    - REQ-1068
+    - REQ-1070
+- id: REQ-1072
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Sync mechanism: metadata changes push to the external catalog event-driven via the REQ-942 event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py) periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped to that org only.
+  use_case: >-
+    Event-driven sync ensures near-real-time metadata propagation for operational responsiveness; scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant isolation and per-customer credential management.
+  relates_to:
+    - REQ-942
+    - REQ-1068
+    - REQ-1070
+- id: REQ-1073
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: MUST
+  type: constraint
+  target: 2026-Q4
+  description: >-
+    Premium-gated metadata egress: the metadata egress connector is an enterprise/premium tier entitlement, extending REQ-1066. Targeting regulated-industry data-governance teams with existing external catalog investments.
+  use_case: >-
+    Metadata egress to external catalogs is a high-touch enterprise feature. Restricted to premium tiers to simplify support and monetize integration value to enterprises already operating external DG systems.
+  relates_to:
+    - REQ-1066
+    - REQ-1068
+    - REQ-1069
+    - REQ-1070
+    - REQ-1071
+    - REQ-1072

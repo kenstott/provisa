@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { X } from "lucide-react";
+import { Badge, Group, Modal, Stack, Table, Text, Title } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 
 interface Props {
@@ -16,78 +17,112 @@ interface Props {
 }
 
 export function UserProfileModal({ onClose }: Props) {
+  const { t } = useTranslation();
   const { displayName, email, userId, devMode, availableRoles, assignments, capabilities, orgMemberships, activeOrgId } = useAuth();
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
-        <div className="modal-header">
-          <h3>Profile</h3>
-          <button className="modal-close" onClick={onClose}><X size={16} /></button>
-        </div>
-        <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "1.25rem", padding: "1.25rem" }}>
+    <Modal opened onClose={onClose} title={t("userProfileModal.title")} size={560} centered data-testid="user-profile-modal">
+      <Stack gap="lg">
+        <section>
+          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+            {t("userProfileModal.identity")}
+          </Title>
+          <Table withRowBorders={false} verticalSpacing={4} fz="0.85rem">
+            <Table.Tbody>
+              {displayName && (
+                <Table.Tr>
+                  <Table.Td c="dimmed" style={{ width: "max-content" }}>{t("userProfileModal.name")}</Table.Td>
+                  <Table.Td>{displayName}</Table.Td>
+                </Table.Tr>
+              )}
+              {email && (
+                <Table.Tr>
+                  <Table.Td c="dimmed">{t("userProfileModal.email")}</Table.Td>
+                  <Table.Td>{email}</Table.Td>
+                </Table.Tr>
+              )}
+              {userId && (
+                <Table.Tr>
+                  <Table.Td c="dimmed">{t("userProfileModal.userId")}</Table.Td>
+                  <Table.Td ff="monospace">{userId}</Table.Td>
+                </Table.Tr>
+              )}
+              {activeOrgId && (
+                <Table.Tr>
+                  <Table.Td c="dimmed">{t("userProfileModal.org")}</Table.Td>
+                  <Table.Td>{orgMemberships.find((m) => m.org_id === activeOrgId)?.org_name ?? activeOrgId}</Table.Td>
+                </Table.Tr>
+              )}
+              {devMode && (
+                <Table.Tr>
+                  <Table.Td c="dimmed">{t("userProfileModal.mode")}</Table.Td>
+                  <Table.Td>
+                    <Badge size="xs" color="gray" variant="filled">
+                      {t("userProfileModal.devBadge")}
+                    </Badge>
+                  </Table.Td>
+                </Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </section>
 
-          <section>
-            <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.75rem", textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: "0.05em" }}>Identity</h4>
-            <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0 }}>
-              {displayName && <><dt style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Name</dt><dd style={{ margin: 0, fontSize: "0.85rem" }}>{displayName}</dd></>}
-              {email && <><dt style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Email</dt><dd style={{ margin: 0, fontSize: "0.85rem" }}>{email}</dd></>}
-              {userId && <><dt style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>User ID</dt><dd style={{ margin: 0, fontSize: "0.85rem", fontFamily: "monospace" }}>{userId}</dd></>}
-              {activeOrgId && <><dt style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Org</dt><dd style={{ margin: 0, fontSize: "0.85rem" }}>{orgMemberships.find((m) => m.org_id === activeOrgId)?.org_name ?? activeOrgId}</dd></>}
-              {devMode && <><dt style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Mode</dt><dd style={{ margin: 0 }}><span style={{ fontSize: "0.7rem", fontWeight: 600, padding: "1px 6px", borderRadius: 3, background: "var(--text-muted)", color: "var(--bg)" }}>DEV</span></dd></>}
-            </dl>
-          </section>
+        <section>
+          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+            {t("userProfileModal.rolesAndDomainAccess")}
+          </Title>
+          {availableRoles.length === 0 ? (
+            <Text fz="0.85rem" c="dimmed">{t("userProfileModal.noRolesAssigned")}</Text>
+          ) : (
+            <Table fz="0.82rem" withTableBorder={false}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th c="dimmed" fw={500}>{t("userProfileModal.role")}</Table.Th>
+                  <Table.Th c="dimmed" fw={500}>{t("userProfileModal.domains")}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {availableRoles.map((role) => {
+                  const domains = assignments
+                    .filter((a) => a.role_id === role.id)
+                    .map((a) => a.domain_id);
+                  return (
+                    <Table.Tr key={role.id}>
+                      <Table.Td ff="monospace">{role.id}</Table.Td>
+                      <Table.Td>
+                        {domains.length === 0 ? (
+                          <Text component="span" c="dimmed">—</Text>
+                        ) : domains.includes("*") ? (
+                          <Text component="span" c="var(--approve)">{t("userProfileModal.allDomains")}</Text>
+                        ) : (
+                          domains.join(", ")
+                        )}
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          )}
+        </section>
 
-          <section>
-            <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.75rem", textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: "0.05em" }}>Roles & Domain Access</h4>
-            {availableRoles.length === 0 ? (
-              <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>No roles assigned</span>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <th style={{ textAlign: "left", padding: "0.25rem 0.5rem 0.25rem 0", color: "var(--text-muted)", fontWeight: 500 }}>Role</th>
-                    <th style={{ textAlign: "left", padding: "0.25rem 0.5rem", color: "var(--text-muted)", fontWeight: 500 }}>Domains</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {availableRoles.map((role) => {
-                    const domains = assignments
-                      .filter((a) => a.role_id === role.id)
-                      .map((a) => a.domain_id);
-                    return (
-                      <tr key={role.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                        <td style={{ padding: "0.35rem 0.5rem 0.35rem 0", fontFamily: "monospace" }}>{role.id}</td>
-                        <td style={{ padding: "0.35rem 0.5rem" }}>
-                          {domains.length === 0 ? <span style={{ color: "var(--text-muted)" }}>—</span>
-                            : domains.includes("*") ? <span style={{ color: "var(--approve)" }}>all</span>
-                            : domains.join(", ")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </section>
-
-          <section>
-            <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.75rem", textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: "0.05em" }}>Capabilities</h4>
-            {capabilities.length === 0 ? (
-              <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>None</span>
-            ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-                {capabilities.map((cap) => (
-                  <span key={cap} style={{ fontSize: "0.72rem", padding: "2px 8px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--border)", fontFamily: "monospace" }}>
-                    {cap}
-                  </span>
-                ))}
-              </div>
-            )}
-          </section>
-
-        </div>
-      </div>
-    </div>
+        <section>
+          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+            {t("userProfileModal.capabilities")}
+          </Title>
+          {capabilities.length === 0 ? (
+            <Text fz="0.85rem" c="dimmed">{t("userProfileModal.noCapabilities")}</Text>
+          ) : (
+            <Group gap="xs">
+              {capabilities.map((cap) => (
+                <Badge key={cap} size="sm" variant="outline" color="gray" ff="monospace" tt="none" fw={400}>
+                  {cap}
+                </Badge>
+              ))}
+            </Group>
+          )}
+        </section>
+      </Stack>
+    </Modal>
   );
 }

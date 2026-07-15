@@ -9,6 +9,9 @@
 // permission from the copyright holder.
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { ActionIcon } from "@mantine/core";
+import { CirclePlus, Play } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import CodeMirror from "@uiw/react-codemirror";
 import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
 import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
@@ -52,6 +55,7 @@ export function QueryBar({
   autoImpute,
   onToggleAutoImpute,
 }: QueryBarProps) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState(initialQuery ?? "MATCH (n) RETURN n LIMIT 25");
   const viewRef = useRef<EditorView | null>(null);
   const [focused, setFocused] = useState(false);
@@ -163,21 +167,25 @@ export function QueryBar({
         )}
         <CopySymbolButton text={query} className="gf-copy-query-btn" title="Copy query" />
       </div>
-      <button
+      <ActionIcon
         className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
+        variant={autoImpute ? "filled" : "subtle"}
+        aria-label={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")}
+        aria-pressed={autoImpute}
+        title={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")}
         onClick={onToggleAutoImpute}
-        title={
-          autoImpute
-            ? "Auto-impute relationships ON — click to disable"
-            : "Auto-impute relationships between visible nodes"
-        }
         style={{ marginRight: 4, alignSelf: "stretch", height: "auto", width: 38 }}
       >
-        ⊕
-      </button>
-      <button className="graph-run-btn" onClick={() => onRun(query.trim())} title="Run query (⌘↵)">
-        ▶
-      </button>
+        <CirclePlus size={16} aria-hidden />
+      </ActionIcon>
+      <ActionIcon
+        className="graph-run-btn"
+        aria-label={t("queryBar.run")}
+        title={t("queryBar.run")}
+        onClick={() => onRun(query.trim())}
+      >
+        <Play size={16} aria-hidden />
+      </ActionIcon>
     </div>
   );
 }

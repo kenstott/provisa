@@ -10,6 +10,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { Badge, Button, Group, Select, Tabs, Text, Textarea } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./GrpcPage.css";
@@ -87,6 +89,7 @@ function buildMessageTemplate(method: ProtoMethod, messages: Record<string, Prot
 }
 
 export function GrpcPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
@@ -217,83 +220,119 @@ export function GrpcPage() {
   return (
     <div className="grpc-page page">
       {/* Top bar: method selector + send */}
-      <div className="grpc-topbar">
-        <div className="grpc-topbar-left">
-          <span className="grpc-server-badge">gRPC • :50051</span>
-          <select
-            className="grpc-op-select"
+      <Group className="grpc-topbar" justify="space-between" wrap="nowrap">
+        <Group className="grpc-topbar-left" wrap="nowrap" gap="sm" style={{ flex: 1, minWidth: 0 }}>
+          <Badge
+            variant="outline"
+            color="gray"
+            radius="sm"
+            style={{ fontFamily: "monospace", fontWeight: 400, textTransform: "none", flexShrink: 0 }}
+          >
+            {t("grpcPage.serverBadge")}
+          </Badge>
+          <Select
+            aria-label={t("grpcPage.operationType")}
+            data-testid="grpc-op-select"
+            size="xs"
+            w={130}
+            allowDeselect={false}
             value={opType}
-            onChange={(e) => setOpType(e.target.value as OperationType)}
+            onChange={(v) => v && setOpType(v as OperationType)}
             disabled={parsed.methods.length === 0}
-          >
-            <option value="query">Query</option>
-            <option value="mutation">Mutation</option>
-          </select>
-          <select
-            className="grpc-method-select"
-            value={selectedMethod?.name ?? ""}
-            onChange={(e) => handleMethodChange(e.target.value)}
+            data={[
+              { value: "query", label: t("grpcPage.query") },
+              { value: "mutation", label: t("grpcPage.mutation") },
+            ]}
+          />
+          <Select
+            aria-label={t("grpcPage.method")}
+            data-testid="grpc-method-select"
+            size="xs"
+            style={{ flex: 1, minWidth: 0, maxWidth: 320, fontFamily: "monospace" }}
+            value={selectedMethod?.name ?? null}
+            onChange={(v) => v && handleMethodChange(v)}
             disabled={visibleMethods.length === 0}
-          >
-            {visibleMethods.length === 0 && <option value="">No methods</option>}
-            {visibleMethods.map((m) => (
-              <option key={m.name} value={m.name}>{m.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="grpc-topbar-right">
-          {protoError && <span className="grpc-topbar-error">{protoError}</span>}
-          <button
-            className="grpc-send-btn"
+            placeholder={visibleMethods.length === 0 ? t("grpcPage.noMethods") : undefined}
+            data={visibleMethods.map((m) => ({ value: m.name, label: m.name }))}
+          />
+        </Group>
+        <Group className="grpc-topbar-right" wrap="nowrap" gap="sm">
+          {protoError && (
+            <Text size="xs" c="red" data-testid="grpc-proto-error" style={{ maxWidth: 300 }} truncate="end">
+              {protoError}
+            </Text>
+          )}
+          <Button
+            size="xs"
+            data-testid="grpc-send-btn"
             onClick={handleRun}
             disabled={running || !selectedMethod || !roleId || !!protoError}
           >
-            {running ? "◼ Cancel" : "▶ Send"}
-          </button>
-        </div>
-      </div>
+            {running ? t("grpcPage.cancel") : t("grpcPage.send")}
+          </Button>
+        </Group>
+      </Group>
 
       {/* Main panels */}
       <div className="grpc-body">
         {/* Left: Body / Proto tabs */}
         <div className="grpc-panel grpc-panel-left">
-          <div className="grpc-tabs">
-            <button
-              className={`grpc-tab${leftTab === "body" ? " active" : ""}`}
-              onClick={() => setLeftTab("body")}
-            >
-              Body
-            </button>
-            <button
-              className={`grpc-tab${leftTab === "proto" ? " active" : ""}`}
-              onClick={() => setLeftTab("proto")}
-            >
-              .proto
-            </button>
-          </div>
+          <Tabs
+            className="grpc-tabs"
+            value={leftTab}
+            onChange={(v) => v && setLeftTab(v as LeftTab)}
+          >
+            <Tabs.List>
+              <Tabs.Tab value="body" data-testid="grpc-tab-body">
+                {t("grpcPage.body")}
+              </Tabs.Tab>
+              <Tabs.Tab value="proto" data-testid="grpc-tab-proto">
+                {t("grpcPage.proto")}
+              </Tabs.Tab>
+            </Tabs.List>
+          </Tabs>
           {leftTab === "body" ? (
-            <textarea
-              className="grpc-editor"
+            <Textarea
+              aria-label={t("grpcPage.body")}
+              data-testid="grpc-body-editor"
               value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
+              onChange={(e) => setMessageText(e.currentTarget.value)}
               spellCheck={false}
-              placeholder={selectedMethod ? "" : "Select a method to edit the request body."}
+              placeholder={selectedMethod ? "" : t("grpcPage.selectMethodPlaceholder")}
+              styles={{
+                root: { flex: 1, display: "flex", flexDirection: "column", minHeight: 0 },
+                wrapper: { flex: 1, display: "flex" },
+                input: {
+                  flex: 1,
+                  resize: "none",
+                  border: "none",
+                  fontFamily: "monospace",
+                  fontSize: "0.8rem",
+                  lineHeight: 1.55,
+                },
+              }}
             />
           ) : (
             <pre className="grpc-code">
-              {protoText || (protoError ? "" : "Loading…")}
+              {protoText || (protoError ? "" : t("grpcPage.loading"))}
             </pre>
           )}
         </div>
 
         {/* Right: Response */}
         <div className="grpc-panel grpc-panel-right">
-          <div className="grpc-tabs">
-            <button className="grpc-tab active">Response</button>
-          </div>
-          {error && <div className="grpc-error-bar">{error}</div>}
+          <Tabs className="grpc-tabs" value="response">
+            <Tabs.List>
+              <Tabs.Tab value="response">{t("grpcPage.response")}</Tabs.Tab>
+            </Tabs.List>
+          </Tabs>
+          {error && (
+            <Text className="grpc-error-bar" c="red" size="xs" data-testid="grpc-error-bar">
+              {error}
+            </Text>
+          )}
           <pre className="grpc-code grpc-response">
-            {response || (running ? "Waiting for response…" : "Send a request to see the response.")}
+            {response || (running ? t("grpcPage.waiting") : t("grpcPage.sendPrompt"))}
           </pre>
         </div>
       </div>

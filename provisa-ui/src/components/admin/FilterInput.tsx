@@ -10,6 +10,8 @@
 // permission from the copyright holder.
 
 import { X } from "lucide-react";
+import { ActionIcon, Group, TextInput } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { CopyButton } from "../CopyButton";
 
 export function FilterInput({ value, onChange, placeholder }: {
@@ -17,19 +19,30 @@ export function FilterInput({ value, onChange, placeholder }: {
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="search-wrap">
-      <input
-        type="search"
-        className="approvals-search"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <div className="filter-hover-btns">
-        <CopyButton text={value} size={11} />
-        <button type="button" title="Clear" onClick={() => onChange("")}><X size={11} /></button>
-      </div>
-    </div>
+    <TextInput
+      type="search"
+      aria-label={placeholder ?? t("filterInput.filter")}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      data-testid="filter-input"
+      rightSection={
+        <Group gap={2} wrap="nowrap">
+          <CopyButton text={value} size={11} />
+          <ActionIcon
+            type="button"
+            variant="transparent"
+            aria-label={t("filterInput.clear")}
+            data-testid="filter-input-clear"
+            onClick={() => onChange("")}
+          >
+            <X size={11} />
+          </ActionIcon>
+        </Group>
+      }
+      rightSectionWidth={54}
+    />
   );
 }

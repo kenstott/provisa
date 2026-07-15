@@ -9,6 +9,18 @@
 // permission from the copyright holder.
 
 import React from "react";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Badge,
+  Checkbox,
+  Group,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  NumberInput,
+} from "@mantine/core";
 import { Trash2, Pencil, Check, X, ArrowLeftRight } from "lucide-react";
 import type { Relationship, RegisteredTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
@@ -51,68 +63,81 @@ export function RelationshipRow({
   normalizeDomain,
   domainsEnabled,
 }: RelationshipRowProps) {
+  const { t } = useTranslation();
+
+  const targetLabel = (() => {
+    if (r.targetFunctionName) return `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`;
+    const tDomain = domainsEnabled ? tableDomainById[r.targetTableId!] : undefined;
+    const sDomain = domainsEnabled ? normalizeDomain(r.sourceDomainId ?? "") : undefined;
+    return tDomain && tDomain !== sDomain
+      ? `${tDomain}.${r.targetTableName}.${r.targetColumn}`
+      : `${r.targetTableName}.${r.targetColumn}`;
+  })();
+
   return (
     <React.Fragment>
       <tr
         onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        aria-label={t("relationshipRow.toggleDetails")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
         style={{
           cursor: "pointer",
           background: isExpanded ? "var(--surface)" : undefined,
         }}
       >
-        {domainsEnabled && <td style={{ whiteSpace: "nowrap" }}>{r.sourceDomainId || "—"}</td>}
+        {domainsEnabled && (
+          <td style={{ whiteSpace: "nowrap" }}>{r.sourceDomainId || t("relationshipRow.none")}</td>
+        )}
         <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <Group gap="0.4rem" wrap="nowrap">
             {r.autoSuggested && (
-              <span
-                title="Auto-tracked from FK constraint"
-                style={{
-                  fontSize: "0.65rem",
-                  fontWeight: 600,
-                  padding: "1px 5px",
-                  borderRadius: 3,
-                  background: "var(--text-muted)",
-                  color: "var(--bg)",
-                  letterSpacing: "0.03em",
-                  flexShrink: 0,
-                }}
+              <Badge
+                title={t("relationshipRow.autoTrackedTitle")}
+                size="xs"
+                color="gray"
+                variant="filled"
+                style={{ flexShrink: 0 }}
               >
-                FK
-              </span>
+                {t("relationshipRow.fkBadge")}
+              </Badge>
             )}
             <span>{`${r.sourceTableName}.${r.sourceColumn}`}</span>
-          </div>
+          </Group>
         </td>
-        <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
-          {r.targetFunctionName
-            ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
-            : (() => {
-                const tDomain = domainsEnabled ? tableDomainById[r.targetTableId!] : undefined;
-                const sDomain = domainsEnabled ? normalizeDomain(r.sourceDomainId ?? "") : undefined;
-                return tDomain && tDomain !== sDomain
-                  ? `${tDomain}.${r.targetTableName}.${r.targetColumn}`
-                  : `${r.targetTableName}.${r.targetColumn}`;
-              })()}
-        </td>
+        <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>{targetLabel}</td>
         <td>
           <div style={{ fontSize: "0.8rem", lineHeight: 1.4 }}>
             <div>
-              <span style={{ color: "var(--text-muted)" }}>GQL:</span>{" "}
-              <code>{r.graphqlAlias ?? "—"}</code>
+              <Text span c="dimmed">
+                {t("relationshipRow.gqlLabel")}
+              </Text>{" "}
+              <code>{r.graphqlAlias ?? t("relationshipRow.none")}</code>
             </div>
             <div>
-              <span style={{ color: "var(--text-muted)" }}>CQL:</span>{" "}
+              <Text span c="dimmed">
+                {t("relationshipRow.cqlLabel")}
+              </Text>{" "}
               <code>
                 {r.alias ?? (
-                  <em style={{ color: "var(--text-muted)" }}>{r.computedCypherAlias ?? "—"}</em>
+                  <Text span c="dimmed" fs="italic">
+                    {r.computedCypherAlias ?? t("relationshipRow.none")}
+                  </Text>
                 )}
               </code>
             </div>
           </div>
         </td>
         <td>{r.cardinality}</td>
-        <td>{r.materialize ? "Yes" : "No"}</td>
-        <td>{r.materialize ? r.refreshInterval : "—"}</td>
+        <td>{r.materialize ? t("relationshipRow.yes") : t("relationshipRow.no")}</td>
+        <td>{r.materialize ? r.refreshInterval : t("relationshipRow.none")}</td>
       </tr>
       {isExpanded && (
         <tr>
@@ -125,7 +150,7 @@ export function RelationshipRow({
             }}
           >
             {!editingRel ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <Stack gap="sm">
                 <dl
                   style={{
                     display: "grid",
@@ -136,435 +161,352 @@ export function RelationshipRow({
                   }}
                 >
                   <dt style={{ color: "var(--text-muted)" }}>
-                    <strong>Source</strong>
+                    <strong>{t("relationshipRow.source")}</strong>
                   </dt>
                   <dd style={{ color: "var(--text)", margin: 0 }}>
                     {`${r.sourceTableName}.${r.sourceColumn}`}
                   </dd>
                   <dt style={{ color: "var(--text-muted)" }}>
-                    <strong>Target</strong>
+                    <strong>{t("relationshipRow.target")}</strong>
+                  </dt>
+                  <dd style={{ color: "var(--text)", margin: 0 }}>{targetLabel}</dd>
+                  <dt style={{ color: "var(--text-muted)" }}>
+                    <strong>{t("relationshipRow.gqlAlias")}</strong>
                   </dt>
                   <dd style={{ color: "var(--text)", margin: 0 }}>
-                    {r.targetFunctionName
-                      ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
-                      : (() => {
-                          const tDomain = domainsEnabled ? tableDomainById[r.targetTableId!] : undefined;
-                          const sDomain = domainsEnabled ? normalizeDomain(r.sourceDomainId ?? "") : undefined;
-                          return tDomain && tDomain !== sDomain
-                            ? `${tDomain}.${r.targetTableName}.${r.targetColumn}`
-                            : `${r.targetTableName}.${r.targetColumn}`;
-                        })()}
+                    <code>{r.graphqlAlias ?? t("relationshipRow.none")}</code>
                   </dd>
                   <dt style={{ color: "var(--text-muted)" }}>
-                    <strong>GQL Alias</strong>
-                  </dt>
-                  <dd style={{ color: "var(--text)", margin: 0 }}>
-                    <code>{r.graphqlAlias ?? "—"}</code>
-                  </dd>
-                  <dt style={{ color: "var(--text-muted)" }}>
-                    <strong>CQL Alias</strong>
+                    <strong>{t("relationshipRow.cqlAlias")}</strong>
                   </dt>
                   <dd style={{ color: "var(--text)", margin: 0 }}>
                     <code>
                       {r.alias ?? (
-                        <em style={{ color: "var(--text-muted)" }}>{r.computedCypherAlias ?? "—"}</em>
+                        <Text span c="dimmed" fs="italic">
+                          {r.computedCypherAlias ?? t("relationshipRow.none")}
+                        </Text>
                       )}
                     </code>
                   </dd>
                   <dt style={{ color: "var(--text-muted)" }}>
-                    <strong>Cardinality</strong>
+                    <strong>{t("relationshipRow.cardinality")}</strong>
                   </dt>
                   <dd style={{ color: "var(--text)", margin: 0 }}>{r.cardinality}</dd>
                   <dt style={{ color: "var(--text-muted)" }}>
-                    <strong>Materialize</strong>
+                    <strong>{t("relationshipRow.materialize")}</strong>
                   </dt>
-                  <dd style={{ color: "var(--text)", margin: 0 }}>{r.materialize ? "Yes" : "No"}</dd>
+                  <dd style={{ color: "var(--text)", margin: 0 }}>
+                    {r.materialize ? t("relationshipRow.yes") : t("relationshipRow.no")}
+                  </dd>
                   {r.materialize && (
                     <>
                       <dt style={{ color: "var(--text-muted)" }}>
-                        <strong>Refresh Interval (s)</strong>
+                        <strong>{t("relationshipRow.refreshIntervalSeconds")}</strong>
                       </dt>
-                      <dd style={{ color: "var(--text)", margin: 0 }}>{r.refreshInterval ?? "—"}</dd>
+                      <dd style={{ color: "var(--text)", margin: 0 }}>
+                        {r.refreshInterval ?? t("relationshipRow.none")}
+                      </dd>
                     </>
                   )}
                   <dt style={{ color: "var(--text-muted)" }}>
-                    <strong>Cypher Graph</strong>
+                    <strong>{t("relationshipRow.cypherGraph")}</strong>
                   </dt>
                   <dd style={{ color: "var(--text)", margin: 0 }}>
                     {r.disableCypher ? (
-                      <em style={{ color: "var(--text-muted)" }}>excluded</em>
+                      <Text span c="dimmed" fs="italic">
+                        {t("relationshipRow.excluded")}
+                      </Text>
                     ) : (
-                      "included"
+                      t("relationshipRow.included")
                     )}
                   </dd>
                 </dl>
                 {canManage && (
-                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                    <button
-                      className="btn-icon"
-                      title="Edit"
+                  <Group gap="sm" mt="0.25rem">
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={t("relationshipRow.edit")}
+                      title={t("relationshipRow.edit")}
                       onClick={(e) => {
                         e.stopPropagation();
                         onStartEdit();
                       }}
                     >
                       <Pencil size={14} />
-                    </button>
-                    <button
-                      className="btn-icon"
-                      title="Generate reverse relationship"
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={t("relationshipRow.generateReverse")}
+                      title={t("relationshipRow.generateReverse")}
                       onClick={(e) => {
                         e.stopPropagation();
                         onReverse();
                       }}
                     >
                       <ArrowLeftRight size={14} />
-                    </button>
-                    <button
-                      className="btn-icon-danger"
-                      title="Delete"
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      aria-label={t("relationshipRow.delete")}
+                      title={t("relationshipRow.delete")}
                       onClick={(e) => {
                         e.stopPropagation();
                         onDelete();
                       }}
                     >
                       <Trash2 size={14} />
-                    </button>
-                  </div>
+                    </ActionIcon>
+                  </Group>
                 )}
-              </div>
+              </Stack>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                <div className="form-row">
-                  <label>
-                    CQL Alias (UPPER_SNAKE)
-                    <input
-                      value={editingRel.alias}
-                      onChange={(e) => setEditingRel({ ...editingRel, alias: e.target.value })}
-                      placeholder={r.computedCypherAlias ?? "PLACED_BY"}
-                    />
-                  </label>
-                  <label>
-                    GQL Alias (camelCase)
-                    <input
-                      value={editingRel.graphqlAlias}
-                      onChange={(e) => setEditingRel({ ...editingRel, graphqlAlias: e.target.value })}
-                      placeholder={r.graphqlAlias ?? ""}
-                    />
-                  </label>
-                </div>
+              <Stack gap="0.75rem">
+                <Group gap="sm" wrap="wrap">
+                  <TextInput
+                    label={t("relationshipRow.aliasLabel")}
+                    value={editingRel.alias}
+                    onChange={(e) => setEditingRel({ ...editingRel, alias: e.target.value })}
+                    placeholder={r.computedCypherAlias ?? "PLACED_BY"}
+                  />
+                  <TextInput
+                    label={t("relationshipRow.graphqlAliasLabel")}
+                    value={editingRel.graphqlAlias}
+                    onChange={(e) => setEditingRel({ ...editingRel, graphqlAlias: e.target.value })}
+                    placeholder={r.graphqlAlias ?? ""}
+                  />
+                </Group>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
                   {/* Source panel */}
                   {(() => {
                     const uniqueDomains = [
-                      ...new Set(tables.map((t) => normalizeDomain(t.domainId)).filter(Boolean)),
+                      ...new Set(tables.map((t2) => normalizeDomain(t2.domainId)).filter(Boolean)),
                     ].sort();
                     const filteredSrcTables = editingRel.sourceDomain
-                      ? tables.filter((t) => normalizeDomain(t.domainId) === editingRel.sourceDomain)
+                      ? tables.filter((t2) => normalizeDomain(t2.domainId) === editingRel.sourceDomain)
                       : tables;
                     return (
-                      <div
+                      <Stack
+                        gap="sm"
                         style={{
                           border: "1px solid var(--border)",
                           borderRadius: "4px",
                           padding: "0.75rem",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "0.5rem",
                         }}
                       >
-                        <strong
-                          style={{
-                            color: "var(--text-muted)",
-                            fontSize: "0.75rem",
-                            textTransform: "uppercase" as const,
-                          }}
-                        >
-                          Source
-                        </strong>
+                        <Text fw={700} c="dimmed" fz="0.75rem" tt="uppercase">
+                          {t("relationshipRow.source")}
+                        </Text>
                         {domainsEnabled && (
-                          <label>
-                            Domain
-                            <select
-                              value={editingRel.sourceDomain}
-                              onChange={(e) =>
-                                setEditingRel({
-                                  ...editingRel,
-                                  sourceDomain: e.target.value,
-                                  sourceTableId: "",
-                                })
-                              }
-                            >
-                              <option value="">All</option>
-                              {uniqueDomains.map((d) => (
-                                <option key={d} value={d}>
-                                  {d}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                          <Select
+                            label={t("relationshipRow.domainLabel")}
+                            data={[
+                              { value: "", label: t("relationshipRow.domainAll") },
+                              ...uniqueDomains.map((d) => ({ value: d, label: d })),
+                            ]}
+                            value={editingRel.sourceDomain}
+                            onChange={(v) =>
+                              setEditingRel({
+                                ...editingRel,
+                                sourceDomain: v ?? "",
+                                sourceTableId: "",
+                              })
+                            }
+                            allowDeselect={false}
+                          />
                         )}
-                        <label>
-                          Table
-                          <select
-                            value={editingRel.sourceTableId}
-                            onChange={(e) =>
-                              setEditingRel({ ...editingRel, sourceTableId: e.target.value })
-                            }
-                          >
-                            <option value="">Select...</option>
-                            {filteredSrcTables.map((t) => (
-                              <option key={t.id} value={t.tableName}>
-                                {t.tableName}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label>
-                          Column
-                          <select
-                            value={editingRel.sourceColumn}
-                            onChange={(e) =>
-                              setEditingRel({ ...editingRel, sourceColumn: e.target.value })
-                            }
-                          >
-                            <option value="">Select...</option>
-                            {(tables.find((t) => t.tableName === editingRel.sourceTableId)?.columns ?? []).map((c) => (
-                              <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
+                        <Select
+                          label={t("relationshipRow.tableLabel")}
+                          data={[
+                            { value: "", label: t("relationshipRow.selectPlaceholder") },
+                            ...filteredSrcTables.map((t2) => ({ value: t2.tableName, label: t2.tableName })),
+                          ]}
+                          value={editingRel.sourceTableId}
+                          onChange={(v) => setEditingRel({ ...editingRel, sourceTableId: v ?? "" })}
+                          allowDeselect={false}
+                        />
+                        <Select
+                          label={t("relationshipRow.columnLabel")}
+                          data={[
+                            { value: "", label: t("relationshipRow.selectPlaceholder") },
+                            ...(tables.find((t2) => t2.tableName === editingRel.sourceTableId)?.columns ?? []).map(
+                              (c) => ({ value: c.columnName, label: c.columnName }),
+                            ),
+                          ]}
+                          value={editingRel.sourceColumn}
+                          onChange={(v) => setEditingRel({ ...editingRel, sourceColumn: v ?? "" })}
+                          allowDeselect={false}
+                        />
+                      </Stack>
                     );
                   })()}
                   {/* Target panel */}
-                  <div
+                  <Stack
+                    gap="sm"
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: "4px",
                       padding: "0.75rem",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.5rem",
                     }}
                   >
-                    <strong
-                      style={{
-                        color: "var(--text-muted)",
-                        fontSize: "0.75rem",
-                        textTransform: "uppercase" as const,
-                      }}
-                    >
-                      Target
-                    </strong>
-                    <label>
-                      Type
-                      <select
-                        value={editingRel.targetType}
-                        onChange={(e) =>
-                          setEditingRel({
-                            ...editingRel,
-                            targetType: e.target.value as "table" | "function",
-                            targetTableId: "",
-                            targetColumn: "",
-                            targetFunctionName: "",
-                            functionArg: "",
-                          })
-                        }
-                      >
-                        <option value="table">Table</option>
-                        <option value="function">Function (computed)</option>
-                      </select>
-                    </label>
+                    <Text fw={700} c="dimmed" fz="0.75rem" tt="uppercase">
+                      {t("relationshipRow.target")}
+                    </Text>
+                    <Select
+                      label={t("relationshipRow.targetTypeLabel")}
+                      data={[
+                        { value: "table", label: t("relationshipRow.targetTypeTable") },
+                        { value: "function", label: t("relationshipRow.targetTypeFunction") },
+                      ]}
+                      value={editingRel.targetType}
+                      onChange={(v) =>
+                        setEditingRel({
+                          ...editingRel,
+                          targetType: (v ?? "table") as "table" | "function",
+                          targetTableId: "",
+                          targetColumn: "",
+                          targetFunctionName: "",
+                          functionArg: "",
+                        })
+                      }
+                      allowDeselect={false}
+                    />
                     {editingRel.targetType === "table" ? (
                       (() => {
                         const uniqueDomains = [
-                          ...new Set(tables.map((t) => normalizeDomain(t.domainId)).filter(Boolean)),
+                          ...new Set(tables.map((t2) => normalizeDomain(t2.domainId)).filter(Boolean)),
                         ].sort();
                         const filteredTgtTables = editingRel.targetDomain
                           ? tables.filter(
-                              (t) => normalizeDomain(t.domainId) === editingRel.targetDomain,
+                              (t2) => normalizeDomain(t2.domainId) === editingRel.targetDomain,
                             )
                           : tables;
                         return (
                           <>
                             {domainsEnabled && (
-                              <label>
-                                Domain
-                                <select
-                                  value={editingRel.targetDomain}
-                                  onChange={(e) =>
-                                    setEditingRel({
-                                      ...editingRel,
-                                      targetDomain: e.target.value,
-                                      targetTableId: "",
-                                    })
-                                  }
-                                >
-                                  <option value="">All</option>
-                                  {uniqueDomains.map((d) => (
-                                    <option key={d} value={d}>
-                                      {d}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
+                              <Select
+                                label={t("relationshipRow.domainLabel")}
+                                data={[
+                                  { value: "", label: t("relationshipRow.domainAll") },
+                                  ...uniqueDomains.map((d) => ({ value: d, label: d })),
+                                ]}
+                                value={editingRel.targetDomain}
+                                onChange={(v) =>
+                                  setEditingRel({
+                                    ...editingRel,
+                                    targetDomain: v ?? "",
+                                    targetTableId: "",
+                                  })
+                                }
+                                allowDeselect={false}
+                              />
                             )}
-                            <label>
-                              Table
-                              <select
-                                value={editingRel.targetTableId}
-                                onChange={(e) =>
-                                  setEditingRel({ ...editingRel, targetTableId: e.target.value })
-                                }
-                              >
-                                <option value="">Select...</option>
-                                {filteredTgtTables.map((t) => (
-                                  <option key={t.id} value={t.tableName}>
-                                    {t.tableName}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              Column
-                              <select
-                                value={editingRel.targetColumn}
-                                onChange={(e) =>
-                                  setEditingRel({ ...editingRel, targetColumn: e.target.value })
-                                }
-                              >
-                                <option value="">Select...</option>
-                                {(tables.find((t) => t.tableName === editingRel.targetTableId)?.columns ?? []).map((c) => (
-                                  <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
-                                ))}
-                              </select>
-                            </label>
+                            <Select
+                              label={t("relationshipRow.tableLabel")}
+                              data={[
+                                { value: "", label: t("relationshipRow.selectPlaceholder") },
+                                ...filteredTgtTables.map((t2) => ({ value: t2.tableName, label: t2.tableName })),
+                              ]}
+                              value={editingRel.targetTableId}
+                              onChange={(v) => setEditingRel({ ...editingRel, targetTableId: v ?? "" })}
+                              allowDeselect={false}
+                            />
+                            <Select
+                              label={t("relationshipRow.columnLabel")}
+                              data={[
+                                { value: "", label: t("relationshipRow.selectPlaceholder") },
+                                ...(
+                                  tables.find((t2) => t2.tableName === editingRel.targetTableId)?.columns ?? []
+                                ).map((c) => ({ value: c.columnName, label: c.columnName })),
+                              ]}
+                              value={editingRel.targetColumn}
+                              onChange={(v) => setEditingRel({ ...editingRel, targetColumn: v ?? "" })}
+                              allowDeselect={false}
+                            />
                           </>
                         );
                       })()
                     ) : (
                       <>
-                        <label>
-                          Function
-                          <select
-                            value={editingRel.targetFunctionName}
-                            onChange={(e) =>
-                              setEditingRel({ ...editingRel, targetFunctionName: e.target.value })
-                            }
-                          >
-                            <option value="">Select...</option>
-                            {functions.map((f) => (
-                              <option key={f.name} value={f.name}>
-                                {f.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label>
-                          Function Arg (receives source column)
-                          <input
-                            value={editingRel.functionArg}
-                            onChange={(e) =>
-                              setEditingRel({ ...editingRel, functionArg: e.target.value })
-                            }
-                            placeholder="arg name"
-                          />
-                        </label>
+                        <Select
+                          label={t("relationshipRow.functionLabel")}
+                          data={[
+                            { value: "", label: t("relationshipRow.selectPlaceholder") },
+                            ...functions.map((f) => ({ value: f.name, label: f.name })),
+                          ]}
+                          value={editingRel.targetFunctionName}
+                          onChange={(v) => setEditingRel({ ...editingRel, targetFunctionName: v ?? "" })}
+                          allowDeselect={false}
+                        />
+                        <TextInput
+                          label={t("relationshipRow.functionArgLabel")}
+                          value={editingRel.functionArg}
+                          onChange={(e) => setEditingRel({ ...editingRel, functionArg: e.target.value })}
+                          placeholder={t("relationshipRow.functionArgPlaceholder")}
+                        />
                       </>
                     )}
-                  </div>
+                  </Stack>
                 </div>
-                <div className="form-row">
+                <Group gap="sm" align="flex-end" wrap="wrap">
                   {editingRel.targetType === "table" && (
-                    <label style={{ flex: "0 0 auto" }}>
-                      Cardinality
-                      <select
-                        value={editingRel.cardinality}
-                        onChange={(e) =>
-                          setEditingRel({ ...editingRel, cardinality: e.target.value })
-                        }
-                        style={{ width: `${editingRel.cardinality.length + 4}ch` }}
-                      >
-                        <option value="many-to-one">many-to-one</option>
-                        <option value="one-to-many">one-to-many</option>
-                      </select>
-                    </label>
+                    <Select
+                      label={t("relationshipRow.cardinality")}
+                      data={[
+                        { value: "many-to-one", label: t("relationshipRow.cardinalityManyToOne") },
+                        { value: "one-to-many", label: t("relationshipRow.cardinalityOneToMany") },
+                      ]}
+                      value={editingRel.cardinality}
+                      onChange={(v) => setEditingRel({ ...editingRel, cardinality: v ?? "many-to-one" })}
+                      allowDeselect={false}
+                      style={{ width: `${editingRel.cardinality.length + 6}ch` }}
+                    />
                   )}
-                  <label
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      whiteSpace: "nowrap",
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={editingRel.materialize}
-                      onChange={(e) => setEditingRel({ ...editingRel, materialize: e.target.checked })}
-                      style={{ width: "auto", padding: 0 }}
-                    />
-                    Materialize
-                  </label>
-                  <label
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      whiteSpace: "nowrap",
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={editingRel.disableCypher}
-                      onChange={(e) =>
-                        setEditingRel({ ...editingRel, disableCypher: e.target.checked })
-                      }
-                      style={{ width: "auto", padding: 0 }}
-                    />
-                    Exclude from Cypher
-                  </label>
+                  <Checkbox
+                    label={t("relationshipRow.materializeCheckbox")}
+                    checked={editingRel.materialize}
+                    onChange={(e) => setEditingRel({ ...editingRel, materialize: e.currentTarget.checked })}
+                  />
+                  <Checkbox
+                    label={t("relationshipRow.excludeFromCypher")}
+                    checked={editingRel.disableCypher}
+                    onChange={(e) =>
+                      setEditingRel({ ...editingRel, disableCypher: e.currentTarget.checked })
+                    }
+                  />
                   {editingRel.materialize && (
-                    <label>
-                      Refresh Interval (s)
-                      <input
-                        type="number"
-                        value={editingRel.refreshInterval}
-                        onChange={(e) =>
-                          setEditingRel({ ...editingRel, refreshInterval: e.target.value })
-                        }
-                      />
-                    </label>
+                    <NumberInput
+                      label={t("relationshipRow.refreshIntervalSeconds")}
+                      value={editingRel.refreshInterval}
+                      onChange={(v) => setEditingRel({ ...editingRel, refreshInterval: String(v) })}
+                    />
                   )}
-                </div>
+                </Group>
                 {editingRel.targetType === "table" && editingRel.cardinality === "many-to-one" && (
-                  <span
-                    style={{
-                      color: "var(--warning, #b45309)",
-                      fontSize: "0.78rem",
-                      display: "block",
-                    }}
-                  >
-                    Warning: if this join returns more than one row per parent, only the first value will be used.
-                  </span>
+                  <Text c="orange.7" fz="0.78rem">
+                    {t("relationshipRow.cardinalityWarning")}
+                  </Text>
                 )}
-                <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                  <button className="btn-icon" title="Cancel" onClick={() => setEditingRel(null)}>
+                <Group gap="sm" justify="flex-end">
+                  <ActionIcon
+                    variant="subtle"
+                    aria-label={t("relationshipRow.cancel")}
+                    title={t("relationshipRow.cancel")}
+                    onClick={() => setEditingRel(null)}
+                  >
                     <X size={14} />
-                  </button>
-                  <button
-                    className="btn-icon-primary"
-                    title="Save"
+                  </ActionIcon>
+                  <ActionIcon
+                    variant="filled"
+                    aria-label={t("relationshipRow.save")}
+                    title={t("relationshipRow.save")}
                     onClick={onEditSave}
                     disabled={!!saving}
                   >
                     <Check size={14} />
-                  </button>
-                </div>
-              </div>
+                  </ActionIcon>
+                </Group>
+              </Stack>
             )}
           </td>
         </tr>

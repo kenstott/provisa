@@ -1,0 +1,29 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "Double-click to rename",
+    "closeTab": "Close {{title}}",
+    "newTab": "New query tab",
+    "nlPlaceholder": "Ask in plain English — generates SQL…",
+    "clear": "Clear",
+    "generate": "Generate SQL",
+    "generating": "Generating…",
+    "generatingSql": "Generating SQL…",
+    "prettify": "Prettify SQL",
+    "copySql": "Copy SQL",
+    "copied": "Copied",
+    "copy": "Copy",
+    "run": "Sample >",
+    "running": "Running…",
+    "saveViewTitle": "Save current SQL as the definition for view \"{{tableName}}\"",
+    "saving": "Saving…",
+    "updateView": "Update \"{{tableName}}\"",
+    "sampleModeFirst": "First",
+    "sampleModeLast": "Last",
+    "sampleModeRandom": "Random",
+    "sampleModeLabel": "Sample mode",
+    "rowCountLabel": "Row count",
+    "roleLabel": "Role",
+    "createView": "+ View",
+    "requestView": "Request View"
+  }
+}

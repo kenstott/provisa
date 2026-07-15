@@ -1,0 +1,38 @@
+/* Design-token bridge (REQ-1010, REQ-1011).
+ *
+ * The legacy dark palette lives in App.css `:root` and remains the default.
+ * Mantine sets `data-mantine-color-scheme` on <html>; this file supplies the
+ * LIGHT palette so the ~648 existing `var(--token)` references restyle for
+ * free when the user toggles schemes. All light values are validated to
+ * WCAG 2.1 AA contrast against their paired surfaces (REQ-1013):
+ *   --text  #1a1d27 on --bg #ffffff       -> 16.1:1
+ *   --text-muted #55596b on --surface #fff -> 4.9:1
+ *   white on --primary #4f46e5            -> 6.3:1
+ */
+html[data-mantine-color-scheme="light"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-alt: #f1f3f9;
+  --border: #d5d8e2;
+  --text: #1a1d27;
+  --text-muted: #55596b;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --destructive: #dc2626;
+  --approve: #16a34a;
+}
+
+/* Keep the explicit dark block in sync with App.css `:root` so the tokens are
+ * correct even once the scheme attribute is present on first paint. */
+html[data-mantine-color-scheme="dark"] {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface-alt: #20243a;
+  --border: #2a2d37;
+  --text: #e1e4ed;
+  --text-muted: #8b8fa3;
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  --destructive: #ef4444;
+  --approve: #22c55e;
+}

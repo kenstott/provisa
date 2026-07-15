@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { Tooltip, TextInput } from "@mantine/core";
 import { labelColor } from "./graph-model";
 import { DatabaseIcon, HistoryIcon, StarIcon, ExportIcon } from "./GraphIcons";
 import type { RelLineOverride } from "./graph-model";
@@ -103,6 +105,7 @@ export function Sidebar({
   totalRelCount = null,
   labelCounts = {},
 }: SidebarProps) {
+  const { t } = useTranslation();
   const [section, setSection] = useState<"db" | "history" | "favorites">("db");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [relContextMenu, setRelContextMenu] = useState<RelContextMenuState | null>(null);
@@ -194,36 +197,58 @@ export function Sidebar({
 
   return (
     <aside className="graph-sidebar" style={{ width }}>
-      <div className="graph-sidebar-tabs">
-        <button
-          className={`graph-sidebar-tab ${section === "db" ? "active" : ""}`}
-          onClick={() => setSection("db")}
-          title="Database"
-        >
-          <DatabaseIcon size={15} />
-        </button>
-        <button
-          className={`graph-sidebar-tab ${section === "history" ? "active" : ""}`}
-          onClick={() => setSection("history")}
-          title="History"
-        >
-          <HistoryIcon size={15} />
-        </button>
-        <button
-          className={`graph-sidebar-tab ${section === "favorites" ? "active" : ""}`}
-          onClick={() => setSection("favorites")}
-          title="Favorites"
-        >
-          <StarIcon size={15} />
-        </button>
-        {onNeo4jExport && (
+      <div className="graph-sidebar-tabs" role="tablist">
+        <Tooltip label={t("graphSidebar.tabDatabase")} withinPortal transitionProps={{ duration: 0 }}>
           <button
-            className="graph-sidebar-tab"
-            onClick={onNeo4jExport}
-            title="Export to Neo4j"
+            type="button"
+            className={`graph-sidebar-tab ${section === "db" ? "active" : ""}`}
+            onClick={() => setSection("db")}
+            aria-label={t("graphSidebar.tabDatabase")}
+            aria-selected={section === "db"}
+            role="tab"
+            data-testid="graph-sidebar-tab-db"
           >
-            <ExportIcon size={15} />
+            <DatabaseIcon size={15} />
           </button>
+        </Tooltip>
+        <Tooltip label={t("graphSidebar.tabHistory")} withinPortal transitionProps={{ duration: 0 }}>
+          <button
+            type="button"
+            className={`graph-sidebar-tab ${section === "history" ? "active" : ""}`}
+            onClick={() => setSection("history")}
+            aria-label={t("graphSidebar.tabHistory")}
+            aria-selected={section === "history"}
+            role="tab"
+            data-testid="graph-sidebar-tab-history"
+          >
+            <HistoryIcon size={15} />
+          </button>
+        </Tooltip>
+        <Tooltip label={t("graphSidebar.tabFavorites")} withinPortal transitionProps={{ duration: 0 }}>
+          <button
+            type="button"
+            className={`graph-sidebar-tab ${section === "favorites" ? "active" : ""}`}
+            onClick={() => setSection("favorites")}
+            aria-label={t("graphSidebar.tabFavorites")}
+            aria-selected={section === "favorites"}
+            role="tab"
+            data-testid="graph-sidebar-tab-favorites"
+          >
+            <StarIcon size={15} />
+          </button>
+        </Tooltip>
+        {onNeo4jExport && (
+          <Tooltip label={t("graphSidebar.tabExport")} withinPortal transitionProps={{ duration: 0 }}>
+            <button
+              type="button"
+              className="graph-sidebar-tab"
+              onClick={onNeo4jExport}
+              aria-label={t("graphSidebar.tabExport")}
+              data-testid="graph-sidebar-tab-export"
+            >
+              <ExportIcon size={15} />
+            </button>
+          </Tooltip>
         )}
       </div>
 
@@ -239,13 +264,14 @@ export function Sidebar({
                 ].sort();
                 return domainLabels.length > 0 ? (
                   <div className="graph-schema-section">
-                    <div className="graph-schema-heading">Domain Labels</div>
+                    <div className="graph-schema-heading">{t("graphSidebar.domainLabels")}</div>
                     <div className="graph-label-list">
                       {domainLabels.map((lbl) => {
                         const color = colorOverrides[lbl] ?? labelColor(lbl);
                         return (
                           <div key={lbl} className="graph-label-item">
-                            <span
+                            <button
+                              type="button"
                               className={`graph-label-pill${highlightedLabel === lbl ? " graph-label-pill--highlight" : ""}`}
                               style={{ background: color }}
                               draggable
@@ -278,7 +304,7 @@ export function Sidebar({
                               title={`MATCH (n:${lbl}) RETURN n LIMIT 25`}
                             >
                               {lbl}
-                            </span>
+                            </button>
                           </div>
                         );
                       })}
@@ -287,32 +313,37 @@ export function Sidebar({
                 ) : null;
               })()}
             <div className="graph-schema-section">
-              <div
+              <button
+                type="button"
                 className="graph-schema-heading graph-schema-heading--collapsible"
                 onClick={() => setNodeLabelsCollapsed((c) => !c)}
+                aria-expanded={!nodeLabelsCollapsed}
+                data-testid="graph-sidebar-node-labels-toggle"
               >
-                Node Labels
+                {t("graphSidebar.nodeLabels")}
                 <span
                   className={`graph-schema-chevron ${nodeLabelsCollapsed ? "graph-schema-chevron--collapsed" : ""}`}
+                  aria-hidden="true"
                 >
                   ▾
                 </span>
-              </div>
+              </button>
               {!nodeLabelsCollapsed &&
                 (schemaLoading ? (
-                  <div className="graph-schema-empty">Loading…</div>
+                  <div className="graph-schema-empty">{t("graphSidebar.loading")}</div>
                 ) : schemaNodeLabels.length === 0 ? (
-                  <div className="graph-schema-empty">No labels found</div>
+                  <div className="graph-schema-empty">{t("graphSidebar.noLabelsFound")}</div>
                 ) : (
                   <div className="graph-label-list">
                     <div className="graph-label-item">
-                      <span
+                      <button
+                        type="button"
                         className="graph-label-pill graph-label-pill--all"
                         onClick={() => onLabelClick("*")}
-                        title="MATCH (n) RETURN n LIMIT 25"
+                        title={t("graphSidebar.matchAllNodes")}
                       >
                         *({totalNodeCount !== null ? totalNodeCount.toLocaleString() : schemaNodeLabels.length})
-                      </span>
+                      </button>
                     </div>
                     {(() => {
                       const sorted = [...schemaNodeLabels]
@@ -329,7 +360,8 @@ export function Sidebar({
                         const color = colorOverrides[compoundLabel] ?? labelColor(compoundLabel);
                         return (
                           <div key={compoundLabel} className="graph-label-item">
-                            <span
+                            <button
+                              type="button"
                               className={`graph-label-pill${highlightedLabel === compoundLabel ? " graph-label-pill--highlight" : ""}`}
                               style={{ background: color }}
                               draggable
@@ -346,7 +378,7 @@ export function Sidebar({
                                   ({labelCounts[compoundLabel].toLocaleString()})
                                 </span>
                               )}
-                            </span>
+                            </button>
                           </div>
                         );
                       });
@@ -368,8 +400,10 @@ export function Sidebar({
                           }}
                         >
                           <button
+                            type="button"
                             onClick={() => setNodeLabelsPage(0)}
                             disabled={nodeLabelsPage === 0}
+                            aria-label={t("graphSidebar.firstPage")}
                             style={{
                               background: "none",
                               border: "none",
@@ -382,8 +416,10 @@ export function Sidebar({
                             «
                           </button>
                           <button
+                            type="button"
                             onClick={() => setNodeLabelsPage((p) => p - 1)}
                             disabled={nodeLabelsPage === 0}
+                            aria-label={t("graphSidebar.previousPage")}
                             style={{
                               background: "none",
                               border: "none",
@@ -396,11 +432,13 @@ export function Sidebar({
                             ‹
                           </button>
                           <span>
-                            {nodeLabelsPage + 1}/{totalPages}
+                            {t("graphSidebar.pageIndicator", { page: nodeLabelsPage + 1, total: totalPages })}
                           </span>
                           <button
+                            type="button"
                             onClick={() => setNodeLabelsPage((p) => p + 1)}
                             disabled={nodeLabelsPage >= totalPages - 1}
+                            aria-label={t("graphSidebar.nextPage")}
                             style={{
                               background: "none",
                               border: "none",
@@ -413,8 +451,10 @@ export function Sidebar({
                             ›
                           </button>
                           <button
+                            type="button"
                             onClick={() => setNodeLabelsPage(totalPages - 1)}
                             disabled={nodeLabelsPage >= totalPages - 1}
+                            aria-label={t("graphSidebar.lastPage")}
                             style={{
                               background: "none",
                               border: "none",
@@ -434,22 +474,26 @@ export function Sidebar({
             </div>
 
             <div className="graph-schema-section">
-              <div
+              <button
+                type="button"
                 className="graph-schema-heading graph-schema-heading--collapsible"
                 onClick={() => setRelTypesCollapsed((c) => !c)}
+                aria-expanded={!relTypesCollapsed}
+                data-testid="graph-sidebar-rel-types-toggle"
               >
-                Relationship Types
+                {t("graphSidebar.relationshipTypes")}
                 <span
                   className={`graph-schema-chevron ${relTypesCollapsed ? "graph-schema-chevron--collapsed" : ""}`}
+                  aria-hidden="true"
                 >
                   ▾
                 </span>
-              </div>
+              </button>
               {!relTypesCollapsed &&
                 (schemaLoading ? (
-                  <div className="graph-schema-empty">Loading…</div>
+                  <div className="graph-schema-empty">{t("graphSidebar.loading")}</div>
                 ) : schemaRels.length === 0 ? (
-                  <div className="graph-schema-empty">No relationship types found</div>
+                  <div className="graph-schema-empty">{t("graphSidebar.noRelTypesFound")}</div>
                 ) : (
                   <div className="graph-label-list">
                     {(() => {
@@ -460,24 +504,26 @@ export function Sidebar({
                       );
                       return [
                         <div key="__all__" className="graph-label-item">
-                          <span
+                          <button
+                            type="button"
                             className="graph-label-pill graph-label-pill--all"
                             onClick={() => onRelClick("*")}
-                            title="MATCH p=()-->() RETURN p LIMIT 25"
+                            title={t("graphSidebar.matchAllRels")}
                           >
                             *({totalRelCount !== null ? totalRelCount.toLocaleString() : uniqueRels.length})
-                          </span>
+                          </button>
                         </div>,
                         ...paged.map(({ type }) => (
                           <div key={type} className="graph-label-item">
-                            <span
+                            <button
+                              type="button"
                               className="graph-rel-badge"
                               title={`MATCH ()-[r:${type}]->() RETURN r LIMIT 25`}
                               onClick={() => onRelClick(type)}
                               onContextMenu={(e) => handleRelRightClick(e, type)}
                             >
                               {type}
-                            </span>
+                            </button>
                           </div>
                         )),
                       ];
@@ -501,8 +547,10 @@ export function Sidebar({
                           }}
                         >
                           <button
+                            type="button"
                             onClick={() => setRelTypesPage(0)}
                             disabled={relTypesPage === 0}
+                            aria-label={t("graphSidebar.firstPage")}
                             style={{
                               background: "none",
                               border: "none",
@@ -515,8 +563,10 @@ export function Sidebar({
                             «
                           </button>
                           <button
+                            type="button"
                             onClick={() => setRelTypesPage((p) => p - 1)}
                             disabled={relTypesPage === 0}
+                            aria-label={t("graphSidebar.previousPage")}
                             style={{
                               background: "none",
                               border: "none",
@@ -529,11 +579,13 @@ export function Sidebar({
                             ‹
                           </button>
                           <span>
-                            {relTypesPage + 1}/{totalPages}
+                            {t("graphSidebar.pageIndicator", { page: relTypesPage + 1, total: totalPages })}
                           </span>
                           <button
+                            type="button"
                             onClick={() => setRelTypesPage((p) => p + 1)}
                             disabled={relTypesPage >= totalPages - 1}
+                            aria-label={t("graphSidebar.nextPage")}
                             style={{
                               background: "none",
                               border: "none",
@@ -546,8 +598,10 @@ export function Sidebar({
                             ›
                           </button>
                           <button
+                            type="button"
                             onClick={() => setRelTypesPage(totalPages - 1)}
                             disabled={relTypesPage >= totalPages - 1}
+                            aria-label={t("graphSidebar.lastPage")}
                             style={{
                               background: "none",
                               border: "none",
@@ -568,28 +622,33 @@ export function Sidebar({
 
             {propertyKeys.length > 0 && (
               <div className="graph-schema-section">
-                <div
+                <button
+                  type="button"
                   className="graph-schema-heading graph-schema-heading--collapsible"
                   onClick={() => setPropKeysCollapsed((c) => !c)}
+                  aria-expanded={!propKeysCollapsed}
+                  data-testid="graph-sidebar-prop-keys-toggle"
                 >
-                  Property Keys
+                  {t("graphSidebar.propertyKeys")}
                   <span
                     className={`graph-schema-chevron ${propKeysCollapsed ? "graph-schema-chevron--collapsed" : ""}`}
+                    aria-hidden="true"
                   >
                     ▾
                   </span>
-                </div>
+                </button>
                 {!propKeysCollapsed && (
                   <div className="graph-prop-key-list">
                     {[...propertyKeys].sort().map((k) => (
-                      <span
+                      <button
                         key={k}
+                        type="button"
                         className={`graph-prop-key-tag${onPropertyKeyClick ? " graph-prop-key-tag--clickable" : ""}`}
                         onClick={() => onPropertyKeyClick?.(k)}
                         title={onPropertyKeyClick ? `MATCH (n)\nWHERE n.${k} IS NOT NULL\nRETURN DISTINCT "node" AS entity, n.${k} AS ${k}\nLIMIT 25\nUNION ALL\nMATCH ()-[r]-()\nWHERE r.${k} IS NOT NULL\nRETURN DISTINCT "relationship" AS entity, r.${k} AS ${k}\nLIMIT 25` : undefined}
                       >
                         {k}
-                      </span>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -600,20 +659,21 @@ export function Sidebar({
 
         {section === "history" && (
           <div className="graph-schema-section">
-            <div className="graph-schema-heading">History</div>
+            <div className="graph-schema-heading">{t("graphSidebar.history")}</div>
             {history.length === 0 ? (
-              <div className="graph-schema-empty">No history yet</div>
+              <div className="graph-schema-empty">{t("graphSidebar.noHistory")}</div>
             ) : (
               <div className="graph-history-list">
                 {history.map((q, i) => (
-                  <div
+                  <button
                     key={i}
+                    type="button"
                     className="graph-history-item"
                     onClick={() => onHistorySelect(q)}
                     title={q}
                   >
                     {q}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -622,17 +682,18 @@ export function Sidebar({
 
         {section === "favorites" && (
           <div className="graph-schema-section">
-            <div className="graph-schema-heading">Favorites</div>
+            <div className="graph-schema-heading">{t("graphSidebar.favorites")}</div>
             {favorites.length === 0 ? (
-              <div className="graph-schema-empty">No favorites yet — click ★ in a result frame</div>
+              <div className="graph-schema-empty">{t("graphSidebar.noFavorites")}</div>
             ) : (
               <div className="graph-history-list">
                 {[...favorites].sort((a, b) => b.ts - a.ts).map((fav) => (
                   <div key={fav.id} className="graph-fav-item">
                     {renamingId === fav.id ? (
-                      <input
+                      <TextInput
                         ref={renameInputRef}
-                        className="graph-fav-rename-input"
+                        aria-label={t("graphSidebar.renameFavoriteInput")}
+                        classNames={{ input: "graph-fav-rename-input" }}
                         value={renameValue}
                         onChange={(e) => setRenameValue(e.target.value)}
                         onKeyDown={(e) => {
@@ -644,29 +705,36 @@ export function Sidebar({
                     ) : (
                       <>
                         <button
+                          type="button"
                           className="graph-fav-run"
-                          title="Run"
+                          title={t("graphSidebar.run")}
+                          aria-label={t("graphSidebar.run")}
                           onClick={(e) => { e.stopPropagation(); onFavoriteRun?.(fav.query); }}
                         >
                           ▶
                         </button>
-                        <span
+                        <button
+                          type="button"
                           className="graph-fav-label"
                           onClick={() => onFavoriteSelect?.(fav.query)}
                           title={fav.query}
                         >
                           {fav.label}
-                        </span>
+                        </button>
                         <button
+                          type="button"
                           className="graph-fav-rename-btn"
-                          title="Rename"
+                          title={t("graphSidebar.rename")}
+                          aria-label={t("graphSidebar.rename")}
                           onClick={(e) => { e.stopPropagation(); setRenameValue(fav.label); setRenamingId(fav.id); }}
                         >
                           ✎
                         </button>
                         <button
+                          type="button"
                           className="graph-fav-del"
-                          title="Remove"
+                          title={t("graphSidebar.remove")}
+                          aria-label={t("graphSidebar.remove")}
                           onClick={() => onFavoriteDelete?.(fav.id)}
                         >
                           ✕
@@ -681,7 +749,14 @@ export function Sidebar({
         )}
       </div>
 
-      <div className="graph-sidebar-resizer" onMouseDown={onMouseDown} />
+      <div
+        className="graph-sidebar-resizer"
+        onMouseDown={onMouseDown}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t("graphSidebar.resizeSidebar")}
+        tabIndex={0}
+      />
 
       {contextMenu && (
         <NodeContextMenu

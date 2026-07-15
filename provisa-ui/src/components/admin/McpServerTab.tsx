@@ -8,12 +8,15 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
+import { useTranslation, Trans } from "react-i18next";
+import { Alert, Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { fetchMcpServer, type McpServerStatus } from "../../api/admin";
 
 // REQ-1008: read-only status of the in-process MCP server. It is enabled purely via the
 // PROVISA_MCP_PORT env var at boot, so this tab reports current state + how to enable it rather
 // than offering a control that could not actually toggle the running server.
 export function McpServerTab() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<McpServerStatus | null>(null);
   const [error, setError] = useState("");
 
@@ -23,81 +26,92 @@ export function McpServerTab() {
       .catch((e) => setError(String(e)));
   }, []);
 
-  if (error) return <div className="error-banner">{error}</div>;
-  if (!status) return <div>Loading…</div>;
+  if (error) return <Alert color="red">{error}</Alert>;
+  if (!status) return <Text>{t("mcpServerTab.loading")}</Text>;
 
   return (
-    <div className="mcp-server-tab" style={{ maxWidth: 720 }}>
-      <p className="muted">
-        The Model Context Protocol (MCP) server exposes governed catalog discovery and SQL
-        execution to external AI agents. Every call is governed by the caller's role — the server
-        never defaults to admin.
-      </p>
+    <Stack gap="md" maw={720}>
+      <Text c="dimmed">{t("mcpServerTab.intro")}</Text>
 
-      <div className="form-card" style={{ display: "grid", gap: "0.5rem" }}>
-        <div>
-          Status:{" "}
-          <strong
+      <Stack gap="xs" p="sm" style={{ border: "1px solid var(--text-muted)", borderRadius: 4 }}>
+        <Group gap="xs">
+          <Text span>{t("mcpServerTab.statusLabel")}:</Text>
+          <Badge
             data-testid="mcp-status"
-            style={{ color: status.enabled ? "var(--success)" : "var(--text-muted)" }}
+            color={status.enabled ? "green" : "gray"}
+            variant="light"
           >
-            {status.enabled ? "Enabled" : "Disabled"}
-          </strong>
-        </div>
+            {status.enabled ? t("mcpServerTab.statusEnabled") : t("mcpServerTab.statusDisabled")}
+          </Badge>
+        </Group>
 
         {status.enabled ? (
           <>
-            <div>
-              Endpoint:{" "}
-              <code data-testid="mcp-endpoint">http://0.0.0.0:{status.port}</code>
-            </div>
-            <div>
-              Transport: <code>{status.transport}</code>
-            </div>
-            <div>
-              Bound stdio role:{" "}
+            <Group gap="xs">
+              <Text span>{t("mcpServerTab.endpointLabel")}:</Text>
+              <Text span data-testid="mcp-endpoint" ff="monospace">
+                http://0.0.0.0:{status.port}
+              </Text>
+            </Group>
+            <Group gap="xs">
+              <Text span>{t("mcpServerTab.transportLabel")}:</Text>
+              <Text span ff="monospace">
+                {status.transport}
+              </Text>
+            </Group>
+            <Group gap="xs">
+              <Text span>{t("mcpServerTab.stdioRoleLabel")}:</Text>
               {status.stdio_role ? (
-                <code data-testid="mcp-role">{status.stdio_role}</code>
+                <Text span data-testid="mcp-role" ff="monospace">
+                  {status.stdio_role}
+                </Text>
               ) : (
-                <span className="muted">
-                  none set — stdio calls require <code>{status.role_env_var}</code>
-                </span>
+                <Text span c="dimmed">
+                  <Trans
+                    i18nKey="mcpServerTab.stdioRoleNone"
+                    values={{ envVar: status.role_env_var }}
+                    components={{ code: <Text span ff="monospace" /> }}
+                  />
+                </Text>
               )}
-            </div>
-            <div>
-              Row ceiling (run_sql): <code>{status.max_rows}</code>
-            </div>
+            </Group>
+            <Group gap="xs">
+              <Text span>{t("mcpServerTab.maxRowsLabel")}:</Text>
+              <Text span ff="monospace">
+                {status.max_rows}
+              </Text>
+            </Group>
           </>
         ) : (
-          <div
-            className="warn-banner"
-            data-testid="mcp-enable-hint"
-            style={{ padding: "0.5rem 0.75rem", border: "1px solid #b8860b", borderRadius: 4 }}
-          >
-            The MCP server is opt-in. Set the <code>{status.enable_env_var}</code> environment
-            variable to a port and restart the service to enable it. For the local stdio transport,
-            also set <code>{status.role_env_var}</code> to a provisa role.
-          </div>
+          <Alert data-testid="mcp-enable-hint" color="yellow">
+            <Trans
+              i18nKey="mcpServerTab.enableHint"
+              values={{ enableEnvVar: status.enable_env_var, roleEnvVar: status.role_env_var }}
+              components={{ code: <Text span ff="monospace" /> }}
+            />
+          </Alert>
         )}
-      </div>
+      </Stack>
 
-      <h4 style={{ marginTop: "1.5rem" }}>Exposed Tools</h4>
-      <table className="data-table" data-testid="mcp-tools">
-        <thead>
-          <tr>
-            <th>Tool</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          {status.tools.map((t) => (
-            <tr key={t.name}>
-              <td style={{ fontFamily: "monospace" }}>{t.name}</td>
-              <td>{t.description}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+      <Title order={4}>{t("mcpServerTab.toolsHeading")}</Title>
+      <Table.ScrollContainer minWidth={480}>
+        <Table data-testid="mcp-tools" striped highlightOnHover withTableBorder verticalSpacing="xs">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("mcpServerTab.colTool")}</Table.Th>
+              <Table.Th>{t("mcpServerTab.colDescription")}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {status.tools.map((tool) => (
+              <Table.Tr key={tool.name}>
+                <Table.Td ff="monospace">{tool.name}</Table.Td>
+                <Table.Td>{tool.description}</Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+    </Stack>
   );
 }

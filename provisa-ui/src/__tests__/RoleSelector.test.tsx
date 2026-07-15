@@ -10,9 +10,12 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '../test-utils/render';
+import i18n from '../i18n';
 import { RoleSelector } from '../components/RoleSelector';
 import type { Role, Capability } from '../types/auth';
+
+const t = i18n.getFixedT('en');
 
 vi.mock('../context/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -74,74 +77,83 @@ describe('RoleSelector', () => {
     mockUseAuth.mockReturnValue(makeAuthValue({ availableRoles: [], selectedRole: 'all' }));
 
     render(<RoleSelector />);
-    expect(screen.getByText('No roles configured')).toBeInTheDocument();
+    expect(screen.getByText(t('roleSelector.none'))).toBeInTheDocument();
   });
 
   it('renders trigger button with "All" label when selectedRole is "all"', () => {
     mockUseAuth.mockReturnValue(makeAuthValue({ selectedRole: 'all' }));
 
     render(<RoleSelector />);
-    expect(screen.getByRole('button')).toHaveTextContent('Role: All');
+    expect(screen.getByRole('button')).toHaveTextContent(t('roleSelector.role', { role: 'All' }));
   });
 
   it('renders trigger button with role id when a specific role is selected', () => {
     mockUseAuth.mockReturnValue(makeAuthValue({ selectedRole: ADMIN_ROLE }));
 
     render(<RoleSelector />);
-    expect(screen.getByRole('button')).toHaveTextContent('Role: admin');
+    expect(screen.getByRole('button')).toHaveTextContent(t('roleSelector.role', { role: 'admin' }));
   });
 
-  it('dropdown is hidden before trigger is clicked', () => {
+  it('menu is hidden before trigger is clicked', () => {
     mockUseAuth.mockReturnValue(makeAuthValue({}));
 
     render(<RoleSelector />);
-    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
   });
 
-  it('opens dropdown with "All" and all available roles when trigger is clicked', () => {
-    mockUseAuth.mockReturnValue(makeAuthValue({}));
-
-    render(<RoleSelector />);
+  // Mantine Menu.Item accessible-name computation is unreliable in jsdom, so
+  // menu items are located by their (i18n) visible text scoped to role="menu".
+  const openMenu = async () => {
     fireEvent.click(screen.getByRole('button'));
+    return within(await screen.findByRole('menu'));
+  };
 
-    expect(screen.getByRole('option', { name: 'All' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'admin' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'analyst' })).toBeInTheDocument();
+  it('opens the menu with "All" and all available roles when trigger is clicked', async () => {
+    mockUseAuth.mockReturnValue(makeAuthValue({}));
+
+    render(<RoleSelector />);
+    const menu = await openMenu();
+
+    expect(menu.getByText('All')).toBeInTheDocument();
+    expect(menu.getByText('admin')).toBeInTheDocument();
+    expect(menu.getByText('analyst')).toBeInTheDocument();
   });
 
-  it('closes dropdown when an option is selected', () => {
+  it('closes the menu when an item is selected', async () => {
     const selectRole = vi.fn();
     mockUseAuth.mockReturnValue(makeAuthValue({ selectRole }));
 
     render(<RoleSelector />);
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByRole('option', { name: 'analyst' }));
+    const menu = await openMenu();
+    fireEvent.click(menu.getByText('analyst'));
 
-    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
     expect(selectRole).toHaveBeenCalledWith(ANALYST_ROLE);
   });
 
-  it('calls selectRole with "all" when All option is clicked', () => {
+  it('calls selectRole with "all" when the All item is clicked', async () => {
     const selectRole = vi.fn();
     mockUseAuth.mockReturnValue(makeAuthValue({ selectedRole: ADMIN_ROLE, selectRole }));
 
     render(<RoleSelector />);
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByRole('option', { name: 'All' }));
+    const menu = await openMenu();
+    fireEvent.click(menu.getByText('All'));
 
     expect(selectRole).toHaveBeenCalledWith('all');
   });
 
-  it('marks selected option with aria-selected=true', () => {
+  it('marks the selected item with aria-current=true', async () => {
     mockUseAuth.mockReturnValue(makeAuthValue({ selectedRole: ADMIN_ROLE }));
 
     render(<RoleSelector />);
-    fireEvent.click(screen.getByRole('button'));
+    const menu = await openMenu();
 
-    expect(screen.getByRole('option', { name: 'admin' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('option', { name: 'analyst' })).toHaveAttribute(
-      'aria-selected',
-      'false'
+    expect(menu.getByText('admin').closest('[role="menuitem"]')).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(menu.getByText('analyst').closest('[role="menuitem"]')).not.toHaveAttribute(
+      'aria-current',
     );
   });
 
@@ -149,17 +161,17 @@ describe('RoleSelector', () => {
     mockUseAuth.mockReturnValue(makeAuthValue({ devMode: true }));
 
     render(<RoleSelector />);
-    expect(screen.getByText('DEV')).toBeInTheDocument();
+    expect(screen.getByText(t('roleSelector.dev'))).toBeInTheDocument();
   });
 
   it('does not show DEV badge outside dev mode', () => {
     mockUseAuth.mockReturnValue(makeAuthValue({ devMode: false }));
 
     render(<RoleSelector />);
-    expect(screen.queryByText('DEV')).not.toBeInTheDocument();
+    expect(screen.queryByText(t('roleSelector.dev'))).not.toBeInTheDocument();
   });
 
-  it('trigger button has aria-expanded=true when open', () => {
+  it('trigger button reflects expanded state via aria-expanded', async () => {
     mockUseAuth.mockReturnValue(makeAuthValue({}));
 
     render(<RoleSelector />);
@@ -167,6 +179,6 @@ describe('RoleSelector', () => {
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(trigger);
-    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'true'));
   });
 });

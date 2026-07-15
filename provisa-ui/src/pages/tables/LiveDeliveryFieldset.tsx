@@ -8,6 +8,21 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import {
+  ActionIcon,
+  Alert,
+  Checkbox,
+  Fieldset,
+  Group,
+  NumberInput,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  Tooltip,
+} from "@mantine/core";
+import { Info } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { RegisteredTable, Source, LiveDeliveryConfig, LiveOutputConfig } from "../../types/admin";
 import type { PlatformSettings } from "../../api/admin";
 import { isWatermarkEligible } from "./helpers";
@@ -26,6 +41,7 @@ export function LiveDeliveryFieldset({
   editingColumnTypes,
   sources,
 }: LiveDeliveryFieldsetProps) {
+  const { t } = useTranslation();
   const src = sources.find((s) => s.id === editingTable.sourceId);
   const stype = (src?.type ?? "").toLowerCase();
   const isEngineDerived = stype === "trino" || src?.id === "__provisa__";
@@ -90,263 +106,222 @@ export function LiveDeliveryFieldset({
     outputs: [],
   };
   return (
-    <fieldset
-      className="live-delivery"
-      style={{
-        gridColumn: "1 / -1",
-        border: "1px solid var(--border)",
-        borderRadius: "0.4rem",
-        padding: "0.5rem 0.75rem",
-      }}
+    <Fieldset
+      legend={
+        live
+          ? t("liveDeliveryFieldset.legendActive")
+          : t("liveDeliveryFieldset.legend")
+      }
+      style={{ gridColumn: "1 / -1" }}
     >
-      <legend style={{ fontSize: "0.8rem", fontWeight: 600 }}>
-        Live Delivery{live ? " — active" : ""}
-      </legend>
-      {(
-        <>
-          {isEngineDerived && !editingTable.materialize && (
-            <p
-              style={{
-                margin: "0 0 0.4rem",
-                fontSize: "0.72rem",
-                color: "var(--warn, #d99)",
-              }}
-            >
-              Each poll recomputes this view. For frequent polling, check{" "}
-              <em>Materialized View</em> so polls read the stored table.
-            </p>
-          )}
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.4rem",
-              fontWeight: "normal",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={!!live}
-              onChange={(e) =>
-                setEditingTable({
-                  ...editingTable,
-                  live: e.target.checked ? defaultLive : null,
-                })
-              }
-              style={{ width: "auto" }}
-            />
-            Enable live delivery
-          </label>
-          {live && (
-            <div
-              style={{
-                display: "grid",
-                gap: "0.5rem",
-                marginTop: "0.5rem",
-              }}
-            >
-              <div
-                data-testid="live-mechanism"
-                style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}
-              >
-                {isPushSignal ? (
-                  <>
-                    Repeats the <strong>{effectiveSignal}</strong> change
-                    stream to subscribers. Inbound detection is set by{" "}
-                    <em>Change Signal</em> above — no watermark or poll interval
-                    here.
-                  </>
-                ) : pollMode === "append" ? (
-                  <>
-                    Append poll on <strong>{effWatermark}</strong> — each
-                    interval fetches rows past MAX(watermark).
-                  </>
-                ) : (
-                  <>
-                    Full-replace poll — no watermark column, so each poll
-                    re-scans and the output content-hash suppresses unchanged
-                    results. Suits small or non-monotonic tables.
-                  </>
-                )}
-              </div>
-              <label>
-                Query ID
-                <input
-                  readOnly
-                  value={`${editingTable.sourceId}.${editingTable.tableName}`}
-                  style={{ color: "var(--text-muted)", cursor: "default" }}
-                />
-              </label>
-              {!isPushSignal && (
-                <>
-                  {wmCols.length > 0 && (
-                    <label>
-                      <span
-                        title="Pick the monotonic change column to append rows past MAX(watermark). Leave as 'None' to full-replace each poll — the output content-hash suppresses unchanged results."
-                      >
-                        Watermark column
-                      </span>
-                      <select
-                        value={live.watermarkColumn ?? ""}
-                        onChange={(e) =>
-                          setLive({ watermarkColumn: e.target.value })
-                        }
-                      >
-                        <option value="">None → full replace</option>
-                        {wmCols.map((c) => (
-                          <option key={c.columnName} value={c.columnName}>
-                            {c.columnName}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  <label>
-                    <span
-                      title="How often the live stream re-checks the source and pushes changes to subscribers (SSE/Kafka sink). Independent of the MV Refresh Interval (which rebuilds the stored table for queries) and Cache TTL (which caches query results)."
+      {isEngineDerived && !editingTable.materialize && (
+        <Alert color="yellow" variant="light" mb="sm" p="xs">
+          <Text size="xs">
+            {t("liveDeliveryFieldset.materializeWarningPre")}
+            <em>{t("liveDeliveryFieldset.materializeWarningEm")}</em>
+            {t("liveDeliveryFieldset.materializeWarningPost")}
+          </Text>
+        </Alert>
+      )}
+      <Checkbox
+        data-testid="live-delivery-enable"
+        checked={!!live}
+        label={t("liveDeliveryFieldset.enableLabel")}
+        onChange={(e) =>
+          setEditingTable({
+            ...editingTable,
+            live: e.currentTarget.checked ? defaultLive : null,
+          })
+        }
+      />
+      {live && (
+        <Stack gap="sm" mt="sm">
+          <Text data-testid="live-mechanism" size="xs" c="dimmed">
+            {isPushSignal ? (
+              <>
+                {t("liveDeliveryFieldset.mechanismPushPre")}
+                <strong>{effectiveSignal}</strong>
+                {t("liveDeliveryFieldset.mechanismPushMid")}
+                <em>{t("liveDeliveryFieldset.mechanismPushEm")}</em>
+                {t("liveDeliveryFieldset.mechanismPushPost")}
+              </>
+            ) : pollMode === "append" ? (
+              <>
+                {t("liveDeliveryFieldset.mechanismAppendPre")}
+                <strong>{effWatermark}</strong>
+                {t("liveDeliveryFieldset.mechanismAppendPost")}
+              </>
+            ) : (
+              t("liveDeliveryFieldset.mechanismReplace")
+            )}
+          </Text>
+          <TextInput
+            readOnly
+            label={t("liveDeliveryFieldset.queryIdLabel")}
+            value={`${editingTable.sourceId}.${editingTable.tableName}`}
+            styles={{ input: { color: "var(--text-muted)", cursor: "default" } }}
+          />
+          {!isPushSignal && (
+            <>
+              {wmCols.length > 0 && (
+                <div>
+                  <Group gap={4} mb={2}>
+                    <Text size="sm" component="label" htmlFor="live-delivery-watermark-column">
+                      {t("liveDeliveryFieldset.watermarkColumnLabel")}
+                    </Text>
+                    <Tooltip
+                      label={t("liveDeliveryFieldset.watermarkColumnTooltip")}
+                      multiline
+                      w={280}
+                      withArrow
                     >
-                      Poll interval (s)
-                    </span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={live.pollInterval}
-                      onChange={(e) =>
-                        setLive({
-                          pollInterval: Number(e.target.value) || 10,
-                        })
-                      }
-                    />
-                    {refreshInterval != null &&
-                      live.pollInterval < refreshInterval && (
-                        <span
-                          style={{
-                            fontSize: "0.72rem",
-                            color: "var(--warn, #d99)",
-                          }}
-                        >
-                          Polling faster than the {refreshInterval}s refresh
-                          interval re-reads unchanged data — the materialized
-                          table only changes on refresh.
-                        </span>
-                      )}
-                  </label>
-                </>
-              )}
-              {isPushSignal && (
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "0.75rem",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  {effectiveSignal === "debezium"
-                    ? "Debezium transport is configured on the source. No extra per-table config."
-                    : effectiveSignal === "kafka"
-                      ? "Kafka feed is configured on the source. No extra per-table config."
-                      : "Native change stream requires no extra per-table config."}
-                </p>
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        size="xs"
+                        aria-label={t(
+                          "liveDeliveryFieldset.watermarkColumnTooltip",
+                        )}
+                      >
+                        <Info size={12} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                  <Select
+                    id="live-delivery-watermark-column"
+                    data-testid="watermark-column-select"
+                    value={live.watermarkColumn ?? ""}
+                    onChange={(value) =>
+                      setLive({ watermarkColumn: value ?? "" })
+                    }
+                    data={[
+                      {
+                        value: "",
+                        label: t("liveDeliveryFieldset.watermarkNoneOption"),
+                      },
+                      ...wmCols.map((c) => ({
+                        value: c.columnName,
+                        label: c.columnName,
+                      })),
+                    ]}
+                    allowDeselect={false}
+                    comboboxProps={{ withinPortal: true }}
+                  />
+                </div>
               )}
               <div>
-                <div
-                  style={{
-                    fontSize: "0.75rem",
-                    fontWeight: 600,
-                    marginBottom: "0.25rem",
-                  }}
-                >
-                  Outputs
-                </div>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.4rem",
-                    fontWeight: "normal",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked
-                    readOnly
-                    disabled
-                    style={{ width: "auto" }}
-                  />
-                  SSE fanout (always on)
-                </label>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.4rem",
-                    fontWeight: "normal",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!kafkaOut}
-                    onChange={(e) => {
-                      if (e.target.checked) setKafkaOut({});
-                      else
-                        setLive({
-                          outputs: live.outputs.filter(
-                            (o) => o.type !== "kafka",
-                          ),
-                        });
-                    }}
-                    style={{ width: "auto" }}
-                  />
-                  Kafka sink
-                </label>
-                {kafkaOut && (
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: "0.4rem",
-                      marginTop: "0.35rem",
-                      paddingLeft: "1.4rem",
-                    }}
+                <Group gap={4} mb={2}>
+                  <Text size="sm" component="label" htmlFor="live-delivery-poll-interval">
+                    {t("liveDeliveryFieldset.pollIntervalLabel")}
+                  </Text>
+                  <Tooltip
+                    label={t("liveDeliveryFieldset.pollIntervalTooltip")}
+                    multiline
+                    w={280}
+                    withArrow
                   >
-                    <label>
-                      Bootstrap servers
-                      <input
-                        value={kafkaOut.bootstrapServers ?? ""}
-                        placeholder="kafka:9092"
-                        onChange={(e) =>
-                          setKafkaOut({
-                            bootstrapServers: e.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Topic
-                      <input
-                        value={kafkaOut.topic ?? ""}
-                        onChange={(e) =>
-                          setKafkaOut({ topic: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Key column
-                      <input
-                        value={kafkaOut.keyColumn ?? ""}
-                        onChange={(e) =>
-                          setKafkaOut({
-                            keyColumn: e.target.value || null,
-                          })
-                        }
-                      />
-                    </label>
-                  </div>
-                )}
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      size="xs"
+                      aria-label={t(
+                        "liveDeliveryFieldset.pollIntervalTooltip",
+                      )}
+                    >
+                      <Info size={12} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+                <NumberInput
+                  id="live-delivery-poll-interval"
+                  data-testid="poll-interval-input"
+                  min={1}
+                  value={live.pollInterval}
+                  onChange={(value) =>
+                    setLive({
+                      pollInterval: Number(value) || 10,
+                    })
+                  }
+                />
+                {refreshInterval != null &&
+                  live.pollInterval < refreshInterval && (
+                    <Text size="xs" c="yellow.7" mt={4}>
+                      {t("liveDeliveryFieldset.pollFasterWarning", {
+                        seconds: refreshInterval,
+                      })}
+                    </Text>
+                  )}
               </div>
-            </div>
+            </>
           )}
-        </>
+          {isPushSignal && (
+            <Text size="xs" c="dimmed">
+              {effectiveSignal === "debezium"
+                ? t("liveDeliveryFieldset.debeziumNote")
+                : effectiveSignal === "kafka"
+                  ? t("liveDeliveryFieldset.kafkaNote")
+                  : t("liveDeliveryFieldset.nativeNote")}
+            </Text>
+          )}
+          <div>
+            <Text size="xs" fw={600} mb={4}>
+              {t("liveDeliveryFieldset.outputsHeading")}
+            </Text>
+            <Checkbox
+              checked
+              readOnly
+              disabled
+              label={t("liveDeliveryFieldset.sseFanoutLabel")}
+            />
+            <Checkbox
+              data-testid="kafka-sink-checkbox"
+              checked={!!kafkaOut}
+              label={t("liveDeliveryFieldset.kafkaSinkLabel")}
+              onChange={(e) => {
+                if (e.currentTarget.checked) setKafkaOut({});
+                else
+                  setLive({
+                    outputs: live.outputs.filter(
+                      (o) => o.type !== "kafka",
+                    ),
+                  });
+              }}
+            />
+            {kafkaOut && (
+              <Stack gap="xs" mt="xs" pl="lg">
+                <TextInput
+                  label={t("liveDeliveryFieldset.kafkaBootstrapLabel")}
+                  value={kafkaOut.bootstrapServers ?? ""}
+                  placeholder={t(
+                    "liveDeliveryFieldset.kafkaBootstrapPlaceholder",
+                  )}
+                  onChange={(e) =>
+                    setKafkaOut({
+                      bootstrapServers: e.currentTarget.value,
+                    })
+                  }
+                />
+                <TextInput
+                  label={t("liveDeliveryFieldset.kafkaTopicLabel")}
+                  value={kafkaOut.topic ?? ""}
+                  onChange={(e) =>
+                    setKafkaOut({ topic: e.currentTarget.value })
+                  }
+                />
+                <TextInput
+                  label={t("liveDeliveryFieldset.kafkaKeyColumnLabel")}
+                  value={kafkaOut.keyColumn ?? ""}
+                  onChange={(e) =>
+                    setKafkaOut({
+                      keyColumn: e.currentTarget.value || null,
+                    })
+                  }
+                />
+              </Stack>
+            )}
+          </div>
+        </Stack>
       )}
-    </fieldset>
+    </Fieldset>
   );
 }

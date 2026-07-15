@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "Sample a query to profile the result columns.",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "Download profile as JSON",
+    "colColumn": "Column",
+    "colNulls": "Nulls",
+    "colNullsTitle": "Rows where value is NULL",
+    "colBlanks": "Blanks",
+    "colBlanksTitle": "Rows where value is empty string",
+    "colDistinct": "Distinct",
+    "colDistinctTitle": "Number of unique values",
+    "colConstant": "Constant?",
+    "colConstantTitle": "Column has only one unique value",
+    "colMin": "Min",
+    "colMax": "Max",
+    "colMean": "Mean",
+    "colMeanTitle": "Mean of numeric values",
+    "colTopValues": "Top values",
+    "constantYes": "Yes ({{value}})",
+    "emptyValue": "—"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ View",
+    "titleRequest": "Request View",
+    "create": "Create",
+    "submitRequest": "Submit Request",
+    "saving": "Saving…",
+    "close": "Close",
+    "noPermissionNotice": "You do not have create_view. This will be submitted as a suggested view pending approval.",
+    "alias": "Alias",
+    "aliasPlaceholder": "e.g. my_view",
+    "domain": "Domain",
+    "domainSelectPlaceholder": "— select domain —",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional",
+    "hasParamsWarning": "SQL contains unresolved parameter placeholders ($1, $2, …). Edit the SQL to replace them with literal values.",
+    "savedTitle": "View Saved",
+    "savedMessageCreated": "View \"{{viewId}}\" has been created and registered.",
+    "savedMessageSubmitted": "View \"{{viewId}}\" has been submitted for approval.",
+    "editInModelViews": "Edit in Model/Views"
+  }
+}

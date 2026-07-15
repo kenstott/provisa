@@ -1,0 +1,31 @@
+{
+  "systemHealth": {
+    "loading": "Loading system health...",
+    "colComponent": "Component",
+    "colStatus": "Status",
+    "colDetails": "Details",
+    "federationEngine": "Federation Engine",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "workerCount": "{{count}} worker ({{active}} active)",
+    "workerCount_other": "{{count}} workers ({{active}} active)",
+    "metadataDb": "Metadata DB",
+    "unpooled": "Unpooled",
+    "active": "Active",
+    "noPool": "No pool",
+    "poolNotTracked": "pool does not track connections",
+    "poolConnections": "{{count}} connections ({{idle}} idle)",
+    "cache": "Cache",
+    "disabled": "Disabled",
+    "embeddedMemory": "Embedded (in-memory)",
+    "serverConnected": "Server connected",
+    "serverUnreachable": "Server unreachable",
+    "redisServer": "Redis server",
+    "fakeredis": "fakeredis (in-process)",
+    "running": "Running",
+    "unreachable": "Unreachable",
+    "port": "port {{port}}",
+    "mvRefreshLoop": "MV Refresh Loop",
+    "stopped": "Stopped"
+  }
+}

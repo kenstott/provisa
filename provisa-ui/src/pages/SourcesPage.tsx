@@ -10,7 +10,19 @@
 
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Check, X } from "lucide-react";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Select,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
 import { fetchSettings, fetchFederationEngine } from "../api/admin";
 import type { PlatformSettings, FederationEngineState } from "../api/admin";
@@ -51,6 +63,7 @@ import { SourceFormFields } from "./sources/SourceFormFields";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 
 export function SourcesPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
@@ -224,20 +237,18 @@ export function SourcesPage() {
 
   // Type dropdown annotated + gated by the current engine's reach (REQ-947): each option shows
   // LIVE / REPLICA, and a type the engine cannot reach is disabled with the engine(s) that can.
-  const renderTypeOptions = () =>
-    CATEGORIES.map((cat) => (
-      <optgroup key={cat} label={cat}>
-        {SOURCE_TYPES.filter((s) => s.category === cat).map((s) => {
-          const info = reachInfoFor(s.value, engineState);
-          return (
-            <option key={s.value} value={s.value} disabled={!info.selectable}>
-              {s.label}
-              {reachSuffix(info)}
-            </option>
-          );
-        })}
-      </optgroup>
-    ));
+  const typeSelectData = () =>
+    CATEGORIES.map((cat) => ({
+      group: cat,
+      items: SOURCE_TYPES.filter((s) => s.category === cat).map((s) => {
+        const info = reachInfoFor(s.value, engineState);
+        return {
+          value: s.value,
+          label: `${s.label}${reachSuffix(info)}`,
+          disabled: !info.selectable,
+        };
+      }),
+    }));
 
   const resetSpFields = () => {
     setSpAuthType("CLIENT_CREDENTIALS");
@@ -675,21 +686,24 @@ export function SourcesPage() {
     grpcCacheTtl, setGrpcCacheTtl,
   };
 
-  if (loading) return <div className="page">Loading sources...</div>;
+  if (loading) return <div className="page">{t("sourcesPage.loading")}</div>;
 
   return (
     <div className="page">
       <div className="page-header">
-        <h2>Data Sources</h2>
+        <Title order={2}>{t("sourcesPage.title")}</Title>
         <FilterInput
           value={sourceSearch}
           onChange={updateSearch}
-          placeholder="Filter by source ID or type…"
+          placeholder={t("sourcesPage.filterPlaceholder")}
         />
         <div className="page-actions">
           {!editingSourceId && (
-            <button
+            <Button
               data-tour="sources-add"
+              data-testid="sources-add-toggle"
+              variant={showForm ? "outline" : "filled"}
+              aria-label={showForm ? t("sourcesPage.closeForm") : t("sourcesPage.addSource")}
               onClick={() => {
                 if (showForm) {
                   handleCancelForm();
@@ -698,14 +712,22 @@ export function SourcesPage() {
                 }
               }}
             >
-              {showForm ? "✕" : "+ Source"}
-            </button>
+              {showForm ? <X size={14} /> : t("sourcesPage.addSource")}
+            </Button>
           )}
         </div>
       </div>
 
-      {error && <div className="error">{error}</div>}
-      {refreshError && <div className="error">Schema refresh failed: {refreshError}</div>}
+      {error && (
+        <Alert color="red" mb="md" data-testid="sources-error">
+          {error}
+        </Alert>
+      )}
+      {refreshError && (
+        <Alert color="red" mb="md" data-testid="sources-refresh-error">
+          {t("sourcesPage.schemaRefreshFailed", { message: refreshError })}
+        </Alert>
+      )}
 
       {showForm && !editingSourceId && (
         <form
@@ -719,205 +741,222 @@ export function SourcesPage() {
                 : handleCreate
           }
         >
-          <label>
-            ID{" "}
-            <input
-              required
-              value={form.id}
-              onChange={(e) => setForm({ ...form, id: e.target.value })}
-              placeholder="e.g. sales-pg"
-            />
-          </label>
-          <label>
-            Type
-            <select
-              data-tour="sources-type"
-              value={form.type}
-              onChange={(e) => handleTypeChange(e.target.value)}
-            >
-              {renderTypeOptions()}
-            </select>
-          </label>
+          <TextInput
+            label={t("sourcesPage.idLabel")}
+            required
+            value={form.id}
+            onChange={(e) => setForm({ ...form, id: e.target.value })}
+            placeholder={t("sourcesPage.idPlaceholder")}
+            data-testid="sources-id-input"
+          />
+          <Select
+            label={t("sourcesPage.typeLabel")}
+            data-tour="sources-type"
+            data-testid="sources-type-select"
+            value={form.type}
+            onChange={(v) => v && handleTypeChange(v)}
+            data={typeSelectData()}
+            allowDeselect={false}
+            searchable
+          />
           <SourceFormFields {...sourceFormFieldsProps} />
-          <button type="submit" disabled={submitting}>
-            {submitting && <span className="btn-spinner" />}
-            {submitting ? "Creating…" : "Create"}
-          </button>
+          <Button type="submit" loading={submitting} data-testid="sources-submit">
+            {submitting ? t("sourcesPage.creating") : t("sourcesPage.create")}
+          </Button>
         </form>
       )}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Type</th>
-            <th>Host</th>
-            <th>Port</th>
-            <th>Database</th>
-            <th>Naming</th>
-            <th>Cache</th>
-            <th>Effective TTL</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {(() => {
-            const filtered = sources.filter((s) => {
-              if (["__provisa__", "provisa-admin", "provisa-otel"].includes(s.id)) return false;
-              if (!sourceSearch.trim()) return true;
-              const q = sourceSearch.toLowerCase();
-              return (
-                s.id.toLowerCase().includes(q) ||
-                s.type.toLowerCase().includes(q) ||
-                (s.description ?? "").toLowerCase().includes(q)
-              );
-            });
-            const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-            return paged.map((s) => {
-              const isExpanded = expanded === s.id;
-              const isEditing = editingSourceId === s.id;
-              return (
-                <React.Fragment key={s.id}>
-                  <tr
-                    onClick={() => {
-                      updateExpanded(isExpanded ? null : s.id);
-                      if (isEditing && isExpanded) {
-                        setEditingSourceId(null);
-                        handleCancelForm();
-                      }
-                    }}
-                    style={{
-                      cursor: "pointer",
-                      background: isExpanded ? "var(--surface)" : undefined,
-                    }}
-                  >
-                    <td>{s.id}</td>
-                    <td>{SOURCE_TYPES.find((t) => t.value === s.type)?.label ?? s.type}</td>
-                    <td>{s.host}</td>
-                    <td>{s.port || "—"}</td>
-                    <td>{s.database || "—"}</td>
-                    <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {s.gqlNamingConvention || "inherit"}
-                    </td>
-                    <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {s.cacheEnabled ? "on" : "off"}
-                    </td>
-                    <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {getEffectiveTtl(s)}
-                    </td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
-                        {DISCOVERABLE_TYPES.has(s.type) && (
-                          <button
-                            onClick={() => {
-                              setDiscoverSourceId(s.id);
-                              setDiscoverSourceType(s.type);
-                              setMappingSourceId(null);
-                            }}
-                            style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                          >
-                            Discover
-                          </button>
-                        )}
-                        {MAPPING_TYPES.has(s.type) && (
-                          <button
-                            onClick={() => {
-                              setMappingSourceId(s.id);
-                              setMappingSourceType(s.type);
-                              setDiscoverSourceId(null);
-                            }}
-                            style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                          >
-                            Map Table
-                          </button>
-                        )}
-                        {(s.type === "graphql" || s.type === "openapi" || s.type === "grpc") && (
-                          <button
-                            onClick={() => handleRefreshSchema(s.id, s.type)}
-                            disabled={refreshingSourceId === s.id}
-                            style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                          >
-                            {refreshingSourceId === s.id ? "Refreshing..." : "Refresh Schema"}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr key={`${s.id}-detail`}>
-                      <td
-                        colSpan={9}
-                        style={{
-                          padding: "0.75rem 1rem",
-                          background: "var(--bg)",
-                          borderTop: "1px solid var(--border)",
-                        }}
-                      >
-                        {isEditing ? (
-                          <form className="form-card" onSubmit={handleCreate} style={{ margin: 0 }}>
-                            <label>
-                              ID{" "}
-                              <input
+      <Table.ScrollContainer minWidth={860}>
+        <Table striped highlightOnHover withTableBorder verticalSpacing="xs" className="data-table">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("sourcesPage.colId")}</Table.Th>
+              <Table.Th>{t("sourcesPage.colType")}</Table.Th>
+              <Table.Th>{t("sourcesPage.colHost")}</Table.Th>
+              <Table.Th>{t("sourcesPage.colPort")}</Table.Th>
+              <Table.Th>{t("sourcesPage.colDatabase")}</Table.Th>
+              <Table.Th>{t("sourcesPage.colNaming")}</Table.Th>
+              <Table.Th>{t("sourcesPage.colCache")}</Table.Th>
+              <Table.Th>{t("sourcesPage.colEffectiveTtl")}</Table.Th>
+              <Table.Th>
+                <Text span visibleFrom="xs" fz="sm" fw={600}>
+                  {t("sourcesPage.colActions")}
+                </Text>
+              </Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {(() => {
+              const filtered = sources.filter((s) => {
+                if (["__provisa__", "provisa-admin", "provisa-otel"].includes(s.id)) return false;
+                if (!sourceSearch.trim()) return true;
+                const q = sourceSearch.toLowerCase();
+                return (
+                  s.id.toLowerCase().includes(q) ||
+                  s.type.toLowerCase().includes(q) ||
+                  (s.description ?? "").toLowerCase().includes(q)
+                );
+              });
+              if (filtered.length === 0) {
+                return (
+                  <Table.Tr>
+                    <Table.Td colSpan={9} ta="center" c="dimmed">
+                      {t("sourcesPage.empty")}
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              }
+              const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+              return paged.map((s) => {
+                const isExpanded = expanded === s.id;
+                const isEditing = editingSourceId === s.id;
+                return (
+                  <React.Fragment key={s.id}>
+                    <Table.Tr
+                      data-testid={`sources-row-${s.id}`}
+                      onClick={() => {
+                        updateExpanded(isExpanded ? null : s.id);
+                        if (isEditing && isExpanded) {
+                          setEditingSourceId(null);
+                          handleCancelForm();
+                        }
+                      }}
+                      style={{
+                        cursor: "pointer",
+                        background: isExpanded ? "var(--surface)" : undefined,
+                      }}
+                    >
+                      <Table.Td>{s.id}</Table.Td>
+                      <Table.Td>{SOURCE_TYPES.find((st) => st.value === s.type)?.label ?? s.type}</Table.Td>
+                      <Table.Td>{s.host}</Table.Td>
+                      <Table.Td>{s.port || "—"}</Table.Td>
+                      <Table.Td>{s.database || "—"}</Table.Td>
+                      <Table.Td c="dimmed" fz="0.85rem">
+                        {s.gqlNamingConvention || t("sourcesPage.naOrInherit")}
+                      </Table.Td>
+                      <Table.Td c="dimmed" fz="0.85rem">
+                        {s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff")}
+                      </Table.Td>
+                      <Table.Td c="dimmed" fz="0.85rem">
+                        {getEffectiveTtl(s)}
+                      </Table.Td>
+                      <Table.Td onClick={(e) => e.stopPropagation()}>
+                        <Group gap="xs" wrap="wrap">
+                          {DISCOVERABLE_TYPES.has(s.type) && (
+                            <Button
+                              size="compact-xs"
+                              variant="default"
+                              data-testid={`sources-discover-${s.id}`}
+                              onClick={() => {
+                                setDiscoverSourceId(s.id);
+                                setDiscoverSourceType(s.type);
+                                setMappingSourceId(null);
+                              }}
+                            >
+                              {t("sourcesPage.discover")}
+                            </Button>
+                          )}
+                          {MAPPING_TYPES.has(s.type) && (
+                            <Button
+                              size="compact-xs"
+                              variant="default"
+                              data-testid={`sources-map-table-${s.id}`}
+                              onClick={() => {
+                                setMappingSourceId(s.id);
+                                setMappingSourceType(s.type);
+                                setDiscoverSourceId(null);
+                              }}
+                            >
+                              {t("sourcesPage.mapTable")}
+                            </Button>
+                          )}
+                          {(s.type === "graphql" || s.type === "openapi" || s.type === "grpc") && (
+                            <Button
+                              size="compact-xs"
+                              variant="default"
+                              data-testid={`sources-refresh-schema-${s.id}`}
+                              onClick={() => handleRefreshSchema(s.id, s.type)}
+                              disabled={refreshingSourceId === s.id}
+                            >
+                              {refreshingSourceId === s.id
+                                ? t("sourcesPage.refreshing")
+                                : t("sourcesPage.refreshSchema")}
+                            </Button>
+                          )}
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                    {isExpanded && (
+                      <Table.Tr key={`${s.id}-detail`}>
+                        <Table.Td
+                          colSpan={9}
+                          style={{
+                            padding: "0.75rem 1rem",
+                            background: "var(--bg)",
+                            borderTop: "1px solid var(--border)",
+                          }}
+                        >
+                          {isEditing ? (
+                            <form className="form-card" onSubmit={handleCreate} style={{ margin: 0 }}>
+                              <TextInput
+                                label={t("sourcesPage.idLabel")}
                                 required
                                 value={form.id}
                                 onChange={(e) => setForm({ ...form, id: e.target.value })}
                               />
-                            </label>
-                            <label>
-                              Type
-                              <select
+                              <Select
+                                label={t("sourcesPage.typeLabel")}
                                 value={form.type}
-                                onChange={(e) => handleTypeChange(e.target.value)}
-                              >
-                                {renderTypeOptions()}
-                              </select>
-                            </label>
-                            <SourceFormFields {...sourceFormFieldsProps} />
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: "0.5rem",
-                                justifyContent: "flex-end",
-                                alignItems: "flex-start",
-                                alignSelf: "end",
+                                onChange={(v) => v && handleTypeChange(v)}
+                                data={typeSelectData()}
+                                allowDeselect={false}
+                                searchable
+                              />
+                              <SourceFormFields {...sourceFormFieldsProps} />
+                              <Group justify="flex-end" align="flex-start" gap="sm" style={{ alignSelf: "end" }}>
+                                <ActionIcon
+                                  variant="subtle"
+                                  type="button"
+                                  aria-label={t("sourcesPage.cancelEdit")}
+                                  title={t("sourcesPage.cancelEdit")}
+                                  onClick={handleCancelForm}
+                                >
+                                  <X size={14} />
+                                </ActionIcon>
+                                <ActionIcon
+                                  variant="filled"
+                                  type="submit"
+                                  aria-label={t("sourcesPage.saveEdit")}
+                                  title={t("sourcesPage.saveEdit")}
+                                >
+                                  <Check size={14} />
+                                </ActionIcon>
+                              </Group>
+                            </form>
+                          ) : (
+                            <SourceDetailPanel
+                              s={s}
+                              domainsEnabled={domainsEnabled}
+                              getEffectiveTtl={getEffectiveTtl}
+                              onEdit={() => handleEdit(s)}
+                              onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
+                              onDelete={async () => {
+                                await deleteSource(s.id);
+                                if (expanded === s.id) updateExpanded(null);
+                                load();
                               }}
-                            >
-                              <button
-                                type="button"
-                                className="btn-icon"
-                                title="Cancel"
-                                onClick={handleCancelForm}
-                              >
-                                <X size={14} />
-                              </button>
-                              <button type="submit" className="btn-icon-primary" title="Save">
-                                <Check size={14} />
-                              </button>
-                            </div>
-                          </form>
-                        ) : (
-                          <SourceDetailPanel
-                            s={s}
-                            domainsEnabled={domainsEnabled}
-                            getEffectiveTtl={getEffectiveTtl}
-                            onEdit={() => handleEdit(s)}
-                            onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
-                            onDelete={async () => {
-                              await deleteSource(s.id);
-                              if (expanded === s.id) updateExpanded(null);
-                              load();
-                            }}
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            });
-          })()}
-        </tbody>
-      </table>
+                            />
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </React.Fragment>
+                );
+              });
+            })()}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
 
       {(() => {
         const filtered = sources.filter((s) => {
@@ -933,31 +972,41 @@ export function SourcesPage() {
         const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
         if (totalPages === 1) return null;
         return (
-          <div
-            style={{
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              padding: "0.5rem 0",
-            }}
-          >
-            <button onClick={() => setPage(0)} disabled={page === 0}>
+          <Group justify="flex-end" gap="xs" align="center" py="xs">
+            <ActionIcon
+              variant="default"
+              aria-label={t("sourcesPage.firstPage")}
+              onClick={() => setPage(0)}
+              disabled={page === 0}
+            >
               «
-            </button>
-            <button onClick={() => setPage((p) => p - 1)} disabled={page === 0}>
+            </ActionIcon>
+            <ActionIcon
+              variant="default"
+              aria-label={t("sourcesPage.previousPage")}
+              onClick={() => setPage((p) => p - 1)}
+              disabled={page === 0}
+            >
               ‹
-            </button>
-            <span>
-              Page {page + 1} / {totalPages}
-            </span>
-            <button onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages - 1}>
+            </ActionIcon>
+            <Text fz="sm">{t("sourcesPage.pageStatus", { page: page + 1, totalPages })}</Text>
+            <ActionIcon
+              variant="default"
+              aria-label={t("sourcesPage.nextPage")}
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page >= totalPages - 1}
+            >
               ›
-            </button>
-            <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}>
+            </ActionIcon>
+            <ActionIcon
+              variant="default"
+              aria-label={t("sourcesPage.lastPage")}
+              onClick={() => setPage(totalPages - 1)}
+              disabled={page >= totalPages - 1}
+            >
               »
-            </button>
-          </div>
+            </ActionIcon>
+          </Group>
         );
       })()}
 

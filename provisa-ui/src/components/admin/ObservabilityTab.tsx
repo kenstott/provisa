@@ -9,7 +9,21 @@
 // permission from the copyright holder.
 
 import { useState, useEffect, useRef, type RefObject } from "react";
-import { Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Button,
+  Checkbox,
+  Group,
+  Loader,
+  Modal,
+  NumberInput,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { Check, Pause, Play, Maximize2, X } from "lucide-react";
 import {
   updateSettings,
   reloadQueryEngineCatalog,
@@ -48,6 +62,7 @@ function TraceList({
   setSelected: (t: TraceEntry | null) => void;
   listRef?: RefObject<HTMLDivElement | null>;
 }) {
+  const { t } = useTranslation();
   const statusColor = (s: string) =>
     s === "OK" ? "var(--success)" : s === "ERROR" ? "var(--error, #e55)" : "var(--text-muted)";
 
@@ -64,37 +79,39 @@ function TraceList({
   return (
     <div className="trace-feed-list" ref={listRef}>
       {visible.length === 0 ? (
-        <div className="trace-empty">
-          {traces.length === 0 ? "No spans yet — make a request to see traces." : "No spans match filter."}
-        </div>
+        <Text className="trace-empty" size="sm" c="dimmed">
+          {traces.length === 0 ? t("observabilityTab.noSpansYet") : t("observabilityTab.noSpansMatch")}
+        </Text>
       ) : (
-        visible.map((t) => (
+        visible.map((tr) => (
           <div
-            key={t.span_id}
-            className={`trace-row${selected?.span_id === t.span_id ? " trace-row--selected" : ""}`}
-            onClick={() => setSelected(selected?.span_id === t.span_id ? null : t)}
+            key={tr.span_id}
+            className={`trace-row${selected?.span_id === tr.span_id ? " trace-row--selected" : ""}`}
+            onClick={() => setSelected(selected?.span_id === tr.span_id ? null : tr)}
+            data-testid={`trace-row-${tr.span_id}`}
           >
-            <span className="trace-ts">{new Date(t.ts * 1000).toLocaleTimeString()}</span>
-            <span className="trace-name">{t.name}</span>
-            <span className="trace-status" style={{ color: statusColor(t.status) }}>
-              {t.status}
+            <span className="trace-ts">{new Date(tr.ts * 1000).toLocaleTimeString()}</span>
+            <span className="trace-name">{tr.name}</span>
+            <span className="trace-status" style={{ color: statusColor(tr.status) }}>
+              {tr.status}
             </span>
             <span className="trace-dur">
-              {t.duration_ms != null ? `${t.duration_ms}ms` : "—"}
+              {tr.duration_ms != null ? `${tr.duration_ms}ms` : "—"}
             </span>
-            {selected?.span_id === t.span_id && (
+            {selected?.span_id === tr.span_id && (
               <div className="trace-detail" onClick={(e) => e.stopPropagation()}>
                 <div>
-                  <strong>Trace:</strong> <code>{t.trace_id}</code>
+                  <strong>{t("observabilityTab.traceLabel")}</strong> <code>{tr.trace_id}</code>
                 </div>
                 <div>
-                  <strong>Span:</strong> <code>{t.span_id}</code>
+                  <strong>{t("observabilityTab.spanLabel")}</strong> <code>{tr.span_id}</code>
                 </div>
                 <div>
-                  <strong>Time:</strong> {new Date(t.ts * 1000).toLocaleTimeString()}
+                  <strong>{t("observabilityTab.timeLabel")}</strong>{" "}
+                  {new Date(tr.ts * 1000).toLocaleTimeString()}
                 </div>
-                {Object.keys(t.attrs).length > 0 && (
-                  <pre className="trace-attrs">{JSON.stringify(t.attrs, null, 2)}</pre>
+                {Object.keys(tr.attrs).length > 0 && (
+                  <pre className="trace-attrs">{JSON.stringify(tr.attrs, null, 2)}</pre>
                 )}
               </div>
             )}
@@ -106,6 +123,7 @@ function TraceList({
 }
 
 function TraceFeed() {
+  const { t } = useTranslation();
   const [traces, setTraces] = useState<TraceEntry[]>([]);
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState("");
@@ -139,31 +157,37 @@ function TraceFeed() {
 
   const headerContent = (
     <>
-      <span style={{ flex: 1 }}>Traces</span>
-      <input
+      <span style={{ flex: 1 }}>{t("observabilityTab.traces")}</span>
+      <TextInput
         className="trace-filter"
-        placeholder="Filter…"
+        placeholder={t("observabilityTab.filterPlaceholder")}
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         onClick={(e) => e.stopPropagation()}
+        aria-label={t("observabilityTab.filterPlaceholder")}
+        size="xs"
       />
-      <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.4rem" }}>
-        <button
+      <Group flex={1} justify="flex-end" align="center" gap="0.4rem">
+        <ActionIcon
           className="trace-pause-btn"
           style={{ marginLeft: "0.5rem" }}
           onClick={() => setPaused((p) => !p)}
-          title={paused ? "Resume" : "Pause"}
+          aria-label={paused ? t("observabilityTab.resume") : t("observabilityTab.pause")}
+          title={paused ? t("observabilityTab.resume") : t("observabilityTab.pause")}
+          variant="subtle"
         >
-          {paused ? "▶" : "⏸"}
-        </button>
-        <button
+          {paused ? <Play size={14} /> : <Pause size={14} />}
+        </ActionIcon>
+        <ActionIcon
           className="trace-expand-btn"
           onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
-          title={expanded ? "Collapse" : "Expand"}
+          aria-label={expanded ? t("observabilityTab.collapse") : t("observabilityTab.expand")}
+          title={expanded ? t("observabilityTab.collapse") : t("observabilityTab.expand")}
+          variant="subtle"
         >
-          {expanded ? "✕" : "⤢"}
-        </button>
-      </div>
+          {expanded ? <X size={14} /> : <Maximize2 size={14} />}
+        </ActionIcon>
+      </Group>
     </>
   );
 
@@ -175,45 +199,23 @@ function TraceFeed() {
         </div>
         <TraceList traces={traces} filter={filter} selected={selected} setSelected={setSelected} listRef={listRef} />
       </div>
-      {expanded && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            zIndex: 1000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          onClick={() => setExpanded(false)}
-        >
-          <div
-            style={{
-              width: "90vw",
-              height: "90vh",
-              background: "var(--bg-surface, #1e1e2e)",
-              borderRadius: "8px",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="trace-feed-header">
-              {headerContent}
-            </div>
-            <div style={{ flex: 1, overflow: "auto" }}>
-              <TraceList traces={traces} filter={filter} selected={selected} setSelected={setSelected} />
-            </div>
-          </div>
+      <Modal
+        opened={expanded}
+        onClose={() => setExpanded(false)}
+        size="90vw"
+        title={t("observabilityTab.traces")}
+        transitionProps={{ duration: 0 }}
+      >
+        <div style={{ height: "80vh", overflow: "auto" }}>
+          <TraceList traces={traces} filter={filter} selected={selected} setSelected={setSelected} />
         </div>
-      )}
+      </Modal>
     </>
   );
 }
 
 export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -227,7 +229,7 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
       const result = await updateSettings({ otel: settings.otel });
       setMsg(`Saved: ${result.updated.join(", ")}`);
     } catch (e: unknown) {
-      setMsg(e instanceof Error ? e.message : "Save failed");
+      setMsg(e instanceof Error ? e.message : t("observabilityTab.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -238,94 +240,75 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
   return (
     <div className="observability-layout">
       <div className="settings-section">
-        <h4>OpenTelemetry Tracing</h4>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1rem" }}>
-          Status:{" "}
-          <strong style={{ color: active ? "var(--success)" : "var(--text-muted)" }}>
+        <Title order={4}>{t("observabilityTab.otelTitle")}</Title>
+        <Text c="dimmed" size="sm" mb="md">
+          {t("observabilityTab.statusLabel")}{" "}
+          <Text component="strong" c={active ? "var(--success)" : "dimmed"} span>
             {active
-              ? `Exporting → ${settings.otel.endpoint}`
-              : "Active (spans dropped — no collector configured)"}
-          </strong>
-        </p>
-        <label>
-          OTLP Collector Endpoint
-          <input
-            type="text"
+              ? t("observabilityTab.statusExporting", { endpoint: settings.otel.endpoint })
+              : t("observabilityTab.statusActiveNoCollector")}
+          </Text>
+        </Text>
+        <Stack gap="md">
+          <TextInput
+            label={t("observabilityTab.endpointLabel")}
             value={settings.otel.endpoint}
             onChange={(e) => update("endpoint", e.target.value)}
             placeholder="http://otel-collector:4317"
+            description={t("observabilityTab.endpointHelp")}
           />
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Leave empty to generate traces without exporting. Override with
-            OTEL_EXPORTER_OTLP_ENDPOINT env var.
-          </span>
-        </label>
-        <label>
-          Service Name
-          <input
-            type="text"
+          <TextInput
+            label={t("observabilityTab.serviceNameLabel")}
             value={settings.otel.service_name}
             onChange={(e) => update("service_name", e.target.value)}
             placeholder="provisa"
+            description={t("observabilityTab.serviceNameHelp")}
           />
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Override with OTEL_SERVICE_NAME env var.
-          </span>
-        </label>
-        <label>
-          Sample Rate
-          <input
-            type="number"
+          <NumberInput
+            label={t("observabilityTab.sampleRateLabel")}
             min={0}
             max={1}
             step={0.01}
             value={settings.otel.sample_rate}
-            onChange={(e) => update("sample_rate", parseFloat(e.target.value) || 0)}
+            onChange={(v) => update("sample_rate", typeof v === "number" ? v : 0)}
+            description={t("observabilityTab.sampleRateHelp")}
           />
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            0.0–1.0. 1.0 = 100% of traces sampled.
-          </span>
-        </label>
-        <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
-          <button className="btn-primary" onClick={save} disabled={saving} title="Save">
-            {saving ? <span className="btn-spinner" /> : <Check size={14} />}
-          </button>
-          {msg && <span className="upload-msg">{msg}</span>}
-        </div>
-        <p style={{ marginTop: "1.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-          Note: endpoint and service_name changes take effect on next restart. Sample rate is
-          applied immediately.
-        </p>
+        </Stack>
+        <Group mt="md" gap="0.75rem" align="center">
+          <ActionIcon
+            className="btn-primary"
+            onClick={save}
+            disabled={saving}
+            aria-label={t("observabilityTab.saveButton")}
+            title={t("observabilityTab.saveButton")}
+          >
+            {saving ? <Loader size={14} /> : <Check size={14} />}
+          </ActionIcon>
+          {msg && <Text className="upload-msg" size="sm">{msg}</Text>}
+        </Group>
+        <Text mt="lg" size="xs" c="dimmed">
+          {t("observabilityTab.restartNote")}
+        </Text>
 
-        <h4 style={{ marginTop: "1.5rem" }}>Support Telemetry</h4>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1rem" }}>
-          Optionally forward telemetry to Provisa support. SQL literals are stripped by default.
-        </p>
-        <label>
-          Support OTLP Endpoint
-          <input
-            type="text"
+        <Title order={4} mt="lg">{t("observabilityTab.supportTitle")}</Title>
+        <Text c="dimmed" size="sm" mb="md">
+          {t("observabilityTab.supportIntro")}
+        </Text>
+        <Stack gap="md">
+          <TextInput
+            label={t("observabilityTab.supportEndpointLabel")}
             value={settings.otel.support_endpoint}
             onChange={(e) => update("support_endpoint", e.target.value)}
             placeholder="https://otel.provisa.io:4318"
+            description={t("observabilityTab.supportEndpointHelp")}
           />
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Leave empty to disable support telemetry. Override with PROVISA_SUPPORT_OTLP_ENDPOINT
-            env var.
-          </span>
-        </label>
-        <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
-          <input
-            type="checkbox"
+          <Checkbox
             checked={settings.otel.support_redact_sql_literals}
             onChange={(e) => update("support_redact_sql_literals", e.target.checked)}
+            label={t("observabilityTab.redactSqlLabel")}
           />
-          Redact SQL literals before forwarding to support
-        </label>
-        <label>
-          Redact Attributes (comma-separated)
-          <input
-            type="text"
+          <TextInput
+            label={t("observabilityTab.redactAttrsLabel")}
             value={(settings.otel.support_redact_attributes ?? []).join(", ")}
             onChange={(e) =>
               update(
@@ -337,11 +320,9 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
               )
             }
             placeholder="user.id, db.user, ..."
+            description={t("observabilityTab.redactAttrsHelp")}
           />
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Attribute keys to drop entirely before sending to support.
-          </span>
-        </label>
+        </Stack>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <TraceFeed />
@@ -352,6 +333,7 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
 }
 
 function QueryEngineActions() {
+  const { t } = useTranslation();
   const [reloadStatus, setReloadStatus] = useState<string>("");
   const [restartStatus, setRestartStatus] = useState<string>("");
   const [clusterStatus, setClusterStatus] = useState<string>("");
@@ -364,9 +346,13 @@ function QueryEngineActions() {
     setReloadStatus("");
     try {
       const result = await reloadQueryEngineCatalog();
-      setReloadStatus(result.success ? "Catalog reloaded." : `Errors: ${result.errors.join("; ")}`);
+      setReloadStatus(
+        result.success
+          ? t("observabilityTab.catalogReloaded")
+          : t("observabilityTab.errorsPrefix", { errors: result.errors.join("; ") }),
+      );
     } catch (e: unknown) {
-      setReloadStatus(e instanceof Error ? e.message : "Failed");
+      setReloadStatus(e instanceof Error ? e.message : t("observabilityTab.failed"));
     } finally {
       setReloading(false);
     }
@@ -377,9 +363,9 @@ function QueryEngineActions() {
     setRestartStatus("");
     try {
       const result = await restartQueryEngine();
-      setRestartStatus(`Restarted: ${result.container}`);
+      setRestartStatus(t("observabilityTab.restarted", { container: result.container }));
     } catch (e: unknown) {
-      setRestartStatus(e instanceof Error ? e.message : "Failed");
+      setRestartStatus(e instanceof Error ? e.message : t("observabilityTab.failed"));
     } finally {
       setRestarting(false);
     }
@@ -390,9 +376,9 @@ function QueryEngineActions() {
     setClusterStatus("");
     try {
       const result = await recomputeSchemaClusters();
-      setClusterStatus(`Clustered ${result.tables_clustered} tables.`);
+      setClusterStatus(t("observabilityTab.clustered", { count: result.tables_clustered }));
     } catch (e: unknown) {
-      setClusterStatus(e instanceof Error ? e.message : "Failed");
+      setClusterStatus(e instanceof Error ? e.message : t("observabilityTab.failed"));
     } finally {
       setReclustering(false);
     }
@@ -400,32 +386,32 @@ function QueryEngineActions() {
 
   return (
     <div className="settings-section">
-      <h4>Query Engine</h4>
-      <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn-primary" onClick={handleReload} disabled={reloading}>
-          {reloading ? "Reloading..." : "Reload Catalog"}
-        </button>
-        <button className="btn-warning" onClick={handleRestart} disabled={restarting}>
-          {restarting ? "Restarting..." : "Restart Engine"}
-        </button>
-        <button className="btn-secondary" onClick={handleRecluster} disabled={reclustering}>
-          {reclustering ? "Clustering..." : "Recompute Schema Clusters"}
-        </button>
-      </div>
+      <Title order={4}>{t("observabilityTab.queryEngineTitle")}</Title>
+      <Group gap="0.75rem" align="center" wrap="wrap" mt="sm">
+        <Button className="btn-primary" onClick={handleReload} disabled={reloading}>
+          {reloading ? t("observabilityTab.reloading") : t("observabilityTab.reloadCatalog")}
+        </Button>
+        <Button color="yellow" className="btn-warning" onClick={handleRestart} disabled={restarting}>
+          {restarting ? t("observabilityTab.restarting") : t("observabilityTab.restartEngine")}
+        </Button>
+        <Button variant="default" className="btn-secondary" onClick={handleRecluster} disabled={reclustering}>
+          {reclustering ? t("observabilityTab.clustering") : t("observabilityTab.recomputeClusters")}
+        </Button>
+      </Group>
       {reloadStatus && (
-        <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>
+        <Text className="upload-msg" size="sm" mt="0.5rem">
           {reloadStatus}
-        </span>
+        </Text>
       )}
       {restartStatus && (
-        <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>
+        <Text className="upload-msg" size="sm" mt="0.5rem">
           {restartStatus}
-        </span>
+        </Text>
       )}
       {clusterStatus && (
-        <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>
+        <Text className="upload-msg" size="sm" mt="0.5rem">
           {clusterStatus}
-        </span>
+        </Text>
       )}
     </div>
   );

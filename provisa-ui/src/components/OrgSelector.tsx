@@ -8,28 +8,39 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { Button, Modal, Stack, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 
 export function OrgSelector() {
+  const { t } = useTranslation();
   const { orgMemberships, activeOrgId, selectOrg } = useAuth();
 
-  if (activeOrgId || orgMemberships.length <= 1) return null;
+  const opened = !activeOrgId && orgMemberships.length > 1;
 
   return (
-    <div className="modal-overlay">
-      <div className="modal">
-        <h2>Select Organization</h2>
-        <p>You belong to multiple organizations. Choose one to continue.</p>
-        <ul className="org-list">
-          {orgMemberships.map((m) => (
-            <li key={m.org_id}>
-              <button className="btn-primary" onClick={() => selectOrg(m.org_id)}>
-                {m.org_name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+    <Modal
+      opened={opened}
+      onClose={() => {}}
+      title={t("orgSelector.title")}
+      centered
+      closeOnClickOutside={false}
+      closeOnEscape={false}
+      withCloseButton={false}
+      data-testid="org-selector-modal"
+    >
+      <Text mb="md">{t("orgSelector.description")}</Text>
+      <Stack gap="xs">
+        {orgMemberships.map((m) => (
+          <Button
+            key={m.org_id}
+            onClick={() => selectOrg(m.org_id)}
+            data-testid={`org-selector-option-${m.org_id}`}
+          >
+            {m.org_name}
+          </Button>
+        ))}
+      </Stack>
+    </Modal>
   );
 }

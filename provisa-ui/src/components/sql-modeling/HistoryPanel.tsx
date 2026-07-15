@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import React from "react";
+import { useTranslation } from "react-i18next";
+import { Button, Table, Text } from "@mantine/core";
 import type { HistoryEntry, ResultTab } from "./types";
 
 interface HistoryPanelProps {
@@ -19,101 +21,105 @@ interface HistoryPanelProps {
 }
 
 export function HistoryPanel({ history, setSqlText, setRole, setResultTab }: HistoryPanelProps) {
+  const { t } = useTranslation();
+
   if (history.length === 0) {
     return (
-      <div
-        style={{
-          padding: "1.5rem",
-          textAlign: "center",
-          color: "var(--text-muted)",
-          fontSize: "0.85rem",
-        }}
-      >
-        No queries run yet. History persists across sessions.
-      </div>
+      <Text ta="center" c="dimmed" fz="sm" p="lg">
+        {t("sqlModelingHistoryPanel.empty")}
+      </Text>
     );
   }
 
   return (
-    <table className="data-table" style={{ fontSize: "0.75rem" }}>
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Role</th>
-          <th>Duration</th>
-          <th>Rows</th>
-          <th style={{ width: "50%" }}>SQL</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {history.map((h, i) => {
-          const ts = new Date(h.executedAt);
-          const timeLabel = ts.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          });
-          const dateLabel = ts.toLocaleDateString([], {
-            month: "short",
-            day: "numeric",
-          });
-          const isToday = ts.toDateString() === new Date().toDateString();
-          return (
-            <tr key={i} style={{ verticalAlign: "top" }}>
-              <td style={{ whiteSpace: "nowrap", color: "var(--text-muted)" }}>
-                <div>{timeLabel}</div>
-                {!isToday && <div style={{ fontSize: "0.68rem" }}>{dateLabel}</div>}
-              </td>
-              <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>{h.role}</td>
-              <td
-                style={{
-                  whiteSpace: "nowrap",
-                  color: h.error ? "var(--destructive)" : "var(--text-muted)",
-                }}
-              >
-                {h.durationMs}ms
-              </td>
-              <td
-                style={{
-                  whiteSpace: "nowrap",
-                  color: h.error ? "var(--destructive)" : "var(--text)",
-                }}
-              >
-                {h.error ? <span title={h.error}>error</span> : h.rowCount}
-              </td>
-              <td>
-                <pre
-                  style={{
-                    margin: 0,
-                    fontSize: "0.72rem",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-all",
-                    color: "var(--text)",
-                    maxHeight: "4.5em",
-                    overflow: "hidden",
-                  }}
+    <Table.ScrollContainer minWidth={640}>
+      <Table verticalSpacing="xs" fz="xs">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>{t("sqlModelingHistoryPanel.colTime")}</Table.Th>
+            <Table.Th>{t("sqlModelingHistoryPanel.colRole")}</Table.Th>
+            <Table.Th>{t("sqlModelingHistoryPanel.colDuration")}</Table.Th>
+            <Table.Th>{t("sqlModelingHistoryPanel.colRows")}</Table.Th>
+            <Table.Th style={{ width: "50%" }}>{t("sqlModelingHistoryPanel.colSql")}</Table.Th>
+            <Table.Th>
+              <Text span visibleFrom="xs" fz="xs" fw={600}>
+                {t("sqlModelingHistoryPanel.colActions")}
+              </Text>
+            </Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {history.map((h, i) => {
+            const ts = new Date(h.executedAt);
+            const timeLabel = ts.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            });
+            const dateLabel = ts.toLocaleDateString([], {
+              month: "short",
+              day: "numeric",
+            });
+            const isToday = ts.toDateString() === new Date().toDateString();
+            return (
+              <Table.Tr key={i} style={{ verticalAlign: "top" }}>
+                <Table.Td style={{ whiteSpace: "nowrap" }} c="dimmed">
+                  <div>{timeLabel}</div>
+                  {!isToday && <div style={{ fontSize: "0.68rem" }}>{dateLabel}</div>}
+                </Table.Td>
+                <Table.Td style={{ whiteSpace: "nowrap" }} c="dimmed">
+                  {h.role}
+                </Table.Td>
+                <Table.Td
+                  style={{ whiteSpace: "nowrap" }}
+                  c={h.error ? "red" : "dimmed"}
                 >
-                  {h.sql}
-                </pre>
-              </td>
-              <td style={{ whiteSpace: "nowrap" }}>
-                <button
-                  className="btn-secondary"
-                  style={{ fontSize: "0.7rem", padding: "0.15rem 0.45rem" }}
-                  onClick={() => {
-                    setSqlText(h.sql);
-                    setRole(h.role);
-                    setResultTab("results");
-                  }}
+                  {h.durationMs}ms
+                </Table.Td>
+                <Table.Td
+                  style={{ whiteSpace: "nowrap" }}
+                  c={h.error ? "red" : undefined}
                 >
-                  Restore
-                </button>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+                  {h.error ? (
+                    <span title={h.error}>{t("sqlModelingHistoryPanel.error")}</span>
+                  ) : (
+                    h.rowCount
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  <pre
+                    style={{
+                      margin: 0,
+                      fontSize: "0.72rem",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-all",
+                      color: "var(--text)",
+                      maxHeight: "4.5em",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {h.sql}
+                  </pre>
+                </Table.Td>
+                <Table.Td style={{ whiteSpace: "nowrap" }}>
+                  <Button
+                    variant="default"
+                    size="compact-xs"
+                    aria-label={t("sqlModelingHistoryPanel.restoreLabel", { time: timeLabel })}
+                    onClick={() => {
+                      setSqlText(h.sql);
+                      setRole(h.role);
+                      setResultTab("results");
+                    }}
+                  >
+                    {t("sqlModelingHistoryPanel.restore")}
+                  </Button>
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
   );
 }

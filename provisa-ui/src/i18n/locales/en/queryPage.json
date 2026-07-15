@@ -1,0 +1,20 @@
+{
+  "queryPage": {
+    "selectRole": "Select a role.",
+    "redirectLabel": "Redirect",
+    "thresholdLabel": "Threshold",
+    "thresholdPlaceholder": "all",
+    "redirectHint": "All results redirect to S3",
+    "queryStats": "Query Stats",
+    "schemaError": "Schema error: {{message}}",
+    "redirectReady": "Redirect ready — {{rowCount}} rows ({{contentType}})",
+    "download": "Download",
+    "dismissRedirect": "Dismiss redirect notice",
+    "formatNone": "None",
+    "formatParquet": "Parquet",
+    "formatArrow": "Arrow",
+    "formatCsv": "CSV",
+    "formatNdjson": "NDJSON",
+    "formatJson": "JSON"
+  }
+}

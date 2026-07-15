@@ -1,0 +1,7 @@
+{
+  "schemaExplorer": {
+    "selectRole": "Select a role to view schema.",
+    "loadFailed": "Failed to load schema: {{error}}",
+    "loading": "Loading schema..."
+  }
+}

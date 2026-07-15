@@ -12,7 +12,10 @@
    A latest-value ref mirrors colWidths so the drag handler reads current widths
    without re-binding listeners; writing it during render is the mirror pattern. */
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import { Table, Text } from "@mantine/core";
+import { CopySymbolButton } from "../CopyButton";
 import { toCSV } from "./graph-export";
 
 function cellText(v: unknown): string {
@@ -36,6 +39,7 @@ export function TableView({
   colWidths: number[];
   setColWidths: (w: number[]) => void;
 }) {
+  const { t } = useTranslation();
   const dragRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
 
   const colWidthsRef = useRef(colWidths);
@@ -64,13 +68,25 @@ export function TableView({
     [setColWidths],
   );
 
-  if (rows.length === 0) return <div className="gf-table-empty">No rows</div>;
+  if (rows.length === 0) {
+    return (
+      <Text className="gf-table-empty" data-testid="table-view-empty">
+        {t("graphTableView.noRows")}
+      </Text>
+    );
+  }
   return (
     <div className="gf-table-outer" style={height !== undefined ? { height } : undefined}>
-      <CsvCopyButton columns={columns} rows={rows} />
+      <CopySymbolButton
+        text={toCSV(columns, rows)}
+        className="gf-tbl-copy-btn"
+        title={t("graphTableView.copyAsCsv")}
+      />
       <div className="gf-table-wrap">
-        <table
+        <Table
           className="gf-table"
+          aria-label={t("graphTableView.table")}
+          data-testid="table-view-table"
           style={{ tableLayout: "fixed", width: colWidths.reduce((a, b) => a + b, 0) + 40 }}
         >
           <colgroup>
@@ -79,69 +95,48 @@ export function TableView({
               <col key={i} style={{ width: w }} />
             ))}
           </colgroup>
-          <thead>
-            <tr>
-              <th className="gf-th-rownum" />
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th className="gf-th-rownum" />
               {columns.map((c, i) => (
-                <th key={c} style={{ position: "relative", width: colWidths[i] }}>
+                <Table.Th key={c} style={{ position: "relative", width: colWidths[i] }}>
                   <span className="gf-th-label">{c}</span>
-                  <span className="gf-col-resize" onMouseDown={(e) => onResizeStart(e, i)} />
-                </th>
+                  <span
+                    className="gf-col-resize"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={c}
+                    onMouseDown={(e) => onResizeStart(e, i)}
+                  />
+                </Table.Th>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
             {rows.map((r, i) => (
-              <tr key={i}>
-                <td className="gf-td-rownum">{i + 1}</td>
+              <Table.Tr key={i}>
+                <Table.Td className="gf-td-rownum">{i + 1}</Table.Td>
                 {columns.map((c) => (
-                  <td key={c} className={wrap ? "gf-td-wrap" : ""}>
+                  <Table.Td key={c} className={wrap ? "gf-td-wrap" : ""}>
                     {cellText(r[c])}
-                  </td>
+                  </Table.Td>
                 ))}
-              </tr>
+              </Table.Tr>
             ))}
-          </tbody>
-        </table>
+          </Table.Tbody>
+        </Table>
       </div>
     </div>
   );
 }
 
-function CsvCopyButton({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
-  const [copied, setCopied] = useState(false);
-  const copy = useCallback(() => {
-    navigator.clipboard.writeText(toCSV(columns, rows)).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }, [columns, rows]);
-  return (
-    <button
-      className={`gf-tbl-copy-btn${copied ? " copied" : ""}`}
-      onClick={copy}
-      title="Copy as CSV"
-    >
-      {copied ? "✓" : "⎘"}
-    </button>
-  );
-}
-
 export function JsonCopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }, [text]);
+  const { t } = useTranslation();
   return (
-    <button
-      className={`gf-json-copy-btn${copied ? " copied" : ""}`}
-      onClick={copy}
-      title="Copy JSON"
-    >
-      {copied ? "✓" : "⎘"}
-    </button>
+    <CopySymbolButton
+      text={text}
+      className="gf-json-copy-btn"
+      title={t("graphTableView.copyJson")}
+    />
   );
 }

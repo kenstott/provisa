@@ -9,6 +9,21 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  Group,
+  Select,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { Trash2 } from "lucide-react";
 import { discoverSourceSchema, fetchIrTypes } from "../api/admin";
 import type { DiscoveredColumn } from "../api/admin";
 import { useRegisterTable } from "../hooks/useAdminQueries";
@@ -51,62 +66,53 @@ function DiscoverHints({
   hints: Record<string, string>;
   setHints: (h: Record<string, string>) => void;
 }) {
+  const { t } = useTranslation();
   if (sourceType === "mongodb") {
     return (
-      <label>
-        Collection
-        <input
-          value={hints.collection ?? ""}
-          onChange={(e) => setHints({ ...hints, collection: e.target.value })}
-          placeholder="e.g. users"
-        />
-      </label>
+      <TextInput
+        label={t("schemaDiscovery.collection")}
+        value={hints.collection ?? ""}
+        onChange={(e) => setHints({ ...hints, collection: e.currentTarget.value })}
+        placeholder={t("schemaDiscovery.collectionPlaceholder")}
+      />
     );
   }
   if (sourceType === "elasticsearch") {
     return (
-      <label>
-        Index Pattern
-        <input
-          value={hints.index ?? ""}
-          onChange={(e) => setHints({ ...hints, index: e.target.value })}
-          placeholder="e.g. nginx-access-*"
-        />
-      </label>
+      <TextInput
+        label={t("schemaDiscovery.indexPattern")}
+        value={hints.index ?? ""}
+        onChange={(e) => setHints({ ...hints, index: e.currentTarget.value })}
+        placeholder={t("schemaDiscovery.indexPatternPlaceholder")}
+      />
     );
   }
   if (sourceType === "cassandra") {
     return (
       <>
-        <label>
-          Keyspace
-          <input
-            value={hints.keyspace ?? ""}
-            onChange={(e) => setHints({ ...hints, keyspace: e.target.value })}
-            placeholder="e.g. analytics"
-          />
-        </label>
-        <label>
-          Table
-          <input
-            value={hints.table ?? ""}
-            onChange={(e) => setHints({ ...hints, table: e.target.value })}
-            placeholder="e.g. user_events"
-          />
-        </label>
+        <TextInput
+          label={t("schemaDiscovery.keyspace")}
+          value={hints.keyspace ?? ""}
+          onChange={(e) => setHints({ ...hints, keyspace: e.currentTarget.value })}
+          placeholder={t("schemaDiscovery.keyspacePlaceholder")}
+        />
+        <TextInput
+          label={t("schemaDiscovery.table")}
+          value={hints.table ?? ""}
+          onChange={(e) => setHints({ ...hints, table: e.currentTarget.value })}
+          placeholder={t("schemaDiscovery.tablePlaceholder")}
+        />
       </>
     );
   }
   if (sourceType === "prometheus") {
     return (
-      <label>
-        Metric Name
-        <input
-          value={hints.metric ?? ""}
-          onChange={(e) => setHints({ ...hints, metric: e.target.value })}
-          placeholder="e.g. http_request_duration_seconds"
-        />
-      </label>
+      <TextInput
+        label={t("schemaDiscovery.metricName")}
+        value={hints.metric ?? ""}
+        onChange={(e) => setHints({ ...hints, metric: e.currentTarget.value })}
+        placeholder={t("schemaDiscovery.metricNamePlaceholder")}
+      />
     );
   }
   return null;
@@ -118,6 +124,7 @@ export function SchemaDiscovery({
   onClose,
   onRegistered,
 }: SchemaDiscoveryProps) {
+  const { t } = useTranslation();
   const [columns, setColumns] = useState<ColumnRow[]>([]);
   // IR type vocabulary for the per-column type dropdown (REQ-846), from the backend.
   const [irTypes, setIrTypes] = useState<string[]>(IR_TYPES_FALLBACK);
@@ -146,9 +153,7 @@ export function SchemaDiscovery({
       const resp = await discoverSourceSchema(sourceId, hints);
       setColumns(toColumnRows(resp.columns));
       if (resp.columns.length === 0) {
-        setError(
-          "No columns discovered. The source may need live connection data, or you can add columns manually.",
-        );
+        setError(t("schemaDiscovery.noColumnsDiscovered"));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -186,11 +191,11 @@ export function SchemaDiscovery({
   const handleRegister = async () => {
     const selected = columns.filter((c) => c.selected && c.name.trim());
     if (selected.length === 0) {
-      setError("Select at least one column with a name");
+      setError(t("schemaDiscovery.selectColumnRequired"));
       return;
     }
     if (!regForm.domainId.trim() || !regForm.tableName.trim()) {
-      setError("Domain ID and Table Name are required");
+      setError(t("schemaDiscovery.domainTableRequired"));
       return;
     }
     setRegistering(true);
@@ -221,151 +226,165 @@ export function SchemaDiscovery({
   };
 
   const allSelected = columns.length > 0 && columns.every((c) => c.selected);
+  const irTypeOptions = irTypes.map((it) => ({ value: it, label: it }));
 
   return (
-    <div className="form-card" style={{ marginTop: "1rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ margin: 0 }}>Schema Discovery: {sourceId}</h3>
-        <button onClick={onClose} style={{ padding: "0.25rem 0.5rem" }}>
-          Close
-        </button>
-      </div>
+    <Card withBorder mt="md" data-testid="schema-discovery">
+      <Group justify="space-between" align="center">
+        <Title order={4} m={0}>
+          {t("schemaDiscovery.title", { sourceId })}
+        </Title>
+        <Button variant="default" size="xs" onClick={onClose}>
+          {t("schemaDiscovery.close")}
+        </Button>
+      </Group>
 
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <Alert color="red" mt="sm" data-testid="schema-discovery-error">
+          {error}
+        </Alert>
+      )}
 
-      <div
-        style={{
-          display: "flex",
-          gap: "0.5rem",
-          flexWrap: "wrap",
-          alignItems: "flex-end",
-          marginTop: "0.5rem",
-        }}
-      >
+      <Group gap="sm" wrap="wrap" align="flex-end" mt="sm">
         <DiscoverHints sourceType={sourceType} hints={hints} setHints={setHints} />
-        <button onClick={handleDiscover} disabled={loading}>
-          {loading ? "Discovering..." : "Discover Schema"}
-        </button>
-        <button onClick={addManualColumn} style={{ fontSize: "0.85rem" }}>
-          + Add Column
-        </button>
-      </div>
+        <Button onClick={handleDiscover} loading={loading} data-testid="discover-schema-btn">
+          {loading ? t("schemaDiscovery.discovering") : t("schemaDiscovery.discover")}
+        </Button>
+        <Button variant="light" size="xs" onClick={addManualColumn} data-testid="add-column-btn">
+          {t("schemaDiscovery.addColumn")}
+        </Button>
+      </Group>
 
       {columns.length > 0 && (
         <>
-          <table className="data-table" style={{ marginTop: "0.75rem" }}>
-            <thead>
-              <tr>
-                <th>
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={(e) => toggleAll(e.target.checked)}
-                  />
-                </th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Alias</th>
-                <th>Description</th>
-                <th>Source Path</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {columns.map((col, idx) => (
-                <tr key={idx} style={{ opacity: col.selected ? 1 : 0.5 }}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={col.selected}
-                      onChange={(e) => updateColumn(idx, { selected: e.target.checked })}
+          <Table.ScrollContainer minWidth={720} mt="md">
+            <Table withTableBorder verticalSpacing="xs">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>
+                    <Checkbox
+                      checked={allSelected}
+                      onChange={(e) => toggleAll(e.currentTarget.checked)}
+                      aria-label={t("schemaDiscovery.selectAllColumns")}
                     />
-                  </td>
-                  <td>
-                    <input
-                      value={col.name}
-                      onChange={(e) => updateColumn(idx, { name: e.target.value })}
-                      style={{ width: "8rem" }}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      value={col.type}
-                      onChange={(e) => updateColumn(idx, { type: e.target.value })}
-                    >
-                      {irTypes.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      value={col.alias}
-                      onChange={(e) => updateColumn(idx, { alias: e.target.value })}
-                      placeholder="optional"
-                      style={{ width: "7rem" }}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={col.description}
-                      onChange={(e) => updateColumn(idx, { description: e.target.value })}
-                      placeholder="optional"
-                      style={{ width: "10rem" }}
-                    />
-                  </td>
-                  <td style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                    {col.sourcePath}
-                  </td>
-                  <td>
-                    <button
-                      onClick={() => removeColumn(idx)}
-                      style={{ padding: "0.15rem 0.4rem", fontSize: "0.75rem" }}
-                      className="destructive"
-                    >
-                      X
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </Table.Th>
+                  <Table.Th>{t("schemaDiscovery.colName")}</Table.Th>
+                  <Table.Th>{t("schemaDiscovery.colType")}</Table.Th>
+                  <Table.Th>{t("schemaDiscovery.colAlias")}</Table.Th>
+                  <Table.Th>{t("schemaDiscovery.colDescription")}</Table.Th>
+                  <Table.Th>{t("schemaDiscovery.colSourcePath")}</Table.Th>
+                  <Table.Th>
+                    <Text span visibleFrom="xs" fz="sm" fw={600}>
+                      {t("schemaDiscovery.colActions")}
+                    </Text>
+                  </Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {columns.map((col, idx) => (
+                  <Table.Tr key={idx} opacity={col.selected ? 1 : 0.5}>
+                    <Table.Td>
+                      <Checkbox
+                        checked={col.selected}
+                        onChange={(e) => updateColumn(idx, { selected: e.currentTarget.checked })}
+                        aria-label={t("schemaDiscovery.selectColumn", {
+                          name: col.name || idx + 1,
+                        })}
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <TextInput
+                        aria-label={t("schemaDiscovery.colName")}
+                        value={col.name}
+                        onChange={(e) => updateColumn(idx, { name: e.currentTarget.value })}
+                        placeholder={t("schemaDiscovery.namePlaceholder")}
+                        w="8rem"
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <Select
+                        aria-label={t("schemaDiscovery.colType")}
+                        data={irTypeOptions}
+                        value={col.type}
+                        onChange={(v) => v && updateColumn(idx, { type: v })}
+                        allowDeselect={false}
+                        w="9rem"
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <TextInput
+                        aria-label={t("schemaDiscovery.colAlias")}
+                        value={col.alias}
+                        onChange={(e) => updateColumn(idx, { alias: e.currentTarget.value })}
+                        placeholder={t("schemaDiscovery.aliasOptional")}
+                        w="7rem"
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <TextInput
+                        aria-label={t("schemaDiscovery.colDescription")}
+                        value={col.description}
+                        onChange={(e) =>
+                          updateColumn(idx, { description: e.currentTarget.value })
+                        }
+                        placeholder={t("schemaDiscovery.descriptionOptional")}
+                        w="10rem"
+                      />
+                    </Table.Td>
+                    <Table.Td c="dimmed" fz="xs">
+                      {col.sourcePath}
+                    </Table.Td>
+                    <Table.Td>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        aria-label={t("schemaDiscovery.removeColumn", {
+                          name: col.name || idx + 1,
+                        })}
+                        onClick={() => removeColumn(idx)}
+                      >
+                        <Trash2 size={14} />
+                      </ActionIcon>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
 
-          <h4 style={{ marginTop: "1rem", marginBottom: "0.25rem" }}>Register Table</h4>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-            <label>
-              Domain ID
-              <input
-                required
-                value={regForm.domainId}
-                onChange={(e) => setRegForm({ ...regForm, domainId: e.target.value })}
-                placeholder="e.g. analytics"
-              />
-            </label>
-            <label>
-              Schema
-              <input
-                value={regForm.schemaName}
-                onChange={(e) => setRegForm({ ...regForm, schemaName: e.target.value })}
-              />
-            </label>
-            <label>
-              Table Name
-              <input
-                required
-                value={regForm.tableName}
-                onChange={(e) => setRegForm({ ...regForm, tableName: e.target.value })}
-                placeholder="e.g. user_events"
-              />
-            </label>
-            <button onClick={handleRegister} disabled={registering}>
-              {registering ? "Registering..." : "Register Table"}
-            </button>
-          </div>
+          <Title order={5} mt="md" mb="xs">
+            {t("schemaDiscovery.registerTableHeading")}
+          </Title>
+          <Group gap="sm" wrap="wrap" align="flex-end">
+            <TextInput
+              label={t("schemaDiscovery.domainId")}
+              required
+              value={regForm.domainId}
+              onChange={(e) => setRegForm({ ...regForm, domainId: e.currentTarget.value })}
+              placeholder={t("schemaDiscovery.domainIdPlaceholder")}
+            />
+            <TextInput
+              label={t("schemaDiscovery.schema")}
+              value={regForm.schemaName}
+              onChange={(e) => setRegForm({ ...regForm, schemaName: e.currentTarget.value })}
+            />
+            <TextInput
+              label={t("schemaDiscovery.tableName")}
+              required
+              value={regForm.tableName}
+              onChange={(e) => setRegForm({ ...regForm, tableName: e.currentTarget.value })}
+              placeholder={t("schemaDiscovery.tableNamePlaceholder")}
+            />
+            <Button
+              onClick={handleRegister}
+              loading={registering}
+              data-testid="register-table-btn"
+            >
+              {registering ? t("schemaDiscovery.registering") : t("schemaDiscovery.register")}
+            </Button>
+          </Group>
         </>
       )}
-    </div>
+    </Card>
   );
 }

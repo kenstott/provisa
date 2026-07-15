@@ -8,70 +8,68 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useRef } from "react";
+import { Badge, Button, Menu } from "@mantine/core";
+import { Check, ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import type { Role } from "../types/auth";
 
+/** Role picker for the nav bar. Backed by Mantine Menu so it gains keyboard
+ *  navigation, focus management, and correct `menuitem` roles (REQ-1013). */
 export function RoleSelector() {
+  const { t } = useTranslation();
   const { selectedRole, availableRoles, selectRole, devMode } = useAuth();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+  if (availableRoles.length === 0) return <span>{t("roleSelector.none")}</span>;
 
-  if (availableRoles.length === 0) return <span>No roles configured</span>;
-
-  const label = selectedRole === "all" ? "All" : (selectedRole as Role).id;
+  const allSelected = selectedRole === "all";
+  const label = allSelected ? t("roleSelector.all") : (selectedRole as Role).id;
 
   function handleSelect(value: Role | "all") {
     selectRole(value);
-    setOpen(false);
   }
 
   return (
-    <div className={`role-selector${devMode ? " role-selector--dev" : ""}`} ref={ref}>
-      <button
-        type="button"
-        className="role-selector-trigger"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-      >
-        <span className="role-selector-label">Role: {label}</span>
-        {devMode && <span className="role-selector-dev-badge">DEV</span>}
-        <span className="role-selector-arrow">{open ? "▴" : "▾"}</span>
-      </button>
-      {open && (
-        <div className="role-selector-dropdown">
-          <div
-            className={`role-selector-option${selectedRole === "all" ? " role-selector-option--selected" : ""}`}
-            onClick={() => handleSelect("all")}
-            role="option"
-            aria-selected={selectedRole === "all"}
-          >
-            All
-          </div>
-          {availableRoles.map((r) => (
-            <div
+    <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+      <Menu.Target>
+        <Button
+          variant="default"
+          size="compact-sm"
+          rightSection={<ChevronDown size={14} aria-hidden />}
+          data-testid="role-selector-trigger"
+        >
+          {t("roleSelector.role", { role: label })}
+          {devMode && (
+            <Badge ml="xs" size="xs" color="orange" variant="filled">
+              {t("roleSelector.dev")}
+            </Badge>
+          )}
+        </Button>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item
+          aria-label={t("roleSelector.all")}
+          aria-current={allSelected ? "true" : undefined}
+          leftSection={allSelected ? <Check size={14} aria-hidden /> : undefined}
+          onClick={() => handleSelect("all")}
+        >
+          {t("roleSelector.all")}
+        </Menu.Item>
+        {availableRoles.map((r) => {
+          const selected = !allSelected && (selectedRole as Role).id === r.id;
+          return (
+            <Menu.Item
               key={r.id}
-              className={`role-selector-option${selectedRole !== "all" && (selectedRole as Role).id === r.id ? " role-selector-option--selected" : ""}`}
+              aria-label={r.id}
+              aria-current={selected ? "true" : undefined}
+              leftSection={selected ? <Check size={14} aria-hidden /> : undefined}
               onClick={() => handleSelect(r)}
-              role="option"
-              aria-selected={selectedRole !== "all" && (selectedRole as Role).id === r.id}
             >
               {r.id}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            </Menu.Item>
+          );
+        })}
+      </Menu.Dropdown>
+    </Menu>
   );
 }

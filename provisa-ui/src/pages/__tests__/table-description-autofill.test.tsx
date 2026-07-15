@@ -9,7 +9,9 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+// Uses the provider-wrapping render (MantineProvider + i18n) required now that
+// the form embeds Mantine components (REQ-1016).
+import { render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import { Fragment } from "react";
 
@@ -160,6 +162,36 @@ vi.mock("../../hooks/useAdminQueries", () => ({
 
 import { TablesPage } from "../TablesPage";
 
+// Mantine Select renders a readonly text input with role="combobox". Options mount
+// into a portal (role="listbox"/"option") only once the dropdown is open, so choosing
+// a value means: click the input to open, wait for the option, click it. Clicking the
+// already-selected option again toggles it off (Mantine's default allowDeselect), which
+// is how these tests clear a source/schema selection.
+async function selectOption(combobox: HTMLElement, name: string) {
+  await userEvent.click(combobox);
+  // Mantine mounts each Select's options into its own listbox (referenced by the
+  // input's aria-controls). jsdom applies no layout, so the dropdown reads as
+  // "hidden" to Testing Library — hence { hidden: true }. Scoping to this Select's
+  // listbox keeps a shared label (e.g. "public" also used by scope pickers) unique.
+  const listboxId = combobox.getAttribute("aria-controls");
+  const listbox = listboxId ? document.getElementById(listboxId) : null;
+  if (!listbox) throw new Error(`No listbox for combobox ${combobox.getAttribute("data-testid")}`);
+  const option = await within(listbox).findByRole("option", { name, hidden: true });
+  await userEvent.click(option);
+}
+
+// The RegisterTableForm pickers are Mantine Selects. Each input carries its own
+// data-testid; keep the original index layout the tests relied on (0=source,
+// 1=domain, 2=schema, 3=table) so per-test references stay unchanged.
+function formSelects(): HTMLElement[] {
+  const arr: HTMLElement[] = [];
+  arr[0] = screen.getByTestId("register-table-source-select");
+  arr[1] = screen.getByTestId("register-table-domain-select");
+  arr[2] = screen.getByTestId("register-table-schema-select");
+  arr[3] = screen.getByTestId("register-table-table-select");
+  return arr;
+}
+
 function renderPage() {
   return render(
     <MemoryRouter>
@@ -214,19 +246,10 @@ describe("Table description auto-fill from physical database", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
-    const selects = screen.getAllByRole("combobox");
-    await userEvent.selectOptions(selects[0], "sales-pg");
-
-    await waitFor(() => {
-      expect(screen.getByRole("option", { name: "public" })).toBeInTheDocument();
-    });
-    await userEvent.selectOptions(selects[2], "public");
-
-    await waitFor(() => {
-      expect(screen.getByRole("option", { name: "customers" })).toBeInTheDocument();
-    });
-
-    await userEvent.selectOptions(selects[3], "customers");
+    const selects = formSelects();
+    await selectOption(selects[0], "sales-pg");
+    await selectOption(selects[2], "public");
+    await selectOption(selects[3], "customers");
 
     await waitFor(() => {
       const descInput = screen.getByPlaceholderText(/appears in sdl docs/i);
@@ -243,18 +266,10 @@ describe("Table description auto-fill from physical database", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
-    const selects = screen.getAllByRole("combobox");
-    await userEvent.selectOptions(selects[0], "sales-pg");
-
-    await waitFor(() => {
-      expect(screen.getByRole("option", { name: "public" })).toBeInTheDocument();
-    });
-    await userEvent.selectOptions(selects[2], "public");
-
-    await waitFor(() => {
-      expect(screen.getByRole("option", { name: "products" })).toBeInTheDocument();
-    });
-    await userEvent.selectOptions(selects[3], "products");
+    const selects = formSelects();
+    await selectOption(selects[0], "sales-pg");
+    await selectOption(selects[2], "public");
+    await selectOption(selects[3], "products");
 
     await waitFor(() => {
       const descInput = screen.getByPlaceholderText(/appears in sdl docs/i);
@@ -271,25 +286,18 @@ describe("Table description auto-fill from physical database", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
-    const selects = screen.getAllByRole("combobox");
-    await userEvent.selectOptions(selects[0], "sales-pg");
-
-    await waitFor(() => {
-      expect(screen.getByRole("option", { name: "public" })).toBeInTheDocument();
-    });
-    await userEvent.selectOptions(selects[2], "public");
-
-    await waitFor(() => {
-      expect(screen.getByRole("option", { name: "customers" })).toBeInTheDocument();
-    });
-    await userEvent.selectOptions(selects[3], "customers");
+    const selects = formSelects();
+    await selectOption(selects[0], "sales-pg");
+    await selectOption(selects[2], "public");
+    await selectOption(selects[3], "customers");
 
     await waitFor(() => {
       const descInput = screen.getByPlaceholderText(/appears in sdl docs/i);
       expect(descInput).toHaveValue("Registered customer accounts");
     });
 
-    await userEvent.selectOptions(selects[2], "");
+    // Clicking the selected schema option again deselects it, clearing schema/table/desc.
+    await selectOption(selects[2], "public");
 
     await waitFor(() => {
       const descInput = screen.getByPlaceholderText(/appears in sdl docs/i);
@@ -309,8 +317,8 @@ describe("Schema population — source type routing", () => {
     await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
     await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
-    const selects = screen.getAllByRole("combobox");
-    await userEvent.selectOptions(selects[0], "sales-pg");
+    const selects = formSelects();
+    await selectOption(selects[0], "sales-pg");
 
     await waitFor(() => {
       expect(mockUseAvailableSchemas).toHaveBeenCalledWith("sales-pg");
@@ -323,11 +331,17 @@ describe("Schema population — source type routing", () => {
     await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
     await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
-    const selects = screen.getAllByRole("combobox");
-    await userEvent.selectOptions(selects[0], "sales-pg");
+    const selects = formSelects();
+    await selectOption(selects[0], "sales-pg");
 
+    // Open the schema dropdown and assert the backend-provided option appears.
+    await userEvent.click(selects[2]);
+    const schemaListbox = document.getElementById(selects[2].getAttribute("aria-controls")!)!;
     await waitFor(() => {
-      const schemaOptions = screen.getAllByRole("option", { name: "public" });
+      const schemaOptions = within(schemaListbox).getAllByRole("option", {
+        name: "public",
+        hidden: true,
+      });
       expect(schemaOptions.length).toBeGreaterThan(0);
     });
   });
@@ -357,8 +371,8 @@ describe("Schema population — source type routing", () => {
     await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
     await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
-    const selects = screen.getAllByRole("combobox");
-    await userEvent.selectOptions(selects[0], "my-gql");
+    const selects = formSelects();
+    await selectOption(selects[0], "my-gql");
 
     await waitFor(() => {
       expect(mockUseAvailableSchemas).toHaveBeenCalledWith("my-gql");
@@ -391,8 +405,8 @@ describe("Schema population — source type routing", () => {
     await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
     await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
-    const selects = screen.getAllByRole("combobox");
-    await userEvent.selectOptions(selects[0], "my-kafka");
+    const selects = formSelects();
+    await selectOption(selects[0], "my-kafka");
 
     await waitFor(() => {
       expect(mockUseAvailableSchemas).toHaveBeenCalledWith("my-kafka");
@@ -406,17 +420,13 @@ describe("Schema population — source type routing", () => {
     await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
     await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
-    const selects = screen.getAllByRole("combobox");
-    await userEvent.selectOptions(selects[0], "sales-pg");
+    const selects = formSelects();
+    await selectOption(selects[0], "sales-pg");
+    await selectOption(selects[2], "public");
+    await selectOption(selects[3], "customers");
 
-    await waitFor(() => screen.getByRole("option", { name: "public" }));
-    await userEvent.selectOptions(selects[2], "public");
-
-    await waitFor(() => screen.getByRole("option", { name: "customers" }));
-    await userEvent.selectOptions(selects[3], "customers");
-
-    // Change source — schema and table should reset
-    await userEvent.selectOptions(selects[0], "");
+    // Change source — deselect it (click the selected option again); schema/table reset.
+    await selectOption(selects[0], "sales-pg");
 
     await waitFor(() => {
       expect(selects[2]).toHaveValue("");

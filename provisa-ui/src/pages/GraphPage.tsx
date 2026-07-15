@@ -10,6 +10,8 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { Text } from "@mantine/core";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { GraphFrame } from "../components/graph/GraphFrame";
 import {
@@ -37,6 +39,7 @@ import { tableLabel as dbTableLabel } from "../naming";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function GraphPage() {
+  const { t } = useTranslation();
   const { role, loading: authLoading } = useAuth();
   const { checkedDomains } = useDomainFilter();
   const location = useLocation();
@@ -880,10 +883,12 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
 
         <div className="graph-stream">
           {frames.length === 0 && (
-            <div className="graph-stream-empty">
-              <div className="graph-stream-empty-icon">⬡</div>
-              <div>Run a Cypher query to explore the graph</div>
-              <div className="graph-stream-hint">⌘↵ to run</div>
+            <div className="graph-stream-empty" role="status" data-testid="graph-empty-state">
+              <div className="graph-stream-empty-icon" aria-hidden="true">⬡</div>
+              <Text component="div">{t("graphPage.emptyStateHint")}</Text>
+              <Text component="div" className="graph-stream-hint">
+                {t("graphPage.emptyStateShortcut")}
+              </Text>
             </div>
           )}
           {[...frames].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).map((frame) => (

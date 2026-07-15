@@ -8,61 +8,47 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { Box, List, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 
 interface ErrorsPanelProps {
   errors: string[];
 }
 
 export function ErrorsPanel({ errors }: ErrorsPanelProps) {
+  const { t } = useTranslation();
+
   if (errors.length === 0) {
     return (
-      <div
-        style={{
-          padding: "1.5rem",
-          textAlign: "center",
-          color: "var(--text-muted)",
-          fontSize: "0.85rem",
-        }}
-      >
-        No unsupported conditions.
-      </div>
+      <Box p="lg" ta="center">
+        <Text c="dimmed" fz="sm">
+          {t("errorsPanel.noUnsupportedConditions")}
+        </Text>
+      </Box>
     );
   }
 
   return (
-    <div style={{ padding: "0.75rem" }}>
-      <p
-        style={{
-          color: "var(--destructive)",
-          fontSize: "0.8rem",
-          fontWeight: 600,
-          marginBottom: "0.5rem",
-        }}
-      >
-        Unsupported ON conditions — simplify using a view:
-      </p>
-      <ul
-        style={{
-          margin: 0,
-          paddingLeft: "1.25rem",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.3rem",
-        }}
-      >
+    <Box p="sm">
+      <Text c="var(--destructive)" fz="sm" fw={600} mb="xs">
+        {t("errorsPanel.unsupportedConditionsTitle")}
+      </Text>
+      <List spacing="xs" size="sm">
         {errors.map((e, i) => (
-          <li
+          <List.Item
             key={i}
-            style={{
-              fontSize: "0.8rem",
-              color: "var(--destructive)",
-              fontFamily: "monospace",
+            styles={{
+              itemLabel: {
+                fontFamily: "monospace",
+                color: "var(--destructive)",
+                fontSize: "0.8rem",
+              },
             }}
           >
             {e}
-          </li>
+          </List.Item>
         ))}
-      </ul>
-    </div>
+      </List>
+    </Box>
   );
 }

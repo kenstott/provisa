@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import React from "react";
+import { Button } from "@mantine/core";
 
 // ── small toolbar-button helper ───────────────────────────────────────────────
 export function TBtn({
@@ -20,23 +21,32 @@ export function TBtn({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <Button
       onClick={onClick}
       title={title}
-      style={{
-        padding: "2px 8px",
-        fontSize: 11,
-        background: active ? "#334155" : "transparent",
-        color: active ? "#e2e8f0" : "#64748b",
-        border: "1px solid #334155",
-        borderRadius: 4,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
+      aria-pressed={active}
+      variant="default"
+      size="compact-xs"
+      data-testid="erd-toolbar-btn"
+      styles={{
+        root: {
+          padding: "2px 8px",
+          fontSize: 11,
+          height: "auto",
+          minHeight: 0,
+          background: active ? "var(--surface-alt)" : "transparent",
+          color: active ? "var(--text)" : "var(--text-muted)",
+          border: "1px solid var(--border)",
+          borderRadius: 4,
+        },
+        label: {
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+        },
       }}
     >
       {children}
-    </button>
+    </Button>
   );
 }

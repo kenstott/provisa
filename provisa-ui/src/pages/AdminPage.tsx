@@ -10,7 +10,27 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Trash2, Check } from "lucide-react";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  FileButton,
+  Group,
+  Modal,
+  NumberInput,
+  Pagination,
+  Select,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import {
   useDomains,
   useTables,
@@ -64,6 +84,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const activeTab = ROUTE_TO_SECTION[location.pathname] ?? "Overview";
   const { capabilities } = useAuth();
@@ -92,7 +113,7 @@ export function AdminPage() {
   const [policyApplying, setPolicyApplying] = useState(false);
   const [policyMsg, setPolicyMsg] = useState("");
   const [policyError, setPolicyError] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<() => void>(null);
   const [allDomains, setAllDomains] = useState<string[]>([]);
 
   // Pagination state
@@ -192,7 +213,7 @@ export function AdminPage() {
   const handleDownloadPatch = async () => {
     const patch = await downloadConfigPatch(revisedConfig);
     if (!patch) {
-      setUploadMsg("No changes — patch is empty.");
+      setUploadMsg(t("adminPage.downloadPatchEmpty"));
       return;
     }
     const blob = new Blob([patch], { type: "text/x-patch" });
@@ -204,10 +225,7 @@ export function AdminPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleUploadClick = () => fileInputRef.current?.click();
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = async (file: File | null) => {
     if (!file) return;
     setUploading(true);
     setUploadMsg("");
@@ -215,7 +233,6 @@ export function AdminPage() {
     const result = await uploadConfig(text);
     setUploadMsg(result.message);
     setUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const saveSettings = useCallback(async () => {
@@ -227,15 +244,14 @@ export function AdminPage() {
     const { use_domains: _ud, default_domain: _dd, ...naming } = settings.naming;
     const payload = { ...settings, naming } as unknown as Partial<PlatformSettings>;
     const result = await updateSettings(payload);
-    const base = result.updated.length ? `Updated: ${result.updated.join(", ")}` : "No changes";
+    const base = result.updated.length
+      ? t("adminPage.settingsUpdated", { fields: result.updated.join(", ") })
+      : t("adminPage.settingsNoChanges");
     setSettingsMsg(
-      result.restart_required
-        ? `${base} — restart the engine for changes to take effect.`
-        : base,
+      result.restart_required ? t("adminPage.settingsRestartRequired", { base }) : base,
     );
     setSettingsSaving(false);
-  }, [settings]);
-
+  }, [settings, t]);
 
   const applyDomainPolicy = useCallback(async () => {
     setPolicyApplying(true);
@@ -248,17 +264,17 @@ export function AdminPage() {
       });
       setPolicyModalOpen(false);
       setPolicyConfirmText("");
-      setPolicyMsg(`Domain policy applied. Backup saved: ${result.backup}`);
+      setPolicyMsg(t("adminPage.policyApplied", { backup: result.backup }));
       const s = await fetchSettings();
       setSettings(s);
       setPolicyUseDomains(s.naming.use_domains);
       setPolicyDefaultDomain(s.naming.default_domain);
     } catch (err) {
-      setPolicyError(err instanceof Error ? err.message : "Failed to apply domain policy");
+      setPolicyError(err instanceof Error ? err.message : t("adminPage.policyApplyFailed"));
     } finally {
       setPolicyApplying(false);
     }
-  }, [policyUseDomains, policyDefaultDomain]);
+  }, [policyUseDomains, policyDefaultDomain, t]);
 
   const updateRedirect = (key: string, value: unknown) => {
     if (!settings) return;
@@ -275,130 +291,113 @@ export function AdminPage() {
     setNewDomainId("");
     setNewDomainDesc("");
     setNewDomainAlias("");
-    setDomainMsg(`Added "${newDomainId.trim()}"`);
+    setDomainMsg(t("adminPage.domainAdded", { id: newDomainId.trim() }));
   };
 
   const handleDeleteDomain = async (id: string) => {
     await deleteDomain(id);
     await refetchDomains();
-    setDomainMsg(`Deleted "${id}"`);
+    setDomainMsg(t("adminPage.domainDeleted", { id }));
   };
 
-  if (loading) return <div className="page">Loading admin dashboard...</div>;
+  if (loading) return <div className="page">{t("adminPage.loading")}</div>;
 
   return (
     <div className="page">
-      <h2>Admin Dashboard{activeTab !== "Overview" ? ` — ${activeTab}` : ""}</h2>
+      <Title order={2} mb="md">
+        {t("adminPage.title")}
+        {activeTab !== "Overview" ? ` — ${activeTab}` : ""}
+      </Title>
 
-      <div className="admin-tab-content">
+      <Stack gap="lg">
         {activeTab === "Overview" && (
           <>
-            <div className="stats-grid">
+            <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
               {Object.entries(stats).map(([label, count]) => (
-                <div key={label} className="stat-card">
-                  <div className="stat-count">{count}</div>
-                  <div className="stat-label">{label}</div>
-                </div>
+                <Card key={label} withBorder padding="md" data-testid={`stat-card-${label}`}>
+                  <Text fz={28} fw={700}>
+                    {count}
+                  </Text>
+                  <Text c="dimmed" fz="sm">
+                    {label}
+                  </Text>
+                </Card>
               ))}
-            </div>
+            </SimpleGrid>
 
-            <h3>Platform Settings</h3>
+            <Title order={3}>{t("adminPage.platformSettings")}</Title>
             {settings && (
-              <div className="settings-grid">
-                <div className="settings-section">
-                  <h4>Redirect</h4>
-                  <label
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
+                <Card withBorder padding="md">
+                  <Title order={4} mb="sm">
+                    {t("adminPage.redirect")}
+                  </Title>
+                  <Stack gap="sm">
+                    <Checkbox
+                      label={t("adminPage.enabled")}
                       checked={settings.redirect.enabled}
-                      onChange={(e) => updateRedirect("enabled", e.target.checked)}
-                      style={{ width: "auto" }}
+                      onChange={(e) => updateRedirect("enabled", e.currentTarget.checked)}
                     />
-                    Enabled
-                  </label>
-                  <label>
-                    Default Threshold (rows)
-                    <input
-                      type="number"
+                    <NumberInput
+                      label={t("adminPage.defaultThreshold")}
                       value={settings.redirect.threshold}
-                      onChange={(e) => updateRedirect("threshold", parseInt(e.target.value) || 0)}
+                      onChange={(v) => updateRedirect("threshold", typeof v === "number" ? v : 0)}
                     />
-                  </label>
-                  <label>
-                    Default Format
-                    <select
+                    <Select
+                      label={t("adminPage.defaultFormat")}
+                      data={FORMAT_OPTIONS}
                       value={settings.redirect.default_format}
-                      onChange={(e) => updateRedirect("default_format", e.target.value)}
-                    >
-                      {FORMAT_OPTIONS.map((f) => (
-                        <option key={f} value={f}>
-                          {f}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Presigned URL TTL (seconds)
-                    <input
-                      type="number"
-                      value={settings.redirect.ttl}
-                      onChange={(e) => updateRedirect("ttl", parseInt(e.target.value) || 0)}
+                      onChange={(v) => v && updateRedirect("default_format", v)}
+                      allowDeselect={false}
                     />
-                  </label>
-                </div>
-                <div className="settings-section">
-                  <h4>Naming</h4>
-                  <label
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
+                    <NumberInput
+                      label={t("adminPage.presignedUrlTtl")}
+                      value={settings.redirect.ttl}
+                      onChange={(v) => updateRedirect("ttl", typeof v === "number" ? v : 0)}
+                    />
+                  </Stack>
+                </Card>
+
+                <Card withBorder padding="md">
+                  <Title order={4} mb="sm">
+                    {t("adminPage.naming")}
+                  </Title>
+                  <Stack gap="sm">
+                    <Checkbox
+                      label={t("adminPage.domainPrefix")}
                       checked={settings.naming.domain_prefix}
                       onChange={(e) =>
                         setSettings({
                           ...settings,
-                          naming: { ...settings.naming, domain_prefix: e.target.checked },
+                          naming: { ...settings.naming, domain_prefix: e.currentTarget.checked },
                         })
                       }
-                      style={{ width: "auto" }}
                     />
-                    Domain prefix (domain_id__ prepended to all names)
-                  </label>
-                  <label>
-                    Naming Convention
-                    <select
+                    <Select
+                      label={t("adminPage.namingConvention")}
+                      data={[
+                        { value: "none", label: t("adminPage.namingConventionNone") },
+                        { value: "snake_case", label: t("adminPage.namingConventionSnake") },
+                        { value: "camelCase", label: t("adminPage.namingConventionCamel") },
+                        { value: "PascalCase", label: t("adminPage.namingConventionPascal") },
+                      ]}
                       value={settings.naming.convention || "snake_case"}
-                      onChange={(e) =>
+                      onChange={(v) =>
+                        v &&
                         setSettings({
                           ...settings,
-                          naming: {
-                            ...settings.naming,
-                            convention: e.target.value,
-                          },
+                          naming: { ...settings.naming, convention: v },
                         })
                       }
-                    >
-                      <option value="none">None (raw DB names)</option>
-                      <option value="snake_case">snake_case</option>
-                      <option value="camelCase">camelCase</option>
-                      <option value="PascalCase">PascalCase</option>
-                    </select>
-                  </label>
-                  <label>
-                    Domain Mode
-                    <select
+                      allowDeselect={false}
+                    />
+                    <Select
+                      label={t("adminPage.domainMode")}
+                      data={[
+                        { value: "legacy", label: t("adminPage.domainModeLegacy") },
+                        { value: "single", label: t("adminPage.domainModeSingle") },
+                        { value: "namespaced", label: t("adminPage.domainModeNamespaced") },
+                      ]}
                       value={
                         policyUseDomains === null
                           ? "legacy"
@@ -406,167 +405,157 @@ export function AdminPage() {
                             ? "namespaced"
                             : "single"
                       }
-                      onChange={(e) =>
-                        setPolicyUseDomains(
-                          e.target.value === "legacy" ? null : e.target.value === "namespaced",
-                        )
+                      onChange={(v) =>
+                        setPolicyUseDomains(v === "legacy" ? null : v === "namespaced")
                       }
-                    >
-                      <option value="legacy">Legacy (unset)</option>
-                      <option value="single">Single domain</option>
-                      <option value="namespaced">Namespaced</option>
-                    </select>
-                  </label>
-                  <label>
-                    Default Domain
-                    <input
-                      type="text"
+                      allowDeselect={false}
+                    />
+                    <TextInput
+                      label={t("adminPage.defaultDomain")}
                       value={policyDefaultDomain}
                       disabled={policyUseDomains !== false}
-                      onChange={(e) => setPolicyDefaultDomain(e.target.value)}
+                      onChange={(e) => setPolicyDefaultDomain(e.currentTarget.value)}
                     />
-                  </label>
-                  <button
-                    className="btn-secondary"
-                    data-testid="apply-domain-policy"
-                    onClick={() => {
-                      setPolicyError("");
-                      setPolicyConfirmText("");
-                      setPolicyModalOpen(true);
-                    }}
-                  >
-                    Apply Domain Policy
-                  </button>
-                  {policyMsg && <span className="upload-msg">{policyMsg}</span>}
-                </div>
-                <div className="settings-section">
-                  <h4>Sampling</h4>
-                  <label>
-                    Default Sample Size
-                    <input
-                      type="number"
-                      value={settings.sampling.default_sample_size}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          sampling: {
-                            default_sample_size: parseInt(e.target.value) || 0,
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                </div>
-                <div className="settings-section">
-                  <h4>Change Data Capture</h4>
-                  <label>
-                    Consumer Group ID
-                    <input
-                      type="text"
-                      value={settings.cdc.consumer_group_id}
-                      placeholder="provisa-debezium"
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          cdc: { consumer_group_id: e.target.value },
-                        })
-                      }
-                    />
-                    <span className="field-hint">
-                      Provisa's Kafka consumer identity for inbound Debezium/Kafka CDC. One group
-                      across all sources; a source may override it for offset isolation. Applied on
-                      restart.
-                    </span>
-                  </label>
-                </div>
-                <div className="settings-section">
-                  <h4>Cache</h4>
-                  <label>
-                    Default TTL (seconds)
-                    <input
-                      type="number"
-                      value={settings.cache.default_ttl}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          cache: {
-                            default_ttl: parseInt(e.target.value) || 0,
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                </div>
-                <div className="settings-actions">
-                  <button
-                    className="btn-primary"
+                    <Group gap="sm" align="center">
+                      <Button
+                        variant="default"
+                        data-testid="apply-domain-policy"
+                        onClick={() => {
+                          setPolicyError("");
+                          setPolicyConfirmText("");
+                          setPolicyModalOpen(true);
+                        }}
+                      >
+                        {t("adminPage.applyDomainPolicy")}
+                      </Button>
+                      {policyMsg && <Text fz="sm">{policyMsg}</Text>}
+                    </Group>
+                  </Stack>
+                </Card>
+
+                <Card withBorder padding="md">
+                  <Title order={4} mb="sm">
+                    {t("adminPage.sampling")}
+                  </Title>
+                  <NumberInput
+                    label={t("adminPage.defaultSampleSize")}
+                    value={settings.sampling.default_sample_size}
+                    onChange={(v) =>
+                      setSettings({
+                        ...settings,
+                        sampling: { default_sample_size: typeof v === "number" ? v : 0 },
+                      })
+                    }
+                  />
+                </Card>
+
+                <Card withBorder padding="md">
+                  <Title order={4} mb="sm">
+                    {t("adminPage.cdc")}
+                  </Title>
+                  <TextInput
+                    label={t("adminPage.consumerGroupId")}
+                    placeholder={t("adminPage.consumerGroupIdPlaceholder")}
+                    value={settings.cdc.consumer_group_id}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        cdc: { consumer_group_id: e.currentTarget.value },
+                      })
+                    }
+                    description={t("adminPage.consumerGroupIdHint")}
+                  />
+                </Card>
+
+                <Card withBorder padding="md">
+                  <Title order={4} mb="sm">
+                    {t("adminPage.cache")}
+                  </Title>
+                  <NumberInput
+                    label={t("adminPage.defaultTtl")}
+                    value={settings.cache.default_ttl}
+                    onChange={(v) =>
+                      setSettings({
+                        ...settings,
+                        cache: { default_ttl: typeof v === "number" ? v : 0 },
+                      })
+                    }
+                  />
+                </Card>
+
+                <Group gap="sm" align="center">
+                  <ActionIcon
+                    variant="filled"
+                    size="lg"
+                    aria-label={t("adminPage.saveSettings")}
                     onClick={saveSettings}
-                    disabled={settingsSaving}
-                    title="Save settings"
+                    loading={settingsSaving}
                   >
-                    {settingsSaving ? <span className="btn-spinner" /> : <Check size={14} />}
-                  </button>
-                  {settingsMsg && <span className="upload-msg">{settingsMsg}</span>}
-                </div>
-              </div>
+                    <Check size={14} />
+                  </ActionIcon>
+                  {settingsMsg && <Text fz="sm">{settingsMsg}</Text>}
+                </Group>
+              </SimpleGrid>
             )}
 
-            <h3>Configuration File</h3>
-            <div className="config-actions">
-              <button className="btn-secondary" onClick={handleDownload}>
-                Download
-              </button>
+            <Title order={3}>{t("adminPage.configurationFile")}</Title>
+            <Group gap="sm" align="center">
+              <Button variant="default" onClick={handleDownload}>
+                {t("adminPage.download")}
+              </Button>
               {settings?.features?.live_config_export && (
-                <button className="btn-secondary" onClick={handleViewConfig}>
-                  {diffOriginal !== null ? "Hide Diff" : "View / Diff"}
-                </button>
+                <Button variant="default" onClick={handleViewConfig}>
+                  {diffOriginal !== null ? t("adminPage.hideDiff") : t("adminPage.viewDiff")}
+                </Button>
               )}
-              <button className="btn-primary" onClick={handleUploadClick} disabled={uploading}>
-                {uploading ? "Uploading..." : "Upload"}
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".yaml,.yml"
-                style={{ display: "none" }}
-                onChange={handleFileChange}
-              />
-              {uploadMsg && <span className="upload-msg">{uploadMsg}</span>}
-            </div>
+              <FileButton onChange={handleFileChange} accept=".yaml,.yml" resetRef={fileInputRef}>
+                {(props) => (
+                  <Button {...props} loading={uploading}>
+                    {uploading ? t("adminPage.uploading") : t("adminPage.upload")}
+                  </Button>
+                )}
+              </FileButton>
+              {uploadMsg && <Text fz="sm">{uploadMsg}</Text>}
+            </Group>
 
             {diffOriginal !== null && (
               <>
-                <div className="config-diff-legend">
-                  <span>
-                    <strong>Baseline</strong> (config at startup) — read-only
-                  </span>
-                  <span>
-                    <strong>Current</strong> (live state) — editable; shows changes made since
-                    startup. Use the ⇐ arrows to revert a change, then Apply
-                  </span>
-                </div>
+                <Stack gap={4}>
+                  <Text fz="sm">
+                    <Text span fw={700}>
+                      {t("adminPage.diffLegendBaselineLabel")}
+                    </Text>{" "}
+                    {t("adminPage.diffLegendBaselineDesc")}
+                  </Text>
+                  <Text fz="sm">
+                    <Text span fw={700}>
+                      {t("adminPage.diffLegendCurrentLabel")}
+                    </Text>{" "}
+                    {t("adminPage.diffLegendCurrentDesc")}
+                  </Text>
+                </Stack>
                 <ConfigDiffView
                   original={diffOriginal}
                   current={diffCurrent}
                   onCurrentChange={setRevisedConfig}
                 />
-                <div className="config-actions" style={{ marginTop: "0.5rem" }}>
-                  <button
-                    className="btn-secondary"
+                <Group gap="sm" mt="sm">
+                  <Button
+                    variant="default"
                     onClick={handleDownloadPatch}
                     disabled={revisedConfig === diffOriginal}
-                    title="Unified-diff patch of your changes, for committing via CI/CD (git apply)"
+                    title={t("adminPage.downloadPatchTitle")}
                   >
-                    Download Patch
-                  </button>
-                  <button
-                    className="btn-primary"
+                    {t("adminPage.downloadPatch")}
+                  </Button>
+                  <Button
                     onClick={handleApplyRevised}
                     disabled={uploading || revisedConfig === diffOriginal}
+                    loading={uploading}
                   >
-                    {uploading ? "Applying..." : "Apply Revised"}
-                  </button>
-                </div>
+                    {uploading ? t("adminPage.applying") : t("adminPage.applyRevised")}
+                  </Button>
+                </Group>
               </>
             )}
           </>
@@ -575,9 +564,9 @@ export function AdminPage() {
         {activeTab === "Domains" && domainsEnabled && (
           <>
             {domainMsg && (
-              <div className="success" style={{ marginBottom: "0.5rem" }}>
+              <Alert color="green" variant="light">
                 {domainMsg}
-              </div>
+              </Alert>
             )}
             {(() => {
               const IMPLICIT_DOMAIN_IDS = new Set(["", "meta", "ops"]);
@@ -585,139 +574,94 @@ export function AdminPage() {
               const totalPages = Math.max(1, Math.ceil(userDomains.length / PAGE_SIZE));
               const paged = userDomains.slice(domainPage * PAGE_SIZE, (domainPage + 1) * PAGE_SIZE);
               return (
-                <div>
-                  <table className="data-table" style={{ marginBottom: "1rem" }}>
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Description</th>
-                        <th>GQL Alias</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {userDomains.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            style={{ color: "var(--text-muted)", textAlign: "center" }}
-                          >
-                            No domains defined
-                          </td>
-                        </tr>
-                      )}
-                      {paged.map((d) => (
-                        <tr key={d.id}>
-                          <td>{d.id}</td>
-                          <td>{d.description || "—"}</td>
-                          <td style={{ color: "var(--text-muted)", fontFamily: "monospace" }}>
-                            {domainGqlAlias(d)}
-                          </td>
-                          <td>
-                            <button
-                              className="btn-icon-danger"
-                              title="Delete"
-                              onClick={() => handleDeleteDomain(d.id)}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <Stack gap="sm">
+                  <Table.ScrollContainer minWidth={480}>
+                    <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>{t("adminPage.colId")}</Table.Th>
+                          <Table.Th>{t("adminPage.colDescription")}</Table.Th>
+                          <Table.Th>{t("adminPage.colGqlAlias")}</Table.Th>
+                          <Table.Th>{t("adminPage.colActions")}</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {userDomains.length === 0 && (
+                          <Table.Tr>
+                            <Table.Td colSpan={4} ta="center" c="dimmed">
+                              {t("adminPage.noDomains")}
+                            </Table.Td>
+                          </Table.Tr>
+                        )}
+                        {paged.map((d) => (
+                          <Table.Tr key={d.id}>
+                            <Table.Td>{d.id}</Table.Td>
+                            <Table.Td>{d.description || "—"}</Table.Td>
+                            <Table.Td>
+                              <Text c="dimmed" ff="monospace" fz="sm">
+                                {domainGqlAlias(d)}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <ActionIcon
+                                variant="subtle"
+                                color="red"
+                                aria-label={t("adminPage.deleteDomain", { id: d.id })}
+                                onClick={() => handleDeleteDomain(d.id)}
+                              >
+                                <Trash2 size={14} />
+                              </ActionIcon>
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </Table.ScrollContainer>
                   {totalPages > 1 && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.5rem",
-                        alignItems: "center",
-                        justifyContent: "flex-end",
-                        padding: "0.5rem 0",
-                        marginBottom: "1rem",
-                      }}
-                    >
-                      <button onClick={() => setDomainPage(0)} disabled={domainPage === 0}>
-                        «
-                      </button>
-                      <button
-                        onClick={() => setDomainPage((p) => p - 1)}
-                        disabled={domainPage === 0}
-                      >
-                        ‹
-                      </button>
-                      <span>
-                        Page {domainPage + 1} / {totalPages}
-                      </span>
-                      <button
-                        onClick={() => setDomainPage((p) => p + 1)}
-                        disabled={domainPage >= totalPages - 1}
-                      >
-                        ›
-                      </button>
-                      <button
-                        onClick={() => setDomainPage(totalPages - 1)}
-                        disabled={domainPage >= totalPages - 1}
-                      >
-                        »
-                      </button>
-                    </div>
+                    <Group justify="flex-end">
+                      <Pagination
+                        total={totalPages}
+                        value={domainPage + 1}
+                        onChange={(p) => setDomainPage(p - 1)}
+                        size="sm"
+                      />
+                    </Group>
                   )}
-                </div>
+                </Stack>
               );
             })()}
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-              <input
+            <Group gap="sm" align="flex-end">
+              <TextInput
+                data-testid="new-domain-id"
                 value={newDomainId}
-                onChange={(e) => setNewDomainId(e.target.value)}
-                placeholder="domain-id"
-                style={{
-                  width: "160px",
-                  background: "var(--bg)",
-                  color: "var(--text)",
-                  border: "1px solid var(--border)",
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                }}
+                onChange={(e) => setNewDomainId(e.currentTarget.value)}
+                placeholder={t("adminPage.domainIdPlaceholder")}
+                w={160}
               />
-              <input
+              <TextInput
+                data-testid="new-domain-desc"
                 value={newDomainDesc}
-                onChange={(e) => setNewDomainDesc(e.target.value)}
-                placeholder="description (optional)"
-                style={{
-                  flex: 1,
-                  background: "var(--bg)",
-                  color: "var(--text)",
-                  border: "1px solid var(--border)",
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                }}
+                onChange={(e) => setNewDomainDesc(e.currentTarget.value)}
+                placeholder={t("adminPage.domainDescPlaceholder")}
+                style={{ flex: 1 }}
               />
-              <input
+              <TextInput
+                data-testid="new-domain-alias"
                 value={newDomainAlias}
-                onChange={(e) => setNewDomainAlias(e.target.value)}
+                onChange={(e) => setNewDomainAlias(e.currentTarget.value)}
                 placeholder={
                   newDomainId.trim()
-                    ? `alias (default: ${domainGqlAlias({ id: newDomainId.trim(), description: "" })})`
-                    : "gql alias (optional)"
+                    ? t("adminPage.domainAliasPlaceholderDefault", {
+                        alias: domainGqlAlias({ id: newDomainId.trim(), description: "" }),
+                      })
+                    : t("adminPage.domainAliasPlaceholder")
                 }
-                style={{
-                  width: "180px",
-                  background: "var(--bg)",
-                  color: "var(--text)",
-                  border: "1px solid var(--border)",
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                }}
+                w={180}
               />
-              <button
-                className="btn-primary"
-                onClick={handleAddDomain}
-                disabled={!newDomainId.trim()}
-              >
-                Add Domain
-              </button>
-            </div>
+              <Button onClick={handleAddDomain} disabled={!newDomainId.trim()}>
+                {t("adminPage.addDomain")}
+              </Button>
+            </Group>
           </>
         )}
         {activeTab === "Cache" && <CacheManager />}
@@ -734,86 +678,60 @@ export function AdminPage() {
           <LocalUsersTab allRoles={allRoles} allDomains={allDomains} />
         )}
         {activeTab === "Orgs" && isSuperAdmin && <OrgsTab />}
-      </div>
+      </Stack>
 
-      {policyModalOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            data-testid="domain-policy-modal"
-            style={{
-              background: "var(--bg)",
-              border: "2px solid var(--destructive)",
-              borderRadius: "8px",
-              padding: "1.5rem",
-              maxWidth: 520,
-              width: "90%",
-            }}
-          >
-            <h3 style={{ color: "var(--destructive)", marginTop: 0 }}>
-              ⚠ Reset Entire Configuration
-            </h3>
-            <div
-              style={{
-                background: "var(--destructive)",
-                color: "#fff",
-                padding: "1rem",
-                borderRadius: "4px",
-                marginBottom: "1rem",
+      <Modal
+        opened={policyModalOpen}
+        onClose={() => {
+          setPolicyModalOpen(false);
+          setPolicyConfirmText("");
+          setPolicyError("");
+        }}
+        title={t("adminPage.policyModalTitle")}
+        centered
+        closeOnClickOutside={!policyApplying}
+        closeOnEscape={!policyApplying}
+        data-testid="domain-policy-modal"
+      >
+        <Stack gap="md">
+          <Alert color="red" variant="filled">
+            {t("adminPage.policyModalWarning")}
+          </Alert>
+          <TextInput
+            label={t("adminPage.policyConfirmLabel")}
+            data-testid="domain-policy-confirm-input"
+            value={policyConfirmText}
+            onChange={(e) => setPolicyConfirmText(e.currentTarget.value)}
+          />
+          {policyError && (
+            <Alert color="red" variant="light">
+              {policyError}
+            </Alert>
+          )}
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => {
+                setPolicyModalOpen(false);
+                setPolicyConfirmText("");
+                setPolicyError("");
               }}
+              disabled={policyApplying}
             >
-              Changing the domain policy will RESET your entire configuration. All sources, tables,
-              domains, and relationships will be deleted. A backup of your current config will be
-              saved. This cannot be undone.
-            </div>
-            <label style={{ display: "block", marginBottom: "1rem" }}>
-              Type <strong>RESET</strong> to confirm:
-              <input
-                type="text"
-                data-testid="domain-policy-confirm-input"
-                value={policyConfirmText}
-                onChange={(e) => setPolicyConfirmText(e.target.value)}
-                style={{ display: "block", width: "100%", marginTop: 4 }}
-              />
-            </label>
-            {policyError && (
-              <div style={{ color: "var(--destructive)", marginBottom: "1rem" }}>{policyError}</div>
-            )}
-            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-              <button
-                className="btn-secondary"
-                onClick={() => {
-                  setPolicyModalOpen(false);
-                  setPolicyConfirmText("");
-                  setPolicyError("");
-                }}
-                disabled={policyApplying}
-              >
-                ✕
-              </button>
-              <button
-                className="btn-primary"
-                data-testid="domain-policy-confirm-btn"
-                style={{ background: "var(--destructive)", borderColor: "var(--destructive)" }}
-                disabled={policyConfirmText !== "RESET" || policyApplying}
-                onClick={applyDomainPolicy}
-              >
-                {policyApplying ? "Applying..." : "Reset & Apply"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              {t("adminPage.policyCancel")}
+            </Button>
+            <Button
+              color="red"
+              data-testid="domain-policy-confirm-btn"
+              disabled={policyConfirmText !== "RESET" || policyApplying}
+              onClick={applyDomainPolicy}
+              loading={policyApplying}
+            >
+              {policyApplying ? t("adminPage.applying") : t("adminPage.policyResetApply")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </div>
   );
 }
-

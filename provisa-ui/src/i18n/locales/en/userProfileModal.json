@@ -1,0 +1,20 @@
+{
+  "userProfileModal": {
+    "title": "Profile",
+    "close": "Close",
+    "identity": "Identity",
+    "name": "Name",
+    "email": "Email",
+    "userId": "User ID",
+    "org": "Org",
+    "mode": "Mode",
+    "devBadge": "DEV",
+    "rolesAndDomainAccess": "Roles & Domain Access",
+    "noRolesAssigned": "No roles assigned",
+    "role": "Role",
+    "domains": "Domains",
+    "allDomains": "all",
+    "capabilities": "Capabilities",
+    "noCapabilities": "None"
+  }
+}

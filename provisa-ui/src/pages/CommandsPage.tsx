@@ -9,8 +9,23 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Card,
+  Group,
+  Pagination,
+  Select,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
-import { Trash2, Pencil, Check, X } from "lucide-react";
+import { Trash2, Pencil, Check, X, Plus } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import {
   fetchActions,
@@ -36,6 +51,7 @@ import { EMPTY_FORM } from "./commands/types";
 import { CommandFormFields } from "./commands/CommandFormFields";
 
 export function CommandsPage() {
+  const { t } = useTranslation();
   const { sources } = useSources();
   const { tables } = useTables();
   const { domains } = useDomains();
@@ -59,8 +75,8 @@ export function CommandsPage() {
   const [testing, setTesting] = useState<string | null>(null);
   const [expandedFn, setExpandedFn] = useState<string | null>(null);
   const [expandedWh, setExpandedWh] = useState<string | null>(null);
-  const [fnPage, setFnPage] = useState(0);
-  const [whPage, setWhPage] = useState(0);
+  const [fnPage, setFnPage] = useState(1);
+  const [whPage, setWhPage] = useState(1);
   const PAGE_SIZE = 50;
   const [availableFunctions, setAvailableFunctions] = useState<TableMetadata[]>([]);
   const [loadingFunctions, setLoadingFunctions] = useState(false);
@@ -211,7 +227,7 @@ export function CommandsPage() {
           kind: form.kind,
         });
       }
-      setMsg(`Saved ${form.actionType} "${form.name}"`);
+      setMsg(t("commandsPage.savedMessage", { type: form.actionType, name: form.name }));
       setShowForm(false);
       setForm({ ...EMPTY_FORM });
       setEditingName(null);
@@ -253,98 +269,122 @@ export function CommandsPage() {
     loadingFunctions,
   };
 
-  if (loading) return <div className="page">Loading commands...</div>;
+  if (loading) return <Text p="md">{t("commandsPage.loading")}</Text>;
+
+  const filteredFunctions = functions.filter(
+    (fn) => !cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase()),
+  );
+  const fnTotalPages = Math.max(1, Math.ceil(filteredFunctions.length / PAGE_SIZE));
+  const pagedFunctions = filteredFunctions.slice((fnPage - 1) * PAGE_SIZE, fnPage * PAGE_SIZE);
+
+  const filteredWebhooks = webhooks.filter(
+    (wh) => !cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase()),
+  );
+  const whTotalPages = Math.max(1, Math.ceil(filteredWebhooks.length / PAGE_SIZE));
+  const pagedWebhooks = filteredWebhooks.slice((whPage - 1) * PAGE_SIZE, whPage * PAGE_SIZE);
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h2>Commands</h2>
+    <Stack gap="md" p="md">
+      <Group justify="space-between" wrap="wrap">
+        <Title order={2}>{t("commandsPage.title")}</Title>
         <FilterInput
           value={cmdSearch}
           onChange={(v) => {
             setCmdSearch(v);
-            setFnPage(0);
-            setWhPage(0);
+            setFnPage(1);
+            setWhPage(1);
           }}
-          placeholder="Filter by name…"
+          placeholder={t("commandsPage.filterPlaceholder")}
         />
-        <div className="page-actions">
+        <Group>
           {!editingName && (
-            <button
+            <Button
+              leftSection={showForm ? <X size={14} /> : <Plus size={14} />}
+              data-testid="commands-toggle-form"
               onClick={() => {
                 setShowForm(!showForm);
                 if (showForm) handleCancel();
               }}
             >
-              {showForm ? "✕" : "+ Command"}
-            </button>
+              {showForm ? t("commandsPage.closeForm") : t("commandsPage.addCommand")}
+            </Button>
           )}
-        </div>
-      </div>
+        </Group>
+      </Group>
 
-      {error && <div className="error">{error}</div>}
-      {msg && <div className="success">{msg}</div>}
-
-      {showForm && !editingName && (
-        <form className="form-card" onSubmit={handleSave}>
-          <label>
-            Type
-            <select
-              value={form.actionType}
-              onChange={(e) => setForm({ ...EMPTY_FORM, actionType: e.target.value as ActionType })}
-            >
-              <option value="function">DB Function</option>
-              <option value="webhook">Webhook</option>
-            </select>
-          </label>
-          <label>
-            Name
-            <input
-              required
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. process_order"
-            />
-          </label>
-          <CommandFormFields {...formFieldsProps} />
-          <button type="submit" disabled={saving}>
-            {saving ? "Saving..." : "Create"}
-          </button>
-        </form>
+      {error && (
+        <Alert color="red" data-testid="commands-error">
+          {error}
+        </Alert>
+      )}
+      {msg && (
+        <Alert color="green" data-testid="commands-success">
+          {msg}
+        </Alert>
       )}
 
-      <h3 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>DB Functions</h3>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Source</th>
-            <th>Domain</th>
-            <th>Function</th>
-            <th>Returns</th>
-            <th>Args</th>
-            <th>Visible To</th>
-          </tr>
-        </thead>
-        <tbody>
-          {functions.length === 0 && (
-            <tr>
-              <td colSpan={7} style={{ color: "var(--text-muted)", textAlign: "center" }}>
-                No functions registered
-              </td>
-            </tr>
-          )}
-          {(() => {
-            const filtered = functions.filter(
-              (fn) => !cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase()),
-            );
-            const paged = filtered.slice(fnPage * PAGE_SIZE, (fnPage + 1) * PAGE_SIZE);
-            return paged.map((fn) => {
+      {showForm && !editingName && (
+        <Card component="form" withBorder onSubmit={handleSave}>
+          <Stack gap="sm">
+            <Group grow align="flex-end">
+              <Select
+                label={t("commandsPage.typeLabel")}
+                data={[
+                  { value: "function", label: t("commandsPage.typeFunction") },
+                  { value: "webhook", label: t("commandsPage.typeWebhook") },
+                ]}
+                value={form.actionType}
+                onChange={(v) =>
+                  setForm({ ...EMPTY_FORM, actionType: (v ?? "function") as ActionType })
+                }
+                allowDeselect={false}
+              />
+              <TextInput
+                label={t("commandsPage.nameLabel")}
+                required
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder={t("commandsPage.namePlaceholder")}
+              />
+            </Group>
+            <CommandFormFields {...formFieldsProps} />
+            <Group justify="flex-end">
+              <Button type="submit" disabled={saving} loading={saving}>
+                {saving ? t("commandsPage.savingButton") : t("commandsPage.createButton")}
+              </Button>
+            </Group>
+          </Stack>
+        </Card>
+      )}
+
+      <Title order={3}>{t("commandsPage.dbFunctionsHeading")}</Title>
+      <Table.ScrollContainer minWidth={720}>
+        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("commandsPage.colName")}</Table.Th>
+              <Table.Th>{t("commandsPage.colSource")}</Table.Th>
+              <Table.Th>{t("commandsPage.colDomain")}</Table.Th>
+              <Table.Th>{t("commandsPage.colFunction")}</Table.Th>
+              <Table.Th>{t("commandsPage.colReturns")}</Table.Th>
+              <Table.Th>{t("commandsPage.colArgs")}</Table.Th>
+              <Table.Th>{t("commandsPage.colVisibleTo")}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {functions.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={7} ta="center" c="dimmed">
+                  {t("commandsPage.noFunctions")}
+                </Table.Td>
+              </Table.Tr>
+            )}
+            {pagedFunctions.map((fn) => {
               const isExpanded = expandedFn === fn.name;
               const isEditing = editingName === fn.name;
               return (
                 <React.Fragment key={fn.name}>
-                  <tr
+                  <Table.Tr
                     onClick={() => {
                       setExpandedFn(isExpanded ? null : fn.name);
                       if (isEditing) setEditingName(null);
@@ -354,19 +394,21 @@ export function CommandsPage() {
                       background: isExpanded ? "var(--surface)" : undefined,
                     }}
                   >
-                    <td>{fn.name}</td>
-                    <td>{fn.sourceId}</td>
-                    <td>{fn.domainId || "—"}</td>
-                    <td>
+                    <Table.Td>{fn.name}</Table.Td>
+                    <Table.Td>{fn.sourceId}</Table.Td>
+                    <Table.Td>{fn.domainId || t("commandsPage.dash")}</Table.Td>
+                    <Table.Td>
                       {fn.schemaName}.{fn.functionName}
-                    </td>
-                    <td>{fn.returns || (fn.returnSchema ? "custom schema" : "—")}</td>
-                    <td>{fn.arguments.length}</td>
-                    <td>{fn.visibleTo.join(", ") || "all"}</td>
-                  </tr>
+                    </Table.Td>
+                    <Table.Td>
+                      {fn.returns || (fn.returnSchema ? t("commandsPage.customSchema") : t("commandsPage.dash"))}
+                    </Table.Td>
+                    <Table.Td>{fn.arguments.length}</Table.Td>
+                    <Table.Td>{fn.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
+                  </Table.Tr>
                   {isExpanded && (
-                    <tr>
-                      <td
+                    <Table.Tr>
+                      <Table.Td
                         colSpan={7}
                         style={{
                           padding: "0.75rem 1rem",
@@ -375,130 +417,134 @@ export function CommandsPage() {
                         }}
                       >
                         {isEditing ? (
-                          <form className="form-card" onSubmit={handleSave} style={{ margin: 0 }}>
+                          <Stack component="form" gap="sm" onSubmit={handleSave}>
                             <CommandFormFields {...formFieldsProps} />
-                            <div
-                              style={{
-                                gridColumn: "1 / -1",
-                                display: "flex",
-                                gap: "0.5rem",
-                                justifyContent: "flex-end",
-                              }}
-                            >
-                              <button
+                            <Group justify="flex-end">
+                              <ActionIcon
                                 type="button"
-                                className="btn-icon"
-                                title="Cancel"
+                                variant="default"
+                                aria-label={t("commandsPage.cancelAria")}
                                 onClick={handleCancel}
                               >
                                 <X size={14} />
-                              </button>
-                              <button
+                              </ActionIcon>
+                              <ActionIcon
                                 type="submit"
-                                className="btn-icon-primary"
-                                title="Save"
+                                variant="filled"
+                                aria-label={t("commandsPage.saveAria")}
                                 disabled={saving}
                               >
                                 <Check size={14} />
-                              </button>
-                            </div>
-                          </form>
+                              </ActionIcon>
+                            </Group>
+                          </Stack>
                         ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                            <dl
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "max-content 1fr",
-                                gap: "0.25rem 1rem",
-                                margin: 0,
-                                color: "var(--text)",
-                              }}
-                            >
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Name</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>{fn.name}</dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Kind</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {fn.kind ?? "mutation"}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Source</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>{fn.sourceId}</dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Schema</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>{fn.schemaName}</dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Function</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>{fn.functionName}</dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Returns</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {fn.returns || (fn.returnSchema ? "custom schema" : "—")}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Visible To</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {fn.visibleTo.join(", ") || "all"}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Writable By</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {fn.writableBy.join(", ") || "all"}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Domain</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {fn.domainId || "—"}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Description</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {fn.description || "—"}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Arguments</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {fn.arguments.length === 0
-                                  ? "none"
-                                  : fn.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}
-                              </dd>
-                            </dl>
-                            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                              <button
-                                className="btn-icon"
-                                title="Edit"
+                          <Stack gap="sm">
+                            <Table withRowBorders={false} verticalSpacing={2}>
+                              <Table.Tbody>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailName")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{fn.name}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailKind")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{fn.kind ?? "mutation"}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailSource")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{fn.sourceId}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailSchema")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{fn.schemaName}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailFunction")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{fn.functionName}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailReturns")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    {fn.returns ||
+                                      (fn.returnSchema
+                                        ? t("commandsPage.customSchema")
+                                        : t("commandsPage.dash"))}
+                                  </Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailVisibleTo")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{fn.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailWritableBy")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{fn.writableBy.join(", ") || t("commandsPage.all")}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailDomain")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{fn.domainId || t("commandsPage.dash")}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailDescription")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{fn.description || t("commandsPage.dash")}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailArguments")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    {fn.arguments.length === 0
+                                      ? t("commandsPage.none")
+                                      : fn.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}
+                                  </Table.Td>
+                                </Table.Tr>
+                              </Table.Tbody>
+                            </Table>
+                            <Group gap="sm">
+                              <ActionIcon
+                                variant="default"
+                                aria-label={t("commandsPage.editAria", { name: fn.name })}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleEdit("function", fn.name);
                                 }}
                               >
                                 <Pencil size={14} />
-                              </button>
-                              <button
-                                className="btn-secondary"
+                              </ActionIcon>
+                              <Button
+                                variant="light"
+                                size="xs"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleTest("function", fn.name);
                                 }}
                                 disabled={testing === fn.name}
+                                loading={testing === fn.name}
                               >
-                                {testing === fn.name ? "Testing..." : "Test"}
-                              </button>
+                                {testing === fn.name ? t("commandsPage.testingButton") : t("commandsPage.testButton")}
+                              </Button>
                               <ConfirmDialog
-                                title={`Delete function "${fn.name}"?`}
-                                consequence="This will remove the function from the schema."
+                                title={t("commandsPage.deleteFunctionTitle", { name: fn.name })}
+                                consequence={t("commandsPage.deleteFunctionConsequence")}
                                 onConfirm={async () => {
                                   await deleteFunction(fn.name);
                                   setExpandedFn(null);
@@ -506,98 +552,66 @@ export function CommandsPage() {
                                 }}
                               >
                                 {(open) => (
-                                  <button
-                                    className="btn-icon-danger"
-                                    title="Delete"
+                                  <ActionIcon
+                                    variant="subtle"
+                                    color="red"
+                                    aria-label={t("commandsPage.deleteFunctionAria", { name: fn.name })}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       open();
                                     }}
                                   >
                                     <Trash2 size={14} />
-                                  </button>
+                                  </ActionIcon>
                                 )}
                               </ConfirmDialog>
-                            </div>
-                          </div>
+                            </Group>
+                          </Stack>
                         )}
-                      </td>
-                    </tr>
+                      </Table.Td>
+                    </Table.Tr>
                   )}
                 </React.Fragment>
               );
-            });
-          })()}
-        </tbody>
-      </table>
-      {(() => {
-        const filtered = functions.filter(
-          (fn) => !cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase()),
-        );
-        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-        if (totalPages === 1) return null;
-        return (
-          <div
-            style={{
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              padding: "0.5rem 0",
-            }}
-          >
-            <button onClick={() => setFnPage(0)} disabled={fnPage === 0}>
-              «
-            </button>
-            <button onClick={() => setFnPage((p) => p - 1)} disabled={fnPage === 0}>
-              ‹
-            </button>
-            <span>
-              Page {fnPage + 1} / {totalPages}
-            </span>
-            <button onClick={() => setFnPage((p) => p + 1)} disabled={fnPage >= totalPages - 1}>
-              ›
-            </button>
-            <button onClick={() => setFnPage(totalPages - 1)} disabled={fnPage >= totalPages - 1}>
-              »
-            </button>
-          </div>
-        );
-      })()}
+            })}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+      {fnTotalPages > 1 && (
+        <Group justify="flex-end">
+          <Pagination total={fnTotalPages} value={fnPage} onChange={setFnPage} size="sm" />
+        </Group>
+      )}
 
-      <h3 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Webhooks</h3>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Domain</th>
-            <th>URL</th>
-            <th>Method</th>
-            <th>Timeout</th>
-            <th>Returns</th>
-            <th>Args</th>
-            <th>Visible To</th>
-          </tr>
-        </thead>
-        <tbody>
-          {webhooks.length === 0 && (
-            <tr>
-              <td colSpan={8} style={{ color: "var(--text-muted)", textAlign: "center" }}>
-                No webhooks registered
-              </td>
-            </tr>
-          )}
-          {(() => {
-            const filtered = webhooks.filter(
-              (wh) => !cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase()),
-            );
-            const paged = filtered.slice(whPage * PAGE_SIZE, (whPage + 1) * PAGE_SIZE);
-            return paged.map((wh) => {
+      <Title order={3}>{t("commandsPage.webhooksHeading")}</Title>
+      <Table.ScrollContainer minWidth={720}>
+        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("commandsPage.colName")}</Table.Th>
+              <Table.Th>{t("commandsPage.colDomain")}</Table.Th>
+              <Table.Th>{t("commandsPage.colUrl")}</Table.Th>
+              <Table.Th>{t("commandsPage.colMethod")}</Table.Th>
+              <Table.Th>{t("commandsPage.colTimeout")}</Table.Th>
+              <Table.Th>{t("commandsPage.colReturns")}</Table.Th>
+              <Table.Th>{t("commandsPage.colArgs")}</Table.Th>
+              <Table.Th>{t("commandsPage.colVisibleTo")}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {webhooks.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={8} ta="center" c="dimmed">
+                  {t("commandsPage.noWebhooks")}
+                </Table.Td>
+              </Table.Tr>
+            )}
+            {pagedWebhooks.map((wh) => {
               const isExpanded = expandedWh === wh.name;
               const isEditing = editingName === wh.name;
               return (
                 <React.Fragment key={wh.name}>
-                  <tr
+                  <Table.Tr
                     onClick={() => {
                       setExpandedWh(isExpanded ? null : wh.name);
                       if (isEditing) setEditingName(null);
@@ -607,20 +621,22 @@ export function CommandsPage() {
                       background: isExpanded ? "var(--surface)" : undefined,
                     }}
                   >
-                    <td>{wh.name}</td>
-                    <td>{wh.domainId || "—"}</td>
-                    <td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <Table.Td>{wh.name}</Table.Td>
+                    <Table.Td>{wh.domainId || t("commandsPage.dash")}</Table.Td>
+                    <Table.Td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {wh.url}
-                    </td>
-                    <td>{wh.method}</td>
-                    <td>{wh.timeoutMs}ms</td>
-                    <td>{wh.returns || `inline (${wh.inlineReturnType.length} fields)`}</td>
-                    <td>{wh.arguments.length}</td>
-                    <td>{wh.visibleTo.join(", ") || "all"}</td>
-                  </tr>
+                    </Table.Td>
+                    <Table.Td>{wh.method}</Table.Td>
+                    <Table.Td>{wh.timeoutMs}ms</Table.Td>
+                    <Table.Td>
+                      {wh.returns || t("commandsPage.inlineReturns", { count: wh.inlineReturnType.length })}
+                    </Table.Td>
+                    <Table.Td>{wh.arguments.length}</Table.Td>
+                    <Table.Td>{wh.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
+                  </Table.Tr>
                   {isExpanded && (
-                    <tr>
-                      <td
+                    <Table.Tr>
+                      <Table.Td
                         colSpan={8}
                         style={{
                           padding: "0.75rem 1rem",
@@ -629,136 +645,138 @@ export function CommandsPage() {
                         }}
                       >
                         {isEditing ? (
-                          <form className="form-card" onSubmit={handleSave} style={{ margin: 0 }}>
+                          <Stack component="form" gap="sm" onSubmit={handleSave}>
                             <CommandFormFields {...formFieldsProps} />
-                            <div
-                              style={{
-                                gridColumn: "1 / -1",
-                                display: "flex",
-                                gap: "0.5rem",
-                                justifyContent: "flex-end",
-                              }}
-                            >
-                              <button
+                            <Group justify="flex-end">
+                              <ActionIcon
                                 type="button"
-                                className="btn-icon"
-                                title="Cancel"
+                                variant="default"
+                                aria-label={t("commandsPage.cancelAria")}
                                 onClick={handleCancel}
                               >
                                 <X size={14} />
-                              </button>
-                              <button
+                              </ActionIcon>
+                              <ActionIcon
                                 type="submit"
-                                className="btn-icon-primary"
-                                title="Save"
+                                variant="filled"
+                                aria-label={t("commandsPage.saveAria")}
                                 disabled={saving}
                               >
                                 <Check size={14} />
-                              </button>
-                            </div>
-                          </form>
+                              </ActionIcon>
+                            </Group>
+                          </Stack>
                         ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                            <dl
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "max-content 1fr",
-                                gap: "0.25rem 1rem",
-                                margin: 0,
-                                color: "var(--text)",
-                              }}
-                            >
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Name</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>{wh.name}</dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Kind</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {wh.kind ?? "mutation"}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>URL</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>{wh.url}</dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Method</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>{wh.method}</dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Timeout</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>{wh.timeoutMs}ms</dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Returns</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {wh.returns || `inline (${wh.inlineReturnType.length} fields)`}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Visible To</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {wh.visibleTo.join(", ") || "all"}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Domain</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {wh.domainId || "—"}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Description</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {wh.description || "—"}
-                              </dd>
-                              <dt style={{ color: "var(--text-muted)" }}>
-                                <strong>Arguments</strong>
-                              </dt>
-                              <dd style={{ color: "var(--text)", margin: 0 }}>
-                                {wh.arguments.length === 0
-                                  ? "none"
-                                  : wh.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}
-                              </dd>
-                              {wh.inlineReturnType.length > 0 && (
-                                <>
-                                  <dt>
-                                    <strong>Inline Fields</strong>
-                                  </dt>
-                                  <dd>
-                                    {wh.inlineReturnType
-                                      .map((f) => `${f.name}: ${f.type}`)
-                                      .join(", ")}
-                                  </dd>
-                                </>
-                              )}
-                            </dl>
-                            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                              <button
-                                className="btn-icon"
-                                title="Edit"
+                          <Stack gap="sm">
+                            <Table withRowBorders={false} verticalSpacing={2}>
+                              <Table.Tbody>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailName")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{wh.name}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailKind")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{wh.kind ?? "mutation"}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailUrl")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{wh.url}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailMethod")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{wh.method}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailTimeout")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{wh.timeoutMs}ms</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailReturns")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    {wh.returns ||
+                                      t("commandsPage.inlineReturns", {
+                                        count: wh.inlineReturnType.length,
+                                      })}
+                                  </Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailVisibleTo")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{wh.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailDomain")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{wh.domainId || t("commandsPage.dash")}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailDescription")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>{wh.description || t("commandsPage.dash")}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailArguments")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    {wh.arguments.length === 0
+                                      ? t("commandsPage.none")
+                                      : wh.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}
+                                  </Table.Td>
+                                </Table.Tr>
+                                {wh.inlineReturnType.length > 0 && (
+                                  <Table.Tr>
+                                    <Table.Td c="dimmed">
+                                      <strong>{t("commandsPage.detailInlineFields")}</strong>
+                                    </Table.Td>
+                                    <Table.Td>
+                                      {wh.inlineReturnType.map((f) => `${f.name}: ${f.type}`).join(", ")}
+                                    </Table.Td>
+                                  </Table.Tr>
+                                )}
+                              </Table.Tbody>
+                            </Table>
+                            <Group gap="sm">
+                              <ActionIcon
+                                variant="default"
+                                aria-label={t("commandsPage.editAria", { name: wh.name })}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleEdit("webhook", wh.name);
                                 }}
                               >
                                 <Pencil size={14} />
-                              </button>
-                              <button
-                                className="btn-secondary"
+                              </ActionIcon>
+                              <Button
+                                variant="light"
+                                size="xs"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleTest("webhook", wh.name);
                                 }}
                                 disabled={testing === wh.name}
+                                loading={testing === wh.name}
                               >
-                                {testing === wh.name ? "Testing..." : "Test"}
-                              </button>
+                                {testing === wh.name ? t("commandsPage.testingButton") : t("commandsPage.testButton")}
+                              </Button>
                               <ConfirmDialog
-                                title={`Delete webhook "${wh.name}"?`}
-                                consequence="This will remove the webhook from the schema."
+                                title={t("commandsPage.deleteWebhookTitle", { name: wh.name })}
+                                consequence={t("commandsPage.deleteWebhookConsequence")}
                                 onConfirm={async () => {
                                   await deleteWebhook(wh.name);
                                   setExpandedWh(null);
@@ -766,128 +784,68 @@ export function CommandsPage() {
                                 }}
                               >
                                 {(open) => (
-                                  <button
-                                    className="btn-icon-danger"
-                                    title="Delete"
+                                  <ActionIcon
+                                    variant="subtle"
+                                    color="red"
+                                    aria-label={t("commandsPage.deleteWebhookAria", { name: wh.name })}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       open();
                                     }}
                                   >
                                     <Trash2 size={14} />
-                                  </button>
+                                  </ActionIcon>
                                 )}
                               </ConfirmDialog>
-                            </div>
-                          </div>
+                            </Group>
+                          </Stack>
                         )}
-                      </td>
-                    </tr>
+                      </Table.Td>
+                    </Table.Tr>
                   )}
                 </React.Fragment>
               );
-            });
-          })()}
-        </tbody>
-      </table>
-      {(() => {
-        const filtered = webhooks.filter(
-          (wh) => !cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase()),
-        );
-        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-        if (totalPages === 1) return null;
-        return (
-          <div
-            style={{
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              padding: "0.5rem 0",
-            }}
-          >
-            <button onClick={() => setWhPage(0)} disabled={whPage === 0}>
-              «
-            </button>
-            <button onClick={() => setWhPage((p) => p - 1)} disabled={whPage === 0}>
-              ‹
-            </button>
-            <span>
-              Page {whPage + 1} / {totalPages}
-            </span>
-            <button onClick={() => setWhPage((p) => p + 1)} disabled={whPage >= totalPages - 1}>
-              ›
-            </button>
-            <button onClick={() => setWhPage(totalPages - 1)} disabled={whPage >= totalPages - 1}>
-              »
-            </button>
-          </div>
-        );
-      })()}
+            })}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+      {whTotalPages > 1 && (
+        <Group justify="flex-end">
+          <Pagination total={whTotalPages} value={whPage} onChange={setWhPage} size="sm" />
+        </Group>
+      )}
 
-      <div style={{ marginTop: "1rem", display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
-        <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Test as role:</span>
-        <select
+      <Group gap="sm" align="center">
+        <Text size="sm" c="dimmed">
+          {t("commandsPage.testAsRole")}
+        </Text>
+        <Select
+          aria-label={t("commandsPage.testAsRole")}
+          size="xs"
+          data={[
+            { value: "", label: t("commandsPage.noGovernance") },
+            ...roles.map((r) => ({ value: r.id, label: r.id })),
+          ]}
           value={testRoleId}
-          onChange={(e) => setTestRoleId(e.target.value)}
-          style={{
-            background: "var(--bg-card)",
-            color: "var(--text)",
-            border: "1px solid var(--border)",
-            borderRadius: "4px",
-            padding: "0.2rem 0.5rem",
-            fontSize: "0.85rem",
-          }}
-        >
-          <option value="">(no governance)</option>
-          {roles.map((r) => (
-            <option key={r.id} value={r.id}>{r.id}</option>
-          ))}
-        </select>
-      </div>
+          onChange={(v) => setTestRoleId(v ?? "")}
+          allowDeselect={false}
+        />
+      </Group>
 
       {testResult && (
-        <div
-          style={{
-            marginTop: "1rem",
-            padding: "1rem",
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "4px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "0.5rem",
-            }}
-          >
-            <h4>Test Result: {testResult.name}</h4>
-            <button
-              onClick={() => setTestResult(null)}
-              style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-            >
-              Close
-            </button>
-          </div>
+        <Card withBorder>
+          <Group justify="space-between" mb="sm">
+            <Title order={4}>{t("commandsPage.testResultHeading", { name: testResult.name })}</Title>
+            <Button size="xs" variant="default" onClick={() => setTestResult(null)}>
+              {t("commandsPage.close")}
+            </Button>
+          </Group>
           {!!(testResult.data && typeof testResult.data === "object" && "enforcement" in testResult.data) && (
-            <div
-              style={{
-                marginBottom: "0.75rem",
-                padding: "0.5rem 0.75rem",
-                background: "hsl(var(--color-info) / 0.08)",
-                border: "1px solid hsl(var(--color-info) / 0.3)",
-                borderRadius: "4px",
-                fontSize: "0.8rem",
-              }}
-            >
-              <strong>Governance applied</strong>
+            <Alert color="blue" mb="sm" title={t("commandsPage.governanceApplied")}>
               <pre style={{ margin: "0.25rem 0 0", fontSize: "0.78rem" }}>
                 {JSON.stringify((testResult.data as Record<string, unknown>).enforcement, null, 2)}
               </pre>
-            </div>
+            </Alert>
           )}
           <pre style={{ fontSize: "0.85rem", overflow: "auto", maxHeight: "300px" }}>
             {JSON.stringify(
@@ -898,8 +856,8 @@ export function CommandsPage() {
               2,
             )}
           </pre>
-        </div>
+        </Card>
       )}
-    </div>
+    </Stack>
   );
 }
