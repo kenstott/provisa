@@ -183,6 +183,7 @@ export function QueryBar({
         aria-label={t("queryBar.run")}
         title={t("queryBar.run")}
         onClick={() => onRun(query.trim())}
+        style={{ alignSelf: "stretch", height: "auto" }}
       >
         <Play size={16} aria-hidden />
       </ActionIcon>

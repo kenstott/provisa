@@ -84,6 +84,29 @@ async def _set_lease(store, *, writer, lease_until, status="refreshing"):
 
 
 @pytest.mark.asyncio
+async def test_ensure_mv_row_seeds_catalog_so_claim_can_win(store):
+    """Regression: the in-memory registry never writes the control-plane catalog row, so a
+    shared-tier MV had no row for claim_refresh to elect on — the claim matched 0 rows and the
+    MV stayed STALE forever. ensure_mv_row seeds it (idempotently) so the claim can win."""
+    from provisa.mv.coordination import ensure_mv_row
+
+    mv = MVDefinition(
+        id="mv-unseeded",
+        source_tables=["orders"],
+        target_catalog="mat_store",
+        target_schema="main",
+        target_table="mv_unseeded",
+        sql="SELECT 1",
+    )
+    # No catalog row yet → claim cannot win (the bug).
+    assert await claim_refresh(store, mv.id, INST_A, target_input_version=None) is False
+    # Seed the row → claim now wins; a second ensure is idempotent (no duplicate/raise).
+    await ensure_mv_row(store, mv)
+    await ensure_mv_row(store, mv)
+    assert await claim_refresh(store, mv.id, INST_A, target_input_version=None) is True
+
+
+@pytest.mark.asyncio
 async def test_claim_is_exclusive_across_two_instances(store):
     won_a = await claim_refresh(store, MV_ID, INST_A, target_input_version="v1")
     won_b = await claim_refresh(store, MV_ID, INST_B, target_input_version="v1")

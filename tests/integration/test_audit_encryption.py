@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS {_SCHEMA}.query_audit_log (
     source TEXT NOT NULL,
     status_code INT NOT NULL,
     duration_ms INT NOT NULL,
+    trace_id TEXT,
     logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 """

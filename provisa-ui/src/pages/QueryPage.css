@@ -1,6 +1,7 @@
-/* Provisa indigo theme for GraphiQL */
-body.graphiql-dark .graphiql-container,
-body.graphiql-dark .graphiql-dialog {
+/* Provisa indigo accent for GraphiQL — applies in both light and dark; the
+ * light/dark switch itself is driven by GraphiQL's `forcedTheme` prop. */
+.graphiql-container,
+.graphiql-dialog {
   --color-primary: 239, 84%, 67%;
   --color-secondary: 224, 76%, 48%;
   --color-tertiary: 199, 89%, 48%;
@@ -30,10 +31,10 @@ body.graphiql-dark .graphiql-dialog {
   align-items: center;
   gap: 16px;
   padding: 6px 12px;
-  background: hsl(224, 20%, 16%);
-  border-bottom: 1px solid hsl(224, 15%, 24%);
+  background: var(--surface);
+  border-bottom: 1px solid var(--surface-alt);
   font-size: 13px;
-  color: hsl(224, 10%, 75%);
+  color: var(--text);
 }
 
 .query-option {
@@ -45,9 +46,9 @@ body.graphiql-dark .graphiql-dialog {
 
 .query-option select,
 .query-option .threshold-input {
-  background: hsl(224, 20%, 22%);
-  color: hsl(224, 10%, 85%);
-  border: 1px solid hsl(224, 15%, 30%);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--surface-alt);
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 13px;
@@ -58,13 +59,13 @@ body.graphiql-dark .graphiql-dialog {
 }
 
 .query-hint {
-  color: hsl(224, 10%, 50%);
+  color: var(--text-muted);
   font-style: italic;
   font-size: 12px;
 }
 
 .query-elapsed {
-  color: hsl(224, 10%, 55%);
+  color: var(--text-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -74,7 +75,7 @@ body.graphiql-dark .graphiql-dialog {
 .provisa-tools {
   padding: 12px;
   font-size: 13px;
-  color: hsl(224, 10%, 75%);
+  color: var(--text);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -93,21 +94,21 @@ body.graphiql-dark .graphiql-dialog {
   border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
-  background: hsl(224, 20%, 28%);
-  color: hsl(224, 10%, 85%);
+  background: var(--surface-alt);
+  color: var(--text);
 }
 
 .provisa-tools-actions button:hover {
-  background: hsl(224, 20%, 35%);
+  background: var(--border);
 }
 
 .provisa-tools-actions button.submit-btn {
-  background: hsl(239, 84%, 50%);
+  background: var(--primary-strong);
   color: white;
 }
 
 .provisa-tools-actions button.submit-btn:hover {
-  background: hsl(239, 84%, 60%);
+  background: var(--primary);
 }
 
 .provisa-tools-actions button:disabled {
@@ -116,20 +117,20 @@ body.graphiql-dark .graphiql-dialog {
 }
 
 .provisa-tools-error {
-  color: hsl(0, 84%, 60%);
+  color: var(--destructive);
   font-size: 12px;
   white-space: pre-wrap;
 }
 
 .provisa-tools-success {
-  color: hsl(142, 71%, 45%);
+  color: var(--approve);
   font-size: 12px;
 }
 
 .provisa-tools-last-submission {
-  border: 1px solid hsl(142, 40%, 30%);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: hsl(142, 20%, 12%);
+  background: var(--surface-alt);
   padding: 8px 10px;
   font-size: 12px;
   display: flex;
@@ -146,7 +147,7 @@ body.graphiql-dark .graphiql-dialog {
 .provisa-tools-dismiss {
   background: none;
   border: none;
-  color: hsl(224, 10%, 60%);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
@@ -154,18 +155,18 @@ body.graphiql-dark .graphiql-dialog {
 }
 
 .provisa-tools-dismiss:hover {
-  color: hsl(224, 10%, 90%);
+  color: var(--text);
 }
 
 .provisa-tools-last-submission-body {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  color: hsl(224, 10%, 80%);
+  color: var(--text);
 }
 
 .provisa-tools-last-submission-msg {
-  color: hsl(142, 71%, 45%);
+  color: var(--approve);
   margin-top: 2px;
 }
 
@@ -183,7 +184,7 @@ body.graphiql-dark .graphiql-dialog {
 }
 
 .provisa-tools-reason {
-  color: hsl(224, 10%, 50%);
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -200,14 +201,14 @@ body.graphiql-dark .graphiql-dialog {
 
 .provisa-tools-chevron {
   font-size: 11px;
-  color: hsl(224, 10%, 50%);
+  color: var(--text-muted);
 }
 
 .provisa-tools-label {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: hsl(224, 10%, 50%);
+  color: var(--text-muted);
 }
 
 .provisa-tools-copy {
@@ -216,18 +217,18 @@ body.graphiql-dark .graphiql-dialog {
   cursor: pointer;
   padding: 4px;
   border-radius: 3px;
-  color: hsl(224, 10%, 50%);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
 }
 
 .provisa-tools-copy:hover {
-  background: hsl(224, 20%, 22%);
-  color: hsl(224, 10%, 80%);
+  background: var(--surface);
+  color: var(--text);
 }
 
 .provisa-tools-code {
-  background: hsl(224, 20%, 12%);
+  background: var(--bg);
   border-radius: 4px;
   font-family: monospace;
   font-size: 12px;
@@ -254,7 +255,7 @@ body.graphiql-dark .graphiql-dialog {
   color: #f87171;
   font-family: monospace;
   font-size: 12px;
-  background: hsl(224, 20%, 10%);
+  background: var(--bg);
   border-radius: 4px;
 }
 
@@ -263,13 +264,13 @@ body.graphiql-dark .graphiql-dialog {
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: hsl(224, 10%, 60%);
+  color: var(--text-muted);
   cursor: pointer;
   user-select: none;
 }
 
 .provisa-tools-option input[type="checkbox"] {
-  accent-color: hsl(224, 80%, 60%);
+  accent-color: var(--primary);
   cursor: pointer;
 }
 
@@ -278,7 +279,7 @@ body.graphiql-dark .graphiql-dialog {
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  background: hsl(224, 20%, 14%);
+  background: var(--bg);
   border-radius: 4px;
 }
 
@@ -287,19 +288,19 @@ body.graphiql-dark .graphiql-dialog {
   flex-direction: column;
   gap: 3px;
   font-size: 12px;
-  color: hsl(224, 10%, 60%);
+  color: var(--text-muted);
 }
 
 .provisa-tools-metadata .required {
-  color: hsl(0, 84%, 60%);
+  color: var(--destructive);
 }
 
 .provisa-tools-metadata textarea,
 .provisa-tools-metadata input,
 .provisa-tools-metadata select {
-  background: hsl(224, 20%, 20%);
-  color: hsl(224, 10%, 85%);
-  border: 1px solid hsl(224, 15%, 30%);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--surface-alt);
   border-radius: 3px;
   padding: 5px 6px;
   font-size: 12px;
@@ -324,7 +325,7 @@ body.graphiql-dark .graphiql-dialog {
 
 .provisa-tools-delivery-label {
   font-size: 12px;
-  color: hsl(224, 10%, 60%);
+  color: var(--text-muted);
 }
 
 .provisa-tools-delivery-grid {
@@ -339,7 +340,7 @@ body.graphiql-dark .graphiql-dialog {
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: hsl(224, 10%, 75%);
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -348,7 +349,7 @@ body.graphiql-dark .graphiql-dialog {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: hsl(224, 10%, 60%);
+  color: var(--text-muted);
   cursor: pointer;
 }
 
@@ -357,7 +358,7 @@ body.graphiql-dark .graphiql-dialog {
   flex-direction: column;
   gap: 6px;
   padding: 8px;
-  background: hsl(224, 20%, 14%);
+  background: var(--bg);
   border-radius: 4px;
 }
 
@@ -366,14 +367,14 @@ body.graphiql-dark .graphiql-dialog {
   flex-direction: column;
   gap: 2px;
   font-size: 12px;
-  color: hsl(224, 10%, 60%);
+  color: var(--text-muted);
 }
 
 .provisa-tools-sink input,
 .provisa-tools-sink select {
-  background: hsl(224, 20%, 20%);
-  color: hsl(224, 10%, 85%);
-  border: 1px solid hsl(224, 15%, 30%);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--surface-alt);
   border-radius: 3px;
   padding: 4px 6px;
   font-size: 12px;
@@ -381,7 +382,7 @@ body.graphiql-dark .graphiql-dialog {
 
 .provisa-tools-params {
   font-size: 12px;
-  color: hsl(224, 10%, 50%);
+  color: var(--text-muted);
 }
 
 .provisa-tools-warnings {
@@ -408,7 +409,7 @@ body.graphiql-dark .graphiql-dialog {
   margin: 0;
   padding-left: 16px;
   font-size: 12px;
-  color: hsl(142, 71%, 45%);
+  color: var(--approve);
   list-style: disc;
 }
 
@@ -419,15 +420,15 @@ body.graphiql-dark .graphiql-dialog {
   border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
-  background: hsl(224, 20%, 28%);
-  color: hsl(224, 10%, 85%);
+  background: var(--surface-alt);
+  color: var(--text);
 }
-.modal-actions button:hover { background: hsl(224, 20%, 35%); }
+.modal-actions button:hover { background: var(--border); }
 .modal-actions button.submit-btn {
-  background: hsl(239, 84%, 50%);
+  background: var(--primary-strong);
   color: white;
 }
-.modal-actions button.submit-btn:hover { background: hsl(239, 84%, 60%); }
+.modal-actions button.submit-btn:hover { background: var(--primary); }
 .modal-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Response panel layout for table/JSON toggle */
@@ -487,15 +488,15 @@ body.graphiql-dark .graphiql-dialog {
   display: flex;
   gap: 2px;
   padding: 4px 8px;
-  background: hsl(224, 20%, 14%);
-  border-bottom: 1px solid hsl(224, 15%, 24%);
+  background: var(--bg);
+  border-bottom: 1px solid var(--surface-alt);
 }
 
 .response-view-toggle button {
   background: none;
   border: 1px solid transparent;
   border-radius: 3px;
-  color: hsl(224, 10%, 50%);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 3px 8px;
   font-size: 12px;
@@ -506,12 +507,12 @@ body.graphiql-dark .graphiql-dialog {
 }
 
 .response-view-toggle button:hover {
-  color: hsl(224, 10%, 80%);
+  color: var(--text);
 }
 
 .response-view-toggle button.active {
-  color: hsl(239, 84%, 67%);
-  border-color: hsl(239, 84%, 67%);
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
 .response-view-toggle button:disabled {
@@ -522,13 +523,13 @@ body.graphiql-dark .graphiql-dialog {
 .response-toggle-separator {
   width: 1px;
   align-self: stretch;
-  background: hsl(224, 15%, 28%);
+  background: var(--surface-alt);
   margin: 2px 4px;
 }
 
 /* Table overlay on response panel */
 .response-table-overlay {
-  background: hsl(224, 20%, 12%);
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -541,8 +542,8 @@ body.graphiql-dark .graphiql-dialog {
   display: flex;
   gap: 0;
   flex-shrink: 0;
-  border-bottom: 1px solid hsl(224, 15%, 22%);
-  background: hsl(224, 20%, 14%);
+  border-bottom: 1px solid var(--surface);
+  background: var(--bg);
   overflow-x: auto;
 }
 
@@ -550,7 +551,7 @@ body.graphiql-dark .graphiql-dialog {
   padding: 5px 14px;
   font-size: 11px;
   font-weight: 500;
-  color: hsl(224, 10%, 55%);
+  color: var(--text-muted);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
@@ -562,31 +563,31 @@ body.graphiql-dark .graphiql-dialog {
 }
 
 .response-table-tab:hover {
-  color: hsl(224, 10%, 80%);
-  background: hsl(224, 20%, 16%);
+  color: var(--text);
+  background: var(--surface);
 }
 
 .response-table-tab.active {
-  color: hsl(239, 84%, 67%);
-  border-bottom-color: hsl(239, 84%, 67%);
+  color: var(--primary);
+  border-bottom-color: var(--primary);
 }
 
 .response-table-tab-count {
   font-size: 10px;
-  color: hsl(224, 10%, 45%);
-  background: hsl(224, 15%, 20%);
+  color: var(--border);
+  background: var(--surface);
   padding: 1px 5px;
   border-radius: 8px;
 }
 
 .response-table-tab.active .response-table-tab-count {
-  color: hsl(239, 84%, 67%);
-  background: hsl(239, 84%, 20%);
+  color: var(--primary);
+  background: var(--primary-strong);
 }
 
 .response-table-info {
   padding: 4px 10px;
-  color: hsl(224, 10%, 50%);
+  color: var(--text-muted);
   font-size: 11px;
   flex-shrink: 0;
   display: flex;
@@ -603,8 +604,8 @@ body.graphiql-dark .graphiql-dialog {
 
 .response-table-pager button {
   background: none;
-  border: 1px solid hsl(224, 10%, 30%);
-  color: hsl(224, 10%, 60%);
+  border: 1px solid var(--surface-alt);
+  color: var(--text-muted);
   border-radius: 3px;
   padding: 0 5px;
   font-size: 13px;
@@ -619,27 +620,27 @@ body.graphiql-dark .graphiql-dialog {
 
 .response-table-stats {
   padding: 3px 10px;
-  color: hsl(224, 10%, 45%);
+  color: var(--border);
   font-size: 10px;
   flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  border-top: 1px solid hsl(224, 10%, 20%);
+  border-top: 1px solid var(--surface);
 }
 
 .response-table-stats-total {
   font-weight: 600;
-  color: hsl(224, 10%, 60%);
+  color: var(--text-muted);
 }
 
 .response-table-stats-field {
-  color: hsl(224, 10%, 45%);
+  color: var(--border);
 }
 
 .query-stats-panel {
-  border-top: 2px solid hsl(224, 30%, 30%);
-  background: hsl(224, 20%, 12%);
+  border-top: 2px solid var(--surface-alt);
+  background: var(--bg);
   flex-shrink: 0;
 }
 
@@ -647,30 +648,30 @@ body.graphiql-dark .graphiql-dialog {
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
-  color: hsl(224, 40%, 70%);
-  background: hsl(224, 25%, 16%);
-  border-bottom: 1px solid hsl(224, 10%, 22%);
+  color: var(--primary);
+  background: var(--surface);
+  border-bottom: 1px solid var(--surface);
 }
 
 .query-stats-panel-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
-  color: hsl(224, 10%, 70%);
+  color: var(--text);
 }
 
 .query-stats-panel-table th {
   padding: 4px 12px;
   text-align: left;
   font-weight: 600;
-  color: hsl(224, 10%, 50%);
-  background: hsl(224, 20%, 14%);
-  border-bottom: 1px solid hsl(224, 10%, 22%);
+  color: var(--text-muted);
+  background: var(--bg);
+  border-bottom: 1px solid var(--surface);
 }
 
 .query-stats-panel-table td {
   padding: 4px 12px;
-  border-bottom: 1px solid hsl(224, 10%, 18%);
+  border-bottom: 1px solid var(--surface);
 }
 
 .query-stats-panel-table tr:last-child td {
@@ -684,7 +685,7 @@ body.graphiql-dark .graphiql-dialog {
 
 .stats-mermaid {
   padding: 12px 16px;
-  border-bottom: 1px solid hsl(224, 10%, 20%);
+  border-bottom: 1px solid var(--surface);
   overflow-x: auto;
 }
 
@@ -698,12 +699,12 @@ body.graphiql-dark .graphiql-dialog {
 }
 
 .stats-row-clickable:hover td {
-  background: hsl(224, 10%, 16%);
+  background: var(--surface);
 }
 
 .stats-sql-row td {
   padding: 0 !important;
-  border-bottom: 1px solid hsl(224, 10%, 18%);
+  border-bottom: 1px solid var(--surface);
 }
 
 .stats-sql-wrap {
@@ -724,16 +725,16 @@ body.graphiql-dark .graphiql-dialog {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid hsl(224, 10%, 30%);
+  border: 1px solid var(--surface-alt);
   border-radius: 3px;
-  background: hsl(224, 10%, 16%);
-  color: hsl(224, 10%, 65%);
+  background: var(--surface);
+  color: var(--text-muted);
   cursor: pointer;
 }
 
 .stats-sql-copy:hover {
-  background: hsl(224, 10%, 22%);
-  color: hsl(224, 10%, 85%);
+  background: var(--surface);
+  color: var(--text);
 }
 
 .stats-sql {
@@ -741,15 +742,15 @@ body.graphiql-dark .graphiql-dialog {
   padding: 6px 16px 8px;
   font-size: 11px;
   line-height: 1.5;
-  color: hsl(224, 10%, 55%);
+  color: var(--text-muted);
   white-space: pre-wrap;
   word-break: break-all;
-  background: hsl(224, 10%, 10%);
+  background: var(--bg);
 }
 
 .stats-source-continuation td {
-  color: hsl(224, 10%, 50%);
-  border-bottom-color: hsl(224, 10%, 15%);
+  color: var(--text-muted);
+  border-bottom-color: var(--surface);
 }
 
 .response-table-scroll {
@@ -766,38 +767,38 @@ body.graphiql-dark .graphiql-dialog {
 .response-table th {
   position: sticky;
   top: 0;
-  background: hsl(224, 20%, 18%);
+  background: var(--surface);
   padding: 5px 10px;
   text-align: left;
   font-weight: 600;
-  color: hsl(224, 10%, 65%);
+  color: var(--text-muted);
   cursor: pointer;
   user-select: none;
-  border-bottom: 1px solid hsl(224, 15%, 28%);
+  border-bottom: 1px solid var(--surface-alt);
 }
 
-.response-table th:hover { color: hsl(224, 10%, 85%); }
-.response-table th.sorted { color: hsl(239, 84%, 67%); }
+.response-table th:hover { color: var(--text); }
+.response-table th.sorted { color: var(--primary); }
 .sort-arrow { font-size: 9px; }
 
 .response-table td {
   padding: 4px 10px;
-  color: hsl(224, 10%, 80%);
-  border-bottom: 1px solid hsl(224, 15%, 20%);
+  color: var(--text);
+  border-bottom: 1px solid var(--surface);
   max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .response-table tr:hover td {
-  background: hsl(224, 20%, 16%);
+  background: var(--surface);
 }
 
 .array-badge {
   font-size: 0.75em;
-  color: hsl(239, 84%, 67%);
-  background: hsl(224, 20%, 16%);
-  border: 1px solid hsl(224, 20%, 25%);
+  color: var(--primary);
+  background: var(--surface);
+  border: 1px solid var(--surface-alt);
   border-radius: 3px;
   padding: 1px 5px;
   cursor: default;
@@ -806,7 +807,7 @@ body.graphiql-dark .graphiql-dialog {
 .sub-table-label {
   font-size: 0.7em;
   font-weight: 600;
-  color: hsl(239, 84%, 67%);
+  color: var(--primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 4px;
@@ -815,16 +816,16 @@ body.graphiql-dark .graphiql-dialog {
 .sub-table {
   margin: 0;
   font-size: 0.85em;
-  border: 1px solid hsl(224, 20%, 22%);
+  border: 1px solid var(--surface);
 }
 
 .sub-table th {
-  background: hsl(224, 20%, 14%);
+  background: var(--bg);
   font-size: 0.85em;
 }
 
 .sub-table td {
-  background: hsl(224, 20%, 11%);
+  background: var(--bg);
 }
 
 /* Hide GraphiQL branding */

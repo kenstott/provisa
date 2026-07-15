@@ -2,7 +2,7 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Lemon Squeezy REST client (REQ-1015).
+"""Lemon Squeezy REST client (REQ-1075).
 
 Lemon Squeezy acts as Merchant of Record; Provisa integrates over the REST API
 (JSON:API) and signed webhooks. No vendor SDK — a thin httpx wrapper. Env is the
@@ -36,7 +36,7 @@ def _headers() -> dict[str, str]:
     }
 
 
-async def create_checkout(variant_id: str, tenant_id: str, redirect_url: str) -> str:  # REQ-1015
+async def create_checkout(variant_id: str, tenant_id: str, redirect_url: str) -> str:  # REQ-1075
     """Create a Lemon Squeezy checkout for ``variant_id`` and return its hosted URL.
 
     ``tenant_id`` is carried in checkout ``custom_data`` so the subscription webhook can
@@ -62,7 +62,7 @@ async def create_checkout(variant_id: str, tenant_id: str, redirect_url: str) ->
         return resp.json()["data"]["attributes"]["url"]
 
 
-async def get_customer_portal_url(customer_id: str) -> str:  # REQ-1015
+async def get_customer_portal_url(customer_id: str) -> str:  # REQ-1075
     """Return the Lemon Squeezy-hosted customer portal URL from the customer object
     (``data.attributes.urls.customer_portal``)."""
     async with httpx.AsyncClient() as client:
@@ -71,7 +71,7 @@ async def get_customer_portal_url(customer_id: str) -> str:  # REQ-1015
         return resp.json()["data"]["attributes"]["urls"]["customer_portal"]
 
 
-def verify_webhook_signature(raw_body: bytes, signature: str) -> bool:  # REQ-1015, REQ-074
+def verify_webhook_signature(raw_body: bytes, signature: str) -> bool:  # REQ-1075, REQ-074
     """Verify a Lemon Squeezy webhook: HMAC-SHA256 over the RAW request body keyed by
     ``LEMONSQUEEZY_SIGNING_SECRET``, compared to the hex ``X-Signature`` header in constant time."""
     secret = os.environ["LEMONSQUEEZY_SIGNING_SECRET"].encode()

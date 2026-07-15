@@ -272,6 +272,9 @@ def _pgw_build_state(pool):
     state.source_pools = pool
     state.server_limits = {}
     state.engine_conn = None
+    from tests.helpers import stub_materialization_noop
+
+    stub_materialization_noop(state)
     # Real federation engine — present for catalog probes; DIRECT execution goes through
     # execute_native → execute_direct on the real source pool, not the engine.
     state.federation_engine = EngineRuntime(build_engine("duckdb"), state)

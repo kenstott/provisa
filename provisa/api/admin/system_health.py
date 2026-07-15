@@ -93,6 +93,9 @@ async def collect_system_health() -> SystemHealthType:
         else None,
         "pgwire": int(os.environ.get("PROVISA_PGWIRE_PORT", "0")) or None,
         "bolt": int(os.environ.get("PROVISA_BOLT_PORT", "0")) or None,
+        # REQ-1008: MCP server binds a port only for the streamable-http transport, gated on
+        # PROVISA_MCP_PORT (same signal provisa/api/mcp/status.py reads). None => disabled.
+        "MCP": int(os.environ.get("PROVISA_MCP_PORT", "0")) or None,
     }
     statuses = await asyncio.gather(*(_probe_tcp(p) for p in ports.values()))
     protocols = [

@@ -74,7 +74,7 @@ class _Proc(TableProcessor):
         self.calls = 0
         self.seen = None
 
-    async def handle(self, pending, *, prior_hash):
+    async def handle(self, pending, *, prior_hash, ctx=None):
         self.calls += 1
         self.seen = pending
         return self._result
@@ -116,6 +116,11 @@ def _register(ctx, monkeypatch):
         ),
         org_id="t",
         engine=None,
+        # _sync_view_mv resolves the MV's materialize target from the bound engine (REQ: never a
+        # hardcoded catalog). Stub the (catalog, schema) the store would expose.
+        federation_engine=types.SimpleNamespace(
+            materialize_store_target=lambda _org: ("mat_store", "public")
+        ),
     )
     mod = types.ModuleType("provisa.api.app")
     mod.state = state  # type: ignore[attr-defined]

@@ -51,6 +51,9 @@ CREATE TABLE IF NOT EXISTS {_SCHEMA}.tracked_functions (
     description TEXT,
     kind TEXT,
     return_schema JSONB,
+    impl_kind TEXT NOT NULL DEFAULT 'source_procedure',
+    binding JSONB NOT NULL DEFAULT '{{}}',
+    materialize BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 """

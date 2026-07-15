@@ -12,7 +12,7 @@
 .graph-sidebar {
   display: flex;
   flex-shrink: 0;
-  background: #111318;
+  background: var(--bg);
   border-right: 1px solid var(--border);
   overflow: hidden;
   position: relative;
@@ -39,7 +39,7 @@
   align-items: center;
   gap: 0.25rem;
   padding: 0.5rem 0;
-  background: #0d0f15;
+  background: var(--bg);
   border-right: 1px solid var(--border);
   width: 40px;
   flex-shrink: 0;
@@ -61,12 +61,12 @@
 }
 
 .graph-sidebar-tab:hover {
-  background: #1e2130;
+  background: var(--surface-alt);
   color: var(--text);
 }
 
 .graph-sidebar-tab.active {
-  background: #1a1d27;
+  background: var(--surface);
   color: var(--primary);
 }
 
@@ -103,7 +103,7 @@
 }
 
 .graph-schema-heading--collapsible:hover {
-  background: #1e2130;
+  background: var(--surface-alt);
 }
 
 .graph-schema-chevron {
@@ -149,14 +149,14 @@
 }
 
 .graph-label-pill--all {
-  background: #2a2d3e;
+  background: var(--border);
   border-radius: 20px;
   color: var(--text-muted);
   cursor: pointer;
   font-weight: 500;
   font-family: "SF Mono", "Fira Code", monospace;
 }
-.graph-label-pill--all:hover { background: #3a3d52; color: var(--text); }
+.graph-label-pill--all:hover { background: var(--border); color: var(--text); }
 
 .graph-label-pill--highlight {
   outline: 2px solid #fff;
@@ -192,7 +192,7 @@
 }
 
 .graph-rel-item--clickable:hover {
-  background: #1e2130;
+  background: var(--surface-alt);
 }
 
 .graph-rel-arrow {
@@ -213,15 +213,15 @@
   font-weight: 600;
   font-family: "SF Mono", "Fira Code", monospace;
   color: var(--text);
-  background: #1e2130;
-  border: 1px solid #3a3d52;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
   cursor: pointer;
   white-space: nowrap;
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.graph-rel-badge:hover { background: #2a2d3e; border-color: #6366f1; color: #a5b4fc; }
+.graph-rel-badge:hover { background: var(--border); border-color: #6366f1; color: #a5b4fc; }
 
 .graph-prop-key-list {
   display: flex;
@@ -236,8 +236,8 @@
   font-size: 0.67rem;
   font-family: "SF Mono", "Fira Code", monospace;
   color: var(--text-muted);
-  background: #181b27;
-  border: 1px solid #2a2d3e;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
   white-space: nowrap;
 }
 .graph-prop-key-tag--clickable {
@@ -245,7 +245,7 @@
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .graph-prop-key-tag--clickable:hover {
-  background: #2a2d3e;
+  background: var(--border);
   border-color: #6366f1;
   color: var(--text);
 }
@@ -393,7 +393,7 @@
   display: flex;
   align-items: flex-start;
   gap: 0;
-  background: #111318;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   padding: 0;
   flex-shrink: 0;
@@ -514,7 +514,7 @@
   align-items: stretch;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  background: #0d0f15;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   min-height: 38px;
 }
@@ -616,7 +616,7 @@
   height: 22px;
   border: 1px solid var(--border);
   border-radius: 3px;
-  background: #1a1d26cc;
+  background: var(--surface);
   color: var(--text-muted);
   font-size: 0.8rem;
   cursor: pointer;
@@ -626,7 +626,7 @@
   padding: 0;
 }
 
-.gf-query-editor-wrap:hover .gf-copy-query-btn {
+.graph-query-editor-wrap:hover .gf-copy-query-btn {
   display: flex;
 }
 
@@ -702,7 +702,7 @@
 }
 
 .gf-icon-btn:hover {
-  background: #1e2130;
+  background: var(--surface-alt);
   color: var(--text);
 }
 
@@ -711,26 +711,17 @@
   color: #fff !important;
 }
 
+/* Mantine Select owns the input box; the class only constrains overall width
+ * and carries the "grouping active" highlight (applied to the input child). */
 .gf-attr-select {
-  height: 26px;
-  border-radius: 4px;
-  border: 1px solid #2a2d3e;
-  background: transparent;
-  color: var(--text-muted);
+  width: 132px;
+}
+.gf-attr-select .mantine-Select-input {
   font-size: 0.75rem;
-  cursor: pointer;
-  padding: 0 4px;
-  max-width: 90px;
 }
-
-.gf-attr-select:hover {
-  background: #1e2130;
-  color: var(--text);
-}
-
-.gf-attr-select.gf-icon-btn--on {
-  background: #2e5fa3 !important;
-  color: #fff !important;
+.gf-attr-select.gf-icon-btn--on .mantine-Select-input {
+  background: #2e5fa3;
+  color: #fff;
   border-color: #2e5fa3;
 }
 
@@ -739,7 +730,9 @@
   display: flex;
   flex-direction: row;
   overflow: clip;
-  border-radius: 0 0 6px 6px;
+  /* Square bottom-left so the vertical view-bar has a flush endcap; keep the
+   * bottom-right (graph/inspector area) rounded. */
+  border-radius: 0 0 6px 0;
   flex: 1 1 auto;
 }
 
@@ -750,7 +743,7 @@
   width: 34px;
   min-width: 34px;
   border-right: 1px solid var(--border);
-  background: #0e1018;
+  background: var(--bg);
   padding: 6px 0;
   gap: 4px;
 }
@@ -771,7 +764,7 @@
 }
 
 .gf-view-bar-btn:hover {
-  background: #1e2130;
+  background: var(--surface-alt);
   color: var(--text);
 }
 
@@ -888,15 +881,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted, #888);
+  color: var(--text-muted, var(--text-muted));
   font-size: 0.85rem;
 }
 
+/* Native vertical range for the edge-distance picker (Mantine has no vertical
+ * Slider). writing-mode makes the range track vertical in the narrow toolbar. */
 .gf-ctrl-slider {
   writing-mode: vertical-lr;
   direction: rtl;
   width: 28px;
   height: 80px;
+  margin: 2px 0;
   cursor: pointer;
   accent-color: var(--primary);
 }
@@ -907,7 +903,7 @@
 }
 
 .gf-dl-menu {
-  background: #1a1d27;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
@@ -930,7 +926,7 @@
 }
 
 .gf-dl-item:hover {
-  background: #2a2d3a;
+  background: var(--border);
 }
 
 /* ── Graph image download dropdown (inside GraphCanvas controls) ─────────────── */
@@ -943,7 +939,7 @@
   bottom: calc(100% + 4px);
   left: 50%;
   transform: translateX(-50%);
-  background: #1a1d27;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
@@ -958,7 +954,7 @@
   width: 260px;
   flex-shrink: 0;
   border-left: 1px solid var(--border);
-  background: #111318;
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -1068,23 +1064,26 @@
 }
 
 .gf-overview-chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   padding: 0.15rem 0.5rem;
   border-radius: 20px;
   font-size: 0.7rem;
   font-weight: 600;
+  line-height: 1.4;
   color: #fff;
   white-space: nowrap;
 }
 
 .gf-overview-chip--all {
-  background: #3a3d52;
+  background: var(--border);
   color: var(--text);
 }
 
 .gf-overview-chip--rel {
-  background: #1e2130;
-  border: 1px solid #3a3d52;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
   color: var(--text);
   border-radius: 3px;
   font-family: "SF Mono", "Fira Code", monospace;
@@ -1105,11 +1104,13 @@
 }
 
 .gf-inspector-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 0.25rem 0.7rem;
   border-radius: 20px;
   font-size: 0.72rem;
   font-weight: 700;
+  line-height: 1.4;
   color: #fff;
 }
 
@@ -1145,8 +1146,8 @@
 .gf-insp-alias-input {
   font-size: 0.78rem;
   padding: 0.2rem 0.4rem;
-  background: #181b27;
-  border: 1px solid #3a3d52;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
   border-radius: 3px;
   color: var(--text);
   font-family: "SF Mono", "Fira Code", monospace;
@@ -1161,8 +1162,8 @@
   align-self: flex-end;
   font-size: 0.75rem;
   padding: 0.2rem 0.6rem;
-  background: #1e2130;
-  border: 1px solid #3a3d52;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
   border-radius: 3px;
   color: var(--text);
   cursor: pointer;
@@ -1170,7 +1171,7 @@
 }
 
 .gf-insp-alias-save:hover:not(:disabled) {
-  background: #2a2d3e;
+  background: var(--border);
   border-color: #6366f1;
 }
 
@@ -1278,7 +1279,7 @@
   right: 6px;
   opacity: 0;
   transition: opacity 0.15s;
-  background: #1e2130;
+  background: var(--surface-alt);
   border: 1px solid var(--border);
   color: var(--text-muted);
   border-radius: 4px;
@@ -1319,7 +1320,7 @@
   right: 8px;
   opacity: 0;
   transition: opacity 0.15s;
-  background: #1e2130cc;
+  background: var(--surface-alt);
   border: 1px solid var(--border);
   color: var(--text-muted);
   border-radius: 4px;
@@ -1353,7 +1354,7 @@
 }
 
 .gf-table th {
-  background: #0d0f15;
+  background: var(--bg);
   color: var(--text-muted);
   padding: 0.4rem 0.75rem;
   text-align: left;
@@ -1379,20 +1380,20 @@
   min-width: 40px;
   position: sticky;
   left: 0;
-  background: #0d0f15;
+  background: var(--bg);
   color: var(--text-muted);
   font-size: 0.7rem;
   text-align: right;
   padding: 0.35rem 0.5rem;
   border-right: 1px solid var(--border);
-  border-bottom: 1px solid #1e2130;
+  border-bottom: 1px solid var(--surface-alt);
   user-select: none;
   z-index: 1;
 }
 
 .gf-table td {
   padding: 0.35rem 0.75rem;
-  border-bottom: 1px solid #1e2130;
+  border-bottom: 1px solid var(--surface-alt);
   color: var(--text);
   vertical-align: top;
   overflow: hidden;
@@ -1411,7 +1412,7 @@
 }
 
 .gf-table tr:hover td {
-  background: #1a1d27;
+  background: var(--surface);
 }
 
 .gf-th-label {
@@ -1441,7 +1442,7 @@
 .node-ctx-menu {
   position: fixed;
   z-index: 9999;
-  background: #1a1d27;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.5rem;
@@ -1511,7 +1512,7 @@
 
 .node-ctx-select {
   width: 100%;
-  background: #111318;
+  background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -1746,7 +1747,7 @@
 .gf-insp-show-btn {
   flex-shrink: 0;
   width: 20px;
-  background: #111318;
+  background: var(--bg);
   border: none;
   border-left: 1px solid var(--border);
   color: var(--text-muted);
@@ -1802,7 +1803,7 @@
 .rel-ctx-style-btn {
   flex: 1;
   padding: 4px 0;
-  background: #111318;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text-muted);
@@ -1813,7 +1814,7 @@
 }
 
 .rel-ctx-style-btn:hover {
-  background: #1a1d27;
+  background: var(--surface);
   color: var(--text);
 }
 
@@ -1829,7 +1830,7 @@
   top: 100%;
   left: 0;
   z-index: 100;
-  background: #1a1d27;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px;
@@ -1873,7 +1874,7 @@
 .gf-node-ctx-menu {
   position: absolute;
   z-index: 1000;
-  background: #1a1d26;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 0;
@@ -1929,7 +1930,7 @@
   position: absolute;
   left: 100%;
   top: 0;
-  background: #1a1d26;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 0;
@@ -1958,7 +1959,7 @@
 }
 
 .nf-modal {
-  background: var(--surface, #1e1e2e);
+  background: var(--surface, var(--surface-alt));
   border: 1px solid var(--border, #333);
   border-radius: 8px;
   padding: 20px 24px;
@@ -1971,7 +1972,7 @@
 .nf-modal-title {
   font-size: 0.95rem;
   font-weight: 600;
-  color: var(--text, #e2e8f0);
+  color: var(--text, var(--text));
   margin-bottom: 16px;
 }
 
@@ -1984,17 +1985,17 @@
 
 .nf-modal-label {
   font-size: 0.78rem;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted, var(--text-muted));
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .nf-modal-input {
-  background: var(--input-bg, #0f0f1a);
+  background: var(--input-bg, var(--bg));
   border: 1px solid var(--border, #333);
   border-radius: 4px;
   padding: 6px 10px;
-  color: var(--text, #e2e8f0);
+  color: var(--text, var(--text));
   font-size: 0.88rem;
   outline: none;
 }
@@ -2014,7 +2015,7 @@
   background: transparent;
   border: 1px solid var(--border, #333);
   border-radius: 4px;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted, var(--text-muted));
   padding: 5px 14px;
   cursor: pointer;
   font-size: 0.85rem;
@@ -2022,7 +2023,7 @@
 
 .nf-modal-cancel:hover {
   border-color: #555;
-  color: var(--text, #e2e8f0);
+  color: var(--text, var(--text));
 }
 
 .nf-modal-run {
@@ -2042,7 +2043,7 @@
 
 /* ── Neo4j export modal ──────────────────────────────────────────────────── */
 .neo4j-modal {
-  background: var(--surface, #1e1e2e);
+  background: var(--surface, var(--surface-alt));
   border: 1px solid var(--border, #333);
   border-radius: 8px;
   padding: 20px 24px;
@@ -2054,16 +2055,16 @@
 
 .neo4j-modal-summary {
   font-size: 0.78rem;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted, var(--text-muted));
   margin-bottom: 16px;
 }
 
 .neo4j-script-btn {
   width: 100%;
-  background: var(--surface2, #2a2d3a);
+  background: var(--surface2, var(--border));
   border: 1px solid var(--border, #333);
   border-radius: 4px;
-  color: var(--text, #e2e8f0);
+  color: var(--text, var(--text));
   padding: 7px 14px;
   font-size: 0.85rem;
   cursor: pointer;
@@ -2072,12 +2073,12 @@
 }
 
 .neo4j-script-btn:hover {
-  background: #343748;
+  background: var(--border);
 }
 
 .neo4j-modal-divider {
   font-size: 0.75rem;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted, var(--text-muted));
   text-align: center;
   margin-bottom: 14px;
 }
@@ -2111,7 +2112,7 @@
   gap: 0.4rem;
   font-size: 0.78rem;
   cursor: pointer;
-  color: var(--text, #e2e8f0);
+  color: var(--text, var(--text));
 }
 
 .graph-domain-check-item input[type="checkbox"] {

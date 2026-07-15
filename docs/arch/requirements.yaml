@@ -29758,6 +29758,25 @@
     - REQ-1012
     - REQ-1014
 - id: REQ-1017
+  status: proposed
+  group: 2. Authentication & Identity
+  category: Self-Service Provisioning
+  priority: MUST
+  type: behavioral
+  target: 2026-Q3
+  description: >-
+    Any authenticated Firebase user with no existing org membership may create an org via a non-superadmin endpoint;
+    the creator is inserted into user_org_memberships as role 'admin'.
+  use_case: >-
+    Enables self-service SaaS adoption without platform admin involvement. Lifts the superadmin gate for the self-serve path only;
+    superadmin endpoints in orgs_router remain for platform administration.
+  code:
+    - provisa/api/auth_router.py
+    - provisa/api/orgs_router.py
+  relates_to:
+    - REQ-833
+    - REQ-839
+- id: REQ-1075
   status: complete
   group: 11. Platform, Infrastructure & Delivery
   category: SaaS Billing

@@ -306,7 +306,7 @@ export function NavBar() {
                       </Text>
                     )}
                     {devMode && (
-                      <Badge mt="xs" size="xs" color="orange" variant="filled">
+                      <Badge mt="xs" size="xs" color="orange" variant="filled" autoContrast>
                         {t("navBar.dev")}
                       </Badge>
                     )}

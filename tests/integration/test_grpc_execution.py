@@ -317,6 +317,9 @@ class TestGrpcQueryExecution:
         state.mv_registry = MagicMock()
         state.mv_registry.get_fresh.return_value = []
         state.engine_conn = None
+        from tests.helpers import stub_materialization_noop
+
+        stub_materialization_noop(state)
         # Mandatory terminal-execution binding (REQ-825) on the MagicMock scaffold state.
         from provisa.federation.engine import build_trino_engine
         from provisa.federation.runtime import EngineRuntime

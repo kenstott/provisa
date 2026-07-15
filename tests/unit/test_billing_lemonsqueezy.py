@@ -7,7 +7,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for the Lemon Squeezy billing integration (REQ-1015).
+"""Unit tests for the Lemon Squeezy billing integration (REQ-1075).
 
 Covers the governance-critical pure logic: variant→plan mapping and webhook
 signature verification. No live Lemon Squeezy API is contacted.
@@ -38,7 +38,7 @@ class TestVariantMapping:
         assert plan in PLAN_LIMITS
 
     def test_unknown_variant_raises(self):
-        # An unrecognized variant is an error, never a silent default (REQ-1015).
+        # An unrecognized variant is an error, never a silent default (REQ-1075).
         with pytest.raises(ValueError, match="Unrecognized Lemon Squeezy variant"):
             plan_from_variant("Gold")
 
