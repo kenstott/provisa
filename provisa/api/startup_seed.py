@@ -422,9 +422,14 @@ async def _init_control_planes(
         cp.resolved_platform_url(), pool_size=cp.pool_max, pool_min=cp.pool_min
     )
 
+    # schema.sql ships in the wheel (pyproject package-data). It is REQUIRED: the PG path runs it
+    # verbatim, and on SQLite its presence gates the portable create_all bootstrap. A missing file
+    # means a broken package — fail loud here rather than start with an empty control plane (the
+    # native runtime once shipped without it and crashed later with "no such table: sources").
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
-    if schema_sql_path.exists():
-        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
+    if not schema_sql_path.exists():
+        raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
+    await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
 
     from provisa.audit.query_log import init_audit_schema
 

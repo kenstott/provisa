@@ -127,6 +127,14 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["provisa*"]
 
+# Non-.py runtime data must ship in the wheel. setuptools bundles only .py by default,
+# so the packaged native runtime lacked provisa/core/schema.sql — init_schema was skipped
+# (schema_sql_path.exists() == False) and the control plane started with no `sources` table.
+# These files are read at runtime via Path(__file__): the two schema.sql bootstraps and the
+# gRPC approval.proto.
+[tool.setuptools.package-data]
+"*" = ["*.sql", "*.proto"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]
 # Default lane = integration + unit + bdd against the shared dev stack.
