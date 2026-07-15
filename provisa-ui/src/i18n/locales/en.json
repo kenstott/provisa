@@ -20,6 +20,12 @@
     "defaultLabel": "Select options",
     "all": "all"
   },
+  "roleSelector": {
+    "none": "No roles configured",
+    "all": "All",
+    "role": "Role: {{role}}",
+    "dev": "DEV"
+  },
   "localUsers": {
     "colUsername": "Username",
     "colEmail": "Email",
