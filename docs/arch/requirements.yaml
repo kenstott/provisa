@@ -1189,8 +1189,8 @@
   description: TenantMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health,
     /docs, /openapi.json}`. Requests to these paths bypass tenant resolution entirely and do not require
     a JWT with a tenant_id claim.
-  use_case: Skip-path exemptions allow Stripe webhooks, health checks, and OpenAPI docs to function without
-    tenant JWTs while all other paths enforce tenant isolation.
+  use_case: Skip-path exemptions allow Lemon Squeezy billing webhooks, health checks, and OpenAPI docs to
+    function without tenant JWTs while all other paths enforce tenant isolation.
   code:
   - provisa/api/middleware/tenant_middleware.py
   tests:
@@ -23773,12 +23773,13 @@
   type: infrastructure
   since: 2026-07
   description: Core runtime image set (docker-compose.core.yml + OVA/Lima bundles) must include busybox
-    as a core dependency; stripe-mock must remain dev-only in docker-compose.dev.yml; python:3.12-slim
-    is build-time only and excluded from packaged/airgapped runtime images.
+    as a core dependency; no third-party billing mock service is bundled in any compose (dev/core/airgap);
+    python:3.12-slim is build-time only and excluded from packaged/airgapped runtime images.
   use_case: Busybox is required at runtime (trino-exchange-init service uses it to chown /data/provisa/exchange
-    before Trino starts). Stripe-mock is a demo mock, not a system dependency. Python:3.12-slim exists
-    only as a build base for OVA/Lima source builds. This separation ensures airgapped deployments include
-    all runtime dependencies and excludes unnecessary dev/mock components.
+    before Trino starts). Lemon Squeezy is called over the public REST API; tests stub it via HTTP fixtures
+    (LEMONSQUEEZY_BASE_URL), not bundled mocks. Python:3.12-slim exists only as a build base for OVA/Lima
+    source builds. This separation ensures airgapped deployments include all runtime dependencies and excludes
+    unnecessary dev/mock components.
   code:
   - docker-compose.core.yml
   - docker-compose.dev.yml
@@ -23791,7 +23792,7 @@
 
     Then busybox image is present to support trino-exchange-init initialization
 
-    And stripe-mock is not bundled in the package.
+    And no third-party billing mock service is bundled in the package.
 
     '
   tests:
@@ -29756,4 +29757,44 @@
     - REQ-1009
     - REQ-1012
     - REQ-1014
+- id: REQ-1017
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Billing
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: >-
+    SaaS billing is provided by Lemon Squeezy as Merchant of Record. `provisa/api/billing/` integrates
+    over the Lemon Squeezy REST API (JSON:API) and signed webhooks. Checkout: POST /v1/checkouts and returns
+    `checkout.data.attributes.url`; the tenant_id is carried in checkout `custom_data` and echoed back in
+    webhook `meta.custom_data`. Webhook signature verification: HMAC-SHA256 over the RAW request body keyed
+    by env `LEMONSQUEEZY_SIGNING_SECRET`, compared in constant time to the hex `X-Signature` header.
+    Tenant→customer linkage stored as `tenants.ls_customer_id`. Plan lifecycle from `meta.event_name`:
+    `subscription_created`/`subscription_updated` set plan+source_limit from the LS variant name (mapped via
+    PLAN_LIMITS by `plan_from_variant`); `subscription_cancelled`/`subscription_expired` revert to the trial
+    plan. Customer portal URL comes from the LS customer object `data.attributes.urls.customer_portal`. Env:
+    `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, `LEMONSQUEEZY_SIGNING_SECRET` (and `LEMONSQUEEZY_BASE_URL`
+    to override the endpoint in tests). An unrecognized variant name is a hard error, never a silent default.
+    This replaces the prior Stripe integration.
+  use_case: >-
+    Lemon Squeezy MoR consolidates global sales-tax/VAT compliance, chargebacks, and fraud handling in one
+    system Provisa does not build; per-tenant plan gating via source_limit maps to LS subscription variants.
+  scenario: |
+    Given a tenant initiates checkout with tenant_id in custom_data
+    When POST /v1/checkouts is called to Lemon Squeezy API
+    Then a checkout URL is returned; the webhook subsequently updates tenant.ls_customer_id and applies plan/source_limit from the subscription variant
+
+    And Given a subscription_created webhook from Lemon Squeezy with valid HMAC-SHA256 signature
+    When the webhook signature is verified against LEMONSQUEEZY_SIGNING_SECRET
+    Then the tenant's plan and source_limit are updated from the variant name; unrecognized variants reject the webhook
+  code:
+    - provisa/api/billing/router.py
+    - provisa/api/billing/lemonsqueezy_client.py
+    - provisa/api/billing/models.py
+    - provisa/api/billing/tenant_db.py
+    - provisa/core/schema_admin.py
+  tests:
+    - tests/unit/test_billing_lemonsqueezy.py
+    - tests/unit/test_org_isolation.py
 
