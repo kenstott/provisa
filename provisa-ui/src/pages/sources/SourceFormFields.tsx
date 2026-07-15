@@ -149,27 +149,29 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               onChange={(e) => setForm({ ...form, port: +e.target.value })}
             />
           </label>
+          <div style={{ display: "flex", gap: "0.75rem" }}>
+            <label style={{ flex: 1 }}>
+              Username{" "}
+              <input
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+              />
+            </label>
+            <label style={{ flex: 1 }}>
+              Password{" "}
+              <input
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+              />
+            </label>
+          </div>
           <label>
             Database{" "}
             <input
               required
               value={form.database}
               onChange={(e) => setForm({ ...form, database: e.target.value })}
-            />
-          </label>
-          <label>
-            Username{" "}
-            <input
-              value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-            />
-          </label>
-          <label>
-            Password{" "}
-            <input
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
           </label>
         </>

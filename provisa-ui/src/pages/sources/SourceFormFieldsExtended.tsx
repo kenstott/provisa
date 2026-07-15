@@ -851,22 +851,44 @@ export function SourceFormFieldsExtended({
               ))}
             </select>
           </label>
-          <label
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: "0.5rem",
-              whiteSpace: "nowrap",
-            }}
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "1.5rem", flexWrap: "wrap" }}
           >
-            <input
-              type="checkbox"
-              checked={form.cacheEnabled}
-              onChange={(e) => setForm({ ...form, cacheEnabled: e.target.checked })}
-              style={{ width: "auto" }}
-            />
-            Cache Enabled
-          </label>
+            <label
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: "0.5rem",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={form.cacheEnabled}
+                onChange={(e) => setForm({ ...form, cacheEnabled: e.target.checked })}
+                style={{ width: "auto" }}
+              />
+              Cache Enabled
+            </label>
+            <label
+              title="Force this source's tables to be materialized into the store and federated from there, instead of reached live. Use when the connector is a poor fit for your queries."
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: "0.5rem",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={form.preferMaterialized}
+                onChange={(e) => setForm({ ...form, preferMaterialized: e.target.checked })}
+                style={{ width: "auto" }}
+              />
+              Prefer Materialized
+            </label>
+          </div>
           <label>
             Cache TTL (seconds)
             <input
@@ -876,23 +898,6 @@ export function SourceFormFieldsExtended({
               onChange={(e) => setForm({ ...form, cacheTtl: e.target.value })}
               placeholder="inherit global"
             />
-          </label>
-          <label
-            title="Force this source's tables to be materialized into the store and federated from there, instead of reached live. Use when the connector is a poor fit for your queries."
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={form.preferMaterialized}
-              onChange={(e) => setForm({ ...form, preferMaterialized: e.target.checked })}
-              style={{ width: "auto" }}
-            />
-            Prefer Materialized
           </label>
           <label title="Default change-detection signal inherited by this source's tables (each table can override it). Options are gated by the source type's capabilities.">
             Change Signal
@@ -930,9 +935,11 @@ export function SourceFormFieldsExtended({
             </label>
           )}
           {cdcTransportApplicable(form.type) && (
-            <fieldset style={{ border: "1px solid #333", borderRadius: 4, padding: "0.75rem" }}>
-              <legend style={{ padding: "0 0.4rem" }}>CDC Transport (Debezium)</legend>
-              <p style={{ margin: "0 0 0.6rem", fontSize: "0.8rem", opacity: 0.7 }}>
+            <details style={{ border: "1px solid #333", borderRadius: 4, padding: "0.75rem" }}>
+              <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                CDC Transport (Debezium)
+              </summary>
+              <p style={{ margin: "0.6rem 0", fontSize: "0.8rem", opacity: 0.7 }}>
                 Entered once per source. Tables from this source only choose delivery=cdc; they
                 inherit this transport.
               </p>
@@ -968,7 +975,7 @@ export function SourceFormFieldsExtended({
                   placeholder="inherit global (provisa-debezium)"
                 />
               </label>
-            </fieldset>
+            </details>
           )}
         </>
       )}
