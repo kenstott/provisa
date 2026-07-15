@@ -8,9 +8,17 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Static PostgreSQL catalog data (pg_type/pg_settings/pg_roles rows, typeinfo, GUCs)."""
+"""Static PostgreSQL catalog data (pg_type/pg_settings/pg_roles rows, typeinfo, GUCs).
+
+This is the single type/OID normalization module (REQ-127, REQ-892): every type
+Provisa presents over pgwire — the built-in pg_catalog types plus any opt-in
+extension-surface type — is declared here. Enabled-surface types are merged in
+through ``typeinfo()`` / ``pg_type_rows()`` so all OID resolution flows one path.
+"""
 
 from __future__ import annotations
+
+from provisa.pgwire.ext_surfaces import surface_pg_type_rows, surface_typeinfo
 
 
 _PG_TYPE_ROWS = [
@@ -436,3 +444,13 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
 }
 
 _CATALOG_TABLE_NAMES = frozenset(t for _, t in _TABLE_MAP)
+
+
+def typeinfo() -> dict[int, tuple]:
+    """Built-in typeinfo merged with enabled extension-surface types (REQ-892)."""
+    return {**_TYPEINFO, **surface_typeinfo()}
+
+
+def pg_type_rows() -> list[tuple]:
+    """Built-in _pg_type rows merged with enabled extension-surface type rows (REQ-892)."""
+    return [*_PG_TYPE_ROWS, *surface_pg_type_rows()]

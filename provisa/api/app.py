@@ -187,6 +187,9 @@ class AppState:
     ] = {}  # FTE session properties injected into every the engine query
     server_cfg: dict = {}  # raw server section from provisa.yaml
     server_limits: dict = {}  # resolved query/request limits (from config + env overrides)
+    security_high: bool = (
+        False  # REQ-693: high-security mode (pgwire off, data endpoints KMS-gated)
+    )
     tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
     tracked_webhooks: dict[str, dict] = {}  # gql field name → wh dict
     pg_enum_types: dict = {}  # pg_name → GraphQLEnumType (REQ-221)
@@ -778,6 +781,12 @@ def create_app() -> FastAPI:
     from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
 
     app.add_middleware(RateLimitMiddleware)
+
+    # REQ-693: high-security mode — refuse plaintext data requests lacking a client-side
+    # decryption key. Reads state.security_high (set from config at load time).
+    from provisa.security.high_security import HighSecurityMiddleware
+
+    app.add_middleware(HighSecurityMiddleware, state=state)
 
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth

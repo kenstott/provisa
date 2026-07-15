@@ -24,6 +24,8 @@ public class ProvisaConnection extends AbstractConnection {
     String mode; // "catalog"
     String authToken;
     FlightTransport flightTransport; // null if Flight unavailable
+    EnvelopeDecryptor encryptionService; // REQ-690: client-side column decrypt (null = disabled)
+    String kmsKeyArn; // REQ-693: proof-of-client-decrypt sent to the high-security gate
     private boolean closed = false;
 
     ProvisaConnection(String baseUrl, String user, String password, String mode) throws SQLException {
@@ -49,6 +51,36 @@ public class ProvisaConnection extends AbstractConnection {
             port = Integer.parseInt(baseUrl.replaceFirst("^https?://", "").split(":")[1].split("/")[0]);
         } catch (Exception ignored) {}
         this.flightTransport = FlightTransport.tryConnect(host, port, this.role);
+    }
+
+    /**
+     * Configure client-side decryption from connection params (REQ-690, REQ-694).
+     *
+     * <p>{@code kms_provider}=local uses a base64 {@code kms_master_key} (tests / local). The
+     * cloud CMK providers (aws/azure/gcp — REQ-694) require their SDK on the classpath and are
+     * documented in {@code docs/arch/jdbc-client-side-encryption.md}; an unknown provider fails
+     * closed rather than silently disabling decryption.
+     */
+    public void configureEncryption(String kmsProvider, String kmsKeyArn, String kmsMasterKeyB64)
+            throws SQLException {
+        if (kmsProvider == null && kmsKeyArn == null) {
+            return; // decryption not requested
+        }
+        this.kmsKeyArn = kmsKeyArn;
+        String p = kmsProvider == null ? "" : kmsProvider.toLowerCase();
+        if ("local".equals(p)) {
+            if (kmsMasterKeyB64 == null) {
+                throw new SQLException("kms_provider=local requires kms_master_key (base64 32-byte key)");
+            }
+            byte[] master = Base64.getDecoder().decode(kmsMasterKeyB64);
+            this.encryptionService = new EnvelopeDecryptor(new LocalKmsProvider(master), 300);
+        } else if ("aws".equals(p) || "azure".equals(p) || "gcp".equals(p)) {
+            throw new SQLException(
+                "kms_provider=" + p + " requires the cloud SDK on the classpath; see "
+                + "docs/arch/jdbc-client-side-encryption.md (REQ-690 e2e, target 2027-Q1)");
+        } else {
+            throw new SQLException("Unknown kms_provider: " + kmsProvider);
+        }
     }
 
     private JsonObject authenticate(String user, String password) throws Exception {

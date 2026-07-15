@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 #
-# complexity-gate: allow-ble=2 reason="engine-agnostic table-exists probe (SELECT 1 fails => absent) cannot name the engine-specific exception without re-coupling; plus the grandfathered refresh_mv outer catch"
+# complexity-gate: allow-ble=3 reason="engine-agnostic table-exists probe (SELECT 1 fails => absent) cannot name the engine-specific exception without re-coupling; the grandfathered refresh_mv outer catch; and the REQ-877 best-effort row-delta capture catch (mandated best-effort — must never fail the refresh)"
 
 """Materialized view refresh engine (REQ-081, REQ-084).
 
@@ -126,6 +126,48 @@ async def _build_refresh_sql(mv: MVDefinition, engine=None) -> str:
 def _target_ref(mv: MVDefinition) -> str:
     """Build the fully qualified target table reference."""
     return f'"{mv.target_catalog}"."{mv.target_schema}"."{mv.target_table}"'
+
+
+async def _read_target_rows(engine, target: str) -> list[dict]:  # REQ-877
+    """Read the full target row set as column-keyed dicts — the snapshot the row-level delta diff
+    (REQ-877) is computed on. Only called when an MV opts into row-delta capture."""
+    res = await engine.execute_engine(f"SELECT * FROM {target}")
+    return [dict(zip(res.column_names, row, strict=True)) for row in res.rows]
+
+
+def _captures_deltas(mv: MVDefinition, store) -> bool:  # REQ-877
+    """The MV opted into row-delta capture AND a store holds the ledger (its home)."""
+    return mv.capture_row_deltas and store is not None
+
+
+async def _snapshot_prev_rows(  # REQ-877
+    engine, mv: MVDefinition, store, target: str, *, table_exists: bool
+) -> list[dict]:
+    """Prior landed rows for the delta diff, read BEFORE any mutation. Empty unless this MV captures
+    deltas and the target already exists (a first refresh has an empty prior set ⇒ all inserts)."""
+    if _captures_deltas(mv, store) and table_exists:
+        return await _read_target_rows(engine, target)
+    return []
+
+
+async def _post_refresh_delta_capture(  # REQ-877
+    engine, mv: MVDefinition, store, prev_rows: list[dict], target: str
+) -> None:
+    """Best-effort row-level delta capture OFF the refresh critical path: diff the prior and freshly
+    landed row sets into the append-only ledger. Runs AFTER the refresh is committed and marked
+    fresh, so a slow or failed capture never delays or fails the refresh (REQ-877's mandate).
+    Documented blind catch — justified by REQ-877's best-effort rule."""
+    if not _captures_deltas(mv, store):
+        return
+    from provisa.mv.delta import capture_row_deltas  # noqa: PLC0415
+
+    try:
+        curr_rows = await _read_target_rows(engine, target)
+        await capture_row_deltas(
+            store, mv, prev_rows, curr_rows, definition_version=_mv_definition_version(mv)
+        )
+    except Exception:  # noqa: BLE001 — REQ-877: best-effort delta capture never fails refresh
+        log.exception("MV %s: row-level delta capture failed (refresh unaffected)", mv.id)
 
 
 async def _probe_source_count(engine, mv: MVDefinition) -> int:  # REQ-235
@@ -250,6 +292,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
             existing_cols = []
             table_exists = False
 
+        # REQ-877: snapshot the prior landed rows BEFORE any mutation, so the post-refresh diff sees
+        # the true previous state (empty unless this MV captures deltas and the target exists).
+        prev_rows = await _snapshot_prev_rows(engine, mv, store, target, table_exists=table_exists)
+
         # DELETE+INSERT only reconciles rows, not shape. If the view SQL was edited so its
         # column set no longer matches the existing target (count or names), INSERT would
         # mismatch — "table T has N columns but M values were supplied". Rebuild instead.
@@ -304,6 +350,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
             row_count,
             duration,
         )
+        await _post_refresh_delta_capture(engine, mv, store, prev_rows, target)  # REQ-877
     except Exception as e:
         if coordinated:
             assert store is not None and writer is not None

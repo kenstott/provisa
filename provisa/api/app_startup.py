@@ -278,7 +278,15 @@ async def _start_servers(_log: logging.Logger) -> None:
     except Exception:
         _log.exception("Arrow Flight server startup failed")
 
+    from provisa.security.high_security import pgwire_start_allowed
+
     pgwire_port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
+    if pgwire_port and not pgwire_start_allowed(state, pgwire_port):
+        # REQ-693: high-security mode never starts the pgwire server — the pgwire transport
+        # has no per-connection client-side-decrypt handshake, so it cannot satisfy the
+        # backend-never-sees-plaintext guarantee. Data reaches clients over KMS-gated HTTP only.
+        _log.warning("pgwire server not started: security.mode=high (REQ-693)")
+        pgwire_port = 0
     if pgwire_port:
         try:
             import ssl as _ssl

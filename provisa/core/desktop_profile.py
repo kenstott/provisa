@@ -35,6 +35,15 @@ _ENGINE_KEY = {
     "sqlalchemy": "sqlalchemy",
 }
 
+# REQ-889: the container tier adds Trino + observability strictly as COMPUTE, never as the metadata
+# home. The metadata/config/roles store is the EMBEDDED single source of truth in every tier and MUST
+# NOT be relocated onto a compute-only tier addition. A preset that names one of these as its
+# control_plane_store is an invariant violation — fail loud (never silently accept a compute engine as
+# the metadata home).
+_COMPUTE_ONLY_TIER_ADDITIONS = frozenset(
+    {"trino", "trino-byo", "clickhouse", "observability", "otel", "otlp"}
+)
+
 
 @dataclass(frozen=True)
 class LaunchProfile:
@@ -49,6 +58,69 @@ class LaunchProfile:
 
 def _default_data_dir(preset: str) -> Path:
     return Path.home() / ".provisa" / preset
+
+
+def _apply_materialize(
+    materialize_url: str | None,
+    spec: dict,
+    env: dict[str, str],
+    notes: list[str],
+    *,
+    preset: str,
+    data_dir: Path | str | None,
+    ephemeral: bool,
+) -> None:
+    """Resolve the tenant materialization store env (REQ-989). An explicit external DSN wins; otherwise
+    the preset's embedded store maps to an in-process DuckDB/SQLite store — never the platform tenant
+    DB — so the zero-config stack lands locally."""
+    if materialize_url:
+        env["PROVISA_MATERIALIZE_URL"] = materialize_url
+        notes.append(f"external materialization store: {materialize_url.split('://', 1)[0]}://…")
+        return
+    mat_store = spec.get("materialization_store")
+    if mat_store not in ("duckdb_file", "sqlite"):
+        return
+    scheme = "duckdb" if mat_store == "duckdb_file" else "sqlite+aiosqlite"
+    if ephemeral:
+        env["PROVISA_MATERIALIZE_URL"] = f"{scheme}:///:memory:"
+        notes.append(f"materialization store: in-memory {mat_store} (ephemeral)")
+        return
+    mdd = Path(data_dir) if data_dir else _default_data_dir(preset)
+    fname = "materialize.duckdb" if mat_store == "duckdb_file" else "materialize.db"
+    env["PROVISA_MATERIALIZE_URL"] = f"{scheme}:///{mdd / fname}"
+    notes.append(f"materialization store: {mat_store} under {mdd} (embedded)")
+
+
+def _apply_control_plane(
+    cp_store: str,
+    env: dict[str, str],
+    notes: list[str],
+    *,
+    preset: str,
+    data_dir: Path | str | None,
+    ephemeral: bool,
+) -> None:
+    """Resolve the metadata-home (control-plane store) env for the tier. REQ-889: the metadata home is
+    the embedded single source of truth in every tier and is NEVER a compute-only tier addition —
+    fail loud if a preset names one (Trino/observability are added strictly as compute)."""
+    if cp_store in _COMPUTE_ONLY_TIER_ADDITIONS:
+        raise ValueError(
+            f"REQ-889: control_plane_store {cp_store!r} is a compute-only tier addition; the "
+            "metadata/config/roles store must stay on the embedded home (sqlite/embedded_pg) or an "
+            "explicit RDB — Trino/observability are added strictly as compute, never the metadata home"
+        )
+    if cp_store != "sqlite":
+        return
+    # SQLAlchemy control plane on sqlite — no initdb, no pgserver, no Python-version gate.
+    if ephemeral:
+        env["PLATFORM_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+        env["TENANT_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+        notes.append("control plane: in-memory sqlite (ephemeral, fastest)")
+        return
+    dd = Path(data_dir) if data_dir else _default_data_dir(preset)
+    env["PLATFORM_DATABASE_URL"] = f"sqlite+aiosqlite:///{dd / 'platform.db'}"
+    env["TENANT_DATABASE_URL"] = f"sqlite+aiosqlite:///{dd / 'tenant.db'}"
+    notes.append(f"control plane: sqlite files under {dd} (instant, persistent)")
 
 
 def load_profile(
@@ -103,24 +175,9 @@ def load_profile(
     if engine_url:
         env["PROVISA_ENGINE_URL"] = engine_url
         notes.append(f"external federation engine: {engine_url.split('://', 1)[0]}://…")
-    if materialize_url:
-        env["PROVISA_MATERIALIZE_URL"] = materialize_url
-        notes.append(f"external materialization store: {materialize_url.split('://', 1)[0]}://…")
-    else:
-        # Materialization store (REQ-989): the preset's embedded store maps to PROVISA_MATERIALIZE_URL
-        # so the zero-config stack lands into an in-process store (DuckDB file, or SQLite file) — never
-        # the platform tenant DB. An explicit ``materialize_url`` (external warehouse) still wins above.
-        mat_store = spec.get("materialization_store")
-        if mat_store in ("duckdb_file", "sqlite"):
-            scheme = "duckdb" if mat_store == "duckdb_file" else "sqlite+aiosqlite"
-            if ephemeral:
-                env["PROVISA_MATERIALIZE_URL"] = f"{scheme}:///:memory:"
-                notes.append(f"materialization store: in-memory {mat_store} (ephemeral)")
-            else:
-                mdd = Path(data_dir) if data_dir else _default_data_dir(preset)
-                fname = "materialize.duckdb" if mat_store == "duckdb_file" else "materialize.db"
-                env["PROVISA_MATERIALIZE_URL"] = f"{scheme}:///{mdd / fname}"
-                notes.append(f"materialization store: {mat_store} under {mdd} (embedded)")
+    _apply_materialize(
+        materialize_url, spec, env, notes, preset=preset, data_dir=data_dir, ephemeral=ephemeral
+    )
     if trino_endpoint:
         host, port = trino_endpoint
         env["TRINO_HOST"] = host
@@ -131,17 +188,9 @@ def load_profile(
         notes.append(f"obs export redirected to external collector: {otlp_endpoint}")
 
     cp_store = spec.get("control_plane_store", "embedded_pg")
-    if cp_store == "sqlite":
-        # SQLAlchemy control plane on sqlite — no initdb, no pgserver, no Python-version gate.
-        if ephemeral:
-            env["PLATFORM_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
-            env["TENANT_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
-            notes.append("control plane: in-memory sqlite (ephemeral, fastest)")
-        else:
-            dd = Path(data_dir) if data_dir else _default_data_dir(preset)
-            env["PLATFORM_DATABASE_URL"] = f"sqlite+aiosqlite:///{dd / 'platform.db'}"
-            env["TENANT_DATABASE_URL"] = f"sqlite+aiosqlite:///{dd / 'tenant.db'}"
-            notes.append(f"control plane: sqlite files under {dd} (instant, persistent)")
+    _apply_control_plane(
+        cp_store, env, notes, preset=preset, data_dir=data_dir, ephemeral=ephemeral
+    )
     if spec.get("observability", "off") == "off" and not otlp_endpoint:
         notes.append(
             "observability off: leave OTEL_EXPORTER_OTLP_ENDPOINT unset (config endpoint '')"

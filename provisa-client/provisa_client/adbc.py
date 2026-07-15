@@ -20,6 +20,8 @@ import httpx
 import pyarrow as pa
 import pyarrow.flight as fl
 
+from provisa_client.encryption import ClientEncryptionService, build_client_encryption
+
 
 def _auth_login(base_url: str, user: str, password: str) -> tuple[str | None, str | None]:
     """POST /auth/login and return (token, role), or (None, None) on failure."""
@@ -43,6 +45,10 @@ def adbc_connect(
     password: str = "",
     role: str | None = None,
     port: int = 8815,
+    kms_provider: str | None = None,
+    kms_key_arn: str | None = None,
+    dek_cache_ttl: float = 300.0,
+    _kms_client: Any = None,
 ) -> "AdbcConnection":
     """Create an ADBC-compatible connection backed by Arrow Flight.
 
@@ -51,6 +57,9 @@ def adbc_connect(
 
     REQ-711: ``port`` selects the Arrow Flight server port (default 8815) so callers can
     reach a Flight server bound to a non-default port.
+
+    REQ-691: ``kms_provider`` + ``kms_key_arn`` enable client-side decryption of Arrow
+    columns whose schema field metadata carries ``provisa_encrypted=true``.
     """
     base_url = url.rstrip("/")
     token, auth_role = _auth_login(base_url, user, password)
@@ -70,6 +79,12 @@ def adbc_connect(
         role=resolved_role,
         token=token,
         base_url=base_url,
+        encryption=build_client_encryption(
+            kms_provider=kms_provider,
+            kms_key_arn=kms_key_arn,
+            dek_cache_ttl=dek_cache_ttl,
+            _client=_kms_client,
+        ),
     )
 
 
@@ -82,11 +97,13 @@ class AdbcConnection:
         role: str | None,
         token: str | None,
         base_url: str,
+        encryption: ClientEncryptionService | None = None,
     ) -> None:
         self._flight_client = flight_client
         self._role = role  # optional requested role; server-validated
         self._token = token
         self._base_url = base_url
+        self._encryption = encryption  # REQ-691: client-side column decrypt (or None)
         self._closed = False
 
     def cursor(self) -> "AdbcCursor":
@@ -151,10 +168,29 @@ class AdbcCursor:
         """Read all RecordBatches from stream and return as a pyarrow Table."""
         return self._ensure_table()
 
+    def _encrypted_columns(self, tbl: pa.Table) -> list[str]:
+        """Column names whose Arrow field metadata flags them encrypted (REQ-691)."""
+        flagged: list[str] = []
+        for field in tbl.schema:
+            meta = field.metadata or {}
+            if meta.get(b"provisa_encrypted") == b"true":
+                flagged.append(field.name)
+        return flagged
+
     def _ensure_rows(self) -> list[tuple]:
         if self._rows is None:
             tbl = self._ensure_table()
             pydict = tbl.to_pydict()
+            enc_cols = self._encrypted_columns(tbl)
+            if enc_cols:
+                svc = self._conn._encryption
+                if svc is None:
+                    raise RuntimeError(
+                        "server flagged encrypted columns but no kms_provider/kms_key_arn "
+                        "was configured on this connection (REQ-691)"
+                    )
+                for col in enc_cols:
+                    pydict[col] = [svc.decrypt_field(v) for v in pydict[col]]
             columns = list(pydict.keys())
             n = tbl.num_rows
             self._rows = [tuple(pydict[col][i] for col in columns) for i in range(n)]

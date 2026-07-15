@@ -73,6 +73,14 @@ class SourceRowLoader:
         self._adapter_loaders = adapter_loaders or {}
 
     async def load(self, source: Any, table: Any) -> list[dict]:
+        # REQ-861: a file source may carry a producer command that refreshes the file IN PLACE.
+        # The loader is invoked only after the REQ-860 gate reports stale (plan.prep is built from
+        # sources needing a residency refresh), so this IS the on-stale point — run the producer
+        # BEFORE the read so the freshened file is what gets scanned. Non-zero exit fails loud.
+        from provisa.freshness.producer import has_producer, run_producer
+
+        if has_producer(source):
+            await run_producer(source)
         stype = _source_type(source)
         # A registered adapter loader always wins: it is the type's OWN row-fetch (openapi call,
         # connector pgwire replica SELECT, REQ-954), used in preference to the engine terminal even

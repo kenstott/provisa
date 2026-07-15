@@ -25,6 +25,11 @@ from provisa.freshness.predicate import (
     TtlThenProbe,
     evaluate,
 )
+from provisa.freshness.producer import (
+    ProducerCommandError,
+    has_producer,
+    run_producer,
+)
 from provisa.freshness.source_gate import gate_source, source_strategy, source_subject
 from provisa.freshness.subject import FreshnessSubject
 
@@ -41,4 +46,7 @@ __all__ = [
     "gate_source",
     "source_strategy",
     "source_subject",
+    "ProducerCommandError",
+    "has_producer",
+    "run_producer",
 ]

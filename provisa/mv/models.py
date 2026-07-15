@@ -117,6 +117,17 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # recompute). Default False = recompute-to-current (the REQ-966 NRT baseline).
     incremental: bool = False
 
+    # REQ-877 (MAY): opt-in per-MV ROW-LEVEL delta capture. Off by default (the hash/diff path is the
+    # expensive case). When on, each refresh that changed rows appends insert/update/delete events to
+    # the store's mv_delta_ledger (store-independent, never stamped on the target). delta_key is the
+    # row identity the diff is computed on (REQUIRED when capture is on — no identity ⇒ no delta, fail
+    # loud). delta_exclude_columns are columns EXCLUDED from the row hash (e.g. volatile updated_at) so
+    # a change to only an ignored column is not reported as a row change. REQ-878 point-in-time
+    # reconstruction folds this ledger to rebuild the view as-of a refresh version (both directions).
+    capture_row_deltas: bool = False
+    delta_key: list[str] = field(default_factory=list)
+    delta_exclude_columns: list[str] = field(default_factory=list)
+
     # Runtime state
     status: MVStatus = MVStatus.STALE
     last_refresh_at: float | None = None

@@ -64,6 +64,13 @@ class ProvisaDialect(DefaultDialect):
         }
         if "role" in query:
             opts["role"] = query["role"]
+        # REQ-691: client-side decryption params passed through to the DB-API connect().
+        if "kms_provider" in query:
+            opts["kms_provider"] = query["kms_provider"]
+        if "kms_key_arn" in query:
+            opts["kms_key_arn"] = query["kms_key_arn"]
+        if "dek_cache_ttl" in query:
+            opts["dek_cache_ttl"] = float(query["dek_cache_ttl"])
         return [], opts
 
     def _get_base_url_and_role(self, connection: Any) -> tuple[str, str]:

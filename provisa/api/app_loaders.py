@@ -66,6 +66,10 @@ def _apply_server_and_engine_config(raw_config: dict) -> None:
     from provisa.api.app import state
 
     state.server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
+    # REQ-693: high-security mode (env override wins so airgapped deploys can force it).
+    _sec_cfg = raw_config.get("security", {}) if isinstance(raw_config, dict) else {}
+    _sec_mode = os.environ.get("PROVISA_SECURITY_MODE") or _sec_cfg.get("mode", "standard")
+    state.security_high = str(_sec_mode).lower() == "high"
     state.hostname = str(
         os.environ.get("PROVISA_HOSTNAME") or state.server_cfg.get("hostname", "localhost")
     )

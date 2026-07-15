@@ -279,6 +279,25 @@ CREATE TABLE IF NOT EXISTS mv_refresh_log (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- REQ-877: opt-in per-MV ROW-LEVEL delta ledger (append-only; store-independent, never stamped on
+-- the target). One event per changed key per refresh version: change_type, row_key, the row hashes
+-- (change detection over the hash-excluded projection), and the row VALUES (value-delta tier for
+-- REQ-878 full-content point-in-time reconstruction). Delete carries old_values; insert new_values.
+CREATE TABLE IF NOT EXISTS mv_delta_ledger (
+    id                 SERIAL PRIMARY KEY,
+    mv_id              TEXT NOT NULL REFERENCES materialized_views(id) ON DELETE CASCADE,
+    refresh_version    INTEGER NOT NULL,
+    definition_version TEXT,
+    trace_id           TEXT,
+    change_type        TEXT NOT NULL CHECK (change_type IN ('insert', 'update', 'delete')),
+    row_key            TEXT NOT NULL,
+    old_hash           TEXT,
+    new_hash           TEXT,
+    old_values         JSONB,
+    new_values         JSONB,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Column-Level Masking (Phase Q) — masking rules are inline on table_columns.
 
 -- Approved-query / GPQ registry removed (REQ-001/003) — access is governed solely by

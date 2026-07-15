@@ -31,9 +31,9 @@ from provisa.pgwire.catalog_data import (
 from provisa.pgwire.catalog_rewrite import _rewrite_for_duckdb, next_txid
 from provisa.pgwire.catalog_data import (
     _KNOWN_SETTINGS,
-    _TYPEINFO,
     _TYPEINFO_COL_TYPES,
     _TYPEINFO_COLS,
+    typeinfo,
 )
 from provisa.pgwire.catalog_populate import _build_catalog_db
 
@@ -69,16 +69,15 @@ def _handle_typeinfo_tree(oids: list[int]):
     from provisa.executor.result import QueryResult
 
     rows = []
+    _ti = typeinfo()
     for oid in oids:
-        info = _TYPEINFO.get(oid)
+        info = _ti.get(oid)
         if info is None:
             continue
         ns, name, kind, basetype, elemtype, elemdelim, range_subtype = info
-        elem_name = _TYPEINFO[elemtype][1] if elemtype and elemtype in _TYPEINFO else None
-        base_name = _TYPEINFO[basetype][1] if basetype and basetype in _TYPEINFO else None
-        range_name = (
-            _TYPEINFO[range_subtype][1] if range_subtype and range_subtype in _TYPEINFO else None
-        )
+        elem_name = _ti[elemtype][1] if elemtype and elemtype in _ti else None
+        base_name = _ti[basetype][1] if basetype and basetype in _ti else None
+        range_name = _ti[range_subtype][1] if range_subtype and range_subtype in _ti else None
         rows.append(
             (
                 oid,

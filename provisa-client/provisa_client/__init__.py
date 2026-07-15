@@ -11,5 +11,27 @@
 from provisa_client.client import ProvisaClient
 from provisa_client.dbapi import connect
 from provisa_client.adbc import adbc_connect
+from provisa_client.encryption import (
+    ClientEncryptionService,
+    DecryptionError,
+    build_client_encryption,
+    build_kms_provider,
+)
+from provisa_client.graphql_decrypt import (
+    ENCRYPTED_DIRECTIVE_SDL,
+    GraphQLDecryptClient,
+    encrypted_fields_from_sdl,
+)
 
-__all__ = ["ProvisaClient", "connect", "adbc_connect"]
+__all__ = [
+    "ProvisaClient",
+    "connect",
+    "adbc_connect",
+    "ClientEncryptionService",
+    "DecryptionError",
+    "build_client_encryption",
+    "build_kms_provider",
+    "GraphQLDecryptClient",
+    "encrypted_fields_from_sdl",
+    "ENCRYPTED_DIRECTIVE_SDL",
+]

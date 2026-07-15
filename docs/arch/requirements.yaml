@@ -18626,8 +18626,22 @@
     status: ahead
     rationale: Client-side decryption in the JDBC driver with server-side passthrough is a zero-trust
       data access pattern not offered by any competitor's JDBC driver.
+  note: Partial (kept proposed). The in-repo jdbc-driver module implements the client-side decryption
+    engine (EnvelopeDecryptor + KmsProvider + LocalKmsProvider), the encrypted-column metadata contract
+    (Arrow field metadata provisa_encrypted=true, decrypted in ArrowStreamResultSet), the DEK TTL cache,
+    and connection-param parsing (kms_provider, kms_key_arn); the module compiles (mvn clean compile).
+    Not complete because the AWS/Azure/GCP concrete Java KmsProvider implementations require the cloud
+    SDKs on the driver classpath and the e2e JDBC round-trip (real Flight/pgwire connection against an
+    encrypted backend response) is deferred to the 2027-Q1 target. See docs/arch/jdbc-client-side-encryption.md.
+  code:
+  - jdbc-driver/src/main/java/io/provisa/jdbc/EnvelopeDecryptor.java
+  - jdbc-driver/src/main/java/io/provisa/jdbc/KmsProvider.java
+  - jdbc-driver/src/main/java/io/provisa/jdbc/LocalKmsProvider.java
+  - jdbc-driver/src/main/java/io/provisa/jdbc/ArrowStreamResultSet.java
+  - jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaConnection.java
 - id: REQ-691
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 15. Proposed Features
   category: Encryption
   priority: MAY
@@ -18652,8 +18666,16 @@
     status: ahead
     rationale: Client-side decryption shared across DB-API, SQLAlchemy dialect, and ADBC in the Python
       client is a comprehensive zero-trust client library not offered by Hasura or Dremio.
+  code:
+  - provisa-client/provisa_client/encryption.py
+  - provisa-client/provisa_client/dbapi.py
+  - provisa-client/provisa_client/adbc.py
+  - provisa-client/provisa_client/sqlalchemy_dialect.py
+  tests:
+  - tests/unit/test_client_encryption.py
 - id: REQ-692
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 15. Proposed Features
   category: Encryption
   priority: MAY
@@ -18679,8 +18701,16 @@
     status: ahead
     rationale: '@encrypted GraphQL directive with client wrapper intercept for automatic decryption is
       a novel zero-trust GraphQL pattern not available in Hasura, Dremio, or Denodo.'
+  code:
+  - provisa-client/provisa_client/graphql_decrypt.py
+  - provisa/api/data/encrypted_directive.py
+  - provisa/api/data/sdl.py
+  tests:
+  - tests/unit/test_client_encryption.py
+  - tests/unit/test_high_security_mode.py
 - id: REQ-693
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 15. Proposed Features
   category: Encryption
   priority: MAY
@@ -18706,8 +18736,17 @@
     status: ahead
     rationale: High-security mode that disables pgwire and REST APIs, enforcing KMS-keyed JDBC/Python-only
       access is a unique compliance posture not available in any competitor platform.
+  code:
+  - provisa/security/high_security.py
+  - provisa/api/app.py
+  - provisa/api/app_startup.py
+  - provisa/api/app_loaders.py
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_high_security_mode.py
 - id: REQ-694
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -18732,6 +18771,10 @@
     rationale: Client-owned CMK model (AWS KMS, Azure Key Vault, GCP KMS) where Provisa never holds the
       master key is stronger than Snowflake's customer-managed key model and not available in Hasura or
       Dremio.
+  code:
+  - provisa-client/provisa_client/encryption.py
+  tests:
+  - tests/unit/test_client_encryption.py
 - id: REQ-695
   status: complete
   since: 2026-07
@@ -22976,7 +23019,10 @@
   - REQ-830
   - REQ-831
 - id: REQ-830
-  status: proposed
+  status: complete
+  since: 2026-07
+  tests:
+  - tests/unit/test_arch_invariants.py
   group: 11. Platform, Infrastructure & Delivery
   category: Deployment & Infrastructure
   priority: SHOULD
@@ -23931,7 +23977,8 @@
   - REQ-856
   - REQ-859
 - id: REQ-861
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 4. Source Connectors
   category: Freshness Gating
   priority: MAY
@@ -23939,13 +23986,26 @@
   target: 2026-Q3
   description: File-based sources (CSV, Parquet, etc.) may carry an optional producer command (argv) that
     runs on-stale (gate-triggered) before the file is read. Allows refresh without modifying the file
-    path or materializing into an MV.
+    path or materializing into an MV. DONE (2026-07) - a file source (csv/parquet/sqlite/files) carries
+    an optional producer_command argv (provisa/core/models.py); provisa/freshness/producer.py runs it
+    with shell=False (injection-safe) and fails loud on a non-zero exit. The read path
+    (provisa/events/source_loader.py SourceRowLoader.load) is invoked only after the REQ-860 source
+    gate reports stale, so it runs the producer BEFORE the file read - freshening the file in place
+    without touching path or defining an MV.
   use_case: 'Supports workflows where stale file detection should trigger a script to refresh the file
     in place. Example: fetch latest data from an upstream API and write to the same CSV path when staleness
     is detected. Pairs with REQ-855: REQ-855 file mtime DETECTS staleness, this producer command is the
     ACT-on-stale response.'
   code:
   - provisa/core/models.py
+  - provisa/freshness/producer.py
+  - provisa/events/source_loader.py
+  tests:
+  - tests/unit/test_file_producer_command.py
+  scenario: 'Given a file source S (type csv) with freshness_gate=true and a producer_command argv When
+    the REQ-860 gate reports S stale and its residency read runs Then the producer command executes
+    (shell=False) before the file is read, a non-zero exit fails loud and the stale file is not read,
+    while a source within its TTL runs no producer and a source with no producer_command is read as-is'
   related_reqs:
   - REQ-856
   - REQ-860
@@ -24646,7 +24706,9 @@
   - REQ-828
   - REQ-830
 - id: REQ-877
-  status: proposed
+  status: complete
+  since: 2026-07
+  scenario: 'Given an MV with row-level delta capture enabled When the MV refreshes with rows inserted/updated/deleted since the prior refresh Then the delta ledger records the insert/update/delete rows under that refresh version, and an opt-out MV writes no ledger entries'
   group: 5. Data Lineage & Provenance
   category: Row-Level Delta Capture
   priority: MAY
@@ -24682,17 +24744,28 @@
     get deltas cheaply from the engine, and the expensive full-MV hash path is opt-in and ceiling-guarded
     so very large MVs never silently pay for it.'
   code:
+  - provisa/mv/delta.py
   - provisa/mv/refresh.py
-  - provisa/lineage/
-  - provisa/core/config_loader.py
+  - provisa/mv/models.py
   - provisa/core/schema_org.py
+  tests:
+  - tests/unit/test_mv_delta_capture.py
+  implementation_note: 'Opt-in per-MV row-level delta ledger (mv_delta_ledger) written best-effort
+    off the refresh critical path — capture_row_deltas/delta_key/delta_exclude_columns on the MV;
+    diff is BY-KEY over a hash of the non-excluded projection. SCOPE vs spec: value-delta tier is
+    implemented (events carry old/new row values, enabling REQ-878 content reconstruction); the diff
+    is currently computed over the landed row snapshots in-process rather than pushed down as an
+    engine EXCEPT/anti-join, and the native-first Iceberg-changelog / watermark-slice derivation and
+    the max_row_hashing ceiling remain future optimizations of the same ledger contract.'
   related_reqs:
   - REQ-862
   - REQ-874
   - REQ-826
   - REQ-260
 - id: REQ-878
-  status: proposed
+  status: complete
+  since: 2026-07
+  scenario: 'Given an MV with row-level delta capture enabled and a delta ledger spanning refresh versions 1..N When a caller reconstructs the MV as of version K (K<N) via forward-fold from base or reverse from the live table Then the reconstructed rows equal the MV state as of version K, and reconstructing an unknown version fails loud'
   group: 5. Data Lineage & Provenance
   category: Point-In-Time Reconstruction
   priority: MAY
@@ -24718,9 +24791,18 @@
     content reconstruction when the value-delta tier is opted in, with replay cost bounded by checkpoints
     and the whole reconstruction expressed as a single ledger query.
   code:
-  - provisa/lineage/
+  - provisa/mv/delta.py
   - provisa/mv/refresh.py
   - provisa/core/schema_org.py
+  tests:
+  - tests/unit/test_mv_delta_capture.py
+  implementation_note: 'reconstruct_forward folds the ledger from base as the windowed greatest-per-key
+    query over refresh_version <= N (executed in the store, deletes excluded); reconstruct_reverse
+    derives the same as-of-N set from the live rows by correcting only keys touched after N (restoring
+    updates, resurrecting deletes, dropping after-N inserts). Value-delta tier gives full content
+    reconstruction. Unknown version fails loud. SCOPE vs spec: checkpoint-bounded replay (periodic full
+    snapshot + deltas-between) is not yet persisted — reconstruction folds from ledger base; membership-
+    only hash tier is covered by the value tier superset.'
   related_reqs:
   - REQ-877
   - REQ-862
@@ -25237,7 +25319,10 @@
   - REQ-825
   - REQ-840
 - id: REQ-889
-  status: proposed
+  status: complete
+  since: 2026-07
+  tests:
+  - tests/unit/test_arch_invariants.py
   target: 2026-Q4
   group: 8. Deployment & Infrastructure
   category: Deployment Tier Architecture
@@ -25264,6 +25349,7 @@
   code:
   - provisa/core/db.py
   - provisa/core/database.py
+  - provisa/core/desktop_profile.py
   related_reqs:
   - REQ-825
   - REQ-840
@@ -25357,8 +25443,8 @@
   related_reqs:
   - REQ-883
 - id: REQ-892
-  status: proposed
-  target: 2026-Q4
+  status: complete
+  since: 2026-07
   group: 4. Source Connectors
   category: Connector Abstraction
   priority: MAY
@@ -25379,8 +25465,17 @@
     pgwire endpoint can serve diverse analytics workloads (ML, geospatial, document) via compatibility
     operators mapped to federation engine functions.
   code:
+  - provisa/pgwire/ext_surfaces.py
+  - provisa/pgwire/catalog_data.py
   - provisa/pgwire/catalog.py
+  - provisa/pgwire/catalog_populate.py
   - provisa/pgwire/_pipeline.py
+  tests:
+  - tests/unit/test_pgwire_ext_surfaces.py
+  notes: 'pgvector / json-ops / compat-fns live; postgis-subset partial (geometry/geography
+    types + ST_* pass-through + && -> ST_Intersects; geography aliased to geometry, no
+    SRID transforms). Opt-in via PROVISA_PGWIRE_EXT_SURFACES. ivfflat/hnsw index
+    acceleration rejected loudly and never advertised.'
   related_reqs:
   - REQ-883
   - REQ-842
@@ -25476,7 +25571,12 @@
   - REQ-894
   - REQ-897
 - id: REQ-894
-  status: proposed
+  status: complete
+  since: 2026-07
+  code:
+  - provisa/federation/engine.py
+  tests:
+  - tests/unit/test_arch_invariants.py
   target: 2026-Q4
   group: 8. Deployment & Infrastructure
   category: Deployment Tier Architecture
@@ -25541,7 +25641,13 @@
   - REQ-889
   - REQ-893
 - id: REQ-896
-  status: proposed
+  status: complete
+  since: 2026-07
+  code:
+  - provisa/compiler/stage2.py
+  - provisa/pgwire/_pipeline.py
+  tests:
+  - tests/unit/test_arch_invariants.py
   target: 2026-Q4
   group: 0. Architecture & Design Principles
   category: Federation Architecture

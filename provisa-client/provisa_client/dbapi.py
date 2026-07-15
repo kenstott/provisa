@@ -17,6 +17,8 @@ from typing import Any
 
 import httpx
 
+from provisa_client.encryption import ClientEncryptionService, build_client_encryption
+
 apilevel = "2.0"
 threadsafety = 1
 paramstyle = "named"
@@ -74,6 +76,15 @@ def _is_graphql(query: str) -> bool:
     return bool(_GQL_RE.match(query))
 
 
+def _encrypted_columns(body: Any) -> list[str]:
+    """Read the server's encrypted-column metadata flag from a response body (REQ-691)."""
+    if isinstance(body, dict):
+        cols = body.get("encrypted_columns")
+        if isinstance(cols, list):
+            return [c for c in cols if isinstance(c, str)]
+    return []
+
+
 _TIMEOUT = 10.0
 
 
@@ -116,8 +127,17 @@ def connect(
     username: str,
     password: str,
     role: str | None = None,
+    kms_provider: str | None = None,
+    kms_key_arn: str | None = None,
+    dek_cache_ttl: float = 300.0,
+    _kms_client: Any = None,
 ) -> "Connection":
-    """Create a DB-API 2.0 connection to a Provisa server."""
+    """Create a DB-API 2.0 connection to a Provisa server.
+
+    REQ-691: when ``kms_provider`` and ``kms_key_arn`` are supplied, result columns
+    the server flags encrypted are decrypted client-side with a DEK cached for
+    ``dek_cache_ttl`` seconds. ``_kms_client`` injects a KMS SDK client (tests).
+    """
     token, auth_role = _auth_login(url, username, password)
     if token:
         resolved_role: str | None = role or auth_role
@@ -125,7 +145,19 @@ def connect(
         resolved_role = role or (
             username if username else None
         )  # design: username is role for unauthed access (REQ-AK5)
-    return Connection(base_url=url.rstrip("/"), token=token, role=resolved_role)
+    encryption = build_client_encryption(
+        kms_provider=kms_provider,
+        kms_key_arn=kms_key_arn,
+        dek_cache_ttl=dek_cache_ttl,
+        _client=_kms_client,
+    )
+    return Connection(
+        base_url=url.rstrip("/"),
+        token=token,
+        role=resolved_role,
+        encryption=encryption,
+        kms_key_arn=kms_key_arn,
+    )
 
 
 class Connection:
@@ -137,10 +169,14 @@ class Connection:
         base_url: str,
         token: str | None,
         role: str | None = None,
+        encryption: ClientEncryptionService | None = None,
+        kms_key_arn: str | None = None,
     ) -> None:
         self._base_url = base_url
         self._token = token
         self._role = role
+        self._encryption = encryption  # REQ-691: client-side column decrypt (or None)
+        self._kms_key_arn = kms_key_arn  # REQ-693: proof-of-client-decrypt for high-security gate
         self._closed = False
 
     def _check_open(self) -> None:
@@ -154,6 +190,9 @@ class Connection:
         # REQ-273: server-validated requested role; sent only when explicitly chosen.
         if self._role:
             h["X-Provisa-Role"] = self._role
+        # REQ-693: signal client-side decryption so high-security mode admits this connection.
+        if self._kms_key_arn:
+            h["X-Provisa-KMS-Key"] = self._kms_key_arn
         return h
 
     def cursor(self) -> "Cursor":
@@ -231,7 +270,7 @@ class Cursor:
         rows_raw = data[root_field]
         if not isinstance(rows_raw, list):
             rows_raw = [rows_raw]
-        self._set_rows(rows_raw)
+        self._set_rows(rows_raw, _encrypted_columns(body))
 
     def _execute_sql(self, query: str) -> None:
         try:
@@ -259,9 +298,11 @@ class Cursor:
                 rows_raw = []
         else:
             rows_raw = []
-        self._set_rows(rows_raw)
+        enc_cols = _encrypted_columns(body) if isinstance(body, dict) else []
+        self._set_rows(rows_raw, enc_cols)
 
-    def _set_rows(self, rows_raw: list[dict]) -> None:
+    def _set_rows(self, rows_raw: list[dict], encrypted_columns: list[str] | None = None) -> None:
+        encrypted_columns = encrypted_columns or []
         if not rows_raw:
             self._rows = []
             self.description = []
@@ -269,6 +310,16 @@ class Cursor:
             self._pos = 0
             return
         if isinstance(rows_raw[0], dict):
+            if encrypted_columns:
+                svc = self._conn._encryption
+                if svc is None:
+                    raise DataError(
+                        "server flagged encrypted columns but no kms_provider/kms_key_arn "
+                        "was configured on this connection (REQ-691)"
+                    )
+                from provisa_client.encryption import decrypt_rows
+
+                decrypt_rows(rows_raw, encrypted_columns, svc)
             columns = list(rows_raw[0].keys())
             self.description = [(col, None, None, None, None, None, None) for col in columns]
             self._rows = [tuple(row.get(c) for c in columns) for row in rows_raw]

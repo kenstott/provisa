@@ -32,8 +32,18 @@ public class ArrowStreamResultSet extends AbstractResultSet {
     private boolean finished = false;
     private boolean closed = false;
 
+    // REQ-690: columns flagged encrypted via Arrow field metadata (provisa_encrypted=true),
+    // decrypted client-side by the connection's EncryptionService.
+    private final Set<String> encryptedColumns = new HashSet<>();
+    private EnvelopeDecryptor encryptionService;
+
     ArrowStreamResultSet(InputStream stream) throws SQLException {
+        this(stream, null);
+    }
+
+    ArrowStreamResultSet(InputStream stream, EnvelopeDecryptor encryptionService) throws SQLException {
         this.inputStream = stream;
+        this.encryptionService = encryptionService;
         this.allocator = new RootAllocator();
         try {
             this.reader = new ArrowStreamReader(stream, allocator);
@@ -41,12 +51,28 @@ public class ArrowStreamResultSet extends AbstractResultSet {
             this.columnNames = new ArrayList<>();
             for (Field field : schema.getFields()) {
                 columnNames.add(field.getName());
+                Map<String, String> meta = field.getMetadata();
+                if (meta != null && "true".equals(meta.get("provisa_encrypted"))) {
+                    encryptedColumns.add(field.getName());
+                }
             }
             this.currentBatch = reader.getVectorSchemaRoot();
         } catch (Exception e) {
             allocator.close();
             throw new SQLException("Failed to open Arrow stream: " + e.getMessage(), e);
         }
+    }
+
+    private String maybeDecrypt(String column, String raw) throws SQLException {
+        if (raw == null || !encryptedColumns.contains(column)) {
+            return raw;
+        }
+        if (encryptionService == null) {
+            throw new DecryptionException(
+                "column '" + column + "' is encrypted but no kms_provider/kms_key_arn "
+                + "was configured on this connection (REQ-690)");
+        }
+        return encryptionService.decryptField(raw);
     }
 
     @Override
@@ -92,14 +118,14 @@ public class ArrowStreamResultSet extends AbstractResultSet {
     public String getString(int columnIndex) throws SQLException {
         FieldVector vec = getVector(columnIndex);
         if (vec.isNull(rowInBatch)) return null;
-        return vec.getObject(rowInBatch).toString();
+        return maybeDecrypt(columnNames.get(columnIndex - 1), vec.getObject(rowInBatch).toString());
     }
 
     @Override
     public String getString(String columnLabel) throws SQLException {
         FieldVector vec = getVector(columnLabel);
         if (vec.isNull(rowInBatch)) return null;
-        return vec.getObject(rowInBatch).toString();
+        return maybeDecrypt(columnLabel, vec.getObject(rowInBatch).toString());
     }
 
     @Override
@@ -185,6 +211,10 @@ public class ArrowStreamResultSet extends AbstractResultSet {
     public Object getObject(int columnIndex) throws SQLException {
         FieldVector vec = getVector(columnIndex);
         if (vec.isNull(rowInBatch)) return null;
+        String col = columnNames.get(columnIndex - 1);
+        if (encryptedColumns.contains(col)) {
+            return maybeDecrypt(col, vec.getObject(rowInBatch).toString());
+        }
         return vec.getObject(rowInBatch);
     }
 
@@ -192,6 +222,9 @@ public class ArrowStreamResultSet extends AbstractResultSet {
     public Object getObject(String columnLabel) throws SQLException {
         FieldVector vec = getVector(columnLabel);
         if (vec.isNull(rowInBatch)) return null;
+        if (encryptedColumns.contains(columnLabel)) {
+            return maybeDecrypt(columnLabel, vec.getObject(rowInBatch).toString());
+        }
         return vec.getObject(rowInBatch);
     }
 

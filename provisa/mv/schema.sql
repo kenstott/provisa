@@ -42,3 +42,21 @@ CREATE TABLE IF NOT EXISTS mv_refresh_log (
     trace_id           TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- REQ-877: opt-in per-MV ROW-LEVEL delta ledger — append-only row-level companion to mv_refresh_log.
+-- One event per changed key per refresh version: change_type, row_key, row hashes, and row VALUES
+-- (value-delta tier enabling REQ-878 full-content point-in-time reconstruction, both fold directions).
+CREATE TABLE IF NOT EXISTS mv_delta_ledger (
+    id                 SERIAL PRIMARY KEY,
+    mv_id              TEXT NOT NULL REFERENCES materialized_views(id) ON DELETE CASCADE,
+    refresh_version    INTEGER NOT NULL,
+    definition_version TEXT,
+    trace_id           TEXT,
+    change_type        TEXT NOT NULL CHECK (change_type IN ('insert', 'update', 'delete')),
+    row_key            TEXT NOT NULL,
+    old_hash           TEXT,
+    new_hash           TEXT,
+    old_values         JSONB,
+    new_values         JSONB,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

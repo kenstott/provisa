@@ -29,14 +29,23 @@ public class ProvisaDriver implements Driver {
         // Split off query string: host:port?mode=catalog
         String hostPort = remainder;
         String mode = info.getProperty("mode", "catalog");
+        // REQ-690/REQ-694: client-side decryption params (connection URL or Properties).
+        String kmsProvider = info.getProperty("kms_provider");
+        String kmsKeyArn = info.getProperty("kms_key_arn");
+        String kmsMasterKey = info.getProperty("kms_master_key"); // base64, local provider only
         int qIdx = remainder.indexOf('?');
         if (qIdx >= 0) {
             hostPort = remainder.substring(0, qIdx);
             String query = remainder.substring(qIdx + 1);
             for (String param : query.split("&")) {
                 String[] kv = param.split("=", 2);
-                if (kv.length == 2 && "mode".equals(kv[0])) {
-                    mode = kv[1];
+                if (kv.length != 2) continue;
+                switch (kv[0]) {
+                    case "mode": mode = kv[1]; break;
+                    case "kms_provider": kmsProvider = kv[1]; break;
+                    case "kms_key_arn": kmsKeyArn = kv[1]; break;
+                    case "kms_master_key": kmsMasterKey = kv[1]; break;
+                    default: break;
                 }
             }
         }
@@ -49,7 +58,9 @@ public class ProvisaDriver implements Driver {
         String user = info.getProperty("user", "");
         String password = info.getProperty("password", "");
 
-        return new ProvisaConnection(baseUrl, user, password, mode);
+        ProvisaConnection conn = new ProvisaConnection(baseUrl, user, password, mode);
+        conn.configureEncryption(kmsProvider, kmsKeyArn, kmsMasterKey);
+        return conn;
     }
 
     @Override

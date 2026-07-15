@@ -320,6 +320,34 @@ mv_refresh_log = Table(
     CheckConstraint("status IN ('success', 'failure')", name="mv_refresh_log_status_check"),
 )
 
+# REQ-877: opt-in per-MV ROW-LEVEL delta ledger — the row-level companion to the column-level
+# lineage (REQ-862). Append-only; keyed by (mv_id, refresh_version) and never stamped on the target
+# table, so it is store-independent (works for an Iceberg or RDB target). Each refresh that changed
+# rows appends one event per changed key: change_type (insert/update/delete), the key (row_key JSON
+# text), the row hashes (old/new — change detection over the hash-excluded projection), and the row
+# VALUES (old/new — the value-delta tier that enables full-content point-in-time reconstruction,
+# REQ-878). A delete carries old_values only; an insert new_values only.
+mv_delta_ledger = Table(
+    "mv_delta_ledger",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("mv_id", Text, ForeignKey("materialized_views.id", ondelete="CASCADE"), nullable=False),
+    Column("refresh_version", Integer, nullable=False),
+    Column("definition_version", Text),
+    Column("trace_id", Text),
+    Column("change_type", Text, nullable=False),
+    Column("row_key", Text, nullable=False),
+    Column("old_hash", Text),
+    Column("new_hash", Text),
+    Column("old_values", JSON),
+    Column("new_values", JSON),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint(
+        "change_type IN ('insert', 'update', 'delete')",
+        name="mv_delta_ledger_change_type_check",
+    ),
+)
+
 relationship_candidates = Table(
     "relationship_candidates",
     metadata,

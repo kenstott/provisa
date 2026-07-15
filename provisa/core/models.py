@@ -169,6 +169,11 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # freshness module, REQ-856/858) before execution; a stale/failed verdict triggers the caller's
     # refresh/produce path. Default off — gating requires a declared change_signal + cache_ttl.
     freshness_gate: bool = False
+    # REQ-861: optional producer command (argv list) for a FILE-based source (csv/parquet/sqlite/
+    # files). When the source's freshness gate reports stale, this command runs (subprocess, no
+    # shell) BEFORE the file is read — refreshing the file IN PLACE without changing ``path`` or
+    # defining an MV. None = no producer; the file is read as-is. Non-zero exit fails loud.
+    producer_command: list[str] | None = None
     cache_catalog: str | None = (
         None  # the engine catalog for API cache; None = source's own catalog
     )
@@ -330,6 +335,11 @@ class Column(
     embedding: bool = False
     embedding_model: str | None = None
     embedding_source_column: str | None = None
+    # REQ-689/REQ-691/REQ-692: column holds a client-decryptable envelope blob. The backend
+    # passes the ciphertext through undecrypted; clients configured with a KMS key decrypt it.
+    # Surfaced to clients as the GraphQL @encrypted directive and the SQL/Arrow encrypted-column
+    # metadata flag.
+    encrypted: bool = False
 
 
 class ColumnPreset(BaseModel):
@@ -938,9 +948,26 @@ class ControlPlaneConfig(BaseModel):
         return u.host or socket_host, u.port or 5432, u.database, u.username, u.password
 
 
+class SecurityConfig(BaseModel):  # REQ-693
+    """Platform security posture.
+
+    ``mode=high`` is the zero-trust posture: the pgwire server is not started, REST
+    and GraphQL data-API endpoints return 403, and JDBC/Python connections without a
+    ``kms_key_arn`` (client-side decrypt configured) are rejected at auth. Only clients
+    that decrypt locally may reach data. ``mode=standard`` is the default posture.
+    """
+
+    mode: str = "standard"  # "standard" | "high"
+
+    @property
+    def high(self) -> bool:
+        return self.mode.lower() == "high"
+
+
 class ProvisaConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     control_plane: ControlPlaneConfig = Field(default_factory=ControlPlaneConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)  # REQ-693
     multitenancy: bool = False
     # Federation engine selection + connection config (set via the admin UI; applied on restart).
     # The selected engine's own implementation reads these — generic code never branches on the value.

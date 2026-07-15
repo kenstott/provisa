@@ -461,6 +461,14 @@ async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266,
         ValueError       – SQL parse / validation error
         RuntimeError     – routing / execution error
     """
+    # REQ-892: rewrite enabled extension-surface operators/functions (pgvector distance,
+    # JSON ->/->>/#>/#>>, compat fns) to federation-engine equivalents, rejecting any
+    # unimplemented capability (e.g. ivfflat/hnsw index) loudly. Passthrough when no
+    # surface is opted in for this deployment.
+    from provisa.pgwire.ext_surfaces import rewrite_surface_operators
+
+    sql = rewrite_surface_operators(sql)
+
     # REQ-872: a bare SELECT of a registered tracked function routes to the shared executor
     # (writable_by enforced there) instead of federation, unifying invocation across surfaces.
     from provisa.api.app import state as _state

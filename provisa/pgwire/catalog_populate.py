@@ -29,8 +29,9 @@ from provisa.pgwire.catalog_data import (
     _PG_OID_ATTR_META,
     _PG_SETTINGS_ROWS,
     _PG_SYSTEM_ROLES,
-    _PG_TYPE_ROWS,
+    pg_type_rows,
 )
+from provisa.pgwire.ext_surfaces import extension_rows
 from provisa.pgwire.system_tables import _populate_empty_system_tables
 from provisa.pgwire.catalog_constraints import (
     _populate_pg_constraint,
@@ -695,9 +696,16 @@ def _populate_pg_type(db) -> None:
                 None,
                 None,
             )
-            for oid, name, ns, ln, tt, cat, nn, base, byval, align, storage in _PG_TYPE_ROWS
+            for oid, name, ns, ln, tt, cat, nn, base, byval, align, storage in pg_type_rows()
         ],
     )
+
+
+def _populate_pg_extension(db) -> None:
+    """Advertise every enabled extension surface in _pg_extension (REQ-892)."""
+    rows = extension_rows()
+    if rows:
+        db.executemany("INSERT INTO _pg_extension VALUES (?,?,?,?,?,?,?,?)", rows)
 
 
 def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
@@ -859,6 +867,7 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     _populate_system_attributes(db)
     _populate_pg_type(db)
     _populate_empty_system_tables(db)
+    _populate_pg_extension(db)  # REQ-892: advertise enabled extension surfaces
     populate_functions(db, state, role_id)  # REQ-872
     raw_tables = state.schema_build_cache.get("tables", []) if state else []
     raw_domains = state.schema_build_cache.get("domains", []) if state else []

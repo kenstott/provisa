@@ -170,7 +170,14 @@ async def get_sdl(  # REQ-039, REQ-363
         schema = state.schemas.get(role_id)
         if schema is None:
             raise HTTPException(status_code=404, detail=f"No schema for role {role_id!r}")
-    return print_schema(schema)
+    # REQ-692: mark encrypted columns with the @encrypted directive so client wrappers
+    # know which fields to decrypt locally.
+    from provisa.api.data.encrypted_directive import (
+        annotate_encrypted_sdl,
+        collect_encrypted_fields,
+    )
+
+    return annotate_encrypted_sdl(print_schema(schema), collect_encrypted_fields(state.config))
 
 
 _INTROSPECTION_QUERY = """
