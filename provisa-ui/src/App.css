@@ -17,6 +17,11 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 body, h1, h2, h3, h4, p { margin: 0; padding: 0; }
+/* Base reset: kill the native button 3D bevel (border: outset) globally at the
+ * lowest specificity. Every styled button — Mantine (.mantine-* classes) or
+ * hand-rolled — overrides this with its own border. Replaces the old
+ * `.page button` reset removed during the Mantine migration. */
+button { border: none; }
 
 body {
   font-family: var(--font);
