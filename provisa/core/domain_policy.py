@@ -1,7 +1,7 @@
 """Resolved domain policy — single source of truth for the `naming.use_domains` feature.
 
 Tri-state via ``use_domains``:
-  * ``None``  — legacy/inert: every new branch falls through to pre-feature behavior.
+  * ``None``  — inert: every new branch falls through to the default (pre-feature) behavior.
   * ``False`` — single-domain mode: all registrations stored under ``default_domain``;
                 explicit foreign domains are a hard error; domain hidden from names/UI/access.
   * ``True``  — namespaced mode: ``domain_id`` required on every registration.
@@ -35,7 +35,7 @@ def configure(use_domains: bool | None, default_domain: str) -> None:  # REQ-154
 
 
 def reset() -> None:
-    """Restore the inert legacy policy (test isolation)."""
+    """Restore the inert policy (test isolation)."""
     _policy.use_domains = None
     _policy.default_domain = "default"
 
@@ -60,7 +60,7 @@ def single_domain() -> bool:  # REQ-471
 def resolve_domain_id(requested: str | None) -> str:  # REQ-367, REQ-418, REQ-432, REQ-433
     """Resolve the domain_id to store for a registration.
 
-    Legacy (inert): returns ``requested or ""`` — identical to pre-feature behavior.
+    Inert: returns ``requested or ""`` — the default (pre-feature) behavior.
     Namespaced (True): ``requested`` required.
     Single-domain (False): falsy ``requested`` coerces to ``default_domain``; a truthy
     value other than ``default_domain`` is a hard error.
@@ -82,7 +82,7 @@ def resolve_domain_id(requested: str | None) -> str:  # REQ-367, REQ-418, REQ-43
 def import_default() -> str:  # REQ-471
     """Domain id for dynamic importers (hasura/fk introspection) that carry no domain info.
 
-    Legacy (inert) preserves the historical ``"default"`` literal these paths used; once the
+    Inert preserves the ``"default"`` literal these paths used; once the
     feature is engaged they fall under the configured ``default_domain``.
     """
     if not active():

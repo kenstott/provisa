@@ -258,7 +258,7 @@ class NamingConfig(BaseModel):  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-415, R
     # singular object (many-to-one), plural array (one-to-many) via inflection.
     hasura_v2_relationship_style: bool = False
     domain_prefix: bool = False  # prepend domain initials to GraphQL names (namespaced mode)
-    # Tri-state domain feature. None = legacy (inert); False = single stored default_domain,
+    # Tri-state domain feature. None = inert (default); False = single stored default_domain,
     # domain hidden from names/UI/access; True = namespaced, domain_id required.
     use_domains: bool | None = None
     default_domain: str = (
@@ -455,7 +455,7 @@ class Table(
     )
     # REQ-879: cross-instance MV consistency tier. "shared" = one fleet-coordinated copy (CAS on
     # the shared materialized_views catalog; one instance refreshes at a time). "distributed" =
-    # legacy per-instance materialization (eventually consistent).
+    # per-instance materialization, the distributed tier (eventually consistent).
     mv_consistency: str = "shared"
     data_product: bool = False  # publish as a Data Product (catalog export)
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
@@ -766,8 +766,8 @@ class AIModelsConfig(BaseModel):  # REQ-464
     """AI model configuration for various operations.
 
     Each field accepts either:
-    - A string (legacy): model name (e.g. "claude-haiku-4-5-20251001")
-    - A dict (new): {"vendor": str, "model": str, "fallback": dict | null}
+    - A string (shorthand): model name (e.g. "claude-haiku-4-5-20251001")
+    - A dict (full form): {"vendor": str, "model": str, "fallback": dict | null}
     """
 
     table_description: str | dict = "claude-haiku-4-5-20251001"
@@ -943,7 +943,7 @@ class ProvisaConfig(BaseModel):
     query_max_memory: str = "4GB"
     query_max_memory_per_node: str = "2GB"
     query_max_total_memory: str = "8GB"
-    # Fault-tolerant execution (replaces legacy spill-to-disk). All sizes/locations
+    # Fault-tolerant execution (replaces the previous spill-to-disk). All sizes/locations
     # are config-driven and engine-agnostic — no execution-engine identifiers leak
     # into the config vocabulary.
     fault_tolerant_execution: bool = True

@@ -54,8 +54,8 @@ def resolve_landing_args(
 ) -> LandingArgs:
     """Resolve the landing arguments for one MATERIALIZED table (REQ-932/846).
 
-    change_signal: table override → legacy live.strategy → source default (``resolve_effective``).
-    watermark_column: the table's, else its legacy live config. pk_columns: the user-designated
+    change_signal: table override → the signal implied by live.strategy → source default (``resolve_effective``).
+    watermark_column: the table's, else its live config. pk_columns: the user-designated
     primary key columns. columns: (name, IR data_type) — each column's stored native (engine-
     normalized) type is translated to a canonical IR name via ``to_ir(native, platform)`` so the
     landed table's DDL is engine-independent (the store write face maps IR → SQLAlchemy). ``platform``

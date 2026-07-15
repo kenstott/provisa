@@ -27728,7 +27728,7 @@
   - REQ-961
   - REQ-962
 - id: REQ-965
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27776,10 +27776,17 @@
     DAG exactly as the operator chose and can afford, or the estate errors explicitly rather than degrading
     silently.'
   code:
+  - provisa/events/outcomes.py
   - provisa/events/handlers.py
   - provisa/events/processor.py
+  - provisa/events/boot.py
+  - provisa/events/app_wiring.py
   - provisa/federation/materialize_exec.py
+  - provisa/federation/store_writer.py
   - provisa/core/change_signal.py
+  - provisa/mv/models.py
+  tests:
+  - tests/unit/test_live_mv_outcomes.py
   scenario: 'Given an MV whose operator declares persistence=replace and event=append
 
     When it fires
@@ -27995,7 +28002,7 @@
   - REQ-964
   - REQ-932
 - id: REQ-970
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -28018,7 +28025,10 @@
   code:
   - provisa/federation/store_writer.py
   - provisa/events/lineage.py
+  - provisa/events/app_wiring.py
   - provisa/compiler
+  tests:
+  - tests/unit/test_live_mv_outcomes.py
   scenario: 'Given an MV defined by a SELECT with computed columns
 
     When it is registered

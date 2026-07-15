@@ -134,12 +134,20 @@ def make_mv_generate(
     table: str,
     columns: list[tuple[str, str]],
     run_query: Callable[[], Awaitable[list[dict]]],
+    persist: str = "replace",
+    pk_columns: list[str] | None = None,
 ) -> Callable[..., Awaitable[tuple[str, dict, str | None] | None]]:
     """Build ``MVTableProcessor.generate``: the engine runs the MV's SQL (``run_query``) and the
-    result is landed through the write face — a full ``replace``. The engine computes; the write
-    face writes. Returns (event_type, payload, content_hash) for the base to re-post + persist, or
-    None when the recomputed output matches ``prior_hash`` (REQ-981 gate — an unchanged MV does not
-    ripple its dependents)."""
+    result is applied to the MV's OWN store table under the declared PERSISTENCE outcome (REQ-965:
+    ``persist`` ∈ replace / append / upsert, via ``store_writer.persist_land``). The engine computes;
+    the write face writes. Persistence is INDEPENDENT of the downstream emit set — this returns the
+    primary ``replace`` change + content_hash for the base loop to gate (REQ-981) and, when an emit
+    set is declared, re-shape into the per-consumer emit (REQ-965). Returns None when the recomputed
+    output matches ``prior_hash`` (REQ-981 gate). ``persist`` is validated in ``persist_land``; an
+    invalid outcome, or ``upsert`` without a PK, raises (never a silent replace)."""
+    from provisa.events.outcomes import validate_persist
+
+    validate_persist(persist)
 
     async def generate(
         pending: list[dict],
@@ -157,11 +165,17 @@ def make_mv_generate(
             rows = await _apply_preprocess(preprocess, rows, ctx, columns)
             if not rows:
                 return None
-        digest = content_hash(rows)  # MVs have no PK → hash over each row's canonical form
+        digest = content_hash(rows, pk_columns)  # PK-keyed hash when the derived table has identity
         if digest == prior_hash:
             return None  # recomputed output identical → no land, no downstream ripple
-        loc = await store_writer.land(
-            store_dsn, schema=schema, table=table, columns=columns, rows=rows, change_signal="ttl"
+        loc = await store_writer.persist_land(
+            store_dsn,
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            persist=persist,
+            pk_columns=pk_columns,
         )
         return "replace", {"rows": len(rows), "landed": loc}, digest
 

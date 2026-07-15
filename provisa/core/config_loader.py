@@ -312,7 +312,7 @@ def _sqlite_lands(engine: Any, src: Source) -> bool:
     """True iff the engine reaches a sqlite source only by LANDING it into the control-plane store
     (FETCH/DIRECT → MATERIALIZED, e.g. Trino reads a PG replica), so it must be migrated in. An
     engine that ATTACHes sqlite in place (DuckDB) reads the file directly — no migration, which
-    would also fail on a non-PG control plane (CREATE SCHEMA, etc.). Engine unknown → land (legacy)."""
+    would also fail on a non-PG control plane (CREATE SCHEMA, etc.). Engine unknown → land (the default)."""
     if engine is None:
         return True
     from provisa.federation.engine import UnreachableSource
@@ -844,7 +844,7 @@ _MONOTONIC_WATERMARK_IR = frozenset({"smallint", "integer", "bigint", "timestamp
 def _validate_watermark_columns(config) -> None:  # REQ-924, REQ-925
     """A table's watermark must be one of its OWN columns (REQ-924) and monotonic (REQ-925).
 
-    The watermark is the top-level ``Table.watermark_column`` or, for legacy configs, the table's
+    The watermark is the top-level ``Table.watermark_column`` or, when set on live config, the table's
     ``live.watermark_column``. It is rejected when it names a column the table does not have, or
     when that column's type is not a monotonic (integer/temporal) IR type. Type is checked only
     when the column's ``data_type`` is known — introspection fills it for sources whose columns are

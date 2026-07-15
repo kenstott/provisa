@@ -154,7 +154,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
     second concurrent instance sees the live lease, its claim returns 0 rows, and it skips. The
     result is finalized with a FENCED COMMIT (only while this instance still owns a live lease);
     a lost lease discards the result rather than clobbering a newer refresh. When ``store`` is
-    None or the MV is ``distributed``, refresh is per-instance (unchanged legacy path)."""
+    None or the MV is ``distributed``, refresh is per-instance (the distributed tier)."""
     from provisa.mv.input_signals import gather_input_signals, input_token  # noqa: PLC0415
 
     coordinated = store is not None and mv.consistency == "shared"

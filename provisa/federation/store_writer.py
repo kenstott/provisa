@@ -31,6 +31,7 @@ from sqlalchemy.schema import CreateTable, DropTable
 from provisa.core.change_signal import APPEND, select_landing_shape
 from provisa.federation.materialize_exec import (
     _bulk_insert,
+    apply_persistence,
     build_table,
     land_append,
     land_replace,
@@ -195,6 +196,65 @@ async def reconcile_table(
         await conn.execute_core(DropTable(tbl, if_exists=True))
         await conn.execute_core(CreateTable(tbl))
         return "recreated"
+
+
+async def persist_land(
+    store_dsn: str,
+    *,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    rows: list[dict],
+    persist: str,
+    pk_columns: list[str] | None = None,
+    match_floor: float = 0.0,
+) -> str:
+    """Land an MV's recomputed ``rows`` into its OWN store table under the declared PERSISTENCE
+    outcome (REQ-965: replace / append / upsert), through the write face. This is the persistence
+    axis ONLY — decoupled from the downstream emit set (the caller emits those events separately).
+
+    ``persist`` is validated in ``apply_persistence``; an invalid outcome, or ``upsert`` without a
+    PK, raises (never a silent replace). ``match_floor`` guards upstream source drift. Returns the
+    qualified landed name. The engine is never the writer — this opens the store's own connection."""
+    check_source_drift(columns, rows, match_floor=match_floor)
+    tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
+    async with store_connection(store_dsn) as conn:
+        if schema and conn.capabilities.schemas:
+            from sqlalchemy.schema import CreateSchema
+
+            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        return await apply_persistence(
+            conn, tbl, rows, persist=persist, pk_columns=list(pk_columns or ())
+        )
+
+
+async def reconcile_mv_schema(
+    store_dsn: str,
+    *,
+    schema: str,
+    table: str,
+    sql: str,
+    input_schemas: dict[str, dict[str, str]],
+    pk_columns: list[str] | None = None,
+    dialect: str = "postgres",
+) -> tuple[str, list[tuple[str, str]]]:
+    """REQ-970: DERIVE a derived node's store-table schema from its SQL SELECT (output column
+    names + types via SQLGlot type inference over the input schemas), then converge the store table
+    to it through the EXISTING ``reconcile_table`` machinery (REQ-846) — created when absent, KEPT
+    when the shape matches, RECREATED (drop + reland on next fire) when the SELECT drifts the output
+    schema. The structural contrast with a replica, whose schema comes from its source (REQ-846).
+
+    A PK, required for persist=upsert / emit=delta (REQ-965), is the operator-declared ``pk_columns``
+    or inferred from an unambiguous GROUP BY. An undeterminable output schema raises (never a silent
+    empty/mangled table). Returns ``(reconcile_status, derived_columns)``."""
+    from provisa.events.lineage import derive_output_schema, infer_pk
+
+    columns = derive_output_schema(sql, input_schemas, dialect=dialect)
+    pk = list(pk_columns) if pk_columns else infer_pk(sql, dialect=dialect)
+    status = await reconcile_table(
+        store_dsn, schema=schema, table=table, columns=columns, pk_columns=pk or None
+    )
+    return status, columns
 
 
 def check_source_drift(

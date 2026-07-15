@@ -105,8 +105,20 @@ class TableProcessor(ABC):
         debounce_quiet: float = 0.0,
         debounce_max_delay: float | None = None,
         preprocess: Callable[..., Any] | None = None,
+        emit_outcomes: frozenset[str] | None = None,
+        subscribers_of: Callable[[str, str], list[str]] | None = None,
     ) -> None:
         self.node = node
+        # REQ-965: the declared downstream EMIT-outcome set (a subset of {replace, append, delta}),
+        # independent of the persistence outcome. None → the default single-shape path (post one event,
+        # fan to every dependent). When set, the loop resolves the demand-driven emit (declared ∩
+        # subscribed) and routes each shape to its shape-matched dependents via ``subscribers_of``.
+        if emit_outcomes is not None and subscribers_of is None:
+            raise ValueError(
+                f"{node}: a declared emit-outcome set requires a subscribers_of(node, shape) router"
+            )
+        self._emit_outcomes = emit_outcomes
+        self._subscribers_of = subscribers_of
         # REQ-957: the one optional user hook preprocess(rows, ctx) -> rows, run after produce and
         # before land. None = identity. Honored by the variant handle, which threads it into the
         # produce→land closure so it runs between the two.
@@ -260,15 +272,43 @@ class TableProcessor(ABC):
                 event_type, payload, new_hash = result
                 if new_hash is not None:
                     await queue.set_node_state(conn, self.node, content_hash=new_hash)
-                my_event = await queue.post_event(
-                    conn, source_table=self.node, event_type=event_type, payload=payload
-                )
-                await queue.fan_out(conn, my_event, self._dependents_of(self.node))
+                my_event = await self._post_and_route(conn, event_type, payload)
                 await self._emit_warns(conn, ctx, now)
                 await self._complete_all(conn, claimed, now)
         except OwnershipLost:
             return None
         return my_event
+
+    async def _post_and_route(self, conn: Any, event_type: str, payload: dict) -> int | None:
+        """Post this node's change and fan it to the right dependents. Two modes:
+
+        - default single-shape (``emit_outcomes`` None): post ONE ``event_type`` event, fan to EVERY
+          dependent (``dependents_of``) — the pre-REQ-965 behavior, unchanged.
+        - REQ-965 demand-driven emit set: resolve the shapes actually produced this fire = the
+          declared set ∩ the shapes some dependent SUBSCRIBES to (pay-per-consumer), then post each
+          produced shape and route it ONLY to its shape-matched dependents. Emit-NONE (no produced
+          shape) posts nothing — the MV persisted but tells no one. Returns the last posted event id
+          (drives drain propagation), or None when nothing was emitted."""
+        if self._emit_outcomes is None:
+            eid = await queue.post_event(
+                conn, source_table=self.node, event_type=event_type, payload=payload
+            )
+            await queue.fan_out(conn, eid, self._dependents_of(self.node))
+            return eid
+        from provisa.events import outcomes
+
+        assert self._subscribers_of is not None  # guaranteed by __init__ when emit_outcomes is set
+        subscribed = {
+            shape for shape in outcomes.EMIT_OUTCOMES if self._subscribers_of(self.node, shape)
+        }
+        last: int | None = None
+        for shape in outcomes.resolve_emitted(self._emit_outcomes, subscribed):
+            eid = await queue.post_event(
+                conn, source_table=self.node, event_type=shape, payload=payload
+            )
+            await queue.fan_out(conn, eid, self._subscribers_of(self.node, shape))
+            last = eid
+        return last
 
     async def _emit_error(
         self, conn: Any, claimed: list[int], now: datetime, payload: dict

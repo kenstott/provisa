@@ -176,6 +176,60 @@ async def apply_cdc(
     return counts
 
 
+class _UpsertEvent:
+    """A synthetic CDC insert/update event wrapping one recomputed MV row (REQ-965 persist=upsert).
+
+    An MV recompute yields the full current state as plain rows (no operation tag), so persist=upsert
+    routes them through ``apply_cdc`` as all-upsert events — maintaining the store table by PK without
+    accumulating (append) or rewriting (replace). Hard deletes are NOT synthesizable from a
+    current-state recompute (no tombstones), so this is upsert-only; a CDC input stream carries its
+    own delete events straight to ``apply_cdc``."""
+
+    __slots__ = ("operation", "row")
+
+    def __init__(self, row: dict) -> None:
+        self.operation = "upsert"
+        self.row = row
+
+
+async def apply_persistence(
+    conn: StoreConn,
+    table: Table,
+    rows: list[dict],
+    *,
+    persist: str,
+    pk_columns: list[str] | None = None,
+) -> str:
+    """Apply a recomputed MV result to its OWN store table under the declared PERSISTENCE outcome
+    (REQ-965) — the single persistence axis, independent of the emit set:
+
+    - ``replace`` -> ``land_replace`` (delete + bulk insert; a full current-state refresh).
+    - ``append``  -> ``land_append``  (accumulate the batch; upsert-by-key when a PK is given).
+    - ``upsert``  -> ``apply_cdc``    (maintain by PK; rows wrapped as all-upsert CDC events).
+
+    An invalid persistence value, or ``upsert`` without a PK, is an EXPLICIT error (never a silent
+    downgrade to replace). Returns the qualified store-table name."""
+    from provisa.events.outcomes import (
+        PERSIST_APPEND,
+        PERSIST_REPLACE,
+        PERSIST_UPSERT,
+        require_pk,
+        validate_persist,
+    )
+
+    validate_persist(persist)
+    require_pk(persist, set(), pk_columns)
+    pk = list(pk_columns or ())
+    if persist == PERSIST_REPLACE:
+        return await land_replace(conn, table, rows)
+    if persist == PERSIST_APPEND:
+        return await land_append(conn, table, rows, pk_columns=pk)
+    if persist == PERSIST_UPSERT:
+        await apply_cdc(conn, table, pk, [_UpsertEvent(r) for r in rows])
+        return _qualified(table)
+    raise ValueError(f"unhandled persistence outcome {persist!r}")  # pragma: no cover — validated
+
+
 def _pk_where(table: Table, pk_columns: list[str], row: dict) -> Any:
     from sqlalchemy import and_
 

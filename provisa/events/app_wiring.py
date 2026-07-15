@@ -27,10 +27,71 @@ everything else are real.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from provisa.events import supervisor
 from provisa.events.boot import build_processors, register_runtime, specs_from_config
+
+
+def _mv_pk(mv: Any) -> list[str]:
+    """REQ-970: the derived table's PK — operator-declared ``primary_key`` or inferred from an
+    unambiguous GROUP BY (``[]`` when neither)."""
+    from provisa.events.lineage import infer_pk
+
+    declared = list(getattr(mv, "primary_key", []) or [])
+    if declared:
+        return declared
+    return infer_pk(mv.sql) if getattr(mv, "sql", None) else []
+
+
+async def _reconcile_mv_store_schemas(
+    store_dsn: str, mvs: list[Any], mv_cols: dict[str, list[tuple[str, str]]], log: Any
+) -> None:
+    """REQ-970: reconcile each derived node's store table to its SELECT-derived output schema through
+    the existing ``reconcile_table`` machinery — created when absent, KEPT when the shape matches,
+    RECREATED (drop + reland next fire) when the SELECT drifts the output columns. Best-effort per MV
+    at this boot boundary: a store/table not yet reachable is skipped (the per-fire persist_land
+    re-creates if absent regardless)."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from provisa.federation import store_writer
+
+    for mv in mvs:
+        key = f"{mv.target_schema}.{mv.target_table}"
+        cols = mv_cols.get(key)
+        if not cols:
+            continue
+        try:
+            await store_writer.reconcile_table(
+                store_dsn,
+                schema=mv.target_schema,
+                table=mv.target_table,
+                columns=cols,
+                pk_columns=_mv_pk(mv) or None,
+            )
+        except SQLAlchemyError:
+            log.warning("event loop: MV %s store-schema reconcile skipped (store not ready)", key)
+
+
+def _build_subscribers_of(
+    mvs: list[Any], dependents_of: Callable[[str], list[str]]
+) -> Callable[[str, str], list[str]]:
+    """REQ-965: the demand-driven per-shape emit router. A producer emits a shape ONLY to the
+    dependents that subscribe to it; a dependent MV subscribes to the shapes in its ``consumes`` set
+    (default ``{replace}``). ``subscribers_of(node, shape)`` = the dependents of ``node`` whose
+    consumes set includes ``shape``."""
+    consumes_by_node = {
+        f"{m.target_schema}.{m.target_table}": set(getattr(m, "consumes", ["replace"]) or [])
+        for m in mvs
+    }
+
+    def subscribers_of(node: str, shape: str) -> list[str]:
+        return [
+            dep for dep in dependents_of(node) if shape in consumes_by_node.get(dep, {"replace"})
+        ]
+
+    return subscribers_of
 
 
 async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = True) -> int:
@@ -158,6 +219,12 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             except ValueError:
                 log.warning("event loop: MV %s has an unmapped output type — skipping", _key)
 
+        # REQ-970: reconcile each derived node's store table to its SELECT-derived schema (existing
+        # reconcile_table machinery). REQ-965: build the demand-driven per-shape emit router. Both in
+        # module helpers to keep this boot function within the complexity ceiling.
+        await _reconcile_mv_store_schemas(store_dsn, mvs, _mv_cols, log)
+        subscribers_of = _build_subscribers_of(mvs, dependents_of)
+
         def mv_columns(mv: Any) -> list[tuple[str, str]] | None:
             return _mv_cols.get(f"{mv.target_schema}.{mv.target_table}")
 
@@ -228,6 +295,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             mv_run_query=mv_run_query,
             store_schema=store_schema,
             probe_scalar=probe_scalar,
+            subscribers_of=subscribers_of,  # REQ-965 demand routing
         )
         processors = build_processors(specs, db=db, dependents_of=dependents_of)
         # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create

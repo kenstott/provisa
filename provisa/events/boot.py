@@ -52,6 +52,10 @@ class NodeSpec:
     probe_type: str = "none"  # REQ-982: input-probe method (drives the injected event shape)
     debounce_quiet: float = 0.0  # REQ-963: live-MV debounce quiet window; 0 = real-time
     debounce_max_delay: float | None = None  # REQ-963: staleness-SLA cap under churn
+    # REQ-965: the declared downstream emit-outcome SET (None = default single-shape fan-out) and the
+    # demand-driven per-shape router (dependents that subscribe to each shape).
+    emit_outcomes: frozenset[str] | None = None
+    subscribers_of: Callable[[str, str], list[str]] | None = None
 
 
 def _probe_factory(
@@ -91,6 +95,7 @@ def specs_from_config(
     mv_run_query: Callable[[Any], Any],
     store_schema: str = "mat",
     probe_scalar: Callable[[Any, Any], Any] | None = None,
+    subscribers_of: Callable[[str, str], list[str]] | None = None,
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
@@ -177,12 +182,26 @@ def specs_from_config(
         if not cols:
             continue  # output columns not resolvable yet (live introspection) — bound on a later pass
         node = f"{mv.target_schema}.{mv.target_table}"
+        # REQ-965: the operator's PERSISTENCE outcome + the derived-table PK (REQ-970: declared or
+        # GROUP-BY-inferred). require_pk fails loud if persist=upsert / emit=delta lacks a PK.
+        from provisa.events.lineage import infer_pk
+        from provisa.events.outcomes import require_pk, validate_emit
+
+        persist = getattr(mv, "persist", "replace")
+        pk_cols = list(getattr(mv, "primary_key", []) or []) or (
+            infer_pk(mv.sql) if getattr(mv, "sql", None) else []
+        )
+        declared_emit = getattr(mv, "emit", None)
+        emit_set = validate_emit(set(declared_emit)) if declared_emit is not None else None
+        require_pk(persist, emit_set or set(), pk_cols or None)
         handle = make_mv_generate(
             store_dsn,
             schema=mv.target_schema,
             table=mv.target_table,
             columns=cols,
             run_query=mv_run_query(mv),
+            persist=persist,
+            pk_columns=pk_cols or None,
         )
         # An MV's periodic cadence IS its poll job (register_runtime skips a poll node with no
         # probe_factory). Poll-mode MVs (ttl/probe/ttl_probe) recompute-to-current on cadence; the MV's
@@ -207,6 +226,8 @@ def specs_from_config(
                 probe_type="none",
                 debounce_quiet=mv.debounce_quiet,  # REQ-963
                 debounce_max_delay=mv.debounce_max_delay,  # REQ-963
+                emit_outcomes=emit_set,  # REQ-965 (None → default single-shape fan-out)
+                subscribers_of=subscribers_of if emit_set is not None else None,
             )
         )
 
@@ -233,7 +254,15 @@ def build_processors(
         if spec.kind == "source":
             processors.append(SourceTableProcessor(spec.node, land=spec.handle, **common))
         elif spec.kind == "mv":
-            processors.append(MVTableProcessor(spec.node, generate=spec.handle, **common))
+            processors.append(
+                MVTableProcessor(
+                    spec.node,
+                    generate=spec.handle,
+                    emit_outcomes=spec.emit_outcomes,  # REQ-965
+                    subscribers_of=spec.subscribers_of,  # REQ-965 demand routing
+                    **common,
+                )
+            )
         else:
             raise ValueError(f"unknown node kind {spec.kind!r} for {spec.node!r}")
     return processors

@@ -182,17 +182,17 @@ def _resolve_provider_type(source_type: str, source_id: str, tbl_meta, state) ->
     cdc-declaring RDBMS to Debezium.
     """
     from provisa.core.change_signal import (  # noqa: PLC0415
-        from_legacy_strategy,
         resolve_effective,
+        signal_from_strategy,
         to_provider,
     )
 
     live = getattr(tbl_meta, "live", None)
-    legacy_strategy = getattr(live, "strategy", None) if live is not None else None
+    live_strategy = getattr(live, "strategy", None) if live is not None else None
     table_signal = getattr(tbl_meta, "change_signal", None)
 
-    if table_signal is None and from_legacy_strategy(legacy_strategy) is None:
-        # No explicit signal and no legacy strategy: legacy source_type dispatch + REQ-824 cdc.
+    if table_signal is None and signal_from_strategy(live_strategy) is None:
+        # No explicit signal and none implied by live.strategy: source_type dispatch + REQ-824 cdc.
         if (
             source_type in _CDC_DEBEZIUM_SOURCE_TYPES
             and state.cdc_sources
@@ -209,7 +209,7 @@ def _resolve_provider_type(source_type: str, source_id: str, tbl_meta, state) ->
         ),
         None,
     )
-    sig = resolve_effective(table_signal, source_signal, legacy_strategy)
+    sig = resolve_effective(table_signal, source_signal, live_strategy)
     return to_provider(sig, source_type)
 
 
