@@ -49,6 +49,15 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
+  // Mantine Modal mounts its portal children a tick after this component's
+  // first commit, so a plain ref is still null when the init effect first runs.
+  // A callback ref flips this state when the canvas node actually attaches,
+  // retriggering the cytoscape init effect with a real container.
+  const [containerReady, setContainerReady] = useState(false);
+  const setContainerNode = useCallback((el: HTMLDivElement | null) => {
+    containerRef.current = el;
+    setContainerReady(!!el);
+  }, []);
   // nodeId → pinned model-space position (no Cytoscape lock — nodes stay draggable)
   const pinnedNodesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
@@ -455,7 +464,7 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
 
     return () => { cy.destroy(); cyRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- updateHandleBox is stable (useCallback); omitting it avoids infinite rebuild loop
-  }, [tables, relationships, domains, collapsedDomains, hiddenDomains, columnDetail, activeDomain]);
+  }, [containerReady, tables, relationships, domains, collapsedDomains, hiddenDomains, columnDetail, activeDomain]);
 
   // Toggle orphan visibility without re-running fCoSE.
   useEffect(() => {
@@ -969,7 +978,7 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
         )}
 
         {/* ── canvas ── */}
-        <div ref={containerRef} style={{ flex: 1, background: "#0f172a" }} />
+        <div ref={setContainerNode} style={{ flex: 1, background: "#0f172a" }} />
 
         {/* ── tooltip ── */}
         {tooltip.visible && (
