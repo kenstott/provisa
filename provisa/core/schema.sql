@@ -238,7 +238,31 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     materialized_definition_version TEXT,
     materialized_input_version      TEXT,
     snapshot_id     TEXT,
+    -- REQ-961/962: temporal-processing declaration (calendar-bounded windows + freshness contract).
+    calendar          TEXT,
+    grain             TEXT,
+    allowed_lateness  INTEGER NOT NULL DEFAULT 0,
+    expected_events   JSONB,          -- freshness-contract inputs; NULL = all SQL-lineage inputs
+    business_day_grain BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- REQ-962: named, shared, VERSIONED calendars — the temporal-window boundary source. Holiday/
+-- business-day set is captured per version so a replay reproduces the same window existence.
+CREATE TABLE IF NOT EXISTS calendars (
+    name                TEXT NOT NULL,
+    version             TEXT NOT NULL,
+    base_system         TEXT NOT NULL DEFAULT 'gregorian'
+                        CHECK (base_system IN ('gregorian', 'fiscal', 'retail_445')),
+    tz                  TEXT NOT NULL DEFAULT 'UTC',
+    fiscal_anchor_month INTEGER NOT NULL DEFAULT 1,
+    fiscal_anchor_day   INTEGER NOT NULL DEFAULT 1,
+    retail_anchor       DATE,
+    week_start          INTEGER NOT NULL DEFAULT 0,
+    holidays            JSONB NOT NULL DEFAULT '[]',
+    weekend             JSONB NOT NULL DEFAULT '[5, 6]',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (name, version)
 );
 
 CREATE TABLE IF NOT EXISTS mv_refresh_log (
@@ -544,5 +568,18 @@ CREATE TABLE IF NOT EXISTS node_freshness_state (
     content_hash TEXT,                   -- REQ-981: hash of the last landed replace-shaped content
     probe_token  TEXT,                   -- REQ-982: last probe token (watermark/hash/count baseline)
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Preserved snapshots (REQ-983): a point-in-time dataset MATERIALIZED-AND-SEALED because it is NOT
+-- reconstructible from current state + retained event history — the one PIT form that departs from
+-- the NRT ideal. DECLARED (never inferred) and MUST be why-tagged. The row is the immutability
+-- record — a second seal of the same name fails loud. Mirrors schema_org.preserved_snapshots.
+CREATE TABLE IF NOT EXISTS preserved_snapshots (
+    name         TEXT PRIMARY KEY,       -- the declared snapshot identity
+    reason       TEXT NOT NULL,          -- REQ-983 mandatory why-tag (non-reconstructible reason)
+    location     TEXT NOT NULL,          -- the sealed store-table location
+    content_hash TEXT NOT NULL,          -- the frozen content digest (immutability proof)
+    window_id    TEXT,                   -- optional calendar-addressable period this snapshot froze
+    sealed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

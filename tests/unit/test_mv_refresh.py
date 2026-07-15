@@ -187,9 +187,10 @@ class TestRefreshMV:
         registry = MVRegistry()
         registry.register(mv)
 
-        # Table does not exist — raise on the "SELECT 1 FROM" existence probe.
+        # Table does not exist — raise on the target existence probe
+        # (SELECT * FROM {target} LIMIT 0); the "_shape" probe only runs when it exists.
         def side_effect(sql):
-            if "SELECT 1 FROM" in sql:
+            if "LIMIT 0" in sql and "_shape" not in sql:
                 raise Exception("TABLE_NOT_FOUND")
 
         engine = _FakeEngine(count=42, side_effect=side_effect)

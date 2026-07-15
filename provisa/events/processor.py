@@ -23,22 +23,31 @@ the base. The variants supply only ``handle``:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from provisa.events import injector, queue
+from provisa.events.calendars import Window
+from provisa.events.deadlines import DeadlineSource, LiveDebounce
+from provisa.events.freshness_contract import evaluate_contract
+from provisa.freshness.subject import FreshnessSubject
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _as_utc(dt: datetime) -> datetime:
-    """Normalize a stored ``created_at`` to a UTC-aware datetime. events.created_at is DateTime(tz):
-    Postgres returns it aware, SQLite returns it naive — coerce the naive case to UTC (its authored
-    zone) so debounce comparisons against _now() are dialect-safe."""
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+def _forced_payload(pending: list[dict]) -> dict | None:
+    """REQ-968: the payload of the first FORCED event in the claimed set (``payload.forced``), or
+    None when none of the claimed events is a forced regen. Carries ``reason``/``scope`` and, for a
+    window regen, ``window_id`` + ``as_of``."""
+    for e in pending:
+        payload = e.get("payload") or {}
+        if payload.get("forced"):
+            return payload
+    return None
 
 
 class OwnershipLost(Exception):
@@ -47,11 +56,53 @@ class OwnershipLost(Exception):
     the loop treats it as a no-op (the peer now owns the work)."""
 
 
+class PreprocessError(Exception):
+    """REQ-957: a user ``preprocess`` hook raised — a FATAL data outcome, not an infra crash. The loop
+    catches it, emits an ``error`` event about the node, short-circuits the land, and fans the error to
+    dependents (poison propagation). Distinct from any other exception, which is a genuine crash that
+    MUST propagate for at-least-once resume (REQ-960)."""
+
+
+@dataclass
+class NodeContext:
+    """REQ-957: the read-only processing envelope handed to a node's ``preprocess(rows, ctx)`` hook.
+
+    Carries what the hook may inspect — node identity/kind, the claimed-event summary, the landing
+    columns/schema, the forced-refresh flag, and the last-landed content hash — plus the ``warn``
+    channel. ``window``/``window_id``/``frontier`` are the REQ-958 windowed-processing peg: the
+    half-open ``[start, end)`` and its calendar-addressable id, set at fire from the node's deadline
+    source (None for a live/real-time node with no calendar peg). ``produce`` reads as-of
+    ``window[1]`` (window.end) to stay deterministic/replayable, and the result lands keyed on
+    ``window_id``. ``warn`` is the ONLY mutation: it records advisory reasons the loop emits as a
+    non-fatal ``warn`` event; every data field is informational."""
+
+    node: str
+    kind: str
+    claimed: list[dict]
+    prior_hash: str | None
+    forced: bool = False
+    columns: list[tuple[str, str]] | None = None
+    window: tuple[datetime, datetime] | None = None
+    window_id: str | None = None
+    frontier: dict[str, Any] | None = None
+    warns: list[str] = field(default_factory=list)
+
+    def warn(self, reasons: str | Iterable[str]) -> None:
+        """REQ-957: record advisory reason(s). Non-fatal — the loop emits a single ``warn`` event and
+        still lands the rows. Accepts a string or an iterable of strings."""
+        if isinstance(reasons, str):
+            self.warns.append(reasons)
+        else:
+            self.warns.extend(reasons)
+
+
 class TableProcessor(ABC):
     """Base: owns a node, its lifecycle, and the common claim→handle→complete→re-post loop.
 
     ``dependents_of(node) -> list[str]`` is the SQLGlot-derived fan-out target set (lineage). ``name``
     is the lease owner. The queue runs on the control-plane ``Database`` (``db``)."""
+
+    kind = "node"  # REQ-957: node kind surfaced on NodeContext (overridden: source / mv)
 
     def __init__(
         self,
@@ -65,8 +116,28 @@ class TableProcessor(ABC):
         probe_type: str | None = None,
         debounce_quiet: float = 0.0,
         debounce_max_delay: float | None = None,
+        deadline_source: DeadlineSource | None = None,
+        expected_events: list[str] | None = None,
+        freshness_of: Callable[[str], FreshnessSubject] | None = None,
+        preprocess: Callable[..., Any] | None = None,
+        emit_outcomes: frozenset[str] | None = None,
+        subscribers_of: Callable[[str, str], list[str]] | None = None,
     ) -> None:
         self.node = node
+        # REQ-965: the declared downstream EMIT-outcome set (a subset of {replace, append, delta}),
+        # independent of the persistence outcome. None → the default single-shape path (post one event,
+        # fan to every dependent). When set, the loop resolves the demand-driven emit (declared ∩
+        # subscribed) and routes each shape to its shape-matched dependents via ``subscribers_of``.
+        if emit_outcomes is not None and subscribers_of is None:
+            raise ValueError(
+                f"{node}: a declared emit-outcome set requires a subscribers_of(node, shape) router"
+            )
+        self._emit_outcomes = emit_outcomes
+        self._subscribers_of = subscribers_of
+        # REQ-957: the one optional user hook preprocess(rows, ctx) -> rows, run after produce and
+        # before land. None = identity. Honored by the variant handle, which threads it into the
+        # produce→land closure so it runs between the two.
+        self._preprocess = preprocess
         self.change_signal = change_signal
         self.watermark_column = watermark_column
         self.probe_type = (
@@ -75,11 +146,26 @@ class TableProcessor(ABC):
         self._dependents_of = dependents_of
         self._db = db
         self.name = name
-        # REQ-963 live-MV debounce. quiet<=0 → fire immediately (real-time, no debounce). Otherwise a
-        # burst of fan-ins waits for min(last_change+quiet, first_change+max_delay) and collapses into
-        # one recompute; max_delay is the mandatory staleness cap that guarantees a fire under churn.
-        self._debounce_quiet = debounce_quiet
-        self._debounce_max_delay = debounce_max_delay
+        # The claim's deadline SOURCE (REQ-961/962/963): periodic (calendar boundary + lateness) or
+        # live (trailing-edge debounce with mandatory cap) — both feed the SAME REQ-959 claim
+        # primitive; only the deadline derivation differs. An explicit ``deadline_source`` wins;
+        # otherwise a ``debounce_quiet > 0`` builds the live source (mandatory max_delay cap). None =
+        # real-time / event-driven fire.
+        if deadline_source is not None:
+            self._deadline: DeadlineSource | None = deadline_source
+        elif debounce_quiet > 0:
+            if debounce_max_delay is None:
+                raise ValueError(
+                    f"{node}: REQ-963 live debounce (quiet>0) requires a max_delay staleness cap"
+                )
+            self._deadline = LiveDebounce(quiet=debounce_quiet, max_delay=debounce_max_delay)
+        else:
+            self._deadline = None
+        # REQ-961 freshness contract: the declared expected-events input list (verified fresh-through
+        # window.end at fire) + the per-input freshness-state reader. None = no contract (live/event
+        # nodes verify nothing). Requires a window (periodic) to be meaningful.
+        self._expected_events = expected_events
+        self._freshness_of = freshness_of
 
     # -- lifecycle -------------------------------------------------------------
     async def stop(self) -> None:
@@ -152,14 +238,22 @@ class TableProcessor(ABC):
             await queue.heartbeat(
                 conn, dependent_table=self.node, processor_name=self.name, now=now
             )
-        else:
-            # REQ-963 debounce gate: peek the unclaimed work WITHOUT claiming; if the quiet/max_delay
-            # deadline has not passed, defer (leave it unclaimed so more fan-ins coalesce). quiet<=0
-            # fires immediately. Deferring here is what collapses a burst into one recompute.
+        elif not await queue.has_forced_pending(conn, dependent_table=self.node):
+            # REQ-968: a forced-regen event BYPASSES the defer/existence gates below — claim it
+            # immediately (an on-demand replay recomputes regardless of change, quiet, or holiday).
+            # Only NON-forced new work is gated.
+            # REQ-962 existence gate: a business-day grain on a holiday has NO window → the periodic
+            # MV deterministically does not fire and raises no alarm. Applies only to NEW work; a
+            # resumed in-flight claim already opened its window.
+            if self._deadline is not None and self._deadline.gated(now):
+                return None
+            # REQ-958/963 window/debounce gate: peek the unclaimed fan-ins WITHOUT claiming; if the
+            # deadline (calendar boundary+lateness, or debounce quiet/max_delay) has not passed, defer
+            # (leave them unclaimed so more fan-ins coalesce into ONE recompute — fan-in collapse).
             peeked = await queue.peek_pending(conn, dependent_table=self.node)
             if not peeked:
                 return None
-            if not self._debounce_ready(peeked, now):
+            if not self._ready(peeked, now):
                 return None
         newly = await queue.claim(
             conn,
@@ -172,12 +266,52 @@ class TableProcessor(ABC):
         if not claimed:
             return None
         pending = await queue.get_events(conn, claimed)
+        # REQ-957 pre-produce poison short-circuit (a built-in, NOT the hook): a claimed upstream
+        # ``error`` event skips produce entirely — this node emits its own error and fans it forward
+        # (poison propagation) without landing. Distinct from a preprocess-raised error.
+        if any(e["event_type"] == "error" for e in pending):
+            upstream = sorted({e["source_table"] for e in pending if e["event_type"] == "error"})
+            return await self._emit_error(
+                conn, claimed, now, {"poison": True, "upstream": upstream}
+            )
         prior = await queue.get_node_state(conn, self.node)
         prior_hash = prior["content_hash"] if prior else None
+        # REQ-968: a forced regen skips the output gate and, for a WINDOW scope, pegs the recompute to
+        # the addressed period instead of the just-closed window.
+        forced_payload = _forced_payload(pending)
+        # REQ-958: open the processing window this fire is pegged to (calendar-addressable for a
+        # periodic node; None for a live node with no peg). ``produce`` reads as-of window.end and the
+        # result lands keyed on window_id.
+        window = self._forced_window(forced_payload) if forced_payload else None
+        if window is None and self._deadline is not None:
+            window = self._deadline.window(now)
+        ctx = NodeContext(
+            node=self.node,
+            kind=self.kind,
+            claimed=[
+                {"id": e["id"], "event_type": e["event_type"], "source_table": e["source_table"]}
+                for e in pending
+            ],
+            prior_hash=prior_hash,
+            forced=forced_payload is not None,
+            window=(window.start, window.end) if window is not None else None,
+            window_id=window.window_id if window is not None else None,
+        )
+        # REQ-961: the freshness CONTRACT — a PULL against per-input freshness at fire time (NOT
+        # event receipt). A listed input not fresh-through window.end is an outage → warn/hold, no
+        # seal, no ripple (never a silent skip). Only meaningful with a window (periodic).
+        if window is not None and self._expected_events is not None:
+            if await self._contract_outage(conn, window, claimed, now, ctx):
+                return None
         # LAND runs inside ``handle`` against the STORE database — outside the control-plane
         # transaction below (different DB, no shared txn) and idempotent on the node key, so a
         # re-run after a crash re-lands harmlessly. (event_type, payload, content_hash|None) | None.
-        result = await self.handle(pending, prior_hash=prior_hash)
+        # REQ-957: preprocess runs inside handle (after produce, before land); a raise surfaces as
+        # PreprocessError → fatal error event; ctx.warn accumulates advisory reasons on ctx.
+        try:
+            result = await self.handle(pending, prior_hash=prior_hash, ctx=ctx)
+        except PreprocessError as exc:
+            return await self._emit_error(conn, claimed, now, {"error": str(exc)})
         # REQ-960: post + fan_out + complete run AFTER land in ONE control-plane transaction,
         # post-BEFORE-complete. A crash between land and this commit re-claims and re-runs (the
         # land is idempotent), so the downstream ripple is never lost and the claim never orphaned.
@@ -186,52 +320,145 @@ class TableProcessor(ABC):
         try:
             async with conn.transaction():
                 if result is None:
-                    # Gate hit (content unchanged / nothing landed): no ripple, but the claimed
-                    # events are processed — complete them so they do not re-fire.
+                    # Gate hit / preprocess []-no-op (content unchanged / nothing landed): no ripple,
+                    # but advisory warns still emit and the claimed events are completed.
+                    await self._emit_warns(conn, ctx, now)
                     await self._complete_all(conn, claimed, now)
                     return None
                 event_type, payload, new_hash = result
                 if new_hash is not None:
                     await queue.set_node_state(conn, self.node, content_hash=new_hash)
-                my_event = await queue.post_event(
-                    conn, source_table=self.node, event_type=event_type, payload=payload
-                )
-                await queue.fan_out(conn, my_event, self._dependents_of(self.node))
+                my_event = await self._post_and_route(conn, event_type, payload)
+                await self._emit_warns(conn, ctx, now)
                 await self._complete_all(conn, claimed, now)
         except OwnershipLost:
             return None
         return my_event
 
-    def _debounce_deadline(self, peeked: list[dict]) -> datetime | None:
-        """REQ-963 trailing-edge debounce deadline = min(last_change + quiet, first_change + max_delay),
-        or None when debounce is off (quiet<=0 → fire immediately). ``first_change``/``last_change`` are
-        the earliest/latest ``created_at`` of the coalescing fan-ins. max_delay is the mandatory cap:
-        under continuous churn the quiet window never elapses, so the cap guarantees a fire and is the
-        staleness SLA. Absent max_delay falls back to first+quiet so a deadline always exists."""
-        if self._debounce_quiet <= 0:
-            return None
-        stamps = [_as_utc(p["created_at"]) for p in peeked if p.get("created_at") is not None]
-        if not stamps:
-            return None  # no timestamps to reason about → do not defer
-        first, last = min(stamps), max(stamps)
-        quiet_deadline = last + timedelta(seconds=self._debounce_quiet)
-        if self._debounce_max_delay is None:
-            return quiet_deadline
-        return min(quiet_deadline, first + timedelta(seconds=self._debounce_max_delay))
+    async def _post_and_route(self, conn: Any, event_type: str, payload: dict) -> int | None:
+        """Post this node's change and fan it to the right dependents. Two modes:
 
-    def _debounce_ready(self, peeked: list[dict], now: datetime) -> bool:
-        """True when the debounce deadline has passed (or debounce is off) → fire now; False → defer so
-        more fan-ins coalesce into the same recompute (REQ-963)."""
-        deadline = self._debounce_deadline(peeked)
+        - default single-shape (``emit_outcomes`` None): post ONE ``event_type`` event, fan to EVERY
+          dependent (``dependents_of``) — the pre-REQ-965 behavior, unchanged.
+        - REQ-965 demand-driven emit set: resolve the shapes actually produced this fire = the
+          declared set ∩ the shapes some dependent SUBSCRIBES to (pay-per-consumer), then post each
+          produced shape and route it ONLY to its shape-matched dependents. Emit-NONE (no produced
+          shape) posts nothing — the MV persisted but tells no one. Returns the last posted event id
+          (drives drain propagation), or None when nothing was emitted."""
+        if self._emit_outcomes is None:
+            eid = await queue.post_event(
+                conn, source_table=self.node, event_type=event_type, payload=payload
+            )
+            await queue.fan_out(conn, eid, self._dependents_of(self.node))
+            return eid
+        from provisa.events import outcomes
+
+        assert self._subscribers_of is not None  # guaranteed by __init__ when emit_outcomes is set
+        subscribed = {
+            shape for shape in outcomes.EMIT_OUTCOMES if self._subscribers_of(self.node, shape)
+        }
+        last: int | None = None
+        for shape in outcomes.resolve_emitted(self._emit_outcomes, subscribed):
+            eid = await queue.post_event(
+                conn, source_table=self.node, event_type=shape, payload=payload
+            )
+            await queue.fan_out(conn, eid, self._subscribers_of(self.node, shape))
+            last = eid
+        return last
+
+    async def _emit_error(
+        self, conn: Any, claimed: list[int], now: datetime, payload: dict
+    ) -> int | None:
+        """REQ-957: emit this node's ``error`` event and fan it to dependents (poison propagation),
+        then complete the claimed set — all in one REQ-960 CAS-guarded transaction (post-before-
+        complete, no land). Returns the error event id (so a drain keeps propagating), or None when a
+        peer had reclaimed the work (OwnershipLost)."""
+        try:
+            async with conn.transaction():
+                event_id = await queue.post_event(
+                    conn, source_table=self.node, event_type="error", payload=payload
+                )
+                await queue.fan_out(conn, event_id, self._dependents_of(self.node))
+                await self._complete_all(conn, claimed, now)
+        except OwnershipLost:
+            return None
+        return event_id
+
+    async def _emit_warns(self, conn: Any, ctx: NodeContext, now: datetime) -> None:
+        """REQ-957: if the hook called ctx.warn, post ONE advisory ``warn`` event about the node
+        (recorded in the event log for a quality MV to read; not fanned — a warn does not poison
+        dependents). Runs inside the same commit transaction as the land's ripple. ``now`` is unused
+        here but kept for a uniform commit-helper signature."""
+        del now
+        if ctx.warns:
+            await queue.post_event(
+                conn, source_table=self.node, event_type="warn", payload={"reasons": ctx.warns}
+            )
+
+    def _forced_window(self, forced_payload: dict) -> Window | None:
+        """REQ-968: the calendar-addressable window a forced WINDOW-scope regen recomputes. Built from
+        the payload's ``as_of`` instant (a deterministic instant inside the period) via the deadline
+        source. Fails LOUD when the addressed window does not exist (a live node has no address, or a
+        business-day grain on a holiday) or when the built window's id disagrees with the requested
+        ``window_id`` — a mismatched address is never silently recomputed as a different period."""
+        as_of = forced_payload.get("as_of")
+        if as_of is None or self._deadline is None:
+            return None  # a source/node-scope forced regen has no window peg
+        window = self._deadline.window_for_instant(datetime.fromisoformat(as_of))
+        if window is None:
+            raise ValueError(
+                f"{self.node}: REQ-968 window regen — no calendar window exists for as_of {as_of}"
+            )
+        requested = forced_payload.get("window_id")
+        if requested is not None and window.window_id != requested:
+            raise ValueError(
+                f"{self.node}: REQ-968 window regen — as_of {as_of} resolves to window "
+                f"{window.window_id!r}, not the requested {requested!r}"
+            )
+        return window
+
+    def _ready(self, peeked: list[dict], now: datetime) -> bool:
+        """True when the deadline SOURCE says fire now (deadline passed, or no source → real-time);
+        False → defer so more fan-ins coalesce into the SAME recompute (REQ-958 fan-in collapse /
+        REQ-961 calendar boundary / REQ-963 debounce)."""
+        if self._deadline is None:
+            return True
+        deadline = self._deadline.deadline(now, peeked)
         return deadline is None or now >= deadline
 
     def _claim_deadline(self, now: datetime) -> datetime | None:
-        """The per-claim fire-by stamped on the claim for the REQ-959 reaper. For a debounced live MV
-        it is now + max_delay (a stuck recompute past it is reclaimable); None otherwise (heartbeat
-        lapse is the only reclaim trigger)."""
-        if self._debounce_quiet > 0 and self._debounce_max_delay is not None:
-            return now + timedelta(seconds=self._debounce_max_delay)
-        return None
+        """The per-claim fire-by stamped on the claim for the REQ-959 reaper — derived from the
+        deadline source (calendar boundary+lateness, or now+max_delay); None with no source."""
+        return None if self._deadline is None else self._deadline.claim_deadline(now)
+
+    async def _contract_outage(
+        self, conn: Any, window: Window, claimed: list[int], now: datetime, ctx: NodeContext
+    ) -> bool:
+        """REQ-961: verify the expected-events freshness contract by a PULL against per-input
+        freshness at fire time. Every listed input fresh-through window.end → trusted (return False,
+        proceed to seal). Any not fresh-through → an OUTAGE: emit a warn (expected-but-absent) and
+        HOLD — complete the claim with NO land and NO ripple, never a silent skip (return True)."""
+        assert self._expected_events is not None  # guarded by the caller
+        if self._freshness_of is None:
+            raise ValueError(
+                f"{self.node}: an expected-events freshness contract requires a freshness_of reader"
+            )
+        result = evaluate_contract(
+            self._expected_events, self._freshness_of, window.end.timestamp()
+        )
+        if result.trusted:
+            return False
+        ctx.warn(
+            f"REQ-961 outage: inputs not fresh-through {window.window_id}: "
+            f"{', '.join(result.outages)}"
+        )
+        try:
+            async with conn.transaction():
+                await self._emit_warns(conn, ctx, now)
+                await self._complete_all(conn, claimed, now)
+        except OwnershipLost:
+            return True
+        return True
 
     async def _complete_all(self, conn: Any, claimed: list[int], now: datetime) -> None:
         """Complete every claimed item under the REQ-959 ownership CAS. A failed CAS on ANY item means
@@ -250,17 +477,20 @@ class TableProcessor(ABC):
 
     @abstractmethod
     async def handle(
-        self, pending: list[dict], *, prior_hash: str | None
+        self, pending: list[dict], *, prior_hash: str | None, ctx: NodeContext | None = None
     ) -> tuple[str, dict, str | None] | None:
         """Do the node's work from its claimed events (land / generate). Return ``(event_type, payload,
         content_hash)`` when the node's table changed → re-post; None when unchanged. ``content_hash``
         is the digest of the landed replace-shaped content (None for append/CDC deltas, which are new
         by definition). ``prior_hash`` is the last land's digest — a replace matching it returns None
-        (the REQ-981 output gate)."""
+        (the REQ-981 output gate). ``ctx`` is the REQ-957 envelope; when a preprocess hook is set the
+        variant threads it into the produce→land closure (raising surfaces as PreprocessError)."""
 
 
 class SourceTableProcessor(TableProcessor):
     """Lands a data source's rows into the materialization store (the write face)."""
+
+    kind = "source"
 
     def __init__(self, *args: Any, land: Callable[..., Any] | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -269,17 +499,26 @@ class SourceTableProcessor(TableProcessor):
         self._land = land  # async (pending, *, prior_hash) -> (event_type, payload, hash) | None
 
     async def handle(
-        self, pending: list[dict], *, prior_hash: str | None
+        self, pending: list[dict], *, prior_hash: str | None, ctx: NodeContext | None = None
     ) -> tuple[str, dict, str | None] | None:
         """Coalesce the claimed events, land the source's rows via the write face, and report the
         landing shape as this node's change event (append/delta/replace) with the content hash — or
-        None if nothing landed or (replace) the content matched ``prior_hash`` (REQ-981 gate)."""
+        None if nothing landed or (replace) the content matched ``prior_hash`` (REQ-981 gate). When a
+        preprocess hook is set it is threaded into the land closure (REQ-957: after fetch, before
+        land)."""
         assert self._land is not None, "SourceTableProcessor.handle requires a land callable"
-        return await self._land(pending, prior_hash=prior_hash)
+        forced = ctx.forced if ctx is not None else False  # REQ-968: bypass the output gate
+        if self._preprocess is None:
+            return await self._land(pending, prior_hash=prior_hash, forced=forced)
+        return await self._land(
+            pending, prior_hash=prior_hash, ctx=ctx, preprocess=self._preprocess, forced=forced
+        )
 
 
 class MVTableProcessor(TableProcessor):
     """Generates an MV by running its SQL on the engine and landing the result."""
+
+    kind = "mv"
 
     def __init__(self, *args: Any, generate: Callable[..., Any], **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -288,9 +527,16 @@ class MVTableProcessor(TableProcessor):
         )
 
     async def handle(
-        self, pending: list[dict], *, prior_hash: str | None
+        self, pending: list[dict], *, prior_hash: str | None, ctx: NodeContext | None = None
     ) -> tuple[str, dict, str | None] | None:
         """Generate the MV (engine runs its SQL) and land the result; report the resulting change as
         this node's event (replace) with the content hash — or None if the recomputed output matched
-        ``prior_hash`` (REQ-981 gate: an unchanged MV does not ripple its dependents)."""
-        return await self._generate(pending, prior_hash=prior_hash)
+        ``prior_hash`` (REQ-981 gate: an unchanged MV does not ripple its dependents). When a
+        preprocess hook is set it is threaded into the generate closure (REQ-957: after the MV SQL,
+        before land)."""
+        forced = ctx.forced if ctx is not None else False  # REQ-968: bypass the output gate
+        if self._preprocess is None:
+            return await self._generate(pending, prior_hash=prior_hash, forced=forced)
+        return await self._generate(
+            pending, prior_hash=prior_hash, ctx=ctx, preprocess=self._preprocess, forced=forced
+        )

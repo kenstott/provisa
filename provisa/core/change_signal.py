@@ -92,9 +92,10 @@ def to_provider(sig: str, source_type: str) -> str:
     return source_type
 
 
-# REQ-932 migration: legacy live.strategy → change_signal. Read-through only, until live.strategy
-# is deleted (Phase 4). "poll" is watermark polling → the ttl poll signal.
-_LEGACY_STRATEGY_TO_SIGNAL = {
+# A table's live.strategy implies a change_signal when it declares no explicit one — the two are
+# related axes (live.strategy picks the live-data transport; change_signal picks the refresh
+# cadence). "poll" is watermark polling → the ttl poll signal.
+_STRATEGY_TO_SIGNAL = {
     "poll": "ttl",
     "native": "native",
     "debezium": "debezium",
@@ -102,19 +103,16 @@ _LEGACY_STRATEGY_TO_SIGNAL = {
 }
 
 
-def from_legacy_strategy(strategy: str | None) -> str | None:
-    """Map a legacy live.strategy value to its change_signal equivalent (None if absent/unknown)."""
-    return _LEGACY_STRATEGY_TO_SIGNAL.get(strategy or "")
+def signal_from_strategy(strategy: str | None) -> str | None:
+    """The change_signal implied by a table's live.strategy (None if absent/unknown)."""
+    return _STRATEGY_TO_SIGNAL.get(strategy or "")
 
 
 def resolve_effective(
     table_signal: str | None,
     source_signal: str | None,
-    legacy_strategy: str | None = None,
+    live_strategy: str | None = None,
 ) -> str:
-    """Effective change signal at runtime: explicit table → legacy live.strategy → source → default.
-
-    The legacy_strategy read-through keeps pre-REQ-932 configs (which set live.strategy but no
-    change_signal) working until the field is removed in Phase 4.
-    """
-    return resolve(table_signal or from_legacy_strategy(legacy_strategy), source_signal)
+    """Effective change signal at runtime: explicit table change_signal → the signal implied by the
+    table's live.strategy → source default → global default."""
+    return resolve(table_signal or signal_from_strategy(live_strategy), source_signal)

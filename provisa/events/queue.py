@@ -111,6 +111,23 @@ async def peek_pending(conn: Any, *, dependent_table: str) -> list[dict]:
     return [{"event_id": r[0], "created_at": r[1]} for r in result.fetchall()]
 
 
+async def has_forced_pending(conn: Any, *, dependent_table: str) -> bool:
+    """REQ-968: True when ANY unclaimed work item for ``dependent_table`` came from a forced-regen
+    event (``payload.forced``). A forced event BYPASSES the REQ-958/963 defer/existence gates — the
+    processor claims it immediately (an on-demand replay recomputes regardless of change/quiet). Read
+    WITHOUT claiming, alongside ``peek_pending``. Portable: pulls the small unclaimed set and inspects
+    the JSON payload in Python (dialect-agnostic — no JSON-path SQL)."""
+    result = await conn.execute_core(
+        select(events.c.payload)
+        .join(event_status, event_status.c.event_id == events.c.id)
+        .where(
+            event_status.c.dependent_table == dependent_table,
+            event_status.c.claim_status == "unclaimed",
+        )
+    )
+    return any((row[0] or {}).get("forced") for row in result.fetchall())
+
+
 async def resume_claims(conn: Any, *, dependent_table: str, processor_name: str) -> list[int]:
     """REQ-959 reassert-on-restart: the event ids this processor still owns (claim_status='claimed',
     processor_name = self) so a returning owner resumes its in-flight claim instead of waiting for a

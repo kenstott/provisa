@@ -17,6 +17,8 @@ as the query engine so clients can send arbitrary JOINs and WHERE clauses.
 
 # Requirements: REQ-127, REQ-128, REQ-363
 
+# complexity-gate: allow-ble=1 reason="classify() fail-opens on unparseable SQL (REQ-127) to a regex-based catalog-name scan so a malformed introspection query is still intercepted rather than crashing the pgwire session"
+
 from __future__ import annotations
 
 import logging
@@ -26,7 +28,7 @@ from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
     _INTERCEPT_SCHEMAS,
 )
-from provisa.pgwire.catalog_rewrite import _rewrite_for_duckdb
+from provisa.pgwire.catalog_rewrite import _rewrite_for_duckdb, next_txid
 from provisa.pgwire.catalog_data import (
     _KNOWN_SETTINGS,
     _TYPEINFO,
@@ -44,8 +46,12 @@ _TXN_RE = re.compile(
     re.IGNORECASE,
 )
 
+_SHOW_MIN_PARTS = 2
+
 _SCALAR_FN_RE = re.compile(
-    r"^\s*SELECT\s+(?:pg_catalog\.)?(current_user|session_user|current_database\(\)|current_schema\(\)|version\(\)|pg_backend_pid\(\))\s*$",
+    r"^\s*SELECT\s+(?:pg_catalog\.)?"
+    r"(current_user|session_user|current_database\(\)|current_schema\(\)|version\(\)"
+    r"|pg_backend_pid\(\)|pg_is_in_recovery\(\)|txid_current\(\))\s*$",
     re.IGNORECASE,
 )
 
@@ -102,6 +108,8 @@ _SCALAR_NAMES = frozenset(
         "current_schema",
         "version",
         "pg_backend_pid",
+        "pg_is_in_recovery",
+        "txid_current",
     }
 )
 
@@ -167,7 +175,7 @@ def _handle_show(sql: str):
     if re.match(r"^\s*SHOW\s+TRANSACTION\s+ISOLATION\s+LEVEL\s*$", normalized, re.IGNORECASE):
         return QueryResult(rows=[("read committed",)], column_names=["transaction_isolation"])
     parts = normalized.split()
-    if len(parts) < 2:
+    if len(parts) < _SHOW_MIN_PARTS:
         return QueryResult(rows=[], column_names=[])
     setting = parts[1].lower()
     if setting == "all":
@@ -191,7 +199,28 @@ def _handle_scalar(sql: str, role_id: str):
         return QueryResult(rows=[("public",)], column_names=["current_schema"])
     if "pg_backend_pid()" in s:
         return QueryResult(rows=[(0,)], column_names=["pg_backend_pid"])
+    if "pg_is_in_recovery()" in s:
+        # Provisa is never a replica.
+        return QueryResult(rows=[(False,)], column_names=["pg_is_in_recovery"])
+    if "txid_current()" in s:
+        return QueryResult(rows=[(next_txid(),)], column_names=["txid_current"])
     return None
+
+
+def _handle_txid(sql: str):
+    """Answer the JDBC/DataGrip status probe combining pg_is_in_recovery + txid_current.
+
+    `SELECT CASE WHEN pg_is_in_recovery() THEN NULL ELSE CAST(...txid_current()...) END
+    AS current_txid` resolves to a single-column bigint without reaching the engine.
+    """
+    from provisa.executor.result import QueryResult
+
+    lower = sql.lower()
+    if "pg_is_in_recovery" not in lower or "txid_current" not in lower:
+        return None
+    m = re.search(r"\bAS\s+(\w+)\s*$", sql.strip(), re.IGNORECASE)
+    col = m.group(1) if m else "current_txid"
+    return QueryResult(rows=[(next_txid(),)], column_names=[col], column_types=["BIGINT"])
 
 
 def _handle_current_setting(sql: str):
@@ -239,6 +268,12 @@ def answer(sql: str, role_id: str, state):  # REQ-532
 
     if _SCALAR_FN_RE.match(stripped):
         result = _handle_scalar(stripped, role_id)
+        if result is not None:
+            return result
+
+    lower_stripped = stripped.lower()
+    if "pg_is_in_recovery" in lower_stripped and "txid_current" in lower_stripped:
+        result = _handle_txid(stripped)
         if result is not None:
             return result
 

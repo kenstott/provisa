@@ -98,6 +98,25 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     debounce_quiet: float = 0.0
     debounce_max_delay: float | None = None
 
+    # REQ-965: the TWO independent operator-declared MV outcomes.
+    #  - persist: how the recompute is applied to the MV's OWN store table (replace/append/upsert).
+    #  - emit: the SET of downstream event shapes this MV may emit (subset of replace/append/delta);
+    #    None keeps the default single-shape fan-out. Emission is demand-driven (pay-per-consumer).
+    #  - consumes: which upstream shapes THIS MV subscribes to (drives a producer's demand routing);
+    #    default {replace} = recompute-on-any-input-change.
+    # REQ-970: primary_key is the operator-declared PK for the derived table (required for
+    # persist=upsert / emit=delta when not inferable from a GROUP BY).
+    persist: str = "replace"
+    emit: list[str] | None = None
+    consumes: list[str] = field(default_factory=lambda: ["replace"])
+    primary_key: list[str] = field(default_factory=list)
+
+    # REQ-969 (MAY): incremental maintenance — apply upstream deltas to prior landed state instead of
+    # a full recompute. Operator-declared per MV; feasible only for an incrementalizable SQL shape
+    # with a PK (a declared-but-infeasible incremental MV is an explicit error, never a silent full
+    # recompute). Default False = recompute-to-current (the REQ-966 NRT baseline).
+    incremental: bool = False
+
     # Runtime state
     status: MVStatus = MVStatus.STALE
     last_refresh_at: float | None = None

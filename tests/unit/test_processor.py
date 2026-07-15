@@ -42,7 +42,7 @@ class _Proc(TableProcessor):
         self.seen = None
         self.seen_prior_hash = "<unset>"
 
-    async def handle(self, pending, *, prior_hash):
+    async def handle(self, pending, *, prior_hash, ctx=None):
         self.seen = pending
         self.seen_prior_hash = prior_hash
         return self._result
@@ -143,10 +143,10 @@ async def test_consume_kafka_posts_delta_per_message(tmp_path):
 async def test_variants_delegate_handle(tmp_path):
     async with _db(tmp_path) as db:
 
-        async def land(pending, *, prior_hash):
+        async def land(pending, *, prior_hash, forced=False):
             return ("append", {"n": len(pending)}, None)
 
-        async def generate(pending, *, prior_hash):
+        async def generate(pending, *, prior_hash, forced=False):
             return ("replace", {"g": 1}, "mvhash")
 
         src = SourceTableProcessor(
@@ -179,9 +179,9 @@ class _CrashProc(_Proc):
         super().__init__(*a, **k)
         self.handle_calls = 0
 
-    async def handle(self, pending, *, prior_hash):
+    async def handle(self, pending, *, prior_hash, ctx=None):
         self.handle_calls += 1
-        return await super().handle(pending, prior_hash=prior_hash)
+        return await super().handle(pending, prior_hash=prior_hash, ctx=ctx)
 
 
 @pytest.mark.asyncio
@@ -256,12 +256,12 @@ async def test_req959_ownership_cas_aborts_ripple_on_peer_takeover(tmp_path):
         # A handle that, DURING its run (after land), lets a peer reclaim + re-own the work —
         # models a stuck-but-alive owner whose deadline passed mid-compute.
         class _StolenProc(_Proc):
-            async def handle(self, pending, *, prior_hash):
+            async def handle(self, pending, *, prior_hash, ctx=None):
                 async with db.acquire() as c2:
                     future = datetime.now(timezone.utc) + timedelta(days=1)
                     await queue.reclaim(c2, now=future, heartbeat_cutoff=future)
                     await queue.claim(c2, dependent_table="mv.a", processor_name="peer", now=future)
-                return await super().handle(pending, prior_hash=prior_hash)
+                return await super().handle(pending, prior_hash=prior_hash, ctx=ctx)
 
         proc = _StolenProc(
             "mv.a",
@@ -304,21 +304,25 @@ def _debounce_proc(db, *, quiet, max_delay, result, deps=None):
 
 
 def test_debounce_deadline_math():
-    """min(last_change + quiet, first_change + max_delay); quiet<=0 → None (fire immediately)."""
+    """min(last_change + quiet, first_change + max_delay); quiet<=0 → None (fire immediately).
+    REQ-963: the max_delay cap is MANDATORY once quiet>0 (LiveDebounce enforces it)."""
     from datetime import datetime, timedelta, timezone
 
-    t0 = datetime(2026, 7, 8, tzinfo=timezone.utc)
-    p = _debounce_proc(None, quiet=10, max_delay=None, result=None)
-    # no debounce
-    p0 = _debounce_proc(None, quiet=0, max_delay=5, result=None)
-    assert p0._debounce_deadline([{"created_at": t0}]) is None
-    # trailing-edge: last + quiet
+    from provisa.events.deadlines import LiveDebounce
+
+    now = datetime(2026, 7, 8, tzinfo=timezone.utc)
+    t0 = now
+    # no debounce → fire immediately
+    assert LiveDebounce(quiet=0, max_delay=5).deadline(now, [{"created_at": t0}]) is None
+    # trailing-edge: last + quiet (cap far out)
     peeked = [{"created_at": t0}, {"created_at": t0 + timedelta(seconds=2)}]
-    assert p._debounce_deadline(peeked) == t0 + timedelta(seconds=12)
-    # max_delay cap wins under a long quiet tail
-    pc = _debounce_proc(None, quiet=10, max_delay=5, result=None)
+    assert LiveDebounce(quiet=10, max_delay=300).deadline(now, peeked) == t0 + timedelta(seconds=12)
+    # max_delay cap wins under a long quiet tail → first + max_delay
     peeked2 = [{"created_at": t0}, {"created_at": t0 + timedelta(seconds=8)}]
-    assert pc._debounce_deadline(peeked2) == t0 + timedelta(seconds=5)  # first + max_delay
+    assert LiveDebounce(quiet=10, max_delay=5).deadline(now, peeked2) == t0 + timedelta(seconds=5)
+    # quiet>0 without a cap fails loud
+    with pytest.raises(ValueError, match="max_delay"):
+        LiveDebounce(quiet=10, max_delay=0)
 
 
 @pytest.mark.asyncio

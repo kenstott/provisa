@@ -148,6 +148,7 @@ async def test_append_shape_is_never_gated(tmp_path):
         watermark_column="id",
         pk_columns=["id"],
         fetch=fetch,
+        probe_type="watermark",  # REQ-982: authoritative → append
     )
     result = await land([{"e": 1}], prior_hash="anything")
     assert result is not None and result[0] == "append" and result[2] is None

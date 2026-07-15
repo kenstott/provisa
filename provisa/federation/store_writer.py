@@ -31,6 +31,7 @@ from sqlalchemy.schema import CreateTable, DropTable
 from provisa.core.change_signal import APPEND, select_landing_shape
 from provisa.federation.materialize_exec import (
     _bulk_insert,
+    apply_persistence,
     build_table,
     land_append,
     land_replace,
@@ -197,6 +198,65 @@ async def reconcile_table(
         return "recreated"
 
 
+async def persist_land(
+    store_dsn: str,
+    *,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    rows: list[dict],
+    persist: str,
+    pk_columns: list[str] | None = None,
+    match_floor: float = 0.0,
+) -> str:
+    """Land an MV's recomputed ``rows`` into its OWN store table under the declared PERSISTENCE
+    outcome (REQ-965: replace / append / upsert), through the write face. This is the persistence
+    axis ONLY — decoupled from the downstream emit set (the caller emits those events separately).
+
+    ``persist`` is validated in ``apply_persistence``; an invalid outcome, or ``upsert`` without a
+    PK, raises (never a silent replace). ``match_floor`` guards upstream source drift. Returns the
+    qualified landed name. The engine is never the writer — this opens the store's own connection."""
+    check_source_drift(columns, rows, match_floor=match_floor)
+    tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
+    async with store_connection(store_dsn) as conn:
+        if schema and conn.capabilities.schemas:
+            from sqlalchemy.schema import CreateSchema
+
+            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        return await apply_persistence(
+            conn, tbl, rows, persist=persist, pk_columns=list(pk_columns or ())
+        )
+
+
+async def reconcile_mv_schema(
+    store_dsn: str,
+    *,
+    schema: str,
+    table: str,
+    sql: str,
+    input_schemas: dict[str, dict[str, str]],
+    pk_columns: list[str] | None = None,
+    dialect: str = "postgres",
+) -> tuple[str, list[tuple[str, str]]]:
+    """REQ-970: DERIVE a derived node's store-table schema from its SQL SELECT (output column
+    names + types via SQLGlot type inference over the input schemas), then converge the store table
+    to it through the EXISTING ``reconcile_table`` machinery (REQ-846) — created when absent, KEPT
+    when the shape matches, RECREATED (drop + reland on next fire) when the SELECT drifts the output
+    schema. The structural contrast with a replica, whose schema comes from its source (REQ-846).
+
+    A PK, required for persist=upsert / emit=delta (REQ-965), is the operator-declared ``pk_columns``
+    or inferred from an unambiguous GROUP BY. An undeterminable output schema raises (never a silent
+    empty/mangled table). Returns ``(reconcile_status, derived_columns)``."""
+    from provisa.events.lineage import derive_output_schema, infer_pk
+
+    columns = derive_output_schema(sql, input_schemas, dialect=dialect)
+    pk = list(pk_columns) if pk_columns else infer_pk(sql, dialect=dialect)
+    status = await reconcile_table(
+        store_dsn, schema=schema, table=table, columns=columns, pk_columns=pk or None
+    )
+    return status, columns
+
+
 def check_source_drift(
     columns: list[tuple[str, str]], rows: list[dict], *, match_floor: float = 0.0
 ) -> float:
@@ -233,16 +293,19 @@ async def land(
     watermark_column: str | None = None,
     pk_columns: list[str] | None = None,
     match_floor: float = 0.0,
+    shape: str | None = None,
 ) -> str:
     """Land ``rows`` into ``schema.table`` of the materialization store, through the write face.
 
-    The shape is chosen from ``change_signal`` (REQ-932): a poll signal with a watermark AMENDS
-    (append the watermark-filtered delta); every other batch is a full REPLACE. Hard-delete CDC is
-    the separate streaming path (subscriptions.cdc_landing). ``match_floor`` guards against upstream
-    source drift — below it the land is refused (see ``check_source_drift``). Returns the qualified
-    landed name. The engine is never the writer — this opens the store's own connection."""
+    ``shape`` (REQ-982) is the authoritative landing shape when the caller resolved it from a
+    ``probe_type`` (the event loop). When None, the shape is derived from ``change_signal`` (REQ-932):
+    a poll signal with a watermark AMENDS (append the watermark-filtered delta); every other batch is
+    a full REPLACE. Hard-delete CDC is the separate streaming path (subscriptions.cdc_landing).
+    ``match_floor`` guards against upstream source drift — below it the land is refused (see
+    ``check_source_drift``). Returns the qualified landed name. The engine is never the writer — this
+    opens the store's own connection."""
     check_source_drift(columns, rows, match_floor=match_floor)
-    shape = select_landing_shape(change_signal, watermark_column)
+    shape = shape if shape is not None else select_landing_shape(change_signal, watermark_column)
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
         if schema and conn.capabilities.schemas:
@@ -250,5 +313,6 @@ async def land(
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
         if shape == APPEND:
-            return await land_append(conn, tbl, rows)
+            # REQ-960: pass the key so the append is an idempotent upsert-by-key, not a blind append.
+            return await land_append(conn, tbl, rows, pk_columns=tuple(pk_columns or ()))
         return await land_replace(conn, tbl, rows)  # REPLACE, or a push signal's snapshot seed

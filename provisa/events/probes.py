@@ -109,6 +109,11 @@ def resolve_probe_type(
                 f"probe_type {explicit!r} not supported by source type {source_type!r}; "
                 f"supported: {sorted(caps)}"
             )
+        # REQ-982: the watermark type IS the cursor probe → it requires a watermark_column to filter
+        # WHERE wm > cursor. Fail loud at config time — never silently degrade an append node to a
+        # full replace because its cursor input is missing.
+        if explicit == WATERMARK and not has_watermark:
+            raise ValueError("probe_type=watermark requires a watermark_column")
         return explicit
 
     # default per capability class

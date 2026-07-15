@@ -235,6 +235,24 @@ def test_is_key_column_usage_pk_columns():
     assert rows[0][0] == "id"
 
 
+def test_is_referential_constraints_populated():
+    ctx = _make_ctx_with_fk()
+    state = _make_state(ctx)
+    db = _build_catalog_db("alice", state)
+    rows = db.execute(
+        "SELECT constraint_name, unique_constraint_name, match_option, update_rule, delete_rule "
+        "FROM _is_referential_constraints"
+    ).fetchall()
+    db.close()
+    assert len(rows) == 1
+    con_name, uniq_name, match_opt, upd, dele = rows[0]
+    assert "breed_id" in con_name
+    assert uniq_name == "pk_breeds"
+    assert match_opt == "NONE"
+    assert upd == "NO ACTION"
+    assert dele == "NO ACTION"
+
+
 def test_classify_copy_is_passthrough():
     assert classify("COPY dogs FROM STDIN") == "PASS_THROUGH"
 

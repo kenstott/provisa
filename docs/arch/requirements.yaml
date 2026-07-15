@@ -27349,7 +27349,7 @@
   related_reqs:
   - REQ-951
 - id: REQ-957
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27373,6 +27373,8 @@
   code:
   - provisa/events/processor.py
   - provisa/events/handlers.py
+  tests:
+  - tests/unit/test_live_core_loop.py
   scenario: 'Given an MV node with a preprocess(rows, ctx) hook
 
     When the node is claimed and produce yields rows
@@ -27395,7 +27397,7 @@
   - REQ-940
   - REQ-939
 - id: REQ-958
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27424,7 +27426,10 @@
   code:
   - provisa/events/lineage.py
   - provisa/events/processor.py
+  - provisa/events/deadlines.py
   - provisa/federation/store_writer.py
+  tests:
+  - tests/unit/test_live_temporal.py
   scenario: 'Given an MV whose lineage requires inputs A and B
 
     And a processing window with a deadline
@@ -27450,7 +27455,7 @@
   - REQ-939
   - REQ-932
 - id: REQ-959
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27476,6 +27481,9 @@
   - provisa/events/queue.py
   - provisa/events/supervisor.py
   - provisa/events/processor.py
+  tests:
+  - tests/unit/test_live_core_loop.py
+  - tests/unit/test_processor.py
   scenario: 'Given a claim owned by a worker with a deadline and optional heartbeat
 
     When the owner crashes and its heartbeat lapses
@@ -27498,7 +27506,7 @@
   - REQ-960
   - REQ-941
 - id: REQ-960
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27520,11 +27528,14 @@
   - provisa/events/processor.py
   - provisa/federation/store_writer.py
   - provisa/federation/materialize_exec.py
+  tests:
+  - tests/unit/test_live_core_loop.py
+  - tests/unit/test_processor.py
   related_reqs:
   - REQ-959
   - REQ-958
 - id: REQ-961
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27554,8 +27565,11 @@
     than by an event.
   code:
   - provisa/events/processor.py
-  - provisa/federation/freshness_gate.py
+  - provisa/events/freshness_contract.py
+  - provisa/events/deadlines.py
   - provisa/events/lineage.py
+  tests:
+  - tests/unit/test_live_temporal.py
   scenario: 'Given a daily-sales MV with expected-events list [transactions] and a business-day calendar
 
     When the day is a business day and transactions are fresh-through-end-of-day
@@ -27580,7 +27594,7 @@
   - REQ-962
   - REQ-932
 - id: REQ-962
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27605,8 +27619,12 @@
     from one shared calendar registry, and holidays become a deterministic "no window" rather than a silent
     gap or a spurious deadline alarm.
   code:
-  - provisa/events/supervisor.py
+  - provisa/events/calendars.py
+  - provisa/events/deadlines.py
   - provisa/events/processor.py
+  - provisa/events/boot.py
+  tests:
+  - tests/unit/test_live_temporal.py
   scenario: 'Given an MV declaring (fiscal-us calendar, quarterly grain)
 
     When fiscal Q1 closes
@@ -27633,7 +27651,7 @@
   - REQ-961
   - REQ-959
 - id: REQ-963
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27662,8 +27680,11 @@
     calendar-derived one.
   code:
   - provisa/events/processor.py
+  - provisa/events/deadlines.py
   - provisa/events/queue.py
-  - provisa/events/supervisor.py
+  tests:
+  - tests/unit/test_live_temporal.py
+  - tests/unit/test_processor.py
   scenario: 'Given a live MV over 10 frequently-changing tables with debounce quiet=2s max_delay=30s
 
     When a burst of changes arrives across several tables within 2s
@@ -27686,7 +27707,7 @@
   - REQ-961
   - REQ-958
 - id: REQ-964
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 0. Architecture & Design Principles
@@ -27713,6 +27734,18 @@
     because lineage is derived (cannot drift), outputs are addressable and deterministically replayable,
     and trust is explicit via the freshness contract, the whole data estate is auditable as a function
     of its declared inputs and rules.'
+  code:
+  - provisa/events/lineage.py
+  - provisa/events/boot.py
+  - provisa/events/handlers.py
+  tests:
+  - tests/unit/test_live_selfdescribing.py
+  scenario: 'Given an MV declared as SQL over shop.orders
+    When it is registered
+    Then lineage, fan-out, output schema, and PK are DERIVED from the SQL (nothing hand-orchestrated)
+    Given an MV whose SQL reads now()/current_timestamp/random()
+    Then registration is rejected — proof-obligation #1 (transform determinism) is enforced
+    mechanically so materialization stays addressable and replayable'
   related_reqs:
   - REQ-939
   - REQ-957
@@ -27720,7 +27753,7 @@
   - REQ-961
   - REQ-962
 - id: REQ-965
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27768,10 +27801,17 @@
     DAG exactly as the operator chose and can afford, or the estate errors explicitly rather than degrading
     silently.'
   code:
+  - provisa/events/outcomes.py
   - provisa/events/handlers.py
   - provisa/events/processor.py
+  - provisa/events/boot.py
+  - provisa/events/app_wiring.py
   - provisa/federation/materialize_exec.py
+  - provisa/federation/store_writer.py
   - provisa/core/change_signal.py
+  - provisa/mv/models.py
+  tests:
+  - tests/unit/test_live_mv_outcomes.py
   scenario: 'Given an MV whose operator declares persistence=replace and event=append
 
     When it fires
@@ -27804,7 +27844,7 @@
   - REQ-964
   - REQ-983
 - id: REQ-966
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 0. Architecture & Design Principles
@@ -27847,6 +27887,16 @@
     real-time, split into retireable-with-investment vs permanent-business-truth, and reducing that distance
     is a matter of retiring resource-driven config as infrastructure allows (never re-authoring process)
     down to the irreducible mandate floor.
+  code:
+  - provisa/events/boot.py
+  - provisa/events/lineage.py
+  - provisa/events/processor.py
+  tests:
+  - tests/unit/test_live_selfdescribing.py
+  scenario: 'Given an MV declared with ONLY its SQL (every other knob defaulted)
+    When a source it reads changes
+    Then lineage auto-derives, fan-out auto-wires, and the MV reprocesses in near-real-time
+    (replace-persist, single-shape emit, real-time fire) with no configuration beyond its SQL'
   related_reqs:
   - REQ-964
   - REQ-939
@@ -27857,7 +27907,7 @@
   - REQ-963
   - REQ-965
 - id: REQ-967
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 0. Architecture & Design Principles
@@ -27887,6 +27937,17 @@
     on — they are declared MVs over the streams the platform already emits, so they inherit the same governance,
     lineage, and reprocessing guarantees as the business data, and new operational views are added by
     declaration rather than engineering.
+  code:
+  - provisa/events/handlers.py
+  - provisa/events/processor.py
+  tests:
+  - tests/unit/test_live_selfdescribing.py
+  scenario: 'Given the warn/error events the machinery emits
+    When a DQ scorecard is declared as an MV over that stream
+    Then quality is a query over the emissions — no bespoke DQ subsystem
+    Given a replace-persist upstream that emits an append per fire
+    When a history MV persists that append
+    Then it accumulates each snapshot into an SCD-2 time series — no bespoke history subsystem'
   related_reqs:
   - REQ-964
   - REQ-965
@@ -27895,7 +27956,7 @@
   - REQ-960
   - REQ-966
 - id: REQ-968
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27920,7 +27981,9 @@
   - provisa/events/processor.py
   - provisa/events/injector.py
   - provisa/events/queue.py
-  - provisa/events/lineage.py
+  - provisa/events/deadlines.py
+  tests:
+  - tests/unit/test_live_regen_snapshots.py
   scenario: 'Given a sealed daily window 2026-07-08 with a corrected upstream
 
     When an operator forces regen by window-id 2026-07-08
@@ -27943,7 +28006,7 @@
   - REQ-965
   - REQ-967
 - id: REQ-969
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -27967,9 +28030,13 @@
     making delta emission affordable and incremental propagation real — declared per MV where feasible,
     erroring explicitly where not, never silently degrading.
   code:
-  - provisa/events/processor.py
   - provisa/events/handlers.py
+  - provisa/events/lineage.py
+  - provisa/events/boot.py
   - provisa/federation/materialize_exec.py
+  - provisa/mv/models.py
+  tests:
+  - tests/unit/test_live_regen_snapshots.py
   scenario: 'Given an incrementally-maintained MV over a fact table with a PK
 
     When the fact posts a delta of changed rows
@@ -27987,7 +28054,7 @@
   - REQ-964
   - REQ-932
 - id: REQ-970
-  status: proposed
+  status: complete
   since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
@@ -28010,7 +28077,10 @@
   code:
   - provisa/federation/store_writer.py
   - provisa/events/lineage.py
+  - provisa/events/app_wiring.py
   - provisa/compiler
+  tests:
+  - tests/unit/test_live_mv_outcomes.py
   scenario: 'Given an MV defined by a SELECT with computed columns
 
     When it is registered
@@ -28301,7 +28371,8 @@
   - REQ-932
   - REQ-902
 - id: REQ-981
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 9. Live Data & Events
   category: Live Data & Events
   priority: MUST
@@ -28325,6 +28396,10 @@
   - provisa/events/content_hash.py
   - provisa/events/queue.py
   - provisa/core/schema_org.py
+  tests:
+  - tests/unit/test_content_hash.py
+  - tests/unit/test_live_change_gates.py
+  - tests/unit/test_handlers.py
   related_reqs:
   - REQ-941
   - REQ-855
@@ -28351,7 +28426,8 @@
 
     '
 - id: REQ-982
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 9. Live Data & Events
   category: Live Data & Events
   priority: MUST
@@ -28384,7 +28460,15 @@
   - provisa/events/boot.py
   - provisa/events/app_wiring.py
   - provisa/events/probes.py
+  - provisa/events/handlers.py
+  - provisa/federation/residency.py
+  - provisa/federation/store_writer.py
   - provisa/federation/freshness_gate.py
+  tests:
+  - tests/unit/test_probes.py
+  - tests/unit/test_injector.py
+  - tests/unit/test_probe_type_config_validation.py
+  - tests/unit/test_live_change_gates.py
   related_reqs:
   - REQ-941
   - REQ-855
@@ -28412,7 +28496,8 @@
 
     '
 - id: REQ-983
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q4
   group: 9. Live Data & Events
   category: Derived / MV Processor
@@ -28452,6 +28537,12 @@
     is declared
 
     '
+  code:
+  - provisa/events/snapshots.py
+  - provisa/core/schema_org.py
+  - provisa/federation/materialize_exec.py
+  tests:
+  - tests/unit/test_live_regen_snapshots.py
   competitive_position:
     status: ahead
     rationale: dbt/Airflow snapshots are imperative jobs with no distinction between derivable and frozen

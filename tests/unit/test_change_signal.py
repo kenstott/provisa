@@ -15,7 +15,7 @@ from provisa.core.change_signal import (
     PUSH_SIGNALS,
     REPLACE,
     VALID_SIGNALS,
-    from_legacy_strategy,
+    signal_from_strategy,
     is_poll,
     is_push,
     resolve,
@@ -98,22 +98,22 @@ class TestToProvider:
 
 class TestLegacyStrategyShim:
     def test_poll_maps_to_ttl(self):
-        assert from_legacy_strategy("poll") == "ttl"
+        assert signal_from_strategy("poll") == "ttl"
 
     @pytest.mark.parametrize("s", ["native", "debezium", "kafka"])
     def test_push_strategies_map_identically(self, s):
-        assert from_legacy_strategy(s) == s
+        assert signal_from_strategy(s) == s
 
     def test_unknown_and_none(self):
-        assert from_legacy_strategy(None) is None
-        assert from_legacy_strategy("bogus") is None
+        assert signal_from_strategy(None) is None
+        assert signal_from_strategy("bogus") is None
 
 
 class TestResolveEffective:
     def test_explicit_table_signal_wins_over_legacy(self):
         assert resolve_effective("probe", None, "debezium") == "probe"
 
-    def test_legacy_strategy_read_through(self):
+    def test_strategy_implied_signal(self):
         assert resolve_effective(None, None, "debezium") == "debezium"
         assert resolve_effective(None, None, "poll") == "ttl"
 
