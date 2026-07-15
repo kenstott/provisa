@@ -72,8 +72,15 @@ $RuntimePy = Join-Path $RuntimeDst 'python.exe'
 Write-Host '[build-sfx] Installing provisa + deps into the native runtime...' -ForegroundColor Cyan
 & $RuntimePy -m pip install --upgrade pip --quiet
 if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
-& $RuntimePy -m pip install --quiet $RepoRoot uvicorn
+# aiosqlite + greenlet are explicit belt-and-suspenders: the native tier's control plane is
+# sqlite+aiosqlite and SQLAlchemy async needs greenlet. They are declared runtime deps, but naming
+# them here guarantees the bundle has them even if dependency resolution ever regresses (a missing
+# aiosqlite crashed the native API at startup once).
+& $RuntimePy -m pip install --quiet $RepoRoot uvicorn aiosqlite greenlet
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
+# Fail the build loudly if the critical native-tier driver did not land.
+& $RuntimePy -c "import aiosqlite" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "aiosqlite missing from the bundled native runtime after install" }
 
 # Place the built UI where ui_server resolves it: <site-packages>\static.
 $Site = & $RuntimePy -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"
@@ -166,17 +173,17 @@ var
 procedure InitializeWizard;
 begin
   { Demo first: it is a complete, curated experience, so choosing it locks a known-good deployment
-    (embedded DuckDB + built-in telemetry) and the remaining choice pages are skipped. }
+    (embedded database + built-in telemetry) and the remaining choice pages are skipped. }
   DemoPage := CreateInputOptionPage(wpWelcome,
     'Demo', 'Try Provisa with sample data and a guided tour.',
-    'The demo is self-contained (embedded DuckDB, built-in telemetry). Check it to skip the deployment options below.',
+    'The demo is self-contained (embedded database, built-in telemetry). Check it to skip the deployment options below.',
     False, False);
   DemoPage.Add('Install the demo dataset and guided tour');
 
   EnginePage := CreateInputOptionPage(DemoPage.ID,
     'Federation engine', 'Choose how Provisa federates your data.', '',
     True, False);
-  EnginePage.Add('DuckDB - embedded, zero-config (recommended)');
+  EnginePage.Add('Embedded database - zero-config (recommended)');
   EnginePage.Add('External engine (PostgreSQL, Trino, Oracle, SQL Server, ...)');
   EnginePage.SelectedValueIndex := 0;
 

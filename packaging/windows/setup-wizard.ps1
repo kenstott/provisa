@@ -52,7 +52,7 @@ $grpEngine.Size = New-Object System.Drawing.Size(510, 150)
 $form.Controls.Add($grpEngine)
 
 $rbDuck = New-Object System.Windows.Forms.RadioButton
-$rbDuck.Text = 'DuckDB — native, zero-config (recommended)'
+$rbDuck.Text = 'Embedded database — zero-config (recommended)'
 $rbDuck.Location = New-Object System.Drawing.Point(15, 25)
 $rbDuck.Size = New-Object System.Drawing.Size(480, 22)
 $rbDuck.Checked = $true

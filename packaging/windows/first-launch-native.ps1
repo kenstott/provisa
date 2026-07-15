@@ -20,14 +20,34 @@ function Write-Ok   { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor G
 New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
 
 # ── Stage the native runtime ──────────────────────────────────────────────────
+# Re-stages when the installed bundle's VERSION differs from what is already staged, so an UPGRADE
+# actually replaces the runtime. The old "skip if python.exe exists" logic pinned users to their
+# first install's runtime forever — an install that shipped a missing/updated dependency never took
+# effect (e.g. aiosqlite added in a later build was never delivered).
 function Stage-Runtime {
-  if (Test-Path (Join-Path $RuntimeDst 'python.exe')) { return }
-  if (-not (Test-Path (Join-Path $RuntimeSrc 'python.exe'))) {
+  $dstPy      = Join-Path $RuntimeDst 'python.exe'
+  $srcPy      = Join-Path $RuntimeSrc 'python.exe'
+  $bundleVer  = if (Test-Path (Join-Path $ScriptDir 'VERSION')) {
+    (Get-Content (Join-Path $ScriptDir 'VERSION') -Raw).Trim()
+  } else { '' }
+  $stagedVerF = Join-Path $RuntimeDst '.runtime-version'
+  $stagedVer  = if (Test-Path $stagedVerF) { (Get-Content $stagedVerF -Raw).Trim() } else { '' }
+
+  # Up to date: a runtime exists and (no version info OR the versions match) → keep it.
+  if ((Test-Path $dstPy) -and (($bundleVer -eq '') -or ($bundleVer -eq $stagedVer))) { return }
+
+  if (-not (Test-Path $srcPy)) {
     Write-Err "Native runtime not found beside the installer. This installer was not built with the native tier."
     exit 1
   }
-  Write-Info "Staging native runtime to $RuntimeDst..."
+  if (Test-Path $RuntimeDst) {
+    Write-Info "Upgrading native runtime to bundle $bundleVer (was $stagedVer)..."
+    Remove-Item $RuntimeDst -Recurse -Force
+  } else {
+    Write-Info "Staging native runtime to $RuntimeDst..."
+  }
   Copy-Item -Path $RuntimeSrc -Destination $RuntimeDst -Recurse -Force
+  if ($bundleVer -ne '') { Set-Content -Path $stagedVerF -Value $bundleVer -Encoding ASCII }
   Write-Ok 'Native runtime staged.'
 }
 
@@ -53,7 +73,7 @@ function Resolve-Deployment {
 
   Write-Host ''
   Write-Host 'Federation engine' -ForegroundColor White
-  Write-Host '  1) DuckDB - native (recommended)'
+  Write-Host '  1) Embedded database (recommended)'
   Write-Host '  2) Trino - Docker (container tier)'
   Write-Host '  3) External engine'
   switch ((Read-Host 'Choose 1-3 [1]')) {
@@ -122,7 +142,7 @@ function Show-NextSteps {
   Write-Host ''
   Write-Host 'Next steps — extend your native install' -ForegroundColor White
   Write-Host '═══════════════════════════════════════════════════'
-  Write-Host 'You installed the native tier: local query engine (core + DuckDB).'
+  Write-Host 'You installed the native tier: local query engine (core + embedded database).'
   Write-Host 'The federation engine (Trino), the observability stack, and the demo'
   Write-Host 'data pack are NOT part of the native tier. Add them via layered installers:'
   Write-Host ''
