@@ -5,6 +5,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProvisaHome = Join-Path $env:USERPROFILE '.provisa'
 $ConfigPath  = Join-Path $ProvisaHome 'config.yaml'
 $RuntimeDir  = Join-Path $ProvisaHome 'runtime'
@@ -12,6 +13,12 @@ $RuntimePy   = Join-Path $RuntimeDir 'python.exe'
 $NativeDir   = Join-Path $ProvisaHome 'native'
 $LogDir      = Join-Path $ProvisaHome '.logs'
 $PidFile     = Join-Path $ProvisaHome '.native.pid'
+
+# Native demo (REQ-979): mock servers + config bundled beside this script under {app}.
+$DemoConfig  = Join-Path $ScriptDir 'config\provisa-install.yaml'
+$DemoPidFile = Join-Path $ProvisaHome '.demo.pid'
+$PetPort     = 18080
+$GqlPort     = 4000
 
 function Write-Info { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Cyan }
 function Write-Err  { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Red }
@@ -61,7 +68,49 @@ function Native-Env {
   if ($EngineUrl)      { $e['PROVISA_ENGINE_URL'] = $EngineUrl }
   if ($MaterializeUrl) { $e['PROVISA_MATERIALIZE_URL'] = $MaterializeUrl }
   if ($OtlpEndpoint)   { $e['OTEL_EXPORTER_OTLP_ENDPOINT'] = $OtlpEndpoint }
+  # Demo: load the bundled native demo config (engine: duckdb, auth: none → no setup wizard),
+  # mark the run as a demo, and point the OpenAPI/GraphQL sources at the local host mock servers.
+  # The relative ./demo/files/*.sqlite paths in the config resolve against the app CWD ({app}).
+  if ($Demo) {
+    $e['PROVISA_CONFIG']    = $DemoConfig
+    $e['PROVISA_DEMO']      = '1'
+    $e['PETSTORE_BASE_URL'] = "http://localhost:$PetPort/api/v3"
+    $e['GRAPHQL_DEMO_URL']  = "http://localhost:$GqlPort/graphql"
+  }
   return $e
+}
+
+# ── Demo mock servers (native, no Docker) ─────────────────────────────────────
+# Petstore (OpenAPI) and shelter (GraphQL) run as host Python processes off the bundled runtime,
+# replacing the petstore-mock / graphql-demo containers. Federated with two embedded SQLite files.
+function Start-DemoServers {
+  $petDir = Join-Path $ScriptDir 'demo\petstore_server'
+  $gqlDir = Join-Path $ScriptDir 'demo\graphql_server'
+  if (-not (Test-Path (Join-Path $petDir 'server.py'))) {
+    Write-Err "Demo assets not bundled beside the installer; cannot start the demo."
+    return
+  }
+  $pet = Start-Process -FilePath $RuntimePy `
+    -ArgumentList @('-m','uvicorn','server:app','--app-dir',$petDir,'--host','127.0.0.1','--port',"$PetPort") `
+    -WindowStyle Hidden -PassThru `
+    -RedirectStandardOutput (Join-Path $LogDir 'demo-petstore.log') `
+    -RedirectStandardError  (Join-Path $LogDir 'demo-petstore.err.log')
+  $gql = Start-Process -FilePath $RuntimePy `
+    -ArgumentList @('-m','uvicorn','server:app','--app-dir',$gqlDir,'--host','127.0.0.1','--port',"$GqlPort") `
+    -WindowStyle Hidden -PassThru `
+    -RedirectStandardOutput (Join-Path $LogDir 'demo-graphql.log') `
+    -RedirectStandardError  (Join-Path $LogDir 'demo-graphql.err.log')
+  "$($pet.Id)`n$($gql.Id)" | Set-Content -Path $DemoPidFile -Encoding ASCII
+  Write-Info "Demo mock servers started (petstore :$PetPort, graphql :$GqlPort)."
+}
+
+function Stop-DemoServers {
+  if (Test-Path $DemoPidFile) {
+    foreach ($procId in (Get-Content $DemoPidFile)) {
+      if ($procId) { Stop-Process -Id ([int]$procId) -Force -ErrorAction SilentlyContinue }
+    }
+    Remove-Item $DemoPidFile -Force -ErrorAction SilentlyContinue
+  }
 }
 
 function Native-Running {
@@ -79,17 +128,22 @@ function Start-Native {
   New-Item -ItemType Directory -Path $LogDir, $NativeDir -Force | Out-Null
   if (Native-Running) { Write-Info 'Provisa is already running.'; return }
 
+  # The demo mock servers must be up before the API loads the demo config (its OpenAPI/GraphQL
+  # sources introspect the live endpoints at startup).
+  if ($Demo) { Start-DemoServers }
+
   $baseEnv = Native-Env
   foreach ($k in $baseEnv.Keys) { Set-Item -Path "Env:$k" -Value $baseEnv[$k] }
 
-  $api = Start-Process -FilePath $RuntimePy `
+  # CWD = {app}: the demo config references ./demo/files/*.sqlite relative to the working dir.
+  $api = Start-Process -FilePath $RuntimePy -WorkingDirectory $ScriptDir `
     -ArgumentList @('-m','uvicorn','provisa.api.app:create_app','--factory','--host','0.0.0.0','--port',"$ApiPort") `
     -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $LogDir 'native-api.log') `
     -RedirectStandardError  (Join-Path $LogDir 'native-api.err.log')
 
   $env:PROVISA_API_URL = "http://localhost:$ApiPort"
-  $ui = Start-Process -FilePath $RuntimePy `
+  $ui = Start-Process -FilePath $RuntimePy -WorkingDirectory $ScriptDir `
     -ArgumentList @('-m','uvicorn','provisa.ui_server:app','--host','0.0.0.0','--port',"$UiPort") `
     -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $LogDir 'native-ui.log') `
@@ -110,6 +164,7 @@ function Stop-Native {
     }
     Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
   }
+  Stop-DemoServers
   Write-Ok 'Provisa has been shut down.'
 }
 
@@ -117,10 +172,31 @@ function Status-Native {
   if (Native-Running) { Write-Ok 'Provisa is running.' } else { Write-Info 'Provisa is not running.' }
 }
 
+# Poll the UI port until it serves before opening the browser. A fixed sleep opened the
+# browser to a connection error (the API+UI take several seconds to bind), which read as
+# "nothing happened". Wait up to ~40s for a real response, then open.
+function Wait-UiReady {
+  $deadline = (Get-Date).AddSeconds(40)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "http://localhost:$UiPort/" | Out-Null
+      return $true
+    } catch {
+      # A 4xx/5xx still means the server is up and answering — good enough to open.
+      if ($_.Exception.Response) { return $true }
+      Start-Sleep -Milliseconds 500
+    }
+  }
+  return $false
+}
+
 function Open-Native {
   # Open at ?tour=1 when the demo was installed so the guided tour auto-starts
   # (App.tsx reads the query param), mirroring the macOS launcher.
   $url = if ($Demo) { "http://localhost:$UiPort/?tour=1" } else { "http://localhost:$UiPort" }
+  if (-not (Wait-UiReady)) {
+    Write-Err "UI did not become ready on port $UiPort within 40s; opening anyway."
+  }
   Write-Info "Opening $url"
   Start-Process $url
 }
@@ -139,7 +215,7 @@ function Show-Help {
 
 $command = if ($args.Count -gt 0) { $args[0] } else { 'help' }
 switch ($command) {
-  'start'   { Start-Native; if ($AutoOpen) { Start-Sleep 2; Open-Native } }
+  'start'   { Start-Native; if ($AutoOpen) { Open-Native } }
   'stop'    { Stop-Native }
   'restart' { Stop-Native; Start-Native }
   'status'  { Status-Native }

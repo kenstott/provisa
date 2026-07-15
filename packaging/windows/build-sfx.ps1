@@ -92,6 +92,26 @@ Copy-Item -Path (Join-Path $UiDist '*') -Destination $StaticDst -Recurse -Force
 Remove-Item $Tmp -Recurse -Force
 Write-Host '[build-sfx] Native runtime bundled.' -ForegroundColor Green
 
+# ── Demo assets (native, no-Docker) ───────────────────────────────────────────
+# The native demo runs the petstore (OpenAPI) and shelter (GraphQL) mock servers as host
+# Python processes off the bundled runtime (strawberry/starlette/uvicorn are runtime deps),
+# federated with two embedded SQLite files. provisa-install.yaml is the native demo config
+# (engine: duckdb, auth: none). Bundled under {app}\demo and {app}\config so the config's
+# relative ./demo/files/*.sqlite paths resolve when the app runs with CWD={app}.
+$DemoDst = Join-Path $BuildDir 'demo'
+New-Item -ItemType Directory -Path $DemoDst -Force | Out-Null
+foreach ($d in @('petstore_server', 'graphql_server', 'files')) {
+  Copy-Item -Path (Join-Path $RepoRoot "demo\$d") -Destination $DemoDst -Recurse -Force
+}
+Get-ChildItem $DemoDst -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
+$CfgDst = Join-Path $BuildDir 'config'
+New-Item -ItemType Directory -Path $CfgDst -Force | Out-Null
+Copy-Item -Path (Join-Path $RepoRoot 'config\provisa-install.yaml') -Destination $CfgDst -Force
+if (-not (Test-Path (Join-Path $DemoDst 'files\pet_store.sqlite'))) {
+  throw "demo\files\pet_store.sqlite missing — the native demo dataset was not bundled."
+}
+Write-Host '[build-sfx] Demo assets bundled (mock servers + SQLite + native config).' -ForegroundColor Green
+
 # ── Install Inno Setup via chocolatey ─────────────────────────────────────────
 Write-Host '[build-sfx] Installing Inno Setup...' -ForegroundColor Cyan
 choco install innosetup --no-progress -y
