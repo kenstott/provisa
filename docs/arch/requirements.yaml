@@ -29386,3 +29386,157 @@
   - REQ-884
   - REQ-267
   - REQ-369
+- id: REQ-1009
+  status: proposed
+  group: 11. Frontend UI & UX
+  category: Component Library Standardization
+  priority: MUST
+  type: structural
+  target: 2026-Q3
+  description: >-
+    Standardize provisa-ui on the Mantine component library (MIT/OSS) as the single modern UI component system.
+    Remove unused @mui/material and Emotion dependencies (dead deps, imported in 0 source files).
+  use_case: >-
+    A single, well-maintained component library provides consistent UX, reduces bundle size, and simplifies maintenance.
+    Mantine's hooks-first architecture aligns with React best practices and TypeScript integration.
+  code:
+    - provisa-ui/src/
+
+- id: REQ-1010
+  status: proposed
+  group: 11. Frontend UI & UX
+  category: Design System
+  priority: SHOULD
+  type: structural
+  target: 2026-Q3
+  description: >-
+    Establish a consistent visual design theme driven by CSS-variable design tokens, mapped into Mantine's theme.
+    Primary color is indigo (#6366f1); existing App.css token set is the source of truth.
+  use_case: >-
+    CSS variables enable dynamic theming (light/dark), reduce redundancy, and provide a single point of truth for colors,
+    spacing, and typography across the application.
+  code:
+    - provisa-ui/src/App.css
+
+- id: REQ-1011
+  status: proposed
+  group: 11. Frontend UI & UX
+  category: Theming
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q3
+  description: >-
+    Support both Dark and Light color schemes via Mantine's color-scheme system, with a user-facing theme toggle.
+    Current state is dark-only.
+  use_case: >-
+    Light mode improves accessibility for users with certain vision conditions; user choice increases accessibility
+    and user satisfaction.
+  e2e: true
+  e2e_reason: >-
+    Theme toggle is a UI interaction that must be verified end-to-end to ensure the app correctly switches and persists
+    the user's choice across page reloads.
+
+- id: REQ-1012
+  status: proposed
+  group: 11. Frontend UI & UX
+  category: Internationalization
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q3
+  description: >-
+    Internationalize the entire frontend: no hardcoded user-facing strings (~536 exist today).
+    Use react-i18next with an 'en' base catalog; include locale-aware date and number formatting.
+    Pipeline must support adding additional locales.
+  use_case: >-
+    i18n enables Provisa to serve global enterprises in their native languages, reducing adoption friction and supporting
+    compliance requirements in non-English jurisdictions.
+  code:
+    - provisa-ui/src/
+  e2e: true
+  e2e_reason: >-
+    Locale switching, date/number formatting, and catalog consistency must be verified end-to-end with actual locale-aware
+    rendering in the browser.
+
+- id: REQ-1013
+  status: proposed
+  group: 11. Frontend UI & UX
+  category: Accessibility
+  priority: MUST
+  type: constraint
+  target: 2026-Q3
+  description: >-
+    Meet enterprise accessibility requirements: WCAG 2.1 Level AA across the app.
+    Includes focus management and focus-trap in dialogs, full keyboard operability, correct ARIA roles/attributes
+    (e.g. role="dialog"/aria-modal on the 65 modal usages that currently lack them), 4.5:1 text contrast in both
+    color schemes, visible focus indicators, reduced-motion support, form label/error association, and live regions
+    for async notifications.
+  use_case: >-
+    WCAG 2.1 AA is required for enterprise and government adoption; accessibility is a legal and ethical requirement,
+    not optional.
+  e2e: true
+  e2e_reason: >-
+    Keyboard navigation, focus trapping, and modal semantics must be verified end-to-end through actual user interaction
+    with the app; unit tests cannot detect focus-management bugs or keyboard handling flaws.
+
+- id: REQ-1014
+  status: proposed
+  group: 11. Frontend UI & UX
+  category: Accessibility
+  priority: MUST
+  type: behavioral
+  target: 2026-Q3
+  description: >-
+    Accessibility is a tested, enforced requirement: add automated axe-core checks (@axe-core/playwright)
+    into the Playwright e2e coverage fixture so every e2e run asserts zero accessibility violations.
+  use_case: >-
+    Automated accessibility testing catches WCAG violations early, prevents regressions, and enforces compliance
+    as a gate condition for test passage.
+  code:
+    - provisa-ui/e2e/coverage.ts
+  tests:
+    - provisa-ui/e2e/coverage.ts
+  e2e: true
+  e2e_reason: >-
+    Accessibility scanning must run against the real DOM tree rendered in the browser; static analysis cannot
+    detect color contrast, focus order, or semantic issues.
+
+- id: REQ-1015
+  status: proposed
+  group: 11. Frontend UI & UX
+  category: Design System
+  priority: MAY
+  type: structural
+  target: 2026-Q3
+  description: >-
+    If/when AG Grid is adopted for data tables, it must be themed coherently with the design tokens
+    (AG Grid v33 Theming API referencing the same CSS variables), consistent in both light and dark schemes.
+  use_case: >-
+    Consistent theming across third-party components prevents visual jarring and maintains a unified design system
+    even when mixing Mantine and premium grid libraries.
+- id: REQ-1016
+  status: proposed
+  group: 11. Frontend UI & UX
+  category: Testing
+  priority: MUST
+  type: constraint
+  target: 2026-Q3
+  description: >-
+    Migrate the provisa-ui test suite (27 Playwright e2e specs + 22 unit/component tests) in lockstep with component modernization
+    (REQ-1009/REQ-1012/REQ-1014). Stop relying on hand-rolled CSS-class selectors (59 locator('.…') uses)
+    and hardcoded literal UI text (58 text-based assertions). Adopt role-based selectors (getByRole) plus stable data-testid attributes
+    on migrated components; text assertions must reference i18n catalog keys (t('key')) rather than literal strings.
+    Migration done per-component in the same pass as that component's Mantine/i18n/a11y conversion, keeping the suite green incrementally.
+  use_case: >-
+    Mantine migration removes original classNames and i18n moves strings to catalogs, breaking CSS-class and hardcoded-text selectors.
+    Role-based and data-testid strategies are robust to component library changes; i18n-key assertions reflect the requirements contract.
+    Incremental per-component migration prevents big-bang test breakage and ensures continuous test coverage.
+  code:
+    - provisa-ui/e2e/
+    - provisa-ui/src/
+  tests:
+    - provisa-ui/e2e/
+  relates_to:
+    - REQ-1009
+    - REQ-1012
+    - REQ-1014
+
