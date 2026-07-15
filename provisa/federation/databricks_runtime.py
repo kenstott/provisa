@@ -44,10 +44,13 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         self._engine: Any = None
         from databricks import sql as dbsql
 
+        from provisa.federation.databricks_tls import databricks_tls_kwargs
+
         self._conn = dbsql.connect(
             server_hostname=u.hostname,
             http_path=http_path,
             access_token=self._token,
+            **databricks_tls_kwargs(),
         )
 
     @property

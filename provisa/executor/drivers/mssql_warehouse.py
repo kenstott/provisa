@@ -77,8 +77,13 @@ class MssqlWarehouseDriver(DirectDriver):
             driver = os.environ.get("PROVISA_MSSQL_ODBC_DRIVER", "ODBC Driver 18 for SQL Server")
             driver_clause = driver if driver.startswith("/") else f"{{{driver}}}"
             conn_str = f"DRIVER={driver_clause};SERVER={host};DATABASE={database};Encrypt=yes;"
+            # connect(timeout=) is the LOGIN timeout; a serverless Synapse/Fabric pool can be slow
+            # to resume from auto-pause, so honor PROVISA_MSSQL_LOGIN_TIMEOUT (seconds).
+            login_timeout = int(os.environ.get("PROVISA_MSSQL_LOGIN_TIMEOUT", "120"))
             return pyodbc.connect(
-                conn_str, attrs_before={_SQL_COPT_SS_ACCESS_TOKEN: token_struct}, timeout=60
+                conn_str,
+                attrs_before={_SQL_COPT_SS_ACCESS_TOKEN: token_struct},
+                timeout=login_timeout,
             )
 
         self._conn = await asyncio.to_thread(_open)

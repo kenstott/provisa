@@ -88,8 +88,12 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
             f"DRIVER={driver_clause};SERVER={self._server};DATABASE={self._database};"
             "Encrypt=yes;TrustServerCertificate=no;"
         )
+        # pyodbc's connect(timeout=) is the LOGIN timeout. A serverless Synapse/Fabric SQL pool
+        # auto-pauses and resumes on first connect, which can outlast a short window — make it
+        # configurable (PROVISA_MSSQL_LOGIN_TIMEOUT, seconds) so a cold pool isn't a false failure.
+        login_timeout = int(os.environ.get("PROVISA_MSSQL_LOGIN_TIMEOUT", "120"))
         return pyodbc.connect(
-            conn_str, attrs_before={_SQL_COPT_SS_ACCESS_TOKEN: token_struct}, timeout=60
+            conn_str, attrs_before={_SQL_COPT_SS_ACCESS_TOKEN: token_struct}, timeout=login_timeout
         )
 
     @property

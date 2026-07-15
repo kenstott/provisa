@@ -51,9 +51,14 @@ class DatabricksDriver(DirectDriver):  # REQ-987
             )
         from databricks import sql as dbsql
 
+        from provisa.federation.databricks_tls import databricks_tls_kwargs
+
         def _open() -> Any:
             return dbsql.connect(
-                server_hostname=host, http_path=self._http_path, access_token=password
+                server_hostname=host,
+                http_path=self._http_path,
+                access_token=password,
+                **databricks_tls_kwargs(),
             )
 
         self._conn = await asyncio.to_thread(_open)

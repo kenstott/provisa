@@ -41,12 +41,15 @@ def seeded():
     """Seed a Delta table directly, yield a ready-to-read fully-qualified name, then drop it."""
     from databricks import sql as dbsql
 
+    from provisa.federation.databricks_tls import databricks_tls_kwargs
+
     conn = dbsql.connect(
         server_hostname=os.environ["DATABRICKS_SERVER_HOSTNAME"],
         http_path=os.environ["DATABRICKS_HTTP_PATH"],
         access_token=os.environ["DATABRICKS_TOKEN"],
         _socket_timeout=60,
         _retry_stop_after_attempts_count=2,
+        **databricks_tls_kwargs(),
     )
     cur = conn.cursor()
     fq = f"`workspace`.`{_SCHEMA}`.`{_TABLE}`"
