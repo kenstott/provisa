@@ -28309,7 +28309,8 @@
   - REQ-932
   - REQ-902
 - id: REQ-981
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 9. Live Data & Events
   category: Live Data & Events
   priority: MUST
@@ -28333,6 +28334,10 @@
   - provisa/events/content_hash.py
   - provisa/events/queue.py
   - provisa/core/schema_org.py
+  tests:
+  - tests/unit/test_content_hash.py
+  - tests/unit/test_live_change_gates.py
+  - tests/unit/test_handlers.py
   related_reqs:
   - REQ-941
   - REQ-855
@@ -28359,7 +28364,8 @@
 
     '
 - id: REQ-982
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 9. Live Data & Events
   category: Live Data & Events
   priority: MUST
@@ -28392,7 +28398,15 @@
   - provisa/events/boot.py
   - provisa/events/app_wiring.py
   - provisa/events/probes.py
+  - provisa/events/handlers.py
+  - provisa/federation/residency.py
+  - provisa/federation/store_writer.py
   - provisa/federation/freshness_gate.py
+  tests:
+  - tests/unit/test_probes.py
+  - tests/unit/test_injector.py
+  - tests/unit/test_probe_type_config_validation.py
+  - tests/unit/test_live_change_gates.py
   related_reqs:
   - REQ-941
   - REQ-855

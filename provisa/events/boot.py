@@ -139,6 +139,7 @@ def specs_from_config(
             watermark_column=args.watermark_column,
             pk_columns=args.pk_columns,
             fetch=source_fetch(src, tbl),
+            probe_type=args.probe_type,  # REQ-982: authoritative landing-shape selector
         )
         # REQ-982: build the poll node's probe from its resolved probe_type. watermark/count read the
         # source through the engine terminal (the SQL scalar runner + engine ref, injected); hash/none

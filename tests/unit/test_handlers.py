@@ -36,9 +36,10 @@ async def test_source_land_lands_rows_and_reports_shape(tmp_path):
         watermark_column="updated_at",
         pk_columns=["id"],
         fetch=fetch,
+        probe_type="watermark",
     )
     result = await land([{"id": 99, "event_type": "append"}], prior_hash=None)
-    # poll+watermark → append; append rows are new by definition → no content hash (None)
+    # REQ-982: probe_type=watermark → append; append rows are new by definition → no content hash
     assert result == ("append", {"rows": 2, "landed": "orders"}, None)
     async with store_writer.store_connection(dsn) as conn:
         rows = await conn.fetch("SELECT id, status FROM orders ORDER BY id")

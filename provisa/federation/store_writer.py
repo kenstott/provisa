@@ -233,16 +233,19 @@ async def land(
     watermark_column: str | None = None,
     pk_columns: list[str] | None = None,
     match_floor: float = 0.0,
+    shape: str | None = None,
 ) -> str:
     """Land ``rows`` into ``schema.table`` of the materialization store, through the write face.
 
-    The shape is chosen from ``change_signal`` (REQ-932): a poll signal with a watermark AMENDS
-    (append the watermark-filtered delta); every other batch is a full REPLACE. Hard-delete CDC is
-    the separate streaming path (subscriptions.cdc_landing). ``match_floor`` guards against upstream
-    source drift — below it the land is refused (see ``check_source_drift``). Returns the qualified
-    landed name. The engine is never the writer — this opens the store's own connection."""
+    ``shape`` (REQ-982) is the authoritative landing shape when the caller resolved it from a
+    ``probe_type`` (the event loop). When None, the shape is derived from ``change_signal`` (REQ-932):
+    a poll signal with a watermark AMENDS (append the watermark-filtered delta); every other batch is
+    a full REPLACE. Hard-delete CDC is the separate streaming path (subscriptions.cdc_landing).
+    ``match_floor`` guards against upstream source drift — below it the land is refused (see
+    ``check_source_drift``). Returns the qualified landed name. The engine is never the writer — this
+    opens the store's own connection."""
     check_source_drift(columns, rows, match_floor=match_floor)
-    shape = select_landing_shape(change_signal, watermark_column)
+    shape = shape if shape is not None else select_landing_shape(change_signal, watermark_column)
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
         if schema and conn.capabilities.schemas:

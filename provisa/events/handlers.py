@@ -30,8 +30,9 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from provisa.core.change_signal import APPEND, REPLACE, select_landing_shape
+from provisa.core.change_signal import APPEND, REPLACE
 from provisa.events.content_hash import content_hash
+from provisa.events.probes import WATERMARK, probe_shape
 from provisa.events.processor import NodeContext, PreprocessError
 from provisa.federation import store_writer
 
@@ -75,11 +76,19 @@ def make_source_land(
     watermark_column: str | None,
     pk_columns: list[str] | None,
     fetch: Callable[[list[dict]], Awaitable[list[dict]]],
+    probe_type: str = "none",
 ) -> Callable[..., Awaitable[tuple[str, dict, str | None] | None]]:
     """Build ``SourceTableProcessor.land``: from the claimed events, ``fetch`` the source's current
-    rows and land them through the write face (shape from change_signal). Returns (event_type, payload,
-    content_hash) so the base re-posts the node's change + persists the hash, or None when nothing
-    landed or (replace) the content matches ``prior_hash`` (REQ-981 output gate)."""
+    rows and land them through the write face. REQ-982: the landing shape is the AUTHORITATIVE
+    ``probe_shape(probe_type)`` (watermark → append, hash/count/none → replace), superseding the old
+    ``watermark_column``-presence heuristic. Returns (event_type, payload, content_hash) so the base
+    re-posts the node's change + persists the hash, or None when nothing landed or (replace) the
+    content matches ``prior_hash`` (REQ-981 output gate)."""
+    shape = probe_shape(probe_type)
+    # REQ-982: watermark is the cursor probe → append requires the cursor column. Fail loud at build
+    # time; never silently degrade an append node to a full replace because its cursor is missing.
+    if probe_type == WATERMARK and watermark_column is None:
+        raise ValueError(f"probe_type=watermark on {schema}.{table} requires a watermark_column")
 
     async def land(
         pending: list[dict],
@@ -95,7 +104,6 @@ def make_source_land(
         rows = await _apply_preprocess(preprocess, rows, ctx, columns)
         if not rows:
             return None
-        shape = select_landing_shape(change_signal, watermark_column)
         # REQ-981 output gate: a replace whose content is byte-identical to the prior land neither
         # lands nor ripples. Append/CDC deltas are new rows by definition → no content hash.
         digest: str | None = None
@@ -112,6 +120,7 @@ def make_source_land(
             change_signal=change_signal,
             watermark_column=watermark_column,
             pk_columns=pk_columns,
+            shape=shape,  # REQ-982: authoritative shape from probe_type
         )
         return _SHAPE_TO_EVENT.get(shape, "replace"), {"rows": len(rows), "landed": loc}, digest
 
