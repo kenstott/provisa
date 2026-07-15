@@ -34,6 +34,7 @@ const { getCypherLanguageExtensions: _getToolsCypherExts, cypherLinter: _toolsCy
 /* eslint-enable @typescript-eslint/no-explicit-any */
 const _toolsCypherLangExts = _getToolsCypherExts({ cypherLanguage: true });
 import { oneDark } from "@codemirror/theme-one-dark";
+import { useMantineColorScheme } from "@mantine/core";
 import { EditorView } from "@codemirror/view";
 
 function SqlPanel({
@@ -53,6 +54,7 @@ function SqlPanel({
   const navigate = useNavigate();
   const sqlExtensions = useMemo(() => [sql({ dialect: PostgreSQL }), EditorView.lineWrapping], []);
   const rawSql = compiled.semantic_sql ?? compiled.sql;
+  const cmTheme = useMantineColorScheme().colorScheme === "dark" ? oneDark : undefined;
   const sqlLabel = "Semantic SQL";
   let formatted: string;
   try {
@@ -249,7 +251,7 @@ function SqlPanel({
               <CodeMirror
                 value={formatted}
                 extensions={sqlExtensions}
-                theme={oneDark}
+                theme={cmTheme}
                 editable={false}
                 basicSetup={{ lineNumbers: false, foldGutter: true }}
                 className="provisa-tools-code"
@@ -279,6 +281,7 @@ function CombinedSqlPanel({
   const [copied, setCopied] = useState(false);
   const [sqlExpanded, setSqlExpanded] = useState(true);
   const sqlExtensions = useMemo(() => [sql({ dialect: PostgreSQL }), EditorView.lineWrapping], []);
+  const cmTheme = useMantineColorScheme().colorScheme === "dark" ? oneDark : undefined;
   const combined = compiledList
     .map((c) => {
       const raw = c.semantic_sql ?? c.sql;
@@ -357,7 +360,7 @@ function CombinedSqlPanel({
         <CodeMirror
           value={combined}
           extensions={sqlExtensions}
-          theme={oneDark}
+          theme={cmTheme}
           editable={false}
           basicSetup={{ lineNumbers: false, foldGutter: true }}
           className="provisa-tools-code"
@@ -369,6 +372,7 @@ function CombinedSqlPanel({
 
 function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [query] = useOperationsEditorState();
+  const cmTheme = useMantineColorScheme().colorScheme === "dark" ? oneDark : undefined;
   const [compiled, setCompiled] = useState<CompileResult[] | null>(null);
   const [cypherQuery, setCypherQuery] = useState("");
   const [cypherError, setCypherError] = useState<string | null>(null);
@@ -569,7 +573,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
                 <CodeMirror
                   value={displayedCypher}
                   extensions={cypherExtensions}
-                  theme={oneDark}
+                  theme={cmTheme}
                   editable={false}
                   basicSetup={{ lineNumbers: false, foldGutter: true }}
                   className="provisa-tools-cypher-editor"
