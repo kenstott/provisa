@@ -4,11 +4,11 @@
 
 """FastAPI billing router — /billing prefix.
 
-Billing is provided by Lemon Squeezy as Merchant of Record (REQ-1015). Checkout goes
+Billing is provided by Lemon Squeezy as Merchant of Record (REQ-1075). Checkout goes
 through the hosted Lemon Squeezy flow; plan lifecycle is driven by signed webhooks.
 """
 
-# Requirements: REQ-073, REQ-074, REQ-1015
+# Requirements: REQ-073, REQ-074, REQ-1075
 
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ async def signup(_body: SignupBody, request: Request):
     }
 
 
-@router.post("/checkout")  # REQ-073, REQ-1015
+@router.post("/checkout")  # REQ-073, REQ-1075
 async def checkout(body: CheckoutBody, request: Request):
     pool = _pool(request)
     tenant = await get_tenant(pool, body.tenant_id)
@@ -74,12 +74,12 @@ async def checkout(body: CheckoutBody, request: Request):
     return {"checkout_url": url}
 
 
-# Lemon Squeezy subscription events → plan lifecycle (REQ-1015).
+# Lemon Squeezy subscription events → plan lifecycle (REQ-1075).
 _ACTIVATE_EVENTS = {"subscription_created", "subscription_updated"}
 _DEACTIVATE_EVENTS = {"subscription_cancelled", "subscription_expired"}
 
 
-@router.post("/webhook")  # REQ-073, REQ-074, REQ-1015
+@router.post("/webhook")  # REQ-073, REQ-074, REQ-1075
 async def webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("X-Signature", "")
@@ -119,7 +119,7 @@ async def webhook(request: Request):
     return JSONResponse(content={"received": True})
 
 
-@router.get("/portal")  # REQ-073, REQ-074, REQ-1015
+@router.get("/portal")  # REQ-073, REQ-074, REQ-1075
 async def portal(tenant_id: str, request: Request):
     pool = _pool(request)
     tenant = await get_tenant(pool, tenant_id)
@@ -131,7 +131,7 @@ async def portal(tenant_id: str, request: Request):
     return {"portal_url": url}
 
 
-@router.get("/status")  # REQ-073, REQ-074, REQ-1015
+@router.get("/status")  # REQ-073, REQ-074, REQ-1075
 async def status(tenant_id: str, request: Request):
     pool = _pool(request)
     tenant = await get_tenant(pool, tenant_id)

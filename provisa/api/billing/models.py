@@ -5,7 +5,7 @@
 
 """Billing domain models."""
 
-# Requirements: REQ-073, REQ-074, REQ-1015
+# Requirements: REQ-073, REQ-074, REQ-1075
 
 from __future__ import annotations
 
@@ -24,10 +24,10 @@ class Plan(str, Enum):  # REQ-073, REQ-074
 PLAN_LIMITS: dict[str, int] = {"trial": 2, "starter": 10, "pro": 100}
 
 
-def plan_from_variant(variant_name: str) -> str:  # REQ-1015
+def plan_from_variant(variant_name: str) -> str:  # REQ-1075
     """Map a Lemon Squeezy variant name to a plan tier. The variant name is matched
     case-insensitively against the known plan tiers. An unrecognized variant is an
-    error, never a silent default (REQ-1015)."""
+    error, never a silent default (REQ-1075)."""
     name = (variant_name or "").lower()
     plan = next((p for p in ("trial", "starter", "pro") if p in name), None)
     if plan is None:
@@ -36,7 +36,7 @@ def plan_from_variant(variant_name: str) -> str:  # REQ-1015
 
 
 @dataclass
-class Tenant:  # REQ-073, REQ-074, REQ-1015
+class Tenant:  # REQ-073, REQ-074, REQ-1075
     id: uuid.UUID
     kms_key_arn: str
     ls_customer_id: str | None

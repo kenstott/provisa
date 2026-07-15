@@ -70,7 +70,7 @@ async def get_tenant(pool: "Database", tenant_id: str) -> Tenant | None:  # REQ-
     return _row_to_tenant(row)
 
 
-async def get_tenant_by_ls_customer(  # REQ-592, REQ-1015
+async def get_tenant_by_ls_customer(  # REQ-592, REQ-1075
     pool: "Database", ls_customer_id: str
 ) -> Tenant | None:
     async with pool.acquire() as conn:
@@ -94,7 +94,7 @@ async def update_tenant_plan(  # REQ-592
         )
 
 
-async def update_tenant_ls_customer(  # REQ-592, REQ-1015
+async def update_tenant_ls_customer(  # REQ-592, REQ-1075
     pool: "Database", tenant_id: str, ls_customer_id: str
 ) -> None:
     async with pool.acquire() as conn:

@@ -120,7 +120,7 @@ tenants = Table(
     metadata,
     Column("id", Uuid, primary_key=True),
     Column("kms_key_arn", Text, nullable=False),
-    Column("ls_customer_id", Text),  # Lemon Squeezy customer id (REQ-1015)
+    Column("ls_customer_id", Text),  # Lemon Squeezy customer id (REQ-1075)
     Column("plan", Text, nullable=False, server_default="trial"),
     Column("source_limit", Integer, nullable=False, server_default="2"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
