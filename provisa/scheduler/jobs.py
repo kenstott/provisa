@@ -94,14 +94,23 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     else:
         target = datetime.now(timezone.utc).replace(tzinfo=None)
 
+    # OTEL→Iceberg compaction targets an S3/MinIO object store. The native (no-Docker) tier has no
+    # S3, so its credentials are unset — there is nothing to compact. Skip cleanly instead of
+    # crashing the scheduled job every minute with a KeyError (capability gate, not a masked error).
+    access_key = os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY")
+    secret_key = os.environ.get("PROVISA_OTEL_S3_SECRET_KEY")
+    if not access_key or not secret_key:
+        logger.debug(
+            "compact_otel: no S3 credentials configured — skipping (native tier has no object store)."
+        )
+        return
+
     s3_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT") or state.otel_s3_endpoint
     logger.warning(
         "compact_otel: starting — s3=%s engine=%s",
         s3_endpoint,
         state.federation_engine is not None,
     )
-    access_key = os.environ["PROVISA_OTEL_S3_ACCESS_KEY"]
-    secret_key = os.environ["PROVISA_OTEL_S3_SECRET_KEY"]
     otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
     file_chunk = getattr(state, "otel_compact_file_chunk", 50)
     engine = state.federation_engine

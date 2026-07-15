@@ -164,6 +164,11 @@ function Stop-Native {
     }
     Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
   }
+  # Belt-and-suspenders: also kill any orphaned interpreter still running out of the staged runtime
+  # (a crashed/prior-install process the PID file no longer tracks would otherwise keep serving).
+  Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -and ($_.Path -like "$RuntimeDir\*")
+  } | Stop-Process -Force -ErrorAction SilentlyContinue
   Stop-DemoServers
   Write-Ok 'Provisa has been shut down.'
 }

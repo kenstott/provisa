@@ -42,6 +42,19 @@ function Stage-Runtime {
   }
   if (Test-Path $RuntimeDst) {
     Write-Info "Upgrading native runtime to bundle $bundleVer (was $stagedVer)..."
+    # A Provisa instance from a prior install keeps python.exe running and LOCKS the runtime's
+    # DLLs (libcrypto etc.), so Remove-Item fails and the upgrade silently aborts — leaving the
+    # stale process serving the old (configless, no-demo) app. Stop anything running out of the
+    # staged runtime (and the app scripts) first, then re-stage.
+    Get-Process -ErrorAction SilentlyContinue | Where-Object {
+      $_.Path -and ($_.Path -like "$RuntimeDst\*" -or $_.Path -like "$ScriptDir\*")
+    } | Stop-Process -Force -ErrorAction SilentlyContinue
+    if (Test-Path (Join-Path $ProvisaHome '.native.pid')) {
+      foreach ($procId in (Get-Content (Join-Path $ProvisaHome '.native.pid'))) {
+        if ($procId) { Stop-Process -Id ([int]$procId) -Force -ErrorAction SilentlyContinue }
+      }
+    }
+    Start-Sleep -Seconds 2
     Remove-Item $RuntimeDst -Recurse -Force
   } else {
     Write-Info "Staging native runtime to $RuntimeDst..."
@@ -176,4 +189,7 @@ Write-Ok 'First-launch setup complete.'
 Show-NextSteps
 
 # Hand off to the native CLI to start + open the UI.
-& powershell.exe -ExecutionPolicy Bypass -File (Join-Path $ScriptDir 'provisa-native.ps1') start
+# restart (not start): an install/rerun must apply the freshly written config — stop any running
+# instance first, then start with the new engine/demo/auto-open choices. start alone would no-op
+# against an already-running app and silently ignore the new choices.
+& powershell.exe -ExecutionPolicy Bypass -File (Join-Path $ScriptDir 'provisa-native.ps1') restart
