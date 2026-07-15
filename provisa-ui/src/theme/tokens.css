@@ -9,7 +9,7 @@
  *   --text-muted #55596b on --surface #fff -> 4.9:1
  *   white on --primary #4f46e5            -> 6.3:1
  */
-[data-mantine-color-scheme="light"] {
+html[data-mantine-color-scheme="light"] {
   --bg: #ffffff;
   --surface: #ffffff;
   --surface-alt: #f1f3f9;
@@ -24,7 +24,7 @@
 
 /* Keep the explicit dark block in sync with App.css `:root` so the tokens are
  * correct even once the scheme attribute is present on first paint. */
-[data-mantine-color-scheme="dark"] {
+html[data-mantine-color-scheme="dark"] {
   --bg: #0f1117;
   --surface: #1a1d27;
   --surface-alt: #20243a;
