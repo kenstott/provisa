@@ -81,6 +81,44 @@ class TestExtensionLoading:
         monkeypatch.setattr(reg, "_EXTENSIONS_LOADED", False)
         assert get_provider_spec("acme_ext") is not None
 
+    def test_entry_point_group_is_loaded(self, monkeypatch):
+        """REQ-690: a provider exposed via the ``provisa.encryption_providers`` entry-point group
+        is discovered and registered when its ``ep.load()`` runs its registration side effect."""
+        import provisa.encryption.registry as reg
+        from provisa.encryption import EncryptionProviderSpec, register_encryption_provider
+        from provisa.encryption.service import NullEncryption
+
+        def _loader():
+            register_encryption_provider(
+                EncryptionProviderSpec(
+                    key="ep_ext",
+                    label="EP",
+                    description="entry-point ext",
+                    build=lambda cfg, key_id, ttl: NullEncryption(),
+                )
+            )
+            return _loader
+
+        fake_ep = MagicMock()
+        fake_ep.load.side_effect = _loader
+        monkeypatch.setattr(reg, "_EXTENSIONS_LOADED", False)
+        # load_provider_extensions imports entry_points from importlib.metadata locally.
+        with patch("importlib.metadata.entry_points", return_value=[fake_ep]):
+            assert get_provider_spec("ep_ext") is not None
+        fake_ep.load.assert_called_once()
+
+    def test_bad_entry_point_plugin_does_not_brick_selection(self, monkeypatch):
+        """A third-party entry-point whose loader raises must be skipped, never fatal — built-in
+        provider selection still works."""
+        import provisa.encryption.registry as reg
+
+        boom = MagicMock()
+        boom.load.side_effect = RuntimeError("broken plugin")
+        monkeypatch.setattr(reg, "_EXTENSIONS_LOADED", False)
+        with patch("importlib.metadata.entry_points", return_value=[boom]):
+            # A broken plugin is swallowed; the built-in null provider still resolves.
+            assert get_provider_spec("null") is not None
+
 
 class TestAwsKms:
     def test_wrap_unwrap_roundtrips_through_kms_client(self):

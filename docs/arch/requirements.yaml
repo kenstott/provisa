@@ -1189,8 +1189,8 @@
   description: TenantMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health,
     /docs, /openapi.json}`. Requests to these paths bypass tenant resolution entirely and do not require
     a JWT with a tenant_id claim.
-  use_case: Skip-path exemptions allow Lemon Squeezy billing webhooks, health checks, and OpenAPI docs to
-    function without tenant JWTs while all other paths enforce tenant isolation.
+  use_case: Skip-path exemptions allow Lemon Squeezy billing webhooks, health checks, and OpenAPI docs
+    to function without tenant JWTs while all other paths enforce tenant isolation.
   code:
   - provisa/api/middleware/tenant_middleware.py
   tests:
@@ -18627,20 +18627,19 @@
     status: ahead
     rationale: Client-side decryption in the JDBC driver with server-side passthrough is a zero-trust
       data access pattern not offered by any competitor's JDBC driver.
-  note: The jdbc-driver module implements the full client-side decryption path — the envelope engine
-    (EnvelopeDecryptor + KmsProvider + LocalKmsProvider), the encrypted-column metadata contract (Arrow
-    field metadata provisa_encrypted=true, decrypted in ArrowStreamResultSet), the DEK TTL cache, and
-    connection-param parsing (kms_provider, kms_key_arn). The AWS/Azure/GCP concrete KmsProvider
-    implementations unwrap the DEK via the real cloud KMS Decrypt API (KmsClient.decrypt /
-    CryptographyClient.decrypt / KeyManagementServiceClient.decrypt), holding only the CMK identifier
-    plus an injected SDK client (never raw key material) and mapping any SDK failure — incl AccessDenied /
-    PERMISSION_DENIED / forbidden on a revoked grant — to DecryptionException (fail-loud instant lockout,
-    REQ-694). KmsProviders selects the provider by kms_provider and is wired into ProvisaConnection; a
-    named provider whose cloud SDK is absent from the classpath fails loud (SQLException). The cloud SDKs
-    are provided-scope (compile+test classpath, not shaded into the fat JAR — the deployer supplies the
-    SDK at runtime, keeping the driver lean). mvn clean test green (45 tests). The e2e JDBC round-trip
-    (REQ-690 e2e flag) against a live pgwire/Flight encrypted backend response remains a separate e2e
-    concern. See docs/arch/jdbc-client-side-encryption.md.
+  note: The jdbc-driver module implements the full client-side decryption path — the envelope engine (EnvelopeDecryptor
+    + KmsProvider + LocalKmsProvider), the encrypted-column metadata contract (Arrow field metadata provisa_encrypted=true,
+    decrypted in ArrowStreamResultSet), the DEK TTL cache, and connection-param parsing (kms_provider,
+    kms_key_arn). The AWS/Azure/GCP concrete KmsProvider implementations unwrap the DEK via the real cloud
+    KMS Decrypt API (KmsClient.decrypt / CryptographyClient.decrypt / KeyManagementServiceClient.decrypt),
+    holding only the CMK identifier plus an injected SDK client (never raw key material) and mapping any
+    SDK failure — incl AccessDenied / PERMISSION_DENIED / forbidden on a revoked grant — to DecryptionException
+    (fail-loud instant lockout, REQ-694). KmsProviders selects the provider by kms_provider and is wired
+    into ProvisaConnection; a named provider whose cloud SDK is absent from the classpath fails loud (SQLException).
+    The cloud SDKs are provided-scope (compile+test classpath, not shaded into the fat JAR — the deployer
+    supplies the SDK at runtime, keeping the driver lean). mvn clean test green (45 tests). The e2e JDBC
+    round-trip (REQ-690 e2e flag) against a live pgwire/Flight encrypted backend response remains a separate
+    e2e concern. See docs/arch/jdbc-client-side-encryption.md.
   code:
   - jdbc-driver/src/main/java/io/provisa/jdbc/EnvelopeDecryptor.java
   - jdbc-driver/src/main/java/io/provisa/jdbc/KmsProvider.java
@@ -23778,8 +23777,8 @@
   use_case: Busybox is required at runtime (trino-exchange-init service uses it to chown /data/provisa/exchange
     before Trino starts). Lemon Squeezy is called over the public REST API; tests stub it via HTTP fixtures
     (LEMONSQUEEZY_BASE_URL), not bundled mocks. Python:3.12-slim exists only as a build base for OVA/Lima
-    source builds. This separation ensures airgapped deployments include all runtime dependencies and excludes
-    unnecessary dev/mock components.
+    source builds. This separation ensures airgapped deployments include all runtime dependencies and
+    excludes unnecessary dev/mock components.
   code:
   - docker-compose.core.yml
   - docker-compose.dev.yml
@@ -23984,7 +23983,10 @@
   - provisa/federation/native_backend.py
   tests:
   - tests/unit/test_source_freshness_gate.py
-  scenario: 'Given a source S with freshness_gate=true declaring change_signal=ttl and cache_ttl When a query reads a table from S whose last residency landing is older than cache_ttl Then S is scheduled into the execution plan residency prep and refreshed before the read, while a source within its TTL is read with no refresh'
+  scenario: Given a source S with freshness_gate=true declaring change_signal=ttl and cache_ttl When a
+    query reads a table from S whose last residency landing is older than cache_ttl Then S is scheduled
+    into the execution plan residency prep and refreshed before the read, while a source within its TTL
+    is read with no refresh
   group: 4. Source Connectors
   category: Freshness Gating
   priority: SHOULD
@@ -24009,10 +24011,10 @@
     runs on-stale (gate-triggered) before the file is read. Allows refresh without modifying the file
     path or materializing into an MV. DONE (2026-07) - a file source (csv/parquet/sqlite/files) carries
     an optional producer_command argv (provisa/core/models.py); provisa/freshness/producer.py runs it
-    with shell=False (injection-safe) and fails loud on a non-zero exit. The read path
-    (provisa/events/source_loader.py SourceRowLoader.load) is invoked only after the REQ-860 source
-    gate reports stale, so it runs the producer BEFORE the file read - freshening the file in place
-    without touching path or defining an MV.
+    with shell=False (injection-safe) and fails loud on a non-zero exit. The read path (provisa/events/source_loader.py
+    SourceRowLoader.load) is invoked only after the REQ-860 source gate reports stale, so it runs the
+    producer BEFORE the file read - freshening the file in place without touching path or defining an
+    MV.
   use_case: 'Supports workflows where stale file detection should trigger a script to refresh the file
     in place. Example: fetch latest data from an upstream API and write to the same CSV path when staleness
     is detected. Pairs with REQ-855: REQ-855 file mtime DETECTS staleness, this producer command is the
@@ -24023,10 +24025,10 @@
   - provisa/events/source_loader.py
   tests:
   - tests/unit/test_file_producer_command.py
-  scenario: 'Given a file source S (type csv) with freshness_gate=true and a producer_command argv When
-    the REQ-860 gate reports S stale and its residency read runs Then the producer command executes
-    (shell=False) before the file is read, a non-zero exit fails loud and the stale file is not read,
-    while a source within its TTL runs no producer and a source with no producer_command is read as-is'
+  scenario: Given a file source S (type csv) with freshness_gate=true and a producer_command argv When
+    the REQ-860 gate reports S stale and its residency read runs Then the producer command executes (shell=False)
+    before the file is read, a non-zero exit fails loud and the stale file is not read, while a source
+    within its TTL runs no producer and a source with no producer_command is read as-is
   related_reqs:
   - REQ-856
   - REQ-860
@@ -24729,7 +24731,9 @@
 - id: REQ-877
   status: complete
   since: 2026-07
-  scenario: 'Given an MV with row-level delta capture enabled When the MV refreshes with rows inserted/updated/deleted since the prior refresh Then the delta ledger records the insert/update/delete rows under that refresh version, and an opt-out MV writes no ledger entries'
+  scenario: Given an MV with row-level delta capture enabled When the MV refreshes with rows inserted/updated/deleted
+    since the prior refresh Then the delta ledger records the insert/update/delete rows under that refresh
+    version, and an opt-out MV writes no ledger entries
   group: 5. Data Lineage & Provenance
   category: Row-Level Delta Capture
   priority: MAY
@@ -24771,13 +24775,13 @@
   - provisa/core/schema_org.py
   tests:
   - tests/unit/test_mv_delta_capture.py
-  implementation_note: 'Opt-in per-MV row-level delta ledger (mv_delta_ledger) written best-effort
-    off the refresh critical path — capture_row_deltas/delta_key/delta_exclude_columns on the MV;
-    diff is BY-KEY over a hash of the non-excluded projection. SCOPE vs spec: value-delta tier is
-    implemented (events carry old/new row values, enabling REQ-878 content reconstruction); the diff
-    is currently computed over the landed row snapshots in-process rather than pushed down as an
-    engine EXCEPT/anti-join, and the native-first Iceberg-changelog / watermark-slice derivation and
-    the max_row_hashing ceiling remain future optimizations of the same ledger contract.'
+  implementation_note: 'Opt-in per-MV row-level delta ledger (mv_delta_ledger) written best-effort off
+    the refresh critical path — capture_row_deltas/delta_key/delta_exclude_columns on the MV; diff is
+    BY-KEY over a hash of the non-excluded projection. SCOPE vs spec: value-delta tier is implemented
+    (events carry old/new row values, enabling REQ-878 content reconstruction); the diff is currently
+    computed over the landed row snapshots in-process rather than pushed down as an engine EXCEPT/anti-join,
+    and the native-first Iceberg-changelog / watermark-slice derivation and the max_row_hashing ceiling
+    remain future optimizations of the same ledger contract.'
   related_reqs:
   - REQ-862
   - REQ-874
@@ -24786,7 +24790,10 @@
 - id: REQ-878
   status: complete
   since: 2026-07
-  scenario: 'Given an MV with row-level delta capture enabled and a delta ledger spanning refresh versions 1..N When a caller reconstructs the MV as of version K (K<N) via forward-fold from base or reverse from the live table Then the reconstructed rows equal the MV state as of version K, and reconstructing an unknown version fails loud'
+  scenario: Given an MV with row-level delta capture enabled and a delta ledger spanning refresh versions
+    1..N When a caller reconstructs the MV as of version K (K<N) via forward-fold from base or reverse
+    from the live table Then the reconstructed rows equal the MV state as of version K, and reconstructing
+    an unknown version fails loud
   group: 5. Data Lineage & Provenance
   category: Point-In-Time Reconstruction
   priority: MAY
@@ -24818,12 +24825,12 @@
   tests:
   - tests/unit/test_mv_delta_capture.py
   implementation_note: 'reconstruct_forward folds the ledger from base as the windowed greatest-per-key
-    query over refresh_version <= N (executed in the store, deletes excluded); reconstruct_reverse
-    derives the same as-of-N set from the live rows by correcting only keys touched after N (restoring
-    updates, resurrecting deletes, dropping after-N inserts). Value-delta tier gives full content
-    reconstruction. Unknown version fails loud. SCOPE vs spec: checkpoint-bounded replay (periodic full
-    snapshot + deltas-between) is not yet persisted — reconstruction folds from ledger base; membership-
-    only hash tier is covered by the value tier superset.'
+    query over refresh_version <= N (executed in the store, deletes excluded); reconstruct_reverse derives
+    the same as-of-N set from the live rows by correcting only keys touched after N (restoring updates,
+    resurrecting deletes, dropping after-N inserts). Value-delta tier gives full content reconstruction.
+    Unknown version fails loud. SCOPE vs spec: checkpoint-bounded replay (periodic full snapshot + deltas-between)
+    is not yet persisted — reconstruction folds from ledger base; membership- only hash tier is covered
+    by the value tier superset.'
   related_reqs:
   - REQ-877
   - REQ-862
@@ -25493,10 +25500,9 @@
   - provisa/pgwire/_pipeline.py
   tests:
   - tests/unit/test_pgwire_ext_surfaces.py
-  notes: 'pgvector / json-ops / compat-fns live; postgis-subset partial (geometry/geography
-    types + ST_* pass-through + && -> ST_Intersects; geography aliased to geometry, no
-    SRID transforms). Opt-in via PROVISA_PGWIRE_EXT_SURFACES. ivfflat/hnsw index
-    acceleration rejected loudly and never advertised.'
+  notes: pgvector / json-ops / compat-fns live; postgis-subset partial (geometry/geography types + ST_*
+    pass-through + && -> ST_Intersects; geography aliased to geometry, no SRID transforms). Opt-in via
+    PROVISA_PGWIRE_EXT_SURFACES. ivfflat/hnsw index acceleration rejected loudly and never advertised.
   related_reqs:
   - REQ-883
   - REQ-842
@@ -25629,7 +25635,8 @@
 - id: REQ-895
   status: complete
   unit_test: false
-  unit_test_reason: Cross-vendor SQL/MED design pattern (MAY); no code artifact or mockable interface to assert.
+  unit_test_reason: Cross-vendor SQL/MED design pattern (MAY); no code artifact or mockable interface
+    to assert.
   since: 2026-07
   target: 2026-Q4
   group: 4. Source Connectors
@@ -27867,12 +27874,10 @@
   - provisa/events/handlers.py
   tests:
   - tests/unit/test_live_selfdescribing.py
-  scenario: 'Given an MV declared as SQL over shop.orders
-    When it is registered
-    Then lineage, fan-out, output schema, and PK are DERIVED from the SQL (nothing hand-orchestrated)
-    Given an MV whose SQL reads now()/current_timestamp/random()
-    Then registration is rejected — proof-obligation #1 (transform determinism) is enforced
-    mechanically so materialization stays addressable and replayable'
+  scenario: 'Given an MV declared as SQL over shop.orders When it is registered Then lineage, fan-out,
+    output schema, and PK are DERIVED from the SQL (nothing hand-orchestrated) Given an MV whose SQL reads
+    now()/current_timestamp/random() Then registration is rejected — proof-obligation #1 (transform determinism)
+    is enforced mechanically so materialization stays addressable and replayable'
   related_reqs:
   - REQ-939
   - REQ-957
@@ -28020,10 +28025,9 @@
   - provisa/events/processor.py
   tests:
   - tests/unit/test_live_selfdescribing.py
-  scenario: 'Given an MV declared with ONLY its SQL (every other knob defaulted)
-    When a source it reads changes
-    Then lineage auto-derives, fan-out auto-wires, and the MV reprocesses in near-real-time
-    (replace-persist, single-shape emit, real-time fire) with no configuration beyond its SQL'
+  scenario: Given an MV declared with ONLY its SQL (every other knob defaulted) When a source it reads
+    changes Then lineage auto-derives, fan-out auto-wires, and the MV reprocesses in near-real-time (replace-persist,
+    single-shape emit, real-time fire) with no configuration beyond its SQL
   related_reqs:
   - REQ-964
   - REQ-939
@@ -28069,12 +28073,10 @@
   - provisa/events/processor.py
   tests:
   - tests/unit/test_live_selfdescribing.py
-  scenario: 'Given the warn/error events the machinery emits
-    When a DQ scorecard is declared as an MV over that stream
-    Then quality is a query over the emissions — no bespoke DQ subsystem
-    Given a replace-persist upstream that emits an append per fire
-    When a history MV persists that append
-    Then it accumulates each snapshot into an SCD-2 time series — no bespoke history subsystem'
+  scenario: Given the warn/error events the machinery emits When a DQ scorecard is declared as an MV over
+    that stream Then quality is a query over the emissions — no bespoke DQ subsystem Given a replace-persist
+    upstream that emits an append per fire When a history MV persists that append Then it accumulates
+    each snapshot into an SCD-2 time series — no bespoke history subsystem
   related_reqs:
   - REQ-964
   - REQ-965
@@ -29507,12 +29509,12 @@
   category: Multi-Tier Deployment
   priority: MUST
   type: infrastructure
-  description: Deployment choices — federation engine (DuckDB/Trino/external-SQLAlchemy), observability mode
-    (none/Docker-incluster/collector), and demo install — are exposed uniformly across all deployment surfaces
-    (macOS SwiftUI, Linux AppImage, install.sh, Windows native, Helm, Terraform) with environment-variable
+  description: Deployment choices — federation engine (DuckDB/Trino/external-SQLAlchemy), observability
+    mode (none/Docker-incluster/collector), and demo install — are exposed uniformly across all deployment
+    surfaces (macOS SwiftUI, Linux AppImage, install.sh, Windows native, Helm, Terraform) with environment-variable
     overrides and interactive prompts where applicable.
-  use_case: Deployment parity ensures users can select the same configuration across desktop, server, container,
-    and cloud deployments without relearning the choice model for each platform.
+  use_case: Deployment parity ensures users can select the same configuration across desktop, server,
+    container, and cloud deployments without relearning the choice model for each platform.
   code:
   - packaging/linux/first-launch.sh
   - packaging/macos/build-dmg.sh
@@ -29541,7 +29543,7 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  since: "2026-07"
+  since: 2026-07
   description: Provisa exposes a Model Context Protocol (MCP) server so external AI agents (Claude Desktop,
     claude.ai connectors, Claude Code) can discover catalog metadata and execute SQL through the same
     governed pipeline as every other client. The server is a protocol adapter with zero new governance
@@ -29551,38 +29553,38 @@
     Streamable HTTP with OAuth (token→provisa role via existing pgwire OIDC) and local stdio with a pinned
     role for development. A role is REQUIRED on every call; the server never defaults to admin. Tools
     list_schemas, list_tables(schema), describe_table(schema,table), run_sql(sql) (row-limited/paged),
-    explain_sql(sql) (plan-only), and search_catalog(nl_text). Structured drill-down (list_schemas →
-    list_tables → describe_table) is deterministic over the meta views (registered_tables_meta,
-    table_columns_meta) and needs no vector store. search_catalog is semantic bottom-up detail search
-    using small-to-big retrieval embed narrow column-leaf chunks, match on the detail, then resolve up
-    through deterministic drill-down to return the parent table branch (all columns + FKs) plus schema
-    breadcrumb. Three chunk tiers schema (schema+desc+table names), table (table+desc+column names),
-    column (column+desc+table+schema); all columns embedded. A single formatter get_chunk(schema, table?,
-    column?) is the sole chunk-text contract address depth selects the tier (schema | schema+table |
-    schema+table+column), column requires table, and it returns embed-text as labeled plain prose (NOT
-    markdown — markdown chrome is token noise to the embedder; the pretty structured view is describe_table's
-    job for a different consumer). A separate iter_entities() enumerator walks the meta views yielding
-    addresses that drive get_chunk, keeping the formatter pure (address in, text out). The address IS the
-    provenance the args (schema, table, column) equal the {level, schema_id, table_id, column_id} stored
-    on the vector row, so a hit resolves straight back through get_chunk/describe_table with no separate
-    chunk-id→entity mapping. Schema questions are never answered from stale chunk text. Because one
-    formatter serves both initial index and incremental reindex, indexed and re-indexed text cannot drift.
-    Vector store is DuckDB VSS, full stop — no second backend. The index runs in-process with the always-running
-    Provisa server, alongside the meta views and pg_duckdb it derives from, so there is no external vector
-    store to provision. DuckDB's HNSW index is memory-resident (disk persistence is still experimental), so
-    it is treated as a server-lifetime artifact rebuilt/loaded at startup by the same walk-the-meta-views
-    code path as incremental reindex (a cold build is just the full case). Sizing the index scales with schema
-    cardinality, not row volume, and the catalog is curated, so it stays single-node across the range
-    (fed ~10K, enterprise ~140K, largest curated+transaction ~1.4M column chunks) — well inside DuckDB VSS's
-    range, which is why no pgvector/multi-million fallback is needed. Phase 2 (search_catalog semantic explore)
-    is implemented with full rebuild-on-reload; incremental re-embed (keyed off MV/catalog refresh) remains
-    a future optimization.
-  use_case: Makes Provisa pluggable into Claude and other MCP-speaking agents for governed metadata
-    discovery and SQL execution, without exposing a second ungoverned surface. Extends the
-    governed-surface-for-AI-planners motivation of REQ-884 from "queryable telemetry" to a first-class
-    agent-facing protocol. Bottom-up search answers detail-topic questions ("which dataset holds the
-    SOFR reset rate") that structured top-down navigation cannot at enterprise catalog scale where the
-    flat table list exceeds an agent's context window.
+    explain_sql(sql) (plan-only), and search_catalog(nl_text). Structured drill-down (list_schemas → list_tables
+    → describe_table) is deterministic over the meta views (registered_tables_meta, table_columns_meta)
+    and needs no vector store. search_catalog is semantic bottom-up detail search using small-to-big retrieval
+    embed narrow column-leaf chunks, match on the detail, then resolve up through deterministic drill-down
+    to return the parent table branch (all columns + FKs) plus schema breadcrumb. Three chunk tiers schema
+    (schema+desc+table names), table (table+desc+column names), column (column+desc+table+schema); all
+    columns embedded. A single formatter get_chunk(schema, table?, column?) is the sole chunk-text contract
+    address depth selects the tier (schema | schema+table | schema+table+column), column requires table,
+    and it returns embed-text as labeled plain prose (NOT markdown — markdown chrome is token noise to
+    the embedder; the pretty structured view is describe_table's job for a different consumer). A separate
+    iter_entities() enumerator walks the meta views yielding addresses that drive get_chunk, keeping the
+    formatter pure (address in, text out). The address IS the provenance the args (schema, table, column)
+    equal the {level, schema_id, table_id, column_id} stored on the vector row, so a hit resolves straight
+    back through get_chunk/describe_table with no separate chunk-id→entity mapping. Schema questions are
+    never answered from stale chunk text. Because one formatter serves both initial index and incremental
+    reindex, indexed and re-indexed text cannot drift. Vector store is DuckDB VSS, full stop — no second
+    backend. The index runs in-process with the always-running Provisa server, alongside the meta views
+    and pg_duckdb it derives from, so there is no external vector store to provision. DuckDB's HNSW index
+    is memory-resident (disk persistence is still experimental), so it is treated as a server-lifetime
+    artifact rebuilt/loaded at startup by the same walk-the-meta-views code path as incremental reindex
+    (a cold build is just the full case). Sizing the index scales with schema cardinality, not row volume,
+    and the catalog is curated, so it stays single-node across the range (fed ~10K, enterprise ~140K,
+    largest curated+transaction ~1.4M column chunks) — well inside DuckDB VSS's range, which is why no
+    pgvector/multi-million fallback is needed. Phase 2 (search_catalog semantic explore) is implemented
+    with full rebuild-on-reload; incremental re-embed (keyed off MV/catalog refresh) remains a future
+    optimization.
+  use_case: Makes Provisa pluggable into Claude and other MCP-speaking agents for governed metadata discovery
+    and SQL execution, without exposing a second ungoverned surface. Extends the governed-surface-for-AI-planners
+    motivation of REQ-884 from "queryable telemetry" to a first-class agent-facing protocol. Bottom-up
+    search answers detail-topic questions ("which dataset holds the SOFR reset rate") that structured
+    top-down navigation cannot at enterprise catalog scale where the flat table list exceeds an agent's
+    context window.
   code:
   - provisa/pgwire/_pipeline.py
   - provisa/api/flight/catalog.py
@@ -29599,8 +29601,8 @@
 
     Then search_catalog returns only entities in domains r may access, ranked by column-detail relevance
     with {schema,table,column} provenance, describe_table returns the authoritative table structure from
-    the meta views, and run_sql executes through _govern_and_route under role r — enforcing the same
-    domain access policy as pgwire and returning a row-limited result
+    the meta views, and run_sql executes through _govern_and_route under role r — enforcing the same domain
+    access policy as pgwire and returning a row-limited result
 
     '
   related_reqs:
@@ -29614,15 +29616,14 @@
   priority: MUST
   type: structural
   target: 2026-Q3
-  description: >-
-    Standardize provisa-ui on the Mantine component library (MIT/OSS) as the single modern UI component system.
-    Remove unused @mui/material and Emotion dependencies (dead deps, imported in 0 source files).
-  use_case: >-
-    A single, well-maintained component library provides consistent UX, reduces bundle size, and simplifies maintenance.
-    Mantine's hooks-first architecture aligns with React best practices and TypeScript integration.
+  description: Standardize provisa-ui on the Mantine component library (MIT/OSS) as the single modern
+    UI component system. Remove unused @mui/material and Emotion dependencies (dead deps, imported in
+    0 source files).
+  use_case: A single, well-maintained component library provides consistent UX, reduces bundle size, and
+    simplifies maintenance. Mantine's hooks-first architecture aligns with React best practices and TypeScript
+    integration.
   code:
-    - provisa-ui/src/
-
+  - provisa-ui/src/
 - id: REQ-1010
   status: proposed
   group: 11. Frontend UI & UX
@@ -29630,15 +29631,13 @@
   priority: SHOULD
   type: structural
   target: 2026-Q3
-  description: >-
-    Establish a consistent visual design theme driven by CSS-variable design tokens, mapped into Mantine's theme.
-    Primary color is indigo (#6366f1); existing App.css token set is the source of truth.
-  use_case: >-
-    CSS variables enable dynamic theming (light/dark), reduce redundancy, and provide a single point of truth for colors,
-    spacing, and typography across the application.
+  description: Establish a consistent visual design theme driven by CSS-variable design tokens, mapped
+    into Mantine's theme. Primary color is indigo (#6366f1); existing App.css token set is the source
+    of truth.
+  use_case: CSS variables enable dynamic theming (light/dark), reduce redundancy, and provide a single
+    point of truth for colors, spacing, and typography across the application.
   code:
-    - provisa-ui/src/App.css
-
+  - provisa-ui/src/App.css
 - id: REQ-1011
   status: proposed
   group: 11. Frontend UI & UX
@@ -29646,17 +29645,13 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q3
-  description: >-
-    Support both Dark and Light color schemes via Mantine's color-scheme system, with a user-facing theme toggle.
-    Current state is dark-only.
-  use_case: >-
-    Light mode improves accessibility for users with certain vision conditions; user choice increases accessibility
-    and user satisfaction.
+  description: Support both Dark and Light color schemes via Mantine's color-scheme system, with a user-facing
+    theme toggle. Current state is dark-only.
+  use_case: Light mode improves accessibility for users with certain vision conditions; user choice increases
+    accessibility and user satisfaction.
   e2e: true
-  e2e_reason: >-
-    Theme toggle is a UI interaction that must be verified end-to-end to ensure the app correctly switches and persists
-    the user's choice across page reloads.
-
+  e2e_reason: Theme toggle is a UI interaction that must be verified end-to-end to ensure the app correctly
+    switches and persists the user's choice across page reloads.
 - id: REQ-1012
   status: proposed
   group: 11. Frontend UI & UX
@@ -29664,20 +29659,16 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q3
-  description: >-
-    Internationalize the entire frontend: no hardcoded user-facing strings (~536 exist today).
-    Use react-i18next with an 'en' base catalog; include locale-aware date and number formatting.
-    Pipeline must support adding additional locales.
-  use_case: >-
-    i18n enables Provisa to serve global enterprises in their native languages, reducing adoption friction and supporting
-    compliance requirements in non-English jurisdictions.
+  description: 'Internationalize the entire frontend: no hardcoded user-facing strings (~536 exist today).
+    Use react-i18next with an ''en'' base catalog; include locale-aware date and number formatting. Pipeline
+    must support adding additional locales.'
+  use_case: i18n enables Provisa to serve global enterprises in their native languages, reducing adoption
+    friction and supporting compliance requirements in non-English jurisdictions.
   code:
-    - provisa-ui/src/
+  - provisa-ui/src/
   e2e: true
-  e2e_reason: >-
-    Locale switching, date/number formatting, and catalog consistency must be verified end-to-end with actual locale-aware
-    rendering in the browser.
-
+  e2e_reason: Locale switching, date/number formatting, and catalog consistency must be verified end-to-end
+    with actual locale-aware rendering in the browser.
 - id: REQ-1013
   status: proposed
   group: 11. Frontend UI & UX
@@ -29685,20 +29676,17 @@
   priority: MUST
   type: constraint
   target: 2026-Q3
-  description: >-
-    Meet enterprise accessibility requirements: WCAG 2.1 Level AA across the app.
-    Includes focus management and focus-trap in dialogs, full keyboard operability, correct ARIA roles/attributes
-    (e.g. role="dialog"/aria-modal on the 65 modal usages that currently lack them), 4.5:1 text contrast in both
-    color schemes, visible focus indicators, reduced-motion support, form label/error association, and live regions
-    for async notifications.
-  use_case: >-
-    WCAG 2.1 AA is required for enterprise and government adoption; accessibility is a legal and ethical requirement,
-    not optional.
+  description: 'Meet enterprise accessibility requirements: WCAG 2.1 Level AA across the app. Includes
+    focus management and focus-trap in dialogs, full keyboard operability, correct ARIA roles/attributes
+    (e.g. role="dialog"/aria-modal on the 65 modal usages that currently lack them), 4.5:1 text contrast
+    in both color schemes, visible focus indicators, reduced-motion support, form label/error association,
+    and live regions for async notifications.'
+  use_case: WCAG 2.1 AA is required for enterprise and government adoption; accessibility is a legal and
+    ethical requirement, not optional.
   e2e: true
-  e2e_reason: >-
-    Keyboard navigation, focus trapping, and modal semantics must be verified end-to-end through actual user interaction
-    with the app; unit tests cannot detect focus-management bugs or keyboard handling flaws.
-
+  e2e_reason: Keyboard navigation, focus trapping, and modal semantics must be verified end-to-end through
+    actual user interaction with the app; unit tests cannot detect focus-management bugs or keyboard handling
+    flaws.
 - id: REQ-1014
   status: proposed
   group: 11. Frontend UI & UX
@@ -29706,21 +29694,17 @@
   priority: MUST
   type: behavioral
   target: 2026-Q3
-  description: >-
-    Accessibility is a tested, enforced requirement: add automated axe-core checks (@axe-core/playwright)
-    into the Playwright e2e coverage fixture so every e2e run asserts zero accessibility violations.
-  use_case: >-
-    Automated accessibility testing catches WCAG violations early, prevents regressions, and enforces compliance
-    as a gate condition for test passage.
+  description: 'Accessibility is a tested, enforced requirement: add automated axe-core checks (@axe-core/playwright)
+    into the Playwright e2e coverage fixture so every e2e run asserts zero accessibility violations.'
+  use_case: Automated accessibility testing catches WCAG violations early, prevents regressions, and enforces
+    compliance as a gate condition for test passage.
   code:
-    - provisa-ui/e2e/coverage.ts
+  - provisa-ui/e2e/coverage.ts
   tests:
-    - provisa-ui/e2e/coverage.ts
+  - provisa-ui/e2e/coverage.ts
   e2e: true
-  e2e_reason: >-
-    Accessibility scanning must run against the real DOM tree rendered in the browser; static analysis cannot
-    detect color contrast, focus order, or semantic issues.
-
+  e2e_reason: Accessibility scanning must run against the real DOM tree rendered in the browser; static
+    analysis cannot detect color contrast, focus order, or semantic issues.
 - id: REQ-1074
   status: proposed
   group: 11. Frontend UI & UX
@@ -29728,12 +29712,11 @@
   priority: MAY
   type: structural
   target: 2026-Q3
-  description: >-
-    If/when AG Grid is adopted for data tables, it must be themed coherently with the design tokens
-    (AG Grid v33 Theming API referencing the same CSS variables), consistent in both light and dark schemes.
-  use_case: >-
-    Consistent theming across third-party components prevents visual jarring and maintains a unified design system
-    even when mixing Mantine and premium grid libraries.
+  description: If/when AG Grid is adopted for data tables, it must be themed coherently with the design
+    tokens (AG Grid v33 Theming API referencing the same CSS variables), consistent in both light and
+    dark schemes.
+  use_case: Consistent theming across third-party components prevents visual jarring and maintains a unified
+    design system even when mixing Mantine and premium grid libraries.
 - id: REQ-1016
   status: proposed
   group: 11. Frontend UI & UX
@@ -29741,25 +29724,25 @@
   priority: MUST
   type: constraint
   target: 2026-Q3
-  description: >-
-    Migrate the provisa-ui test suite (27 Playwright e2e specs + 22 unit/component tests) in lockstep with component modernization
-    (REQ-1009/REQ-1012/REQ-1014). Stop relying on hand-rolled CSS-class selectors (59 locator('.…') uses)
-    and hardcoded literal UI text (58 text-based assertions). Adopt role-based selectors (getByRole) plus stable data-testid attributes
-    on migrated components; text assertions must reference i18n catalog keys (t('key')) rather than literal strings.
-    Migration done per-component in the same pass as that component's Mantine/i18n/a11y conversion, keeping the suite green incrementally.
-  use_case: >-
-    Mantine migration removes original classNames and i18n moves strings to catalogs, breaking CSS-class and hardcoded-text selectors.
-    Role-based and data-testid strategies are robust to component library changes; i18n-key assertions reflect the requirements contract.
-    Incremental per-component migration prevents big-bang test breakage and ensures continuous test coverage.
+  description: Migrate the provisa-ui test suite (27 Playwright e2e specs + 22 unit/component tests) in
+    lockstep with component modernization (REQ-1009/REQ-1012/REQ-1014). Stop relying on hand-rolled CSS-class
+    selectors (59 locator('.…') uses) and hardcoded literal UI text (58 text-based assertions). Adopt
+    role-based selectors (getByRole) plus stable data-testid attributes on migrated components; text assertions
+    must reference i18n catalog keys (t('key')) rather than literal strings. Migration done per-component
+    in the same pass as that component's Mantine/i18n/a11y conversion, keeping the suite green incrementally.
+  use_case: Mantine migration removes original classNames and i18n moves strings to catalogs, breaking
+    CSS-class and hardcoded-text selectors. Role-based and data-testid strategies are robust to component
+    library changes; i18n-key assertions reflect the requirements contract. Incremental per-component
+    migration prevents big-bang test breakage and ensures continuous test coverage.
   code:
-    - provisa-ui/e2e/
-    - provisa-ui/src/
+  - provisa-ui/e2e/
+  - provisa-ui/src/
   tests:
-    - provisa-ui/e2e/
+  - provisa-ui/e2e/
   relates_to:
-    - REQ-1009
-    - REQ-1012
-    - REQ-1014
+  - REQ-1009
+  - REQ-1012
+  - REQ-1014
 - id: REQ-1017
   status: proposed
   group: 2. Authentication & Identity
@@ -29767,18 +29750,16 @@
   priority: MUST
   type: behavioral
   target: 2026-Q3
-  description: >-
-    Any authenticated Firebase user with no existing org membership may create an org via a non-superadmin endpoint;
-    the creator is inserted into user_org_memberships as role 'admin'.
-  use_case: >-
-    Enables self-service SaaS adoption without platform admin involvement. Lifts the superadmin gate for the self-serve path only;
-    superadmin endpoints in orgs_router remain for platform administration.
+  description: Any authenticated Firebase user with no existing org membership may create an org via a
+    non-superadmin endpoint; the creator is inserted into user_org_memberships as role 'admin'.
+  use_case: Enables self-service SaaS adoption without platform admin involvement. Lifts the superadmin
+    gate for the self-serve path only; superadmin endpoints in orgs_router remain for platform administration.
   code:
-    - provisa/api/auth_router.py
-    - provisa/api/orgs_router.py
+  - provisa/api/auth_router.py
+  - provisa/api/orgs_router.py
   relates_to:
-    - REQ-833
-    - REQ-839
+  - REQ-833
+  - REQ-839
 - id: REQ-1075
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -29786,84 +29767,100 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: >-
-    SaaS billing is provided by Lemon Squeezy as Merchant of Record. `provisa/api/billing/` integrates
-    over the Lemon Squeezy REST API (JSON:API) and signed webhooks. Checkout: POST /v1/checkouts and returns
-    `checkout.data.attributes.url`; the tenant_id is carried in checkout `custom_data` and echoed back in
-    webhook `meta.custom_data`. Webhook signature verification: HMAC-SHA256 over the RAW request body keyed
-    by env `LEMONSQUEEZY_SIGNING_SECRET`, compared in constant time to the hex `X-Signature` header.
-    Tenant→customer linkage stored as `tenants.ls_customer_id`. Plan lifecycle from `meta.event_name`:
-    `subscription_created`/`subscription_updated` set plan+source_limit from the LS variant name (mapped via
-    PLAN_LIMITS by `plan_from_variant`); `subscription_cancelled`/`subscription_expired` revert to the trial
-    plan. Customer portal URL comes from the LS customer object `data.attributes.urls.customer_portal`. Env:
-    `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, `LEMONSQUEEZY_SIGNING_SECRET` (and `LEMONSQUEEZY_BASE_URL`
+  description: 'SaaS billing is provided by Lemon Squeezy as Merchant of Record. `provisa/api/billing/`
+    integrates over the Lemon Squeezy REST API (JSON:API) and signed webhooks. Checkout: POST /v1/checkouts
+    and returns `checkout.data.attributes.url`; the tenant_id is carried in checkout `custom_data` and
+    echoed back in webhook `meta.custom_data`. Webhook signature verification: HMAC-SHA256 over the RAW
+    request body keyed by env `LEMONSQUEEZY_SIGNING_SECRET`, compared in constant time to the hex `X-Signature`
+    header. Tenant→customer linkage stored as `tenants.ls_customer_id`. Plan lifecycle from `meta.event_name`:
+    `subscription_created`/`subscription_updated` set plan+source_limit from the LS variant name (mapped
+    via PLAN_LIMITS by `plan_from_variant`); `subscription_cancelled`/`subscription_expired` revert to
+    the trial plan. Customer portal URL comes from the LS customer object `data.attributes.urls.customer_portal`.
+    Env: `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, `LEMONSQUEEZY_SIGNING_SECRET` (and `LEMONSQUEEZY_BASE_URL`
     to override the endpoint in tests). An unrecognized variant name is a hard error, never a silent default.
-    This replaces the prior Stripe integration.
-  use_case: >-
-    Lemon Squeezy MoR consolidates global sales-tax/VAT compliance, chargebacks, and fraud handling in one
-    system Provisa does not build; per-tenant plan gating via source_limit maps to LS subscription variants.
+    This replaces the prior Stripe integration.'
+  use_case: Lemon Squeezy MoR consolidates global sales-tax/VAT compliance, chargebacks, and fraud handling
+    in one system Provisa does not build; per-tenant plan gating via source_limit maps to LS subscription
+    variants.
   tests:
-    - tests/unit/test_billing_lemonsqueezy.py
-  scenario: |
-    Given a tenant initiates checkout with tenant_id in custom_data
+  - tests/unit/test_billing_lemonsqueezy.py
+  scenario: 'Given a tenant initiates checkout with tenant_id in custom_data
+
     When POST /v1/checkouts is called to Lemon Squeezy API
-    Then a checkout URL is returned; the webhook subsequently updates tenant.ls_customer_id and applies plan/source_limit from the subscription variant
+
+    Then a checkout URL is returned; the webhook subsequently updates tenant.ls_customer_id and applies
+    plan/source_limit from the subscription variant
+
 
     And Given a subscription_created webhook from Lemon Squeezy with valid HMAC-SHA256 signature
+
     When the webhook signature is verified against LEMONSQUEEZY_SIGNING_SECRET
-    Then the tenant's plan and source_limit are updated from the variant name; unrecognized variants reject the webhook
+
+    Then the tenant''s plan and source_limit are updated from the variant name; unrecognized variants
+    reject the webhook
+
+    '
 - id: REQ-1076
   status: complete
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Federation Configuration
   priority: MUST
   type: structural
   since: 2026-07
-  description: >-
-    Databricks federation TLS trust is configurable via environment variables to enable the databricks-sql connector to work behind a TLS-intercepting proxy. Honored in precedence order: DATABRICKS_TLS_NO_VERIFY=1 (disable verification, local dev only), DATABRICKS_TLS_CA_FILE (custom CA certificate), REQUESTS_CA_BUNDLE, SSL_CERT_FILE. If all are absent, connector keeps its default verified behavior. Values passed as _tls_trusted_ca_file and _tls_verify to dbsql.connect().
-  use_case: >-
-    Organizations with TLS-intercepting proxies (compliance/security gateways) require the ability to supply custom certificate authorities or disable verification in development environments. Provisa must support this pattern to work in corporate proxy environments.
+  description: 'Databricks federation TLS trust is configurable via environment variables to enable the
+    databricks-sql connector to work behind a TLS-intercepting proxy. Honored in precedence order: DATABRICKS_TLS_NO_VERIFY=1
+    (disable verification, local dev only), DATABRICKS_TLS_CA_FILE (custom CA certificate), REQUESTS_CA_BUNDLE,
+    SSL_CERT_FILE. If all are absent, connector keeps its default verified behavior. Values passed as
+    _tls_trusted_ca_file and _tls_verify to dbsql.connect().'
+  use_case: Organizations with TLS-intercepting proxies (compliance/security gateways) require the ability
+    to supply custom certificate authorities or disable verification in development environments. Provisa
+    must support this pattern to work in corporate proxy environments.
   code:
-    - provisa/federation/databricks_tls.py
-    - provisa/federation/databricks_runtime.py
-    - provisa/executor/drivers/databricks.py
+  - provisa/federation/databricks_tls.py
+  - provisa/federation/databricks_runtime.py
+  - provisa/executor/drivers/databricks.py
+  tests:
+  - tests/unit/test_warehouse_config.py
 - id: REQ-1077
   status: complete
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Warehouse Configuration
   priority: SHOULD
   type: structural
   since: 2026-07
-  description: >-
-    MSSQL warehouse (Azure Synapse/Fabric) login timeout is configurable via PROVISA_MSSQL_LOGIN_TIMEOUT environment variable (seconds, default 120). Applied at both pyodbc connection sites (provisa/federation/mssql_warehouse_runtime.py and provisa/executor/drivers/mssql_warehouse.py) via the ConnectionTimeout keyword argument.
-  use_case: >-
-    Serverless SQL pools in Azure Synapse auto-pause and require wake-up time before accepting connections. A configurable timeout prevents false connection failures when the pool is resuming from auto-pause.
+  description: MSSQL warehouse (Azure Synapse/Fabric) login timeout is configurable via PROVISA_MSSQL_LOGIN_TIMEOUT
+    environment variable (seconds, default 120). Applied at both pyodbc connection sites (provisa/federation/mssql_warehouse_runtime.py
+    and provisa/executor/drivers/mssql_warehouse.py) via the ConnectionTimeout keyword argument.
+  use_case: Serverless SQL pools in Azure Synapse auto-pause and require wake-up time before accepting
+    connections. A configurable timeout prevents false connection failures when the pool is resuming from
+    auto-pause.
   code:
-    - provisa/federation/mssql_warehouse_runtime.py
-    - provisa/executor/drivers/mssql_warehouse.py
+  - provisa/federation/mssql_warehouse_runtime.py
+  - provisa/executor/drivers/mssql_warehouse.py
+  tests:
+  - tests/unit/test_warehouse_config.py
 - id: REQ-1078
   status: complete
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Testing Infrastructure
   priority: SHOULD
   type: structural
   since: 2026-07
-  description: >-
-    The scripts/test-all runner auto-loads .env file before executing test lanes, with caller-exported variables taking precedence. This allows credential-gated warehouse test lanes (e.g., Databricks, Snowflake, MSSQL) to run instead of skipping.
-  use_case: >-
-    Enables CI/CD pipelines to load external warehouse credentials from .env (not checked in) and run full warehouse integration tests. Caller-exported variables can still override .env values for CI/CD systems that inject credentials via environment.
+  description: The scripts/test-all runner auto-loads .env file before executing test lanes, with caller-exported
+    variables taking precedence. This allows credential-gated warehouse test lanes (e.g., Databricks,
+    Snowflake, MSSQL) to run instead of skipping.
+  use_case: Enables CI/CD pipelines to load external warehouse credentials from .env (not checked in)
+    and run full warehouse integration tests. Caller-exported variables can still override .env values
+    for CI/CD systems that inject credentials via environment.
   code:
-    - scripts/test-all
-  code:
-    - provisa/api/billing/router.py
-    - provisa/api/billing/lemonsqueezy_client.py
-    - provisa/api/billing/models.py
-    - provisa/api/billing/tenant_db.py
-    - provisa/core/schema_admin.py
+  - provisa/api/billing/router.py
+  - provisa/api/billing/lemonsqueezy_client.py
+  - provisa/api/billing/models.py
+  - provisa/api/billing/tenant_db.py
+  - provisa/core/schema_admin.py
   tests:
-    - tests/unit/test_billing_lemonsqueezy.py
-    - tests/unit/test_org_isolation.py
-
+  - tests/unit/test_billing_lemonsqueezy.py
+  - tests/unit/test_org_isolation.py
 - id: REQ-1026
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -29871,15 +29868,15 @@
   priority: MUST
   type: infrastructure
   target: 2026-Q3
-  description: >-
-    First-customer deployment target is a single GCP Compute Engine VM (e2-standard-4: 4 vCPU / 16GB, trimmable to e2-standard-2 / 8GB)
-    running the core docker-compose stack. GCP chosen for colocation with Firebase auth (single vendor/single bill) and one-time $300 free-tier credit.
-  use_case: >-
-    Trino's ~8GB JVM footprint rules out per-service PaaS (Fly/Railway/Render). A raw VM is the cheapest usable deployment platform.
-    GCP colocation with Firebase minimizes operational complexity and bill consolidation.
+  description: 'First-customer deployment target is a single GCP Compute Engine VM (e2-standard-4: 4 vCPU
+    / 16GB, trimmable to e2-standard-2 / 8GB) running the core docker-compose stack. GCP chosen for colocation
+    with Firebase auth (single vendor/single bill) and one-time $300 free-tier credit.'
+  use_case: Trino's ~8GB JVM footprint rules out per-service PaaS (Fly/Railway/Render). A raw VM is the
+    cheapest usable deployment platform. GCP colocation with Firebase minimizes operational complexity
+    and bill consolidation.
   relates_to:
-    - REQ-854
-    - REQ-121
+  - REQ-854
+  - REQ-121
 - id: REQ-1027
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -29887,13 +29884,12 @@
   priority: MUST
   type: infrastructure
   target: 2026-Q3
-  description: >-
-    Object storage externalized to Cloudflare R2 (Trino exchange/spill and any object storage), replacing bundled MinIO for first-customer profile.
-    R2 chosen for zero egress fees at low volume.
-  use_case: >-
-    MinIO adds operational overhead and state complexity. R2's zero-egress pricing aligns first-customer cost to actual usage.
+  description: Object storage externalized to Cloudflare R2 (Trino exchange/spill and any object storage),
+    replacing bundled MinIO for first-customer profile. R2 chosen for zero egress fees at low volume.
+  use_case: MinIO adds operational overhead and state complexity. R2's zero-egress pricing aligns first-customer
+    cost to actual usage.
   relates_to:
-    - REQ-854
+  - REQ-854
 - id: REQ-1028
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -29901,14 +29897,15 @@
   priority: MUST
   type: infrastructure
   target: 2026-Q3
-  description: >-
-    Trimmed first-customer runtime profile: single-node Trino (coordinator-only, no separate trino-worker; heap reduced to 3-4GB), R2 for exchange, no MinIO.
-    Deliverable: docker-compose.first-customer.yml. The trino-worker service remains defined in compose (unused) for later multi-node scaling without re-architecture.
-  use_case: >-
-    Reduces memory footprint to fit e2-standard-2 (8GB). Preserves architecture for horizontal scaling when load justifies multi-node deployment.
+  description: 'Trimmed first-customer runtime profile: single-node Trino (coordinator-only, no separate
+    trino-worker; heap reduced to 3-4GB), R2 for exchange, no MinIO. Deliverable: docker-compose.first-customer.yml.
+    The trino-worker service remains defined in compose (unused) for later multi-node scaling without
+    re-architecture.'
+  use_case: Reduces memory footprint to fit e2-standard-2 (8GB). Preserves architecture for horizontal
+    scaling when load justifies multi-node deployment.
   relates_to:
-    - REQ-854
-    - REQ-1027
+  - REQ-854
+  - REQ-1027
 - id: REQ-1029
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -29916,13 +29913,13 @@
   priority: MUST
   type: infrastructure
   target: 2026-Q3
-  description: >-
-    Postgres data persists on a separate GCP persistent disk, mounted into the VM, enabling VM resize/reattach without control-plane data loss.
-  use_case: >-
-    Decouples compute lifecycle from data lifecycle. Allows VM scaling or migration while preserving schema and operational state.
+  description: Postgres data persists on a separate GCP persistent disk, mounted into the VM, enabling
+    VM resize/reattach without control-plane data loss.
+  use_case: Decouples compute lifecycle from data lifecycle. Allows VM scaling or migration while preserving
+    schema and operational state.
   relates_to:
-    - REQ-696
-    - REQ-697
+  - REQ-696
+  - REQ-697
 - id: REQ-1030
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -29930,14 +29927,14 @@
   priority: MUST
   type: infrastructure
   target: 2026-Q3
-  description: >-
-    Email transport for first customer: AWS SES (or equivalent SMTP) at low volume, matching the SMTP-only EmailProvider (REQ-1020).
-  use_case: >-
-    Removes dependency on GCP-only email services. SMTP provides portable, low-volume email delivery aligned with the pluggable EmailProvider abstraction.
+  description: 'Email transport for first customer: AWS SES (or equivalent SMTP) at low volume, matching
+    the SMTP-only EmailProvider (REQ-1020).'
+  use_case: Removes dependency on GCP-only email services. SMTP provides portable, low-volume email delivery
+    aligned with the pluggable EmailProvider abstraction.
   relates_to:
-    - REQ-1020
-    - REQ-1021
-    - REQ-1022
+  - REQ-1020
+  - REQ-1021
+  - REQ-1022
 - id: REQ-1031
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -29945,14 +29942,14 @@
   priority: SHOULD
   type: infrastructure
   target: 2026-Q3
-  description: >-
-    Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth) as the exit hatch when GCP steady-state cost is no longer preferred.
-    Deployment is plain docker-compose on any VM; only the Firebase project is GCP-pinned, compute is host-agnostic.
-  use_case: >-
-    Reduces vendor lock-in. Preserves operator freedom to migrate to lower-cost platforms as workload stabilizes and predictable costs justify optimization.
+  description: Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth) as the
+    exit hatch when GCP steady-state cost is no longer preferred. Deployment is plain docker-compose on
+    any VM; only the Firebase project is GCP-pinned, compute is host-agnostic.
+  use_case: Reduces vendor lock-in. Preserves operator freedom to migrate to lower-cost platforms as workload
+    stabilizes and predictable costs justify optimization.
   relates_to:
-    - REQ-1026
-    - REQ-121
+  - REQ-1026
+  - REQ-121
 - id: REQ-1032
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -29960,1113 +29957,1339 @@
   priority: MUST
   type: constraint
   target: 2026-Q3
-  description: >-
-    No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost limited to a domain and a free Firebase project.
-    Cold-start relies on REQ-854 OVA/Lima bundles for sub-hour spin-up.
-  use_case: >-
-    Minimizes pre-revenue spending. Defers fixed infrastructure costs until revenue justifies them, reducing financial risk during customer acquisition.
+  description: No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost
+    limited to a domain and a free Firebase project. Cold-start relies on REQ-854 OVA/Lima bundles for
+    sub-hour spin-up.
+  use_case: Minimizes pre-revenue spending. Defers fixed infrastructure costs until revenue justifies
+    them, reducing financial risk during customer acquisition.
   relates_to:
-    - REQ-854
-    - REQ-121
+  - REQ-854
+  - REQ-121
 - id: REQ-1033
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
   type: infrastructure
   target: 2026-Q3
-  description: >-
-    Provision two demo tiers on shared first-customer VM: (a) anonymous ephemeral sandbox requiring no signup; (b) persistent quota-limited free tier for Firebase-signed-up users. Both leverage schema-per-org tenancy on shared Trino/PG/Redis infrastructure; no per-user VMs provisioned.
-  use_case: >-
-    Converts cold-start friction into zero-friction "try it now" landing page. Ephemeral sandbox captures prospects instantly; persistent free tier captures those ready to commit an email. Scales to thousands of free accounts on single shared VM because idle orgs consume only disk (no compute).
+  description: 'Provision two demo tiers on shared first-customer VM: (a) anonymous ephemeral sandbox
+    requiring no signup; (b) persistent quota-limited free tier for Firebase-signed-up users. Both leverage
+    schema-per-org tenancy on shared Trino/PG/Redis infrastructure; no per-user VMs provisioned.'
+  use_case: Converts cold-start friction into zero-friction "try it now" landing page. Ephemeral sandbox
+    captures prospects instantly; persistent free tier captures those ready to commit an email. Scales
+    to thousands of free accounts on single shared VM because idle orgs consume only disk (no compute).
   relates_to:
-    - REQ-696
-    - REQ-697
-    - REQ-1017
-    - REQ-1026
+  - REQ-696
+  - REQ-697
+  - REQ-1017
+  - REQ-1026
 - id: REQ-1034
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
   type: behavioral
   target: 2026-Q3
-  description: >-
-    On ephemeral sandbox session start, clone a pre-seeded golden template schema (org_template, containing REQ-414 demo federated sources and sample data) into a session-scoped org schema (e.g. org_sandbox_<uid>) via the REQ-697 init_schema provisioning path.
-  use_case: >-
-    Pre-seeding the template avoids re-running full data registration and source discovery on every sandbox session. Prospects can immediately explore and create sources, views, and roles without setup lag.
-  scenario: |
-    Given a prospect visits the public landing page
+  description: On ephemeral sandbox session start, clone a pre-seeded golden template schema (org_template,
+    containing REQ-414 demo federated sources and sample data) into a session-scoped org schema (e.g.
+    org_sandbox_<uid>) via the REQ-697 init_schema provisioning path.
+  use_case: Pre-seeding the template avoids re-running full data registration and source discovery on
+    every sandbox session. Prospects can immediately explore and create sources, views, and roles without
+    setup lag.
+  scenario: 'Given a prospect visits the public landing page
+
     When they click "Try Now" without signup
-    Then a Firebase anonymous session is created and a cloned schema is provisioned with demo sources + data
+
+    Then a Firebase anonymous session is created and a cloned schema is provisioned with demo sources
+    + data
+
     And the UI connects to that session-scoped org schema
+
+    '
   relates_to:
-    - REQ-414
-    - REQ-696
-    - REQ-697
-    - REQ-121
+  - REQ-414
+  - REQ-696
+  - REQ-697
+  - REQ-121
 - id: REQ-1035
   status: proposed
-  group: "2. Authentication & Identity"
+  group: 2. Authentication & Identity
   category: Demo Tiers & Onboarding
   priority: MUST
   type: behavioral
   target: 2026-Q3
-  description: >-
-    Ephemeral sandbox sessions are scoped by Firebase anonymous auth (REQ-121) without email collection. Prospects get a uid-based session identity with zero friction.
-  use_case: >-
-    Removes signup friction (email validation, password, ToS acceptance) for the "just looking" funnel. Firebase anonymous auth is stateless and session-scoped, aligning with ephemeral sandbox lifecycle (no user record persists).
-  scenario: |
-    Given a prospect clicks "Try Now"
+  description: Ephemeral sandbox sessions are scoped by Firebase anonymous auth (REQ-121) without email
+    collection. Prospects get a uid-based session identity with zero friction.
+  use_case: Removes signup friction (email validation, password, ToS acceptance) for the "just looking"
+    funnel. Firebase anonymous auth is stateless and session-scoped, aligning with ephemeral sandbox lifecycle
+    (no user record persists).
+  scenario: 'Given a prospect clicks "Try Now"
+
     When Firebase anonymous auth completes
+
     Then the browser receives an anonymous auth token scoped to a uid
+
     And the backend routes all org/schema lookups through that uid
+
+    '
   relates_to:
-    - REQ-121
-    - REQ-1033
+  - REQ-121
+  - REQ-1033
 - id: REQ-1036
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
   type: behavioral
   target: 2026-Q3
-  description: >-
-    Ephemeral sandbox schemas are dropped on explicit logout OR after an idle-TTL of inactivity. Teardown is self-resetting; a reaper process periodically sweeps expired sandbox schemas.
-  use_case: >-
-    Ensures sandbox cleanup without manual intervention. Eliminates abandonment debt (orphaned schemas)—each expired sandbox reclaims Postgres and Trino resources immediately. Prospect abandonment is costless.
-  scenario: |
-    Given a user logs out from an ephemeral sandbox
+  description: Ephemeral sandbox schemas are dropped on explicit logout OR after an idle-TTL of inactivity.
+    Teardown is self-resetting; a reaper process periodically sweeps expired sandbox schemas.
+  use_case: Ensures sandbox cleanup without manual intervention. Eliminates abandonment debt (orphaned
+    schemas)—each expired sandbox reclaims Postgres and Trino resources immediately. Prospect abandonment
+    is costless.
+  scenario: 'Given a user logs out from an ephemeral sandbox
+
     When the session ends
+
     Then DROP SCHEMA CASCADE removes the org_sandbox_<uid> schema and all contents
+
     Or: Given a sandbox reaches its idle-TTL
+
     When the reaper runs
+
     Then expired sandboxes are identified and dropped
+
+    '
   relates_to:
-    - REQ-1034
+  - REQ-1034
 - id: REQ-1037
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
   type: constraint
   target: 2026-Q3
-  description: >-
-    Ephemeral sandbox sessions are subject to: (a) session-scoped TTL (e.g., 24h); (b) per-session query row limit and query cost caps; (c) data source registration restricted to bundled demo allowlist (no arbitrary outbound live sources). Platform-schema isolation (REQ-696) already guarantees tenant isolation.
-  use_case: >-
-    Prevents sandbox abuse (runaway queries, scanning arbitrary external data warehouses). Demo allowlist ensures predictable resource footprint and simplifies compliance.
+  description: 'Ephemeral sandbox sessions are subject to: (a) session-scoped TTL (e.g., 24h); (b) per-session
+    query row limit and query cost caps; (c) data source registration restricted to bundled demo allowlist
+    (no arbitrary outbound live sources). Platform-schema isolation (REQ-696) already guarantees tenant
+    isolation.'
+  use_case: Prevents sandbox abuse (runaway queries, scanning arbitrary external data warehouses). Demo
+    allowlist ensures predictable resource footprint and simplifies compliance.
   relates_to:
-    - REQ-696
-    - REQ-1034
+  - REQ-696
+  - REQ-1034
 - id: REQ-1038
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Free tier orgs follow a reversible archive lifecycle to reclaim disk and Postgres resources without destructive loss: idle orgs are email-nudged (REQ-1020/1022) before any action; on continued inactivity, pg_dump'd to Cloudflare R2 (REQ-1027) and live schema dropped; restored on re-login from R2 archive; hard tombstone (delete R2 archive) only after long tail (e.g. 12 months) with final nudge.
-  use_case: >-
-    Dormant free accounts consume disk only (no idle compute on shared Trino/PG); archiving is disk-pressure-driven, not urgent. Reversible archive (vs. destructive delete) preserves user goodwill and simplifies re-engagement campaigns.
-  scenario: |
-    Given a free-tier org is inactive for 3 months
+  description: 'Free tier orgs follow a reversible archive lifecycle to reclaim disk and Postgres resources
+    without destructive loss: idle orgs are email-nudged (REQ-1020/1022) before any action; on continued
+    inactivity, pg_dump''d to Cloudflare R2 (REQ-1027) and live schema dropped; restored on re-login from
+    R2 archive; hard tombstone (delete R2 archive) only after long tail (e.g. 12 months) with final nudge.'
+  use_case: Dormant free accounts consume disk only (no idle compute on shared Trino/PG); archiving is
+    disk-pressure-driven, not urgent. Reversible archive (vs. destructive delete) preserves user goodwill
+    and simplifies re-engagement campaigns.
+  scenario: 'Given a free-tier org is inactive for 3 months
+
     When the archival check runs
+
     Then an email nudge is sent to the registered user
+
     And if no response after 1 month, pg_dump is stored in R2 and the live Postgres schema is dropped
+
     When the user logs in again
+
     Then the schema is restored from R2 seamlessly
+
     And after 12 months of archival with no login, a final retention email is sent
+
     Then after 1 more month, the R2 archive is deleted (hard tombstone)
+
+    '
   relates_to:
-    - REQ-1020
-    - REQ-1022
-    - REQ-1027
-    - REQ-696
+  - REQ-1020
+  - REQ-1022
+  - REQ-1027
+  - REQ-696
 - id: REQ-1039
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
   type: behavioral
   target: 2026-Q3
-  description: >-
-    Funnel routing policy: "just looking" traffic (cold-start landing page) is routed to anonymous ephemeral sandbox (self-reaping, zero abandonment debt); persistent free tier requires deliberate Firebase signup, minimizing abandoned-account volume on shared infrastructure.
-  use_case: >-
-    Biases toward ephemeral first-contact (low infrastructure cost, self-cleaning) and requires a signal (email signup) before allocating a persistent schema. Maximizes conversion rate while minimizing accumulation of dormant free accounts.
-  scenario: |
-    Given a prospect visits the landing page without signin
+  description: 'Funnel routing policy: "just looking" traffic (cold-start landing page) is routed to anonymous
+    ephemeral sandbox (self-reaping, zero abandonment debt); persistent free tier requires deliberate
+    Firebase signup, minimizing abandoned-account volume on shared infrastructure.'
+  use_case: Biases toward ephemeral first-contact (low infrastructure cost, self-cleaning) and requires
+    a signal (email signup) before allocating a persistent schema. Maximizes conversion rate while minimizing
+    accumulation of dormant free accounts.
+  scenario: 'Given a prospect visits the landing page without signin
+
     When they click "Try Now"
+
     Then they are routed to ephemeral sandbox without email collection
+
     When they click "Create Account"
-    Then they are routed to Firebase signup, and on success, a persistent free-tier org and schema are provisioned
+
+    Then they are routed to Firebase signup, and on success, a persistent free-tier org and schema are
+    provisioned
+
+    '
   relates_to:
-    - REQ-1033
-    - REQ-1034
-    - REQ-1035
-    - REQ-1017
+  - REQ-1033
+  - REQ-1034
+  - REQ-1035
+  - REQ-1017
 - id: REQ-1040
   status: proposed
-  group: "5. Query Languages, Compilation & Operations"
+  group: 5. Query Languages, Compilation & Operations
   category: Trino Resource Management
   priority: MUST
   type: structural
   target: 2026-Q4
-  description: >-
-    Per-tenant Trino resource groups enforce isolated CPU/memory ceilings and concurrency limits (maxRunning, maxQueued) per org_id, preventing noisy-neighbor contention on the shared cluster. Resource group configuration is generated via trino_setup.py keyed to org tier.
-  use_case: >-
-    Isolates tenant workloads within a shared Trino cluster. Runaway queries from one org are queued/throttled rather than starving interactive queries from other orgs. Tier-based tuning (free tier gets tight caps; premium gets relaxed limits) enables cost control at the resource-allocation layer.
+  description: Per-tenant Trino resource groups enforce isolated CPU/memory ceilings and concurrency limits
+    (maxRunning, maxQueued) per org_id, preventing noisy-neighbor contention on the shared cluster. Resource
+    group configuration is generated via trino_setup.py keyed to org tier.
+  use_case: Isolates tenant workloads within a shared Trino cluster. Runaway queries from one org are
+    queued/throttled rather than starving interactive queries from other orgs. Tier-based tuning (free
+    tier gets tight caps; premium gets relaxed limits) enables cost control at the resource-allocation
+    layer.
   relates_to:
-    - REQ-696
-    - REQ-1017
+  - REQ-696
+  - REQ-1017
 - id: REQ-1041
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Trino Scaling & HA
   priority: SHOULD
   type: infrastructure
   target: 2026-Q4
-  description: >-
-    Horizontal Trino worker scale-out path: staged from single-node (coordinator executes, worker replicas=0) -> dedicated workers (include-coordinator=false, trino-worker replicas>0, coordinator remains single) -> k8s HPA on workers autoscaling on CPU/queue depth. Coordinator is never scaled; workers are stateless and horizontally elastic.
-  use_case: >-
-    Allows cost-effective first-customer single-node deployment (coordinator handles query execution) while providing a clear path to scale workers independently as workload grows. Worker statelesness and HPA integration enable elastic resource response to query volume spikes.
+  description: 'Horizontal Trino worker scale-out path: staged from single-node (coordinator executes,
+    worker replicas=0) -> dedicated workers (include-coordinator=false, trino-worker replicas>0, coordinator
+    remains single) -> k8s HPA on workers autoscaling on CPU/queue depth. Coordinator is never scaled;
+    workers are stateless and horizontally elastic.'
+  use_case: Allows cost-effective first-customer single-node deployment (coordinator handles query execution)
+    while providing a clear path to scale workers independently as workload grows. Worker statelesness
+    and HPA integration enable elastic resource response to query volume spikes.
   relates_to:
-    - REQ-1026
-    - REQ-1028
+  - REQ-1026
+  - REQ-1028
 - id: REQ-1042
   status: proposed
-  group: "5. Query Languages, Compilation & Operations"
+  group: 5. Query Languages, Compilation & Operations
   category: Trino Resource Management
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: >-
-    Workload separation: interactive user queries and MV/batch-refresh workloads run under distinct Trino resource groups (and eventually distinct worker pools), preventing heavy MV rebuilds from inflating interactive query latency SLO.
-  use_case: >-
-    MV fleet (REQ-942/966) refresh cycles can spike memory and CPU; isolating batch workloads into a separate resource group with relaxed limits ensures interactive queries maintain predictable tail latency. Distinct worker pools (future) enable physical separation and independent scaling.
+  description: 'Workload separation: interactive user queries and MV/batch-refresh workloads run under
+    distinct Trino resource groups (and eventually distinct worker pools), preventing heavy MV rebuilds
+    from inflating interactive query latency SLO.'
+  use_case: MV fleet (REQ-942/966) refresh cycles can spike memory and CPU; isolating batch workloads
+    into a separate resource group with relaxed limits ensures interactive queries maintain predictable
+    tail latency. Distinct worker pools (future) enable physical separation and independent scaling.
   relates_to:
-    - REQ-942
-    - REQ-966
+  - REQ-942
+  - REQ-966
 - id: REQ-1043
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Scaling
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Tiered cluster routing for physical isolation: sandbox/free tenants route to a shared cluster with tight resource-group caps (best-effort); standard paid tenants route to a better-resourced shared cluster; whale/premium tenants route to a dedicated Trino cluster (or dedicated worker pool) pointed at that org's data sources. Routing is org-tier-aware.
-  use_case: >-
-    Isolates resource demand: free tier cannot degrade premium SLA. Enables differentiated pricing (shared cluster = included in all tiers; dedicated cluster = premium SKU). Simplifies compliance (isolated VPC, isolated infra, isolated audit logs for high-security tenants).
+  description: 'Tiered cluster routing for physical isolation: sandbox/free tenants route to a shared
+    cluster with tight resource-group caps (best-effort); standard paid tenants route to a better-resourced
+    shared cluster; whale/premium tenants route to a dedicated Trino cluster (or dedicated worker pool)
+    pointed at that org''s data sources. Routing is org-tier-aware.'
+  use_case: 'Isolates resource demand: free tier cannot degrade premium SLA. Enables differentiated pricing
+    (shared cluster = included in all tiers; dedicated cluster = premium SKU). Simplifies compliance (isolated
+    VPC, isolated infra, isolated audit logs for high-security tenants).'
   relates_to:
-    - REQ-1017
-    - REQ-696
+  - REQ-1017
+  - REQ-696
 - id: REQ-1044
   status: proposed
-  group: "5. Query Languages, Compilation & Operations"
+  group: 5. Query Languages, Compilation & Operations
   category: Query Cost Control & Monetization
   priority: MUST
   type: constraint
   target: 2026-Q4
-  description: >-
-    Hard query-cost caps as a monetization gate: each org tier enforces ceilings on query cost (CPU time, peak memory, bytes scanned, execution time). Queries exceeding the tier's ceiling are REJECTED with an explanatory error message indicating the operation requires a higher tier/premium SKU. Enforced via Trino resource-group limits and per-query guards (query.max-memory-per-node, query.max-execution-time, query.max-scan-physical-bytes) keyed to org entitlement. Free/standard tiers carry restrictive caps; expensive queries require acquiring a premium SKU.
-  use_case: >-
-    Primary monetization lever: caps are hard rejections, not silent degradation. Prevents free-tier abuse (e.g., scanning the entire data warehouse). Drives tier-upgrade conversion when users hit caps. Project rule: rejection must be explicit, never a silent cap-and-continue.
+  description: 'Hard query-cost caps as a monetization gate: each org tier enforces ceilings on query
+    cost (CPU time, peak memory, bytes scanned, execution time). Queries exceeding the tier''s ceiling
+    are REJECTED with an explanatory error message indicating the operation requires a higher tier/premium
+    SKU. Enforced via Trino resource-group limits and per-query guards (query.max-memory-per-node, query.max-execution-time,
+    query.max-scan-physical-bytes) keyed to org entitlement. Free/standard tiers carry restrictive caps;
+    expensive queries require acquiring a premium SKU.'
+  use_case: 'Primary monetization lever: caps are hard rejections, not silent degradation. Prevents free-tier
+    abuse (e.g., scanning the entire data warehouse). Drives tier-upgrade conversion when users hit caps.
+    Project rule: rejection must be explicit, never a silent cap-and-continue.'
   relates_to:
-    - REQ-1017
-    - REQ-1040
+  - REQ-1017
+  - REQ-1040
 - id: REQ-1045
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Demo Tiers & Onboarding
   priority: MUST
   type: constraint
   target: 2026-Q3
-  description: >-
-    Sandbox and free-tier orgs receive the tightest resource-group and query-cost ceilings, enforced via the same tier-cap mechanism (REQ-1044) mapped to sandbox/free entitlements. Caps are applied at session provisioning and validated on every query submission.
-  use_case: >-
-    Limits abuse surface of sandbox/free tiers without manual intervention. Sandbox sessions (REQ-1034/1035/1036) are especially constrained (query-row limits, data-source allowlist, idle-TTL) to minimize resource drain from abandoned demo sessions. Free-tier orgs receive soft caps that nudge users toward upgrade without forcing abandonment.
+  description: Sandbox and free-tier orgs receive the tightest resource-group and query-cost ceilings,
+    enforced via the same tier-cap mechanism (REQ-1044) mapped to sandbox/free entitlements. Caps are
+    applied at session provisioning and validated on every query submission.
+  use_case: Limits abuse surface of sandbox/free tiers without manual intervention. Sandbox sessions (REQ-1034/1035/1036)
+    are especially constrained (query-row limits, data-source allowlist, idle-TTL) to minimize resource
+    drain from abandoned demo sessions. Free-tier orgs receive soft caps that nudge users toward upgrade
+    without forcing abandonment.
   relates_to:
-    - REQ-1033
-    - REQ-1034
-    - REQ-1035
-    - REQ-1036
-    - REQ-1044
+  - REQ-1033
+  - REQ-1034
+  - REQ-1035
+  - REQ-1036
+  - REQ-1044
 - id: REQ-1046
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Storage Management & Quotas
   priority: MUST
   type: constraint
   target: 2026-Q4
-  description: >-
-    Per-tier storage quotas: each org tier enforces a hard ceiling on platform-side storage footprint (Postgres schema bytes for landed/materialized rows, MV output size, and R2 object bytes attributable to the org). Sandbox/free tiers receive the tightest ceilings; paid tiers larger; enforced and metered per org.
-  use_case: >-
-    Tiered storage model parallels query-cost caps (REQ-1044) as a primary monetization and resource-isolation lever. Platform storage (Postgres schema data, materialized rows, MV outputs, R2 object bytes) is the metered resource; federation keeps most source data external. Free tiers get tight bounds to prevent abuse accumulation; premium tiers permit larger workloads. Storage must be explicitly capped and enforced at ingestion/materialization time, never silently evicted.
+  description: 'Per-tier storage quotas: each org tier enforces a hard ceiling on platform-side storage
+    footprint (Postgres schema bytes for landed/materialized rows, MV output size, and R2 object bytes
+    attributable to the org). Sandbox/free tiers receive the tightest ceilings; paid tiers larger; enforced
+    and metered per org.'
+  use_case: Tiered storage model parallels query-cost caps (REQ-1044) as a primary monetization and resource-isolation
+    lever. Platform storage (Postgres schema data, materialized rows, MV outputs, R2 object bytes) is
+    the metered resource; federation keeps most source data external. Free tiers get tight bounds to prevent
+    abuse accumulation; premium tiers permit larger workloads. Storage must be explicitly capped and enforced
+    at ingestion/materialization time, never silently evicted.
   relates_to:
-    - REQ-1027
-    - REQ-1044
-    - REQ-1045
-    - REQ-1037
-    - REQ-1033
-    - REQ-696
-    - REQ-942
-    - REQ-966
+  - REQ-1027
+  - REQ-1044
+  - REQ-1045
+  - REQ-1037
+  - REQ-1033
+  - REQ-696
+  - REQ-942
+  - REQ-966
 - id: REQ-1047
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Storage Management & Quotas
   priority: MUST
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Explicit rejection on storage-cap breach: operations that would push an org past its storage ceiling (MV materialization, landing/ingest, result persistence) are REJECTED with an explanatory error indicating a higher SKU or bring-your-own (BYO) storage is required — never silently truncated or evicted.
-  use_case: >-
-    Mirrors REQ-1044's monetization-gate semantics: hard rejection, not silent degradation. Prevents free-tier abuse and drives tier-upgrade conversion. Project rule (CRITICAL): enforcement must be explicit rejection, never a silent cap-and-continue. Error message guides customer toward upgrade path or BYO storage option.
+  description: 'Explicit rejection on storage-cap breach: operations that would push an org past its storage
+    ceiling (MV materialization, landing/ingest, result persistence) are REJECTED with an explanatory
+    error indicating a higher SKU or bring-your-own (BYO) storage is required — never silently truncated
+    or evicted.'
+  use_case: 'Mirrors REQ-1044''s monetization-gate semantics: hard rejection, not silent degradation.
+    Prevents free-tier abuse and drives tier-upgrade conversion. Project rule (CRITICAL): enforcement
+    must be explicit rejection, never a silent cap-and-continue. Error message guides customer toward
+    upgrade path or BYO storage option.'
   relates_to:
-    - REQ-1044
-    - REQ-1046
-    - REQ-1048
+  - REQ-1044
+  - REQ-1046
+  - REQ-1048
 - id: REQ-1048
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Storage Management & Quotas
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: >-
-    Bring-your-own storage (BYO): premium/enterprise orgs may point their platform-side object storage (MV persistence, Trino exchange/spill, landing/results) at their own S3-compatible bucket (their cloud account, their bill), configured per org. Their bytes never count against platform storage and never reside on platform-owned R2. Org's BYO bucket credentials are scoped to that org only.
-  use_case: >-
-    Enables premium customers with large or unpredictable storage needs to avoid platform quota limits by supplying their own cloud storage. Isolates security/compliance (customer controls bucket permissions, encryption, audit logging) and cost (customer's infrastructure bill, not platform cost). Reduces platform resource strain from whales/large enterprises.
+  description: 'Bring-your-own storage (BYO): premium/enterprise orgs may point their platform-side object
+    storage (MV persistence, Trino exchange/spill, landing/results) at their own S3-compatible bucket
+    (their cloud account, their bill), configured per org. Their bytes never count against platform storage
+    and never reside on platform-owned R2. Org''s BYO bucket credentials are scoped to that org only.'
+  use_case: Enables premium customers with large or unpredictable storage needs to avoid platform quota
+    limits by supplying their own cloud storage. Isolates security/compliance (customer controls bucket
+    permissions, encryption, audit logging) and cost (customer's infrastructure bill, not platform cost).
+    Reduces platform resource strain from whales/large enterprises.
   relates_to:
-    - REQ-1027
-    - REQ-1046
+  - REQ-1027
+  - REQ-1046
 - id: REQ-1049
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Storage Management & Quotas
   priority: MUST
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Per-org storage metering/accounting: platform meters storage consumption per org (Postgres schema bytes + attributable R2 object bytes) to drive quota enforcement (REQ-1046), tier upgrade prompts, and billing.
-  use_case: >-
-    Storage metering is the storage analog of per-query cost accounting behind REQ-1044. Enables accurate billing per org (platform storage), identifies orgs approaching quota limits (triggering upgrade nudges), and feeds resource-capacity planning (platform storage forecasting). BYO orgs (REQ-1048) exclude their external bytes from platform metering.
+  description: 'Per-org storage metering/accounting: platform meters storage consumption per org (Postgres
+    schema bytes + attributable R2 object bytes) to drive quota enforcement (REQ-1046), tier upgrade prompts,
+    and billing.'
+  use_case: Storage metering is the storage analog of per-query cost accounting behind REQ-1044. Enables
+    accurate billing per org (platform storage), identifies orgs approaching quota limits (triggering
+    upgrade nudges), and feeds resource-capacity planning (platform storage forecasting). BYO orgs (REQ-1048)
+    exclude their external bytes from platform metering.
   relates_to:
-    - REQ-1044
-    - REQ-1046
-    - REQ-1047
-    - REQ-1048
+  - REQ-1044
+  - REQ-1046
+  - REQ-1047
+  - REQ-1048
 - id: REQ-1050
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Marketing & Presence
   priority: SHOULD
   type: structural
   target: 2026-Q3
-  description: >-
-    Marketing website surface: a static marketing site (landing, features, pricing) hosted on Cloudflare Pages. Zero marginal cost at any traffic level; deployed independently of the app so it cannot affect app availability. Colocated with the Cloudflare R2 object storage vendor.
-  use_case: >-
-    Public-facing marketing presence decoupled from app infrastructure. Cloudflare Pages provides global CDN distribution and cost-free hosting (unlimited traffic, automatic DDoS mitigation). Static deployment eliminates operational overhead and risk of app unavailability cascading to marketing presence. R2 colocation reduces cross-zone latency for asset serving.
+  description: 'Marketing website surface: a static marketing site (landing, features, pricing) hosted
+    on Cloudflare Pages. Zero marginal cost at any traffic level; deployed independently of the app so
+    it cannot affect app availability. Colocated with the Cloudflare R2 object storage vendor.'
+  use_case: Public-facing marketing presence decoupled from app infrastructure. Cloudflare Pages provides
+    global CDN distribution and cost-free hosting (unlimited traffic, automatic DDoS mitigation). Static
+    deployment eliminates operational overhead and risk of app unavailability cascading to marketing presence.
+    R2 colocation reduces cross-zone latency for asset serving.
   relates_to:
-    - REQ-1027
-    - REQ-1026
+  - REQ-1027
+  - REQ-1026
 - id: REQ-1051
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Documentation & Developer Experience
   priority: SHOULD
   type: structural
   target: 2026-Q3
-  description: >-
-    Hosted documentation surface: product docs and API reference published on Cloudflare Pages (same deployment or docs subsite), sourced from doc-writer agent output. Static, free-hosted, independent of the app.
-  use_case: >-
-    Product documentation and API reference must be independently accessible and performant. Cloudflare Pages provides zero-cost, globally distributed static hosting. Decoupling from the app UI ensures docs remain available even during app maintenance or outages, improving developer experience and reducing support burden.
+  description: 'Hosted documentation surface: product docs and API reference published on Cloudflare Pages
+    (same deployment or docs subsite), sourced from doc-writer agent output. Static, free-hosted, independent
+    of the app.'
+  use_case: Product documentation and API reference must be independently accessible and performant. Cloudflare
+    Pages provides zero-cost, globally distributed static hosting. Decoupling from the app UI ensures
+    docs remain available even during app maintenance or outages, improving developer experience and reducing
+    support burden.
   relates_to:
-    - REQ-1050
-    - REQ-1027
+  - REQ-1050
+  - REQ-1027
 - id: REQ-1052
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Onboarding & Entry Points
   priority: MUST
   type: behavioral
   target: 2026-Q3
-  description: >-
-    Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-action) map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session (REQ-1034/1036, no signup required); "Sign up free" routes to Firebase self-serve org provisioning (REQ-1017); "Contact sales" triggers SES/SMTP email delivery to sales (REQ-1020).
-  use_case: >-
-    Converts marketing interest into activation (sandbox demo, free-tier signup, sales engagement). Clear entry-point routing ensures users experience the intended onboarding flow without friction. Marketing messaging and product capability must align (e.g., "try now" genuinely allows zero-friction exploration; "sign up free" uses self-serve Firebase, not manual approval).
-  scenario: |
-    Given a user is on the marketing site
+  description: 'Website-to-SaaS entry-point wiring: the marketing site''s primary CTAs (calls-to-action)
+    map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session
+    (REQ-1034/1036, no signup required); "Sign up free" routes to Firebase self-serve org provisioning
+    (REQ-1017); "Contact sales" triggers SES/SMTP email delivery to sales (REQ-1020).'
+  use_case: Converts marketing interest into activation (sandbox demo, free-tier signup, sales engagement).
+    Clear entry-point routing ensures users experience the intended onboarding flow without friction.
+    Marketing messaging and product capability must align (e.g., "try now" genuinely allows zero-friction
+    exploration; "sign up free" uses self-serve Firebase, not manual approval).
+  scenario: 'Given a user is on the marketing site
+
     When the user clicks "Try it now"
-    Then an anonymous ephemeral sandbox session (REQ-1034) is provisioned and the browser is redirected to the session
+
+    Then an anonymous ephemeral sandbox session (REQ-1034) is provisioned and the browser is redirected
+    to the session
+
 
     Given a user is on the marketing site
+
     When the user clicks "Sign up free"
+
     Then the browser redirects to the Firebase self-serve org signup flow (REQ-1017)
 
+
     Given a user is on the marketing site
+
     When the user submits a "Contact sales" form
+
     Then an email is sent to the sales inbox via SES/SMTP (REQ-1020)
+
+    '
   relates_to:
-    - REQ-1017
-    - REQ-1020
-    - REQ-1034
-    - REQ-1036
-    - REQ-1050
+  - REQ-1017
+  - REQ-1020
+  - REQ-1034
+  - REQ-1036
+  - REQ-1050
   e2e: true
-  e2e_reason: Entry-point routing requires a live marketing site pointing to live app/sandbox infrastructure; clicking CTAs and verifying downstream provisioning is only testable end-to-end.
+  e2e_reason: Entry-point routing requires a live marketing site pointing to live app/sandbox infrastructure;
+    clicking CTAs and verifying downstream provisioning is only testable end-to-end.
 - id: REQ-1053
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: MUST
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Pricing page reflects tier entitlements: the public pricing table renders the free/standard/premium tier limits directly from the query-cost caps (REQ-1044) and storage caps (REQ-1046) — the same entitlement definitions that gate runtime enforcement drive the marketing pricing presentation, eliminating manual sync.
-  use_case: >-
-    Single source of truth for tier limits: tier definitions (cost caps, storage quotas) exist once in the runtime entitlement system (REQ-1044/1046); the pricing page programmatically queries those limits and renders them to users. Eliminates marketing/product drift (manually updated pricing page drifting from actual runtime caps). Ensures all users see accurate tier terms before signup.
-  scenario: |
-    Given a tier definition specifies a query-cost cap and storage quota (via REQ-1044/1046)
+  description: 'Pricing page reflects tier entitlements: the public pricing table renders the free/standard/premium
+    tier limits directly from the query-cost caps (REQ-1044) and storage caps (REQ-1046) — the same entitlement
+    definitions that gate runtime enforcement drive the marketing pricing presentation, eliminating manual
+    sync.'
+  use_case: 'Single source of truth for tier limits: tier definitions (cost caps, storage quotas) exist
+    once in the runtime entitlement system (REQ-1044/1046); the pricing page programmatically queries
+    those limits and renders them to users. Eliminates marketing/product drift (manually updated pricing
+    page drifting from actual runtime caps). Ensures all users see accurate tier terms before signup.'
+  scenario: 'Given a tier definition specifies a query-cost cap and storage quota (via REQ-1044/1046)
+
     When the pricing page is rendered
+
     Then the tier card displays the same cap and quota values without manual entry or copy-paste
 
+
     Given a tier definition is updated (e.g., free storage increased)
+
     When the pricing page is refreshed
+
     Then the new limit is visible without separate marketing update
+
+    '
   relates_to:
-    - REQ-1044
-    - REQ-1046
-    - REQ-1050
+  - REQ-1044
+  - REQ-1046
+  - REQ-1050
   e2e: true
-  e2e_reason: Accurate tier-limit rendering from runtime definitions requires the full stack (tier store, pricing page, live presentation); unit tests cannot verify marketing/product alignment without end-to-end execution.
+  e2e_reason: Accurate tier-limit rendering from runtime definitions requires the full stack (tier store,
+    pricing page, live presentation); unit tests cannot verify marketing/product alignment without end-to-end
+    execution.
 - id: REQ-1054
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Routing
   priority: MUST
   type: infrastructure
   target: 2026-Q4
-  description: >-
-    Per-org wildcard subdomain routing: each org is addressable at {org}.provisa.io via a single wildcard DNS record (*.provisa.io) and wildcard TLS certificate, enabling zero-provisioning self-serve org creation (REQ-1017).
-  use_case: >-
-    Eliminates per-org DNS and certificate provisioning overhead. Any newly created org is instantly reachable at its subdomain without manual infrastructure steps, reducing onboarding friction and operational toil.
+  description: 'Per-org wildcard subdomain routing: each org is addressable at {org}.provisa.io via a
+    single wildcard DNS record (*.provisa.io) and wildcard TLS certificate, enabling zero-provisioning
+    self-serve org creation (REQ-1017).'
+  use_case: Eliminates per-org DNS and certificate provisioning overhead. Any newly created org is instantly
+    reachable at its subdomain without manual infrastructure steps, reducing onboarding friction and operational
+    toil.
   relates_to:
-    - REQ-1017
-    - REQ-594
+  - REQ-1017
+  - REQ-594
 - id: REQ-1055
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Routing
   priority: MUST
   type: infrastructure
   target: 2026-Q4
-  description: >-
-    Fixed per-protocol ports shared across all orgs: HTTP 443 (GraphQL/REST/UI), pgwire 5439, Bolt 7687, Arrow Flight 8480 are shared across all orgs, never varying per org. Org resolution comes from connection parameters (hostname, database name, username, auth principal), not from port multiplexing.
-  use_case: >-
-    Simplifies port management and connection strings. Standard ports improve discoverability and reduce client configuration complexity. Org is a logical namespace, not a network multiplexing dimension.
+  description: 'Fixed per-protocol ports shared across all orgs: HTTP 443 (GraphQL/REST/UI), pgwire 5439,
+    Bolt 7687, Arrow Flight 8480 are shared across all orgs, never varying per org. Org resolution comes
+    from connection parameters (hostname, database name, username, auth principal), not from port multiplexing.'
+  use_case: Simplifies port management and connection strings. Standard ports improve discoverability
+    and reduce client configuration complexity. Org is a logical namespace, not a network multiplexing
+    dimension.
   relates_to:
-    - REQ-1054
+  - REQ-1054
 - id: REQ-1056
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Routing
   priority: MUST
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Per-surface org resolution: HTTP surfaces resolve org from Host subdomain and/or JWT tenant_id claim (REQ-594); pgwire and Bolt (which lack Host headers) resolve org from connection handshake parameters (database name, username, or auth principal).
-  use_case: >-
-    Accommodates wire protocol constraints (no Host header) while leveraging HTTP metadata where available. Ensures all surfaces can correctly identify the tenant without ambiguity or silent fallback.
-  scenario: |
-    Given an HTTP request with Host: org-a.provisa.io and a JWT without tenant_id claim
+  description: 'Per-surface org resolution: HTTP surfaces resolve org from Host subdomain and/or JWT tenant_id
+    claim (REQ-594); pgwire and Bolt (which lack Host headers) resolve org from connection handshake parameters
+    (database name, username, or auth principal).'
+  use_case: Accommodates wire protocol constraints (no Host header) while leveraging HTTP metadata where
+    available. Ensures all surfaces can correctly identify the tenant without ambiguity or silent fallback.
+  scenario: 'Given an HTTP request with Host: org-a.provisa.io and a JWT without tenant_id claim
+
     When the request reaches TenantMiddleware
+
     Then the org is resolved to org-a
 
+
     Given an HTTP request with Host: provisa.io and a JWT with tenant_id: org-b
+
     When the request reaches TenantMiddleware
+
     Then the org is resolved to org-b
 
+
     Given a pgwire connection string specifying database: org-c
+
     When the connection handshake completes
+
     Then the org is resolved to org-c
+
+    '
   relates_to:
-    - REQ-594
-    - REQ-1055
+  - REQ-594
+  - REQ-1055
 - id: REQ-1057
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Routing
   priority: SHOULD
   type: infrastructure
   target: 2026-Q4
-  description: >-
-    Cloudflare wildcard routing: HTTP traffic is proxied via Cloudflare (*.provisa.io -> VM:443); raw-TCP wire protocols are routed via Cloudflare Spectrum (TCP-by-SNI) or a wildcard A record, with org derived from connection parameters.
-  use_case: >-
-    Leverages Cloudflare's global edge for HTTP caching and DDoS protection. Spectrum enables low-latency TCP passthrough for pgwire and Bolt without origin-side port multiplexing. Single infrastructure path for all protocol surfaces.
+  description: 'Cloudflare wildcard routing: HTTP traffic is proxied via Cloudflare (*.provisa.io -> VM:443);
+    raw-TCP wire protocols are routed via Cloudflare Spectrum (TCP-by-SNI) or a wildcard A record, with
+    org derived from connection parameters.'
+  use_case: Leverages Cloudflare's global edge for HTTP caching and DDoS protection. Spectrum enables
+    low-latency TCP passthrough for pgwire and Bolt without origin-side port multiplexing. Single infrastructure
+    path for all protocol surfaces.
   relates_to:
-    - REQ-1054
-    - REQ-1055
-    - REQ-1056
+  - REQ-1054
+  - REQ-1055
+  - REQ-1056
 - id: REQ-1058
   status: proposed
-  group: "1. Access Governance & Security"
+  group: 1. Access Governance & Security
   category: Public Data Publishing
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Public-publish anonymous access: unauthenticated requests carry no tenant_id claim; the org is resolved from Host subdomain only, and the request is bound to a built-in read-only 'public' role scoped to that org. TenantMiddleware gains a Host-based resolution path for the no-claim case instead of returning 401.
-  use_case: >-
-    Enables orgs to publish datasets anonymously without requiring end-user authentication. Public role allows intentional, opt-in data sharing without building separate anonymous infrastructure. Distinct from the Firebase-anonymous sandbox uid (REQ-1034).
-  scenario: |
-    Given a request to org-a.provisa.io with no authentication
+  description: 'Public-publish anonymous access: unauthenticated requests carry no tenant_id claim; the
+    org is resolved from Host subdomain only, and the request is bound to a built-in read-only ''public''
+    role scoped to that org. TenantMiddleware gains a Host-based resolution path for the no-claim case
+    instead of returning 401.'
+  use_case: Enables orgs to publish datasets anonymously without requiring end-user authentication. Public
+    role allows intentional, opt-in data sharing without building separate anonymous infrastructure. Distinct
+    from the Firebase-anonymous sandbox uid (REQ-1034).
+  scenario: 'Given a request to org-a.provisa.io with no authentication
+
     When the request reaches TenantMiddleware
-    Then the org is resolved to org-a and the user is bound to org-a's 'public' role (not 401)
+
+    Then the org is resolved to org-a and the user is bound to org-a''s ''public'' role (not 401)
+
 
     Given the public role has zero visibility initially
+
     When an asset is published to the public role
+
     Then unauthenticated requests can read that asset via visibility/RLS/masking (REQ-039/040)
+
+    '
   relates_to:
-    - REQ-594
-    - REQ-039
-    - REQ-040
-    - REQ-1019
-    - REQ-1034
-    - REQ-1054
+  - REQ-594
+  - REQ-039
+  - REQ-040
+  - REQ-1019
+  - REQ-1034
+  - REQ-1054
 - id: REQ-1059
   status: proposed
-  group: "1. Access Governance & Security"
+  group: 1. Access Governance & Security
   category: Public Data Publishing
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Publishing is a governance grant, not new machinery: each org has a built-in 'public' role starting with ZERO visibility. Publishing an asset means granting that role visibility to a specific table/view; access then flows through existing visibility/RLS/masking (REQ-039/040) uniformly across GraphQL/SQL/pgwire/Bolt. Nothing is public by default; opt-in and explicit.
-  use_case: >-
-    Reuses existing access-control infrastructure (visibility, RLS, masking) uniformly across all surfaces. Eliminates special-case code for public access. Clear opt-in model prevents accidental data leaks.
-  scenario: |
-    Given a table orders in org-a
-    When an org admin grants the 'public' role visibility to orders
+  description: 'Publishing is a governance grant, not new machinery: each org has a built-in ''public''
+    role starting with ZERO visibility. Publishing an asset means granting that role visibility to a specific
+    table/view; access then flows through existing visibility/RLS/masking (REQ-039/040) uniformly across
+    GraphQL/SQL/pgwire/Bolt. Nothing is public by default; opt-in and explicit.'
+  use_case: Reuses existing access-control infrastructure (visibility, RLS, masking) uniformly across
+    all surfaces. Eliminates special-case code for public access. Clear opt-in model prevents accidental
+    data leaks.
+  scenario: 'Given a table orders in org-a
+
+    When an org admin grants the ''public'' role visibility to orders
+
     Then unauthenticated requests to org-a can query orders subject to its RLS and masking rules
+
+    '
   relates_to:
-    - REQ-039
-    - REQ-040
-    - REQ-1019
-    - REQ-1058
+  - REQ-039
+  - REQ-040
+  - REQ-1019
+  - REQ-1058
 - id: REQ-1060
   status: proposed
-  group: "1. Access Governance & Security"
+  group: 1. Access Governance & Security
   category: Public Data Publishing
   priority: MUST
   type: constraint
   target: 2026-Q4
-  description: >-
-    Hard caps on anonymous public traffic: unauthenticated published endpoints are internet-facing with no login gate, so they inherit the tightest rate limits and query-cost caps (REQ-1044/1045). High-volume public publishing requires a premium public-tier SKU.
-  use_case: >-
-    Protects shared infrastructure from resource exhaustion by anonymous users. Free-tier public endpoints are rate-limited; high-volume use is gated to premium. Prevents adversarial abuse or accidental DoS by published datasets.
+  description: 'Hard caps on anonymous public traffic: unauthenticated published endpoints are internet-facing
+    with no login gate, so they inherit the tightest rate limits and query-cost caps (REQ-1044/1045).
+    High-volume public publishing requires a premium public-tier SKU.'
+  use_case: Protects shared infrastructure from resource exhaustion by anonymous users. Free-tier public
+    endpoints are rate-limited; high-volume use is gated to premium. Prevents adversarial abuse or accidental
+    DoS by published datasets.
   relates_to:
-    - REQ-1044
-    - REQ-1045
-    - REQ-1058
+  - REQ-1044
+  - REQ-1045
+  - REQ-1058
 - id: REQ-1061
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Branding
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Subdomain-as-dedicated-channel value proposition: every org gets its own {org}.provisa.io endpoint, conveying dedicated tenancy and branding even though authenticated resolution does not require it.
-  use_case: >-
-    Improves perceived value and tenant isolation narrative. Org-branded subdomain increases engagement and data ownership perception. Leverages the wildcard infrastructure (REQ-1054) to provide this for zero per-org cost.
+  description: 'Subdomain-as-dedicated-channel value proposition: every org gets its own {org}.provisa.io
+    endpoint, conveying dedicated tenancy and branding even though authenticated resolution does not require
+    it.'
+  use_case: Improves perceived value and tenant isolation narrative. Org-branded subdomain increases engagement
+    and data ownership perception. Leverages the wildcard infrastructure (REQ-1054) to provide this for
+    zero per-org cost.
   relates_to:
-    - REQ-1054
-    - REQ-1019
+  - REQ-1054
+  - REQ-1019
 - id: REQ-1062
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Branding
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Custom domain as a premium gate: premium/enterprise tiers may bind a custom domain (e.g. data.acme.com via CNAME) with custom TLS and white-label (no Provisa branding). Free/standard tiers use {org}.provisa.io only. Tier entitlements are surfaced on the pricing page (REQ-1052).
-  use_case: >-
-    Provides a premium branding differentiator. Custom domain + white-label appeals to enterprises embedding data apps in customer-facing portals. Clear tier gate monetizes the feature and simplifies operations (no per-org cert management for premium tenants).
+  description: 'Custom domain as a premium gate: premium/enterprise tiers may bind a custom domain (e.g.
+    data.acme.com via CNAME) with custom TLS and white-label (no Provisa branding). Free/standard tiers
+    use {org}.provisa.io only. Tier entitlements are surfaced on the pricing page (REQ-1052).'
+  use_case: Provides a premium branding differentiator. Custom domain + white-label appeals to enterprises
+    embedding data apps in customer-facing portals. Clear tier gate monetizes the feature and simplifies
+    operations (no per-org cert management for premium tenants).
   relates_to:
-    - REQ-1052
-    - REQ-1019
-    - REQ-1054
+  - REQ-1052
+  - REQ-1019
+  - REQ-1054
 - id: REQ-1063
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Usage-credit billing meter: metered consumption is billed as universal compute credits whose consumption is uniform across tiers, with the dollar price per credit rising by tier (bundling features/support) — the Starburst Galaxy model. Built on Stripe billing (REQ-594).
-  use_case: >-
-    Provides predictable, usage-based billing that aligns with customer consumption patterns. Tier-based credit pricing allows upsells (pay more per credit for premium support/features). Complements hard caps (REQ-1044/1046) which define ceilings; meter defines pay-as-you-go below them. Industry-proven model (Starburst, Apollo).
+  description: 'Usage-credit billing meter: metered consumption is billed as universal compute credits
+    whose consumption is uniform across tiers, with the dollar price per credit rising by tier (bundling
+    features/support) — the Starburst Galaxy model. Built on Stripe billing (REQ-594).'
+  use_case: Provides predictable, usage-based billing that aligns with customer consumption patterns.
+    Tier-based credit pricing allows upsells (pay more per credit for premium support/features). Complements
+    hard caps (REQ-1044/1046) which define ceilings; meter defines pay-as-you-go below them. Industry-proven
+    model (Starburst, Apollo).
   relates_to:
-    - REQ-594
-    - REQ-1044
-    - REQ-1046
+  - REQ-594
+  - REQ-1044
+  - REQ-1046
 - id: REQ-1064
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days) grants a fixed compute-credit balance; on expiry or non-payment, the account auto-downgrades to free tier (never silent charge).
-  use_case: >-
-    Lowers barrier to enterprise evaluation. Fixed credit budget prevents runaway costs; explicit downgrade on expiry prevents surprise billing and maintains customer trust. Encourages pilot-to-production conversion.
-  scenario: |
-    Given an enterprise trial is created with 30-day duration and 1000 credits
+  description: 'Credit-boxed + time-boxed enterprise trial: a fixed-duration trial (e.g. 30 days) grants
+    a fixed compute-credit balance; on expiry or non-payment, the account auto-downgrades to free tier
+    (never silent charge).'
+  use_case: Lowers barrier to enterprise evaluation. Fixed credit budget prevents runaway costs; explicit
+    downgrade on expiry prevents surprise billing and maintains customer trust. Encourages pilot-to-production
+    conversion.
+  scenario: 'Given an enterprise trial is created with 30-day duration and 1000 credits
+
     When 29 days have passed and credits are consumed
+
     Then queries continue to work as long as credits remain
 
+
     Given the trial duration expires
+
     When the customer has not converted to a paid plan
+
     Then the account auto-downgrades to free tier with no charge
+
+    '
   relates_to:
-    - REQ-1063
-    - REQ-594
+  - REQ-1063
+  - REQ-594
 - id: REQ-1065
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: MAY
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Signup usage credit: a small usage-credit grant on signup (Apollo $50-style) provides a soft on-ramp to exploration without a time-boxed trial expiration.
-  use_case: >-
-    Reduces friction for self-serve signup. Free users get compute credits to try real queries; if they exhaust credits, they can upgrade, not just expire. Increases conversion from free to paid by showcasing value through real usage.
-  scenario: |
-    Given a user signs up for the free tier
+  description: 'Signup usage credit: a small usage-credit grant on signup (Apollo $50-style) provides
+    a soft on-ramp to exploration without a time-boxed trial expiration.'
+  use_case: Reduces friction for self-serve signup. Free users get compute credits to try real queries;
+    if they exhaust credits, they can upgrade, not just expire. Increases conversion from free to paid
+    by showcasing value through real usage.
+  scenario: 'Given a user signs up for the free tier
+
     When signup completes
+
     Then the user is granted a fixed credit balance (e.g., 50 credits) with no expiration
 
+
     Given the user runs queries that consume credits
+
     When all credits are exhausted
+
     Then future queries fail with an upgrade prompt (not a time-based expiration)
+
+    '
   relates_to:
-    - REQ-1063
-    - REQ-1017
+  - REQ-1063
+  - REQ-1017
 - id: REQ-1066
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Premium feature gates beyond compute: SSO/SAML + fine-grained access control (ABAC/SCIM, leveraging REQ-122/123/203/204), longer audit/observability retention, private networking, and SLA-backed support are gated to premium tiers.
-  use_case: >-
-    Monetizes operational and compliance features that enterprises demand. Justifies premium tier beyond compute capacity alone. Clear feature gates drive upsell conversation and meet customer expectations for enterprise offerings.
+  description: 'Premium feature gates beyond compute: SSO/SAML + fine-grained access control (ABAC/SCIM,
+    leveraging REQ-122/123/203/204), longer audit/observability retention, private networking, and SLA-backed
+    support are gated to premium tiers.'
+  use_case: Monetizes operational and compliance features that enterprises demand. Justifies premium tier
+    beyond compute capacity alone. Clear feature gates drive upsell conversation and meet customer expectations
+    for enterprise offerings.
   relates_to:
-    - REQ-122
-    - REQ-123
-    - REQ-203
-    - REQ-204
-    - REQ-1019
+  - REQ-122
+  - REQ-123
+  - REQ-203
+  - REQ-204
+  - REQ-1019
 - id: REQ-1067
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Bring-your-own compute / dedicated cluster as premium gate: premium tenants may run on a dedicated Trino cluster (extends tiered routing REQ-1043) and/or bring their own compute, complementing BYO storage (REQ-1048).
-  use_case: >-
-    Provides high-touch enterprise offering with dedicated resources and isolation. Extends tiered routing to allocate premium tenants to reserved clusters. Enables power customers to optimize and control compute independently of Provisa infrastructure. Competitive parity with Starburst Galaxy (dedicated clusters) and Apollo GraphOS (federation customization).
+  description: 'Bring-your-own compute / dedicated cluster as premium gate: premium tenants may run on
+    a dedicated Trino cluster (extends tiered routing REQ-1043) and/or bring their own compute, complementing
+    BYO storage (REQ-1048).'
+  use_case: Provides high-touch enterprise offering with dedicated resources and isolation. Extends tiered
+    routing to allocate premium tenants to reserved clusters. Enables power customers to optimize and
+    control compute independently of Provisa infrastructure. Competitive parity with Starburst Galaxy
+    (dedicated clusters) and Apollo GraphOS (federation customization).
   relates_to:
-    - REQ-1043
-    - REQ-1048
-    - REQ-1063
+  - REQ-1043
+  - REQ-1048
+  - REQ-1063
 - id: REQ-1068
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: >-
-    Pluggable metadata egress provider pattern: an abstract MetadataEgress interface (mirroring AuthProvider/EmailProvider pattern) enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
-  use_case: >-
-    Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them. Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of record.
+  description: 'Pluggable metadata egress provider pattern: an abstract MetadataEgress interface (mirroring
+    AuthProvider/EmailProvider pattern) enables organizations to publish Provisa''s governance metadata
+    OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound
+    only — Provisa never ingests an external catalog as source of truth.'
+  use_case: Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance
+    catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them.
+    Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of
+    record.
   code:
-    - provisa/api/metadata_egress/provider.py
+  - provisa/api/metadata_egress/provider.py
   relates_to:
-    - REQ-120
-    - REQ-1020
-    - REQ-1066
+  - REQ-120
+  - REQ-1020
+  - REQ-1066
 - id: REQ-1069
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: >-
-    Standards-first metadata core: the MetadataEgress provider emits OpenLineage for lineage and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataEgress using the same internal metadata model.
-  use_case: >-
-    Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend to enterprises already on Atlan or Collibra.
+  description: 'Standards-first metadata core: the MetadataEgress provider emits OpenLineage for lineage
+    and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters
+    (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataEgress
+    using the same internal metadata model.'
+  use_case: Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor
+    lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend
+    to enterprises already on Atlan or Collibra.
   relates_to:
-    - REQ-1068
+  - REQ-1068
 - id: REQ-1070
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Published metadata payload includes datasets/tables/columns, domains, stewards and ownership (REQ-609/020), approved relationships, and descriptions/aliases. Lineage is derived from actually-compiled queries and the MV DAG (provisa/lineage/, REQ-939/942), providing column-level + MV-DAG lineage more accurate than scanner/agent-based ingestion.
-  use_case: >-
-    Provisa's query-compilation and DAG-based lineage is derived from actual execution, making it more authoritative than external scanners or agent-based metadata collection. Publishing this accuracy to external catalogs elevates DG team's source-of-truth quality.
+  description: Published metadata payload includes datasets/tables/columns, domains, stewards and ownership
+    (REQ-609/020), approved relationships, and descriptions/aliases. Lineage is derived from actually-compiled
+    queries and the MV DAG (provisa/lineage/, REQ-939/942), providing column-level + MV-DAG lineage more
+    accurate than scanner/agent-based ingestion.
+  use_case: Provisa's query-compilation and DAG-based lineage is derived from actual execution, making
+    it more authoritative than external scanners or agent-based metadata collection. Publishing this accuracy
+    to external catalogs elevates DG team's source-of-truth quality.
   relates_to:
-    - REQ-609
-    - REQ-020
-    - REQ-039
-    - REQ-040
-    - REQ-939
-    - REQ-942
-    - REQ-1068
-    - REQ-1069
+  - REQ-609
+  - REQ-020
+  - REQ-039
+  - REQ-040
+  - REQ-939
+  - REQ-942
+  - REQ-1068
+  - REQ-1069
 - id: REQ-1071
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Governance-signal projection: enforcement facts Provisa already computes (which columns/tables are masked, RLS-restricted, or visibility-restricted per REQ-039/040) are projected outward as tags, classifications, or metadata properties on the corresponding assets in the target external catalog.
-  use_case: >-
-    Data-governance teams see Provisa's enforced governance policies reflected in their catalog of record, enabling data consumers to understand which data is restricted or transformed without context-switching to Provisa's UI. Strengthens audit and compliance narrative.
+  description: 'Governance-signal projection: enforcement facts Provisa already computes (which columns/tables
+    are masked, RLS-restricted, or visibility-restricted per REQ-039/040) are projected outward as tags,
+    classifications, or metadata properties on the corresponding assets in the target external catalog.'
+  use_case: Data-governance teams see Provisa's enforced governance policies reflected in their catalog
+    of record, enabling data consumers to understand which data is restricted or transformed without context-switching
+    to Provisa's UI. Strengthens audit and compliance narrative.
   relates_to:
-    - REQ-039
-    - REQ-040
-    - REQ-1068
-    - REQ-1070
+  - REQ-039
+  - REQ-040
+  - REQ-1068
+  - REQ-1070
 - id: REQ-1072
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Sync mechanism: metadata changes push to the external catalog event-driven via the REQ-942 event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py) periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped to that org only.
-  use_case: >-
-    Event-driven sync ensures near-real-time metadata propagation for operational responsiveness; scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant isolation and per-customer credential management.
+  description: 'Sync mechanism: metadata changes push to the external catalog event-driven via the REQ-942
+    event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py)
+    periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped
+    to that org only.'
+  use_case: Event-driven sync ensures near-real-time metadata propagation for operational responsiveness;
+    scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant
+    isolation and per-customer credential management.
   relates_to:
-    - REQ-942
-    - REQ-1068
-    - REQ-1070
+  - REQ-942
+  - REQ-1068
+  - REQ-1070
 - id: REQ-1073
   status: proposed
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: MUST
   type: constraint
   target: 2026-Q4
-  description: >-
-    Premium-gated metadata egress: the metadata egress connector is an enterprise/premium tier entitlement, extending REQ-1066. Targeting regulated-industry data-governance teams with existing external catalog investments.
-  use_case: >-
-    Metadata egress to external catalogs is a high-touch enterprise feature. Restricted to premium tiers to simplify support and monetize integration value to enterprises already operating external DG systems.
+  description: 'Premium-gated metadata egress: the metadata egress connector is an enterprise/premium
+    tier entitlement, extending REQ-1066. Targeting regulated-industry data-governance teams with existing
+    external catalog investments.'
+  use_case: Metadata egress to external catalogs is a high-touch enterprise feature. Restricted to premium
+    tiers to simplify support and monetize integration value to enterprises already operating external
+    DG systems.
   relates_to:
-    - REQ-1066
-    - REQ-1068
-    - REQ-1069
-    - REQ-1070
-    - REQ-1071
-    - REQ-1072
+  - REQ-1066
+  - REQ-1068
+  - REQ-1069
+  - REQ-1070
+  - REQ-1071
+  - REQ-1072
 - id: REQ-1079
   status: complete
-  group: "10. Admin Console & Governance"
+  group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
   type: ui
-  since: "2026-07"
-  description: >-
-    Admin UI can view and edit the security posture (security.mode: standard | high) via GET/PUT /admin/security, with changes applied on restart.
-  use_case: >-
-    Enables operators to adjust security enforcement level without code deployment.
+  since: 2026-07
+  description: 'Admin UI can view and edit the security posture (security.mode: standard | high) via GET/PUT
+    /admin/security, with changes applied on restart.'
+  use_case: Enables operators to adjust security enforcement level without code deployment.
   relates_to:
-    - REQ-693
+  - REQ-693
 - id: REQ-1080
   status: complete
-  group: "10. Admin Console & Governance"
+  group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
   type: ui
-  since: "2026-07"
-  description: >-
-    Admin UI can view and edit AI model assignments (ai_models), the embedding/vector-model registry (vector_models), and the natural-language rate limit (nl.rate_limit) via GET/PUT /admin/ai-models, with changes applied on restart.
-  use_case: >-
-    Allows dynamic model and rate-limit tuning without redeployment.
+  since: 2026-07
+  description: Admin UI can view and edit AI model assignments (ai_models), the embedding/vector-model
+    registry (vector_models), and the natural-language rate limit (nl.rate_limit) via GET/PUT /admin/ai-models,
+    with changes applied on restart.
+  use_case: Allows dynamic model and rate-limit tuning without redeployment.
   relates_to:
-    - REQ-464
-    - REQ-419
-    - REQ-500
-    - REQ-370
+  - REQ-464
+  - REQ-419
+  - REQ-500
+  - REQ-370
 - id: REQ-1081
   status: complete
-  group: "10. Admin Console & Governance"
+  group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
   type: ui
-  since: "2026-07"
-  description: >-
-    Admin UI cache-storage settings now also cover warm-tier promotion and engine filesystem read-cache (warm_tables), plus the default materialized-view refresh TTL (materialized_views.default_ttl).
-  use_case: >-
-    Centralizes cache and materialized-view refresh configuration in the admin console.
+  since: 2026-07
+  description: Admin UI cache-storage settings now also cover warm-tier promotion and engine filesystem
+    read-cache (warm_tables), plus the default materialized-view refresh TTL (materialized_views.default_ttl).
+  use_case: Centralizes cache and materialized-view refresh configuration in the admin console.
   relates_to:
-    - REQ-240
-    - REQ-543
+  - REQ-240
+  - REQ-543
 - id: REQ-1082
   status: complete
-  group: "10. Admin Console & Governance"
+  group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
   type: ui
-  since: "2026-07"
-  description: >-
-    Admin UI observability settings expose the full OpenTelemetry tracing-pipeline tuning surface (log_level, compact_cron, compact_batch_size, compact_file_chunk, ops_snapshot_retention_hours, span_export_delay_millis, otlp2parquet_max_age_secs, collector_batch_timeout_ms, s3_endpoint).
-  use_case: >-
-    Operators can fine-tune telemetry collection and export without redeployment.
+  since: 2026-07
+  description: Admin UI observability settings expose the full OpenTelemetry tracing-pipeline tuning surface
+    (log_level, compact_cron, compact_batch_size, compact_file_chunk, ops_snapshot_retention_hours, span_export_delay_millis,
+    otlp2parquet_max_age_secs, collector_batch_timeout_ms, s3_endpoint).
+  use_case: Operators can fine-tune telemetry collection and export without redeployment.
   relates_to:
-    - REQ-545
+  - REQ-545
 - id: REQ-1083
   status: complete
-  group: "10. Admin Console & Governance"
+  group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
   type: ui
-  since: "2026-07"
-  description: >-
-    Admin UI platform settings now expose remote-GraphQL traversal limits (graphql_remote.max_object_depth, max_list_depth, max_list_items) and make the default query sample size editable.
-  use_case: >-
-    Operators can constrain GraphQL complexity and adjust sampling without redeployment.
+  since: 2026-07
+  description: Admin UI platform settings now expose remote-GraphQL traversal limits (graphql_remote.max_object_depth,
+    max_list_depth, max_list_items) and make the default query sample size editable.
+  use_case: Operators can constrain GraphQL complexity and adjust sampling without redeployment.
   relates_to:
-    - REQ-165
+  - REQ-165
 - id: REQ-1084
   status: complete
-  group: "10. Admin Console & Governance"
+  group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
   type: ui
-  since: "2026-07"
-  description: >-
-    The federation-engine tab now exposes S3 exchange-spool fields (exchange_spool_s3_endpoint, exchange_spool_bucket, exchange_spool_s3_region, exchange_spool_s3_access_key, exchange_spool_s3_secret_key).
-  use_case: >-
-    Enables S3-backed exchange-spool configuration in the admin UI.
+  since: 2026-07
+  description: The federation-engine tab now exposes S3 exchange-spool fields (exchange_spool_s3_endpoint,
+    exchange_spool_bucket, exchange_spool_s3_region, exchange_spool_s3_access_key, exchange_spool_s3_secret_key).
+  use_case: Enables S3-backed exchange-spool configuration in the admin UI.
   relates_to:
-    - REQ-916
+  - REQ-916
 - id: REQ-1085
   status: complete
-  group: "10. Admin Console & Governance"
+  group: 10. Admin Console & Governance
   category: Admin Navigation
   priority: SHOULD
   type: ui
-  since: "2026-07"
-  description: >-
-    Admin navigation consolidates security posture, encryption, authentication, and local users under a single Security section with sub-tabs.
-  use_case: >-
-    Improves discoverability and grouping of security-related admin settings.
+  since: 2026-07
+  description: Admin navigation consolidates security posture, encryption, authentication, and local users
+    under a single Security section with sub-tabs.
+  use_case: Improves discoverability and grouping of security-related admin settings.
 - id: REQ-1086
   status: complete
-  group: "15. Proposed Features"
+  group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
   type: structural
-  since: "2026-07"
-  description: >-
-    Extensible encryption provider registry (provisa/encryption/registry.py) with pluggable implementations. Each provider is a spec with UI config_fields, an availability probe, and a builder. build_encryption_service dispatches via the registry and fails closed on unknown/unavailable providers.
-  use_case: >-
-    Decouples provider implementation from core service, enabling built-in (LocalKeychain, AwsKms, AzureKeyVault, Vault) and custom providers (via env var, entry-point, or API) to coexist without code changes.
+  since: 2026-07
+  description: Extensible encryption provider registry (provisa/encryption/registry.py) with pluggable
+    implementations. Each provider is a spec with UI config_fields, an availability probe, and a builder.
+    build_encryption_service dispatches via the registry and fails closed on unknown/unavailable providers.
+  use_case: Decouples provider implementation from core service, enabling built-in (LocalKeychain, AwsKms,
+    AzureKeyVault, Vault) and custom providers (via env var, entry-point, or API) to coexist without code
+    changes.
   code:
-    - provisa/encryption/registry.py
+  - provisa/encryption/registry.py
   relates_to:
-    - REQ-684
-    - REQ-685
+  - REQ-684
+  - REQ-685
 - id: REQ-1087
   status: complete
-  group: "15. Proposed Features"
+  group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
   type: structural
-  since: "2026-07"
-  description: >-
-    AWS KMS encryption provider (envelope wrapping via KMS Encrypt/Decrypt) with support for custom endpoint_url for KMS-compatible private endpoints. Available whenever boto3 is present.
-  use_case: >-
-    Enterprises can use AWS-managed KMS keys without re-implementing envelope encryption logic. Private endpoint support enables airgapped deployments.
+  since: 2026-07
+  description: AWS KMS encryption provider (envelope wrapping via KMS Encrypt/Decrypt) with support for
+    custom endpoint_url for KMS-compatible private endpoints. Available whenever boto3 is present.
+  use_case: Enterprises can use AWS-managed KMS keys without re-implementing envelope encryption logic.
+    Private endpoint support enables airgapped deployments.
   code:
-    - provisa/encryption/providers/aws_kms.py
+  - provisa/encryption/providers/aws_kms.py
   relates_to:
-    - REQ-684
+  - REQ-684
 - id: REQ-1088
   status: complete
-  group: "15. Proposed Features"
+  group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
   type: structural
-  since: "2026-07"
-  description: >-
-    HashiCorp Vault (Transit engine) encryption provider with auto-availability when hvac package is installed. Vault address is configurable as a custom endpoint.
-  use_case: >-
-    Enterprises using Vault can leverage existing HSM or encryption backends without provisioning cloud KMS. Custom Vault endpoint supports private/airgapped deployments.
+  since: 2026-07
+  description: HashiCorp Vault (Transit engine) encryption provider with auto-availability when hvac package
+    is installed. Vault address is configurable as a custom endpoint.
+  use_case: Enterprises using Vault can leverage existing HSM or encryption backends without provisioning
+    cloud KMS. Custom Vault endpoint supports private/airgapped deployments.
   code:
-    - provisa/encryption/providers/vault.py
+  - provisa/encryption/providers/vault.py
   relates_to:
-    - REQ-684
+  - REQ-684
 - id: REQ-1089
   status: complete
-  group: "15. Proposed Features"
+  group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
   type: structural
-  since: "2026-07"
-  description: >-
-    Azure Key Vault encryption provider (RSA-OAEP-256 key wrap) with auto-availability when azure-keyvault-keys package is installed.
-  use_case: >-
-    Azure-native deployments can leverage customer-managed keys in Azure Key Vault without running separate KMS infrastructure.
+  since: 2026-07
+  description: Azure Key Vault encryption provider (RSA-OAEP-256 key wrap) with auto-availability when
+    azure-keyvault-keys package is installed.
+  use_case: Azure-native deployments can leverage customer-managed keys in Azure Key Vault without running
+    separate KMS infrastructure.
   code:
-    - provisa/encryption/providers/azure_keyvault.py
+  - provisa/encryption/providers/azure_keyvault.py
   relates_to:
-    - REQ-684
+  - REQ-684
 - id: REQ-1090
   status: complete
-  group: "15. Proposed Features"
+  group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
   type: behavioral
-  since: "2026-07"
-  description: >-
-    Enterprises can register custom encryption providers (e.g., in-house KMS/HSM endpoints) without core changes via register_encryption_provider() API, PROVISA_ENCRYPTION_PROVIDER_MODULES environment variable, or provisa.encryption_providers entry-point group.
-  use_case: >-
-    Organizations with proprietary KMS or HSM deployments can integrate them without maintaining a Provisa fork.
+  since: 2026-07
+  description: Enterprises can register custom encryption providers (e.g., in-house KMS/HSM endpoints)
+    without core changes via register_encryption_provider() API, PROVISA_ENCRYPTION_PROVIDER_MODULES environment
+    variable, or provisa.encryption_providers entry-point group.
+  use_case: Organizations with proprietary KMS or HSM deployments can integrate them without maintaining
+    a Provisa fork.
   code:
-    - provisa/encryption/registry.py
+  - provisa/encryption/registry.py
+  tests:
+  - tests/unit/test_encryption_providers.py
   relates_to:
-    - REQ-684
-  scenario: |
-    Given a custom KMS provider module is installed
+  - REQ-684
+  scenario: 'Given a custom KMS provider module is installed
+
     When build_encryption_service is called with the custom provider name
+
     Then the custom provider is instantiated and used for encryption operations
+
+    '
 - id: REQ-1091
   status: complete
-  group: "10. Admin Console & Governance"
+  group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
   type: ui
-  since: "2026-07"
-  description: >-
-    Admin encryption tab derives its provider list live from the encryption registry. Built-in and custom providers appear automatically with their declared config fields. Unavailable providers are shown but not selectable.
-  use_case: >-
-    Operators can configure encryption without code changes; custom providers are discoverable in the UI without redeploy.
+  since: 2026-07
+  description: Admin encryption tab derives its provider list live from the encryption registry. Built-in
+    and custom providers appear automatically with their declared config fields. Unavailable providers
+    are shown but not selectable.
+  use_case: Operators can configure encryption without code changes; custom providers are discoverable
+    in the UI without redeploy.
   relates_to:
-    - REQ-1086
+  - REQ-1086
 - id: REQ-1092
   status: complete
-  group: "11. Frontend UI & UX"
+  group: 11. Frontend UI & UX
   category: Catalog Explore
   priority: SHOULD
   type: ui
-  since: "2026-07"
-  description: >-
-    Provisa provides an LLM chatbot at /explore (under the Explore nav group, branded as "Assistant") where users converse in natural language to explore and query the federated catalog. The interface is built with @chatscope/chat-ui-kit-react. A Claude model (default claude-opus-4-8, configurable via ai_models.mcp_chat) drives a manual tool-use loop with governed MCP tools—list_schemas, list_tables, describe_table, search_catalog, run_sql, explain_sql—via provisa/api/mcp/chat.py. Every tool executes under the caller's fixed role (from x-provisa-role), so the assistant respects domain access + governance boundaries; the model cannot choose or escalate the role. The backend streams assistant text and tool activity to the browser as Server-Sent Events via POST /admin/mcp/chat.
-  use_case: >-
-    Users can explore and query the federated catalog through conversational AI, discovering tables/columns and running SQL through natural language without schema knowledge, constrained by their role's visibility. The assistant is bound by the same governed pipeline as any client.
+  since: 2026-07
+  description: Provisa provides an LLM chatbot at /explore (under the Explore nav group, branded as "Assistant")
+    where users converse in natural language to explore and query the federated catalog. The interface
+    is built with @chatscope/chat-ui-kit-react. A Claude model (default claude-opus-4-8, configurable
+    via ai_models.mcp_chat) drives a manual tool-use loop with governed MCP tools—list_schemas, list_tables,
+    describe_table, search_catalog, run_sql, explain_sql—via provisa/api/mcp/chat.py. Every tool executes
+    under the caller's fixed role (from x-provisa-role), so the assistant respects domain access + governance
+    boundaries; the model cannot choose or escalate the role. The backend streams assistant text and tool
+    activity to the browser as Server-Sent Events via POST /admin/mcp/chat.
+  use_case: Users can explore and query the federated catalog through conversational AI, discovering tables/columns
+    and running SQL through natural language without schema knowledge, constrained by their role's visibility.
+    The assistant is bound by the same governed pipeline as any client.
   code:
-    - provisa/api/mcp/chat.py
-    - provisa/api/mcp/status.py
-    - provisa-ui/src/pages/McpExplorePage.tsx
+  - provisa/api/mcp/chat.py
+  - provisa/api/mcp/status.py
+  - provisa-ui/src/pages/McpExplorePage.tsx
   e2e: true
-  e2e_reason: >-
-    Behavior is only verifiable through browser chat interaction, API transport (SSE), and assistant response rendering.
-  scenario: |
-    Given a user with an active role that can access catalog tables
+  e2e_reason: Behavior is only verifiable through browser chat interaction, API transport (SSE), and assistant
+    response rendering.
+  scenario: 'Given a user with an active role that can access catalog tables
+
     When the user navigates to /explore and submits a natural-language query in the chat interface
+
     Then the assistant uses search_catalog or structured drill-down tools to discover matching tables/columns
-    And the assistant returns explanations or SQL results constrained to the user's role's accessible domains
-    And the model can never choose or escalate the role, and tool errors are reported back to the model for recovery
+
+    And the assistant returns explanations or SQL results constrained to the user''s role''s accessible
+    domains
+
+    And the model can never choose or escalate the role, and tool errors are reported back to the model
+    for recovery
+
+    '
   relates_to:
-    - REQ-1008
+  - REQ-1008
 - id: REQ-1093
   status: complete
   group: 3. Source Registration & Data Modeling
   category: Unique Constraints
   priority: SHOULD
   type: behavioral
-  since: "2026-07"
-  description: >-
-    A registered Table carries a table-level list of UNIQUE constraints (`unique_constraints:
-    [{name, columns[]}]`), each an ordered column set that may be single-column or composite.
-    On registration Provisa introspects declared UNIQUE constraints from RDB sources
-    (PostgreSQL/MySQL information_schema.table_constraints + key_column_usage grouped by
-    constraint_name and ordered by ordinal_position; SQLite PRAGMA index_list/index_info with
-    origin='u') and seeds the list. Uniqueness is only recorded from a source-declared constraint,
-    never inferred from sampled data. The admin UI exposes an expandable "Uniques" panel in the
-    register/edit table forms: a "+ Constraint" control adds a row with a Name text field and a
-    multi-select checkbox of the table's columns. pgwire emits each unique constraint as a
-    pg_constraint row with contype 'u' (conkey = ordered attnums, no confrelid) and projects it into
-    information_schema.table_constraints (constraint_type 'UNIQUE') and key_column_usage, so standard
-    clients (DBeaver, psql \d) render the keys. The MCP describe_table tool includes the table's
-    unique_constraints alongside foreign_keys, role-gated.
-  use_case: >-
-    Foreign keys can legitimately target any unique key, not just the primary key; surfacing declared
-    unique constraints improves relationship inference, lets the query planner reason about row
-    identity, gives standard SQL clients and the MCP agent the natural keys users actually join and
-    filter on, and makes the ERD/catalog show natural keys instead of only surrogate PKs.
+  since: 2026-07
+  description: 'A registered Table carries a table-level list of UNIQUE constraints (`unique_constraints:
+    [{name, columns[]}]`), each an ordered column set that may be single-column or composite. On registration
+    Provisa introspects declared UNIQUE constraints from RDB sources (PostgreSQL/MySQL information_schema.table_constraints
+    + key_column_usage grouped by constraint_name and ordered by ordinal_position; SQLite PRAGMA index_list/index_info
+    with origin=''u'') and seeds the list. Uniqueness is only recorded from a source-declared constraint,
+    never inferred from sampled data. The admin UI exposes an expandable "Uniques" panel in the register/edit
+    table forms: a "+ Constraint" control adds a row with a Name text field and a multi-select checkbox
+    of the table''s columns. pgwire emits each unique constraint as a pg_constraint row with contype ''u''
+    (conkey = ordered attnums, no confrelid) and projects it into information_schema.table_constraints
+    (constraint_type ''UNIQUE'') and key_column_usage, so standard clients (DBeaver, psql \d) render the
+    keys. The MCP describe_table tool includes the table''s unique_constraints alongside foreign_keys,
+    role-gated.'
+  use_case: Foreign keys can legitimately target any unique key, not just the primary key; surfacing declared
+    unique constraints improves relationship inference, lets the query planner reason about row identity,
+    gives standard SQL clients and the MCP agent the natural keys users actually join and filter on, and
+    makes the ERD/catalog show natural keys instead of only surrogate PKs.
   code:
-    - provisa/core/models.py
-    - provisa/discovery/fk_introspect.py
-    - provisa/pgwire/catalog_constraints.py
-    - provisa/api/mcp/tools.py
-    - provisa/api/admin/discovery_schema.py
-    - provisa/compiler/context.py
-    - provisa-ui/src/components/admin/UniquesPanel.tsx
-    - provisa-ui/src/pages/tables/RegisterTableForm.tsx
-    - provisa-ui/src/pages/tables/TableEditForm.tsx
+  - provisa/core/models.py
+  - provisa/discovery/fk_introspect.py
+  - provisa/pgwire/catalog_constraints.py
+  - provisa/api/mcp/tools.py
+  - provisa/api/admin/discovery_schema.py
+  - provisa/compiler/context.py
+  - provisa-ui/src/components/admin/UniquesPanel.tsx
+  - provisa-ui/src/pages/tables/RegisterTableForm.tsx
+  - provisa-ui/src/pages/tables/TableEditForm.tsx
   tests:
-    - tests/unit/test_unique_introspect.py
-    - tests/unit/pgwire/test_unique_constraints.py
-    - tests/unit/test_unique_constraints_wiring.py
-    - provisa-ui/src/components/admin/__tests__/UniquesPanel.test.tsx
-  scenario: |
-    Given a PostgreSQL source table with a declared UNIQUE constraint on (tenant_id, email)
+  - tests/unit/test_unique_introspect.py
+  - tests/unit/pgwire/test_unique_constraints.py
+  - tests/unit/test_unique_constraints_wiring.py
+  - provisa-ui/src/components/admin/__tests__/UniquesPanel.test.tsx
+  scenario: 'Given a PostgreSQL source table with a declared UNIQUE constraint on (tenant_id, email)
+
     When the table is registered in Provisa
-    Then the table's unique_constraints list is seeded with {name, columns: [tenant_id, email]} from the source
-    And the admin register/edit UI shows the constraint in the expandable "Uniques" panel with its name and checked columns
-    And pgwire exposes it as a pg_constraint row with contype 'u' and an information_schema.table_constraints row of type 'UNIQUE'
+
+    Then the table''s unique_constraints list is seeded with {name, columns: [tenant_id, email]} from
+    the source
+
+    And the admin register/edit UI shows the constraint in the expandable "Uniques" panel with its name
+    and checked columns
+
+    And pgwire exposes it as a pg_constraint row with contype ''u'' and an information_schema.table_constraints
+    row of type ''UNIQUE''
+
     And the MCP describe_table response for the table includes the unique_constraints entry
+
+    '
   relates_to:
-    - REQ-018
+  - REQ-018
 - id: REQ-1094
   status: complete
   group: 8. Client Access & Protocols
   category: PostgreSQL Catalog Compatibility
   priority: MUST
   type: structural
-  since: "2026-07"
-  description: >-
-    Composite foreign keys are reconstructed at pgwire catalog-build time from the FK→PK invariant.
+  since: 2026-07
+  description: Composite foreign keys are reconstructed at pgwire catalog-build time from the FK→PK invariant.
     Provisa's relationship model stores each FK column as a separate join with no shared constraint ID;
-    single-column many-to-one joins between the same source/target table pair whose target columns
-    together form the target table's composite primary key are collapsed into one pg_constraint FK row
-    (contype 'f') with multi-element conkey/confkey arrays, ordered by target PK column order. Joins
-    not covering a composite PK (single-column FKs, partial coverage, independent multi-FKs to the
-    same table) remain one single-column row each.
-  use_case: >-
-    PostgreSQL clients and tools (e.g., DataGrip, psql) expect composite FKs as single pg_constraint
-    rows with parallel conkey/confkey arrays; reconstructing them ensures correct relationship
-    visualization and validation logic without requiring a V1-prohibited migration.
+    single-column many-to-one joins between the same source/target table pair whose target columns together
+    form the target table's composite primary key are collapsed into one pg_constraint FK row (contype
+    'f') with multi-element conkey/confkey arrays, ordered by target PK column order. Joins not covering
+    a composite PK (single-column FKs, partial coverage, independent multi-FKs to the same table) remain
+    one single-column row each.
+  use_case: PostgreSQL clients and tools (e.g., DataGrip, psql) expect composite FKs as single pg_constraint
+    rows with parallel conkey/confkey arrays; reconstructing them ensures correct relationship visualization
+    and validation logic without requiring a V1-prohibited migration.
   code:
-    - provisa/pgwire/catalog_constraints.py
-  scenario: |
-    Given a target table with a composite primary key (col_a, col_b)
+  - provisa/pgwire/catalog_constraints.py
+  scenario: 'Given a target table with a composite primary key (col_a, col_b)
+
     When source table S has many-to-one relationships joining S.col_a → target.col_a and S.col_b → target.col_b
-    Then pgwire emits one pg_constraint FK row with conkey=[attnum_a, attnum_b] and confkey=[attnum_a, attnum_b]
+
+    Then pgwire emits one pg_constraint FK row with conkey=[attnum_a, attnum_b] and confkey=[attnum_a,
+    attnum_b]
+
     ordered by target PK column order
+
     And a single-column FK from S to target on a different column remains one separate pg_constraint row
+
+    '
 - id: REQ-1095
   status: complete
   group: 8. Client Access & Protocols
   category: PostgreSQL Catalog Compatibility
   priority: MUST
   type: structural
-  since: "2026-07"
-  description: >-
-    pg_catalog.pg_index is populated with one row per primary-key and UNIQUE constraint
-    (indrelid = table oid, indkey = ordered key attnums, indisprimary/indisunique flags set).
-    This allows PostgreSQL clients (e.g., DataGrip) that resolve key columns via pg_index.indkey
-    rather than pg_constraint to discover the correct columns via the standard pg_index → pg_attribute join.
-  use_case: >-
-    Standard SQL clients resolve primary key and unique constraint columns by joining pg_index to
-    pg_attribute on indkey; populating pg_index ensures clients that use this path (rather than
-    pg_constraint) get correct key column visibility and metadata.
+  since: 2026-07
+  description: pg_catalog.pg_index is populated with one row per primary-key and UNIQUE constraint (indrelid
+    = table oid, indkey = ordered key attnums, indisprimary/indisunique flags set). This allows PostgreSQL
+    clients (e.g., DataGrip) that resolve key columns via pg_index.indkey rather than pg_constraint to
+    discover the correct columns via the standard pg_index → pg_attribute join.
+  use_case: Standard SQL clients resolve primary key and unique constraint columns by joining pg_index
+    to pg_attribute on indkey; populating pg_index ensures clients that use this path (rather than pg_constraint)
+    get correct key column visibility and metadata.
   code:
-    - provisa/pgwire/catalog_constraints.py
-  scenario: |
-    Given a table with a primary key and a UNIQUE constraint
+  - provisa/pgwire/catalog_constraints.py
+  scenario: 'Given a table with a primary key and a UNIQUE constraint
+
     When a PostgreSQL client queries pg_index for the table
+
     Then one pg_index row exists for the PK with indisprimary=true and indkey=[attnum list]
+
     And one pg_index row exists for the UNIQUE with indisunique=true and indkey=[attnum list]
+
     And clients resolving key columns via pg_index → pg_attribute get the correct columns
+
+    '
 - id: REQ-1096
   status: in-progress
   group: 10. UI & Admin Surfaces
   category: Admin & Configuration
   priority: SHOULD
   type: behavioral
-  since: "2026-07"
-  description: >-
-    Live config export/diff/patch — an OPT-IN admin capability, distinct from the plain
-    download/upload of REQ-164, that lets an admin see and export exactly what changed since
-    startup. The on-disk config is only the boot seed; admin mutations write to the control-plane
-    DB, so the file goes stale (an MV or relationship created in the UI, or a changed primary key,
-    never appears in it). When enabled, Provisa rebuilds the DB-backed config sections (tables incl.
-    views/MVs, relationships, roles, rls_rules, domains) from live state and overlays them on the
-    file base to produce the CURRENT config.
+  since: 2026-07
+  description: 'Live config export/diff/patch — an OPT-IN admin capability, distinct from the plain download/upload
+    of REQ-164, that lets an admin see and export exactly what changed since startup. The on-disk config
+    is only the boot seed; admin mutations write to the control-plane DB, so the file goes stale (an MV
+    or relationship created in the UI, or a changed primary key, never appears in it). When enabled, Provisa
+    rebuilds the DB-backed config sections (tables incl. views/MVs, relationships, roles, rls_rules, domains)
+    from live state and overlays them on the file base to produce the CURRENT config.
 
-    The baseline for diff/patch is a BOOT SNAPSHOT captured ONCE at the end of boot — after all
-    runtime auto-derivation (FK tracking, graphql-remote registration) — so the diff shows only
-    changes made SINCE startup, not derived entities that were never in the file. This is the
-    "lock the starting config after automated changes" behavior: the automated/derived setup is
-    frozen as the baseline, and every subsequent admin edit shows as a clean diff against it.
+    The baseline for diff/patch is a BOOT SNAPSHOT captured ONCE at the end of boot — after all runtime
+    auto-derivation (FK tracking, graphql-remote registration) — so the diff shows only changes made SINCE
+    startup, not derived entities that were never in the file. This is the "lock the starting config after
+    automated changes" behavior: the automated/derived setup is frozen as the baseline, and every subsequent
+    admin edit shows as a clean diff against it.
 
-    Both sides are normalized identically (deep key-sort + stable entity-sort) so section/key/entity
-    ORDER never differs and the diff surfaces only real changes. The admin UI (Configuration File
-    section) exposes: View Diff (a two-pane diff of baseline vs current, editable), Download Patch
-    (a git-apply/patch-compatible unified diff from baseline to the curated current, for CI/CD
-    reproduction), and Apply Revised (upload the curated config and reload). When the flag is on,
-    uploaded config is normalized on consume and persisted in normalized form so the on-disk file
-    stays byte-faithful to the patch baseline; when off, the file is written verbatim to preserve a
-    hand-authored file's comments/ordering.
+    Both sides are normalized identically (deep key-sort + stable entity-sort) so section/key/entity ORDER
+    never differs and the diff surfaces only real changes. The admin UI (Configuration File section) exposes:
+    View Diff (a two-pane diff of baseline vs current, editable), Download Patch (a git-apply/patch-compatible
+    unified diff from baseline to the curated current, for CI/CD reproduction), and Apply Revised (upload
+    the curated config and reload). When the flag is on, uploaded config is normalized on consume and
+    persisted in normalized form so the on-disk file stays byte-faithful to the patch baseline; when off,
+    the file is written verbatim to preserve a hand-authored file''s comments/ordering.
 
-    The feature is coherent only when the generated/normalized config is canonical (config built
-    from installer/demo choices), NOT a hand-authored file whose comments/ordering a normalized
-    patch could not stay faithful to — so it is GATED behind the live_config_export flag (config key
-    live_config_export: true OR env PROVISA_LIVE_CONFIG_EXPORT in {1,true,yes}), exposed to the UI as
-    features.live_config_export, which conditionally renders the View Diff / patch controls. In DEMO
-    MODE the flag MUST be ON: the demo is the canonical-generated-config scenario, so demo builds
-    force live_config_export regardless of an explicit config key.
-  use_case: >-
-    Admins running the canonical/demo config need to see exactly what they changed in the UI since
-    startup and export it as a patch for version control or CI/CD, instead of hand-diffing a stale
-    on-disk file that never reflected DB-backed edits. Locking the boot snapshot after automated
-    derivation keeps the diff free of noise. Demo users get the diff/patch surface out of the box
-    because the demo config is generated and therefore always safe to normalize.
+    The feature is coherent only when the generated/normalized config is canonical (config built from
+    installer/demo choices), NOT a hand-authored file whose comments/ordering a normalized patch could
+    not stay faithful to — so it is GATED behind the live_config_export flag (config key live_config_export:
+    true OR env PROVISA_LIVE_CONFIG_EXPORT in {1,true,yes}), exposed to the UI as features.live_config_export,
+    which conditionally renders the View Diff / patch controls. In DEMO MODE the flag MUST be ON: the
+    demo is the canonical-generated-config scenario, so demo builds force live_config_export regardless
+    of an explicit config key.'
+  use_case: Admins running the canonical/demo config need to see exactly what they changed in the UI since
+    startup and export it as a patch for version control or CI/CD, instead of hand-diffing a stale on-disk
+    file that never reflected DB-backed edits. Locking the boot snapshot after automated derivation keeps
+    the diff free of noise. Demo users get the diff/patch surface out of the box because the demo config
+    is generated and therefore always safe to normalize.
   code:
-    - provisa/api/app.py
-    - provisa/api/app_startup.py
-    - provisa/api/admin/config_export.py
-    - provisa/api/admin/settings_router.py
-    - provisa-ui/src/pages/AdminPage.tsx
-    - provisa-ui/src/components/admin/ConfigDiffView.tsx
+  - provisa/api/app.py
+  - provisa/api/app_startup.py
+  - provisa/api/admin/config_export.py
+  - provisa/api/admin/settings_router.py
+  - provisa-ui/src/pages/AdminPage.tsx
+  - provisa-ui/src/components/admin/ConfigDiffView.tsx
   tests:
-    - tests/unit/test_config_export.py
-  scenario: |
-    Given demo mode is active
+  - tests/unit/test_config_export.py
+  scenario: 'Given demo mode is active
+
     Then live_config_export is forced on and the admin UI shows View Diff / Download Patch / Apply Revised
+
     Given live_config_export is enabled
+
     When Provisa finishes booting (after FK tracking and graphql-remote registration)
+
     Then the generated config is captured once as the boot-snapshot baseline
-    When an admin changes a table's primary key (or creates an MV) in the UI
+
+    When an admin changes a table''s primary key (or creates an MV) in the UI
+
     And the admin opens View Diff
+
     Then the diff shows only that change against the boot snapshot, both sides normalized identically
+
     And Download Patch yields a git-apply-compatible unified diff from baseline to the curated current
+
     And Apply Revised uploads the normalized config and reloads
+
     Given live_config_export is disabled and demo mode is inactive
+
     Then the View Diff / patch controls are absent and an uploaded config is written verbatim
+
+    '
   relates_to:
-    - REQ-164
+  - REQ-164
