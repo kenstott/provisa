@@ -16,6 +16,10 @@ disabled, an unset stdio role is reported as null (the transport fails loud on
 use, exactly as ``_pinned_stdio_role`` does).
 """
 
+# complexity-gate: allow-ble=1 reason="the SSE chat stream converts any LLM/transport failure into a
+# terminal error event so the browser sees a clean message instead of a broken stream — the error
+# text is surfaced to the client, never swallowed"
+
 from __future__ import annotations
 
 import os
@@ -108,3 +112,33 @@ async def mcp_search_catalog(request: Request):  # REQ-1008
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"results": results}
+
+
+@router.post("/admin/mcp/chat")
+async def mcp_chat(request: Request):  # REQ-1008
+    """Stream an LLM chat that drives the MCP tools, governed by the caller's role.
+
+    Server-Sent Events: each line is ``data: {json}`` with a ``type`` of text / tool_use /
+    tool_result / done / error. Role comes from the ``x-provisa-role`` header (or body).
+    """
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+
+    from provisa.api.app import state
+    from provisa.api.mcp.chat import run_chat
+
+    body = await request.json()
+    role = request.headers.get("x-provisa-role") or body.get("role") or ""
+    messages = body.get("messages") or []
+
+    async def _events():
+        try:
+            async for event in run_chat(state, role, messages):
+                yield f"data: {_json.dumps(event)}\n\n"
+        except (PermissionError, ValueError) as exc:
+            yield f"data: {_json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+        except Exception as exc:  # noqa: BLE001 - surface any LLM/transport failure to the client
+            yield f"data: {_json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+
+    return StreamingResponse(_events(), media_type="text/event-stream")

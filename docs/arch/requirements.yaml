@@ -30883,20 +30883,21 @@
   type: ui
   since: "2026-07"
   description: >-
-    Provisa provides a browser Catalog Search/Explore page at /explore (under the Explore nav group) that runs the MCP search_catalog tool interactively. A natural-language query returns matching table branches (columns, foreign keys, schema breadcrumb, relevance score, which column matched), governed by the active role's accessible domains.
+    Provisa provides an LLM chatbot at /explore (under the Explore nav group, branded as "Assistant") where users converse in natural language to explore and query the federated catalog. The interface is built with @chatscope/chat-ui-kit-react. A Claude model (default claude-opus-4-8, configurable via ai_models.mcp_chat) drives a manual tool-use loop with governed MCP tools—list_schemas, list_tables, describe_table, search_catalog, run_sql, explain_sql—via provisa/api/mcp/chat.py. Every tool executes under the caller's fixed role (from x-provisa-role), so the assistant respects domain access + governance boundaries; the model cannot choose or escalate the role. The backend streams assistant text and tool activity to the browser as Server-Sent Events via POST /admin/mcp/chat.
   use_case: >-
-    Users can explore the federated catalog through natural-language search directly in the web UI, discovering tables and columns without knowing schema structure, constrained by their role's visibility.
+    Users can explore and query the federated catalog through conversational AI, discovering tables/columns and running SQL through natural language without schema knowledge, constrained by their role's visibility. The assistant is bound by the same governed pipeline as any client.
   code:
+    - provisa/api/mcp/chat.py
     - provisa/api/mcp/status.py
     - provisa-ui/src/pages/McpExplorePage.tsx
-    - provisa-ui/src/api/admin.ts
   e2e: true
   e2e_reason: >-
-    Behavior is only verifiable through browser interaction with the search page, API transport (REST), and result rendering.
+    Behavior is only verifiable through browser chat interaction, API transport (SSE), and assistant response rendering.
   scenario: |
     Given a user with an active role that can access catalog tables
-    When the user navigates to /explore and submits a natural-language query
-    Then matching table branches are returned with columns, foreign keys, schema breadcrumb, relevance score, and matched column indicator
-    And results are constrained to tables/columns visible to the user's role
+    When the user navigates to /explore and submits a natural-language query in the chat interface
+    Then the assistant uses search_catalog or structured drill-down tools to discover matching tables/columns
+    And the assistant returns explanations or SQL results constrained to the user's role's accessible domains
+    And the model can never choose or escalate the role, and tool errors are reported back to the model for recovery
   relates_to:
     - REQ-1008

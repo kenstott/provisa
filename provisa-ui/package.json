@@ -29,6 +29,8 @@
   },
   "dependencies": {
     "@apollo/client": "^4.2.2",
+    "@chatscope/chat-ui-kit-react": "^2.1.1",
+    "@chatscope/chat-ui-kit-styles": "^1.4.0",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-sql": "^6.10.0",
     "@codemirror/merge": "^6.12.2",
