@@ -18,9 +18,9 @@ exposes them over MCP. Two transports:
 Role rule (CLAUDE.md): a role is REQUIRED on every call and the server NEVER
 defaults to admin. When no role can be resolved the call fails loud.
 
-Phase 2 (DEFERRED, not implemented here): search_catalog(nl_text) semantic
-retrieval — embeddings, DuckDB VSS index, get_chunk formatter, incremental
-reindex keyed off the MV refresh.
+search_catalog(nl_text) is the semantic "explore" surface (search.py): a
+DuckDB VSS index over schema/table/column chunks, resolved up to authoritative
+table branches and filtered to the caller's accessible domains.
 """
 
 from __future__ import annotations
@@ -125,6 +125,16 @@ def build_mcp_server(state: Any):
     async def explain_sql(sql: str, role: str | None = None) -> dict:
         """Return the governed execution plan (route + physical SQL) without executing."""
         return await tools.explain_sql(state, _role(role), sql)
+
+    @mcp.tool()
+    async def search_catalog(query: str, role: str | None = None, k: int = 5) -> list[dict]:
+        """Semantically search the catalog for datasets matching a natural-language query.
+
+        Returns the top table branches (columns + foreign keys + schema breadcrumb) whose
+        schema/table/column detail best matches, scoped to the caller's accessible domains.
+        Use this when the flat table list is too large to scan by hand.
+        """
+        return await tools.search_catalog(state, _role(role), query, k=k)
 
     return mcp
 

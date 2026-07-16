@@ -47,6 +47,10 @@ _TOOLS = [
         "name": "explain_sql",
         "description": "Return the governed execution plan (route + physical SQL) without executing.",
     },
+    {
+        "name": "search_catalog",
+        "description": "Semantically search the catalog for datasets matching a natural-language query.",
+    },
 ]
 
 

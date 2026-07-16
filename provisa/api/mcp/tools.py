@@ -213,6 +213,118 @@ async def explain_sql(state: Any, role: str, sql: str) -> dict:
     }
 
 
+def _role_domains(state: Any, role: str) -> set[str]:
+    """The schema ids ``role`` may access, or ``{"*"}`` for full access.
+
+    Sourced from the loaded config roles' ``domain_access`` — the same list the SQL
+    pipeline enforces. A search hit outside these domains is dropped, so the agent
+    never sees an entity it could not query.
+    """
+    config = getattr(state, "config", None)
+    for r in getattr(config, "roles", None) or []:
+        if getattr(r, "id", None) == role:
+            access = list(getattr(r, "domain_access", None) or [])
+            return {"*"} if "*" in access else set(access)
+    return set()
+
+
+def _resolve_embedding_model(state: Any) -> Any:
+    """The embedding model for catalog search — the first enabled ``vector_models`` entry.
+
+    No silent fallback (CLAUDE.md): with no enabled embedding model registered, catalog
+    search is unavailable and says so, rather than inventing a model.
+    """
+    from provisa.vector.registry import VectorModel
+
+    config = getattr(state, "config", None)
+    for vm in getattr(config, "vector_models", None) or []:
+        if getattr(vm, "enabled", True):
+            return VectorModel(
+                id=vm.id,
+                provider=vm.provider,
+                dimensions=vm.dimensions,
+                base_url=getattr(vm, "base_url", None),
+            )
+    raise ValueError(
+        "catalog search requires an enabled embedding model — register one in "
+        "vector_models (admin → AI Models)"
+    )
+
+
+async def build_catalog_index(state: Any, provider: Any = None) -> int:
+    """(Re)build the server-lifetime catalog search index over the full catalog.
+
+    Cached on ``state.mcp_catalog_index``. Called at startup / on catalog refresh; a
+    cold build is just the full case. ``provider`` is injectable for tests.
+    """
+    from provisa.api.mcp.search import CatalogSearchIndex
+
+    model = _resolve_embedding_model(state)
+    catalog = await _catalog(state)
+    index = CatalogSearchIndex(model, provider)
+    await index.build(catalog, _domain_descriptions(state))
+    state.mcp_catalog_index = index
+    return len(catalog)
+
+
+async def _get_index(state: Any) -> Any:
+    """The catalog index, built lazily on first use if startup did not build it."""
+    index = getattr(state, "mcp_catalog_index", None)
+    if index is None or not getattr(index, "built", False):
+        await build_catalog_index(state)
+        index = state.mcp_catalog_index
+    return index
+
+
+async def search_catalog(state: Any, role: str, nl_text: str, k: int = 5) -> list[dict]:
+    """Semantic bottom-up catalog search, resolved up to authoritative table branches.
+
+    Embeds ``nl_text``, finds the nearest chunks (schema/table/column), keeps only hits
+    in domains ``role`` may access, then resolves each up to its parent table via
+    describe_table — returning the full column list + FKs + a schema breadcrumb, plus
+    which leaf matched. Deduplicated by table, best (closest) match wins.
+    """
+    require_role(role, state)
+    if not nl_text or not nl_text.strip():
+        raise ValueError("search text is required")
+    if k <= 0:
+        raise ValueError("k must be a positive integer")
+
+    index = await _get_index(state)
+    # Over-fetch so role/domain filtering + table dedup still yields k branches.
+    hits = await index.search(nl_text.strip(), max(k * 6, k))
+
+    allowed = _role_domains(state, role)
+    results: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for h in hits:
+        if h.table is None:  # schema-tier hit has no table branch to resolve to
+            continue
+        if "*" not in allowed and h.schema not in allowed:
+            continue
+        key = (h.schema, h.table)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            branch = await describe_table(state, role, h.schema, h.table)
+        except (ValueError, PermissionError):
+            continue  # table vanished or not visible to this role — skip, don't fail the search
+        results.append(
+            {
+                "schema": h.schema,
+                "table": h.table,
+                "breadcrumb": f"{h.schema} > {h.table}",
+                "matched_on": {"level": h.level, "column": h.column},
+                "score": round(1.0 - float(h.distance), 4),  # cosine similarity
+                "branch": branch,
+            }
+        )
+        if len(results) >= k:
+            break
+    return results
+
+
 def _row_to_json(cols: list[str], row: Any) -> dict:
     """Map a result tuple to a JSON-safe {column: value} dict."""
     out: dict[str, Any] = {}

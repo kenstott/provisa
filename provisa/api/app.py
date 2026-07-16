@@ -145,6 +145,9 @@ class AppState:
     masking_rules: MaskingRules = {}  # (table_id, role_id) → {col: (rule, dtype)}
     response_cache_store: CacheStore = NoopCacheStore()
     response_cache_default_ttl: int = 300
+    # REQ-1008: server-lifetime MCP catalog search index (DuckDB VSS HNSW), built lazily on first
+    # search_catalog and invalidated (set None) on catalog reload. Any so the mcp package owns the type.
+    mcp_catalog_index: Any = None
     mv_registry: MVRegistry = MVRegistry()
     _mv_refresh_task: asyncio.Task | None = None
     proto_files: dict[str, str] = {}  # role_id → .proto content
@@ -473,6 +476,9 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
     # Clear mutable state before rebuild
     state.masking_rules = {}
+    # Invalidate the MCP catalog search index (REQ-1008) — the catalog is changing, so the
+    # server-lifetime HNSW index is stale; next search_catalog rebuilds it from the new catalog.
+    state.mcp_catalog_index = None
 
     async with state.tenant_db.acquire() as conn:
         _pg = cast(asyncpg.Connection, conn)

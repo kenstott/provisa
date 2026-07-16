@@ -29535,12 +29535,13 @@
   - REQ-978
   - REQ-979
 - id: REQ-1008
-  status: proposed
+  status: in-progress
   group: 8. Client Access & Protocols
   category: MCP Server
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
+  since: "2026-07"
   description: Provisa exposes a Model Context Protocol (MCP) server so external AI agents (Claude Desktop,
     claude.ai connectors, Claude Code) can discover catalog metadata and execute SQL through the same
     governed pipeline as every other client. The server is a protocol adapter with zero new governance
@@ -29573,10 +29574,9 @@
     code path as incremental reindex (a cold build is just the full case). Sizing the index scales with schema
     cardinality, not row volume, and the catalog is curated, so it stays single-node across the range
     (fed ~10K, enterprise ~140K, largest curated+transaction ~1.4M column chunks) — well inside DuckDB VSS's
-    range, which is why no pgvector/multi-million fallback is needed. Reindex is incremental re-embed only
-    datasets whose meta rows changed (over the server-lifetime index), keyed off the
-    MV/catalog refresh (provisa/mv/refresh.py); per-entity chunks emitted while walking the meta views
-    (not a rendered doc split by size) keep per-dataset chunk identity stable so incremental reindex is cheap.
+    range, which is why no pgvector/multi-million fallback is needed. Phase 2 (search_catalog semantic explore)
+    is implemented with full rebuild-on-reload; incremental re-embed (keyed off MV/catalog refresh) remains
+    a future optimization.
   use_case: Makes Provisa pluggable into Claude and other MCP-speaking agents for governed metadata
     discovery and SQL execution, without exposing a second ungoverned surface. Extends the
     governed-surface-for-AI-planners motivation of REQ-884 from "queryable telemetry" to a first-class
@@ -29588,6 +29588,9 @@
   - provisa/api/flight/catalog.py
   - provisa/api/_meta_views.py
   - provisa/mv/refresh.py
+  - provisa/api/mcp/search.py
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/server.py
   scenario: 'Given a Provisa instance whose curated catalog is indexed and an MCP client authenticated
     as role r with access to a subset of domains
 

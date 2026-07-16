@@ -296,8 +296,14 @@ async def test_build_mcp_server_registers_tools():
 
     mcp = build_mcp_server(_make_state())
     names = {t.name for t in await mcp.list_tools()}
-    assert {"list_schemas", "list_tables", "describe_table", "run_sql", "explain_sql"} <= names
-    assert "search_catalog" not in names  # phase 2, deferred
+    assert {
+        "list_schemas",
+        "list_tables",
+        "describe_table",
+        "run_sql",
+        "explain_sql",
+        "search_catalog",
+    } <= names
 
 
 async def test_pinned_stdio_role_requires_env(monkeypatch):

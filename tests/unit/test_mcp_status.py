@@ -25,6 +25,7 @@ _TOOL_NAMES = {
     "describe_table",
     "run_sql",
     "explain_sql",
+    "search_catalog",
 }
 
 
