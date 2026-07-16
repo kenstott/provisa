@@ -237,7 +237,6 @@ export function NavBar() {
           <NavLink to="/docs" data-tour="nav-docs">{t("navBar.docs")}</NavLink>
         </div>
         <div className="navbar-role">
-          <ColorSchemeToggle />
           <OrgSwitcher />
           {domainsEnabled && onTablesPage && domains.length > 0 && (
             <div className="navbar-domain-wrapper">
@@ -272,6 +271,7 @@ export function NavBar() {
             </div>
           )}
           <RoleSelector />
+          <ColorSchemeToggle />
           <Tooltip label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}>
             <ActionIcon
               variant="default"
