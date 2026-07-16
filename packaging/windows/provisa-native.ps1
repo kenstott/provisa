@@ -222,7 +222,7 @@ $command = if ($args.Count -gt 0) { $args[0] } else { 'help' }
 switch ($command) {
   'start'   { Start-Native; if ($AutoOpen) { Open-Native } }
   'stop'    { Stop-Native }
-  'restart' { Stop-Native; Start-Native }
+  'restart' { Stop-Native; Start-Native; if ($AutoOpen) { Open-Native } }
   'status'  { Status-Native }
   'open'    { Open-Native }
   'help'    { Show-Help }
