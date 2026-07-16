@@ -51,6 +51,7 @@ _TABLE_KEYS = frozenset(
         "materialize",
         "enable_aggregates",
         "enable_group_by",
+        "unique_constraints",  # REQ-1093
     }
 )
 _COLUMN_KEYS = frozenset({"name", "description", "visible_to", "governance"})
