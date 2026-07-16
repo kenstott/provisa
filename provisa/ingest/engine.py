@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 # Requirements: REQ-331, REQ-332
 
@@ -22,6 +23,11 @@ log = logging.getLogger(__name__)
 
 # Engines are created once per source_id and reused across requests.
 _engines: dict[str, AsyncEngine] = {}
+# get_engine is a check-then-create-then-set on a shared dict, reachable from more than one thread
+# (ingest workers / executor threads). Without this guard, concurrent first-hits for one source each
+# build their own AsyncEngine and all but the last leak an undisposed connection pool — a silent
+# resource race. Double-checked locking makes "one engine per source_id" an invariant.
+_engines_lock = threading.Lock()
 
 
 def get_engine(  # REQ-331, REQ-332
@@ -39,14 +45,20 @@ def get_engine(  # REQ-331, REQ-332
     ``postgresql+asyncpg``, ``mysql+aiomysql``.  Defaults to
     ``postgresql+asyncpg`` when absent.
     """
-    if source_id in _engines:
-        return _engines[source_id]
+    cached = _engines.get(source_id)
+    if cached is not None:
+        return cached
 
-    url = _build_url(dialect, host, port, database, username, password)
-    log.info("Creating ingest engine for source=%s url=%s", source_id, url.split("@")[-1])
-    engine = create_async_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
-    _engines[source_id] = engine
-    return engine
+    with _engines_lock:
+        # Re-check under the lock: a peer may have created it while we waited.
+        cached = _engines.get(source_id)
+        if cached is not None:
+            return cached
+        url = _build_url(dialect, host, port, database, username, password)
+        log.info("Creating ingest engine for source=%s url=%s", source_id, url.split("@")[-1])
+        engine = create_async_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
+        _engines[source_id] = engine
+        return engine
 
 
 async def dispose_all() -> None:
