@@ -60,6 +60,7 @@ interface ChatMsg {
 interface ToolEvent {
   name: string;
   input?: unknown;
+  running?: boolean;
   error?: boolean;
 }
 
@@ -195,9 +196,20 @@ export function McpExplorePage() {
           const ev = JSON.parse(line.slice(5).trim());
           if (ev.type === "text") appendAssistant(ev.text);
           else if (ev.type === "tool_use")
-            setTools((p) => [...p, { name: ev.name, input: ev.input }]);
+            setTools((p) => [...p, { name: ev.name, input: ev.input, running: true }]);
           else if (ev.type === "tool_result")
-            setTools((p) => [...p, { name: ev.name, error: ev.is_error }]);
+            // Resolve the matching in-flight badge (last running of this name) rather than
+            // appending a second chip — one call = one badge, running → done/error.
+            setTools((p) => {
+              const next = [...p];
+              for (let i = next.length - 1; i >= 0; i--) {
+                if (next[i].name === ev.name && next[i].running) {
+                  next[i] = { ...next[i], running: false, error: ev.is_error };
+                  break;
+                }
+              }
+              return next;
+            });
           else if (ev.type === "error") setError(ev.error);
         }
       }
@@ -243,7 +255,7 @@ export function McpExplorePage() {
             <Badge
               key={i}
               size="sm"
-              variant="light"
+              variant={tl.running ? "outline" : "light"}
               color={tl.error ? "red" : "grape"}
               data-testid="mcp-chat-tool"
             >
