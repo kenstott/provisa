@@ -158,11 +158,13 @@ Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
 
 For developer workstations and evaluation. Fully air-gapped — no internet required after download (REQ-227).
 
+The base installer is a **native install**: DuckDB federation engine + SQLite control plane + in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis, or MinIO (REQ-972, REQ-979). The federation engine is a wizard choice — DuckDB (native, default), Trino-on-Docker, or an external engine (REQ-973). Observability is always-on self-telemetry viewable in Admin; the Docker collector/Prometheus/Grafana stack is an optional external demonstration, not an on/off switch (REQ-975). The demo data pack is optional and off by default (REQ-978). Trino, the Docker observability stack, and the demo are heavy add-ons resolved local-first (installer-adjacent dir, mounted volumes, `~/Downloads`, then GitHub release), so enterprises can pre-stage tarballs for air-gapped installs (REQ-977).
+
 ### Steps
 
 1. Download `Provisa-<version>-macOS.dmg` from the [GitHub releases page](https://github.com/provisa/provisa/releases)
 2. Open the DMG and drag **Provisa.app** to `/Applications`
-3. Double-click **Provisa.app** — first-launch setup runs once (~2 minutes, loads bundled images) (REQ-228)
+3. Double-click **Provisa.app** — first-launch setup runs once; the wizard offers the engine, observability, and demo choices above (REQ-1007)
 4. Open Terminal:
    ```bash
    provisa start    # start all services
@@ -182,11 +184,13 @@ All data is stored in `~/.provisa/` (REQ-224). To remove everything: `provisa un
 
 For developer workstations and evaluation. Fully air-gapped — no internet required after download (REQ-227).
 
+Like macOS, the base Windows installer is a **native tier**: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + SQLite control plane, shipping no Docker, no VM, and no container images (REQ-979). The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (`Provisa-Container-<version>.exe`, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer (REQ-1005).
+
 ### Steps
 
 1. Download `Provisa-<version>-windows-x64.exe` from the [GitHub releases page](https://github.com/provisa/provisa/releases)
 2. Run the installer — no admin rights required; installs to `%LOCALAPPDATA%\Programs\Provisa\`
-3. Open **Provisa First Launch** from the Start Menu — setup runs once (~5 minutes) (REQ-228)
+3. Open **Provisa First Launch** from the Start Menu — native setup runs once and prints the next-steps guidance for the layered add-ons (REQ-1005)
 4. Open a new terminal:
    ```
    provisa status
@@ -583,6 +587,15 @@ kubectl rollout restart deployment/provisa --namespace provisa
 ```
 
 ---
+
+## High Availability & Recovery
+
+Provisa applies a two-tier recovery model across all deployment modes (REQ-703):
+
+- **Tier 1 — transient errors.** Read operations retry for up to 30 seconds on transient errors using exponential backoff with full jitter. Tune the budget with `PROVISA_RETRY_BUDGET_SECS`. Write operations are never retried internally, and memory errors are never retryable.
+- **Tier 2 — component failure.** An internal engine watcher detects and restarts failed software components within 2–3 minutes.
+
+Machine-level and cluster-level failures remain the operator's responsibility — provision redundant nodes and a load balancer (Terraform and Helm paths above) for node-loss tolerance.
 
 ## Federation Engine Dependencies
 

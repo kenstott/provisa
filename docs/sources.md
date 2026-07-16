@@ -9,7 +9,7 @@ Every query ultimately executes through the federation engine, which provides fe
 | **Direct-capable** | Yes | Yes | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
 | **Federation only** | No | Yes | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
 | **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse — driver reads data and lands a replica; queries run against the replica in the active engine |
-| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData |
+| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Splunk |
 
 **Direct-capable** sources execute single-source queries via their native driver (sub-100ms), bypassing the federation engine (REQ-027, REQ-229). They retain full connector support and participate in federation when joined with other sources (REQ-028).
 
@@ -23,7 +23,7 @@ Every query ultimately executes through the federation engine, which provides fe
 
 ## All Sources
 
-Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms) (REQ-027). "Connector Name" is the federated connector used when the source participates in multi-source JOINs (REQ-028). [tool-verified: `provisa/core/models.py` `SOURCE_TO_CONNECTOR` and `SOURCE_TO_DIALECT`]
+Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms) (REQ-027). "Connector Name" is the federated connector used when the source participates in multi-source JOINs (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
 ### RDBMS
 
@@ -36,10 +36,18 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `sqlserver` | aioodbc | sqlserver | tsql | Yes |
 | `oracle` | oracledb | oracle | oracle | Yes |
 | `duckdb` | duckdb | memory | duckdb | Yes |
+| `cockroachdb` | asyncpg (pg wire) | postgresql | postgres | Yes |
+| `yugabytedb` | asyncpg (pg wire) | postgresql | postgres | Yes |
+| `greenplum` | asyncpg (pg wire) | postgresql | postgres | Yes |
+| `tidb` | aiomysql (mysql wire) | mysql | mysql | Yes |
+
+Wire-compatible databases reuse a base wire's JDBC driver, native async driver, and SQLGlot dialect — CockroachDB, YugabyteDB, and Greenplum ride the PostgreSQL wire; TiDB rides the MySQL wire. They need only registry entries, no new connector code. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
+
+`firebird` (Firebird 3/4/5) and `airport` (Arrow Flight server) are registered source types reached in place via DuckDB community extensions when DuckDB is the active engine — no direct driver, no federated connector. [tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
 
 ### Cloud Data Warehouses
 
-[tool-verified: `executor/drivers/snowflake.py`, `executor/drivers/databricks.py`]
+[tool-verified: `executor/drivers/snowflake.py`, `executor/drivers/databricks.py`, `executor/drivers/registry.py`]
 
 | Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations | Notes |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
@@ -47,6 +55,9 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `bigquery` | — | bigquery | bigquery | Federated | No DirectDriver; reaches via federation engine or BigQuery engine ATTACH |
 | `databricks` | DatabricksDriver | delta_lake | databricks | Federated | Reads via databricks-sql-connector (Cloud Fetch, Arrow); lands replica; `http_path` required in `federation_hints` (REQ-987) |
 | `redshift` | — | redshift | redshift | Federated | — |
+| `fabric` | MssqlWarehouseDriver | — | tsql | Federated | Microsoft Fabric Warehouse; T-SQL over TDS, Azure AD auth; lands replica (REQ-995) |
+| `synapse` | MssqlWarehouseDriver | — | tsql | Federated | Azure Synapse SQL; T-SQL over TDS, Azure AD auth; lands replica (REQ-995) |
+| `trino` | SQLAlchemyDriver | — | — | Federated | Remote Trino/Presto coordinator read via the SQLAlchemy trino dialect; lands replica on any engine (REQ-994) |
 
 ### Analytics / OLAP
 
@@ -57,12 +68,12 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Federated | Reads via clickhouse-connect (HTTP); `secure: "true"` in `federation_hints` for TLS (REQ-986) |
 | `druid` | — | druid | druid | No | — |
 | `exasol` | — | exasol | exasol | No | — |
-| `elasticsearch` | — | [inferred: no connector entry in models.py] | — | No | — |
-| `pinot` | — | [inferred: no connector entry in models.py] | — | No | — |
+| `elasticsearch` | — | elasticsearch | — | No | Connector properties come from the type's mapping DSL [tool-verified: `trino_connectors.py:309`] |
+| `pinot` | — | — (materialized) | — | No | No Trino connector |
 
 ### Data Lake / Open Table Formats
 
-These source types are federation-only — no direct driver, no SQLGlot dialect. [tool-verified: `TRINO_ONLY_SOURCES` in `provisa/core/models.py` line 129] (REQ-229)
+These source types are federation-only — no direct driver, no SQLGlot dialect. [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
 
 | Source Type | Connector Name | Time Travel | Notes |
 | ------------ | ----------------- | ------------- | ------- |
@@ -73,13 +84,13 @@ These source types are federation-only — no direct driver, no SQLGlot dialect.
 
 ### NoSQL
 
-`mongodb` and `cassandra` have federated connector entries. `redis`, `kudu`, and `accumulo` are registered source types but have no connector entry in `SOURCE_TO_CONNECTOR` — they materialize through the API cache pipeline. [tool-verified: `provisa/core/models.py` lines 84–107] (REQ-017)
+`mongodb`, `cassandra`, and `redis` have Trino connectors (`redis` builds its properties from the type's mapping DSL). `kudu` and `accumulo` are registered source types with no Trino connector — they materialize through the API cache pipeline. [tool-verified: `provisa/federation/trino_connectors.py` lines 160–316; `provisa/core/models.py` lines 71–75] (REQ-017)
 
 | Source Type | Connector Name | Mutations |
 | ------------ | ----------------- | ----------- |
 | `mongodb` | mongodb | No |
 | `cassandra` | cassandra | No |
-| `redis` | — (materialized) | No |
+| `redis` | redis | No |
 | `kudu` | — (materialized) | No |
 | `accumulo` | — (materialized) | No |
 
@@ -132,12 +143,67 @@ Private buckets need credentials (AWS region and keys from the environment). For
 
 ### Observability & Other
 
-`google_sheets` and `prometheus` are registered source types but have no connector entry in `SOURCE_TO_CONNECTOR`. [tool-verified: `provisa/core/models.py` lines 61–62]
+`prometheus` has a Trino connector (properties built from the type's mapping DSL). `google_sheets` is a registered source type with no Trino connector and materializes through the API cache pipeline. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
 
 | Source Type | Connector Name | Mutations |
 | ------------ | ----------------- | ----------- |
 | `google_sheets` | — (materialized) | No |
-| `prometheus` | — (materialized) | No |
+| `prometheus` | prometheus | No |
+
+### Enterprise SaaS Connectors
+
+SharePoint and Splunk register through Apache Calcite connectors (kenstott/calcite fork). Neither has a direct driver — Provisa materializes their rows by launching the connector's bundled Calcite pgwire server (`pgwire-sharepoint`, `pgwire-splunk`), connecting to it as a generic PostgreSQL endpoint, and landing the rows into the materialize store for federation (REQ-954). Both connectors always enable case-insensitive name matching, matching each product's own case-insensitive semantics (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+
+#### `sharepoint`
+
+SharePoint lists are enumerated as schemas and exposed as queryable tables (REQ-726, REQ-731). Two auth methods: `CLIENT_CREDENTIALS` (default) and certificate-based via a PFX certificate (REQ-727). Secret values in `mapping` are resolved through the secrets engine before reaching the connector (REQ-729). [tool-verified: `provisa/federation/trino_connectors.py` lines 230–252]
+
+| Source field | Connector property | Notes |
+| --- | --- | --- |
+| `base_url` or `host` | `site-url` | SharePoint site URL |
+| `username` | `client-id` | Azure app client ID |
+| `password` | `client-secret` | Azure app client secret |
+| `database` | `tenant-id` | Azure tenant UUID |
+| `mapping.auth_type` | `auth-type` | `CLIENT_CREDENTIALS` (default) or `CERTIFICATE` |
+| `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE` |
+| `mapping.certificate_password` | `certificate-password` | PFX password |
+
+When the connector does not expose `information_schema.columns`, register the table with explicit column definitions (obtained from the Microsoft Graph API) via the `registerTable` mutation (REQ-732).
+
+```yaml
+- id: hr-sharepoint
+  type: sharepoint
+  base_url: https://kenstott.sharepoint.com
+  username: ${env:SP_CLIENT_ID}
+  password: ${env:SP_CLIENT_SECRET}
+  database: ${env:SP_TENANT_ID}
+  mapping:
+    auth_type: CLIENT_CREDENTIALS
+```
+
+#### `splunk`
+
+Splunk search results are queryable as tables (e.g. `internal_server`) (REQ-721). The connector URL comes from `base_url`, or is constructed as `https://{host}:{port}` with a default port of `8089` (REQ-722). Auth: when `mapping.use_token` is `true` (the default), `password` is passed as the API token; when `false`, `username` and `password` are passed as separate credentials (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
+
+| Source field | Connector property | Notes |
+| --- | --- | --- |
+| `base_url` / `host` + `port` | `url` | `base_url`, else `https://host:port` (port default 8089) |
+| `password` | `token` or `password` | token when `use_token: true` |
+| `username` | `user` | only when `use_token: false` |
+| `database` | `app` | restrict to a Splunk app |
+| `mapping.datamodel_filter` | `datamodel-filter` | filter to a data model |
+| `mapping.disable_ssl_validation` | `disable-ssl-validation` | for self-signed certs (REQ-724) |
+
+```yaml
+- id: ops-splunk
+  type: splunk
+  host: splunk
+  port: 8089
+  password: ${env:SPLUNK_TOKEN}
+  mapping:
+    use_token: true
+    disable_ssl_validation: true
+```
 
 ### API Sources
 
@@ -275,6 +341,7 @@ All sources share a common set of fields. [tool-verified: `provisa/core/models.p
 | `cache_schema` | No | `api_cache` | Schema within the cache catalog |
 | `naming_convention` | No | `null` | Override global naming convention for this source (REQ-194) |
 | `federation_hints` | No | `{}` | Session properties passed to the federation engine, and extended connection params for warehouse sources (REQ-278, REQ-281) |
+| `mapping` | No | `{}` | Type-specific connector settings for NoSQL and SaaS sources (e.g. SharePoint `auth_type`, Splunk `use_token`) (REQ-251) |
 | `allowed_domains` | No | `[]` | Restrict source to specific domains; empty = unrestricted |
 | `description` | No | `""` | Human-readable description |
 
@@ -414,6 +481,8 @@ When both a domain-level and a table-level rule exist for the same role, the tab
 ### DB Functions
 
 Track a database function and expose it as a GraphQL query or mutation. [tool-verified: `provisa/core/models.py` `Function` class lines 423–438; `config/provisa.yaml` lines 152–164] (REQ-205)
+
+Database sources can also auto-discover their stored procedures and functions from the vendor catalog (`pg_proc`, `information_schema.routines`, or vendor equivalents), removing the need to hand-register each one. Discovery reads `prokind` and `provolatile`: immutable/stable functions register as parameterized relations (proc arguments become query parameters, the same shape as OpenAPI GET tables), and volatile procedures register as mutations/tracked functions. Discovered routines flow through Stage-2 governance identically to hand-registered ones. [tool-verified: `provisa/api/admin/introspect.py:541`, `provisa/api/admin/introspect.py:593`] (REQ-887)
 
 ```yaml
 functions:

@@ -334,7 +334,7 @@ via `localhost`. (REQ-634)
 | 6432 | pgbouncer | `dev-install.yml` |
 | 6379 | redis | `dev-install.yml` |
 | 8080 | trino | `dev-install.yml` |
-| 8815 | zaychik (Flight) | `dev-install.yml` |
+| 8480 | zaychik (Flight SQL proxy) | `dev-install.yml` |
 | 9000 | minio S3 | `dev-install.yml` |
 | 9001 | minio console | `dev-install.yml` |
 | 4317 | otel-collector gRPC | `observability.yml` |

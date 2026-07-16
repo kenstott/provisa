@@ -78,11 +78,19 @@ await conn.execute(f"SET LOCAL app.tenant_id = '{tenant_id}'")
 
 Each tenant maps to an org. The `orgs` table [tool-verified: `provisa/core/schema.sql` lines 453–466] stores org namespaces. The `root` org is seeded automatically for single-tenant deployments. In multi-tenant mode you create one org per customer via the admin API. `user_org_memberships` tracks which users belong to which org.
 
+### Schema-per-org isolation
+
+For on-prem multi-org deployments, Provisa also scopes internal PostgreSQL state to a per-org schema named `org_<org_id>` — semantic metadata, non-SQL cache, audit log, and materialized-view definitions all live inside it [tool-verified: `provisa/core/db.py`; REQ-695, REQ-697]. The asyncpg pool sets `search_path` to the org schema on every connection init, and `init_schema()` takes an `org_id` parameter, defaulting to `org_default` when the `ORG_ID` env var is unset. Existing single-org deployments transparently use `org_default`. Platform tables (`tenants`, `tenant_config`) live in a dedicated platform schema that org `search_path` never touches (REQ-696). Each org gets a dedicated PostgreSQL role `role_<org_id>` with rights on its own schema only (REQ-699).
+
+Not-schema-capable backends (SQLite, DuckDB) carry the org in the database file instead: `OrgRouter` maps `org_id` to a per-org engine, and cross-org queries are impossible across the file boundary [tool-verified: `provisa/core/database.py`; REQ-851, REQ-852].
+
 ---
 
 ## AWS KMS Setup
 
-Status: planned, not yet wired. The KMS envelope-encryption model described here is the designed model for at-rest per-tenant config encryption (tracked by REQ-684, REQ-685, REQ-694, all status `proposed`). The cryptographic primitives and the decrypt/read path exist in code, but the encryption write path is not yet wired: no code path generates or stores a DEK or writes encrypted `tenant_config`. As a result, at-rest per-tenant config encryption is not yet active.
+Status: encryption service complete; per-tenant config write path not yet wired. Provisa ships a pluggable `EncryptionService` (REQ-684, REQ-685, REQ-694, all `complete`) with `LocalKeychain`, `AwsKms`, `AzureKeyVault`, and `NullEncryption` providers, selected via `encryption.provider` / `encryption.key_id` in `provisa.yaml` [tool-verified: `provisa/encryption/factory.py`, `provisa/encryption/providers.py`]. An unknown or unavailable provider fails closed rather than degrading to plaintext.
+
+The billing KMS helpers below (`provisa/api/billing/kms.py`) are the per-tenant config-encryption path. The decrypt/read path is wired — `TenantMiddleware._build_tenant_context` decrypts `tenant_config` on each request [tool-verified: `provisa/api/middleware/tenant_middleware.py` lines 71–87] — but the write path is not: `generate_data_key`, `aes_encrypt`, and `upsert_config_entity` have no callers, so `tenant_config` is never populated. At-rest per-tenant config encryption is therefore not yet active.
 
 The designed model gives each tenant a dedicated Customer Master Key (CMK). At signup, `create_tenant_key(tenant_id)` calls `kms.create_key()` with `KeyUsage="ENCRYPT_DECRYPT"` and returns the key ARN [tool-verified: `provisa/api/billing/kms.py` lines 21–31]:
 
@@ -94,7 +102,7 @@ response = kms_client.create_key(
 return response["KeyMetadata"]["Arn"]
 ```
 
-The designed per-request encryption uses envelope encryption: `generate_data_key()` calls KMS to produce a 256-bit AES data encryption key (DEK). The plaintext DEK encrypts the config payload with AES-256-GCM via `aes_encrypt()`. Only the encrypted DEK is persisted in `tenant_config` alongside the ciphertext and IV. These primitives exist [tool-verified: `provisa/api/billing/kms.py` lines 34–65, `provisa/api/billing/tenant_db.py` lines 15–37], but `generate_data_key`, `aes_encrypt`, and `upsert_config_entity` currently have no callers, so `tenant_config` is never populated.
+The designed per-request encryption uses envelope encryption: `generate_data_key()` calls KMS to produce a 256-bit AES data encryption key (DEK). The plaintext DEK encrypts the config payload with AES-256-GCM via `aes_encrypt()`. Only the encrypted DEK is persisted in `tenant_config` alongside the ciphertext and IV. These primitives exist [tool-verified: `provisa/api/billing/kms.py` lines 34–65, `provisa/api/billing/tenant_db.py` lines 15–37].
 
 ### Required IAM permissions
 
@@ -126,31 +134,35 @@ Standard AWS credential chain applies: environment variables, instance profile, 
 
 ---
 
-## Billing / Stripe Setup
+## Billing / Lemon Squeezy Setup
+
+Billing runs through Lemon Squeezy as Merchant of Record. Provisa integrates over the Lemon Squeezy REST API (JSON:API) and signed webhooks — no vendor SDK, a thin `httpx` wrapper [tool-verified: `provisa/api/billing/lemonsqueezy_client.py`; REQ-1075].
 
 ### Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `STRIPE_API_KEY` | Yes | Stripe secret key (`sk_live_…` or `sk_test_…`) |
-| `STRIPE_WEBHOOK_SECRET` | Yes | Signing secret from the Stripe webhook endpoint config |
-| `STRIPE_BASE_URL` | No | Override for Stripe API base URL (used in tests) |
+| `LEMONSQUEEZY_API_KEY` | Yes | Lemon Squeezy API key (Bearer token) |
+| `LEMONSQUEEZY_STORE_ID` | Yes | Store ID that checkouts are created against |
+| `LEMONSQUEEZY_SIGNING_SECRET` | Yes | Webhook signing secret (HMAC-SHA256 key) |
+| `LEMONSQUEEZY_BASE_URL` | No | Override for the API base URL (used in tests); production uses `https://api.lemonsqueezy.com/v1` |
 
-`STRIPE_API_KEY` and `STRIPE_WEBHOOK_SECRET` are read directly from `os.environ` — missing either raises a `KeyError` at the point of first use [tool-verified: `provisa/api/billing/stripe_client.py` line 15, `provisa/api/billing/router.py` line 83].
+Each variable is read directly from `os.environ` — a missing value raises `KeyError` at first use [tool-verified: `provisa/api/billing/lemonsqueezy_client.py` lines 27–31, 45, 77].
 
 ### Webhook configuration
 
-In your Stripe dashboard, create a webhook endpoint pointing to `https://<your-host>/billing/webhook`. This path bypasses `TenantMiddleware` [tool-verified: `provisa/api/middleware/tenant_middleware.py` line 21].
+In your Lemon Squeezy store, create a webhook pointing to `https://<your-host>/billing/webhook`. This path bypasses `TenantMiddleware` [tool-verified: `provisa/api/middleware/tenant_middleware.py` lines 23–30].
 
-The webhook handler verifies the `Stripe-Signature` header using `stripe.WebhookSignature.verify_header()`. It processes three events [tool-verified: `provisa/api/billing/router.py` lines 79–122]:
+The handler verifies the `X-Signature` header as an HMAC-SHA256 of the raw request body keyed by `LEMONSQUEEZY_SIGNING_SECRET`, compared in constant time [tool-verified: `provisa/api/billing/lemonsqueezy_client.py` lines 74–79]. It drives plan lifecycle from `meta.event_name` [tool-verified: `provisa/api/billing/router.py` lines 78–117]:
 
-- `checkout.session.completed` — links the Stripe customer ID to the tenant record
-- `customer.subscription.updated` — updates the tenant's plan and source limit
-- `customer.subscription.deleted` — downgrades the tenant to `trial`
+- `subscription_created` / `subscription_updated` — link the Lemon Squeezy customer ID to the tenant and set plan + source limit from the subscription variant name
+- `subscription_cancelled` / `subscription_expired` — revert the tenant to the `trial` plan
+
+The `tenant_id` is carried in checkout `custom_data` and echoed back in webhook `meta.custom_data` to resolve the tenant.
 
 ### Plans and limits
 
-Three plans are defined [tool-verified: `provisa/api/billing/models.py` lines 15–21]:
+Three plans are defined [tool-verified: `provisa/api/billing/models.py` lines 18–24]:
 
 | Plan | Source limit |
 |---|---|
@@ -158,7 +170,7 @@ Three plans are defined [tool-verified: `provisa/api/billing/models.py` lines 15
 | `starter` | 10 |
 | `pro` | 100 |
 
-Plan matching during `customer.subscription.updated` is case-insensitive substring matching on the Stripe price nickname. A nickname containing `"pro"` maps to the `pro` plan, `"starter"` to `starter`, `"trial"` to `trial`.
+The variant name is matched case-insensitively against these tiers: a name containing `"pro"` maps to `pro`, `"starter"` to `starter`, `"trial"` to `trial`. An unrecognized variant name is a hard error — never a silent default [tool-verified: `provisa/api/billing/models.py` lines 27–35; REQ-1075].
 
 ### Billing endpoints
 
@@ -166,11 +178,11 @@ Plan matching during `customer.subscription.updated` is case-insensitive substri
 |---|---|---|
 | `POST` | `/billing/signup` | No |
 | `POST` | `/billing/checkout` | No |
-| `POST` | `/billing/webhook` | No (Stripe signature) |
+| `POST` | `/billing/webhook` | No (Lemon Squeezy signature) |
 | `GET` | `/billing/portal` | No |
 | `GET` | `/billing/status` | No |
 
-`/billing/signup` creates the tenant record and KMS key. Call it once per customer onboarding. It returns `tenant_id`, `plan`, and `source_limit`. Pass `tenant_id` to `/billing/checkout` along with a Stripe `price_id` to initiate a Stripe Checkout session.
+`/billing/signup` creates the tenant record and its KMS key, returning `tenant_id`, `plan`, and `source_limit`. Call it once per customer onboarding. `/billing/checkout` takes `tenant_id`, a Lemon Squeezy `variant_id`, and a `redirect_url`, and returns the hosted `checkout_url`. `/billing/portal` returns the Lemon Squeezy customer portal URL for a tenant [tool-verified: `provisa/api/billing/router.py` lines 54–131].
 
 ---
 
@@ -317,15 +329,22 @@ Two indexes cover the primary access patterns [tool-verified: `provisa/audit/que
 
 ## Paths That Bypass TenantMiddleware
 
-The following paths skip tenant resolution entirely [tool-verified: `provisa/api/middleware/tenant_middleware.py` line 21]:
+The following paths skip tenant resolution entirely [tool-verified: `provisa/api/middleware/tenant_middleware.py` lines 23–30]:
 
 ```python
-_SKIP_PATHS = {"/billing/signup", "/billing/webhook", "/health", "/docs", "/openapi.json"}
+_SKIP_PATHS = {
+    "/billing/signup",
+    "/billing/webhook",
+    "/health",
+    "/data/openapi/docs",
+    "/data/openapi/redoc",
+    "/data/openapi/openapi.json",
+}
 ```
 
 - `/billing/signup` — tenant does not exist yet at signup time
-- `/billing/webhook` — Stripe calls this; Stripe does not carry a tenant JWT
+- `/billing/webhook` — Lemon Squeezy calls this; it does not carry a tenant JWT
 - `/health` — infrastructure health checks must not require auth
-- `/docs` and `/openapi.json` — OpenAPI UI and spec, typically blocked at the load balancer in production
+- `/data/openapi/docs`, `/data/openapi/redoc`, `/data/openapi/openapi.json` — OpenAPI UI and spec, typically blocked at the load balancer in production
 
-All other paths require a valid JWT with a `tenant_id` claim. A missing identity returns HTTP 401 before tenant lookup begins [tool-verified: `provisa/api/middleware/tenant_middleware.py` lines 32–33].
+All other paths require a valid JWT with a `tenant_id` claim. A request with no identity returns HTTP 401 `{"detail": "Unauthenticated"}` before tenant lookup begins [tool-verified: `provisa/api/middleware/tenant_middleware.py` lines 40–42].

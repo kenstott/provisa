@@ -165,11 +165,47 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 
 ---
 
+## Writes
+
+Cypher supports three write patterns through the `/data/cypher` endpoint, executed by `provisa/cypher/write_translator.py`. (REQ-818) [tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
+
+| Cypher | SQL | Req |
+|--------|-----|-----|
+| `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` | REQ-666 |
+| `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` | REQ-667 |
+| `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` | REQ-668 |
+
+Property names map to columns via domain-prefix stripping and alias resolution; Cypher scalar values are coerced to the target column type. (REQ-666, REQ-668) The response body carries an `affected_rows` count. (REQ-670)
+
+Rules:
+
+- The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. (REQ-661) New labels or types cannot be created through Cypher. (REQ-662)
+- Every write is gated on the target table's `writable_by` ACL; a role without write rights is rejected at compile time. (REQ-663)
+- The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time. (REQ-664)
+- Relationships cannot be written — they are derived from foreign-key joins, not stored edges. Targeting a relationship is a hard error. (REQ-665)
+- Writes run through the full write pipeline: RLS injection, dialect transpilation, and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload). (REQ-798)
+- `MERGE`, `DETACH DELETE`, and `REMOVE` are unsupported and rejected at parse time. (REQ-671)
+
+---
+
+## Protocol Access
+
+Cypher reaches the same governed pipeline over two transports:
+
+- **HTTP** — `POST /data/cypher` with a JSON body (`{"query": "...", "params": {...}}`). Returns typed rows, or `affected_rows` for writes. Graph variables in the `RETURN` clause serialize as JSON: nodes carry `id`, `label`, `tableLabel`, and `properties`; edges carry `identity`, `start`, `end`, `type`, `properties`, `startNode`, and `endNode`; paths carry `nodes`, `edges`, and `length`/`hops`. (REQ-750)
+- **Bolt** — a Neo4j-compatible binary protocol server (PackStream codec, chunked framing) that lets Neo4j Browser, Bloom, and Bolt drivers run Cypher over the federated graph. (REQ-802) It starts when `PROVISA_BOLT_PORT` is set to a non-zero value and is disabled by default; set `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` for TLS. [tool-verified: `provisa/api/app_startup.py:317-338`] Bolt auth maps principal to user and database to role: `SHOW DATABASES` lists one entry per (view × role) pair, named `provisa_<role>` (business domains) or `provisa_ops_<role>` (with system/meta/ops domains); `:use` selects the active role and view. (REQ-807) Relationships receive durable integer IDs via a `rel_ids` table, mirroring the `node_ids` design. (REQ-806)
+
+### Graph Analytics
+
+`POST /data/graph-analytics` runs a Cypher query, builds an in-memory NetworkX graph from the resulting nodes and edges, executes a named algorithm, and merges a `_analytics` dict into each node and edge before returning them as JSON with an `elapsed_ms` field. (REQ-642) The `_analytics` keys vary by algorithm: centrality yields `score`; community detection yields `cluster`; k-core yields `core_number`; degree centrality adds `in_degree` and `out_degree`. (REQ-643) The endpoint rejects graphs above a configurable size (default 10,000 nodes / 50,000 edges) with HTTP 413; Girvan-Newman is capped at 500 nodes unless the caller passes `force=true`. (REQ-650, REQ-651)
+
+---
+
 ## Limitations
 
 ### Design constraints
 
-1. **Read-only.** `CREATE`, `MERGE`, `SET`, `DELETE`, and `REMOVE` are not supported. (REQ-346) Cypher is a read path only; mutations go through the GraphQL mutation API. (REQ-346, REQ-032)
+1. **Writes are limited to `CREATE`, `SET`, and `DELETE`.** These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. (REQ-818, REQ-666, REQ-667, REQ-668) See §Writes below. `MERGE`, `DETACH DELETE`, and `REMOVE` are rejected at parse time. (REQ-671, REQ-818) APOC procedures are also rejected.
 
 2. **No relationship properties.** Relationships (`-[r:TYPE]->`) exist solely as join metadata in the semantic layer. (REQ-574) They carry no stored attributes, so `WHERE r.since > 2020` or `RETURN r.weight` has no meaning and is not supported.
 
@@ -191,7 +227,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 
 Cypher expressions are parsed into an AST and lowered node-to-node to SQL (`provisa/cypher/expr_parser.py`, `provisa/cypher/expr_visitor.py`). The grammar follows the openCypher `oC_Expression` precedence tower. Supported: literals, parameters, property access, `n.prop`, index and slice, arithmetic (`+ - * / % ^`), comparison, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, boolean `AND` / `OR` / `XOR` / `NOT`, `CASE`, list and map literals, list and pattern comprehensions (including the `p = (…)` path binding), map projection, `reduce`, the `all` / `any` / `none` / `single` quantifiers, existential subqueries, and function calls.
 
-9. **Labels are fixed; you cannot create object types through Cypher.** A label resolves to a known domain, a known object type, or a qualified `domain:object_type` — the closed set defined by the registered schema. Cypher never introduces a new label or type. Instance creation is possible only for types already defined within a writable data source, and only through the mutation API, not through Cypher (which is read-only per constraint 1). Both label forms are accepted and mean the same test: the postfix `n:Label` and the verbose `n IS :Label` (and their negation `n IS NOT :Label`). A qualified label is written `n:domain:object_type`.
+9. **Labels are fixed; you cannot create object types through Cypher.** A label resolves to a known domain, a known object type, or a qualified `domain:object_type` — the closed set defined by the registered schema. Cypher never introduces a new label or type. Instance creation is possible only for types already defined within a writable data source; `CREATE` writes rows into such a table (see §Writes) but cannot define a new label or type. (REQ-662) Both label forms are accepted and mean the same test: the postfix `n:Label` and the verbose `n IS :Label` (and their negation `n IS NOT :Label`). A qualified label is written `n:domain:object_type`.
 
 10. **`shortestPath` and `allShortestPaths` are supported only inside `MATCH`, not as expressions.** In a pattern (`MATCH p = shortestPath((a:Person)-[:KNOWS*..5]->(b:Person))`) they translate to a `WITH RECURSIVE` CTE and require labeled source and target nodes. Used in expression position — for example `RETURN shortestPath((a)-[*]->(b))` or `WHERE length(shortestPath((a)-[*]->(b))) < 5` — they are not supported, because the recursive rewrite is driven off the `MATCH` clause rather than a correlated subquery.
 

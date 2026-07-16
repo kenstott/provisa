@@ -27,30 +27,39 @@ git tag v1.2.3-rc.1 && git push origin v1.2.3-rc.1
 git tag v1.2.3 && git push origin v1.2.3
 ```
 
-The CI workflow (`build-dmg.yml`) triggers on any `v*` tag and runs these jobs in parallel:
+The CI workflow (`build-dmg.yml`, named "Build Provisa Packages") triggers on any `v*` tag and runs these jobs, most in parallel:
 
-1. **Resolve release metadata** — detects channel from tag suffix, derives PEP 440 version
-2. **Build Provisa runtime VM (OVA)** — builds an Alpine Linux + dockerd VM image used by the Windows installer
-3. **Pull and save Docker images** — saves all service image tarballs for bundling
-4. **Build airgapped macOS DMG** — runs on `macos-14` (Apple Silicon)
-5. **Build airgapped Linux AppImage** — bundles static rootless dockerd + all images
-6. **Build airgapped Windows installer** — bundles VirtualBox + OVA + all images
-7. **Build JDBC driver** — Maven shaded JAR
-8. **Build and test Python client** — tests then builds wheel
-9. **Publish Python client to PyPI**
+1. **Resolve release metadata** — detects channel from tag suffix, derives PEP 440 version and asset names
+2. **Download / package Trino plugins** — pulls Calcite Trino connectors and packages a tarball
+3. **Pull core / obs / demo Docker images** — saves service image tarballs (arm64, plus amd64 core for the Windows container tier)
+4. **Build macOS Core / Obs / Demo DMGs** — run on `macos-14` (Apple Silicon), airgapped
+5. **Build Linux AppImage** — core, airgapped
+6. **Build Windows Core installer** — native, embedded Python, no Docker
+7. **Build Windows Container-tier installer** — WSL2 + Trino, fetches images on demand (no VirtualBox/OVA)
+8. **Build JDBC driver** — Maven shaded JAR
+9. **Build and test Python client**, then **Publish to PyPI**
 10. **Publish GitHub Release** — uploads all assets, sets pre-release flag for alpha/beta/rc
 
 ## Release Assets
 
-Each release publishes five assets:
+Each release publishes the following assets, all attached to the GitHub Release (the wheel also goes to PyPI):
 
-| Asset | Where |
-|-------|-------|
-| `Provisa-<tag>-macOS.dmg` | GitHub Release |
-| `Provisa-<tag>-linux-x86_64.AppImage` | GitHub Release |
-| `Provisa-<tag>-windows-x64.exe` | GitHub Release |
-| `provisa-jdbc-<tag>.jar` | GitHub Release |
-| `provisa_client-<pep440>-py3-none-any.whl` | GitHub Release + PyPI |
+| Asset | Platform / Use |
+|-------|----------------|
+| `Provisa-<tag>-macOS.dmg` | macOS Core (Apple Silicon, airgapped) |
+| `Provisa-Runtime-<tag>-macOS.dmg` | macOS native Python runtime (mount alongside Core) |
+| `Provisa-Obs-<tag>-macOS.dmg` | macOS Observability extension |
+| `Provisa-Demo-<tag>-macOS.dmg` | macOS Demo extension (requires Obs) |
+| `Provisa-<tag>-linux-x86_64.AppImage` | Linux x86_64 core (airgapped) |
+| `Provisa-<tag>-windows-x64.exe` | Windows x64 native installer (embedded Python, no Docker) |
+| `Provisa-Container-<tag>-windows-x64.exe` | Windows x64 container-tier upgrade (WSL2 + Trino) |
+| `provisa-jdbc-<tag>.jar` | JDBC driver — Tableau, PowerBI, DBeaver |
+| `provisa_client-<pep440>-py3-none-any.whl` | Python client (also PyPI) |
+| `provisa-core-images-<tag>.tar.gz` | Core Services image tarballs (arm64, airgapped) |
+| `provisa-core-images-amd64-<tag>.zip` | Core Services images (amd64, Windows container tier / airgap) |
+| `provisa-obs-images-<tag>.tar.gz` | Observability Stack images (optional) |
+| `provisa-demo-images-<tag>.tar.gz` | Demo Data Pack images (optional) |
+| `provisa-trino-plugins-<tag>.tar.gz` | Coordination Engine connectors (SharePoint, Splunk, File) |
 
 The Python client version is automatically converted to PEP 440 format:
 `v0.1.0-alpha.1` → `0.1.0a1`, `v0.1.0-beta.1` → `0.1.0b1`, `v0.1.0-rc.1` → `0.1.0rc1`.

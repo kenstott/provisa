@@ -115,7 +115,9 @@ Intercepted tables:
 
 [tool-verified: `catalog.py:39-67`]
 
-`pg_constraint` is populated with real PK and FK data derived from the domain model's `pk_columns` and `joins`. (REQ-392, REQ-399) BI tools that inspect foreign-key relationships (Tableau, DBeaver, etc.) will see the join graph Provisa knows about. [tool-verified: `catalog.py:551-632`]
+`pg_constraint` is populated with real PK and FK data derived from the domain model's `pk_columns` and `joins`. (REQ-392, REQ-399) BI tools that inspect foreign-key relationships (Tableau, DBeaver, etc.) will see the join graph Provisa knows about. [tool-verified: `catalog.py:551-632`] Single-column joins between the same source/target pair whose target columns together form the target's composite primary key are collapsed into one FK row with multi-element `conkey`/`confkey` arrays. (REQ-1094) [tool-verified: `catalog_constraints.py`]
+
+`pg_index` is populated with one row per primary-key and UNIQUE constraint (`indrelid` = table oid, `indkey` = ordered key attnums, `indisprimary`/`indisunique` set). Clients that resolve key columns via `pg_index.indkey` rather than `pg_constraint` — DataGrip, for example — discover the correct columns through the standard `pg_index` → `pg_attribute` join. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 The following scalar expressions are also intercepted: (REQ-588)
 - `current_user`, `session_user` → the authenticated `role_id`
@@ -175,6 +177,10 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 ## Caveats and Constraints
 
+**SQL only; no DML mutations.** The pgwire listener parses and executes SQL only — GraphQL and Cypher strings are not accepted. (REQ-614) Plain `INSERT`, `UPDATE`, and `DELETE` are not routed to a write path. (REQ-615) Write data through `COPY FROM STDIN` (writable sources) or `CREATE TABLE AS`; row-level mutations go through the GraphQL, Cypher, or Trino write paths instead.
+
+**COPY and DDL require the `ddl` capability.** Both `COPY` (in either direction) and DDL are gated on the role's `ddl` capability; roles without it receive SQLSTATE 42501. (REQ-616)
+
 **No real transaction support.** BEGIN/COMMIT/ROLLBACK are accepted and silently ignored. Each statement runs independently. (REQ-587) [tool-verified: `server.py:146-158` — `in_transaction()` always returns `False`]
 
 **60-second DDL timeout, 120-second query timeout.** These are hard-coded in the handler threads. (REQ-590) Long-running DDL against remote sources (schema changes on large tables) may time out. [tool-verified: `ddl_handler.py:136`, `server.py:186`]
@@ -187,4 +193,4 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 **Parameter substitution is literal.** `$1`, `$2`, ... parameters are substituted as SQL literals before execution, not sent as bind parameters to the upstream engine. This means the upstream engine never sees a prepared statement. For Trino this has no practical impact; for direct-pool sources it bypasses prepared-statement caching. (REQ-581) [tool-verified: `server.py:78-85`]
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_index`, `pg_attrdef`, `pg_proc`.** These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (REQ-532) [tool-verified: `catalog.py:519-535`, `catalog.py:639-934`]
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (REQ-532) [tool-verified: `catalog.py:519-535`, `catalog.py:639-934`] (`pg_index` is populated — see Catalog Intercept.)

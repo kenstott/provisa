@@ -195,16 +195,68 @@ Returns `{"data": ...}` for GraphQL, `{"columns": [...], "rows": [...]}` for SQL
 
 ---
 
+### `GET /data/rest/{domain_id}/{table_name}`
+
+Auto-generated plain REST endpoint for every registered table. The query string maps to GraphQL arguments and the request compiles and executes through the same pipeline (RLS, masking, routing) as GraphQL. (REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
+
+**Query parameters:**
+- `limit` — max rows (≥ 1)
+- `offset` — skip rows (≥ 0)
+- `fields` — comma-separated column names (defaults to all scalar fields)
+- `filter` — JSON array of `{"field", "comparator", "value"}` filter objects
+- `orderBy` — JSON array of `{"field", "direction"}` sort objects
+
+The authenticated role is required; unauthenticated requests return `401`. An OpenAPI spec for these routes is served at `GET /data/rest/openapi.json` with Swagger UI at `GET /data/rest/docs`.
+
+---
+
+### `GET /data/jsonapi/{domain_id}/{table_name}`
+
+Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every registered table. Same RLS, masking, and routing as GraphQL. (REQ-257) [tool-verified: `provisa/api/jsonapi/generator.py:284`]
+
+**`Accept` header:** must include `application/vnd.api+json` (the JSON:API media type) or the request returns `406`.
+
+**Query parameters:**
+- `fields[<type>]` — sparse fieldsets, e.g. `?fields[orders]=amount`
+- `filter[<col>]` / `filter[<col>][<op>]` — e.g. `?filter[region]=US`, `?filter[amount][gt]=100`
+- `sort` — comma-separated, `-` prefix for descending, e.g. `?sort=-created_at,amount`
+- `page[number]` / `page[size]` — pagination
+
+Responses are resource objects with `type`/`id`/`attributes`. Errors follow the JSON:API error object shape.
+
+---
+
 ### `POST /query/nl`
 
-Submit a natural-language question. The service starts an async job and returns a `job_id` immediately. Requires `ANTHROPIC_API_KEY` to be set. (REQ-354) [tool-verified: `provisa/api/data/endpoint_dev.py:266`]
+Submit a natural-language question. The service starts an async job and returns `202 Accepted` with a `job_id` immediately. Requires an LLM provider configured under the `ai_models` config section. (REQ-354) [tool-verified: `provisa/api/rest/nl_router.py:50`]
 
 **Request body:**
 ```json
-{"question": "How many orders were placed last month?", "role": "admin"}
+{"q": "How many orders were placed last month?", "role": "admin"}
 ```
 
-Returns `{"job_id": "<id>"}`. The consumer polls `GET /query/nl/{job_id}` for the result or receives it via SSE when complete.
+Returns `{"job_id": "<id>"}`. Exceeding the per-role NL rate limit returns `429` with a `Retry-After` header. (REQ-370)
+
+**Retrieve the result:**
+
+- `GET /query/nl/{job_id}` — poll. Returns the job document.
+- `GET /query/nl/{job_id}/stream` — SSE. One `branch` event per generation target as it completes, then a `done` event. (REQ-357, REQ-358)
+
+Three generation loops (Cypher, GraphQL, SQL) run in parallel, each validated through the compiler and refined on error. (REQ-355) The prompt is scoped to the role's visible schema. (REQ-356) The result document keys each branch by target: (REQ-357) [tool-verified: `provisa/nl/job.py:69`]
+
+```json
+{
+  "job_id": "<id>",
+  "state": "complete",
+  "branches": {
+    "cypher":  {"query": "MATCH ...", "result": [...], "error": null},
+    "graphql": {"query": "{ ... }",   "result": {...}, "error": null},
+    "sql":     {"query": "SELECT ...", "result": [...], "error": null}
+  }
+}
+```
+
+A branch that exhausts its iteration limit returns `query: null`, `result: null`, and an `error` string. Every generated query executes under the consumer's rights with Stage 2 governance applied — the service never bypasses governance. (REQ-359)
 
 ---
 
@@ -230,6 +282,14 @@ Return GraphQL introspection JSON, optionally domain-filtered. [tool-verified: `
 **Query parameters:** `domain` — comma-separated domain IDs.
 
 **Response:** `application/json` introspection result.
+
+---
+
+### `GET /data/graph-schema`
+
+Return the graph view of the role's schema: node labels and their relationship types, for Cypher/graph clients. Includes `pk_columns` per node label so callers can determine primary-key columns. (REQ-398) [tool-verified: `provisa/api/rest/cypher_router.py:689`]
+
+**Response:** `application/json` with `node_labels` (each carrying `pk`/`pk_columns`) and `relationship_types`.
 
 ---
 
@@ -266,6 +326,8 @@ Each registered table produces a proto `message`. Relationships produce nested m
 Server-Sent Events stream for real-time change notifications from a table. (REQ-219, REQ-258) [tool-verified: `provisa/api/data/subscribe.py:239`]
 
 Notification delivery uses a pluggable provider chosen per source type: PostgreSQL sources use `LISTEN/NOTIFY` (via asyncpg), MongoDB sources use Change Streams (`collection.watch()`), and Kafka sources use consumer groups. Each provider implements a common async watch interface. RLS filtering and schema validation apply regardless of provider. (REQ-258) WebSocket and RSS sources are also supported. (REQ-338, REQ-342)
+
+**Header — `X-Provisa-Sink`:** Set to a Kafka target (e.g. `kafka://broker:9092/topic`) to redirect change events to a Kafka sink instead of the SSE response. The server launches a sink consumer and returns `202 Accepted` rather than an open stream. (REQ-812) [tool-verified: `provisa/api/data/subscription_sse.py:137`]
 
 ---
 

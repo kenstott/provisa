@@ -1,6 +1,6 @@
 # Change Signal Unification
 
-Status: accepted. Tracked under REQ-932 (see `docs/arch/requirements.md`).
+Status: implemented (REQ-932, 2026-07). Tracked in `docs/arch/requirements.yaml`.
 
 ## Problem
 
@@ -45,41 +45,47 @@ to_provider(sig, source_type) -> str   # native → source_type; debezium → "d
 Push signals skip the freshness gate — their landed copy is updated by applying incoming
 events, not by polling.
 
-## Rewire (existing sites)
+## Rewired sites
 
-1. MV/landing build sets `freshness_mode` from `change_signal`. Five `MVDefinition(...)`
-   sites omit it today (`api/app.py:950,1004,1049,1883`, `api/admin/schema.py:1476`) so it
-   always defaults `ttl`. Pass `to_freshness_mode(resolve(...))` and thread `probe_query`.
+1. MV/landing build derives `freshness_mode` from `change_signal` via
+   `to_freshness_mode(resolve(...))` at the `MVDefinition(...)` construction sites
+   (`api/app.py`, `api/admin/schema.py`), threading `probe_query`. Previously these omitted
+   `freshness_mode` and always defaulted `ttl`.
 2. Provider dispatch keys off `change_signal`. `api/data/subscribe.py:_resolve_provider_type`
-   reads `live.strategy`; switch to `to_provider(resolve(...))`.
-3. Poll-job reconcile keys off `change_signal` + `Table.watermark_column`.
-   `live/reconcile.py:_live_is_poll` builds a poll spec when `is_poll(sig)` and a watermark
-   exists, replacing `live.strategy == "poll"`.
-4. Validation moves to `change_signal`. `core/config_loader.py:_validate_table_live_delivery`
-   capability-gates `change_signal` (debezium/kafka require source `cdc`; push signals require
-   a CDC-capable source or materialization store).
+   resolves via `to_provider(resolve_effective(...))` rather than reading `live.strategy` directly.
+3. Poll-job reconcile keys off `change_signal` + `Table.watermark_column`. `live/reconcile.py`
+   builds a poll spec when `is_poll(sig)`; a watermark selects append vs replace landing.
+4. Validation keys off `change_signal` in `core/config_loader.py`: debezium/kafka require a
+   source `cdc` block; push signals require a CDC-capable source or materialization store.
 
 ## Delete / deprecate
 
-- `live.strategy` and `live.watermark_column` (`core/models.py:424-425`, `api/admin/types.py`,
-  `api/admin/_live_mappers.py`, `api/admin/_row_mappers.py`) — superseded by `change_signal`
-  and `Table.watermark_column`. `live` shrinks to `{enabled, outputs, poll_interval}` (outbound).
+- `live.strategy` and `live.watermark_column` (`core/models.py`) are superseded by `change_signal`
+  and `Table.watermark_column`. They are retained on the model as a legacy read-through: provider
+  dispatch (`api/data/subscribe.py`) and poll reconcile (`live/reconcile.py`) go through
+  `change_signal.resolve_effective(...)`, which falls back to `signal_from_strategy(live.strategy)`
+  only when no `change_signal` is set. `change_signal` is authoritative when present.
 - MV `freshness_mode` becomes an internal derived value only.
 
-## New code (missing consumption layer)
+## Landing (consumption layer, shipped)
 
-5. Landing paths in `mv/refresh.py` today only replace (`DELETE`+`INSERT` / `CTAS`):
-   - Append: `INSERT ... WHERE watermark > cursor` when `watermark_column` is set; persist the
-     cursor alongside `mv_refresh_log.input_version`.
-   - CDC-apply: consume the debezium/kafka provider and upsert/tombstone by primary key into the
-     landed table. This is what makes deletes work.
+`change_signal.select_landing_shape(sig, watermark_column)` maps the signal to a landing shape,
+applied by the DB-agnostic Core ops in `federation/materialize_exec.py` (driven by
+`federation/store_writer.py`) — not by engine CTAS in `mv/refresh.py`:
+
+- Replace: `DELETE`+`INSERT` — poll signal with no watermark.
+- Append: `INSERT ... WHERE watermark > cursor` — poll signal with a `watermark_column` set.
+- CDC-apply: consume the debezium/kafka provider and upsert/tombstone by primary key into the
+  landed table via the dialect-agnostic `Connection.upsert`. This is what makes landed deletes work.
+  (Subscription *delivery* grain remains insert/update only per REQ-928.)
 
 ## Migration
 
-V1, no migrations: hard-cut. Derive at read sites and drop `live.strategy`/`live.watermark_column`
-from the model and persistence in one pass. Existing JSONB rows carrying `live.strategy` are
-ignored by the loader; a one-time `_row_mappers` shim maps `strategy → change_signal` when the
-latter is unset, after which the field stops being written.
+V1, no migrations. Derivation happens at the read sites rather than by dropping the fields:
+`change_signal` is authoritative, and `live.strategy`/`live.watermark_column` remain on the model
+as a legacy fallback read through `resolve_effective` / `signal_from_strategy`. Existing JSONB rows
+carrying `live.strategy` keep working — the resolver maps `strategy → change_signal` when the
+latter is unset.
 
 ## Sequencing (each phase leaves the tree green)
 
@@ -90,9 +96,12 @@ latter is unset, after which the field stops being written.
 
 ## Tests
 
-- Derivation (unit): `change_signal → freshness_mode / provider` for six values plus inherit.
-- Publish downstream (integration): a Debezium/Kafka event through the resolved provider reaches
-  the SSE stream and a Kafka sink.
-- Landing replace (integration): poll signal, no watermark, full rebuild.
-- Landing append + delete (integration): watermark signal → incremental insert; `op=d` tombstone
-  removes the row.
+Coverage is in unit tests (`tests/unit/test_change_signal.py`, `test_materialize_landing.py`,
+`test_subscribe_publish.py`); the integration tests named in early planning
+(`test_landing_replace` / `append_delete` / `publish_downstream`) were not created.
+
+- Derivation: `change_signal → freshness_mode / provider / landing shape` for six values plus inherit.
+- Publish downstream: a Debezium/Kafka event through the resolved provider reaches the SSE stream
+  and a Kafka sink.
+- Landing replace: poll signal, no watermark, full rebuild.
+- Landing append + CDC-apply: watermark signal → incremental insert; `op=d` tombstone removes the row.

@@ -801,6 +801,9 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Config file path |
+| `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | Control-plane store URI (SQLAlchemy async); accepts `sqlite+aiosqlite://…` / `duckdb://…` for the embedded desktop store (REQ-828, REQ-850) |
+| `PLATFORM_DATABASE_URL` | — | Platform registry URI (tenant directory, engine registry); required at startup, no fallback (REQ-837) |
+| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` uses embedded fakeredis instead of a Redis server — no Docker (REQ-829) |
 | `PG_HOST` | `localhost` | PostgreSQL host |
 | `PG_PORT` | `5432` | PostgreSQL port |
 | `PG_DATABASE` | `provisa` | PostgreSQL database |
@@ -819,7 +822,9 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `SYNAPSE_SQL_SERVER` | — | Synapse serverless SQL endpoint |
 | `SYNAPSE_DATABASE` | — | Synapse database name |
 | `REDIS_URL` | — | Redis connection URL |
-| `PROVISA_SAMPLE_SIZE` | `100` | Default sampling limit |
+| `PROVISA_SAMPLE_SIZE` | `10000` | Default sampling limit |
+| `PROVISA_DEFAULT_ROW_LIMIT` | `100` | Row cap when a query supplies no explicit `LIMIT` |
+| `PROVISA_RETRY_BUDGET_SECS` | `30` | Tier-1 read-retry budget in seconds; exponential backoff with full jitter (REQ-703) |
 | `ZAYCHIK_PORT` | `8480` | Zaychik Flight SQL proxy port |
 | `FLIGHT_PORT` | `8815` | Provisa Arrow Flight server port |
 | `GRPC_PORT` | `50051` | Provisa Protobuf gRPC server port |

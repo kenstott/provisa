@@ -27,6 +27,32 @@ PUT /admin/config
 
 Provisa validates the YAML, reloads catalogs, and regenerates schemas (REQ-012, REQ-253). No restart required.
 
+### Runtime Settings
+
+Read and write runtime platform settings without editing the config file (REQ-165):
+```
+GET  /admin/settings
+PUT  /admin/settings
+```
+
+The settings surface covers large-result redirect, default sampling and row limit, response-cache TTL, naming convention, relationship FK auto-tracking, materialization-store DSN, federation-engine memory (`jvm_heap_gb`, `query_max_memory`, `query_max_memory_per_node`, `query_max_total_memory`, `fault_tolerant_execution`, `fault_tolerant_task_memory`, `exchange_spool_dir`), and the full OpenTelemetry tracing-pipeline tuning surface (REQ-1082). Remote-GraphQL traversal limits and warm-tier/read-cache settings are also exposed (REQ-1081, REQ-1083).
+
+Security posture — `security.mode` (`standard` | `high`) — applied on restart (REQ-1079):
+```
+GET  /admin/security
+PUT  /admin/security
+```
+
+AI model assignments, the embedding/vector-model registry, and the NL rate limit — applied on restart (REQ-1080):
+```
+GET  /admin/ai-models
+PUT  /admin/ai-models
+```
+
+The admin encryption tab derives its provider list live from the encryption registry; unavailable providers appear but are not selectable (REQ-1091).
+
+`GET`/`HEAD /health` and `GET /setup/status` are always unauthenticated — they bypass the `Authorization: Bearer` requirement even when an auth provider is configured (REQ-539).
+
 ### Relationship Editor
 
 List relationships (REQ-166):

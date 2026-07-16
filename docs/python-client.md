@@ -217,6 +217,8 @@ conn = adbc_connect(
     "http://localhost:8001",
     user="alice",
     password="secret",
+    role="analyst",   # optional; server validates the requested role
+    port=8815,        # Arrow Flight port (REQ-711)
 )
 ```
 
@@ -255,4 +257,4 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
         table = cur.fetch_arrow_table()
 ```
 
-ADBC connects to the Flight server on port 8815. (REQ-143) The port is not configurable via `adbc_connect` — run Flight on 8815 or adjust the server config. (REQ-608)
+ADBC connects to the Flight server on port 8815 by default. (REQ-143) Pass `port=` to reach a Flight server bound to a non-default port. (REQ-711)

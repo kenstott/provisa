@@ -63,16 +63,18 @@ These layers compose. A role with domain access, RLS, and masked columns has all
 
 ## Rights Model
 
-7 capabilities with optional role hierarchy via `parent_role_id`. `admin` grants all. (REQ-042)
+Independently assigned capabilities with optional role hierarchy via `parent_role_id`. `admin` grants all. (REQ-042)
 
 | Capability | Description |
 |-----------|-------------|
 | `source_registration` | Register data sources |
 | `table_registration` | Register tables, columns |
-| `relationship_registration` | Define FK relationships |
-| `security_config` | Configure RLS, masking |
+| `create_relationship` | Define FK relationships |
+| `access_config` | Configure RLS, masking |
 | `query_development` | Execute queries |
+| `write` | Invoke registered mutations (coarse gate; see Mutation Authorization) |
 | `full_results` | Bypass sampling limits |
+| `ignore_relationships` | Bypass relationship governance (V002) |
 | `admin` | Superuser — grants all |
 
 ### Role Inheritance
@@ -139,6 +141,12 @@ In this example:
 - `salary`: admin and hr see the real value; hr can edit; all other roles don't see the column at all
 - `created_at`: everyone can read, nobody can write
 
+## Mutation Authorization
+
+Registered mutations (remote GraphQL, OpenAPI, gRPC, Hasura) are gated by two independent checks. (REQ-867, REQ-868) A role may invoke a mutation only if it holds the global `write` capability AND appears in that mutation's `writable_by` list. (REQ-868) An empty `writable_by` is default-deny — no role can invoke it. (REQ-867)
+
+Mutations are classified as writes by contract, not by caller declaration. (REQ-869) A `SELECT` that references a mutation-kind function is promoted to a write and subject to the same two-gate check, so a caller cannot invoke a mutation by disguising it as a read. (REQ-869) Reclassifying a mutation to read-safe requires the `access_config` capability and is recorded as a governance decision; there is no per-request opt-out. (REQ-870)
+
 ## Schema Visibility
 
 Per-role GraphQL schemas hide unauthorized content: (REQ-039)
@@ -176,6 +184,22 @@ Masking is pushed into the SQL SELECT projection — the database returns masked
 
 All roles see sampled results (default: 100 rows) unless they have `full_results` capability. (REQ-554) Controlled via `PROVISA_SAMPLE_SIZE` env var. (REQ-554)
 
+## Audit Logging
+
+Every query that touches a domain asset is recorded in the append-only `query_audit_log`. (REQ-596, REQ-613) Each row captures `tenant_id`, `user_id`, `role_id`, a SHA-256 hash of the query text, `table_ids`, `source`, `status_code`, `duration_ms`, and `logged_at`. (REQ-596) The query text is never stored verbatim — only its hash. (REQ-596)
+
+The log is append-only at the database level: PostgreSQL rules block `DELETE` and `UPDATE`. (REQ-596, REQ-613) Two indexes — `(tenant_id, logged_at)` and `(user_id, logged_at)` — support tenant-scoped and per-user time-range compliance queries. (REQ-596, REQ-613)
+
+When encryption is enabled, the query text hash column is stored encrypted and decrypted only on authorized admin reads. (REQ-689)
+
+## Rate Limiting
+
+Per-role rate limits are configured in `provisa.yaml`: max requests per second, max concurrent SSE subscriptions, and max concurrent Arrow Flight streams. (REQ-369) Limits are enforced at the API layer before compilation or execution; requests over the limit are rejected with HTTP 429 and a `Retry-After` header. (REQ-369)
+
+The NL query service (`POST /query/nl`) has an independent limit via `nl.rate_limit` (requests per minute per role). Requests over the limit are rejected before any LLM call is made. (REQ-370)
+
+Rate limit state lives in Redis (`cache.redis_url`) as a sliding-window counter — no per-instance state — so limits hold across all horizontal Provisa instances. (REQ-371)
+
 ## Authentication
 
 Pluggable auth providers: (REQ-120)
@@ -188,7 +212,9 @@ Pluggable auth providers: (REQ-120)
 | `oauth` | OIDC JWT | PingFed, Okta, Azure AD, Auth0 |
 | `simple` | bcrypt + JWT | Testing |
 
-Role mapping: identity claims → Provisa role via configurable rules. (REQ-120)
+Role mapping: identity claims → Provisa role via configurable rules. (REQ-120) The `assignments_source` field controls where role assignments come from: `claims` reads them from JWT token claims (default), `provisa` reads them from Provisa's internal assignment store. (REQ-551)
+
+A superuser configured in `provisa.yaml` (username plus a password from an env secret) always receives the admin role and all capabilities regardless of the configured provider — a bootstrap path for initial setup. (REQ-125)
 
 ## ABAC Approval Hook
 

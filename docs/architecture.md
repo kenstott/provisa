@@ -49,7 +49,7 @@ Multiple endpoints under the same port, distinguished by path:
 | Path | Language | Notes |
 |------|----------|-------|
 | `POST /data/graphql` | GraphQL | Reads and mutations; APQ hash accepted via `extensions.persistedQuery` |
-| `POST /data/sql` | SQL | Read-only; requires `query_development` capability |
+| `POST /data/sql` | SQL | Read-only; no capability gate — governed by object visibility + RLS + masking (REQ-001, REQ-267) |
 | `POST /data/query` | Cypher | Read-only; standard role |
 | `GET /data/nl` | Natural language | Translates to SQL/GraphQL/Cypher based on source type |
 | `GET /data/subscribe/{table}` | GraphQL | SSE subscription stream |
@@ -82,13 +82,13 @@ Implements the PostgreSQL frontend/backend wire protocol using the `buenavista` 
 
 ## Request Pipeline
 
-Three query languages are accepted. All converge at governance after their respective parse/compile steps. (REQ-262, REQ-263) Only GraphQL supports writes. (REQ-037)
+Three query languages are accepted. All converge at governance after their respective parse/compile steps. (REQ-262, REQ-263) Only GraphQL supports writes. (REQ-037) There is no capability gate on querying itself — any authenticated identity may query in any language, and data is governed solely by object visibility, RLS, and masking. (REQ-001)
 
-| Interface | Reads | Writes | Capability required |
+| Interface | Reads | Writes | Query gate |
 |---|---|---|---|
-| GraphQL (`/data/graphql`) | Yes | Yes (mutations) | Standard role |
-| SQL (`/data/sql`) | Yes | No | `query_development` |
-| Cypher (`/data/query`) | Yes | No | Standard role |
+| GraphQL (`/data/graphql`) | Yes | Yes (mutations) | None — data-layer governance only |
+| SQL (`/data/sql`) | Yes | No | None — data-layer governance only (REQ-267) |
+| Cypher (`/data/query`) | Yes | No | None — data-layer governance only |
 
 ```mermaid
 flowchart TD
@@ -127,10 +127,14 @@ flowchart TD
 
 | Route | When |
 |---|---|
+| **Cache** | Result cache hit — evaluated first, serves the stored result with no execution (REQ-865) |
+| **Cheap-count** | `count(*)`-shaped query over an unmaterialized source that exposes an exact native count — routed to the native count call instead of materializing to count (REQ-875) |
 | **Direct** | Single source + has native driver + has federation connector |
 | **Federation** | Multi-source federation, or source has connector but no driver |
 | **Materialize** | Source has no federation connector — fetch and cache to S3/PG first |
 | **Mutation** | GraphQL mutation — always direct, never federated |
+
+Routing consumes the output of the post-governance optimization stage, never the pre-optimization governed SQL. Governance may ADD sources (RLS subquery predicates); the optimization stage may REMOVE them (hot-table VALUES-CTE inlining, API-cache rewrites, union-branch pruning). A federated query that collapses to a single live source after inlining is therefore re-routed as direct. (REQ-863)
 
 ### Multi-Root Queries
 
@@ -377,7 +381,10 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `api/rest/` | Auto-generated REST endpoints from registered tables |
 | `api/jsonapi/` | Auto-generated JSON:API endpoints with pagination and error handling |
 | `api/data/subscribe.py` | SSE subscriptions — LISTEN/NOTIFY, polling, Debezium CDC |
-| `compiler/` | Query parsers (GraphQL, SQL, Cypher), semantic SQL generator, RLS, masking, sampling |
+| `compiler/` | GraphQL/SQL parsers, semantic SQL generator, RLS, masking, sampling, two-stage governance (`stage2.py`) |
+| `cypher/` | Cypher → SQLGlot translator, parser, label map (REQ-351), write translator for Cypher mutations |
+| `pgwire/` | PostgreSQL wire-protocol server; `catalog.py` intercepts pg_catalog/information_schema for per-role object visibility (REQ-527, REQ-883, REQ-891) |
+| `vector/` | Vector search — model registry, embedding providers (openai/ollama/huggingface), `cosine_similarity()` translation, pgvector fallback cache, declarative embedding generation (REQ-419–431) |
 | `compiler/federation.py` | Apollo Federation v2 subgraph support |
 | `transpiler/` | SQLGlot transpilation, routing logic |
 | `executor/` | Federated/direct execution, serialization, output formats |
@@ -598,14 +605,15 @@ The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager 
 
 ## Security Enforcement Order
 
-1. **Rights**: Check role has `query_development` capability (REQ-267, REQ-042)
-2. **Schema Visibility**: Per-role schema hides unauthorized tables/columns (REQ-039)
-3. **RLS**: Per-table per-role WHERE clause injection (REQ-040, REQ-041)
-4. **Column Masking**: Per-column per-role data transformation (REQ-263)
-5. **Row cap (LIMIT)**: Row-count cap for non-full_results roles (REQ-263, REQ-005); random statistical sampling is a separate user query feature (REQ-478)
-6. **Governance**: Test mode vs production (registry-required) (REQ-004)
+There is no capability gate on querying — governance is expressed entirely through data-layer controls. (REQ-001) A raw-SQL request rejects (HTTP 403) any table outside the role's object scope before governance runs. (REQ-267)
 
-All three query interfaces (HTTP, Flight, gRPC) enforce the same security pipeline. (REQ-002, REQ-038)
+1. **Object Visibility**: Per-role schema hides unauthorized tables/columns; out-of-scope tables in raw SQL are rejected (REQ-039, REQ-267)
+2. **Relationship enforcement**: Traversals must exist in the approved relationship catalog, unless the role holds `ignore_relationships` (REQ-001)
+3. **RLS**: Per-table per-role WHERE clause injection (REQ-040, REQ-041, REQ-263)
+4. **Column Masking**: Per-column per-role data transformation (REQ-263)
+5. **Row cap (LIMIT)**: Row-count cap for roles without `full_results`; random statistical sampling is a separate user query feature (REQ-263, REQ-478)
+
+All four query interfaces (HTTP, Flight, gRPC, pgwire) enforce the same Stage 2 governance pipeline; no client path can bypass it without bypassing the server. (REQ-002, REQ-038, REQ-266)
 
 ## Scalability Limits
 

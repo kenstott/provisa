@@ -21,22 +21,23 @@ curl -X POST http://localhost:8080/v1/metadata \
 
 ### Convert
 
+The v2 converter reads a Hasura metadata **directory** (the layout produced by `hasura metadata export`, or the flat `tables.yaml` / `actions.yaml` layout) and writes a Provisa config:
+
 ```bash
-provisa import hasura-v2 --input metadata.yaml --output config.yaml
+python -m provisa.hasura_v2 ./metadata -o config.yaml
 ```
 
-Or via the Admin API:
-```graphql
-mutation {
-  importHasuraV2(yaml: "<contents of metadata.yaml>") {
-    config
-    warnings {
-      field
-      message
-    }
-  }
-}
-```
+Omit `-o` to write the config to stdout.
+
+Flags:
+
+| Flag | Purpose |
+|------|---------|
+| `-o`, `--output` | Output YAML path (default: stdout) |
+| `--source-overrides` | YAML file with per-source connection overrides (host, port, credentials) |
+| `--domain-map` | Schema-to-domain mappings as `SCHEMA=DOMAIN` pairs |
+| `--auth-env-file` | `.env` file with auth config; converts JWT/JWK, admin secret, and claims map |
+| `--dry-run` | Parse and validate without writing output |
 
 ### What Gets Converted
 
@@ -53,40 +54,39 @@ mutation {
 
 ### Limitations
 
-- **Actions** are not automatically converted — create equivalent webhook mutations manually
-- **Event triggers** map to Provisa webhook config but require manual URL configuration
+- **Actions** convert automatically: HTTP-handler actions become `webhooks[]` mutations; actions with a non-HTTP (database) handler become a `functions[]` placeholder and emit a warning to review the handler
+- **Event triggers** convert to per-table `event_triggers` config (operations, webhook URL, retry policy) and emit a warning noting limited fidelity
+- **Remote schemas** convert to `graphql_remote` source entries
 - **Custom SQL functions** require review — simple cases convert to `functions[]` entries, complex ones need manual work
-- **Scheduled triggers** map to `scheduler` config entries, including cron expressions
+- **Cron triggers** convert to `scheduler` config entries, preserving the cron expression and enabled flag
 
 ---
 
 ## Hasura DDN (v3)
 
-### Export Supergraph
+### Locate the HML project
 
-```bash
-ddn supergraph build local
-# Output: .hasura/supergraph.json or connector metadata
-```
+The DDN converter reads the DDN project **directory** of `.hml` files directly — no supergraph build step is required. The first directory component under the project root is taken as the subgraph name; files under `globals/` are assigned the `globals` subgraph.
 
 ### Convert
 
 ```bash
-provisa import ddn --input supergraph.json --output config.yaml
+python -m provisa.ddn ./my-ddn-project -o config.yaml
 ```
 
-Or via the Admin API:
-```graphql
-mutation {
-  importDDN(json: "<contents of supergraph.json>") {
-    config
-    warnings {
-      field
-      message
-    }
-  }
-}
-```
+Omit `-o` to write the config to stdout.
+
+Flags:
+
+| Flag | Purpose |
+|------|---------|
+| `-o`, `--output` | Output YAML path (default: stdout) |
+| `--source-overrides` | YAML file with per-source connection overrides |
+| `--domain-map` | Subgraph-to-domain mappings as `SUBGRAPH=DOMAIN` pairs |
+| `--aggregates-output` | Output path for the aggregate-expressions sidecar (default: `<output>-aggregates.yaml`) |
+| `--dry-run` | Parse and validate without writing output |
+
+`AggregateExpression` metadata is preserved in a sidecar `*-aggregates.yaml` file.
 
 ### What Gets Converted
 

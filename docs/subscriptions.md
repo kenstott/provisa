@@ -6,10 +6,11 @@ Provisa supports real-time push over Server-Sent Events (SSE). Clients receive a
 
 Subscriptions target a **registered table**:
 
-| Source | Delivery modes available |
+| Source | `strategy` values available |
 |--------|-------------------------|
-| Table (PostgreSQL) | `listen` (LISTEN/NOTIFY), `cdc` (Debezium), `poll` |
-| Table (non-PG, e.g. federated view) | federated poll only |
+| Table (PostgreSQL) | `native` (LISTEN/NOTIFY), `poll` |
+| Table (non-PG RDBMS with a source `cdc` block) | `debezium`, `kafka`, `poll` |
+| Table (federated view / any other source) | `poll` only |
 
 ### PostgreSQL trigger auto-installation
 
@@ -53,11 +54,14 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 
 ## Delivery Modes
 
-| Mode | Mechanism | Available for | Requires |
-|------|-----------|---------------|---------|
-| `listen` | PostgreSQL `LISTEN`/`NOTIFY` | PG tables | Nothing extra |
-| `cdc` | Kafka topic from Debezium connector | Non-PG RDBMS tables | Debezium + Kafka |
-| `poll` | Watermark-based polling | Any table | `watermark_column` |
+Delivery is selected by `live.strategy` on the table config: (REQ-813, REQ-814)
+
+| `strategy` | Mechanism | Available for | Requires |
+|------------|-----------|---------------|---------|
+| `native` | PostgreSQL `LISTEN`/`NOTIFY`, MongoDB Change Streams | PG, MongoDB | Nothing extra |
+| `debezium` | Kafka topic from Debezium connector | Non-PG RDBMS tables | Source-level `cdc` block (Debezium + Kafka) |
+| `kafka` | Arbitrary Kafka delta topic | Any Kafka-fed table | Source-level `cdc` block |
+| `poll` | Watermark-based polling | Any table with a watermark | `watermark_column` |
 
 ### LISTEN/NOTIFY
 
@@ -65,7 +69,7 @@ Provisa issues `LISTEN <channel>` on a persistent PG connection. (REQ-258) Provi
 
 ### Polling
 
-Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. (REQ-260) Diffs are emitted as SSE events. Deletes require a `soft_delete_column` (`deleted_at` or `is_deleted`) on the source. (REQ-260)
+Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. (REQ-260) Diffs are emitted as SSE events. Poll cannot see hard deletes — a removed row leaves no advancing watermark. To make a delete visible, use a soft delete (e.g. set a `deleted_at` flag) that bumps the watermark column; the delete then arrives as an update event carrying the soft-delete marker. (REQ-260)
 
 Table poll config (in `provisa.yaml`):
 ```yaml
@@ -73,25 +77,29 @@ tables:
   - id: federated_orders
     source_id: federated-source
     live:
-      delivery: poll
+      strategy: poll
       watermark_column: updated_at
-      soft_delete_column: deleted_at
-      poll_interval: 30s
+      poll_interval: 30
       outputs:
-        - type: sse_subscription
+        - type: sse
 ```
 
 ### Debezium CDC
 
 Requires a running Debezium connector writing to Kafka. (REQ-261) Provisa consumes the Kafka topic and forwards change events to connected SSE clients. (REQ-261)
 
-Configure the Debezium topic in `config.yaml`:
+CDC transport is configured once per source in a `cdc` block; topics are derived as `{topic_prefix}.{schema}.{table}` and never repeated per table. (REQ-824) Each table then selects `strategy: debezium`:
 ```yaml
 sources:
   - id: sales-mysql
+    cdc:
+      bootstrap_servers: kafka:9092
+      topic_prefix: debezium
+      # schema_registry_url: http://schema-registry:8081   # set for Avro; omit for JSON
     tables:
       - id: orders
-        cdc_topic: debezium.public.orders
+        live:
+          strategy: debezium
 ```
 
 ## Kafka Sink Redirect
@@ -135,12 +143,14 @@ A poll-based table subscription can simultaneously publish to a Kafka topic via 
 tables:
   - id: active-orders
     live:
+      strategy: poll
       watermark_column: updated_at
-      poll_interval: 30s
+      poll_interval: 30
       outputs:
-        - type: sse_subscription
-        - type: kafka_sink
+        - type: sse
+        - type: kafka
           topic: provisa.active-orders
+          bootstrap_servers: kafka:9092
           key_column: id
 ```
 

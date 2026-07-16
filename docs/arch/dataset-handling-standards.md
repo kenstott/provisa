@@ -169,8 +169,8 @@ Dataset names may be normalized to a semantic standard (e.g., `snake_case`) and 
 
 **Never compare two dataset names with `===`.** Always normalize both sides through the centralized normalization function before comparison.
 
-- In the UI (`TablesPage.tsx`): use `toSnakeCase(a) === toSnakeCase(b)` via the shared `toSnakeCase` utility.
-- In the backend: use `provisa.core.naming.to_snake_case` (or equivalent canonical function).
+- In the UI: use `toSnakeCase(a) === toSnakeCase(b)` via the shared utility exported from `provisa-ui/src/naming.ts`.
+- In the backend: use the canonical function in `provisa.compiler.naming` (REQ-640).
 
 This applies everywhere a source-introspected name is compared against a stored registered name: `isRegistered` checks, alias lookups, duplicate detection, and any cross-source name matching.
 
