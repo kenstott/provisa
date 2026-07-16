@@ -86,6 +86,12 @@ export interface ColumnPreset {
   dataType: string | null;
 }
 
+// REQ-1093: a declared UNIQUE constraint (single-column or composite).
+export interface UniqueConstraint {
+  name: string;
+  columns: string[];
+}
+
 export interface LiveOutputConfig {
   type: "sse" | "kafka";
   topic: string | null;
@@ -125,6 +131,7 @@ export interface RegisteredTable {
   probeType: string | null;
   columns: TableColumn[];
   columnPresets: ColumnPreset[];
+  uniqueConstraints: UniqueConstraint[]; // REQ-1093
   apiEndpoint: string | null;
   viewSql: string | null;
   materialize: boolean;

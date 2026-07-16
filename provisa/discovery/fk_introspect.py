@@ -26,6 +26,8 @@ Alias naming follows Hasura convention:
 
 from __future__ import annotations
 
+# complexity-gate: allow-ble=3 reason="best-effort constraint introspection over a pluggable set of RDB drivers whose failure taxonomy is unbounded (unreachable source, missing information_schema/PRAGMA, transient driver error): govdata FK fetch, UNIQUE-constraint introspection (REQ-1093), and per-table FK auto-registration each log and return an empty/zero result so one source's metadata read never fails registration or the introspection of other tables"
+
 import asyncio
 import logging
 from typing import TYPE_CHECKING, cast
@@ -161,6 +163,93 @@ async def _sqlite_fks(
             }
         )
     return results
+
+
+# ---------------------------------------------------------------------------
+# UNIQUE constraint introspection (REQ-1093)
+# ---------------------------------------------------------------------------
+
+# Declared UNIQUE constraints (not PRIMARY KEY) with their ordered columns.
+_PG_UNIQUE = """
+SELECT
+    tc.constraint_name       AS name,
+    kcu.column_name          AS column_name,
+    kcu.ordinal_position     AS ordinal
+FROM information_schema.table_constraints  AS tc
+JOIN information_schema.key_column_usage   AS kcu
+    ON tc.constraint_name = kcu.constraint_name
+   AND tc.table_schema    = kcu.table_schema
+WHERE tc.constraint_type = 'UNIQUE'
+  AND tc.table_schema    = $1
+  AND tc.table_name      = $2
+ORDER BY tc.constraint_name, kcu.ordinal_position
+"""
+
+
+async def _pg_uniques(driver, schema_name: str, table_name: str) -> list[dict]:  # REQ-1093
+    """Return declared UNIQUE constraints from PostgreSQL/MySQL information_schema.
+
+    Each dict: {"name": str, "columns": [col, ...]} with columns in ordinal order.
+    Composite constraints yield multi-element columns; nothing is inferred from data.
+    """
+    rows = await driver.execute(_PG_UNIQUE, [schema_name, table_name])
+    grouped: dict[str, list[str]] = {}
+    for name, column_name, _ordinal in rows.rows:
+        grouped.setdefault(name, []).append(column_name)
+    return [{"name": name, "columns": cols} for name, cols in grouped.items()]
+
+
+async def _sqlite_uniques(driver, schema_name: str, table_name: str) -> list[dict]:  # REQ-1093
+    """Return declared UNIQUE constraints from SQLite PRAGMA index_list/index_info.
+
+    origin 'u' = a UNIQUE keyword/constraint; 'pk' (primary key) and 'c' (explicit
+    CREATE UNIQUE INDEX) are excluded so only table-declared UNIQUE constraints surface.
+    """
+    idx_rows = await driver.execute(f'PRAGMA index_list("{table_name}")', [])
+    results: list[dict] = []
+    for row in idx_rows.rows:
+        # columns: seq, name, unique, origin, partial
+        _seq, idx_name, is_unique, origin = row[0], row[1], row[2], row[3]
+        if not is_unique or origin != "u":
+            continue
+        info = await driver.execute(f'PRAGMA index_info("{idx_name}")', [])
+        # index_info columns: seqno, cid, name — already ordered by seqno
+        cols = [r[2] for r in info.rows]
+        results.append({"name": idx_name, "columns": cols})
+    return results
+
+
+async def introspect_unique_constraints(  # REQ-1093
+    source_pools,
+    source_type: str,
+    source_id: str,
+    schema_name: str,
+    table_name: str,
+) -> list[dict]:
+    """Introspect declared UNIQUE constraints for one table.
+
+    Returns [{"name": str, "columns": [col, ...]}]; empty when the source exposes
+    none or does not support constraint introspection. Only source-declared
+    constraints are returned — uniqueness is never inferred from sampled data.
+    """
+    source_type_lower = source_type.lower()
+    if not source_pools.has(source_id):
+        return []
+    driver = source_pools.get(source_id)
+    try:
+        if source_type_lower in ("postgresql", "postgres", "mysql", "mariadb"):
+            return await _pg_uniques(driver, schema_name, table_name)
+        if source_type_lower == "sqlite":
+            return await _sqlite_uniques(driver, schema_name, table_name)
+    except Exception:
+        _log.debug(
+            "UNIQUE introspection failed for %s.%s (%s)",
+            schema_name,
+            table_name,
+            source_type,
+            exc_info=True,
+        )
+    return []
 
 
 def _m2o_alias(ref_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415

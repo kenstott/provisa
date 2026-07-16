@@ -60,6 +60,7 @@ vi.mock("../../api/admin", () => ({
     naming: { domain_prefix: false, convention: "none" },
   }),
   profileTable: vi.fn().mockResolvedValue({ columns: [], rows: [], rowCount: 0 }),
+  fetchTableUniqueConstraints: vi.fn().mockResolvedValue([]),
 }));
 
 // Module-level hook spies so tests can assert call args directly.

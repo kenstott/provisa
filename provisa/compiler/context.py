@@ -55,6 +55,20 @@ def _lookup_column_type(
     return "varchar"
 
 
+def _visible_unique_constraints(t, si) -> list[tuple[str, list[str]]]:  # REQ-1093
+    """Declared UNIQUE constraints for table ``t``, filtered to columns visible in this projection.
+
+    Sourced from the raw table config on SchemaInput (not _TableInfo) so schema_gen stays untouched.
+    """
+    visible = {col["column_name"] for col in t.visible_columns}
+    raw = next(
+        (tbl.get("unique_constraints", []) for tbl in si.tables if tbl["id"] == t.table_id), []
+    )
+    return [
+        (uc["name"], list(uc["columns"])) for uc in raw if all(c in visible for c in uc["columns"])
+    ]
+
+
 def _register_table_in_ctx(
     t: _TableInfoProto,
     ctx: CompilationContext,
@@ -113,6 +127,9 @@ def _register_table_in_ctx(
     ctx.pk_columns[t.table_id] = [
         col["column_name"] for col in t.visible_columns if col.get("is_primary_key")
     ]
+
+    # REQ-1093: carry declared UNIQUE constraints (name + ordered columns) into ctx for pgwire.
+    ctx.unique_constraints[t.table_id] = _visible_unique_constraints(t, si)
 
     def _nfc_type(nfc: dict) -> str:
         if nfc.get("data_type"):

@@ -120,6 +120,8 @@ registered_tables = Table(
     Column("probe_query", Text),  # REQ-929: source-native freshness probe
     Column("probe_type", Text),  # REQ-982: input-probe method; NULL = resolve per source class
     Column("column_presets", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-1093: table-level UNIQUE constraints — [{name, columns:[...]}], seeded from source introspection.
+    Column("unique_constraints", JSON, nullable=False, default=list, server_default="[]"),
     Column("view_sql", Text),
     Column("data_product", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),

@@ -79,6 +79,70 @@ def _build_pk_constraint_rows(
     return rows, con_oid
 
 
+def _build_unique_constraint_rows(  # REQ-1093
+    ctx,
+    idx: CatalogIndex,
+    con_oid_start: int,
+) -> tuple[list[tuple], int]:
+    """One pg_constraint row (contype 'u') per declared UNIQUE constraint.
+
+    conkey is the ordered attnum list; there is no referenced table (confrelid=0).
+    PK columns are already emitted as contype 'p'; these are the non-PK unique keys.
+    """
+    rows: list[tuple] = []
+    con_oid = con_oid_start
+    seen_table_ids: set[int] = set()
+    used_names: set[str] = set()
+    for _, tm in ctx.tables.items():
+        if tm.table_id in seen_table_ids:
+            continue
+        toid = idx.table_id_to_oid.get(tm.table_id)
+        if toid is None:
+            continue
+        uniques = ctx.unique_constraints.get(tm.table_id, [])
+        if not uniques:
+            continue
+        seen_table_ids.add(tm.table_id)
+        ns_oid = idx.ns_map.get(idx.toid_to_table[toid][1], 2200)
+        for uc_name, uc_cols in uniques:
+            conkey = [idx.col_attnum.get((toid, c), 0) for c in uc_cols]
+            if any(a == 0 for a in conkey):
+                continue  # a column is not in this projection — skip the whole constraint
+            con_name = uc_name if uc_name not in used_names else f"{uc_name}_{con_oid}"
+            used_names.add(con_name)
+            rows.append(
+                (
+                    con_oid,
+                    con_name,
+                    ns_oid,
+                    "u",
+                    False,
+                    False,
+                    True,
+                    toid,
+                    0,
+                    0,
+                    0,
+                    0,
+                    None,
+                    None,
+                    None,
+                    True,
+                    0,
+                    True,
+                    conkey,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            )
+            con_oid += 1
+    return rows, con_oid
+
+
 def _build_fk_constraint_rows(
     ctx,
     idx: CatalogIndex,
@@ -175,6 +239,8 @@ def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
     if ctx:
         pk_rows, next_oid = _build_pk_constraint_rows(ctx, idx, 20000)
         constraint_rows.extend(pk_rows)
+        uq_rows, next_oid = _build_unique_constraint_rows(ctx, idx, next_oid)  # REQ-1093
+        constraint_rows.extend(uq_rows)
         fk_rows, _ = _build_fk_constraint_rows(ctx, idx, next_oid)
         constraint_rows.extend(fk_rows)
     if constraint_rows:
@@ -207,7 +273,7 @@ def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex
         conrelid_v: int = con_row[7]
         c_v, c_sch_v, c_tname_v = idx.toid_to_table.get(conrelid_v, ("provisa", "public", ""))
         con_schema_v = oid_to_ns.get(conns_oid_v, "public")
-        ctype_str = "PRIMARY KEY" if contype_v == "p" else "FOREIGN KEY"
+        ctype_str = {"p": "PRIMARY KEY", "u": "UNIQUE", "f": "FOREIGN KEY"}[contype_v]  # REQ-1093
         is_tc_rows.append(
             (
                 "provisa",

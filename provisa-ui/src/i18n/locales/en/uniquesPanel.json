@@ -1,0 +1,14 @@
+{
+  "uniquesPanel": {
+    "title": "Uniques",
+    "infoTooltip": "Declared UNIQUE constraints for this table — single-column or composite. Foreign keys may target any unique key, and clients see these as UNIQUE constraints. Seeded from the source on registration; edit or add your own.",
+    "addConstraint": "Constraint",
+    "nameLabel": "Name",
+    "namePlaceholder": "constraint name (e.g. users_tenant_email_key)",
+    "columnsLabel": "Columns",
+    "columnsPlaceholder": "— select columns —",
+    "removeConstraint": "Remove constraint",
+    "summary": "{{count}} constraint",
+    "summary_other": "{{count}} constraints"
+  }
+}

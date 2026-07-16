@@ -25,6 +25,7 @@ import {
 } from "@mantine/core";
 import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
+import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import type { RegisteredTable, Source } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
@@ -582,6 +583,12 @@ export function TableEditForm({
           />
         ) : null;
       })()}
+      {/* REQ-1093: table-level UNIQUE constraints editor */}
+      <UniquesPanel
+        uniques={editingTable.uniqueConstraints ?? []}
+        columns={editingTable.columns.map((c) => c.columnName)}
+        onChange={(uniques) => setEditingTable({ ...editingTable, uniqueConstraints: uniques })}
+      />
       <Table className="data-table" style={{ margin: "0 0 0.5rem" }}>
         <Table.Thead>
           <Table.Tr>

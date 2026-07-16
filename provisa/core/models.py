@@ -352,6 +352,17 @@ class ColumnPreset(BaseModel):
     data_type: str | None = None  # the engine data type of the column (for coercion)
 
 
+class UniqueConstraint(BaseModel):  # REQ-1093
+    """A source-declared UNIQUE constraint: an ordered column set (single or composite).
+
+    Recorded only from a declared source constraint, never inferred from data. `columns`
+    preserves ordinal_position — order is significant for index-prefix usability and DDL.
+    """
+
+    name: str
+    columns: list[str]
+
+
 class KafkaSinkAttachment(BaseModel):  # REQ-565
     """Per-table opt-in Kafka sink config (REQ-176–180)."""
 
@@ -422,6 +433,10 @@ class Table(
     )
     columns: list[Column]
     column_presets: list[ColumnPreset] = Field(default_factory=list)
+    # REQ-1093: table-level UNIQUE constraints (single-column or composite), seeded from
+    # source introspection and editable in the admin "Uniques" panel. Distinct from
+    # is_alternate_key (FK-derived, per-column); this is the declared-constraint source of truth.
+    unique_constraints: list[UniqueConstraint] = Field(default_factory=list)
     # REQ-119: JSONB field promotions → PG generated columns. Each entry:
     # {jsonb_column, field (dot-path), target_column, target_type}.
     promotions: list[dict] = Field(default_factory=list)

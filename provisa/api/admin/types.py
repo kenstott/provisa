@@ -65,6 +65,12 @@ class ColumnPresetType:
 
 
 @strawberry.type
+class UniqueConstraintType:  # REQ-1093
+    name: str
+    columns: list[str]
+
+
+@strawberry.type
 class LiveOutputConfigType:  # REQ-565
     type: str  # "sse" | "kafka"
     topic: str | None = None
@@ -104,6 +110,9 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     watermark_column: str | None
     columns: list[TableColumnType]
     column_presets: list[ColumnPresetType] = strawberry.field(default_factory=list)
+    unique_constraints: list[UniqueConstraintType] = strawberry.field(
+        default_factory=list
+    )  # REQ-1093
     api_endpoint: str | None = None
     view_sql: str | None = None
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
@@ -273,6 +282,12 @@ class ColumnPresetInput:  # REQ-533
 
 
 @strawberry.input
+class UniqueConstraintInput:  # REQ-1093
+    name: str
+    columns: list[str]
+
+
+@strawberry.input
 class LiveOutputConfigInput:  # REQ-565
     type: str  # "sse" | "kafka"
     topic: str | None = None
@@ -308,6 +323,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     description: str | None = None
     watermark_column: str | None = None
     column_presets: list[ColumnPresetInput] = strawberry.field(default_factory=list)
+    unique_constraints: list[UniqueConstraintInput] = strawberry.field(
+        default_factory=list
+    )  # REQ-1093
     view_sql: str | None = None
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe

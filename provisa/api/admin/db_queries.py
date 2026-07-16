@@ -115,7 +115,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:  # REQ-155, REQ-
     """Fetch registered tables with columns."""
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
-        "alias, description, column_presets, l1_cluster, l2_cluster, l3_cluster, "
+        "alias, description, column_presets, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
         "enable_aggregates, enable_group_by "
         "FROM registered_tables ORDER BY id"
     )
@@ -129,6 +129,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:  # REQ-155, REQ-
             row["id"],
         )
         table["column_presets"] = _as_list(row.get("column_presets"))
+        table["unique_constraints"] = _as_list(row.get("unique_constraints"))  # REQ-1093
         table["columns"] = [
             {
                 "column_name": r["column_name"],

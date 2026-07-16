@@ -283,6 +283,25 @@ export async function discoverSourceSchema(
   return resp.json();
 }
 
+// REQ-1093: introspect declared UNIQUE constraints for one (schema, table) to seed the
+// register/edit "Uniques" panel. Empty list when the source declares none.
+export async function fetchTableUniqueConstraints(
+  sourceId: string,
+  schema: string,
+  table: string,
+): Promise<{ name: string; columns: string[] }[]> {
+  const qs = new URLSearchParams({ schema, table }).toString();
+  const resp = await fetch(
+    `${API_BASE_RAW}/admin/schema-discovery/unique-constraints/${sourceId}?${qs}`,
+  );
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(body.detail || resp.statusText);
+  }
+  const json = await resp.json();
+  return json.unique_constraints ?? [];
+}
+
 // The canonical IR data-type vocabulary (REQ-846) offered when a steward assigns a
 // column's type during schema discovery — engine-independent, translated to the store's
 // physical type at landing.

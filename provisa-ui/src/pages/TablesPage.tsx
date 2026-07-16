@@ -328,6 +328,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             }
           : null,
         columnPresets: editingTable.columnPresets,
+        // REQ-1093: persist edited UNIQUE constraints; drop empty/incomplete rows.
+        uniqueConstraints: (editingTable.uniqueConstraints ?? [])
+          .filter((u) => u.name.trim() && u.columns.length > 0)
+          .map((u) => ({ name: u.name.trim(), columns: u.columns })),
         columns: editingTable.columns.map((c) => ({
           name: c.columnName,
           visibleTo: c.visibleTo,

@@ -23,7 +23,9 @@ import {
 import { toSnakeCase } from "../../naming";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
-import type { RegisteredTable, Source } from "../../types/admin";
+import { UniquesPanel } from "../../components/admin/UniquesPanel";
+import { fetchTableUniqueConstraints } from "../../api/admin";
+import type { RegisteredTable, Source, UniqueConstraint } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
 import { CDC_TYPES } from "./constants";
@@ -78,6 +80,7 @@ export function RegisterTableForm({
   const [tableAlias, setTableAlias] = useState("");
   const [tableDescription, setTableDescription] = useState("");
   const [columns, setColumns] = useState<ColumnForm[]>([]);
+  const [uniqueConstraints, setUniqueConstraints] = useState<UniqueConstraint[]>([]); // REQ-1093
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
   const [dataProduct, setDataProduct] = useState(false);
   const [loadingColumns, setLoadingColumns] = useState(false);
@@ -111,6 +114,7 @@ export function RegisterTableForm({
     setTableName("");
     setTableDescription("");
     setColumns([]);
+    setUniqueConstraints([]);
   }, [sourceId, schemaName]);
 
   // Auto-populate table description from physical database comment
@@ -135,8 +139,13 @@ export function RegisterTableForm({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- cascade reset: columns cleared before async fetch when table selection changes
     setColumns([]);
+    setUniqueConstraints([]);
     setWatermarkColumn("");
     if (!sourceId || !schemaName || !tableName) return;
+    // REQ-1093: seed the Uniques panel from the source's declared UNIQUE constraints.
+    fetchTableUniqueConstraints(sourceId, schemaName, tableName)
+      .then(setUniqueConstraints)
+      .catch(() => setUniqueConstraints([]));
     setLoadingColumns(true);
     getAvailableColumnsMetadata(sourceId, schemaName, tableName)
       .then((cols) => {
@@ -222,6 +231,10 @@ export function RegisterTableForm({
         watermarkColumn: watermarkColumn || null,
         dataProduct,
         columns: selectedCols,
+        // REQ-1093: drop empty/incomplete rows — a constraint needs a name and >=1 column.
+        uniqueConstraints: uniqueConstraints
+          .filter((u) => u.name.trim() && u.columns.length > 0)
+          .map((u) => ({ name: u.name.trim(), columns: u.columns })),
       });
       if (!result.success) {
         setError(result.message);
@@ -234,6 +247,7 @@ export function RegisterTableForm({
       setTableAlias("");
       setTableDescription("");
       setColumns([]);
+      setUniqueConstraints([]);
       setWatermarkColumn("");
       setDataProduct(false);
       onSuccess();
@@ -554,6 +568,13 @@ export function RegisterTableForm({
           </Table.ScrollContainer>
         )}
       </Stack>
+      {columns.length > 0 && (
+        <UniquesPanel
+          uniques={uniqueConstraints}
+          columns={columns.map((c) => c.name)}
+          onChange={setUniqueConstraints}
+        />
+      )}
       <Button onClick={handleSubmit} style={{ alignSelf: "flex-start" }} data-testid="register-table-submit">
         {t("registerTableForm.submitButton")}
       </Button>

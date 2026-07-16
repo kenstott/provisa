@@ -18,6 +18,12 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
     ``alias``, which the caller resolves). Keeps the change-detection axes (change_signal, probe_query,
     probe_type, watermark_column) mapped in one place."""
     from provisa.core.models import Table as TableModel
+    from provisa.core.models import UniqueConstraint as UniqueConstraintModel
+
+    unique_constraints = [
+        UniqueConstraintModel(name=uc.name, columns=list(uc.columns))
+        for uc in getattr(inp, "unique_constraints", [])
+    ]  # REQ-1093
 
     return TableModel(
         source_id=inp.source_id,
@@ -27,6 +33,7 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         alias=alias,
         description=inp.description,
         columns=columns,
+        unique_constraints=unique_constraints,  # REQ-1093
         watermark_column=inp.watermark_column,
         change_signal=inp.change_signal,
         probe_query=inp.probe_query,

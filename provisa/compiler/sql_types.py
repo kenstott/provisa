@@ -102,6 +102,8 @@ class CompilationContext:
     aggregate_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
     # table_id → user-designated PK column names (informational; empty = heuristic only)
     pk_columns: dict[int, list[str]] = field(default_factory=dict)
+    # REQ-1093: table_id → declared UNIQUE constraints [(name, [col, ...]), ...] (source-introspected)
+    unique_constraints: dict[int, list[tuple[str, list[str]]]] = field(default_factory=dict)
     # (table_id, gql_field_name) → physical_column_name (only when they differ)
     exposed_to_physical: dict[tuple[int, str], str] = field(default_factory=dict)
     # (table_id, physical_column_name) → sql_exposed_name (alias direct, or apply_sql_name(phys))

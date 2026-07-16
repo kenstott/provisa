@@ -140,8 +140,27 @@ def _foreign_keys(state: Any, role: str, schema: str, table: str) -> list[dict]:
     return fks
 
 
+def _unique_constraints(state: Any, role: str, schema: str, table: str) -> list[dict]:  # REQ-1093
+    """Declared UNIQUE constraints for (schema, table) from the role's compilation context.
+
+    ctx.unique_constraints is already filtered to columns visible in the role's projection
+    (context.py), so this is inherently role-scoped — an agent only sees keys over columns
+    it may read.
+    """
+    ctx = state.contexts[role]
+    for meta in getattr(ctx, "tables", {}).values():
+        if getattr(meta, "domain_id", "") != schema:
+            continue
+        if table in (getattr(meta, "table_name", ""), getattr(meta, "field_name", "")):
+            return [
+                {"name": name, "columns": cols}
+                for name, cols in getattr(ctx, "unique_constraints", {}).get(meta.table_id, [])
+            ]
+    return []
+
+
 async def describe_table(state: Any, role: str, schema: str, table: str) -> dict:
-    """columns (name, type, description) + foreign keys for one table."""
+    """columns (name, type, description) + foreign keys + unique constraints for one table."""
     require_role(role, state)
     tables = await _catalog(state)
     match = next(
@@ -159,6 +178,7 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
             for c in match.columns
         ],
         "foreign_keys": _foreign_keys(state, role, schema, table),
+        "unique_constraints": _unique_constraints(state, role, schema, table),  # REQ-1093
     }
 
 

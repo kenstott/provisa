@@ -39,6 +39,7 @@ from provisa.api.admin.types import (
     AvailableColumnType,
     ColumnPresetType,
     RegisteredTableType,
+    UniqueConstraintType,
     TableColumnType,
 )
 
@@ -269,6 +270,10 @@ async def _fetch_table_with_columns(
         )
         for p in (row.get("column_presets") or [])
     ]
+    unique_constraints = [
+        UniqueConstraintType(name=u["name"], columns=list(u["columns"]))
+        for u in (row.get("unique_constraints") or [])
+    ]  # REQ-1093
 
     api_endpoint = None
     if await _ensure_openapi_spec(row["source_id"]):
@@ -319,6 +324,7 @@ async def _fetch_table_with_columns(
         watermark_column=row.get("watermark_column"),
         columns=columns,
         column_presets=presets,
+        unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,
         view_sql=view_sql,
         change_signal=row.get("change_signal"),

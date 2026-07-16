@@ -67,6 +67,9 @@ async def upsert(
         "description": getattr(table, "description", None),
         "watermark_column": getattr(table, "watermark_column", None),
         "column_presets": [p.model_dump() for p in getattr(table, "column_presets", [])],
+        "unique_constraints": [
+            u.model_dump() for u in getattr(table, "unique_constraints", [])
+        ],  # REQ-1093
         "view_sql": getattr(table, "view_sql", None),
         "data_product": getattr(table, "data_product", False),
         "materialize": getattr(table, "materialize", False),
@@ -87,6 +90,7 @@ async def upsert(
         "description",
         "watermark_column",
         "column_presets",
+        "unique_constraints",  # REQ-1093
         "view_sql",
         "data_product",
         "materialize",

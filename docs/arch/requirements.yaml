@@ -30901,3 +30901,53 @@
     And the model can never choose or escalate the role, and tool errors are reported back to the model for recovery
   relates_to:
     - REQ-1008
+- id: REQ-1093
+  status: complete
+  group: 3. Source Registration & Data Modeling
+  category: Unique Constraints
+  priority: SHOULD
+  type: behavioral
+  since: "2026-07"
+  description: >-
+    A registered Table carries a table-level list of UNIQUE constraints (`unique_constraints:
+    [{name, columns[]}]`), each an ordered column set that may be single-column or composite.
+    On registration Provisa introspects declared UNIQUE constraints from RDB sources
+    (PostgreSQL/MySQL information_schema.table_constraints + key_column_usage grouped by
+    constraint_name and ordered by ordinal_position; SQLite PRAGMA index_list/index_info with
+    origin='u') and seeds the list. Uniqueness is only recorded from a source-declared constraint,
+    never inferred from sampled data. The admin UI exposes an expandable "Uniques" panel in the
+    register/edit table forms: a "+ Constraint" control adds a row with a Name text field and a
+    multi-select checkbox of the table's columns. pgwire emits each unique constraint as a
+    pg_constraint row with contype 'u' (conkey = ordered attnums, no confrelid) and projects it into
+    information_schema.table_constraints (constraint_type 'UNIQUE') and key_column_usage, so standard
+    clients (DBeaver, psql \d) render the keys. The MCP describe_table tool includes the table's
+    unique_constraints alongside foreign_keys, role-gated.
+  use_case: >-
+    Foreign keys can legitimately target any unique key, not just the primary key; surfacing declared
+    unique constraints improves relationship inference, lets the query planner reason about row
+    identity, gives standard SQL clients and the MCP agent the natural keys users actually join and
+    filter on, and makes the ERD/catalog show natural keys instead of only surrogate PKs.
+  code:
+    - provisa/core/models.py
+    - provisa/discovery/fk_introspect.py
+    - provisa/pgwire/catalog_constraints.py
+    - provisa/api/mcp/tools.py
+    - provisa/api/admin/discovery_schema.py
+    - provisa/compiler/context.py
+    - provisa-ui/src/components/admin/UniquesPanel.tsx
+    - provisa-ui/src/pages/tables/RegisterTableForm.tsx
+    - provisa-ui/src/pages/tables/TableEditForm.tsx
+  tests:
+    - tests/unit/test_unique_introspect.py
+    - tests/unit/pgwire/test_unique_constraints.py
+    - tests/unit/test_unique_constraints_wiring.py
+    - provisa-ui/src/components/admin/__tests__/UniquesPanel.test.tsx
+  scenario: |
+    Given a PostgreSQL source table with a declared UNIQUE constraint on (tenant_id, email)
+    When the table is registered in Provisa
+    Then the table's unique_constraints list is seeded with {name, columns: [tenant_id, email]} from the source
+    And the admin register/edit UI shows the constraint in the expandable "Uniques" panel with its name and checked columns
+    And pgwire exposes it as a pg_constraint row with contype 'u' and an information_schema.table_constraints row of type 'UNIQUE'
+    And the MCP describe_table response for the table includes the unique_constraints entry
+  relates_to:
+    - REQ-018

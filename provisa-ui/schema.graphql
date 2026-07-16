@@ -62,9 +62,20 @@ type RegisteredTableType {
   watermarkColumn: String
   columns: [TableColumnType!]!
   columnPresets: [ColumnPresetType!]!
+  uniqueConstraints: [UniqueConstraintType!]!
   apiEndpoint: String
   viewSql: String
   dataProduct: Boolean!
+}
+
+type UniqueConstraintType {
+  name: String!
+  columns: [String!]!
+}
+
+input UniqueConstraintInput {
+  name: String!
+  columns: [String!]!
 }
 
 type TableColumnType {
@@ -285,6 +296,7 @@ input TableInput {
   description: String = null
   watermarkColumn: String = null
   columnPresets: [ColumnPresetInput!]! = []
+  uniqueConstraints: [UniqueConstraintInput!]! = []
   viewSql: String = null
   dataProduct: Boolean! = false
 }
