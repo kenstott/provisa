@@ -1,6 +1,6 @@
 # Build the Provisa Windows container-tier installer (REQ-889 / REQ-633) with Inno
 # Setup. This is the separate, on-demand upgrade that adds the compute stack
-# (Trino + services) via WSL2 + containerd — the Windows equivalent of the macOS
+# (Trino + services) via WSL2 + containerd - the Windows equivalent of the macOS
 # Lima tier. NO VirtualBox. The base native installer (build-sfx.ps1) ships
 # without any of this; users download and run this only to upgrade tiers.
 #
@@ -24,7 +24,7 @@ $BuildDir = Join-Path $ScriptDir 'build-container'
 if (Test-Path $BuildDir) { Remove-Item $BuildDir -Recurse -Force }
 New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null
 
-# ── Compose tree (mirrors the macOS container tier's embed_compose) ───────────
+# -- Compose tree (mirrors the macOS container tier's embed_compose) -----------
 $BuildCompose = Join-Path $BuildDir 'compose'
 New-Item -ItemType Directory -Path $BuildCompose -Force | Out-Null
 Copy-Item (Join-Path $RepoRoot 'docker-compose.core.yml')   $BuildCompose
@@ -61,13 +61,13 @@ if (Test-Path $DemoFilesSrc) {
   Copy-Item -Path (Join-Path $DemoFilesSrc '*') -Destination $DemoDst -Recurse -Force
 }
 
-# ── WSL guest scripts + tier scripts ──────────────────────────────────────────
+# -- WSL guest scripts + tier scripts ------------------------------------------
 Copy-Item (Join-Path $ScriptDir 'wsl') (Join-Path $BuildDir 'wsl') -Recurse -Force
 Copy-Item (Join-Path $ScriptDir 'install-container.ps1')  $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa-container.ps1')  $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ico')            $BuildDir
 
-# ── Core images: fetched on demand, NOT bundled ──────────────────────────────
+# -- Core images: fetched on demand, NOT bundled ------------------------------
 # The ~1.9 GB core image tarballs would push this installer past GitHub's 2 GB
 # release-asset limit. Per the "separate optional download" design, install-container.ps1
 # fetches provisa-core-images-amd64-<VERSION>.zip from the release at install time
@@ -76,17 +76,17 @@ Copy-Item (Join-Path $ScriptDir 'provisa.ico')            $BuildDir
 $Version = if ($env:VERSION) { $env:VERSION } else { 'dev' }
 [System.IO.File]::WriteAllText((Join-Path $BuildDir 'VERSION'), $Version, [System.Text.Encoding]::ASCII)
 
-# ── nerdctl-full archive (linux-amd64) ────────────────────────────────────────
+# -- nerdctl-full archive (linux-amd64) ----------------------------------------
 $NerdctlArchive = "nerdctl-full-$NerdctlVersion-linux-amd64.tar.gz"
 $NerdctlUrl = "https://github.com/containerd/nerdctl/releases/download/v$NerdctlVersion/$NerdctlArchive"
 Write-Host "[build-container] Downloading $NerdctlArchive..." -ForegroundColor Cyan
 Invoke-WebRequest -Uri $NerdctlUrl -OutFile (Join-Path $BuildDir $NerdctlArchive) -UseBasicParsing
 
-# ── WSL base rootfs ───────────────────────────────────────────────────────────
+# -- WSL base rootfs -----------------------------------------------------------
 Write-Host '[build-container] Downloading WSL base rootfs...' -ForegroundColor Cyan
 Invoke-WebRequest -Uri $RootfsUrl -OutFile (Join-Path $BuildDir 'rootfs.tar.gz') -UseBasicParsing
 
-# ── Inno Setup ────────────────────────────────────────────────────────────────
+# -- Inno Setup ----------------------------------------------------------------
 Write-Host '[build-container] Installing Inno Setup...' -ForegroundColor Cyan
 choco install innosetup --no-progress -y
 if ($LASTEXITCODE -ne 0) { throw "choco install innosetup failed" }
@@ -135,7 +135,7 @@ if ($LASTEXITCODE -ne 0) { throw "ISCC.exe failed with exit code $LASTEXITCODE" 
 if (-not (Test-Path $InstallerPath)) { throw "Expected output $InstallerPath not found" }
 Write-Host "[build-container] Installer created: $InstallerPath" -ForegroundColor Green
 
-# ── Code signing ──────────────────────────────────────────────────────────────
+# -- Code signing --------------------------------------------------------------
 if ($env:WINDOWS_CERT_PFX_BASE64) {
     Write-Host '[build-container] Signing installer...' -ForegroundColor Cyan
     $PfxPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'provisa-signing.pfx')
@@ -149,7 +149,7 @@ if ($env:WINDOWS_CERT_PFX_BASE64) {
         Remove-Item -Path $PfxPath -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Write-Host '[build-container] WINDOWS_CERT_PFX_BASE64 not set — skipping signing.' -ForegroundColor Yellow
+    Write-Host '[build-container] WINDOWS_CERT_PFX_BASE64 not set - skipping signing.' -ForegroundColor Yellow
 }
 
 Write-Host "Output: $InstallerPath"

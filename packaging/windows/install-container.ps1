@@ -1,7 +1,7 @@
 # Provisa container-tier setup for Windows (REQ-889 / REQ-633). Provisions a WSL2
 # distro with containerd + nerdctl, loads the bundled core images, copies the
 # compose tree in, and starts the stack. The Windows equivalent of the macOS
-# Lima tier — no VirtualBox. Additive/reversible: the native base tier is left
+# Lima tier - no VirtualBox. Additive/reversible: the native base tier is left
 # intact and can be switched back to with `provisa-native.ps1`.
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
@@ -25,7 +25,7 @@ function Write-Info { param($Msg) Write-Host "[provisa-container] $Msg" -Foregro
 function Write-Err  { param($Msg) Write-Host "[provisa-container] $Msg" -ForegroundColor Red }
 function Write-Ok   { param($Msg) Write-Host "[provisa-container] $Msg" -ForegroundColor Green }
 
-# Windows path → WSL /mnt path (C:\a\b → /mnt/c/a/b).
+# Windows path -> WSL /mnt path (C:\a\b -> /mnt/c/a/b).
 function To-WslPath {
   param([string]$WinPath)
   $drive = $WinPath[0].ToString().ToLower()
@@ -33,7 +33,7 @@ function To-WslPath {
   return "/mnt/$drive$rest"
 }
 
-# ── 1. Ensure WSL2 ────────────────────────────────────────────────────────────
+# -- 1. Ensure WSL2 ------------------------------------------------------------
 function Ensure-Wsl2 {
   $null = & wsl.exe --status 2>$null
   if ($LASTEXITCODE -ne 0) {
@@ -47,7 +47,7 @@ function Ensure-Wsl2 {
   & wsl.exe --set-default-version 2 | Out-Null
 }
 
-# ── 2. Import the Provisa distro ──────────────────────────────────────────────
+# -- 2. Import the Provisa distro ----------------------------------------------
 function Import-Distro {
   $existing = (& wsl.exe --list --quiet) -replace "`0", '' | ForEach-Object { $_.Trim() }
   if ($existing -contains $Distro) { Write-Info "WSL distro '$Distro' already present."; return }
@@ -59,7 +59,7 @@ function Import-Distro {
   Write-Ok 'Distro imported.'
 }
 
-# ── 3. Provision containerd + nerdctl ─────────────────────────────────────────
+# -- 3. Provision containerd + nerdctl -----------------------------------------
 function Provision-Containerd {
   if (-not $NerdctlTar) { Write-Err 'nerdctl-full archive not found beside installer.'; exit 1 }
   # Copy the wsl helper scripts into the distro.
@@ -74,7 +74,7 @@ function Provision-Containerd {
   Write-Ok 'containerd + nerdctl ready.'
 }
 
-# ── 4. Obtain + load core images ──────────────────────────────────────────────
+# -- 4. Obtain + load core images ----------------------------------------------
 # Images are NOT bundled in the installer (they exceed GitHub's 2 GB asset limit).
 # Prefer a local images/ dir (airgap: user extracted the core-images zip beside the
 # installer); otherwise download provisa-core-images-amd64-<VERSION>.zip from the
@@ -108,7 +108,7 @@ function Load-Images {
   Write-Ok 'Core images loaded.'
 }
 
-# ── 5. Copy the compose tree into the distro ──────────────────────────────────
+# -- 5. Copy the compose tree into the distro ----------------------------------
 function Stage-Compose {
   $cp = "mkdir -p /opt/provisa/compose && cp -r '$(To-WslPath $ComposeSrc)/.' /opt/provisa/compose/"
   & wsl.exe -d $Distro -u root sh -c $cp
@@ -116,7 +116,7 @@ function Stage-Compose {
   Write-Ok 'Compose tree staged.'
 }
 
-# ── 6. Write / update config (runtime=container) ──────────────────────────────
+# -- 6. Write / update config (runtime=container) ------------------------------
 function Write-ContainerConfig {
   $uiPort  = if ($env:PROVISA_UI_PORT)  { $env:PROVISA_UI_PORT }  else { '3000' }
   $apiPort = if ($env:PROVISA_API_PORT) { $env:PROVISA_API_PORT } else { '8000' }
@@ -140,7 +140,7 @@ function Write-ContainerConfig {
     $demoFlag = if ($env:PROVISA_INSTALL_DEMO -match '^(y|Y|true)') { 'true' } else { 'false' }
   } else {
     $obsFlag  = if ((Read-Host 'Install bundled Grafana/Prometheus observability (y/N)') -match '^(y|Y)') { 'true' } else { 'false' }
-    Write-Host 'The demo is a complete, fully functional install — pick it with confidence; nothing is limited.' -ForegroundColor DarkGray
+    Write-Host 'The demo is a complete, fully functional install - pick it with confidence; nothing is limited.' -ForegroundColor DarkGray
     Write-Host 'To reconfigure with other options later, just run this installer again.' -ForegroundColor DarkGray
     $demoFlag = if ((Read-Host 'Install the demo dataset with guided tour (y/N)') -match '^(y|Y)') { 'true' } else { 'false' }
   }
@@ -154,10 +154,10 @@ function Write-ContainerConfig {
   Write-Ok "Config written to $ConfigPath"
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# -- Main ----------------------------------------------------------------------
 Write-Host ''
-Write-Host 'Provisa — Container Tier Setup (WSL2 + containerd)' -ForegroundColor White
-Write-Host '════════════════════════════════════════════════════'
+Write-Host 'Provisa - Container Tier Setup (WSL2 + containerd)' -ForegroundColor White
+Write-Host '===================================================='
 Write-Host ''
 if (-not (Test-Path $ConfigPath)) {
   Write-Err 'Provisa Core (native tier) is not installed. Run Provisa-Setup.exe first.'

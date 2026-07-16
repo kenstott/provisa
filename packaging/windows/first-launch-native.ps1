@@ -19,10 +19,10 @@ function Write-Ok   { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor G
 
 New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
 
-# ── Stage the native runtime ──────────────────────────────────────────────────
+# -- Stage the native runtime --------------------------------------------------
 # Re-stages when the installed bundle's VERSION differs from what is already staged, so an UPGRADE
 # actually replaces the runtime. The old "skip if python.exe exists" logic pinned users to their
-# first install's runtime forever — an install that shipped a missing/updated dependency never took
+# first install's runtime forever - an install that shipped a missing/updated dependency never took
 # effect (e.g. aiosqlite added in a later build was never delivered).
 function Stage-Runtime {
   $dstPy      = Join-Path $RuntimeDst 'python.exe'
@@ -33,7 +33,7 @@ function Stage-Runtime {
   $stagedVerF = Join-Path $RuntimeDst '.runtime-version'
   $stagedVer  = if (Test-Path $stagedVerF) { (Get-Content $stagedVerF -Raw).Trim() } else { '' }
 
-  # Up to date: a runtime exists and (no version info OR the versions match) → keep it.
+  # Up to date: a runtime exists and (no version info OR the versions match) -> keep it.
   if ((Test-Path $dstPy) -and (($bundleVer -eq '') -or ($bundleVer -eq $stagedVer))) { return }
 
   if (-not (Test-Path $srcPy)) {
@@ -43,7 +43,7 @@ function Stage-Runtime {
   if (Test-Path $RuntimeDst) {
     Write-Info "Upgrading native runtime to bundle $bundleVer (was $stagedVer)..."
     # A Provisa instance from a prior install keeps python.exe running and LOCKS the runtime's
-    # DLLs (libcrypto etc.), so Remove-Item fails and the upgrade silently aborts — leaving the
+    # DLLs (libcrypto etc.), so Remove-Item fails and the upgrade silently aborts - leaving the
     # stale process serving the old (configless, no-demo) app. Stop anything running out of the
     # staged runtime (and the app scripts) first, then re-stage.
     $pidFile = Join-Path $ProvisaHome '.native.pid'
@@ -57,18 +57,18 @@ function Stage-Runtime {
     } | Stop-Process -Force -ErrorAction SilentlyContinue
     # Windows releases file handles ASYNCHRONOUSLY after a kill, so an immediate Remove-Item can
     # still hit the locked DLL and abort the whole upgrade (this left users pinned to the old
-    # runtime — a 240 install that kept running 237). Retry with backoff until the handles drop.
+    # runtime - a 240 install that kept running 237). Retry with backoff until the handles drop.
     $removed = $false
     for ($try = 0; $try -lt 20; $try++) {
       try { Remove-Item $RuntimeDst -Recurse -Force -ErrorAction Stop; $removed = $true; break }
       catch { Start-Sleep -Milliseconds 750 }
     }
     if (-not $removed) {
-      Write-Err "Could not replace the old runtime at $RuntimeDst — a Provisa process is still holding it. Fully quit Provisa and re-run setup."
+      Write-Err "Could not replace the old runtime at $RuntimeDst - a Provisa process is still holding it. Fully quit Provisa and re-run setup."
       exit 1
     }
     # The control-plane schema (registered_tables columns, etc.) can change between versions and V1
-    # has NO migrations — create_all won't ALTER an existing SQLite table, so a stale native DB
+    # has NO migrations - create_all won't ALTER an existing SQLite table, so a stale native DB
     # breaks the new code (e.g. "no such column: unique_constraints"). On a version upgrade, reset
     # the local control-plane DBs; they are rebuilt on next start (the demo re-seeds from config,
     # a non-demo install re-registers from config/UI).
@@ -86,7 +86,7 @@ function Stage-Runtime {
   Write-Ok 'Native runtime staged.'
 }
 
-# ── Deployment selection (parity with macOS SwiftUI wizard, REQ-972..979) ─────
+# -- Deployment selection (parity with macOS SwiftUI wizard, REQ-972..979) -----
 # Non-interactive mode reads the same env the macOS wizard forwards. Interactive
 # mode prompts for the subset the native tier can fulfil; Trino and the Docker
 # Grafana demo require the container tier (install-container.ps1), so they are
@@ -138,12 +138,12 @@ function Resolve-Deployment {
     default { $script:ObsMode = 'none'; $script:OtlpEndpoint = '' }
   }
 
-  Write-Host 'The demo is a complete, fully functional install — pick it with confidence; nothing is limited.' -ForegroundColor DarkGray
+  Write-Host 'The demo is a complete, fully functional install - pick it with confidence; nothing is limited.' -ForegroundColor DarkGray
   Write-Host 'To reconfigure with other options later, just run this setup again.' -ForegroundColor DarkGray
   $script:Demo = if ((Read-Host 'Install the demo dataset with guided tour (y/N)') -match '^(y|Y)') { 'true' } else { 'false' }
 }
 
-# ── Write config (native tier) ────────────────────────────────────────────────
+# -- Write config (native tier) ------------------------------------------------
 function Write-ProvisaConfig {
   if (Test-Path $ConfigPath) { return }
   $hostname = if ($env:PROVISA_HOSTNAME)  { $env:PROVISA_HOSTNAME }  else { 'localhost' }
@@ -151,7 +151,7 @@ function Write-ProvisaConfig {
   $apiPort  = if ($env:PROVISA_API_PORT)  { $env:PROVISA_API_PORT }  else { '8000' }
   Resolve-Deployment
   @"
-# Provisa configuration — generated by installer (native tier)
+# Provisa configuration - generated by installer (native tier)
 hostname: $hostname
 ui_port: $uiPort
 api_port: $apiPort
@@ -169,7 +169,7 @@ demo_mode: native
   Write-Ok "Config written to $ConfigPath"
 }
 
-# ── Next-steps guidance (REQ-1005) ────────────────────────────────────────────
+# -- Next-steps guidance (REQ-1005) --------------------------------------------
 # The native tier ships core + DuckDB only. Tell the user, in tier order, that the
 # federation engine (Trino), observability stack, and demo data pack are NOT part
 # of the native tier and how to add each via the layered installers. Trino is what
@@ -177,8 +177,8 @@ demo_mode: native
 # tier; Demo requires Core + Obs).
 function Show-NextSteps {
   Write-Host ''
-  Write-Host 'Next steps — extend your native install' -ForegroundColor White
-  Write-Host '═══════════════════════════════════════════════════'
+  Write-Host 'Next steps - extend your native install' -ForegroundColor White
+  Write-Host '==================================================='
   Write-Host 'You installed the native tier: local query engine (core + embedded database).'
   Write-Host 'The federation engine (Trino), the observability stack, and the demo'
   Write-Host 'data pack are NOT part of the native tier. Add them via layered installers:'
@@ -197,10 +197,10 @@ function Show-NextSteps {
   Write-Host ''
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# -- Main ----------------------------------------------------------------------
 Write-Host ''
-Write-Host 'Provisa — First Launch Setup (native — no Docker)' -ForegroundColor White
-Write-Host '═══════════════════════════════════════════════════'
+Write-Host 'Provisa - First Launch Setup (native - no Docker)' -ForegroundColor White
+Write-Host '==================================================='
 Write-Host ''
 
 Stage-Runtime
@@ -211,7 +211,7 @@ Write-Ok 'First-launch setup complete.'
 Show-NextSteps
 
 # Hand off to the native CLI to start + open the UI.
-# restart (not start): an install/rerun must apply the freshly written config — stop any running
+# restart (not start): an install/rerun must apply the freshly written config - stop any running
 # instance first, then start with the new engine/demo/auto-open choices. start alone would no-op
 # against an already-running app and silently ignore the new choices.
 & powershell.exe -ExecutionPolicy Bypass -File (Join-Path $ScriptDir 'provisa-native.ps1') restart

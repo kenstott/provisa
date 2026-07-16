@@ -12,14 +12,14 @@ Write-Host '[build-installer-demo] Preparing demo build directory...' -Foregroun
 $BuildDir = Join-Path $ScriptDir 'build-demo'
 New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null
 
-# ── Demo images only ───────────────────────────────────────────────────────────
+# -- Demo images only -----------------------------------------------------------
 $BuildImages = Join-Path $BuildDir 'images'
 New-Item -ItemType Directory -Path $BuildImages -Force | Out-Null
 
 Get-ChildItem -Path (Join-Path $ScriptDir 'demo-images') -Filter '*.tar.gz' -ErrorAction SilentlyContinue |
   Copy-Item -Destination $BuildImages
 
-# ── Extension installer script ─────────────────────────────────────────────────
+# -- Extension installer script -------------------------------------------------
 $InstallDemoScript = @'
 # Provisa Demo Extension Installer (Windows / VirtualBox)
 # Requires Observability extension to be installed first.
@@ -79,9 +79,9 @@ if (Test-Path $ComposeSrc) {
     Copy-Item $ComposeSrc $ExtCompose -Force
     Write-Ok "Extension compose file written: $ExtCompose"
 } else {
-    # Write inline demo compose — graphql-demo uses pre-built local image
+    # Write inline demo compose - graphql-demo uses pre-built local image
     @"
-# Provisa Demo Extension — petstore-mock + graphql-demo
+# Provisa Demo Extension - petstore-mock + graphql-demo
 services:
   petstore-mock:
     image: swaggerapi/petstore3:unstable
@@ -119,11 +119,11 @@ Write-Host ''
 
 $InstallDemoScript | Set-Content -Path (Join-Path $BuildDir 'install-demo.ps1') -Encoding UTF8
 
-# ── dist dir ──────────────────────────────────────────────────────────────────
+# -- dist dir ------------------------------------------------------------------
 $DistDir = Join-Path $ScriptDir 'dist'
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
-# ── NSIS script ───────────────────────────────────────────────────────────────
+# -- NSIS script ---------------------------------------------------------------
 $NsiPath = Join-Path $BuildDir 'installer-demo.nsi'
 $Version = if ($env:VERSION) { $env:VERSION } else { 'dev' }
 $OutExe  = Join-Path $DistDir 'Provisa-Demo-Setup.exe'
@@ -157,7 +157,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host '[build-installer-demo] Demo installer created.' -ForegroundColor Green
 
-# ── Code signing ───────────────────────────────────────────────────────────────
+# -- Code signing ---------------------------------------------------------------
 if ($env:WINDOWS_CERT_PFX_BASE64) {
     Write-Host '[build-installer-demo] Signing installer...' -ForegroundColor Cyan
     $PfxPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'provisa-signing.pfx')
@@ -184,7 +184,7 @@ if ($env:WINDOWS_CERT_PFX_BASE64) {
         Remove-Item -Path $PfxPath -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Write-Host '[build-installer-demo] WINDOWS_CERT_PFX_BASE64 not set — skipping signing.' -ForegroundColor Yellow
+    Write-Host '[build-installer-demo] WINDOWS_CERT_PFX_BASE64 not set - skipping signing.' -ForegroundColor Yellow
 }
 
 Write-Host "Output: $OutExe"

@@ -3,7 +3,7 @@
 # (python-build-standalone + provisa wheel + duckdb/pg_duckdb + aiosqlite) with NO
 # Docker, VM, or container images. Mirrors macOS build-dmg.sh bundle_native_runtime.
 # The compute/container tier (WSL2 + Trino) is a separate on-demand download, not
-# bundled here — the base installer ships no container images (REQ-889, REQ-979).
+# bundled here - the base installer ships no container images (REQ-889, REQ-979).
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -19,7 +19,7 @@ $PbsPython  = if ($env:PBS_PYTHON)  { $env:PBS_PYTHON }  else { '3.12.11' }
 
 Write-Host '[build-sfx] Preparing build directory...' -ForegroundColor Cyan
 
-# ── Assemble build tree ───────────────────────────────────────────────────────
+# -- Assemble build tree -------------------------------------------------------
 $BuildDir = Join-Path $ScriptDir 'build'
 if (Test-Path $BuildDir) { Remove-Item $BuildDir -Recurse -Force }
 New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null
@@ -34,8 +34,8 @@ Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')           $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ico')             $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa-mark.png')        $BuildDir
 
-# ── React UI (served from <site-packages>/static by ui_server) ────────────────
-# The UI is built on Linux and delivered to this job as a prebuilt dist — the
+# -- React UI (served from <site-packages>/static by ui_server) ----------------
+# The UI is built on Linux and delivered to this job as a prebuilt dist - the
 # provisa-ui toolchain (rolldown) pins non-optional darwin native bindings that
 # npm refuses to install on win32 (EBADPLATFORM), so it cannot be built here.
 # CI stages provisa-ui/dist before running; a local build can populate it too.
@@ -45,7 +45,7 @@ if (-not (Test-Path $UiDist)) {
 }
 Write-Host '[build-sfx] Using prebuilt provisa-ui\dist.' -ForegroundColor Cyan
 
-# ── Bundle the standalone native Python runtime (REQ-979) ─────────────────────
+# -- Bundle the standalone native Python runtime (REQ-979) ---------------------
 # Download python-build-standalone (relocatable CPython for Windows x86_64),
 # pip-install provisa + uvicorn INTO it, and drop the built UI where ui_server
 # resolves it (<site-packages>\static). first-launch-native.ps1 stages this to
@@ -92,7 +92,7 @@ Copy-Item -Path (Join-Path $UiDist '*') -Destination $StaticDst -Recurse -Force
 Remove-Item $Tmp -Recurse -Force
 Write-Host '[build-sfx] Native runtime bundled.' -ForegroundColor Green
 
-# ── Demo assets (native, no-Docker) ───────────────────────────────────────────
+# -- Demo assets (native, no-Docker) -------------------------------------------
 # The native demo runs the petstore (OpenAPI) and shelter (GraphQL) mock servers as host
 # Python processes off the bundled runtime (strawberry/starlette/uvicorn are runtime deps),
 # federated with two embedded SQLite files. provisa-install.yaml is the native demo config
@@ -108,11 +108,11 @@ $CfgDst = Join-Path $BuildDir 'config'
 New-Item -ItemType Directory -Path $CfgDst -Force | Out-Null
 Copy-Item -Path (Join-Path $RepoRoot 'config\provisa-install.yaml') -Destination $CfgDst -Force
 if (-not (Test-Path (Join-Path $DemoDst 'files\pet_store.sqlite'))) {
-  throw "demo\files\pet_store.sqlite missing — the native demo dataset was not bundled."
+  throw "demo\files\pet_store.sqlite missing - the native demo dataset was not bundled."
 }
 Write-Host '[build-sfx] Demo assets bundled (mock servers + SQLite + native config).' -ForegroundColor Green
 
-# ── Install Inno Setup via chocolatey ─────────────────────────────────────────
+# -- Install Inno Setup via chocolatey -----------------------------------------
 Write-Host '[build-sfx] Installing Inno Setup...' -ForegroundColor Cyan
 choco install innosetup --no-progress -y
 if ($LASTEXITCODE -ne 0) { throw "choco install innosetup failed" }
@@ -132,7 +132,7 @@ if (-not $Iscc) {
 if (-not $Iscc) { throw "ISCC.exe not found after installing Inno Setup" }
 Write-Host "[build-sfx] Found ISCC.exe: $Iscc" -ForegroundColor Cyan
 
-# ── Create dist dir ───────────────────────────────────────────────────────────
+# -- Create dist dir -----------------------------------------------------------
 $DistDir = Join-Path $ScriptDir 'dist'
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
@@ -141,7 +141,7 @@ $InstallerPath = Join-Path $DistDir 'Provisa-Setup.exe'
 
 [System.IO.File]::WriteAllText((Join-Path $BuildDir 'VERSION'), $Version, [System.Text.Encoding]::ASCII)
 
-# ── Generate Inno Setup script ────────────────────────────────────────────────
+# -- Generate Inno Setup script ------------------------------------------------
 $IssPath = Join-Path $env:TEMP 'provisa-installer.iss'
 
 # Inno Setup uses ; for comments, not //
@@ -178,8 +178,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\uninstall.ps1"""; RunOnceId: "ProvUninstall"
 
-; ── Deployment choices, shown as wizard pages during every install (REQ-972..979) ──
-; These render in the Inno Setup wizard itself — no hidden window, no first-launch dialog, no
+; -- Deployment choices, shown as wizard pages during every install (REQ-972..979) --
+; These render in the Inno Setup wizard itself - no hidden window, no first-launch dialog, no
 ; dependency on prior %USERPROFILE%\.provisa state. The choices are written to config.yaml on
 ; ssPostInstall; first-launch then just stages the runtime and starts (config already present).
 [Code]
@@ -197,7 +197,7 @@ begin
   DemoPage := CreateInputOptionPage(wpWelcome,
     'Demo', 'Try Provisa with sample data and a guided tour.',
     'The demo is a complete, fully functional Provisa install (embedded database, built-in telemetry)' + #13#10 +
-    'with sample data and a guided tour — pick it with confidence; nothing is limited or crippled.' + #13#10 + #13#10 +
+    'with sample data and a guided tour - pick it with confidence; nothing is limited or crippled.' + #13#10 + #13#10 +
     'Checking it skips the deployment options below. To reconfigure later with other options, just run' + #13#10 +
     'this installer again and leave the demo unchecked.',
     False, False);
@@ -232,7 +232,7 @@ end;
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
-  { Demo locks the deployment → skip every engine/obs page. }
+  { Demo locks the deployment -> skip every engine/obs page. }
   if DemoPage.Values[0] then begin
     if (PageID = EnginePage.ID) or (PageID = EngineUrlPage.ID) or
        (PageID = ObsPage.ID) or (PageID = ObsEndpointPage.ID) then
@@ -293,7 +293,7 @@ end;
 
 [System.IO.File]::WriteAllText($IssPath, $IssContent, [System.Text.Encoding]::UTF8)
 
-# ── Run Inno Setup compiler ────────────────────────────────────────────────────
+# -- Run Inno Setup compiler ----------------------------------------------------
 Write-Host '[build-sfx] Compiling installer with Inno Setup...' -ForegroundColor Cyan
 & $Iscc $IssPath
 if ($LASTEXITCODE -ne 0) { throw "ISCC.exe failed with exit code $LASTEXITCODE" }
@@ -301,7 +301,7 @@ if ($LASTEXITCODE -ne 0) { throw "ISCC.exe failed with exit code $LASTEXITCODE" 
 if (-not (Test-Path $InstallerPath)) { throw "Expected output $InstallerPath not found" }
 Write-Host "[build-sfx] Installer created: $InstallerPath" -ForegroundColor Green
 
-# ── Code signing ───────────────────────────────────────────────────────────────
+# -- Code signing ---------------------------------------------------------------
 if ($env:WINDOWS_CERT_PFX_BASE64) {
     Write-Host '[build-sfx] Signing installer...' -ForegroundColor Cyan
     $PfxPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'provisa-signing.pfx')
@@ -326,7 +326,7 @@ if ($env:WINDOWS_CERT_PFX_BASE64) {
         Remove-Item -Path $PfxPath -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Write-Host '[build-sfx] WINDOWS_CERT_PFX_BASE64 not set — skipping signing.' -ForegroundColor Yellow
+    Write-Host '[build-sfx] WINDOWS_CERT_PFX_BASE64 not set - skipping signing.' -ForegroundColor Yellow
 }
 
 Write-Host "Output: $InstallerPath"

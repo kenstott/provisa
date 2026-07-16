@@ -1,5 +1,5 @@
 # Provisa native-tier CLI for Windows (REQ-979). Runs the bundled standalone
-# Python runtime directly — no Docker, no VM, no containers. Mirrors the native
+# Python runtime directly - no Docker, no VM, no containers. Mirrors the native
 # commands in scripts/provisa (cmd_start_native / cmd_stop_native).
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
@@ -24,7 +24,7 @@ function Write-Info { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor C
 function Write-Err  { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Red }
 function Write-Ok   { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Green }
 
-# ── Config reader (no yaml parser needed; mirrors scripts/provisa read_config) ─
+# -- Config reader (no yaml parser needed; mirrors scripts/provisa read_config) -
 function Read-Config {
   param([string]$Key, [string]$Default)
   if (Test-Path $ConfigPath) {
@@ -68,7 +68,7 @@ function Native-Env {
   if ($EngineUrl)      { $e['PROVISA_ENGINE_URL'] = $EngineUrl }
   if ($MaterializeUrl) { $e['PROVISA_MATERIALIZE_URL'] = $MaterializeUrl }
   if ($OtlpEndpoint)   { $e['OTEL_EXPORTER_OTLP_ENDPOINT'] = $OtlpEndpoint }
-  # Demo: load the bundled native demo config (engine: duckdb, auth: none → no setup wizard),
+  # Demo: load the bundled native demo config (engine: duckdb, auth: none -> no setup wizard),
   # mark the run as a demo, and point the OpenAPI/GraphQL sources at the local host mock servers.
   # The relative ./demo/files/*.sqlite paths in the config resolve against the app CWD ({app}).
   if ($Demo) {
@@ -80,7 +80,7 @@ function Native-Env {
   return $e
 }
 
-# ── Demo mock servers (native, no Docker) ─────────────────────────────────────
+# -- Demo mock servers (native, no Docker) -------------------------------------
 # Petstore (OpenAPI) and shelter (GraphQL) run as host Python processes off the bundled runtime,
 # replacing the petstore-mock / graphql-demo containers. Federated with two embedded SQLite files.
 function Start-DemoServers {
@@ -187,7 +187,7 @@ function Wait-UiReady {
       Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "http://localhost:$UiPort/" | Out-Null
       return $true
     } catch {
-      # A 4xx/5xx still means the server is up and answering — good enough to open.
+      # A 4xx/5xx still means the server is up and answering - good enough to open.
       if ($_.Exception.Response) { return $true }
       Start-Sleep -Milliseconds 500
     }
@@ -210,7 +210,7 @@ function Show-Help {
   Write-Host 'Usage: provisa <command>'
   Write-Host ''
   Write-Host 'Commands:'
-  Write-Host '  start    Start Provisa (native — no Docker)'
+  Write-Host '  start    Start Provisa (native - no Docker)'
   Write-Host '  stop     Stop Provisa'
   Write-Host '  restart  Restart Provisa'
   Write-Host '  status   Show run status'

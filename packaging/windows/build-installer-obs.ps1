@@ -12,7 +12,7 @@ Write-Host '[build-installer-obs] Preparing obs build directory...' -ForegroundC
 $BuildDir = Join-Path $ScriptDir 'build-obs'
 New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null
 
-# ── Obs images only ────────────────────────────────────────────────────────────
+# -- Obs images only ------------------------------------------------------------
 $BuildImages = Join-Path $BuildDir 'images'
 New-Item -ItemType Directory -Path $BuildImages -Force | Out-Null
 
@@ -24,7 +24,7 @@ Get-ChildItem -Path (Join-Path $ScriptDir 'obs-images') -Filter '*.tar.gz' -Erro
   Where-Object { $ObsImages -contains $_.Name } |
   Copy-Item -Destination $BuildImages
 
-# ── Extension installer script ─────────────────────────────────────────────────
+# -- Extension installer script -------------------------------------------------
 $InstallObsScript = @'
 # Provisa Observability Extension Installer (Windows / WSL2)
 #Requires -Version 5.1
@@ -92,11 +92,11 @@ Write-Host ''
 
 $InstallObsScript | Set-Content -Path (Join-Path $BuildDir 'install-obs.ps1') -Encoding UTF8
 
-# ── dist dir ──────────────────────────────────────────────────────────────────
+# -- dist dir ------------------------------------------------------------------
 $DistDir = Join-Path $ScriptDir 'dist'
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
-# ── NSIS script ───────────────────────────────────────────────────────────────
+# -- NSIS script ---------------------------------------------------------------
 $NsiPath = Join-Path $BuildDir 'installer-obs.nsi'
 $Version = if ($env:VERSION) { $env:VERSION } else { 'dev' }
 $OutExe  = Join-Path $DistDir 'Provisa-Obs-Setup.exe'
@@ -130,7 +130,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host '[build-installer-obs] Obs installer created.' -ForegroundColor Green
 
-# ── Code signing ───────────────────────────────────────────────────────────────
+# -- Code signing ---------------------------------------------------------------
 if ($env:WINDOWS_CERT_PFX_BASE64) {
     Write-Host '[build-installer-obs] Signing installer...' -ForegroundColor Cyan
     $PfxPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'provisa-signing.pfx')
@@ -157,7 +157,7 @@ if ($env:WINDOWS_CERT_PFX_BASE64) {
         Remove-Item -Path $PfxPath -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Write-Host '[build-installer-obs] WINDOWS_CERT_PFX_BASE64 not set — skipping signing.' -ForegroundColor Yellow
+    Write-Host '[build-installer-obs] WINDOWS_CERT_PFX_BASE64 not set - skipping signing.' -ForegroundColor Yellow
 }
 
 Write-Host "Output: $OutExe"

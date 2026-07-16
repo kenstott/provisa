@@ -1,6 +1,6 @@
 # Provisa container-tier CLI for Windows (REQ-889 / REQ-633). Routes the full
 # compose stack (Trino + compute) through nerdctl inside the Provisa WSL2 distro
-# — the Windows equivalent of the macOS Lima tier. No VirtualBox. The base native
+# - the Windows equivalent of the macOS Lima tier. No VirtualBox. The base native
 # tier (provisa-native.ps1) stays available; this tier is an additive, reversible
 # upgrade. Mirrors the compose routing in scripts/provisa (RUNTIME=lima).
 #Requires -Version 5.1
@@ -34,7 +34,7 @@ $ApiPort = [int](Read-Config 'api_port' '8000')
 $Obs     = (Read-Config 'obs' 'false') -eq 'true'
 $Demo    = (Read-Config 'demo' 'false') -eq 'true'
 
-# ── WSL runtime guards ────────────────────────────────────────────────────────
+# -- WSL runtime guards --------------------------------------------------------
 function Require-Distro {
   $null = & wsl.exe --list --quiet 2>$null
   if ($LASTEXITCODE -ne 0) { Write-Err 'WSL2 is not available. Run install-container.ps1 to complete setup.'; exit 1 }
@@ -50,7 +50,7 @@ function Ensure-Containerd {
   if ($LASTEXITCODE -ne 0) { Write-Err 'containerd failed to start inside WSL.'; exit 1 }
 }
 
-# Windows path → WSL /mnt path (C:\a\b → /mnt/c/a/b).
+# Windows path -> WSL /mnt path (C:\a\b -> /mnt/c/a/b).
 function To-WslPath {
   param([string]$WinPath)
   $drive = $WinPath[0].ToString().ToLower()
@@ -90,9 +90,9 @@ function Invoke-Compose {
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-# ── Commands ──────────────────────────────────────────────────────────────────
+# -- Commands ------------------------------------------------------------------
 function Start-Container {
-  # Stop the native tier if it is running — the compose stack owns the ports now.
+  # Stop the native tier if it is running - the compose stack owns the ports now.
   $nativePid = Join-Path $ProvisaHome '.native.pid'
   if (Test-Path $nativePid) {
     foreach ($procId in (Get-Content $nativePid)) {

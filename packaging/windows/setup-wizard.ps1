@@ -1,5 +1,5 @@
 # Provisa Windows setup wizard (native tier, REQ-972..979). A WinForms GUI that mirrors the macOS
-# SwiftUI DeploymentView — federation engine, observability, demo — then hands off to
+# SwiftUI DeploymentView - federation engine, observability, demo - then hands off to
 # first-launch-native.ps1 in NON-INTERACTIVE mode with the chosen PROVISA_* env. The dialog renders
 # even when this script is launched with a hidden console (launch-gui.vbs), so no console prompts.
 #
@@ -20,7 +20,7 @@ function Start-App {
 }
 
 # The installer's wizard pages write config.yaml with the chosen deployment. When it exists we are
-# already configured → just start. This GUI wizard is only a FALLBACK for a launch with no config
+# already configured -> just start. This GUI wizard is only a FALLBACK for a launch with no config
 # (e.g. a silent/unattended install that skipped the wizard pages).
 if (Test-Path $ConfigPath) { Start-App; return }
 
@@ -44,7 +44,7 @@ $header.Location = New-Object System.Drawing.Point(20, 15)
 $header.AutoSize = $true
 $form.Controls.Add($header)
 
-# ── Federation engine ─────────────────────────────────────────────────────────
+# -- Federation engine ---------------------------------------------------------
 $grpEngine = New-Object System.Windows.Forms.GroupBox
 $grpEngine.Text = 'Federation engine'
 $grpEngine.Location = New-Object System.Drawing.Point(20, 55)
@@ -52,7 +52,7 @@ $grpEngine.Size = New-Object System.Drawing.Size(510, 150)
 $form.Controls.Add($grpEngine)
 
 $rbDuck = New-Object System.Windows.Forms.RadioButton
-$rbDuck.Text = 'Embedded database — zero-config (recommended)'
+$rbDuck.Text = 'Embedded database - zero-config (recommended)'
 $rbDuck.Location = New-Object System.Drawing.Point(15, 25)
 $rbDuck.Size = New-Object System.Drawing.Size(480, 22)
 $rbDuck.Checked = $true
@@ -93,7 +93,7 @@ $rbExternal.Add_CheckedChanged({
   $txtMatUrl.Enabled = $rbExternal.Checked
 })
 
-# ── Observability ─────────────────────────────────────────────────────────────
+# -- Observability -------------------------------------------------------------
 $grpObs = New-Object System.Windows.Forms.GroupBox
 $grpObs.Text = 'Observability'
 $grpObs.Location = New-Object System.Drawing.Point(20, 215)
@@ -128,7 +128,7 @@ $grpObs.Controls.Add($txtOtlp)
 
 $rbObsCollector.Add_CheckedChanged({ $txtOtlp.Enabled = $rbObsCollector.Checked })
 
-# ── Demo ──────────────────────────────────────────────────────────────────────
+# -- Demo ----------------------------------------------------------------------
 $chkDemo = New-Object System.Windows.Forms.CheckBox
 $chkDemo.Text = 'Install the demo dataset and open the guided tour'
 $chkDemo.Location = New-Object System.Drawing.Point(25, 348)
@@ -136,14 +136,14 @@ $chkDemo.Size = New-Object System.Drawing.Size(500, 22)
 $form.Controls.Add($chkDemo)
 
 $note = New-Object System.Windows.Forms.Label
-$note.Text = 'The demo is a complete, fully functional install — pick it with confidence; rerun this installer ' +
+$note.Text = 'The demo is a complete, fully functional install - pick it with confidence; rerun this installer ' +
   'anytime to reconfigure. Trino / the Docker demo require the Container installer.'
 $note.Location = New-Object System.Drawing.Point(25, 378)
 $note.Size = New-Object System.Drawing.Size(505, 40)
 $note.ForeColor = [System.Drawing.Color]::Gray
 $form.Controls.Add($note)
 
-# ── Ports ─────────────────────────────────────────────────────────────────────
+# -- Ports ---------------------------------------------------------------------
 $lblUi = New-Object System.Windows.Forms.Label
 $lblUi.Text = 'UI port'
 $lblUi.Location = New-Object System.Drawing.Point(25, 425)
@@ -166,7 +166,7 @@ $txtApi.Location = New-Object System.Drawing.Point(240, 423)
 $txtApi.Size = New-Object System.Drawing.Size(70, 22)
 $form.Controls.Add($txtApi)
 
-# ── Buttons ───────────────────────────────────────────────────────────────────
+# -- Buttons -------------------------------------------------------------------
 $btnInstall = New-Object System.Windows.Forms.Button
 $btnInstall.Text = 'Install'
 $btnInstall.Location = New-Object System.Drawing.Point(340, 480)
@@ -185,7 +185,7 @@ $form.CancelButton = $btnCancel
 
 if ($form.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
 
-# ── Hand off the chosen deployment to first-launch (non-interactive) ──────────
+# -- Hand off the chosen deployment to first-launch (non-interactive) ----------
 $env:PROVISA_NONINTERACTIVE = '1'
 if ($rbExternal.Checked) {
   $env:PROVISA_ENGINE = 'sqlalchemy'
