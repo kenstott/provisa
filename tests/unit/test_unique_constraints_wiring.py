@@ -9,7 +9,10 @@ from provisa.api.mcp.tools import _unique_constraints
 
 
 def test_mcp_unique_constraints_role_scoped_from_ctx():
-    tmeta = SimpleNamespace(table_id=7, domain_id="sales", table_name="users", field_name="users")
+    # display_name mirrors the real TableMeta: semantic_table_name() reads it (None → field_name).
+    tmeta = SimpleNamespace(
+        table_id=7, domain_id="sales", table_name="users", field_name="users", display_name=None
+    )
     ctx = SimpleNamespace(
         tables={"users": tmeta},
         unique_constraints={7: [("users_email_key", ["email"])]},

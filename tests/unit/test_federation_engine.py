@@ -328,6 +328,12 @@ def test_engine_registry_lists_all_selectable_engines():
         "fault_tolerant_execution",
         "fault_tolerant_task_memory",
         "exchange_spool_dir",
+        # S3-backed spool for multi-host clusters (a local dir isn't shared across hosts)
+        "exchange_spool_s3_endpoint",
+        "exchange_spool_bucket",
+        "exchange_spool_s3_region",
+        "exchange_spool_s3_access_key",
+        "exchange_spool_s3_secret_key",
     }
     assert any(f["type"] == "boolean" for f in trino["config_fields"])
     node_role = next(f for f in trino["config_fields"] if f["config_key"] == "node_role")
