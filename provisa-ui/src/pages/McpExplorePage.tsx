@@ -8,6 +8,7 @@
 // permission from the copyright holder.
 
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Alert, Badge, Group, Text, Title } from "@mantine/core";
 import {
@@ -206,6 +207,20 @@ export function McpExplorePage() {
       setBusy(false);
     }
   };
+
+  // Arriving from the NL page's "MCP Chat ›" button: take the carried question and run it once.
+  // react-router `state` doesn't survive a reload, so there's no resend on refresh; the ref guards
+  // against re-firing on re-render within this mount.
+  const location = useLocation();
+  const incoming = (location.state as { mcpQuestion?: string } | null)?.mcpQuestion;
+  const autoSentRef = useRef(false);
+  useEffect(() => {
+    if (incoming && !autoSentRef.current) {
+      autoSentRef.current = true;
+      void send(incoming);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once for the carried question
+  }, [incoming]);
 
   return (
     <div

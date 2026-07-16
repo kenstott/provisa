@@ -270,6 +270,17 @@ export function NlPage() {
         >
           {submitting ? t("nlPage.generating") : t("nlPage.generate")}
         </Button>
+        {/* Hand the same question to the MCP chat assistant, which runs it agentically. */}
+        <Button
+          variant="light"
+          disabled={!question.trim()}
+          onClick={() =>
+            navigate("/explore", { state: { mcpQuestion: question.trim() } })
+          }
+          data-testid="nl-mcp-chat-button"
+        >
+          {t("nlPage.mcpChat")}
+        </Button>
       </Group>
 
       {globalError && (
