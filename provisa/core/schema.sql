@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     mv_debounce_quiet     DOUBLE PRECISION NOT NULL DEFAULT 0,  -- MV NRT debounce quiet window (s)
     mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- MV NRT debounce max delay (s)
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
+    unique_constraints JSONB NOT NULL DEFAULT '[]',  -- REQ-1093: table-level UNIQUE constraints
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -125,6 +126,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS change_signal TEXT;  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS probe_query TEXT;  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS probe_type TEXT;  -- REQ-982
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS unique_constraints JSONB NOT NULL DEFAULT '[]';  -- REQ-1093
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS data_product BOOLEAN NOT NULL DEFAULT FALSE;
