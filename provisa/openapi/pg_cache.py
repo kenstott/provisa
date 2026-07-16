@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import time as _time
 from datetime import UTC, datetime
 
@@ -25,8 +26,11 @@ import httpx
 # Requirements: REQ-318, REQ-319
 
 # In-memory freshness guard: (schema, table, phash) → monotonic expiry.
-# Avoids a PG round-trip on cache hits.
+# Avoids a PG round-trip on cache hits. `_mark_fresh` iterates the dict to evict expired keys, which
+# would raise "dict changed size during iteration" if a second thread wrote concurrently — guard the
+# write+prune with a lock so the eviction is atomic. Single-`.get` reads stay lock-free (atomic).
 _mem_fresh: dict[tuple[str, str, str], float] = {}
+_mem_fresh_lock = threading.Lock()
 
 log = logging.getLogger(__name__)
 
@@ -165,11 +169,13 @@ async def _upsert_rows(
 
 def _mark_fresh(pg_schema: str, pg_table: str, phash: str, ttl: int) -> None:
     now = _time.monotonic()
-    _mem_fresh[(pg_schema, pg_table, phash)] = now + ttl
-    # Evict expired entries to prevent unbounded growth
-    expired = [k for k, exp in _mem_fresh.items() if exp <= now]
-    for k in expired:
-        del _mem_fresh[k]
+    with _mem_fresh_lock:
+        _mem_fresh[(pg_schema, pg_table, phash)] = now + ttl
+        # Evict expired entries to prevent unbounded growth (snapshot under the lock so a concurrent
+        # writer can't mutate the dict mid-iteration).
+        expired = [k for k, exp in _mem_fresh.items() if exp <= now]
+        for k in expired:
+            del _mem_fresh[k]
 
 
 async def _is_fresh(

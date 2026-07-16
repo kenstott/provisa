@@ -16,6 +16,8 @@ Pools created at startup, destroyed on shutdown.
 
 from __future__ import annotations
 
+import asyncio
+
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.registry import create_driver
 from provisa.executor.result import QueryResult
@@ -47,6 +49,10 @@ class SourcePool:  # REQ-052, REQ-053
     def __init__(self) -> None:
         self._drivers: dict[str, DirectDriver] = {}
         self._dialects: dict[str, str] = {}
+        # add() is a check-then-connect-then-set across an await; concurrent first-adds for one
+        # source would each open a driver and leak all but the last. Serialise adds so "one driver
+        # per source_id" holds (startup-only, so the coarse single lock costs nothing).
+        self._add_lock = asyncio.Lock()
 
     async def add(  # REQ-052, REQ-053
         self,
@@ -72,14 +78,18 @@ class SourcePool:  # REQ-052, REQ-053
         """
         if source_id in self._drivers:
             return
-        driver = create_driver(source_type, use_pgbouncer=use_pgbouncer)
-        driver.configure(
-            extra or {}
-        )  # warehouse drivers read federation_hints; RDBMS drivers no-op
-        connect_port = pgbouncer_port if use_pgbouncer else port
-        await driver.connect(host, connect_port, database, user, password, min_size, max_size)
-        self._drivers[source_id] = driver
-        self._dialects[source_id] = _SOURCE_DIALECT.get(source_type, source_type)
+        async with self._add_lock:
+            # Re-check under the lock: a peer may have added it while we awaited entry.
+            if source_id in self._drivers:
+                return
+            driver = create_driver(source_type, use_pgbouncer=use_pgbouncer)
+            driver.configure(
+                extra or {}
+            )  # warehouse drivers read federation_hints; RDBMS drivers no-op
+            connect_port = pgbouncer_port if use_pgbouncer else port
+            await driver.connect(host, connect_port, database, user, password, min_size, max_size)
+            self._drivers[source_id] = driver
+            self._dialects[source_id] = _SOURCE_DIALECT.get(source_type, source_type)
 
     def dialect_for(self, source_id: str) -> str | None:  # REQ-550
         """Return the sqlglot dialect string for a source, or None if unknown."""

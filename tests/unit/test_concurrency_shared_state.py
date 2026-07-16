@@ -223,3 +223,105 @@ async def test_hot_table_entry_coherence_under_concurrent_promotion():
     await asyncio.gather(*readers)
 
     assert not violations, "\n".join(violations[:10])
+
+
+# ── 5. executor.pool.SourcePool.add — one driver per source_id ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_source_pool_add_creates_one_driver_under_concurrency():
+    """Concurrent first-adds for one source must open exactly one driver. The connect() await is the
+    interleaving window; without the lock every racer opens (and leaks) its own driver."""
+    import provisa.executor.pool as P
+
+    created = {"n": 0}
+
+    class _FakeDriver:
+        def configure(self, extra):
+            pass
+
+        async def connect(self, *a):
+            await asyncio.sleep(0.003)  # widen the interleaving window
+
+        async def close(self):
+            pass
+
+    def fake_create_driver(source_type, use_pgbouncer=False):
+        created["n"] += 1
+        return _FakeDriver()
+
+    orig = P.create_driver
+    P.create_driver = fake_create_driver  # type: ignore[assignment]
+    try:
+        for _ in range(20):
+            created["n"] = 0
+            pool = P.SourcePool()
+
+            async def _add():
+                await pool.add("s1", "postgresql", "h", 5432, "db", "u", "p")
+
+            await asyncio.gather(*(_add() for _ in range(32)))
+            assert created["n"] == 1, (
+                f"opened {created['n']} drivers for one source (double-add race)"
+            )
+            assert pool.has("s1")
+    finally:
+        P.create_driver = orig  # type: ignore[assignment]
+
+
+# ── 6. openapi.pg_cache._mem_fresh — prune must not race the writers ────────────
+
+
+class TestMemFreshPruneRace:
+    """`_mark_fresh` evicts expired keys by iterating the shared dict. Concurrent writers must not
+    trip 'dict changed size during iteration' (a loud crash) nor lose the just-written key."""
+
+    def test_concurrent_mark_fresh_is_safe(self):
+        from provisa.openapi import pg_cache
+
+        def worker(barrier, sink):
+            barrier.wait()
+            try:
+                for i in range(300):
+                    # Mix of live (ttl>0) and already-expired (ttl<=0) keys so the prune loop always
+                    # has entries to delete while peers keep inserting — maximises the iterate/mutate
+                    # overlap that would crash an unguarded prune.
+                    ttl = 5 if i % 2 else -1
+                    pg_cache._mark_fresh("s", f"t{threading.get_ident()}_{i}", "h", ttl)
+            except Exception as exc:  # noqa: BLE001 — a raced prune surfaces as RuntimeError here
+                sink.append(repr(exc))
+
+        rounds = _hammer(worker, n_threads=32, trials=5, setup=pg_cache._mem_fresh.clear)
+        # INVARIANT: no iteration-vs-mutation crash on any thread, any round.
+        assert all(not s for s in rounds), f"prune raced a writer: {rounds}"
+        pg_cache._mem_fresh.clear()
+
+
+# ── 7. api_source.engine_cache._TABLE_EXISTS_CACHE — atomic get/set/pop ─────────
+
+
+class TestTableExistsCacheAtomicity:
+    """The table-exists cache is only ever touched with atomic dict ops (get/set/pop, no iteration),
+    so concurrent access must never raise and reads must stay consistent — verified benign."""
+
+    def test_concurrent_access_never_raises(self):
+        from provisa.api_source import engine_cache as EC
+
+        EC._TABLE_EXISTS_CACHE.clear()
+        import time as _t
+
+        def worker(barrier, sink):
+            barrier.wait()
+            try:
+                for i in range(500):
+                    key = ("cat", "sch", f"tbl{i % 8}")
+                    EC._TABLE_EXISTS_CACHE[key] = _t.monotonic() + 60
+                    _ = EC._TABLE_EXISTS_CACHE.get(key)
+                    if i % 3 == 0:
+                        EC._TABLE_EXISTS_CACHE.pop(key, None)
+            except Exception as exc:  # noqa: BLE001
+                sink.append(repr(exc))
+
+        rounds = _hammer(worker, n_threads=32, trials=5)
+        assert all(not s for s in rounds), f"table-exists cache raised under concurrency: {rounds}"
+        EC._TABLE_EXISTS_CACHE.clear()
