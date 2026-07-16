@@ -161,6 +161,81 @@ class TestAwsKms:
         assert not isinstance(svc, NullEncryption)  # real envelope path
 
 
+class TestHashiCorpVault:  # REQ-691, REQ-1088
+    def test_wrap_unwrap_roundtrips_through_transit(self):
+        import sys
+
+        transit = MagicMock()
+        transit.encrypt_data.return_value = {"data": {"ciphertext": "vault:v1:WRAPPED"}}
+        transit.decrypt_data.return_value = {
+            "data": {"plaintext": "REVLLUJZVEVT"}
+        }  # b64("DEK-BYTES")
+        client = MagicMock()
+        client.secrets.transit = transit
+        fake_hvac = MagicMock()
+        fake_hvac.Client.return_value = client
+        with patch.dict(sys.modules, {"hvac": fake_hvac}):
+            from provisa.encryption.providers import HashiCorpVaultMasterKey
+
+            p = HashiCorpVaultMasterKey(
+                "dek-key", url="https://vault.internal:8200", mount="transit"
+            )
+            assert p.wrap_dek(b"DEK-BYTES") == b"vault:v1:WRAPPED"
+            assert p.unwrap_dek(b"vault:v1:WRAPPED") == b"DEK-BYTES"
+        transit.encrypt_data.assert_called_once()
+        assert transit.encrypt_data.call_args.kwargs["name"] == "dek-key"
+        assert transit.encrypt_data.call_args.kwargs["mount_point"] == "transit"
+
+    def test_missing_key_name_raises(self):
+        import sys
+
+        with patch.dict(sys.modules, {"hvac": MagicMock()}):
+            from provisa.encryption.providers import HashiCorpVaultMasterKey
+
+            with pytest.raises(ValueError, match="key_name"):
+                HashiCorpVaultMasterKey("")
+
+
+class TestAzureKeyVault:  # REQ-692, REQ-1089
+    def _patched_sdk(self):
+        crypto_client = MagicMock()
+        crypto_client.wrap_key.return_value = MagicMock(encrypted_key=b"WRAPPED")
+        crypto_client.unwrap_key.return_value = MagicMock(key=b"DEK-BYTES")
+        crypto_mod = MagicMock()
+        crypto_mod.CryptographyClient.return_value = crypto_client
+        crypto_mod.KeyWrapAlgorithm.rsa_oaep_256 = "RSA-OAEP-256"
+        return {
+            "azure": MagicMock(),
+            "azure.identity": MagicMock(),
+            "azure.keyvault": MagicMock(),
+            "azure.keyvault.keys": MagicMock(),
+            "azure.keyvault.keys.crypto": crypto_mod,
+        }, crypto_client
+
+    def test_wrap_unwrap_delegate_to_key_vault(self):
+        import sys
+
+        mods, crypto_client = self._patched_sdk()
+        with patch.dict(sys.modules, mods):
+            from provisa.encryption.providers import AzureKeyVaultMasterKey
+
+            p = AzureKeyVaultMasterKey("https://v.vault.azure.net", "k")
+            assert p.wrap_dek(b"DEK-BYTES") == b"WRAPPED"
+            assert p.unwrap_dek(b"WRAPPED") == b"DEK-BYTES"
+        crypto_client.wrap_key.assert_called_once_with("RSA-OAEP-256", b"DEK-BYTES")
+        crypto_client.unwrap_key.assert_called_once_with("RSA-OAEP-256", b"WRAPPED")
+
+    def test_missing_config_raises(self):
+        import sys
+
+        mods, _ = self._patched_sdk()
+        with patch.dict(sys.modules, mods):
+            from provisa.encryption.providers import AzureKeyVaultMasterKey
+
+            with pytest.raises(ValueError, match="vault_url and key_name"):
+                AzureKeyVaultMasterKey("", "k")
+
+
 def teardown_module(_mod):
     # Drop test-registered providers so registry state doesn't leak across modules.
     import provisa.encryption.registry as reg

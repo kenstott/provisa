@@ -29504,6 +29504,8 @@
   - REQ-559
 - id: REQ-1007
   status: complete
+  tests:
+  - tests/unit/test_desktop_install.py
   since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tier Deployment
@@ -30875,6 +30877,9 @@
   - REQ-1072
 - id: REQ-1079
   status: complete
+  tests:
+  - tests/unit/test_admin_config_tabs.py
+  - provisa-ui/src/__tests__/SecurityTab.test.tsx
   group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
@@ -30887,6 +30892,9 @@
   - REQ-693
 - id: REQ-1080
   status: complete
+  tests:
+  - tests/unit/test_admin_config_tabs.py
+  - provisa-ui/src/__tests__/AiModelsTab.test.tsx
   group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
@@ -30903,6 +30911,8 @@
   - REQ-370
 - id: REQ-1081
   status: complete
+  tests:
+  - tests/unit/test_admin_config_tabs.py
   group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
@@ -30916,6 +30926,8 @@
   - REQ-543
 - id: REQ-1082
   status: complete
+  tests:
+  - tests/unit/test_admin_config_tabs.py
   group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
@@ -30929,6 +30941,8 @@
   - REQ-545
 - id: REQ-1083
   status: complete
+  tests:
+  - tests/unit/test_admin_config_tabs.py
   group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
@@ -30941,6 +30955,8 @@
   - REQ-165
 - id: REQ-1084
   status: complete
+  tests:
+  - tests/unit/test_admin_config_tabs.py
   group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
@@ -30953,6 +30969,10 @@
   - REQ-916
 - id: REQ-1085
   status: complete
+  tests:
+  - provisa-ui/src/__tests__/SecurityTab.test.tsx
+  - provisa-ui/src/__tests__/EncryptionTab.test.tsx
+  - provisa-ui/src/__tests__/LocalUsersTab.test.tsx
   group: 10. Admin Console & Governance
   category: Admin Navigation
   priority: SHOULD
@@ -30963,6 +30983,8 @@
   use_case: Improves discoverability and grouping of security-related admin settings.
 - id: REQ-1086
   status: complete
+  tests:
+  - tests/unit/test_encryption_providers.py
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -30981,6 +31003,8 @@
   - REQ-685
 - id: REQ-1087
   status: complete
+  tests:
+  - tests/unit/test_encryption_providers.py
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -30996,6 +31020,8 @@
   - REQ-684
 - id: REQ-1088
   status: complete
+  tests:
+  - tests/unit/test_encryption_providers.py
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -31011,6 +31037,8 @@
   - REQ-684
 - id: REQ-1089
   status: complete
+  tests:
+  - tests/unit/test_encryption_providers.py
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -31051,6 +31079,9 @@
     '
 - id: REQ-1091
   status: complete
+  tests:
+  - tests/unit/test_admin_config_tabs.py
+  - provisa-ui/src/__tests__/EncryptionTab.test.tsx
   group: 10. Admin Console & Governance
   category: Admin Configuration
   priority: SHOULD
@@ -31065,6 +31096,8 @@
   - REQ-1086
 - id: REQ-1092
   status: complete
+  tests:
+  - tests/unit/test_mcp_chat.py
   group: 11. Frontend UI & UX
   category: Catalog Explore
   priority: SHOULD
@@ -31161,6 +31194,8 @@
   - REQ-018
 - id: REQ-1094
   status: complete
+  tests:
+  - tests/unit/pgwire/test_composite_fk_and_index.py
   group: 8. Client Access & Protocols
   category: PostgreSQL Catalog Compatibility
   priority: MUST
@@ -31192,6 +31227,8 @@
     '
 - id: REQ-1095
   status: complete
+  tests:
+  - tests/unit/pgwire/test_composite_fk_and_index.py
   group: 8. Client Access & Protocols
   category: PostgreSQL Catalog Compatibility
   priority: MUST
