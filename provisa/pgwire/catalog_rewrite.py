@@ -40,6 +40,55 @@ def next_txid() -> int:
     return next(_TXID_COUNTER)
 
 
+_REG_CAST_TYPES = frozenset(
+    {
+        "regclass",
+        "regtype",
+        "regproc",
+        "regprocedure",
+        "regoper",
+        "regoperator",
+        "regconfig",
+        "regdictionary",
+        "regrole",
+        "regnamespace",
+    }
+)
+
+
+def _rewrite_pg_cast(node):
+    """Rewrite a PG-catalog-only cast into a DuckDB-compatible expression.
+
+    Returns the replacement node, or None when the cast needs no rewrite.
+    """
+    import sqlglot.expressions as exp
+
+    dtype = node.args.get("to")
+    dtype_str = str(dtype).lower() if dtype else ""
+    if dtype_str in _REG_CAST_TYPES:
+        # `'[schema.]name'::regclass` → unqualified `'name'`. Provisa's synthetic
+        # pg_description stores classoid as the short relation name (e.g.
+        # 'pg_class'), and DataGrip's comment queries filter
+        # `classoid = 'pg_catalog.pg_class'::regclass`. Map the literal to its last
+        # dotted component so the comparison matches — else every table/column
+        # description drops. Non-literal operands (a real oid column) pass through.
+        inner = node.this
+        if isinstance(inner, exp.Literal) and inner.is_string:
+            return exp.Literal.string(inner.this.rsplit(".", 1)[-1])
+        return inner
+    if dtype_str in ("oid", "xid", "tid", "cid"):
+        # DuckDB has no oid/xid/tid/cid types. Preserve the operand's value by
+        # re-casting to BIGINT instead of dropping it — e.g. DataGrip emits
+        # `relnamespace = 2215::oid`, and collapsing to a literal 0 would silently
+        # break the predicate. UBIGINT would match PG's unsigned oid domain, but
+        # BIGINT covers every real catalog oid (< 2^31) and interops with signed
+        # columns.
+        return exp.cast(node.this, "BIGINT")
+    if dtype_str == "name":
+        return exp.cast(node.this, "VARCHAR")
+    return None
+
+
 def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
     """Rewrite catalog table refs for DuckDB and transpile from postgres dialect."""
     import sqlglot.expressions as exp
@@ -254,25 +303,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                     expressions=[arr.transform(_transform), rhs.transform(_transform)],
                 )
         if isinstance(node, exp.Cast):
-            dtype = node.args.get("to")
-            dtype_str = str(dtype).lower() if dtype else ""
-            if dtype_str in (
-                "regclass",
-                "regtype",
-                "regproc",
-                "regprocedure",
-                "regoper",
-                "regoperator",
-                "regconfig",
-                "regdictionary",
-                "regrole",
-                "regnamespace",
-            ):
-                return node.this
-            if dtype_str in ("oid", "xid", "tid", "cid"):
-                return exp.Literal.number(0)
-            if dtype_str == "name":
-                return exp.cast(node.this, "VARCHAR")
+            rewritten_cast = _rewrite_pg_cast(node)
+            if rewritten_cast is not None:
+                return rewritten_cast
         if isinstance(node, exp.Column):
             if node.name.lower() in ("xmin", "xmax", "cmin", "cmax", "ctid"):
                 return exp.cast(exp.Literal.number(0), "INTEGER")

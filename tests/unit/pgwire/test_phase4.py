@@ -13,7 +13,7 @@
 Covers untested catalog tables and rewrite functions:
 - information_schema.views (empty stub)
 - pg_catalog.pg_description (empty stub)
-- pg_catalog.pg_index (empty stub)
+- pg_catalog.pg_index (populated from PK/UNIQUE constraints)
 - pg_catalog.pg_proc (empty stub)
 - pg_catalog.pg_auth_members (empty stub)
 - pg_catalog.pg_tables (populated from context)
@@ -322,19 +322,20 @@ def test_pg_get_constraintdef_executes_null():
     assert all(r[0] is None for r in result.rows)
 
 
-# ── pg_get_indexdef() executes NULL (pg_index is empty) ─────────────────────
+# ── pg_get_indexdef() executes NULL (pg_index populated from key constraints) ─
 
 
 def test_pg_get_indexdef_executes_null():
-    ctx = _make_ctx_with_tables()
+    ctx = _make_ctx_with_tables()  # dogs table has a PK → one pg_index row
     state = _make_state(ctx)
     result = answer(
         "SELECT pg_get_indexdef(i.indexrelid, 0, false) FROM pg_catalog.pg_index i",
         "alice",
         state,
     )
-    # pg_index is empty → no rows, not an error
-    assert result.rows == []
+    # PK on dogs → one index row; pg_get_indexdef is a stub returning NULL
+    assert len(result.rows) >= 1
+    assert all(r[0] is None for r in result.rows)
 
 
 # ── current_setting() ───────────────────────────────────────────────────────

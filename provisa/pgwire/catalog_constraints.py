@@ -143,17 +143,71 @@ def _build_unique_constraint_rows(  # REQ-1093
     return rows, con_oid
 
 
+def _fk_row(
+    con_oid: int,
+    con_name: str,
+    ns_oid_fk: int,
+    src_toid: int,
+    tgt_toid: int,
+    conkey: list[int],
+    confkey: list[int],
+) -> tuple:
+    """One pg_constraint FK tuple. conkey/confkey are parallel attnum arrays."""
+    return (
+        con_oid,
+        con_name,
+        ns_oid_fk,
+        "f",
+        False,
+        False,
+        True,
+        src_toid,
+        0,
+        0,
+        0,
+        tgt_toid,
+        "a",
+        "a",
+        "s",
+        True,
+        0,
+        True,
+        conkey,
+        confkey,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+# A composite FK requires the target to have a multi-column PK; a single-column
+# target PK can only back single-column FKs, so grouping never applies there.
+_MIN_COMPOSITE_KEY_COLS = 2
+
+
 def _build_fk_constraint_rows(
     ctx,
     idx: CatalogIndex,
     con_oid_start: int,
 ) -> tuple[list[tuple], int]:
-    from provisa.compiler.sql_rewrite import semantic_table_name
+    """Emit pg_constraint FK rows, reconstructing composite FKs.
 
-    rows: list[tuple] = []
-    con_oid = con_oid_start
+    Provisa's relationship model is single-column: a composite FK is stored as N
+    separate joins with no shared constraint identifier. Grouping data cannot be
+    threaded through without a migration (forbidden in V1), so composite FKs are
+    reconstructed here from the FK→PK invariant: joins between the same table pair
+    whose target columns together form the target's composite PK are one FK. Any
+    other joins (single-column FKs, partial coverage, independent multi-FKs to the
+    same table) fall through to one single-column row each — the prior behavior.
+    """
+    from provisa.compiler.sql_rewrite import semantic_table_name
+    from provisa.compiler.naming import apply_sql_name
+
+    # Pass 1: resolve every eligible join to its attnums, grouped by table pair.
     seen_joins: set[tuple] = set()
-    used_names: set[str] = set()
+    groups: dict[tuple[int, int], list[dict]] = {}
     for (src_type, join_field), jm in ctx.joins.items():
         if not jm.target_column:
             continue
@@ -170,59 +224,86 @@ def _build_fk_constraint_rows(
         tgt_toid = idx.table_id_to_oid.get(jm.target.table_id)
         if src_toid is None or tgt_toid is None:
             continue
-        ns_oid_fk = idx.ns_map.get(idx.toid_to_table[src_toid][1], 2200)
         is_synthetic = (
             jm.source_constant is not None
             or jm.source_expr is not None
             or jm.source_column.startswith("__")
         )
-        from provisa.compiler.naming import apply_sql_name
-
         src_col_sql = apply_sql_name(jm.source_column)
         tgt_col_sql = apply_sql_name(jm.target_column)
-        col_label = join_field if is_synthetic else src_col_sql
-        src_sem_name = semantic_table_name(src_tm)
-        base_name = f"fk_{src_sem_name}__{col_label}"
-        tgt_sem_name = semantic_table_name(jm.target)
-        con_name = base_name if base_name not in used_names else f"{base_name}__{tgt_sem_name}"
-        used_names.add(con_name)
-        attnum_col = src_col_sql
-        if jm.source_column.startswith("__"):
-            attnum_col = "_name_"
+        attnum_col = "_name_" if jm.source_column.startswith("__") else src_col_sql
         src_attnum = idx.col_attnum.get((src_toid, attnum_col), 0)
         tgt_attnum = idx.col_attnum.get((tgt_toid, tgt_col_sql), 0)
         if src_attnum == 0:
             continue
-        rows.append(
-            (
-                con_oid,
-                con_name,
-                ns_oid_fk,
-                "f",
-                False,
-                False,
-                True,
-                src_toid,
-                0,
-                0,
-                0,
-                tgt_toid,
-                "a",
-                "a",
-                "s",
-                True,
-                0,
-                True,
-                [src_attnum],
-                [tgt_attnum],
-                None,
-                None,
-                None,
-                None,
-                None,
-            )
+        groups.setdefault((src_toid, tgt_toid), []).append(
+            {
+                "src_tm": src_tm,
+                "tgt": jm.target,
+                "tgt_table_id": jm.target.table_id,
+                "col_label": join_field if is_synthetic else src_col_sql,
+                "tgt_col_sql": tgt_col_sql,
+                "src_attnum": src_attnum,
+                "tgt_attnum": tgt_attnum,
+            }
         )
-        con_oid += 1
+
+    # Pass 2: emit composite where the group covers the target PK, else one row each.
+    rows: list[tuple] = []
+    con_oid = con_oid_start
+    used_names: set[str] = set()
+    for (src_toid, tgt_toid), entries in groups.items():
+        ns_oid_fk = idx.ns_map.get(idx.toid_to_table[src_toid][1], 2200)
+        tgt_table_id = entries[0]["tgt_table_id"]
+        pk_cols = ctx.pk_columns.get(tgt_table_id, [])
+        tgt_cols = [e["tgt_col_sql"] for e in entries]
+        is_composite = (
+            len(pk_cols) >= _MIN_COMPOSITE_KEY_COLS
+            and len(entries) == len(pk_cols)
+            and len(set(tgt_cols)) == len(entries)
+            and set(tgt_cols) == set(pk_cols)
+        )
+        if is_composite:
+            # Order both key arrays by the target PK column order so conkey[i]
+            # pairs with confkey[i].
+            by_tgt = {e["tgt_col_sql"]: e for e in entries}
+            ordered = [by_tgt[c] for c in pk_cols]
+            src_sem_name = semantic_table_name(entries[0]["src_tm"])
+            tgt_sem_name = semantic_table_name(entries[0]["tgt"])
+            base_name = f"fk_{src_sem_name}__{tgt_sem_name}"
+            con_name = base_name if base_name not in used_names else f"{base_name}_{con_oid}"
+            used_names.add(con_name)
+            rows.append(
+                _fk_row(
+                    con_oid,
+                    con_name,
+                    ns_oid_fk,
+                    src_toid,
+                    tgt_toid,
+                    [e["src_attnum"] for e in ordered],
+                    [e["tgt_attnum"] for e in ordered],
+                )
+            )
+            con_oid += 1
+            continue
+        for e in entries:
+            src_sem_name = semantic_table_name(e["src_tm"])
+            tgt_sem_name = semantic_table_name(e["tgt"])
+            base_name = f"fk_{src_sem_name}__{e['col_label']}"
+            con_name = base_name if base_name not in used_names else f"{base_name}__{tgt_sem_name}"
+            used_names.add(con_name)
+            rows.append(
+                _fk_row(
+                    con_oid,
+                    con_name,
+                    ns_oid_fk,
+                    src_toid,
+                    tgt_toid,
+                    [e["src_attnum"]],
+                    [e["tgt_attnum"]],
+                )
+            )
+            con_oid += 1
     return rows, con_oid
 
 
@@ -249,6 +330,58 @@ def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
             constraint_rows,
         )
     return constraint_rows
+
+
+# Offset added to a constraint oid to synthesize its backing index's indexrelid,
+# keeping index oids clear of table oids (16384+) and constraint oids (20000+).
+_INDEX_OID_OFFSET = 400000
+
+
+def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
+    """One _pg_index row per PK / UNIQUE constraint.
+
+    Clients (DataGrip) resolve primary-key columns via pg_index.indkey rather than
+    pg_constraint, so each key constraint is surfaced as its backing index. indkey
+    carries the ordered table attnums; indexrelid is synthesized from the
+    constraint oid (the index has no distinct pg_class entry — PK column resolution
+    joins pg_index → pg_attribute on indrelid, not on indexrelid).
+    """
+    index_rows: list[tuple] = []
+    for con_row in constraint_rows:
+        contype = con_row[3]
+        if contype not in ("p", "u"):
+            continue
+        indrelid = con_row[7]
+        conkey = list(con_row[18] or [])
+        if not conkey:
+            continue
+        n = len(conkey)
+        index_rows.append(
+            (
+                con_row[0] + _INDEX_OID_OFFSET,  # indexrelid — distinct from any table oid
+                indrelid,
+                n,  # indnatts
+                n,  # indnkeyatts
+                True,  # indisunique
+                contype == "p",  # indisprimary
+                False,  # indisexclusion
+                True,  # indimmediate
+                False,  # indisclustered
+                True,  # indisvalid
+                False,  # indcheckxmin
+                True,  # indisready
+                True,  # indislive
+                False,  # indisreplident
+                conkey,  # indkey
+                [0] * n,  # indcollation
+                [0] * n,  # indclass
+                [0] * n,  # indoption
+                None,  # indexprs
+                None,  # indpred
+            )
+        )
+    if index_rows:
+        db.executemany(f"INSERT INTO _pg_index VALUES ({','.join(['?'] * 20)})", index_rows)
 
 
 def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex) -> None:

@@ -536,6 +536,75 @@ class TestPgwireParameterizedQueries:
         assert received
         assert any("NULL" in r.upper() for r in received)
 
+    async def test_multi_param_extended(self, pgwire_srv):
+        """Two params ($1, $2) bound in a single extended-protocol query."""
+        port, _ = pgwire_srv
+        provider = _stub_auth_provider("admin", "secret")
+        state = _make_mock_state("admin", "simple")
+        received: list[str] = []
+
+        async def _capture(sql, *_):
+            received.append(sql)
+            return EngineResult(rows=[("a", 7)], column_names=["s", "n"])
+
+        with (
+            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.api.app.state", state),
+            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
+        ):
+            conn = await asyncpg.connect(
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
+                database="provisa",
+            )
+            await conn.fetchrow("SELECT $1::text AS s, $2::int AS n", "a", 7)
+            await conn.close()
+        assert received
+        # Both placeholders substituted; neither $1 nor $2 leaks through.
+        # received[-1] is the Execute-phase SQL (received[0] is the Describe
+        # example-value probe asyncpg issues before Bind).
+        assert "$1" not in received[-1] and "$2" not in received[-1]
+        assert "'a'" in received[-1]
+        assert "7" in received[-1]
+
+    async def test_explicit_prepared_statement(self, pgwire_srv):
+        """conn.prepare() drives a discrete Parse/Describe/Bind/Execute cycle.
+
+        asyncpg's prepare() issues Parse + Describe(statement) before any Bind,
+        exercising the extended-protocol path end to end (REQ-581/REQ-589).
+        """
+        port, _ = pgwire_srv
+        provider = _stub_auth_provider("admin", "secret")
+        state = _make_mock_state("admin", "simple")
+        received: list[str] = []
+
+        async def _capture(sql, *_):
+            received.append(sql)
+            return EngineResult(rows=[(99,)], column_names=["v"])
+
+        with (
+            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.api.app.state", state),
+            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
+        ):
+            conn = await asyncpg.connect(
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
+                database="provisa",
+            )
+            stmt = await conn.prepare("SELECT $1::int AS v")
+            row = await stmt.fetchrow(99)
+            await conn.close()
+        assert row is not None
+        # Bind substituted the param before dispatch through the pipeline.
+        assert received
+        assert "$1" not in received[-1]
+        assert "99" in received[-1]
+
 
 # ---------------------------------------------------------------------------
 # REQ-587 — Transaction control intercept
