@@ -18,26 +18,27 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Load ONLY warehouse/cloud credentials from .env so the credential-gated lanes
-# (Snowflake/Databricks/BigQuery/Fabric/Synapse/ClickHouse) run instead of skipping. We must NOT
-# source the whole file: .env also carries POSTGRES_HOST, PROVISA_REDIRECT_*, PG_* etc., which would
-# redirect the isolated docker stack at localhost:5432 and break config-default unit tests. A prefix
-# whitelist keeps the blast radius to exactly the provider creds those skipifs check. Caller-exported
-# vars win; blanks/comments skipped.
-if [[ -f .env ]]; then
-  _CRED_RE='^(SNOWFLAKE_|DATABRICKS_|GOOGLE_|BIGQUERY_|FABRIC_|SYNAPSE_|CLICKHOUSE_)'
+# Load ONLY warehouse/cloud credentials from .env, and ONLY inside the opt-in warehouse lane.
+# Loading them globally is wrong: it makes every lane's in-process app try to build the warehouse
+# engines at startup, adds heavy cloud e2e tests to the fast lanes, and mutates the shared engine
+# registry that unit tests assert against. We must also NOT source the whole file (POSTGRES_HOST,
+# PROVISA_REDIRECT_*, PG_* would redirect the isolated docker stack and break config-default tests).
+# A prefix whitelist keeps the blast radius to exactly the provider creds the skipifs check; caller-
+# exported vars win. The standard lanes run clean, so warehouse tests simply skip there.
+_load_warehouse_creds() {
+  [[ -f .env ]] || return 0
+  local cred_re='^(SNOWFLAKE_|DATABRICKS_|GOOGLE_|BIGQUERY_|FABRIC_|SYNAPSE_|CLICKHOUSE_)' key line
   set -a
-  # shellcheck disable=SC1091
-  while IFS= read -r _line || [[ -n "$_line" ]]; do
-    [[ "$_line" =~ ^[[:space:]]*# ]] && continue
-    [[ "$_line" =~ ^[[:space:]]*$ ]] && continue
-    _key="${_line%%=*}"
-    [[ "$_key" =~ $_CRED_RE ]] || continue     # only warehouse/cloud creds
-    [[ -n "${!_key:-}" ]] && continue          # caller-provided value wins
-    eval "export $_line"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    key="${line%%=*}"
+    [[ "$key" =~ $cred_re ]] || continue
+    [[ -n "${!key:-}" ]] && continue
+    eval "export $line"
   done < .env
   set +a
-fi
+}
 
 COV_ARGS=(--cov=provisa --cov-report= -p no:cacheprovider)
 rm -f .coverage .coverage.*
@@ -106,6 +107,26 @@ fi
 if [[ "${TEST_ALL_PACKAGING:-}" == "1" ]]; then
   echo "== lane: packaging =="
   COVERAGE_FILE=.coverage.packaging pytest -o addopts="" -m packaging "${COV_ARGS[@]}" "$@" || rc=1
+fi
+
+if [[ "${TEST_ALL_WAREHOUSE:-}" == "1" ]]; then
+  echo "== lane: warehouse (cloud DW creds from .env) =="
+  # Own process so the warehouse creds live ONLY here — every cloud-DW e2e is skipif-gated on its
+  # provider env, so it skips cleanly when a cred is absent. Snowflake/ClickHouse have no creds in
+  # .env and skip; Databricks needs DATABRICKS_TLS_CA_FILE (a CA bundle incl. the corporate proxy
+  # root) to clear TLS interception; Synapse is skipped unless SYNAPSE_* is set.
+  ( _load_warehouse_creds
+    COVERAGE_FILE=.coverage.warehouse pytest \
+      tests/integration/test_snowflake_source_e2e.py \
+      tests/integration/test_snowflake_federation_engine_e2e.py \
+      tests/integration/test_databricks_source_e2e.py \
+      tests/integration/test_databricks_federation_engine_e2e.py \
+      tests/integration/test_databricks_external_link_e2e.py \
+      tests/integration/test_bigquery_federation_engine_e2e.py \
+      tests/integration/test_fabric_federation_engine_e2e.py \
+      tests/integration/test_synapse_federation_engine_e2e.py \
+      tests/integration/test_clickhouse_source_e2e.py \
+      -o addopts="" "${COV_ARGS[@]}" "$@" ) || rc=1
 fi
 
 echo "== combined coverage =="
