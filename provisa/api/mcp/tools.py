@@ -59,18 +59,89 @@ def require_role(role: str, state: Any) -> str:
 
 
 def _domain_descriptions(state: Any) -> dict[str, str]:
-    """schema_id -> description from the loaded config domains (best-effort;
-    a domain with no description legitimately yields "")."""
+    """semantic schema name -> description from the loaded config domains (best-effort;
+    a domain with no description legitimately yields "").
+
+    Keyed by the semantic (SQL-queryable) schema name so it lines up with the semantic
+    catalog, not the raw domain id.
+    """
+    from provisa.compiler.naming import domain_to_sql_name
+
     config = getattr(state, "config", None)
     domains = getattr(config, "domains", None) or []
-    return {d.id: getattr(d, "description", "") or "" for d in domains}
+    return {domain_to_sql_name(d.id): getattr(d, "description", "") or "" for d in domains}
+
+
+def _meta_index(state: Any) -> dict[tuple[str, str], Any]:
+    """(domain_id, registered table_name) -> TableMeta, unioned across every role context.
+
+    Maps a raw catalog table to the TableMeta needed to derive its semantic (queryable)
+    name. The registered name may equal the meta's post-alias ``table_name`` or its
+    pre-alias ``original_table_name``, so both are indexed.
+    """
+    idx: dict[tuple[str, str], Any] = {}
+    for ctx in getattr(state, "contexts", {}).values():
+        for meta in getattr(ctx, "tables", {}).values():
+            domain = getattr(meta, "domain_id", "")
+            for name in (getattr(meta, "table_name", ""), getattr(meta, "original_table_name", "")):
+                if name:
+                    idx.setdefault((domain, name), meta)
+    return idx
+
+
+def _semantic_catalog(
+    raw: list[CatalogTable], index: dict[tuple[str, str], Any]
+) -> list[CatalogTable]:
+    """Rewrite each raw catalog table's schema/table identifiers to the semantic names the
+    SQL engine actually accepts — ``domain_to_sql_name`` + ``semantic_table_name``, the same
+    naming authority the pgwire/JDBC path uses.
+
+    Without this, raw domain ids (e.g. ``pet-store``) and domain-prefixed field names (e.g.
+    ``ps__users``) reach an agent as if they were queryable, so its SQL plans but fails to
+    execute ("schema doesn't exist"). Tables absent from every role context (no meta) fall
+    back to ``apply_sql_name`` on the registered name — the best available semantic form.
+    """
+    from dataclasses import replace
+
+    from provisa.compiler.naming import apply_sql_name, domain_to_sql_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
+
+    out: list[CatalogTable] = []
+    for t in raw:
+        meta = index.get((t.domain_id, t.table_name))
+        schema = domain_to_sql_name(t.domain_id)
+        table = semantic_table_name(meta) if meta is not None else apply_sql_name(t.table_name)
+        out.append(replace(t, domain_id=schema, table_name=table))
+    return out
 
 
 async def _catalog(state: Any) -> list[CatalogTable]:
-    """The virtual catalog (schemas/tables/columns) via the Flight reference
-    builder. build_catalog_tables is sync and drives its own event loop, so it
-    runs in a worker thread to avoid nesting inside the MCP async loop."""
-    return await asyncio.to_thread(build_catalog_tables, state)
+    """The virtual catalog (schemas/tables/columns) via the Flight reference builder,
+    with every schema/table identifier normalized to its semantic (SQL-queryable) name.
+
+    build_catalog_tables is sync and drives its own event loop, so it runs in a worker
+    thread to avoid nesting inside the MCP async loop.
+    """
+    raw = await asyncio.to_thread(build_catalog_tables, state)
+    return _semantic_catalog(raw, _meta_index(state))
+
+
+def _find_role_table(ctx: Any, schema: str, table: str) -> Any:
+    """The TableMeta in ``ctx`` whose semantic (schema, table) names equal the given pair.
+
+    Callers pass the semantic names the agent received from the catalog, so matching is
+    done on the same semantic forms (``domain_to_sql_name`` / ``semantic_table_name``) —
+    never on raw domain ids or domain-prefixed field names.
+    """
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
+
+    for meta in getattr(ctx, "tables", {}).values():
+        if domain_to_sql_name(getattr(meta, "domain_id", "")) != schema:
+            continue
+        if semantic_table_name(meta) == table:
+            return meta
+    return None
 
 
 async def list_schemas(state: Any, role: str) -> list[dict]:
@@ -112,14 +183,11 @@ def _foreign_keys(state: Any, role: str, schema: str, table: str) -> list[dict]:
     _register_relationship_joins). Many-to-one edges are the FK side. Scoped to
     the caller's role so an agent only sees relationships it may traverse.
     """
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
+
     ctx = state.contexts[role]
-    tmeta = None
-    for meta in getattr(ctx, "tables", {}).values():
-        if getattr(meta, "domain_id", "") != schema:
-            continue
-        if table in (getattr(meta, "table_name", ""), getattr(meta, "field_name", "")):
-            tmeta = meta
-            break
+    tmeta = _find_role_table(ctx, schema, table)
     if tmeta is None:
         return []
     type_name = getattr(tmeta, "type_name", "")
@@ -131,9 +199,8 @@ def _foreign_keys(state: Any, role: str, schema: str, table: str) -> list[dict]:
         fks.append(
             {
                 "column": jm.source_column,
-                "references_schema": getattr(target, "domain_id", ""),
-                "references_table": getattr(target, "field_name", "")
-                or getattr(target, "table_name", ""),
+                "references_schema": domain_to_sql_name(getattr(target, "domain_id", "")),
+                "references_table": semantic_table_name(target),
                 "references_column": jm.target_column,
             }
         )
@@ -148,15 +215,13 @@ def _unique_constraints(state: Any, role: str, schema: str, table: str) -> list[
     it may read.
     """
     ctx = state.contexts[role]
-    for meta in getattr(ctx, "tables", {}).values():
-        if getattr(meta, "domain_id", "") != schema:
-            continue
-        if table in (getattr(meta, "table_name", ""), getattr(meta, "field_name", "")):
-            return [
-                {"name": name, "columns": cols}
-                for name, cols in getattr(ctx, "unique_constraints", {}).get(meta.table_id, [])
-            ]
-    return []
+    tmeta = _find_role_table(ctx, schema, table)
+    if tmeta is None:
+        return []
+    return [
+        {"name": name, "columns": cols}
+        for name, cols in getattr(ctx, "unique_constraints", {}).get(tmeta.table_id, [])
+    ]
 
 
 async def describe_table(state: Any, role: str, schema: str, table: str) -> dict:
@@ -310,11 +375,15 @@ async def search_catalog(state: Any, role: str, nl_text: str, k: int = 5) -> lis
     if k <= 0:
         raise ValueError("k must be a positive integer")
 
+    from provisa.compiler.naming import domain_to_sql_name
+
     index = await _get_index(state)
     # Over-fetch so role/domain filtering + table dedup still yields k branches.
     hits = await index.search(nl_text.strip(), max(k * 6, k))
 
-    allowed = _role_domains(state, role)
+    # Hits carry semantic schema names (the index is built over the semantic catalog), so
+    # normalize the role's allowed domains to the same semantic form before comparing.
+    allowed = {d if d == "*" else domain_to_sql_name(d) for d in _role_domains(state, role)}
     results: list[dict] = []
     seen: set[tuple[str, str]] = set()
     for h in hits:

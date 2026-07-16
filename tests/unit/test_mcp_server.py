@@ -164,6 +164,95 @@ async def test_describe_table_not_found(state):
         await tools.describe_table(state, "analyst", "sales", "ghost")
 
 
+# --- semantic name normalization -------------------------------------------
+# Raw domain ids (kebab) and domain-prefixed field names must NOT leak: an agent
+# must be handed the exact schema.table the SQL engine accepts, or its plan fails
+# to execute ("schema doesn't exist"). See provisa.compiler.sql_rewrite naming.
+
+
+def _make_prefixed_state():
+    """A role context whose domain is kebab-cased ('pet-store') and whose field names
+    carry the domain acronym prefix ('ps__users'), mirroring the real leak."""
+    users_meta = TableMeta(
+        table_id=10,
+        field_name="ps__users",
+        type_name="PS__Users",
+        source_id="ps",
+        catalog_name="ps",
+        schema_name="public",
+        table_name="users",
+        domain_id="pet-store",
+    )
+    pets_meta = TableMeta(
+        table_id=11,
+        field_name="ps__pets",
+        type_name="PS__Pets",
+        source_id="ps",
+        catalog_name="ps",
+        schema_name="public",
+        table_name="pets",
+        domain_id="pet-store",
+    )
+    ctx = SimpleNamespace(
+        tables={"ps__users": users_meta, "ps__pets": pets_meta},
+        joins={
+            ("PS__Pets", "user"): JoinMeta(
+                source_column="owner_id",
+                target_column="id",
+                source_column_type="integer",
+                target_column_type="integer",
+                target=users_meta,
+                cardinality="many-to-one",
+            ),
+        },
+        unique_constraints={},
+    )
+    config = SimpleNamespace(domains=[SimpleNamespace(id="pet-store", description="Pet store")])
+    return SimpleNamespace(
+        contexts={"analyst": ctx},
+        roles={"analyst": {"id": "analyst"}},
+        config=config,
+    )
+
+
+_PREFIXED_CATALOG = [
+    CatalogTable("pet-store", "users", "Users", [CatalogColumn("id", "integer", False, "")]),
+    CatalogTable(
+        "pet-store",
+        "pets",
+        "Pets",
+        [
+            CatalogColumn("id", "integer", False, ""),
+            CatalogColumn("owner_id", "integer", True, "FK to users"),
+        ],
+    ),
+]
+
+
+async def test_names_are_semantic_not_raw(monkeypatch):
+    """schema 'pet-store' → 'pet_store'; FK target field 'ps__users' → 'users'."""
+    monkeypatch.setattr(tools, "build_catalog_tables", lambda _s: list(_PREFIXED_CATALOG))
+    state = _make_prefixed_state()
+
+    schemas = await tools.list_schemas(state, "analyst")
+    assert schemas == [{"schema": "pet_store", "description": "Pet store", "table_count": 2}]
+
+    tables = await tools.list_tables(state, "analyst", "pet_store")
+    assert {t["table"] for t in tables} == {"users", "pets"}
+
+    described = await tools.describe_table(state, "analyst", "pet_store", "pets")
+    assert described["schema"] == "pet_store"
+    assert described["table"] == "pets"
+    assert described["foreign_keys"] == [
+        {
+            "column": "owner_id",
+            "references_schema": "pet_store",
+            "references_table": "users",
+            "references_column": "id",
+        }
+    ]
+
+
 # --- role rules -------------------------------------------------------------
 
 
