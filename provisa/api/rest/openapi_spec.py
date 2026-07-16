@@ -307,24 +307,40 @@ def _empty_spec() -> dict[str, Any]:
 
 SWAGGER_UI_HTML = """\
 <!DOCTYPE html>
-<html lang="en" class="dark-mode">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Provisa REST API</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <script>
+    // Apply the app's theme (passed via ?theme=dark|light) before paint so the
+    // page never flashes the wrong scheme. Defaults to dark when absent.
+    (function () {
+      var theme = new URLSearchParams(window.location.search).get("theme");
+      if (theme !== "light") document.documentElement.classList.add("dark-mode");
+    })();
+  </script>
   <style>
-    /* Provisa design tokens */
+    /* Provisa design tokens — light defaults, dark overrides below */
     :root {
+      --bg: #ffffff;
+      --surface: #f4f5f8;
+      --border: #e1e4ed;
+      --text: #1a1d27;
+      --text-muted: #6b7080;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --destructive: #ef4444;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    html.dark-mode {
       --bg: #0f1117;
       --surface: #1a1d27;
       --border: #2a2d37;
       --text: #e1e4ed;
       --text-muted: #8b8fa3;
-      --primary: #6366f1;
       --primary-hover: #818cf8;
-      --destructive: #ef4444;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
 
     html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font); }
@@ -342,131 +358,131 @@ SWAGGER_UI_HTML = """\
     /* Root containers — dark-mode class activates swagger-ui's built-in dark CSS;
        override its palette to match Provisa tokens */
     html.dark-mode { background: var(--bg) !important; }
-    html.dark-mode .swagger-ui { background: var(--bg) !important; color: var(--text) !important; font-family: var(--font) !important; }
+    .swagger-ui { background: var(--bg) !important; color: var(--text) !important; font-family: var(--font) !important; }
     .swagger-ui .topbar { display: none; }
-    html.dark-mode .swagger-ui .wrapper { background: var(--bg) !important; }
-    html.dark-mode .swagger-ui .scheme-container { background: var(--bg) !important; box-shadow: none !important; border: none !important; padding: 8px 0; }
+    .swagger-ui .wrapper { background: var(--bg) !important; }
+    .swagger-ui .scheme-container { background: var(--bg) !important; box-shadow: none !important; border: none !important; padding: 8px 0; }
 
     /* Info block */
     .swagger-ui .info { margin: 20px 0; }
-    html.dark-mode .swagger-ui .info .title,
-    html.dark-mode .swagger-ui .info h1,
-    html.dark-mode .swagger-ui .info h2,
-    html.dark-mode .swagger-ui .info h3,
-    html.dark-mode .swagger-ui .info h4,
-    html.dark-mode .swagger-ui .info h5 { color: var(--text) !important; font-size: 1.4rem; }
-    html.dark-mode .swagger-ui .info p,
-    html.dark-mode .swagger-ui .info li { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .info a { color: var(--primary-hover) !important; }
+    .swagger-ui .info .title,
+    .swagger-ui .info h1,
+    .swagger-ui .info h2,
+    .swagger-ui .info h3,
+    .swagger-ui .info h4,
+    .swagger-ui .info h5 { color: var(--text) !important; font-size: 1.4rem; }
+    .swagger-ui .info p,
+    .swagger-ui .info li { color: var(--text-muted) !important; }
+    .swagger-ui .info a { color: var(--primary-hover) !important; }
 
     /* Tag / section headers */
-    html.dark-mode .swagger-ui .opblock-tag { color: var(--text) !important; border-bottom: 1px solid var(--border) !important; font-size: 1rem; }
-    html.dark-mode .swagger-ui .opblock-tag:hover { background: var(--surface) !important; }
-    html.dark-mode .swagger-ui .opblock-tag small { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .opblock-tag-section h3 { color: var(--text) !important; }
+    .swagger-ui .opblock-tag { color: var(--text) !important; border-bottom: 1px solid var(--border) !important; font-size: 1rem; }
+    .swagger-ui .opblock-tag:hover { background: var(--surface) !important; }
+    .swagger-ui .opblock-tag small { color: var(--text-muted) !important; }
+    .swagger-ui .opblock-tag-section h3 { color: var(--text) !important; }
 
     /* Operation blocks */
-    html.dark-mode .swagger-ui .opblock { background: var(--surface) !important; border-color: var(--border) !important; box-shadow: none !important; margin: 4px 0; }
-    html.dark-mode .swagger-ui .opblock .opblock-summary { border-bottom: 1px solid var(--border) !important; }
-    html.dark-mode .swagger-ui .opblock .opblock-summary-method { min-width: 70px; font-size: 0.75rem; font-weight: 700; }
-    html.dark-mode .swagger-ui .opblock .opblock-summary-path { color: var(--text) !important; font-family: monospace; }
-    html.dark-mode .swagger-ui .opblock .opblock-summary-description { color: var(--text-muted) !important; font-size: 0.8rem; }
-    html.dark-mode .swagger-ui .opblock-description-wrapper p { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .opblock-body { background: var(--bg) !important; }
-    html.dark-mode .swagger-ui .opblock-section-header { background: var(--surface) !important; border-bottom: 1px solid var(--border) !important; }
-    html.dark-mode .swagger-ui .opblock-section-header h4 { color: var(--text-muted) !important; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .swagger-ui .opblock { background: var(--surface) !important; border-color: var(--border) !important; box-shadow: none !important; margin: 4px 0; }
+    .swagger-ui .opblock .opblock-summary { border-bottom: 1px solid var(--border) !important; }
+    .swagger-ui .opblock .opblock-summary-method { min-width: 70px; font-size: 0.75rem; font-weight: 700; }
+    .swagger-ui .opblock .opblock-summary-path { color: var(--text) !important; font-family: monospace; }
+    .swagger-ui .opblock .opblock-summary-description { color: var(--text-muted) !important; font-size: 0.8rem; }
+    .swagger-ui .opblock-description-wrapper p { color: var(--text-muted) !important; }
+    .swagger-ui .opblock-body { background: var(--bg) !important; }
+    .swagger-ui .opblock-section-header { background: var(--surface) !important; border-bottom: 1px solid var(--border) !important; }
+    .swagger-ui .opblock-section-header h4 { color: var(--text-muted) !important; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
 
     /* GET method color */
-    html.dark-mode .swagger-ui .opblock.opblock-get { border-color: var(--primary) !important; }
-    html.dark-mode .swagger-ui .opblock.opblock-get .opblock-summary { background: rgba(99,102,241,0.08) !important; }
-    html.dark-mode .swagger-ui .opblock.opblock-get .opblock-summary-method { background: var(--primary) !important; color: #fff !important; }
+    .swagger-ui .opblock.opblock-get { border-color: var(--primary) !important; }
+    .swagger-ui .opblock.opblock-get .opblock-summary { background: rgba(99,102,241,0.08) !important; }
+    .swagger-ui .opblock.opblock-get .opblock-summary-method { background: var(--primary) !important; color: #fff !important; }
 
     /* Parameters */
-    html.dark-mode .swagger-ui .parameters-col_name { color: var(--text) !important; font-family: monospace; font-size: 0.85rem; }
-    html.dark-mode .swagger-ui .parameters-col_description { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .parameter__name { color: var(--text) !important; }
-    html.dark-mode .swagger-ui .parameter__type { color: var(--primary-hover) !important; font-size: 0.75rem; }
-    html.dark-mode .swagger-ui .parameter__in { color: var(--text-muted) !important; font-size: 0.7rem; font-style: italic; }
-    html.dark-mode .swagger-ui table thead tr td,
-    html.dark-mode .swagger-ui table thead tr th { color: var(--text-muted) !important; border-bottom: 1px solid var(--border) !important; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
-    html.dark-mode .swagger-ui table tbody tr td { border-bottom: 1px solid var(--border) !important; color: var(--text) !important; }
+    .swagger-ui .parameters-col_name { color: var(--text) !important; font-family: monospace; font-size: 0.85rem; }
+    .swagger-ui .parameters-col_description { color: var(--text-muted) !important; }
+    .swagger-ui .parameter__name { color: var(--text) !important; }
+    .swagger-ui .parameter__type { color: var(--primary-hover) !important; font-size: 0.75rem; }
+    .swagger-ui .parameter__in { color: var(--text-muted) !important; font-size: 0.7rem; font-style: italic; }
+    .swagger-ui table thead tr td,
+    .swagger-ui table thead tr th { color: var(--text-muted) !important; border-bottom: 1px solid var(--border) !important; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+    .swagger-ui table tbody tr td { border-bottom: 1px solid var(--border) !important; color: var(--text) !important; }
 
     /* Inputs */
-    html.dark-mode .swagger-ui input { background: var(--bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
-    html.dark-mode .swagger-ui textarea { background: var(--bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
-    html.dark-mode .swagger-ui select { background: var(--bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
-    html.dark-mode .swagger-ui input:focus { border-color: var(--primary) !important; }
+    .swagger-ui input { background: var(--bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+    .swagger-ui textarea { background: var(--bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+    .swagger-ui select { background: var(--bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+    .swagger-ui input:focus { border-color: var(--primary) !important; }
 
     /* Buttons */
     .swagger-ui .btn { font-family: var(--font); border-radius: 4px; }
-    html.dark-mode .swagger-ui .btn.execute { background: var(--primary) !important; border-color: var(--primary) !important; color: #fff !important; }
-    html.dark-mode .swagger-ui .btn.execute:hover { background: var(--primary-hover) !important; border-color: var(--primary-hover) !important; }
-    html.dark-mode .swagger-ui .btn.cancel { background: transparent !important; border-color: var(--border) !important; color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .btn.try-out__btn { background: transparent !important; border: 1px solid var(--primary) !important; color: var(--primary) !important; }
-    html.dark-mode .swagger-ui .btn.authorize { border-color: var(--primary) !important; color: var(--primary) !important; background: transparent !important; }
+    .swagger-ui .btn.execute { background: var(--primary) !important; border-color: var(--primary) !important; color: #fff !important; }
+    .swagger-ui .btn.execute:hover { background: var(--primary-hover) !important; border-color: var(--primary-hover) !important; }
+    .swagger-ui .btn.cancel { background: transparent !important; border-color: var(--border) !important; color: var(--text-muted) !important; }
+    .swagger-ui .btn.try-out__btn { background: transparent !important; border: 1px solid var(--primary) !important; color: var(--primary) !important; }
+    .swagger-ui .btn.authorize { border-color: var(--primary) !important; color: var(--primary) !important; background: transparent !important; }
 
     /* Response section */
-    html.dark-mode .swagger-ui .responses-inner { background: var(--bg) !important; }
-    html.dark-mode .swagger-ui .response-col_status { color: var(--text) !important; }
-    html.dark-mode .swagger-ui .response-col_description { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .highlight-code { background: var(--surface) !important; border-radius: 4px; }
-    html.dark-mode .swagger-ui .highlight-code pre { background: var(--surface) !important; color: var(--text) !important; }
-    html.dark-mode .swagger-ui .microlight { background: var(--surface) !important; color: var(--text) !important; }
-    html.dark-mode .swagger-ui .response-control-media-type select { background: var(--bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+    .swagger-ui .responses-inner { background: var(--bg) !important; }
+    .swagger-ui .response-col_status { color: var(--text) !important; }
+    .swagger-ui .response-col_description { color: var(--text-muted) !important; }
+    .swagger-ui .highlight-code { background: var(--surface) !important; border-radius: 4px; }
+    .swagger-ui .highlight-code pre { background: var(--surface) !important; color: var(--text) !important; }
+    .swagger-ui .microlight { background: var(--surface) !important; color: var(--text) !important; }
+    .swagger-ui .response-control-media-type select { background: var(--bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
 
     /* ── Models / Schemas section ── */
-    html.dark-mode .swagger-ui section.models { border: 1px solid var(--border) !important; background: var(--bg) !important; border-radius: 6px; margin-top: 1rem; }
-    html.dark-mode .swagger-ui section.models h4 { color: var(--text) !important; border-bottom: 1px solid var(--border) !important; border-color: var(--border) !important; padding: 12px 20px; margin: 0; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; }
-    html.dark-mode .swagger-ui section.models .model-container { background: var(--bg) !important; border-top: 1px solid var(--border); margin: 0; padding: 6px 20px; }
-    html.dark-mode .swagger-ui section.models .model-container:first-of-type { border-top: none; }
-    html.dark-mode .swagger-ui section.models a { color: var(--text-muted) !important; font-size: 0.72rem; }
-    html.dark-mode .swagger-ui section.models a:hover { color: var(--primary-hover) !important; }
+    .swagger-ui section.models { border: 1px solid var(--border) !important; background: var(--bg) !important; border-radius: 6px; margin-top: 1rem; }
+    .swagger-ui section.models h4 { color: var(--text) !important; border-bottom: 1px solid var(--border) !important; border-color: var(--border) !important; padding: 12px 20px; margin: 0; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .swagger-ui section.models .model-container { background: var(--bg) !important; border-top: 1px solid var(--border); margin: 0; padding: 6px 20px; }
+    .swagger-ui section.models .model-container:first-of-type { border-top: none; }
+    .swagger-ui section.models a { color: var(--text-muted) !important; font-size: 0.72rem; }
+    .swagger-ui section.models a:hover { color: var(--primary-hover) !important; }
 
     /* model-box-control button (schema collapse toggle) */
-    html.dark-mode .swagger-ui .model-box-control { color: var(--text) !important; background: transparent !important; }
-    html.dark-mode .swagger-ui .model-box-control:not(.prop) { color: var(--text) !important; }
-    html.dark-mode .swagger-ui .model-box { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 4px; }
+    .swagger-ui .model-box-control { color: var(--text) !important; background: transparent !important; }
+    .swagger-ui .model-box-control:not(.prop) { color: var(--text) !important; }
+    .swagger-ui .model-box { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 4px; }
 
     /* ── OAS 3.1 json-schema-2020-12 renderer — this is the key fix ──
        Swagger UI renders schema names using json-schema-2020-12-accordion <button>
        elements. Without explicit overrides, <button> defaults to native
        browser light-gray background even when the parent is dark. */
-    html.dark-mode .swagger-ui .json-schema-2020-12 { background: var(--bg) !important; border-radius: 4px; }
-    html.dark-mode .swagger-ui .json-schema-2020-12 button { background: transparent !important; color: var(--text) !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12-accordion { background: transparent !important; color: var(--text) !important; border: none !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12__title { color: var(--text) !important; font-family: monospace !important; font-weight: 600 !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword--description { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword--description p { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12-json-viewer__name,
-    html.dark-mode .swagger-ui .json-schema-2020-12-json-viewer__value { color: var(--text) !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword--enum .json-schema-2020-12-json-viewer__name,
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword--enum .json-schema-2020-12-json-viewer__value { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword--const .json-schema-2020-12-json-viewer__name,
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword--const .json-schema-2020-12-json-viewer__value,
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword--default .json-schema-2020-12-json-viewer__name,
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword--default .json-schema-2020-12-json-viewer__value { color: var(--text) !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12__constraint { background-color: var(--primary) !important; color: #fff !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12__constraint--string { background-color: var(--primary-hover) !important; color: #fff !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12-expand-deep-button { background: transparent !important; color: var(--text-muted) !important; border: 1px solid var(--border) !important; border-radius: 3px; }
-    html.dark-mode .swagger-ui .json-schema-2020-12__title .json-schema-2020-12-keyword__name { color: var(--text) !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword--\\$vocabulary-uri { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .json-schema-2020-12-keyword ul { border-left-color: var(--border) !important; }
+    .swagger-ui .json-schema-2020-12 { background: var(--bg) !important; border-radius: 4px; }
+    .swagger-ui .json-schema-2020-12 button { background: transparent !important; color: var(--text) !important; }
+    .swagger-ui .json-schema-2020-12-accordion { background: transparent !important; color: var(--text) !important; border: none !important; }
+    .swagger-ui .json-schema-2020-12__title { color: var(--text) !important; font-family: monospace !important; font-weight: 600 !important; }
+    .swagger-ui .json-schema-2020-12-keyword--description { color: var(--text-muted) !important; }
+    .swagger-ui .json-schema-2020-12-keyword--description p { color: var(--text-muted) !important; }
+    .swagger-ui .json-schema-2020-12-json-viewer__name,
+    .swagger-ui .json-schema-2020-12-json-viewer__value { color: var(--text) !important; }
+    .swagger-ui .json-schema-2020-12-keyword--enum .json-schema-2020-12-json-viewer__name,
+    .swagger-ui .json-schema-2020-12-keyword--enum .json-schema-2020-12-json-viewer__value { color: var(--text-muted) !important; }
+    .swagger-ui .json-schema-2020-12-keyword--const .json-schema-2020-12-json-viewer__name,
+    .swagger-ui .json-schema-2020-12-keyword--const .json-schema-2020-12-json-viewer__value,
+    .swagger-ui .json-schema-2020-12-keyword--default .json-schema-2020-12-json-viewer__name,
+    .swagger-ui .json-schema-2020-12-keyword--default .json-schema-2020-12-json-viewer__value { color: var(--text) !important; }
+    .swagger-ui .json-schema-2020-12__constraint { background-color: var(--primary) !important; color: #fff !important; }
+    .swagger-ui .json-schema-2020-12__constraint--string { background-color: var(--primary-hover) !important; color: #fff !important; }
+    .swagger-ui .json-schema-2020-12-expand-deep-button { background: transparent !important; color: var(--text-muted) !important; border: 1px solid var(--border) !important; border-radius: 3px; }
+    .swagger-ui .json-schema-2020-12__title .json-schema-2020-12-keyword__name { color: var(--text) !important; }
+    .swagger-ui .json-schema-2020-12-keyword--\\$vocabulary-uri { color: var(--text-muted) !important; }
+    .swagger-ui .json-schema-2020-12-keyword ul { border-left-color: var(--border) !important; }
 
     /* Legacy model renderer (used when not OAS 3.1) */
-    html.dark-mode .swagger-ui .model { color: var(--text) !important; background: transparent !important; }
-    html.dark-mode .swagger-ui .model .property { color: var(--text-muted) !important; }
-    html.dark-mode .swagger-ui .model .property.primitive { color: var(--text) !important; }
-    html.dark-mode .swagger-ui .model .prop-type { color: var(--primary-hover) !important; background: transparent !important; }
-    html.dark-mode .swagger-ui .model .prop-format { color: var(--text-muted) !important; background: transparent !important; }
-    html.dark-mode .swagger-ui .model-title { color: var(--text) !important; }
-    html.dark-mode .swagger-ui .model a { color: var(--primary-hover) !important; }
-    html.dark-mode .swagger-ui .inner-object { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 4px; }
+    .swagger-ui .model { color: var(--text) !important; background: transparent !important; }
+    .swagger-ui .model .property { color: var(--text-muted) !important; }
+    .swagger-ui .model .property.primitive { color: var(--text) !important; }
+    .swagger-ui .model .prop-type { color: var(--primary-hover) !important; background: transparent !important; }
+    .swagger-ui .model .prop-format { color: var(--text-muted) !important; background: transparent !important; }
+    .swagger-ui .model-title { color: var(--text) !important; }
+    .swagger-ui .model a { color: var(--primary-hover) !important; }
+    .swagger-ui .inner-object { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 4px; }
 
     /* Required star */
-    html.dark-mode .swagger-ui table.model tr.property-row .star { color: var(--destructive) !important; }
+    .swagger-ui table.model tr.property-row .star { color: var(--destructive) !important; }
 
     /* Loading */
-    html.dark-mode .swagger-ui .loading-container .loading::after { color: var(--text-muted) !important; }
+    .swagger-ui .loading-container .loading::after { color: var(--text-muted) !important; }
 
     /* Scrollbar */
     .swagger-ui ::-webkit-scrollbar { width: 6px; height: 6px; }

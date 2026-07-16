@@ -11,6 +11,7 @@
 import { useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useMantineColorScheme } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./OpenApiPage.css";
@@ -18,13 +19,16 @@ import "./OpenApiPage.css";
 export function OpenApiPage() {
   const { t } = useTranslation();
   const location = useLocation();
+  const { colorScheme } = useMantineColorScheme();
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
   const roleId = role?.id ?? "";
   const domainsParam = checkedDomains.size > 0 ? [...checkedDomains].join(",") : "";
+  const theme = colorScheme === "light" ? "light" : "dark";
   const params = new URLSearchParams();
   if (roleId) params.set("role", roleId);
   if (domainsParam) params.set("domains", domainsParam);
+  params.set("theme", theme);
   const query = params.toString();
   const src = `/data/rest/docs${query ? "?" + query : ""}`;
 
@@ -74,7 +78,7 @@ export function OpenApiPage() {
     <div className="openapi-page page">
       <iframe
         ref={iframeRef}
-        key={`${roleId}:${domainsParam}`}
+        key={`${roleId}:${domainsParam}:${theme}`}
         src={src}
         className="openapi-frame"
         title={t("openApiPage.frameTitle")}

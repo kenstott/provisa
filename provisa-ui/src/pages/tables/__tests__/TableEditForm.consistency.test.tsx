@@ -48,6 +48,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     enableGroupBy: false,
     canDeployToDb: false,
     live: null,
+    uniqueConstraints: [],
     ...overrides,
   };
 }
