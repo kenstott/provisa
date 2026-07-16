@@ -726,6 +726,7 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
         <Group
           gap="0.5rem"
           wrap="wrap"
+          data-tour="rels-erd-modal"
           style={{
             padding: "0.6rem 0.75rem", borderBottom: "1px solid #1e293b",
             flexShrink: 0,

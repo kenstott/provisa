@@ -79,7 +79,7 @@ export const TOUR_STEPS: TourStep[] = [
       "</ul>" +
       "<p>Pick any of them. The engine sits behind the model, so everything ahead (the tables, the six surfaces, the governance) is identical either way. That's the point.</p>" +
       "<p>Declarative in, behavior out: you change the <em>strategy</em>, never the model.</p>" +
-      "<p>One model, no rewrites: develop on embedded DuckDB, validate against production engines, promote to your own infrastructure.</p>" +
+      "<p>One model, no rewrites: develop on desktop, validate against production engines, promote to your own infrastructure.</p>" +
       "<p>Ready? Let's go. →</p>",
   },
   {
@@ -170,12 +170,12 @@ export const TOUR_STEPS: TourStep[] = [
     clickAfterNext: RELS_ADD,
   },
   {
-    element: ".modal--erd",
+    element: '[data-tour="rels-erd-modal"]',
     title: "See the ERD",
     description:
       "The entity-relationship diagram renders your whole federated model — every registered table and the relationships between them.",
     clickBefore: '[data-tour="rels-erd"]',
-    clickAfterNext: ".modal--erd .modal-close",
+    clickAfterNext: '[data-testid="erd-close"]',
   },
   {
     route: "/security/roles",
