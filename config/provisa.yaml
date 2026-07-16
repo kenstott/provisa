@@ -8,7 +8,9 @@ cache:
   default_ttl: 300
   enabled: true
 discovery:
-  api_key: ${env:ANTHROPIC_API_KEY}
+  # Empty default so a keyless install boots (AI discovery stays off) instead of the API
+  # crashing at startup when ANTHROPIC_API_KEY is unset (secret resolution raises KeyError).
+  api_key: ${env:ANTHROPIC_API_KEY:-}
   min_confidence: 0.7
   sample_size: 20
 domains:
