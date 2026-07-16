@@ -375,9 +375,10 @@ main {
 
 /* SQL Modal results grid */
 .sql-results-table { border-radius: 0; background: var(--bg); }
-.sql-results-table th { background: var(--surface); padding: 0; vertical-align: top; border-bottom: 1px solid var(--border); font-weight: 400; color: var(--text); }
+.sql-results-table th { background: var(--surface); padding: 0; vertical-align: top; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-weight: 400; color: var(--text); }
+.sql-results-table th:last-child, .sql-results-table td:last-child { border-right: none; }
 .sql-results-table th.col-sorted { background: rgba(99,102,241,0.08); }
-.sql-results-table td { font-weight: 400; color: var(--text); padding: 0.28rem 0.5rem; vertical-align: middle; }
+.sql-results-table td { font-weight: 400; color: var(--text); padding: 0.28rem 0.5rem; vertical-align: middle; border-right: 1px solid var(--border); }
 .sql-results-table tbody tr:hover td { background: rgba(99,102,241,0.05); }
 .sql-results-table .th-label { font-weight: 600; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); padding: 0.3rem 0.5rem 0.15rem; display: flex; align-items: center; gap: 0.25rem; cursor: pointer; white-space: nowrap; overflow: hidden; user-select: none; }
 .sql-results-table .th-label:hover { color: var(--text); }

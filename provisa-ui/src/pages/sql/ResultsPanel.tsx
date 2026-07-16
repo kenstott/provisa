@@ -11,7 +11,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Badge, Box, Button, Table, Tabs, Text, TextInput } from "@mantine/core";
-import { History, BarChart2, Copy, Check, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
+import { History, BarChart2, Copy, Check, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Filter } from "lucide-react";
 import { COL_MIN, PAGE_SIZE } from "./types";
 import type { ResultTab, HistoryEntry, ColumnProfile } from "./types";
 
@@ -348,6 +348,8 @@ export function ResultsPanel({
                                   size="xs"
                                   variant="unstyled"
                                   className="th-filter"
+                                  leftSection={<Filter size={11} />}
+                                  leftSectionPointerEvents="none"
                                   aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${c}`}
                                   value={filters[c] ?? ""}
                                   onChange={(e) => {

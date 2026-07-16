@@ -20,7 +20,7 @@
     "nextPage": "Next page",
     "lastPage": "Last page",
     "pageIndicator": "Page {{page}} / {{total}}",
-    "filterPlaceholder": "filter…",
+    "filterPlaceholder": "Filter rows…",
     "resizeColumn": "Resize column",
     "nullValue": "null",
     "profileEmpty": "Sample a query to profile the result columns.",
