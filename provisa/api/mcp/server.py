@@ -123,7 +123,7 @@ def build_mcp_server(state: Any):
 
     @mcp.tool()
     async def explain_sql(sql: str, role: str | None = None) -> dict:
-        """Return the governed execution plan (route + physical SQL) without executing."""
+        """Validate and govern a query without executing it; confirms it plans cleanly for the role."""
         return await tools.explain_sql(state, _role(role), sql)
 
     @mcp.tool()

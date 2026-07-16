@@ -88,7 +88,7 @@ _TOOLS: list[Any] = [
     },
     {
         "name": "explain_sql",
-        "description": "Return the governed execution plan (route + physical SQL) without executing.",
+        "description": "Validate and govern a query without executing it; confirms it plans cleanly for your role.",
         "input_schema": {
             "type": "object",
             "properties": {"sql": {"type": "string"}},

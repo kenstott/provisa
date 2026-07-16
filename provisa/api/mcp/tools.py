@@ -283,19 +283,19 @@ async def run_sql(
 
 
 async def explain_sql(state: Any, role: str, sql: str) -> dict:
-    """Return the governed plan (route + physical/native SQL) WITHOUT executing."""
+    """Validate + govern the query WITHOUT executing, and report that it plans cleanly.
+
+    Physical is an internal lowering artifact: the federated ``physical_sql``, the raw
+    ``source_id`` (e.g. "pet-store-sqlite"), and the source ``dialect`` are NEVER returned —
+    exposing them let an agent read a physical name and replay it, bypassing the semantic
+    layer. This tool only confirms the SQL is valid and governed for the role (it raises
+    PermissionError / ValueError otherwise); there is nothing physical to reveal.
+    """
     from provisa.pgwire._pipeline import _govern_and_route
-    from provisa.transpiler.router import Route
 
     require_role(role, state)
-    plan = await _govern_and_route(sql, role)  # raises PermissionError / ValueError
-    physical = plan.physical_sql if plan.route == Route.ENGINE else plan.sql
-    return {
-        "route": getattr(plan.route, "name", None) or str(plan.route),
-        "physical_sql": physical,
-        "source_id": plan.source_id,
-        "dialect": plan.dialect,
-    }
+    await _govern_and_route(sql, role)  # raises PermissionError / ValueError; result discarded
+    return {"ok": True}
 
 
 def _role_domains(state: Any, role: str) -> set[str]:

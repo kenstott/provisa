@@ -357,12 +357,10 @@ async def test_explain_sql_returns_plan_without_executing(state, monkeypatch):
 
     govern.assert_awaited_once()
     execute.assert_not_awaited()  # explain is plan-only
-    assert result == {
-        "route": "ENGINE",
-        "physical_sql": "SELECT 1 /*physical*/",
-        "source_id": "pg",
-        "dialect": "trino",
-    }
+    # Physical is internal: no physical_sql, no raw source_id, no dialect ever leaks.
+    assert result == {"ok": True}
+    assert "physical_sql" not in result
+    assert "source_id" not in result
 
 
 async def test_explain_sql_permission_error_propagates(state, monkeypatch):
