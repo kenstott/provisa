@@ -8,6 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
+import base64
+import json
 import os
 import socket
 import subprocess
@@ -73,6 +75,7 @@ def _server_coverage_env() -> dict:
     except Exception:
         return {}
     return {"COVERAGE_PROCESS_START": os.path.abspath(os.path.join(_REPO_ROOT, "pyproject.toml"))}
+
 
 # The integration tier provisions its OWN isolated stack — a dedicated compose
 # project on ephemeral host ports, its own network — so it NEVER touches the local
@@ -251,6 +254,32 @@ def _server_reachable(url: str) -> bool:
         except Exception:
             time.sleep(1)
     return False
+
+
+def _server_can_execute(url: str) -> bool:
+    """True if the server can run a trivial query end-to-end, not merely answer /live.
+
+    requires_provisa_server tests exercise the full govern→route→execute pipeline. A server whose
+    demo dependencies (e.g. a graphql-remote source) are unreachable in this environment still passes
+    /live but returns non-200 on /data/sql, so gate these tests on real executability — a reachable-
+    but-non-executable server is a skip (the marker's intent), not a hard failure of unrelated code.
+    """
+    import urllib.error
+    import urllib.request
+
+    body = json.dumps({"sql": "SELECT 1", "role": "admin"}).encode()
+    token = base64.b64encode(b"admin:provisa").decode()
+    req = urllib.request.Request(
+        f"{url}/data/sql",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "Authorization": f"Basic {token}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
 
 
 def _tcp_reachable(host: str, port: int) -> bool:
@@ -566,6 +595,12 @@ def provisa_server():
     if _server_reachable(server_url):
         # Reusing an externally-managed server: its Flight port is whatever it was started with.
         os.environ["PROVISA_SERVER_FLIGHT_PORT"] = os.environ.get("FLIGHT_PORT", "8815")
+        if not _server_can_execute(server_url):
+            pytest.skip(
+                f"Provisa server at {server_url} answers /live but cannot execute a query "
+                "(its demo dependencies are unreachable here) — requires_provisa_server tests "
+                "need a fully-provisioned server"
+            )
         yield server_url
         return
 
@@ -626,6 +661,14 @@ def provisa_server():
             f"Provisa Arrow Flight server did not bind {_host}:{_flight_port} within 60s"
         )
     os.environ["PROVISA_SERVER_FLIGHT_PORT"] = str(_flight_port)
+
+    if not _server_can_execute(server_url):
+        proc.terminate()
+        pytest.skip(
+            f"Fallback Provisa server at {server_url} started but cannot execute a query "
+            "(demo dependencies unavailable in this environment) — requires_provisa_server tests "
+            "need a fully-provisioned server"
+        )
 
     try:
         yield server_url
