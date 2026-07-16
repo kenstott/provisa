@@ -18,17 +18,22 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Load .env so credential-gated lanes (Snowflake/Databricks/BigQuery/Fabric/Synapse/…) see their
-# warehouse creds instead of skipping. `set -a` exports every var the file defines; skip cleanly
-# when absent. Pre-set environment wins — we don't clobber vars already exported by the caller.
+# Load ONLY warehouse/cloud credentials from .env so the credential-gated lanes
+# (Snowflake/Databricks/BigQuery/Fabric/Synapse/ClickHouse) run instead of skipping. We must NOT
+# source the whole file: .env also carries POSTGRES_HOST, PROVISA_REDIRECT_*, PG_* etc., which would
+# redirect the isolated docker stack at localhost:5432 and break config-default unit tests. A prefix
+# whitelist keeps the blast radius to exactly the provider creds those skipifs check. Caller-exported
+# vars win; blanks/comments skipped.
 if [[ -f .env ]]; then
+  _CRED_RE='^(SNOWFLAKE_|DATABRICKS_|GOOGLE_|BIGQUERY_|FABRIC_|SYNAPSE_|CLICKHOUSE_)'
   set -a
   # shellcheck disable=SC1091
   while IFS= read -r _line || [[ -n "$_line" ]]; do
     [[ "$_line" =~ ^[[:space:]]*# ]] && continue
     [[ "$_line" =~ ^[[:space:]]*$ ]] && continue
     _key="${_line%%=*}"
-    [[ -n "${!_key:-}" ]] && continue  # caller-provided value wins
+    [[ "$_key" =~ $_CRED_RE ]] || continue     # only warehouse/cloud creds
+    [[ -n "${!_key:-}" ]] && continue          # caller-provided value wins
     eval "export $_line"
   done < .env
   set +a
