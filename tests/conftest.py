@@ -74,6 +74,7 @@ def _server_coverage_env() -> dict:
         return {}
     return {"COVERAGE_PROCESS_START": os.path.abspath(os.path.join(_REPO_ROOT, "pyproject.toml"))}
 
+
 # The integration tier provisions its OWN isolated stack — a dedicated compose
 # project on ephemeral host ports, its own network — so it NEVER touches the local
 # dev stack (the `provisa` project on default ports 5432/8080/9000/…). Core and
@@ -587,10 +588,18 @@ def provisa_server():
     # comes up, Flight never binds). A dedicated free port makes the live-server Flight isolation-safe.
     _flight_port = _free_port()
     venv_python = os.path.join(_REPO_ROOT, ".venv", "bin", "uvicorn")
+    # Provision the fallback server against the isolated test config, NOT the shipped demo config
+    # (config/provisa.yaml). The demo config declares sources like `pet-store-pg` that aren't
+    # provisioned in the isolated stack, so its default-source lookup KeyErrors and every /data/sql
+    # returns 400. sample_config.yaml's only source (`sales-pg`) resolves to the isolated PG via
+    # ${env:PG_PORT}/${env:PG_PASSWORD}, and it declares the admin/analyst roles these tests use — so
+    # the requires_provisa_server tests exercise a real, executable governance pipeline.
+    _live_cfg = os.path.join(os.path.dirname(__file__), "fixtures", "sample_config.yaml")
     server_env = {
         **os.environ,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",
         "FLIGHT_PORT": str(_flight_port),
+        "PROVISA_CONFIG": _live_cfg,
         **_server_coverage_env(),
     }
     proc = subprocess.Popen(
