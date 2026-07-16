@@ -30951,3 +30951,122 @@
     And the MCP describe_table response for the table includes the unique_constraints entry
   relates_to:
     - REQ-018
+- id: REQ-1094
+  status: complete
+  group: 8. Client Access & Protocols
+  category: PostgreSQL Catalog Compatibility
+  priority: MUST
+  type: structural
+  since: "2026-07"
+  description: >-
+    Composite foreign keys are reconstructed at pgwire catalog-build time from the FK→PK invariant.
+    Provisa's relationship model stores each FK column as a separate join with no shared constraint ID;
+    single-column many-to-one joins between the same source/target table pair whose target columns
+    together form the target table's composite primary key are collapsed into one pg_constraint FK row
+    (contype 'f') with multi-element conkey/confkey arrays, ordered by target PK column order. Joins
+    not covering a composite PK (single-column FKs, partial coverage, independent multi-FKs to the
+    same table) remain one single-column row each.
+  use_case: >-
+    PostgreSQL clients and tools (e.g., DataGrip, psql) expect composite FKs as single pg_constraint
+    rows with parallel conkey/confkey arrays; reconstructing them ensures correct relationship
+    visualization and validation logic without requiring a V1-prohibited migration.
+  code:
+    - provisa/pgwire/catalog_constraints.py
+  scenario: |
+    Given a target table with a composite primary key (col_a, col_b)
+    When source table S has many-to-one relationships joining S.col_a → target.col_a and S.col_b → target.col_b
+    Then pgwire emits one pg_constraint FK row with conkey=[attnum_a, attnum_b] and confkey=[attnum_a, attnum_b]
+    ordered by target PK column order
+    And a single-column FK from S to target on a different column remains one separate pg_constraint row
+- id: REQ-1095
+  status: complete
+  group: 8. Client Access & Protocols
+  category: PostgreSQL Catalog Compatibility
+  priority: MUST
+  type: structural
+  since: "2026-07"
+  description: >-
+    pg_catalog.pg_index is populated with one row per primary-key and UNIQUE constraint
+    (indrelid = table oid, indkey = ordered key attnums, indisprimary/indisunique flags set).
+    This allows PostgreSQL clients (e.g., DataGrip) that resolve key columns via pg_index.indkey
+    rather than pg_constraint to discover the correct columns via the standard pg_index → pg_attribute join.
+  use_case: >-
+    Standard SQL clients resolve primary key and unique constraint columns by joining pg_index to
+    pg_attribute on indkey; populating pg_index ensures clients that use this path (rather than
+    pg_constraint) get correct key column visibility and metadata.
+  code:
+    - provisa/pgwire/catalog_constraints.py
+  scenario: |
+    Given a table with a primary key and a UNIQUE constraint
+    When a PostgreSQL client queries pg_index for the table
+    Then one pg_index row exists for the PK with indisprimary=true and indkey=[attnum list]
+    And one pg_index row exists for the UNIQUE with indisunique=true and indkey=[attnum list]
+    And clients resolving key columns via pg_index → pg_attribute get the correct columns
+- id: REQ-1096
+  status: in-progress
+  group: 10. UI & Admin Surfaces
+  category: Admin & Configuration
+  priority: SHOULD
+  type: behavioral
+  since: "2026-07"
+  description: >-
+    Live config export/diff/patch — an OPT-IN admin capability, distinct from the plain
+    download/upload of REQ-164, that lets an admin see and export exactly what changed since
+    startup. The on-disk config is only the boot seed; admin mutations write to the control-plane
+    DB, so the file goes stale (an MV or relationship created in the UI, or a changed primary key,
+    never appears in it). When enabled, Provisa rebuilds the DB-backed config sections (tables incl.
+    views/MVs, relationships, roles, rls_rules, domains) from live state and overlays them on the
+    file base to produce the CURRENT config.
+
+    The baseline for diff/patch is a BOOT SNAPSHOT captured ONCE at the end of boot — after all
+    runtime auto-derivation (FK tracking, graphql-remote registration) — so the diff shows only
+    changes made SINCE startup, not derived entities that were never in the file. This is the
+    "lock the starting config after automated changes" behavior: the automated/derived setup is
+    frozen as the baseline, and every subsequent admin edit shows as a clean diff against it.
+
+    Both sides are normalized identically (deep key-sort + stable entity-sort) so section/key/entity
+    ORDER never differs and the diff surfaces only real changes. The admin UI (Configuration File
+    section) exposes: View Diff (a two-pane diff of baseline vs current, editable), Download Patch
+    (a git-apply/patch-compatible unified diff from baseline to the curated current, for CI/CD
+    reproduction), and Apply Revised (upload the curated config and reload). When the flag is on,
+    uploaded config is normalized on consume and persisted in normalized form so the on-disk file
+    stays byte-faithful to the patch baseline; when off, the file is written verbatim to preserve a
+    hand-authored file's comments/ordering.
+
+    The feature is coherent only when the generated/normalized config is canonical (config built
+    from installer/demo choices), NOT a hand-authored file whose comments/ordering a normalized
+    patch could not stay faithful to — so it is GATED behind the live_config_export flag (config key
+    live_config_export: true OR env PROVISA_LIVE_CONFIG_EXPORT in {1,true,yes}), exposed to the UI as
+    features.live_config_export, which conditionally renders the View Diff / patch controls. In DEMO
+    MODE the flag MUST be ON: the demo is the canonical-generated-config scenario, so demo builds
+    force live_config_export regardless of an explicit config key.
+  use_case: >-
+    Admins running the canonical/demo config need to see exactly what they changed in the UI since
+    startup and export it as a patch for version control or CI/CD, instead of hand-diffing a stale
+    on-disk file that never reflected DB-backed edits. Locking the boot snapshot after automated
+    derivation keeps the diff free of noise. Demo users get the diff/patch surface out of the box
+    because the demo config is generated and therefore always safe to normalize.
+  code:
+    - provisa/api/app.py
+    - provisa/api/app_startup.py
+    - provisa/api/admin/config_export.py
+    - provisa/api/admin/settings_router.py
+    - provisa-ui/src/pages/AdminPage.tsx
+    - provisa-ui/src/components/admin/ConfigDiffView.tsx
+  tests:
+    - tests/unit/test_config_export.py
+  scenario: |
+    Given demo mode is active
+    Then live_config_export is forced on and the admin UI shows View Diff / Download Patch / Apply Revised
+    Given live_config_export is enabled
+    When Provisa finishes booting (after FK tracking and graphql-remote registration)
+    Then the generated config is captured once as the boot-snapshot baseline
+    When an admin changes a table's primary key (or creates an MV) in the UI
+    And the admin opens View Diff
+    Then the diff shows only that change against the boot snapshot, both sides normalized identically
+    And Download Patch yields a git-apply-compatible unified diff from baseline to the curated current
+    And Apply Revised uploads the normalized config and reloads
+    Given live_config_export is disabled and demo mode is inactive
+    Then the View Diff / patch controls are absent and an uploaded config is written verbatim
+  relates_to:
+    - REQ-164

@@ -346,12 +346,16 @@ async def _load_and_build(
         state.otel_s3_endpoint = config.observability.s3_endpoint
 
     # Initialize cache store — REDIS_URL env var overrides config
-    # Live config export/diff/patch (REQ-164) is coherent only when the generated/normalized config is
+    # Live config export/diff/patch (REQ-1096) is coherent only when the generated/normalized config is
     # canonical — the demo scenario (config built from installer choices), NOT a hand-authored file
-    # with comments/ordering a normalized patch could not stay faithful to. Off unless opted in.
+    # with comments/ordering a normalized patch could not stay faithful to. Off unless opted in — EXCEPT
+    # demo mode, where the generated config is always canonical so the flag MUST be on (REQ-1096).
+    from provisa.api.setup_router import _is_demo
+
     state.config_live_export = bool(
         raw_config.get("live_config_export", False)
         or os.environ.get("PROVISA_LIVE_CONFIG_EXPORT", "").lower() in ("1", "true", "yes")
+        or _is_demo()
     )
 
     cache_config = raw_config.get("cache", {})
