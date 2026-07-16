@@ -28,7 +28,7 @@
     "itemCache": "Cache",
     "itemScheduler": "Scheduler",
     "itemFederation": "Federation",
-    "itemExplore": "Assistant",
+    "itemExplore": "MCP",
     "itemEncryption": "Encryption",
     "itemSecurity": "Security",
     "itemAuthentication": "Authentication",

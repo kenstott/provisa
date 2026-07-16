@@ -7,7 +7,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Badge, Group, Text, Title } from "@mantine/core";
 import {
@@ -19,7 +19,35 @@ import {
   TypingIndicator,
 } from "@chatscope/chat-ui-kit-react";
 import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Check, Copy, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+
+/** A copy-to-clipboard button that fades in on bubble hover. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="mcp-copy"
+      title="Copy"
+      aria-label="Copy message"
+      data-testid="mcp-chat-copy"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        } catch {
+          /* clipboard unavailable (insecure context) — no-op */
+        }
+      }}
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </button>
+  );
+}
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -44,12 +72,86 @@ export function McpExplorePage() {
   const [tools, setTools] = useState<ToolEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [draft, setDraft] = useState(""); // controlled input value (for copy/clear tools)
   // Latest-value ref so the SSE reader appends to current text without stale closures.
   const assistantRef = useRef("");
+
+  // Persist the conversation per role so it survives navigating away and back (and reloads within
+  // the tab). Role-scoped so one role's chat never restores under another (governance isolation).
+  const storageKey = `mcp.chat.${roleId || "default"}`;
+  useEffect(() => {
+    try {
+      // The product tour seeds a canned conversation here (a live chat needs an LLM key).
+      const seed = sessionStorage.getItem("provisa_mcp_tour_chat");
+      const saved = seed ?? sessionStorage.getItem(storageKey);
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         restore persisted (or tour-seeded) conversation on mount / role change */
+      setMessages(saved ? (JSON.parse(saved) as ChatMsg[]) : []);
+    } catch {
+      /* corrupt/absent → start fresh */
+    }
+  }, [storageKey]);
+  useEffect(() => {
+    try {
+      // Don't persist the tour's canned chat into the role's real history.
+      if (sessionStorage.getItem("provisa_mcp_tour_chat")) return;
+      sessionStorage.setItem(storageKey, JSON.stringify(messages));
+    } catch {
+      /* storage full / unavailable — persistence is best-effort */
+    }
+  }, [storageKey, messages]);
+
+  // Sent-input history (shell-style): Up/Down cycle through past entries. Persisted per role,
+  // independent of the visible conversation so it survives clearing the chat.
+  const histKey = `mcp.hist.${roleId || "default"}`;
+  const [history, setHistory] = useState<string[]>([]);
+  const histIndexRef = useRef(-1); // -1 = live draft; 0 = most recent entry
+  const recalledRef = useRef<string | null>(null);
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(histKey);
+      /* eslint-disable-next-line react-hooks/set-state-in-effect -- restore input history */
+      setHistory(saved ? (JSON.parse(saved) as string[]) : []);
+    } catch {
+      /* absent → empty history */
+    }
+  }, [histKey]);
+
+  const onDraftKey = (e: React.KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest(".cs-message-input")) return;
+    if ((e.key !== "ArrowUp" && e.key !== "ArrowDown") || history.length === 0) return;
+    e.preventDefault();
+    let idx = histIndexRef.current + (e.key === "ArrowUp" ? 1 : -1);
+    idx = Math.min(idx, history.length - 1);
+    if (idx < 0) {
+      histIndexRef.current = -1;
+      recalledRef.current = "";
+      setDraft("");
+      return;
+    }
+    histIndexRef.current = idx;
+    const val = history[history.length - 1 - idx];
+    recalledRef.current = val;
+    setDraft(val);
+  };
 
   const send = async (raw: string) => {
     const text = raw.replace(/<[^>]*>/g, "").trim(); // MessageInput yields HTML
     if (!text || busy) return;
+    setDraft("");
+    // Record in input history (skip a consecutive duplicate), cap at 100, and reset the cursor.
+    setHistory((h) => {
+      const next = h[h.length - 1] === text ? h : [...h, text].slice(-100);
+      try {
+        sessionStorage.setItem(histKey, JSON.stringify(next));
+      } catch {
+        /* best-effort */
+      }
+      return next;
+    });
+    histIndexRef.current = -1;
+    recalledRef.current = null;
     setError("");
     setTools([]);
     const history: ChatMsg[] = [...messages, { role: "user", text }];
@@ -106,7 +208,10 @@ export function McpExplorePage() {
   };
 
   return (
-    <div className="page">
+    <div
+      className="page"
+      style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+    >
       <Title order={2} mb={4}>
         {t("mcpExplore.title")}
       </Title>
@@ -138,7 +243,11 @@ export function McpExplorePage() {
         </Alert>
       )}
 
-      <div style={{ height: "62vh", position: "relative" }}>
+      <div
+        className="mcp-chat-wrap"
+        style={{ flex: 1, minHeight: 0, position: "relative" }}
+        onKeyDown={onDraftKey}
+      >
         <MainContainer>
           <ChatContainer>
             <MessageList
@@ -149,34 +258,83 @@ export function McpExplorePage() {
               {messages.length === 0 && (
                 <Message
                   model={{
-                    message: t("mcpExplore.emptyState"),
                     direction: "incoming",
                     position: "single",
                     sender: "assistant",
                   }}
-                />
+                >
+                  <Message.CustomContent>
+                    <div className="mcp-md">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {t("mcpExplore.emptyState")}
+                      </ReactMarkdown>
+                    </div>
+                  </Message.CustomContent>
+                </Message>
               )}
-              {messages.map((m, i) => (
-                <Message
-                  key={i}
-                  model={{
-                    message: m.text || (busy && i === messages.length - 1 ? "…" : ""),
-                    direction: m.role === "user" ? "outgoing" : "incoming",
-                    position: "single",
-                    sender: m.role,
-                  }}
-                />
-              ))}
+              {messages.map((m, i) =>
+                m.role === "user" ? (
+                  <Message
+                    key={i}
+                    model={{ direction: "outgoing", position: "single", sender: "user" }}
+                  >
+                    <Message.CustomContent>
+                      <div className="mcp-bubble">
+                        <div className="mcp-user-text">{m.text}</div>
+                        <CopyButton text={m.text} />
+                      </div>
+                    </Message.CustomContent>
+                  </Message>
+                ) : (
+                  // Assistant bubbles render markdown (tables, code, lists).
+                  <Message
+                    key={i}
+                    model={{ direction: "incoming", position: "single", sender: "assistant" }}
+                  >
+                    <Message.CustomContent>
+                      <div className="mcp-bubble">
+                        <div className="mcp-md">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {m.text || (busy && i === messages.length - 1 ? "…" : "")}
+                          </ReactMarkdown>
+                        </div>
+                        {m.text && <CopyButton text={m.text} />}
+                      </div>
+                    </Message.CustomContent>
+                  </Message>
+                ),
+              )}
             </MessageList>
             <MessageInput
               placeholder={t("mcpExplore.inputPlaceholder")}
-              onSend={send}
+              value={draft}
+              onChange={(_html: string, text: string) => {
+                if (text !== recalledRef.current) histIndexRef.current = -1; // manual edit
+                setDraft(text);
+              }}
+              onSend={() => void send(draft)}
               disabled={busy}
               attachButton={false}
               data-testid="mcp-chat-input"
             />
           </ChatContainer>
         </MainContainer>
+        {/* Hover copy/clear for the current draft — overlaid just left of the send button. */}
+        {draft.trim() && (
+          <div className="mcp-input-tools">
+            <CopyButton text={draft} />
+            <button
+              type="button"
+              className="mcp-copy"
+              title={t("mcpExplore.clear")}
+              aria-label={t("mcpExplore.clear")}
+              data-testid="mcp-chat-clear"
+              onClick={() => setDraft("")}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

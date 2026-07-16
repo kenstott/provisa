@@ -11,3 +11,81 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* MCP chat: markdown rendering inside chatscope message bubbles (REQ-1092) */
+.mcp-md { font-size: 0.9rem; line-height: 1.5; }
+.mcp-md > :first-child { margin-top: 0; }
+.mcp-md > :last-child { margin-bottom: 0; }
+.mcp-md p { margin: 0.4em 0; }
+.mcp-md ul, .mcp-md ol { margin: 0.4em 0; padding-left: 1.4em; }
+.mcp-md pre {
+  background: var(--mantine-color-dark-8, #1a1b1e);
+  color: #e6e6e6;
+  padding: 0.6em 0.8em;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+.mcp-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  background: rgba(125, 125, 125, 0.18);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+.mcp-md pre code { background: none; padding: 0; }
+.mcp-md table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  font-size: 0.85em;
+}
+.mcp-md th, .mcp-md td {
+  border: 1px solid var(--mantine-color-gray-4, #ced4da);
+  padding: 0.25em 0.55em;
+  text-align: left;
+}
+.mcp-md th { background: rgba(125, 125, 125, 0.12); font-weight: 600; }
+.mcp-md a { color: var(--mantine-color-blue-6, #228be6); }
+
+/* MCP chat: hover copy button on each bubble (REQ-1092) */
+.mcp-bubble { position: relative; }
+.mcp-user-text { white-space: pre-wrap; }
+.mcp-copy {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  line-height: 0;
+  cursor: pointer;
+  border: 1px solid var(--border, #ced4da);
+  border-radius: 6px;
+  background: var(--surface, #ffffff);
+  color: var(--text-muted, #868e96);
+}
+.mcp-bubble:hover .mcp-copy,
+.mcp-copy:focus-visible { opacity: 1; }
+.mcp-copy:hover { color: var(--text, #111); }
+
+/* MCP chat: hover copy/clear tools over the input draft (REQ-1092) */
+.mcp-input-tools {
+  position: absolute;
+  bottom: 14px;
+  right: 52px;
+  display: flex;
+  gap: 4px;
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.mcp-chat-wrap:hover .mcp-input-tools,
+.mcp-input-tools:focus-within { opacity: 1; pointer-events: auto; }
+.mcp-input-tools .mcp-copy { position: static; opacity: 1; }

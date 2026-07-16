@@ -223,7 +223,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/sql",
     openBranch: "sql",
     element: '.subnav a[href="/sql"]',
-    title: "SQL (1 of 6 surfaces)",
+    title: "SQL (1 of 7 surfaces)",
     description:
       "SQL lives in the SQL explorer. Standard SQL federated across every source — join Postgres to Mongo to a CSV in one statement. And the model's own metadata and every activity trace are themselves queryable tables here — join your audit log or lineage straight to live data." +
       "<p>🔌 Not just this explorer — point <strong>psql, DBeaver, or Tableau</strong> at Provisa's pgwire port and they run the exact same federated SQL.</p>",
@@ -232,7 +232,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/query",
     openBranch: "graphql",
     element: '.subnav a[href="/query"]',
-    title: "GraphQL (2 of 6 surfaces)",
+    title: "GraphQL (2 of 7 surfaces)",
     description:
       "◈ The same question as a typed GraphQL query:" +
       "<p><code>{ inquiries { groupBy { user }, count } }</code></p>" +
@@ -243,7 +243,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/graph",
     openBranch: "cypher",
     element: '.subnav a[href="/graph"]',
-    title: "Cypher (3 of 6 surfaces)",
+    title: "Cypher (3 of 7 surfaces)",
     description:
       "🕸️ Traverse the federated model as a graph with Cypher:" +
       "<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p>" +
@@ -254,7 +254,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/grpc",
     openBranch: "grpc",
     element: '.subnav a[href="/grpc"]',
-    title: "gRPC (4 of 6 surfaces)",
+    title: "gRPC (4 of 7 surfaces)",
     description:
       "⚙️ Every registered entity is also a gRPC service:" +
       "<p><code>rpc QueryInquiries(...) returns (...)</code></p>" +
@@ -264,7 +264,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/jsonapi",
     openBranch: "jsonapi",
     element: '.subnav a[href="/jsonapi"]',
-    title: "JSON:API (5 of 6 surfaces)",
+    title: "JSON:API (5 of 7 surfaces)",
     description:
       "🧩 A spec-compliant JSON:API surface:" +
       "<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p>" +
@@ -274,13 +274,24 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/openapi",
     openBranch: "openapi",
     element: '.subnav a[href="/openapi"]',
-    title: "OpenAPI / REST (6 of 6 surfaces)",
+    title: "OpenAPI / REST (6 of 7 surfaces)",
     description:
       "🌐 And a plain REST endpoint, described by OpenAPI:" +
       "<p><code>GET /data/rest/pet-store/inquiries</code></p>" +
-      "<p>✅ One model, <strong>six protocols</strong>.</p>" +
+      "<p>📄 Fully described, so any REST client or code generator can consume it.</p>",
+  },
+  {
+    route: "/explore",
+    prep: "seedMcp",
+    element: '.subnav a[href="/explore"]',
+    title: "MCP (7 of 7 surfaces)",
+    description:
+      "🤖 The seventh surface is conversational. An AI assistant drives the very same governed tools — search the catalog, describe tables, run SQL — every call bound by <strong>your</strong> role's governance." +
+      "<p>🔌 The same <strong>MCP server</strong> plugs into Claude Desktop, Claude Code, or any MCP client, so agents query your model the governed way.</p>" +
+      "<p>🔑 Live chat uses your own LLM key; this exchange is a canned example.</p>" +
+      "<p>✅ One model, <strong>seven surfaces</strong>.</p>" +
       "<div class='tour-tags'>" +
-      "<span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span>" +
+      "<span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span>" +
       "</div>",
   },
   {

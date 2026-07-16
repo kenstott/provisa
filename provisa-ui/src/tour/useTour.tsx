@@ -126,7 +126,29 @@ const NL_DEMO_BRANCHES = {
  * Prep actions run before a step navigates. Each seeds transient demo state and
  * is undone by {@link cleanupPrep} when the tour ends.
  */
+// Canned MCP chat shown during the tour — a real chat needs the visitor's own LLM key, so the
+// tour pre-seeds a representative exchange instead. McpExplorePage prefers this key when present.
+const MCP_TOUR_KEY = "provisa_mcp_tour_chat";
+const MCP_TOUR_CHAT = [
+  { role: "user", text: "Which tables have inquiries, and how many are there?" },
+  {
+    role: "assistant",
+    text:
+      "The `pet_store.inquiries` table holds customer inquiries. Running a governed count:\n\n" +
+      "| metric | value |\n|---|---|\n| total inquiries | 128 |\n| open | 34 |\n| resolved | 94 |\n\n" +
+      "Every row is filtered by your role's domain access — I only ran `SELECT count(*)` through " +
+      "the same governed pipeline pgwire and the other surfaces use.",
+  },
+];
+
 const PREP_ACTIONS: Record<string, () => void> = {
+  seedMcp() {
+    try {
+      sessionStorage.setItem(MCP_TOUR_KEY, JSON.stringify(MCP_TOUR_CHAT));
+    } catch {
+      /* best-effort — the tour bubble text already describes the surface */
+    }
+  },
   seedNl() {
     // Snapshot the visitor's NL state once (guard against re-entry via Back).
     if (localStorage.getItem(NL_BACKUP_KEY) === null) {
@@ -160,6 +182,11 @@ const BRANCH_NAV: Record<
 
 /** Restore any state a prep action stashed. No-op if nothing was seeded. */
 function cleanupPrep(): void {
+  try {
+    sessionStorage.removeItem(MCP_TOUR_KEY); // drop the canned MCP chat when the tour ends
+  } catch {
+    /* ignore */
+  }
   const raw = localStorage.getItem(NL_BACKUP_KEY);
   if (raw === null) return;
   const restore = (key: string, value: string | null) =>

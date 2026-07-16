@@ -61,7 +61,6 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "navBar.groupExplore",
     items: [
       { to: "/schema", labelKey: "navBar.itemSchema", capability: "query_development" },
-      { to: "/explore", labelKey: "navBar.itemExplore", capability: "query_development" },
       {
         to: "/nl",
         labelKey: "navBar.itemNl",
@@ -74,6 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/grpc", labelKey: "navBar.itemGrpc", capability: "query_development" },
       { to: "/jsonapi", labelKey: "navBar.itemJsonApi", capability: "query_development" },
       { to: "/openapi", labelKey: "navBar.itemOpenApi", capability: "query_development" },
+      { to: "/explore", labelKey: "navBar.itemExplore", capability: "query_development" },
     ],
   },
   {

@@ -1,11 +1,12 @@
 {
   "mcpExplore": {
-    "title": "Catalog Assistant",
+    "title": "MCP",
     "intro": "Chat with an AI assistant that explores the catalog and runs SQL for you through the governed MCP tools — the same tools external agents use.",
     "roleNote": "Acting as role: {{role}}",
     "noRole": "(no role)",
     "thinking": "Assistant is working…",
     "emptyState": "Ask about your data — e.g. \"which tables have customer email?\", \"top 10 orders by amount\", or \"what does the orders table look like?\"",
-    "inputPlaceholder": "Ask about your catalog or data…"
+    "inputPlaceholder": "Ask about your catalog or data…",
+    "clear": "Clear input"
   }
 }
