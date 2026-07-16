@@ -62,7 +62,18 @@ def _values_for(sqltype: str) -> st.SearchStrategy:
     elif sqltype == "BIGINT":
         base = st.integers(min_value=-_INT64_MAX - 1, max_value=_INT64_MAX)
     elif sqltype == "DOUBLE":
-        base = st.floats(allow_nan=False, allow_infinity=False, width=64)
+        # Bound magnitude away from the IEEE-754 extremes and disallow subnormals: near ±DBL_MAX and
+        # in the subnormal range, DuckDB and SQLite round a decimal literal to *different* doubles
+        # (a strtod implementation difference), which would flag an ENGINE quirk rather than a Provisa
+        # transpiler bug. Everything of finite normal magnitude stays in scope.
+        base = st.floats(
+            min_value=-1e12,
+            max_value=1e12,
+            allow_nan=False,
+            allow_infinity=False,
+            allow_subnormal=False,
+            width=64,
+        )
     elif sqltype == "TEXT":
         # Adversarial unicode/whitespace/empty, but exclude NUL (terminates a SQL string literal and
         # cannot be stored by SQLite) and surrogates (not UTF-8 encodable) — engine limits, not IR
