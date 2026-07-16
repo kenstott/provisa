@@ -212,7 +212,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/nl",
     prep: "seedNl",
-    element: ".nl-panels",
+    element: '[data-tour="nl-panels"]',
     title: "Ask in plain English",
     description:
       "💬 <em>\"show inquiry count by user\"</em>" +

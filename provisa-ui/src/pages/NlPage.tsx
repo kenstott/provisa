@@ -279,7 +279,7 @@ export function NlPage() {
       )}
 
       {hasResults && (
-        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+        <SimpleGrid data-tour="nl-panels" cols={{ base: 1, md: 3 }} spacing="sm">
           {TARGETS.map((tk) => (
             <BranchPanel key={tk} label={LABELS[tk]} target={tk} branch={branches[tk]} onOpen={openInExplorer} />
           ))}
