@@ -15,11 +15,27 @@ source so the full row is returned.
 
 from __future__ import annotations
 
+import re
+
 from provisa.vector.query import _vector_literal
+
+# Cache/source identifiers are schema-derived, never request-supplied — but these SQL strings are
+# built by interpolation (asyncpg has no identifier bind), so guard every interpolated identifier
+# against injection: only word chars, the identifier quote, and the schema-qualifier dot are allowed
+# (rejects single quotes, semicolons, whitespace, parentheses). A bad value fails loud, never runs.
+_IDENT_RE = re.compile(r'^[\w".]+$')
+
+
+def _safe_ident(name: str) -> str:
+    if not _IDENT_RE.match(name):
+        raise ValueError(f"unsafe SQL identifier: {name!r}")
+    return name
 
 
 def cache_ddl(cache_table: str, dimensions: int, pk_type: str = "text") -> list[str]:  # REQ-424
     """DDL to create the pgvector cache table and its HNSW cosine index."""
+    cache_table = _safe_ident(cache_table)
+    pk_type = _safe_ident(pk_type)
     index = f"{cache_table.replace('.', '_').strip('"')}_hnsw"
     return [
         f"CREATE TABLE IF NOT EXISTS {cache_table} "
@@ -41,6 +57,7 @@ async def materialize(  # REQ-424
     """Embed each row's text and upsert (pk, embedding) into the cache. Returns count."""
     if not rows:
         return 0
+    cache_table = _safe_ident(cache_table)
     if provider is None:
         from provisa.vector.providers import get_provider
 
@@ -70,6 +87,9 @@ def fallback_similarity_sql(  # REQ-424
     takes the top ``limit``, and joins the PKs back to the source table — so the
     caller gets full source rows ranked by similarity.
     """
+    source_table = _safe_ident(source_table)
+    source_pk = _safe_ident(source_pk)
+    cache_table = _safe_ident(cache_table)
     lit = _vector_literal(query_vector)
     return (
         f"SELECT s.* FROM {source_table} AS s "

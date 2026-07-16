@@ -103,10 +103,15 @@ def download_release_asset(spec: BundleSpec, dest: Path) -> None:
     any network / archive error — no partial or silent success. The tarball is expected to contain the
     bundle tree (``bin/pgwire-<connector>``, ``model/`` …); resolution verifies the launcher after."""
     dest.mkdir(parents=True, exist_ok=True)
+    if not spec.download_url.startswith("https://"):
+        raise BundleUnavailable(f"refusing non-https bundle URL: {spec.download_url}")
     try:
-        with urllib.request.urlopen(spec.download_url) as resp:  # noqa: S310 - pinned https release URL
+        # nosec B310 - scheme is validated to https just above (no file:/custom-scheme surface).
+        with urllib.request.urlopen(spec.download_url) as resp:  # noqa: S310  # nosec B310
             with tarfile.open(fileobj=resp, mode="r|gz") as tar:
-                tar.extractall(dest)  # noqa: S202 - pinned first-party release artifact
+                # filter="data" rejects absolute paths, ".." traversal and unsafe links/specials,
+                # so a malicious archive cannot escape dest (Python 3.12 safe-extraction filter).
+                tar.extractall(dest, filter="data")
     except (OSError, tarfile.TarError) as exc:
         raise BundleUnavailable(
             f"failed to download pgwire bundle {spec.artifact_name} from {spec.download_url}: {exc}"

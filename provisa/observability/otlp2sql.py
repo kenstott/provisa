@@ -349,7 +349,10 @@ def main() -> None:
 
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("OTLP2SQL_PORT", "4318")))
+    # The OTLP collector endpoint sibling containers push telemetry to, so it binds all interfaces
+    # by default; operators restrict the surface via OTLP2SQL_HOST when needed.
+    host = os.environ.get("OTLP2SQL_HOST", "0.0.0.0")  # noqa: S104  # nosec B104
+    uvicorn.run(app, host=host, port=int(os.environ.get("OTLP2SQL_PORT", "4318")))
 
 
 if __name__ == "__main__":

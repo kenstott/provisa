@@ -45,6 +45,14 @@ class BoltWriter(Protocol):
 
 _WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
+# WebSocket frame fields (RFC 6455 §5.2). The 7-bit payload-length field carries either the length
+# directly (<= 125), or a sentinel (126 → real length in the next 2 bytes, 127 → next 8 bytes).
+_WS_OPCODE_CLOSE = 0x8
+_WS_LEN_7BIT_MAX = 125
+_WS_LEN_16BIT = 126
+_WS_LEN_64BIT = 127
+_WS_LEN_16BIT_MAX = 65535
+
 
 async def detect_and_upgrade(
     reader: asyncio.StreamReader,
@@ -89,7 +97,11 @@ async def _do_ws_upgrade(
             headers[k.lower()] = v
 
     key = headers.get("sec-websocket-key", "")
-    accept = base64.b64encode(hashlib.sha1((key + _WS_GUID).encode()).digest()).decode()
+    # RFC 6455 mandates SHA-1 for the Sec-WebSocket-Accept handshake — a protocol digest, not a
+    # security hash; usedforsecurity=False documents that (and clears the weak-hash warning).
+    accept = base64.b64encode(
+        hashlib.sha1((key + _WS_GUID).encode(), usedforsecurity=False).digest()
+    ).decode()
 
     proto = headers.get("sec-websocket-protocol", "")
     proto_line = f"Sec-WebSocket-Protocol: {proto}\r\n" if proto else ""
@@ -159,9 +171,9 @@ class _WsReader:
         masked = (header[1] & 0x80) != 0
         payload_len = header[1] & 0x7F
 
-        if payload_len == 126:
+        if payload_len == _WS_LEN_16BIT:
             payload_len = struct.unpack("!H", await self._read_raw(2))[0]
-        elif payload_len == 127:
+        elif payload_len == _WS_LEN_64BIT:
             payload_len = struct.unpack("!Q", await self._read_raw(8))[0]
 
         mask_key = await self._read_raw(4) if masked else b""
@@ -171,7 +183,7 @@ class _WsReader:
             for i in range(len(payload)):
                 payload[i] ^= mask_key[i % 4]
 
-        if opcode == 0x8:
+        if opcode == _WS_OPCODE_CLOSE:
             raise asyncio.IncompleteReadError(b"", 0)
         if opcode in (0x9, 0xA):
             return b""
@@ -219,12 +231,12 @@ class _WsWriter:
         data = bytes(self._pending)
         self._pending.clear()
         length = len(data)
-        if length <= 125:
+        if length <= _WS_LEN_7BIT_MAX:
             header = bytes([0x82, length])
-        elif length <= 65535:
-            header = struct.pack("!BBH", 0x82, 126, length)
+        elif length <= _WS_LEN_16BIT_MAX:
+            header = struct.pack("!BBH", 0x82, _WS_LEN_16BIT, length)
         else:
-            header = struct.pack("!BBQ", 0x82, 127, length)
+            header = struct.pack("!BBQ", 0x82, _WS_LEN_64BIT, length)
         self._writer.write(header + data)
 
     async def drain(self) -> None:
