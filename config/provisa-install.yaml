@@ -8,7 +8,9 @@ cache:
   default_ttl: 300
   enabled: true
 discovery:
-  api_key: ${env:ANTHROPIC_API_KEY}
+  # Empty default so the demo/native install boots without an Anthropic key (AI discovery
+  # stays off). No default made secret resolution raise KeyError and crash the API at startup.
+  api_key: ${env:ANTHROPIC_API_KEY:-}
   min_confidence: 0.7
   sample_size: 20
 domains:
