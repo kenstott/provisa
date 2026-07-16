@@ -46,16 +46,38 @@ function Stage-Runtime {
     # DLLs (libcrypto etc.), so Remove-Item fails and the upgrade silently aborts — leaving the
     # stale process serving the old (configless, no-demo) app. Stop anything running out of the
     # staged runtime (and the app scripts) first, then re-stage.
-    Get-Process -ErrorAction SilentlyContinue | Where-Object {
-      $_.Path -and ($_.Path -like "$RuntimeDst\*" -or $_.Path -like "$ScriptDir\*")
-    } | Stop-Process -Force -ErrorAction SilentlyContinue
-    if (Test-Path (Join-Path $ProvisaHome '.native.pid')) {
-      foreach ($procId in (Get-Content (Join-Path $ProvisaHome '.native.pid'))) {
+    $pidFile = Join-Path $ProvisaHome '.native.pid'
+    if (Test-Path $pidFile) {
+      foreach ($procId in (Get-Content $pidFile)) {
         if ($procId) { Stop-Process -Id ([int]$procId) -Force -ErrorAction SilentlyContinue }
       }
     }
-    Start-Sleep -Seconds 2
-    Remove-Item $RuntimeDst -Recurse -Force
+    Get-Process -ErrorAction SilentlyContinue | Where-Object {
+      $_.Path -and ($_.Path -like "$RuntimeDst\*" -or $_.Path -like "$ScriptDir\*")
+    } | Stop-Process -Force -ErrorAction SilentlyContinue
+    # Windows releases file handles ASYNCHRONOUSLY after a kill, so an immediate Remove-Item can
+    # still hit the locked DLL and abort the whole upgrade (this left users pinned to the old
+    # runtime — a 240 install that kept running 237). Retry with backoff until the handles drop.
+    $removed = $false
+    for ($try = 0; $try -lt 20; $try++) {
+      try { Remove-Item $RuntimeDst -Recurse -Force -ErrorAction Stop; $removed = $true; break }
+      catch { Start-Sleep -Milliseconds 750 }
+    }
+    if (-not $removed) {
+      Write-Err "Could not replace the old runtime at $RuntimeDst — a Provisa process is still holding it. Fully quit Provisa and re-run setup."
+      exit 1
+    }
+    # The control-plane schema (registered_tables columns, etc.) can change between versions and V1
+    # has NO migrations — create_all won't ALTER an existing SQLite table, so a stale native DB
+    # breaks the new code (e.g. "no such column: unique_constraints"). On a version upgrade, reset
+    # the local control-plane DBs; they are rebuilt on next start (the demo re-seeds from config,
+    # a non-demo install re-registers from config/UI).
+    $nativeDir = Join-Path $ProvisaHome 'native'
+    if (Test-Path $nativeDir) {
+      Get-ChildItem $nativeDir -Filter '*.db' -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+    Write-Info 'Reset native control-plane store for the new schema.'
   } else {
     Write-Info "Staging native runtime to $RuntimeDst..."
   }
