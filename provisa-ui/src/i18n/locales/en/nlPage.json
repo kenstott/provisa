@@ -13,7 +13,7 @@
     "questionLabel": "Natural language question",
     "generate": "Generate",
     "generating": "Generating…",
-    "mcpChat": "MCP Chat ›",
+    "mcpChat": "Chat ›",
     "openInExplorer": "Open in {{label}} explorer",
     "openIn": "Open in {{label}}",
     "notApplicable": "Not applicable for this query type",
