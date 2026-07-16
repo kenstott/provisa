@@ -61,6 +61,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "navBar.groupExplore",
     items: [
       { to: "/schema", labelKey: "navBar.itemSchema", capability: "query_development" },
+      { to: "/explore", labelKey: "navBar.itemExplore", capability: "query_development" },
       {
         to: "/nl",
         labelKey: "navBar.itemNl",

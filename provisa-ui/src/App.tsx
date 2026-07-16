@@ -40,6 +40,9 @@ const NlPage = lazy(() => import("./pages/NlPage").then((m) => ({ default: m.NlP
 const GrpcPage = lazy(() => import("./pages/GrpcPage").then((m) => ({ default: m.GrpcPage })));
 const JsonApiPage = lazy(() => import("./pages/JsonApiPage").then((m) => ({ default: m.JsonApiPage })));
 const OpenApiPage = lazy(() => import("./pages/OpenApiPage").then((m) => ({ default: m.OpenApiPage })));
+const McpExplorePage = lazy(() =>
+  import("./pages/McpExplorePage").then((m) => ({ default: m.McpExplorePage })),
+);
 
 const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
 
@@ -259,6 +262,14 @@ function App() {
                     element={
                       <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
                         <OpenApiPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/explore"
+                    element={
+                      <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                        <McpExplorePage />
                       </CapabilityGate>
                     }
                   />

@@ -1,0 +1,19 @@
+{
+  "mcpExplore": {
+    "title": "Catalog Search",
+    "intro": "Semantic natural-language search over the catalog — the same MCP search_catalog tool agents use. Ask in plain language; results are the matching table branches, governed by your role.",
+    "queryLabel": "What are you looking for?",
+    "queryPlaceholder": "e.g. customer lifetime value, order shipping status, SOFR reset rate",
+    "resultsLabel": "Results",
+    "search": "Search",
+    "roleNote": "Searching as role: {{role}}",
+    "noRole": "(no role)",
+    "noResults": "No matching datasets in the domains your role can access.",
+    "scoreBadge": "score {{score}}",
+    "matchedColumn": "matched: {{column}}",
+    "colColumn": "Column",
+    "colType": "Type",
+    "colDescription": "Description",
+    "foreignKeys": "Foreign keys"
+  }
+}

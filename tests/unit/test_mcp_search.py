@@ -179,3 +179,60 @@ class TestSearchCatalogTool:
 
 async def _catalog_async():
     return _catalog()
+
+
+class TestSearchCatalogEndpoint:
+    """The browser-facing REST wrapper /admin/mcp/search-catalog."""
+
+    def _client(self, monkeypatch, fake_search):
+        import provisa.api.app as app_mod
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from provisa.api.mcp import tools as tools_mod
+        from provisa.api.mcp.status import router
+
+        monkeypatch.setattr(app_mod, "state", SimpleNamespace(), raising=False)
+        monkeypatch.setattr(tools_mod, "search_catalog", fake_search)
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app)
+
+    def test_passes_role_header_and_returns_results(self, monkeypatch):
+        seen = {}
+
+        async def fake_search(state, role, query, k=5):
+            seen["role"] = role
+            seen["query"] = query
+            seen["k"] = k
+            return [{"schema": "sales", "table": "customers"}]
+
+        client = self._client(monkeypatch, fake_search)
+        r = client.post(
+            "/admin/mcp/search-catalog",
+            json={"query": "customer email", "k": 3},
+            headers={"x-provisa-role": "analyst"},
+        )
+        assert r.status_code == 200
+        assert r.json()["results"][0]["table"] == "customers"
+        assert seen == {"role": "analyst", "query": "customer email", "k": 3}
+
+    def test_permission_error_maps_to_403(self, monkeypatch):
+        async def fake_search(state, role, query, k=5):
+            raise PermissionError("No schema for role 'ghost'")
+
+        client = self._client(monkeypatch, fake_search)
+        r = client.post(
+            "/admin/mcp/search-catalog",
+            json={"query": "x"},
+            headers={"x-provisa-role": "ghost"},
+        )
+        assert r.status_code == 403
+
+    def test_value_error_maps_to_400(self, monkeypatch):
+        async def fake_search(state, role, query, k=5):
+            raise ValueError("role is required for every MCP tool call")
+
+        client = self._client(monkeypatch, fake_search)
+        r = client.post("/admin/mcp/search-catalog", json={"query": "x"})
+        assert r.status_code == 400

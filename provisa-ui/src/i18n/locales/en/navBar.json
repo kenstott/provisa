@@ -28,6 +28,7 @@
     "itemCache": "Cache",
     "itemScheduler": "Scheduler",
     "itemFederation": "Federation",
+    "itemExplore": "Catalog Search",
     "itemEncryption": "Encryption",
     "itemSecurity": "Security",
     "itemAuthentication": "Authentication",

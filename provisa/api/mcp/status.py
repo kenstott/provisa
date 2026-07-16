@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter()
 
@@ -83,3 +83,28 @@ def mcp_status() -> dict:
 async def get_mcp_server():  # REQ-1008
     """Effective MCP server status (enabled, port, transport, bound role, tools)."""
     return mcp_status()
+
+
+@router.post("/admin/mcp/search-catalog")
+async def mcp_search_catalog(request: Request):  # REQ-1008
+    """Browser-callable wrapper over the MCP ``search_catalog`` tool.
+
+    The MCP transport speaks the MCP protocol; the UI Explore page needs plain
+    HTTP, so this exposes the same governed tool. Role comes from the
+    ``x-provisa-role`` header (or the body), and results are filtered to that
+    role's accessible domains exactly as the MCP tool does.
+    """
+    from provisa.api.app import state
+    from provisa.api.mcp import tools
+
+    body = await request.json()
+    role = request.headers.get("x-provisa-role") or body.get("role") or ""
+    query = body.get("query", "")
+    k = int(body.get("k", 5))
+    try:
+        results = await tools.search_catalog(state, role, query, k=k)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"results": results}

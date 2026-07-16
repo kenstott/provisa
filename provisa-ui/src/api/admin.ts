@@ -472,6 +472,52 @@ export async function fetchMcpServer(): Promise<McpServerStatus> {
   return resp.json();
 }
 
+// --- MCP catalog search (the "explore" surface, REQ-1008) ---
+
+export interface CatalogSearchColumn {
+  name: string;
+  type: string;
+  description: string;
+}
+
+export interface CatalogSearchHit {
+  schema: string;
+  table: string;
+  breadcrumb: string;
+  matched_on: { level: string; column: string | null };
+  score: number;
+  branch: {
+    schema: string;
+    table: string;
+    description: string;
+    columns: CatalogSearchColumn[];
+    foreign_keys: {
+      column: string;
+      references_schema: string;
+      references_table: string;
+      references_column: string;
+    }[];
+  };
+}
+
+export async function searchCatalog(
+  query: string,
+  role: string,
+  k = 5,
+): Promise<CatalogSearchHit[]> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/mcp/search-catalog`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-provisa-role": role },
+    body: JSON.stringify({ query, k }),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(data.detail || `Catalog search failed: ${resp.status}`);
+  }
+  const json = await resp.json();
+  return json.results ?? [];
+}
+
 // --- Cache (Redis) + materialize-store settings (REQ-917) ---
 
 export interface CacheStorageState {
