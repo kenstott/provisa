@@ -117,6 +117,31 @@ async def _optimize_and_route(
     return exec_sql, decision, default_source, optimized, sources
 
 
+def _reject_physical_source_refs(parsed: Any, state: Any) -> None:
+    """Reject any physical source-catalog table reference — enforce the one accepted model.
+
+    The catalog advertises exactly one reference form: the semantic ``domain.table``. A physical
+    source catalog (e.g. ``"inquiries_sqlite"."default"."inquiries"``) is an internal lowering
+    artifact exposed to no client; accepting it would run ungoverned against the raw source
+    because RLS/masking bind to the semantic table, not the physical ref. A 3-part ref whose
+    leading part is NOT a known source catalog (a client fully-qualifying with a virtual database
+    name) is left alone.
+    """
+    import sqlglot.expressions as _exp
+
+    source_catalogs = set(getattr(state, "source_catalogs", {}).values()) | {
+        "iceberg",
+        "otel",
+        "results",
+    }
+    for tbl in parsed.find_all(_exp.Table):
+        if tbl.catalog and tbl.catalog in source_catalogs:
+            raise PermissionError(
+                f"Invalid table reference {tbl.sql(dialect='postgres')!r}: physical source names "
+                "are internal. Reference the semantic schema.table shown in the catalog."
+            )
+
+
 async def _govern_and_route(
     sql: str, role_id: str
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272
@@ -143,9 +168,11 @@ async def _govern_and_route(
 
     normalized_sql = raw_sql
     try:
-        sqlglot.parse_one(normalized_sql, read="postgres")
+        _parsed_input = sqlglot.parse_one(normalized_sql, read="postgres")
     except Exception as exc:
         raise ValueError(f"SQL parse error: {exc}") from exc
+
+    _reject_physical_source_refs(_parsed_input, state)
 
     gov_ctx = build_governance_context(
         role_id,
@@ -207,10 +234,21 @@ async def _govern_and_route(
     governed_semantic = apply_governance(normalized_sql, gov_ctx)
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
-    from provisa.compiler.sql_rewrite import qualify_with_catalogs
+    # Lower the ONE accepted reference model — the semantic domain.table the catalog
+    # advertises — to catalog-physical for the engine. rewrite_semantic_to_catalog_physical
+    # is the same lowering the GQL/Cypher path uses (_govern_and_route_compiled); the raw-SQL
+    # path previously used qualify_with_catalogs, which only re-qualified already-physical refs
+    # and left a semantic ref like "pet_store"."inquiries" unresolved → "schema doesn't exist".
+    from provisa.compiler.sql_rewrite import (
+        normalize_table_refs,
+        rewrite_semantic_to_catalog_physical,
+    )
 
+    # normalize_table_refs first (sqlglot parse-based): an UNQUOTED semantic ref like
+    # `pet_store.inquiries` is invisible to the literal-match rewrite, so it must be
+    # parsed, qualified and quoted before rewrite_semantic_to_catalog_physical can lower it.
     _qualified, decision, _default_source, _optimized, _sources = await _optimize_and_route(
-        qualify_with_catalogs(governed_semantic, ctx),
+        rewrite_semantic_to_catalog_physical(normalize_table_refs(governed_semantic, ctx), ctx),
         governed_semantic,
         gov_ctx,
         ctx,
@@ -265,7 +303,12 @@ async def _govern_and_route(
 
             sql_to_run = transpile(strip_catalog(_qualified), dialect)
         else:
-            sql_to_run = transpile(governed_semantic, dialect)
+            # Lower the semantic model to physical schema.table for the native driver — same as
+            # _govern_and_route_compiled's DIRECT branch. Passing governed_semantic verbatim sent
+            # an unresolved semantic ref (e.g. "pet_store"."inquiries") to the source.
+            from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
+
+            sql_to_run = transpile(rewrite_semantic_to_physical(governed_semantic, ctx), dialect)
         return _Plan(
             route=decision.route,
             sql=sql_to_run,
