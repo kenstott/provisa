@@ -143,8 +143,8 @@ def _reject_physical_source_refs(parsed: Any, state: Any) -> None:
 
 
 async def _govern_and_route(
-    sql: str, role_id: str
-) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272
+    sql: str, role_id: str, *, session_vars: dict[str, str] | None = None
+) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1098
     import sqlglot
     import sqlglot.expressions as exp
 
@@ -232,6 +232,14 @@ async def _govern_and_route(
     # here; there is no ungoverned access path.
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     governed_semantic = apply_governance(normalized_sql, gov_ctx)
+
+    # REQ-1098: resolve RLS session predicates (current_setting('provisa.<var>')) to SQL
+    # literals for transports whose caller supplies session vars out-of-band (e.g. the
+    # airport Flight service, which has no SET LOCAL channel). A missing var becomes NULL,
+    # the documented deny-by-default (_resolve_session_settings). Only applied when the
+    # caller opts in by passing session_vars; None leaves native current_setting untouched.
+    if session_vars is not None:
+        governed_semantic = _resolve_session_settings(governed_semantic, session_vars)
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # Lower the ONE accepted reference model — the semantic domain.table the catalog

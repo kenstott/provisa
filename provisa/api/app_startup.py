@@ -351,6 +351,18 @@ async def _start_servers(_log: logging.Logger) -> None:
         # unexpected and propagates loudly.
         _log.exception("MCP server startup failed")
 
+    # REQ-1098: airport Flight service (opt-in via PROVISA_AIRPORT_PORT). Serves the DuckDB
+    # `airport` community-extension protocol over the governed query pipeline. Isolated hook.
+    try:
+        from provisa.api.airport import start_airport_server
+
+        start_airport_server(state, _log)
+    except (ImportError, OSError, RuntimeError, ValueError):
+        # Opt-in server (PROVISA_AIRPORT_PORT). Missing dep (ImportError), port bind (OSError),
+        # config/validation (ValueError/RuntimeError) must not abort app boot; anything else is
+        # unexpected and propagates loudly.
+        _log.exception("airport server startup failed")
+
     try:
         from provisa.live.engine import LiveEngine
 
