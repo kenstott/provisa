@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Provisa airport Flight server (REQ-1098).
+"""Provisa airport Flight server (REQ-1106).
 
 Serves the DuckDB `airport` community extension's Flight application protocol so
 an external DuckDB client can::
@@ -24,7 +24,7 @@ Every capability routes through Provisa's ONE governed, engine-dispatching pipel
 governance (RLS, masking, column visibility, row cap, writable-column ACL) applies
 and the query runs on whatever engine is bound — never a Trino/duckdb hardcode.
 
-Implemented (REQ-1098):
+Implemented (REQ-1106):
   * Catalog discovery: list_schemas, catalog_version, endpoints, flight_info,
     get_flight_info.
   * Governed reads with predicate + projection PUSHDOWN — the ``endpoints`` action
@@ -80,7 +80,7 @@ _CATALOG_VERSION = 1  # is_fixed catalog for the read MVP (DDL bumps the control
 # FindRowIDColumn + the Query-farm airport docs): DuckDB hides it from ``SELECT *`` and streams it
 # back on UPDATE/DELETE so the server can identify the affected rows. Provisa fills it with the
 # table's PRIMARY-KEY tuple (JSON-encoded), so the only identities a role receives are the PKs of
-# rows RLS already let it read — a role cannot target a row it cannot see (REQ-1098/REQ-1103).
+# rows RLS already let it read — a role cannot target a row it cannot see (REQ-1106/REQ-1111).
 _ROWID_FIELD = "rowid"
 _ROWID_META = {b"is_rowid": b"true"}
 
@@ -149,7 +149,7 @@ class ProvisaAirportServer(
         if raw:
             token = raw[7:].strip() if raw.lower().startswith("bearer ") else raw.strip()
         if not token:
-            # Documented dev default for unauthenticated access (REQ-1098). No token AND
+            # Documented dev default for unauthenticated access (REQ-1106). No token AND
             # no configured default → refuse, rather than silently assume a privileged role.
             token = os.environ.get("PROVISA_AIRPORT_DEFAULT_ROLE", "")
         if not token:
@@ -462,7 +462,7 @@ class ProvisaAirportServer(
         role_id = self._role(context)
         req = wire.decode_action_request(body)
         schema, table = self._descriptor_path(req)
-        # PUSHDOWN (REQ-1098): the airport extension delivers projection (column_ids) + predicate
+        # PUSHDOWN (REQ-1106): the airport extension delivers projection (column_ids) + predicate
         # (json_filters) in the endpoints "parameters" map. Resolve them against the table's full
         # advertised schema, translate to a semantic projection + WHERE, and fold into the ticket.
         params = req.get("parameters") or {}
@@ -566,7 +566,7 @@ class ProvisaAirportServer(
     def _do_create_table(self, context: flight.ServerCallContext, body: bytes) -> bytes:  # pyright: ignore[reportPrivateImportUsage]
         """create_table → CREATE the physical table in the target domain's WRITABLE source, then
         register it in the governed model so it joins the airport catalog and accepts a governed
-        INSERT (REQ-1098/REQ-1103).
+        INSERT (REQ-1106/REQ-1111).
 
         The airport ``schema_name`` is a Provisa DOMAIN (sql name). The physical table is created in
         that domain's single writable source (derived from the domain's existing tables — REQ-1000
@@ -817,7 +817,7 @@ class ProvisaAirportServer(
     def _do_exchange_pk_mutation(
         self, role_id: str, schema: str, table: str, operation: str, reader, writer
     ) -> None:
-        """Governed UPDATE/DELETE keyed by PRIMARY-KEY row identity (REQ-1098/REQ-1103).
+        """Governed UPDATE/DELETE keyed by PRIMARY-KEY row identity (REQ-1106/REQ-1111).
 
         The airport extension echoes back the ``is_rowid`` pseudo-column (Provisa's JSON-encoded PK
         tuple) for each affected row, plus — for UPDATE — the new column values. We decode the rowids
@@ -947,7 +947,7 @@ def _as_str(value: Any) -> str:
 
 
 def _arrow_schema_to_columns(schema: pa.Schema) -> list[tuple[str, str]]:
-    """Map an airport create_table Arrow schema to (name, IR-type) column defs (REQ-1098).
+    """Map an airport create_table Arrow schema to (name, IR-type) column defs (REQ-1106).
 
     IR names are the ONE engine-independent vocabulary (ir_types.py); the store write face renders
     them per the target source dialect at DDL time. An Arrow type with no faithful IR mapping raises

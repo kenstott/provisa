@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Opt-in startup hook for the airport Flight service (REQ-1098).
+"""Opt-in startup hook for the airport Flight service (REQ-1106).
 
 Gated on ``PROVISA_AIRPORT_PORT`` (mirrors the MCP/pgwire/bolt opt-in pattern).
 When enabled, starts :class:`ProvisaAirportServer` on a daemon thread and logs

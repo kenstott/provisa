@@ -108,7 +108,11 @@ if [ ! -f "$GOVDATA_JAR" ]; then
     echo -n "Downloading GovData JAR..."
     _GOVDATA_BASE="https://maven.pkg.github.com/kenstott/calcite/ai/askamerica/askamerica-engine"
     _GOVDATA_META=$(curl -fsSL -H "Authorization: Bearer $_GOVDATA_TOKEN" "$_GOVDATA_BASE/maven-metadata.xml" 2>/dev/null || true)
-    _GOVDATA_VER=$(echo "$_GOVDATA_META" | grep -oE '<version>0\.[0-9]+\.[0-9]+</version>' | tail -1 | sed 's/<\/*version>//g')
+    # grep exits 1 when the metadata is empty/inaccessible (token without package access). Under
+    # `set -euo pipefail` that unguarded pipeline killed the whole installer right after printing
+    # "Downloading GovData JAR..." — GovData is an OPTIONAL subscription, so guard the probe and let
+    # the ${:-} default + the graceful curl-FAILED path below handle an unavailable package.
+    _GOVDATA_VER=$(echo "$_GOVDATA_META" | grep -oE '<version>0\.[0-9]+\.[0-9]+</version>' | tail -1 | sed 's/<\/*version>//g' || true)
     _GOVDATA_VER="${_GOVDATA_VER:-0.9.15}"
     _GOVDATA_URL="$_GOVDATA_BASE/$_GOVDATA_VER/askamerica-engine-${_GOVDATA_VER}.jar"
     if curl -fsSL \
@@ -652,10 +656,15 @@ KEY_READER_PID=$!
 # Developer workflow: `touch ~/.provisa-server-version` after editing Python files on T9.
 _VERSION_FILE="${HOME}/.provisa-server-version"
 touch "$_VERSION_FILE" 2>/dev/null || true
+# mtime lookup MUST be portable: `stat -f %m` is BSD/macOS. On Linux `stat -f` means
+# --file-system and prints filesystem info (Free/Available block counts) that fluctuate under any
+# disk activity — so on Linux it "changed" every poll and USR1-restarted the backend every 2s
+# whenever the demo was writing to disk. Try GNU (`-c %Y`) first, then fall back to BSD (`-f %m`).
+_mtime() { stat -c "%Y" "$1" 2>/dev/null || stat -f "%m" "$1" 2>/dev/null || echo 0; }
 (
-  _LAST_MTIME=$(stat -f "%m" "$_VERSION_FILE" 2>/dev/null || echo 0)
+  _LAST_MTIME=$(_mtime "$_VERSION_FILE")
   while sleep 2; do
-    _CURR_MTIME=$(stat -f "%m" "$_VERSION_FILE" 2>/dev/null || echo 0)
+    _CURR_MTIME=$(_mtime "$_VERSION_FILE")
     if [ "$_CURR_MTIME" != "$_LAST_MTIME" ]; then
       _LAST_MTIME="$_CURR_MTIME"
       echo "~/.provisa-server-version changed — restarting backend..."

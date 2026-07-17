@@ -59,6 +59,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._store_attached = False  # materialization-store ATTACH (distinct from source attaches)
         self._phys_catalogs: set[str] = set()  # in-memory catalogs holding the physical views
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
+        self._control_plane_attached = False  # provisa_admin catalog (native path only)
 
     # -- source exposure -------------------------------------------------------
 
@@ -104,6 +105,48 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             remote_schema = details.get("remote_schema", source.schema_name)
             remote = f'"{raw_alias}"."{remote_schema}"."{source.table_name}"'
             self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
+
+    def attach_control_plane(self, db_path: str, schema_name: str) -> None:
+        """Attach the tenant control-plane SQLite DB as the ``provisa_admin`` catalog.
+
+        Trino parity: on Trino, ``provisa_admin`` is a real catalog backed by the Postgres
+        control-plane DB (configured via a catalog file). On the native DuckDB tier there is no
+        such catalog, so this method provides it by ATTACHing the local SQLite tenant DB
+        READ_ONLY and wrapping every table under the schema the compiler emits (``org_<id>``).
+
+        READ_ONLY prevents DuckDB from acquiring a write lock on the SQLite file while aiosqlite
+        (SQLAlchemy) concurrently writes it. Safe concurrency depends on the control-plane engine
+        opening this file in WAL mode (set by core.database._on_sqlite_connect) — WAL lets this
+        READ_ONLY reader run alongside the writer; without it, a write commit would transiently
+        lock out the reader.
+
+        All tables found in the attached file are exposed — not a hardcoded subset — so future
+        control-plane schema additions are automatically visible without touching this method.
+        Called once from NativeEngineBackend._attach_registered when the tenant DB is SQLite."""
+        if self._control_plane_attached:
+            return
+        if not db_path or db_path == ":memory:":
+            return  # in-memory tenant DB (tests/CI without a file): no-op, not an error
+        if not self._sqlite_loaded:
+            self._con.execute("INSTALL sqlite")
+            self._con.execute("LOAD sqlite")
+            self._sqlite_loaded = True
+        raw_alias = "_raw_provisa_admin"
+        if raw_alias not in self._raw_attached:
+            self._con.execute(f"ATTACH '{db_path}' AS \"{raw_alias}\" (TYPE sqlite, READ_ONLY)")
+            self._raw_attached.add(raw_alias)
+        catalog = "provisa_admin"
+        if catalog not in self._phys_catalogs:
+            self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
+            self._phys_catalogs.add(catalog)
+        self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{schema_name}"')
+        # Enumerate every table from the SQLite file via SHOW TABLES (sqlite_master is not
+        # accessible at the 3-part name DuckDB expects after a TYPE sqlite ATTACH).
+        for (tbl,) in self._con.execute(f'SHOW TABLES FROM "{raw_alias}"').fetchall():
+            view = f'"{catalog}"."{schema_name}"."{tbl}"'
+            remote = f'"{raw_alias}"."main"."{tbl}"'
+            self._con.execute(f"CREATE VIEW IF NOT EXISTS {view} AS SELECT * FROM {remote}")
+        self._control_plane_attached = True
 
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
     # engine's invariant); its backend/dialect is taken from the store URL scheme, never assumed.

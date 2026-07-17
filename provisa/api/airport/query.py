@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Engine-agnostic governed read for the airport Flight service (REQ-1098).
+"""Engine-agnostic governed read for the airport Flight service (REQ-1106).
 
 A do_get for an airport table runs the SAME governed pipeline the existing
 ProvisaFlightServer SQL path uses (``_govern_and_route`` → EngineRuntime), so
@@ -48,7 +48,7 @@ def governed_table_scan_arrow(
 
     # session_vars={} makes RLS current_setting() predicates deny-by-default (NULL)
     # rather than reaching an engine that lacks the function — the airport transport
-    # has no SET LOCAL channel (REQ-1098).
+    # has no SET LOCAL channel (REQ-1106).
     plan = asyncio.run_coroutine_threadsafe(
         _govern_and_route(sql, role_id, session_vars={}),
         main_loop,
@@ -76,7 +76,7 @@ def governed_table_scan_arrow(
         # null-typed Arrow columns from row inference — DuckDB then cannot cast a real value into
         # the advertised NULL type on a later INSERT. Re-type those columns from the source's own
         # result-column types (carried by the native driver even for a zero-row result) so the
-        # airport catalog advertises the true column types (REQ-1098).
+        # airport catalog advertises the true column types (REQ-1106).
         if tbl.num_rows == 0 and result.column_types:
             tbl = _retype_null_columns(tbl, result.column_types)
         return tbl
@@ -102,7 +102,7 @@ def _retype_null_columns(tbl: pa.Table, column_types: list[str]) -> pa.Table:
     return pa.table(arrays, schema=pa.schema(fields))
 
 
-# Canonical IR type name → Arrow type, for typing an empty governed scan's columns (REQ-1098).
+# Canonical IR type name → Arrow type, for typing an empty governed scan's columns (REQ-1106).
 _IR_TO_ARROW: dict[str, pa.DataType] = {
     "smallint": pa.int16(),
     "integer": pa.int32(),
@@ -134,7 +134,7 @@ def governed_mutation(
     sql: str,
     role_id: str,
 ) -> int:
-    """Submit a mutation (INSERT/UPDATE/DELETE) through the ONE governed pipeline (REQ-1098).
+    """Submit a mutation (INSERT/UPDATE/DELETE) through the ONE governed pipeline (REQ-1106).
 
     Routes the semantic mutation SQL through the SAME ``_compile_govern_execute`` the
     ``/data/sql`` endpoint uses, so governance (writable-column ACL, RLS injection on

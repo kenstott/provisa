@@ -65,6 +65,17 @@ function Native-Env {
     'PLATFORM_DATABASE_URL' = "sqlite+aiosqlite:///$platformDb"
     'TENANT_DATABASE_URL'   = "sqlite+aiosqlite:///$tenantDb"
   }
+  # Remote MCP on by default for the native/desktop tier (REQ-1101): a ready same-machine Claude
+  # Desktop connector. Loopback bind (127.0.0.1) keeps the always-on server off the LAN. The role
+  # is pinned explicitly (not a silent admin default) - native runs auth:none as one local admin
+  # user, so the governed MCP role is admin. Override any by exporting the env before launch.
+  if (-not $env:PROVISA_MCP_PORT) { $e['PROVISA_MCP_PORT'] = '8009' }
+  if (-not $env:PROVISA_MCP_HOST) { $e['PROVISA_MCP_HOST'] = '127.0.0.1' }
+  if (-not $env:PROVISA_MCP_ROLE) { $e['PROVISA_MCP_ROLE'] = 'admin' }
+  # The bundled runtime python (host-accessible, ships mcp-proxy) that Claude Desktop launches as
+  # the Node-free stdio bridge (REQ-1104). Only the native tier sets this - the Explore/MCP panel
+  # emits the ready-to-paste config only when it is present.
+  $e['PROVISA_MCP_BRIDGE_COMMAND'] = $RuntimePy
   if ($EngineUrl)      { $e['PROVISA_ENGINE_URL'] = $EngineUrl }
   if ($MaterializeUrl) { $e['PROVISA_MATERIALIZE_URL'] = $MaterializeUrl }
   if ($OtlpEndpoint)   { $e['OTEL_EXPORTER_OTLP_ENDPOINT'] = $OtlpEndpoint }
@@ -101,6 +112,14 @@ function Start-DemoServers {
     -RedirectStandardOutput (Join-Path $LogDir 'demo-graphql.log') `
     -RedirectStandardError  (Join-Path $LogDir 'demo-graphql.err.log')
   "$($pet.Id)`n$($gql.Id)" | Set-Content -Path $DemoPidFile -Encoding ASCII
+  # Wait until both mocks actually answer before returning. The API loads the demo config (and the
+  # guided tour queries these sources) against the live endpoints; starting them fire-and-forget
+  # raced the API load and left the demo empty. Mirrors demo/run-demo-servers.sh, which curls both
+  # before proceeding.
+  $petReady = Wait-HttpReady "http://localhost:$PetPort/api/v3/pet/findByStatus?status=available" 30
+  $gqlReady = Wait-HttpReady "http://localhost:$GqlPort/graphql?query=%7B__typename%7D" 30
+  if (-not $petReady) { Write-Err "Demo petstore server did not become ready on port $PetPort." }
+  if (-not $gqlReady) { Write-Err "Demo graphql server did not become ready on port $GqlPort." }
   Write-Info "Demo mock servers started (petstore :$PetPort, graphql :$GqlPort)."
 }
 
@@ -177,17 +196,17 @@ function Status-Native {
   if (Native-Running) { Write-Ok 'Provisa is running.' } else { Write-Info 'Provisa is not running.' }
 }
 
-# Poll the UI port until it serves before opening the browser. A fixed sleep opened the
-# browser to a connection error (the API+UI take several seconds to bind), which read as
-# "nothing happened". Wait up to ~40s for a real response, then open.
-function Wait-UiReady {
-  $deadline = (Get-Date).AddSeconds(40)
+# Poll an HTTP endpoint until it answers (any status = the server has bound) or the timeout
+# elapses. A fixed sleep opened the browser to a connection error (the servers take several
+# seconds to bind), which read as "nothing happened". A 4xx/5xx still means the server is up.
+function Wait-HttpReady {
+  param([string]$Url, [int]$TimeoutSec = 40)
+  $deadline = (Get-Date).AddSeconds($TimeoutSec)
   while ((Get-Date) -lt $deadline) {
     try {
-      Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "http://localhost:$UiPort/" | Out-Null
+      Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 $Url | Out-Null
       return $true
     } catch {
-      # A 4xx/5xx still means the server is up and answering - good enough to open.
       if ($_.Exception.Response) { return $true }
       Start-Sleep -Milliseconds 500
     }
@@ -199,7 +218,13 @@ function Open-Native {
   # Open at ?tour=1 when the demo was installed so the guided tour auto-starts
   # (App.tsx reads the query param), mirroring the macOS launcher.
   $url = if ($Demo) { "http://localhost:$UiPort/?tour=1" } else { "http://localhost:$UiPort" }
-  if (-not (Wait-UiReady)) {
+  # Gate on the API's /health, not just the UI port. uvicorn only serves /health after the
+  # lifespan startup (the heavy demo config-load) completes, so this waits for a genuinely
+  # usable API. The UI proxy binds near-instantly and would otherwise open the browser onto a
+  # still-loading API whose calls 502 - which is exactly why the demo "final step" looked stuck.
+  if (-not (Wait-HttpReady "http://localhost:$ApiPort/health" 120)) {
+    Write-Err "API did not become ready on port $ApiPort within 120s; opening anyway."
+  } elseif (-not (Wait-HttpReady "http://localhost:$UiPort/" 40)) {
     Write-Err "UI did not become ready on port $UiPort within 40s; opening anyway."
   }
   Write-Info "Opening $url"

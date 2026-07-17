@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""E2E: the REAL DuckDB `airport` extension reads a GOVERNED table from Provisa (REQ-1098).
+"""E2E: the REAL DuckDB `airport` extension reads a GOVERNED table from Provisa (REQ-1106).
 
 Provisa SERVES the airport Flight protocol (provisa/api/airport). This test boots a real
 Provisa app (uvicorn, sample_config, isolated PG) with PROVISA_AIRPORT_PORT set, then from an

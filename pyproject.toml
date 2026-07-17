@@ -86,6 +86,10 @@ dependencies = [
 # telemetry store). Optional because pgserver has no cp313 wheel yet — install
 # under a cpython<=3.12 interpreter.
 telemetry-pg = ["pgserver"]
+# Native/desktop tier: mcp-proxy is the Node-free stdio<->Streamable-HTTP bridge Claude Desktop
+# launches to reach the local MCP server (REQ-1104). Bundled into the standalone runtime by the
+# native installers (build-sfx.ps1 / build-dmg.sh) so the connector needs no Node and no user pip.
+desktop = ["mcp-proxy"]
 mysql = ["aiomysql"]
 sqlserver = ["aioodbc"]
 oracle = ["oracledb"]

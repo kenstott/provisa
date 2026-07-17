@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Transaction coordinator for the airport Flight service (REQ-1098).
+"""Transaction coordinator for the airport Flight service (REQ-1106).
 
 The DuckDB airport extension issues ``create_transaction`` before a DML statement
 and can query ``get_transaction_status``; the identifier is carried into the DML

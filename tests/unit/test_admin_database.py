@@ -165,3 +165,20 @@ def test_capabilities_by_dialect():
     assert sqlite.returning and not sqlite.arrays and not sqlite.listen_notify
     mysql = Capabilities.for_dialect("mysql")
     assert not mysql.returning and not mysql.arrays and mysql.advisory_lock
+
+
+async def test_control_plane_sqlite_uses_wal(tmp_path):
+    # REQ-1098: a file-based control-plane SQLite MUST open in WAL mode so the native DuckDB
+    # engine can ATTACH and read it READ_ONLY while aiosqlite writes config changes. Rollback-
+    # journal mode (the SQLite default) would transiently lock out the reader on a write commit.
+    from sqlalchemy import text
+
+    from provisa.core.database import create_engine_from_url
+
+    engine = create_engine_from_url(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
+    try:
+        async with engine.begin() as c:
+            mode = (await c.execute(text("PRAGMA journal_mode"))).scalar()
+        assert mode == "wal"
+    finally:
+        await engine.dispose()

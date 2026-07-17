@@ -350,7 +350,10 @@ bundle_native_runtime() {
 
   info "Installing provisa + deps into the native runtime (macOS wheels from PyPI)..."
   "${dest}/bin/python3" -m pip install --upgrade pip --quiet
-  "${dest}/bin/python3" -m pip install --quiet "${REPO_ROOT}" uvicorn
+  # mcp-proxy (REQ-1104): Node-free stdio<->Streamable-HTTP bridge for the Claude Desktop connector,
+  # bundled so the runtime's own python is the config command (no npx, no user pip, airgapped).
+  "${dest}/bin/python3" -m pip install --quiet "${REPO_ROOT}" uvicorn mcp-proxy
+  "${dest}/bin/python3" -c "import mcp_proxy" || { err "mcp-proxy missing from the bundled native runtime"; exit 1; }
 
   # Place the built UI where ui_server resolves it: <site-packages>/static.
   # embed_compose builds provisa-ui/dist earlier in the pipeline.
