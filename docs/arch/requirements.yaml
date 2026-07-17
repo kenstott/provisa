@@ -31379,3 +31379,26 @@
   - tests/integration/test_splunk_source_e2e.py
   - tests/integration/test_trino_flight_engine_e2e.py
   target: "2026-Q4"
+- id: REQ-1098
+  status: proposed
+  group: "8. Client Access & Protocols"
+  category: Served Protocol Surface
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Provisa serves the DuckDB Airport Arrow-Flight protocol as an outbound data-as-a-service surface,
+    allowing external DuckDB clients with the `airport` community extension to ATTACH Provisa (TYPE AIRPORT)
+    and query its governed federated catalog with server-side governance (RLS/masking) applied.
+  use_case: >-
+    DuckDB users can integrate Provisa's federated catalog directly into DuckDB workflows without separate
+    ETL, leveraging DuckDB's in-process analytics while Provisa enforces row-level and column-level access
+    control server-side. This peer protocol surface complements existing bolt (Neo4j), pgwire (Postgres),
+    and Arrow Flight SQL surfaces.
+  code:
+  - provisa/api/flight/server.py
+  - provisa/api/app_startup.py
+  target: "2026-Q4"
+  e2e: true
+  e2e_reason: External DuckDB client ATTACH/query behavior with server-side governance enforcement can only be verified through a full live-stack round-trip.
+  relates_to:
+  - REQ-1097

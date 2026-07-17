@@ -70,6 +70,7 @@ export const TOUR_STEPS: TourStep[] = [
       "<div class='tour-tags'>" +
       "<span>GraphQL</span><span>SQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span>" +
       "<span>Postgres · pgwire</span><span>Neo4j · Bolt</span>" +
+      "<span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span>" +
       "</div>" +
       "<p>It <strong>compiles</strong> each request and <strong>delegates execution to the source</strong>.</p>" +
       "<p>💡 Which one are you?</p>" +
@@ -227,7 +228,13 @@ export const TOUR_STEPS: TourStep[] = [
     title: "SQL (1 of 7 surfaces)",
     description:
       "SQL lives in the SQL explorer. Standard SQL federated across every source — join Postgres to Mongo to a CSV in one statement. And the model's own metadata and every activity trace are themselves queryable tables here — join your audit log or lineage straight to live data." +
-      "<p>🔌 Not just this explorer — point <strong>psql, DBeaver, or Tableau</strong> at Provisa's pgwire port and they run the exact same federated SQL.</p>",
+      "<p>🔌 Not just this explorer — the same governed SQL runs through multiple wire protocols; your tool picks the one it already speaks:</p>" +
+      "<ul>" +
+      "<li><strong>pgwire</strong> — every Postgres-compatible client — psql, DBeaver, Tableau, Power BI — connects out of the box.</li>" +
+      "<li><strong>JDBC</strong> — drops into any Java/JVM app, ETL pipeline, or JDBC-capable BI tool.</li>" +
+      "<li><strong>Arrow Flight SQL</strong> — columnar streaming for ADBC clients — no row re-encoding, built for large result sets.</li>" +
+      "<li><strong>DuckDB · airport</strong> — ATTACH Provisa from DuckDB and query the governed federation in place. <em>(coming soon)</em></li>" +
+      "</ul>",
   },
   {
     route: "/query",
