@@ -68,6 +68,83 @@ services:
       retries: 30
       start_period: 60s
 
+  tidb:
+    restart: unless-stopped
+    image: pingcap/tidb:latest
+    ports:
+      - "${TIDB_PORT:-4000}:4000"
+    volumes:
+      - tidb_test_data:/tmp/tidb
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/4000' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  cockroachdb:
+    restart: unless-stopped
+    image: cockroachdb/cockroach:v24.1.0
+    command: start-single-node --insecure
+    ports:
+      - "${COCKROACHDB_PORT:-26257}:26257"
+    volumes:
+      - cockroach_test_data:/cockroach/cockroach-data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  yugabytedb:
+    restart: unless-stopped
+    image: yugabytedb/yugabyte:latest
+    command: ["bin/yugabyted", "start", "--background=false"]
+    ports:
+      - "${YUGABYTEDB_PORT:-5433}:5433"
+    volumes:
+      - yugabyte_test_data:/home/yugabyte/var
+    healthcheck:
+      test: ["CMD-SHELL", "bin/yugabyted status || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 120s
+
+  sqlserver:
+    restart: unless-stopped
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Provisa_2026!"
+    ports:
+      - "${SQLSERVER_PORT:-1433}:1433"
+    volumes:
+      - mssql_test_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"Provisa_2026!\" -Q \"SELECT 1\" || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+
+  oracle:
+    restart: unless-stopped
+    image: gvenzl/oracle-free:slim
+    environment:
+      ORACLE_PASSWORD: provisa
+    ports:
+      - "${ORACLE_PORT:-1521}:1521"
+    volumes:
+      - oracle_test_data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 120s
+
   mongodb:
     restart: unless-stopped
     image: mongo:7
@@ -178,6 +255,11 @@ services:
 volumes:
   kafka_test_data:
   mariadb_test_data:
+  tidb_test_data:
+  cockroach_test_data:
+  yugabyte_test_data:
+  mssql_test_data:
+  oracle_test_data:
   mongo_test_data:
   es_test_data:
   neo4j_test_data:
