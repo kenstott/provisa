@@ -1,132 +1,111 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 8e1f6a2d-4c90-4b31-9a7e-5d0c2f8b1e63
+# Canary: 7e2c9d41-6a5f-4b8e-9c3a-1f5d8b0e4a97
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
-#
-# NOTICE: Use of this software for training artificial intelligence or
-# machine learning models is strictly prohibited without explicit written
-# permission from the copyright holder.
 
-"""E2E: Arrow Flight source read through DuckDB's `airport` COMMUNITY EXTENSION (REQ-899, REQ-1097).
+"""E2E: an airport source read through DuckDB's `airport` COMMUNITY EXTENSION (REQ-899, REQ-1097).
 
-Airport is neither a direct driver (provisa/executor/drivers/registry.py has no factory for it) nor
-a Trino connector — the ONLY way Provisa reaches an Arrow Flight server is DuckDBAirportConnector
-(provisa/federation/connector_duckdb.py:278), issuing ``ATTACH '<base_url>' AS "<id>" (TYPE AIRPORT)``.
-This test drives that real seam against an in-process DuckDB connection, the same one
-provisa.federation.duckdb_backend.DuckDBBackend wraps — same shape as test_firebird_source_e2e.py.
+airport is neither a direct driver (provisa/executor/drivers/registry.py has no factory for it)
+nor a Trino connector — the ONLY way Provisa reaches it is DuckDBAirportConnector
+(provisa/federation/connector_duckdb.py:278), one of the REQ-899 DuckDB community-extension
+connectors wired into the DuckDB partial-federator engine. There is no coordinator process to talk
+to: the engine IS an in-process DuckDB connection, and reaching an airport source means that
+connection LOADs the `airport` DuckDB extension and issues
+``ATTACH '<location>' AS "<id>" (TYPE AIRPORT)`` — exactly the DDL DuckDBAirportConnector.details()
+builds. This test drives that real seam against an in-process DuckDB connection.
 
-Why this can't reach a live table today, and why that's a documented gap, not a dodge
----------------------------------------------------------------------------------------
-`zaychik` (tests/conftest.py `_CORE_SERVICES`) is the only Arrow Flight endpoint already running in
-this harness's core stack. It is NOT reachable by the airport extension, for two independently
-confirmed reasons:
+Why not zaychik (this repo's other Flight fixture)
+----------------------------------------------------
+zaychik implements Arrow **Flight SQL** (a standardized SQL-over-Flight application protocol).
+DuckDB's `airport` extension makes DuckDB a client of a DIFFERENT, bespoke Flight application
+protocol (custom DoAction/catalog-listing RPCs defined by the Query.Farm airport extension itself)
+— not Flight SQL. The two are wire-incompatible: an airport ATTACH against zaychik cannot get past
+the catalog-listing handshake. Reaching a REAL airport-protocol server therefore needs a REAL
+airport-protocol server — this test builds and attaches to one: tests/fixtures/airport_shim, a
+~30-line Go program (github.com/hugr-lab/airport-go) exposing a static catalog (schema "test",
+table "widgets") over plaintext gRPC, no TLS, no auth. Verified live before writing this test:
 
-1. Protocol mismatch. zaychik (docker-compose.core.yml `zaychik` service, built from
-   Raiffeisen-DGTL/zaychik-trino-proxy) implements Arrow's standard *Flight SQL* protocol
-   (`ru.raiffeisen.trino.arrow.flight.sql.server.FlightSQLTrinoProxy`, extending Arrow Java's
-   `FlightSqlProducer`) — the same protocol `provisa/executor/trino_flight.py` speaks via
-   `adbc_driver_flightsql`. DuckDB's `airport` extension does NOT speak Flight SQL: it issues a
-   `DO_ACTION` RPC carrying its own proprietary action name (`airport-action-name: list_schemas`,
-   captured live from a real ATTACH attempt against zaychik below) — an action zaychik's
-   `FlightSqlProducer`-based `doAction` dispatch has no handler for.
+    ATTACH 'grpc://localhost:<port>' AS "airport_itest" (TYPE AIRPORT)
+    SELECT id, name FROM "airport_itest".test.widgets ORDER BY id
+    -> [(1, 'Widget A'), (2, 'Widget B'), (3, 'Widget C')]
 
-2. Independently, and more fundamentally: authentication to zaychik is broken for ANY Arrow Flight
-   client (Flight SQL included) under the current core config — reproduced live with the SAME
-   `adbc_driver_flightsql` driver `trino_flight.py` uses in production:
-   ``UNAUTHENTICATED: [FlightSQL]  (Unauthenticated; Prepare)``. zaychik's own logs show why:
-   ``TrinoCredentialsValidator ... "TLS/SSL is required for authentication with username and
-   password"`` — `TF_FLIGHT_AUTH_TYPE=trino` requires forwarding user/password to Trino, but
-   `TF_TRINO_SSL=false` makes Trino's own JDBC driver refuse to carry them. Filed as
-   https://github.com/kenstott/provisa/issues/74 (self-contradicting config, not an airport-specific
-   issue — no client can authenticate to zaychik as currently configured).
+— i.e. DuckDBAirportConnector.details()'s DDL is correct as written: the ATTACH string itself is
+the Flight location (no separate `location` option needed for a bare grpc:// endpoint).
 
-No airport-protocol-compatible Arrow Flight server exists as installable test infra: Query-farm ships
-only an abstract framework (`query-farm-flight-server`, pip) with ~10 required abstract methods and a
-bespoke wire contract (MessagePack parameters, hashed catalog/schema serialization, DuckDB-expression
-deserialization) — no ready reference backend. The extension's own CI tests against a private hosted
-server (`grpc+tls://airport-ci.query.farm`), not self-hostable from public artifacts. Standing one up
-from scratch is out of proportion to a test-infra addition.
-
-What this test DOES verify live (no mocking)
-----------------------------------------------
-* The `airport` community extension genuinely installs + loads in this environment and registers
-  `airport_take_flight` — the same load-only check `_DuckDBExtensionConnector.probe()` (REQ-904)
-  performs, run for real here rather than against a fake `fetch`.
-* `DuckDBAirportConnector.details()` builds the exact ATTACH DDL shape the runtime issues.
-* The real ATTACH DDL is issued, in-process, against zaychik (the CORE service) — the one live Flight
-  endpoint this harness provisions. ``ATTACH ... (TYPE AIRPORT)`` itself is lazy (confirmed live: it
-  returns in <5ms and never contacts the server), so the connection is only actually exercised — and
-  the auth failure surfaces — on the first schema-resolving query (``SHOW ALL TABLES``, which triggers
-  the `list_schemas` DO_ACTION RPC). That query is asserted to fail with the exact captured,
-  root-caused error above (not a bare/broad catch). Any other failure means the environment changed
-  and this test should be revisited, not silently pass.
+Why the network call is bounded in a subprocess
+------------------------------------------------
+The airport ATTACH/query is a DuckDB C-extension network call to a server outside this process; a
+misconfigured or hung Flight handshake could otherwise hang the whole suite. It is run in a
+subprocess with a hard wall-clock timeout so a hang can never propagate.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
+import sys
+
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
+_AIRPORT_PORT = int(os.environ.get("AIRPORT_PORT", "50051"))
+_WIDGETS = [(1, "Widget A"), (2, "Widget B"), (3, "Widget C")]
+
+# Runs in a fresh subprocess (bounded by subprocess.run(timeout=...) below) so a hung Flight
+# handshake against a misconfigured server can never hang the test suite itself.
+_DRIVER_SCRIPT = """
+import json
+import sys
 
 import duckdb
-import pytest
 
 from provisa.core.models import Source, SourceType
 from provisa.federation.connector_duckdb import DuckDBAirportConnector
 
-pytestmark = [pytest.mark.integration]
+src = Source(id="airport_itest", type=SourceType.airport, base_url=sys.argv[1])
+connector = DuckDBAirportConnector()
+details = connector.details(src)
+assert "ATTACH" in details["attach"] and '(TYPE AIRPORT)' in details["attach"], details
 
-_ZAYCHIK_HOST = os.environ.get("ZAYCHIK_HOST", "localhost")
-_ZAYCHIK_PORT = int(os.environ.get("ZAYCHIK_PORT", "8480"))
+conn = duckdb.connect()
+conn.execute(connector._install_sql())  # "INSTALL airport FROM community"
+conn.execute(f"LOAD {connector.extension}")
 
+probe = conn.execute(
+    "SELECT count(*) FROM duckdb_functions() WHERE function_name = ?", [connector.probe_symbol]
+).fetchall()
+assert probe[0][0] >= 1, "airport_take_flight not registered — extension not actually loaded"
 
-def test_airport_extension_loads_and_registers_take_flight():
-    """REQ-899/904: the real (non-mocked) load-only probe path — extension installs, loads, and
-    airport_take_flight is registered. Mirrors _DuckDBExtensionConnector.probe() but against a live
-    DuckDB connection instead of a fake fetch (see test_duckdb_community_connectors.py for the unit
-    version)."""
-    connector = DuckDBAirportConnector()
-    conn = duckdb.connect()
-    try:
-        conn.execute(connector._install_sql())  # "INSTALL airport FROM community"
-        conn.execute(f"LOAD {connector.extension}")
+conn.execute(details["attach"])  # the real ATTACH DDL, unmodified
 
-        rows = conn.execute(
-            "SELECT count(*) FROM duckdb_functions() "
-            f"WHERE function_name = '{connector.probe_symbol}'"
-        ).fetchall()
-        assert rows[0][0] >= 1  # airport_take_flight registered — extension genuinely loaded
-    finally:
-        conn.close()
+rows = conn.execute('SELECT id, name FROM "airport_itest".test.widgets ORDER BY id').fetchall()
+print(json.dumps(rows))
+"""
 
 
-def test_airport_attach_ddl_shape_against_zaychik():
-    """DuckDBAirportConnector.details() builds the real ATTACH DDL; issuing it, unmodified, against
-    zaychik (the one live Arrow Flight endpoint in the core stack) succeeds (ATTACH is lazy — confirmed
-    live, it never contacts the server). The first schema-resolving query against that catalog (SHOW ALL
-    TABLES, which triggers the `list_schemas` DO_ACTION RPC) fails with the exact protocol/auth error
-    root-caused in the module docstring and filed as https://github.com/kenstott/provisa/issues/74 — not
-    a generic catch-all."""
-    src = Source(
-        id="airport_itest",
-        type=SourceType.airport,
-        base_url=f"grpc://{_ZAYCHIK_HOST}:{_ZAYCHIK_PORT}",
+@pytest.mark.requires_airport
+def test_airport_attached_and_queried_through_duckdb_engine():
+    """Drive the REAL DuckDBAirportConnector.details() ATTACH DDL against an in-process DuckDB
+    connection — the same seam provisa.federation.duckdb_backend.DuckDBBackend's persistent
+    DuckDBFederationRuntime uses (REQ-899/1097) — against the airport_shim fixture server, asserting
+    the 3 real rows come back through the connector."""
+    location = f"grpc://localhost:{_AIRPORT_PORT}"
+
+    result = subprocess.run(
+        [sys.executable, "-c", _DRIVER_SCRIPT, location],
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
-    connector = DuckDBAirportConnector()
-    details = connector.details(src)
-    assert details["attach"] == (
-        f"ATTACH 'grpc://{_ZAYCHIK_HOST}:{_ZAYCHIK_PORT}' AS \"airport_itest\" (TYPE AIRPORT)"
+    assert result.returncode == 0, (
+        f"airport driver subprocess failed:\nstdout={result.stdout}\nstderr={result.stderr}"
     )
 
-    conn = duckdb.connect()
-    try:
-        conn.execute(connector._install_sql())
-        conn.execute(f"LOAD {connector.extension}")
-        conn.execute(details["attach"])  # the real ATTACH DDL, unmodified — lazy, does not touch zaychik
-
-        with pytest.raises(duckdb.IOException, match="list_schemas.*unauthenticated"):
-            conn.execute("SHOW ALL TABLES")  # first schema resolution — triggers list_schemas RPC
-    finally:
-        conn.close()
+    rows = json.loads(result.stdout.strip().splitlines()[-1])
+    assert [tuple(r) for r in rows] == _WIDGETS
 
 
 if __name__ == "__main__":

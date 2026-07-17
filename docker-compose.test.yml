@@ -255,6 +255,28 @@ services:
       retries: 20
       start_period: 180s
 
+  # Reached via the DuckDB `airport` COMMUNITY EXTENSION (REQ-899/1097), not a Trino connector and
+  # not a direct driver — DuckDBAirportConnector ATTACHes it in place from an in-process DuckDB
+  # connection (same shape as firebird above). airport speaks a bespoke Arrow Flight application
+  # protocol (custom DoAction/catalog RPCs) distinct from Flight SQL — zaychik (Flight SQL) cannot
+  # serve it, hence this tiny purpose-built server (tests/fixtures/airport_shim, ~30 lines of Go
+  # via github.com/hugr-lab/airport-go) exposing a static catalog: schema "test", table "widgets".
+  # Plaintext gRPC, no TLS, no auth. ${AIRPORT_PORT} is host-published because the in-process
+  # DuckDB connection (running in the pytest process on the HOST, not in this compose network)
+  # attaches directly at grpc://localhost:${AIRPORT_PORT} — there is no Trino catalog involved.
+  airport-shim:
+    restart: unless-stopped
+    build: ./tests/fixtures/airport_shim
+    image: airport-shim:latest
+    ports:
+      - "${AIRPORT_PORT:-50051}:50051"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "50051"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
   mongodb:
     restart: unless-stopped
     image: mongo:7

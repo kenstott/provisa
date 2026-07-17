@@ -1,0 +1,54 @@
+# Isolated stack for the Trino TLS + PASSWORD auth Arrow Flight test (issue #74,
+# auth half). NEVER merged into docker-compose.core.yml — enabling PASSWORD auth on
+# the shared/dev Trino would break every existing test, which connect user-only with
+# an empty password. This stack is self-contained: its own compose project name (set
+# by the test at `up` time via -p), its own TLS Trino, its own zaychik pointed at it.
+services:
+  trino-tls:
+    image: trinodb/trino:481
+    mem_limit: 2g
+    volumes:
+      - ./config.properties:/etc/trino/config.properties:ro
+      - ./password-authenticator.properties:/etc/trino/password-authenticator.properties:ro
+      - ./password.db:/etc/trino/password.db:ro
+      - ./node.properties:/etc/trino/node.properties:ro
+      - ./jvm.config:/etc/trino/jvm.config:ro
+      - ./keystore.p12:/etc/trino/keystore.p12:ro
+      - ./memory.properties:/etc/trino/catalog/memory.properties:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          TRINO_PASSWORD=Provisa_2026! trino --server https://localhost:8443
+          --insecure --user flightuser --password
+          --execute 'SELECT 1' || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 120s
+
+  zaychik-tls:
+    build:
+      context: .
+      dockerfile: Dockerfile.zaychik-tls
+    environment:
+      TF_TRINO_HOST: trino-tls
+      TF_TRINO_PORT: 8443
+      TF_TRINO_SSL: "true"
+      TF_FLIGHT_HOST: 0.0.0.0
+      TF_FLIGHT_PORT: 8480
+      TF_FLIGHT_SSL: "false"
+      TF_FLIGHT_AUTH_TYPE: trino
+      TF_FLIGHT_BATCH_SIZE: 10000
+    ports:
+      - "${ZAYCHIK_TLS_PORT:-0}:8480"
+    depends_on:
+      trino-tls:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/8480' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 20s
+      start_interval: 2s

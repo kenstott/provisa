@@ -1,0 +1,12 @@
+# Isolated TLS test image: zaychik:latest plus the self-signed trino-tls test CA
+# imported into the JRE default truststore, so the Trino JDBC driver inside
+# zaychik (SSL=true, no configurable truststore knob) trusts our test Trino's
+# certificate. Test-only — never used by the shared/dev zaychik image.
+FROM zaychik:latest
+COPY trino-tls-ca.pem /tmp/trino-tls-ca.pem
+RUN $JAVA_HOME/bin/keytool -importcert -noprompt \
+    -alias trino-tls-e2e \
+    -file /tmp/trino-tls-ca.pem \
+    -keystore $JAVA_HOME/lib/security/cacerts \
+    -storepass changeit && \
+    rm /tmp/trino-tls-ca.pem
