@@ -172,6 +172,7 @@ markers = [
     "requires_mariadb: requires MariaDB service (docker compose up mariadb)",
     "requires_tidb: requires TiDB service (docker compose up tidb)",
     "requires_cockroachdb: requires CockroachDB service (docker compose up cockroachdb)",
+    "requires_greenplum: requires Greenplum service (docker compose up greenplum)",
     "requires_yugabytedb: requires YugabyteDB service (docker compose up yugabytedb)",
     "requires_sqlserver: requires SQL Server service (docker compose up sqlserver)",
     "requires_oracle: requires Oracle service (docker compose up oracle)",

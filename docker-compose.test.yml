@@ -112,6 +112,23 @@ services:
       retries: 40
       start_period: 120s
 
+  # Greenplum is Postgres-wire (reuses the postgresql asyncpg driver + pg dialect, REQ-950/1097).
+  # datagrip/greenplum:6.8 is a single-node GPDB used for tooling tests: the entrypoint builds the
+  # cluster under /home/gpadmin on boot (so NO data volume — a mount there would collide with init),
+  # superuser gpadmin (trust auth, no password), default db postgres, master listening on 5432.
+  greenplum:
+    restart: unless-stopped
+    image: datagrip/greenplum:6.8
+    ports:
+      - "${GREENPLUM_PORT:-15432}:5432"
+    healthcheck:
+      # gpadmin's login shell is dash — use POSIX `.` (not bash `source`) to load greenplum_path.sh.
+      test: ["CMD-SHELL", "su - gpadmin -c '. /opt/greenplum-db-6.8.1/greenplum_path.sh && psql -p 5432 -d postgres -Atc \"select 1\"' 2>/dev/null | grep -qx 1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 40
+      start_period: 180s
+
   sqlserver:
     restart: unless-stopped
     image: mcr.microsoft.com/mssql/server:2022-latest

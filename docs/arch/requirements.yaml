@@ -31370,6 +31370,7 @@
   - tests/integration/test_tidb_source_e2e.py
   - tests/integration/test_cockroachdb_source_e2e.py
   - tests/integration/test_yugabytedb_source_e2e.py
+  - tests/integration/test_greenplum_source_e2e.py
   - tests/integration/test_sqlserver_source_e2e.py
   - tests/integration/test_oracle_source_e2e.py
   - tests/integration/test_singlestore_source_e2e.py
