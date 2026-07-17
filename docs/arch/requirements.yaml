@@ -31353,11 +31353,13 @@
     (license-gated skip); connector (federation engine → Trino catalog) — cassandra (reference
     pattern), exasol (arch-gated: amd64-only image), redshift + sharepoint (creds/instance-gated,
     no self-provision); DuckDB community extension — firebird, airport (live vs zaychik),
-    google_sheets (gated: Sheets API disabled on the available GCP project). Fixed a product bug
-    found while covering exasol: Source.jdbc_url() omitted exasol/redshift, silently no-op'ing
-    catalog creation. Filed issue #74 (zaychik Arrow-Flight auth/protocol gap, found via airport).
-    Remaining 7 types lack integration/e2e coverage — all heavy multi-container ecosystems or a
-    complex Calcite reach path: pinot, accumulo, druid, hive, hive_s3, kudu, splunk.
+    google_sheets (opt-in gated: DuckDB gsheets extension SA-auth, PROVISA_GSHEETS_LIVE=1);
+    Calcite/Trino — splunk (live, self-provisioned). Fixed a product bug found while covering
+    exasol: Source.jdbc_url() omitted exasol/redshift, silently no-op'ing catalog creation. Filed
+    issue #74 (zaychik Arrow-Flight auth/protocol gap, found via airport; the Provisa Flight→Trino
+    transport itself is verified working — tests/integration/test_trino_flight_engine_e2e.py).
+    Remaining 6 types lack integration/e2e coverage — all heavy multi-container ecosystems:
+    pinot, accumulo, druid, hive, hive_s3, kudu.
   code:
   - provisa/core/models.py
   - tests/integration/test_mariadb_source_e2e.py
@@ -31374,4 +31376,6 @@
   - tests/integration/test_sharepoint_source_e2e.py
   - tests/integration/test_google_sheets_source_e2e.py
   - tests/integration/test_airport_source_e2e.py
+  - tests/integration/test_splunk_source_e2e.py
+  - tests/integration/test_trino_flight_engine_e2e.py
   target: "2026-Q4"
