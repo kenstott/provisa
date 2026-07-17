@@ -31351,11 +31351,13 @@
     not just as concept or identity-check in code. Covered with self-provisioning tests:
     direct-driver — mariadb, tidb, cockroachdb, yugabytedb, sqlserver, oracle, singlestore
     (license-gated skip); connector (federation engine → Trino catalog) — cassandra (reference
-    pattern) and exasol (arch-gated: amd64-only image); DuckDB community extension — firebird.
-    Fixed a product bug found while covering exasol: Source.jdbc_url() omitted exasol/redshift,
-    silently no-op'ing catalog creation. Remaining 11 types lack integration/e2e coverage:
-    pinot, accumulo, airport, druid, google_sheets, hive, hive_s3, kudu, redshift, sharepoint,
-    splunk (heavy multi-container ecosystems + cloud/SaaS-only sources).
+    pattern), exasol (arch-gated: amd64-only image), redshift + sharepoint (creds/instance-gated,
+    no self-provision); DuckDB community extension — firebird, airport (live vs zaychik),
+    google_sheets (gated: Sheets API disabled on the available GCP project). Fixed a product bug
+    found while covering exasol: Source.jdbc_url() omitted exasol/redshift, silently no-op'ing
+    catalog creation. Filed issue #74 (zaychik Arrow-Flight auth/protocol gap, found via airport).
+    Remaining 7 types lack integration/e2e coverage — all heavy multi-container ecosystems or a
+    complex Calcite reach path: pinot, accumulo, druid, hive, hive_s3, kudu, splunk.
   code:
   - provisa/core/models.py
   - tests/integration/test_mariadb_source_e2e.py
@@ -31368,4 +31370,8 @@
   - tests/integration/test_cassandra_source_e2e.py
   - tests/integration/test_firebird_source_e2e.py
   - tests/integration/test_exasol_source_e2e.py
+  - tests/integration/test_redshift_source_e2e.py
+  - tests/integration/test_sharepoint_source_e2e.py
+  - tests/integration/test_google_sheets_source_e2e.py
+  - tests/integration/test_airport_source_e2e.py
   target: "2026-Q4"
