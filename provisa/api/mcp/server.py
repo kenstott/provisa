@@ -157,14 +157,20 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
 
     import uvicorn
 
+    # Bind host. Default 0.0.0.0 preserves the prior behavior for an explicitly-opted-in server
+    # deployment (the design mandates this default — the server tier expects the MCP port reachable
+    # off-box; documented per REQ-1101). The native/desktop tier turns MCP on by default and sets
+    # PROVISA_MCP_HOST=127.0.0.1, so its always-on server is loopback-only (same-machine Claude
+    # Desktop connector, no LAN exposure) — the safe posture for a default-on data gateway.
+    host = os.environ.get("PROVISA_MCP_HOST", "0.0.0.0") or "0.0.0.0"  # nosec B104
     mcp = build_mcp_server(state)
-    mcp.settings.host = "0.0.0.0"  # nosec B104 - intentionally binds all interfaces
+    mcp.settings.host = host
     mcp.settings.port = port
     app = mcp.streamable_http_app()
 
     def _serve() -> None:
-        uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")  # nosec B104
+        uvicorn.run(app, host=host, port=port, log_level="warning")  # nosec B104
 
     threading.Thread(target=_serve, daemon=True).start()
-    _log.info("MCP Streamable HTTP server listening on 0.0.0.0:%d", port)
+    _log.info("MCP Streamable HTTP server listening on %s:%d", host, port)
     return mcp

@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Group, Text, Title } from "@mantine/core";
+import { Alert, Badge, Button, Code, Collapse, Group, Paper, Text, TextInput, Title } from "@mantine/core";
 import {
   MainContainer,
   ChatContainer,
@@ -52,6 +52,130 @@ function CopyButton({ text }: { text: string }) {
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+// REQ-1103: a copy-ready "Connect Claude Desktop" panel. The browser can't write
+// claude_desktop_config.json, so this is the universal path — show the config snippet + an editable
+// URL and let the user paste it. Claude Desktop can only launch a local stdio child (no HTTP/URL
+// transport, and its hosted connector reaches only public HTTPS), so we bridge stdio -> the running
+// Streamable HTTP server with mcp-proxy. mcp-proxy is bundled INTO the native runtime (REQ-1104),
+// so the command is that runtime's own python (bridge_command from the API) — no Node, no install,
+// airgapped. The URL is resolved server-side (REQ-1102), proxy-aware, and shown editable.
+function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState("");
+  const [bridgeCommand, setBridgeCommand] = useState("");
+  const [bridgeArgs, setBridgeArgs] = useState<string[]>([]);
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/admin/mcp-server`, {
+          headers: { "x-provisa-role": roleId },
+        });
+        if (!r.ok || cancelled) return;
+        const s = (await r.json()) as {
+          enabled?: boolean;
+          url?: string;
+          bridge_command?: string;
+          bridge_args?: string[];
+        };
+        if (cancelled) return;
+        setEnabled(Boolean(s.enabled));
+        if (s.url) setUrl(s.url);
+        if (s.bridge_command) setBridgeCommand(s.bridge_command);
+        if (s.bridge_args) setBridgeArgs(s.bridge_args);
+      } catch {
+        /* status unavailable — leave the panel quiet */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [roleId]);
+
+  // Native tier hands us the bundled interpreter (ships mcp-proxy) -> zero-install config. Elsewhere
+  // (container/remote, no host-side bundled python) fall back to the `mcp-proxy` console script the
+  // user installs themselves, and say so.
+  const bundled = Boolean(bridgeCommand);
+  const command = bundled ? bridgeCommand : "mcp-proxy";
+  const args = bundled ? [...bridgeArgs, url] : ["--transport", "streamablehttp", url];
+  const snippet = JSON.stringify(
+    { mcpServers: { provisa: { command, args } } },
+    null,
+    2,
+  );
+
+  if (enabled === false) {
+    return (
+      <Text size="xs" c="dimmed" mb="sm">
+        MCP server is off. Set PROVISA_MCP_PORT to enable it, then reload to connect Claude Desktop.
+      </Text>
+    );
+  }
+  if (enabled === null) return null; // loading / unknown — stay quiet until we know
+
+  return (
+    <div style={{ marginBottom: "var(--mantine-spacing-sm)" }}>
+      <Button variant="subtle" size="xs" onClick={() => setOpen((o) => !o)}>
+        {open ? "Hide Claude Desktop setup" : "Connect Claude Desktop"}
+      </Button>
+      <Collapse in={open}>
+        <Paper withBorder p="sm" mt={6} radius="sm">
+          <Text size="sm" fw={600} mb={4}>
+            Connect Claude Desktop
+          </Text>
+          <Text size="xs" c="dimmed" mb={6}>
+            Add this to Claude Desktop&apos;s config file, then restart it.{" "}
+            {bundled ? (
+              <>The bridge (mcp-proxy) ships inside Provisa&apos;s runtime — no Node, no install.</>
+            ) : (
+              <>
+                The bridge runs on the machine with Claude Desktop, so install it there:{" "}
+                <Code>pip install mcp-proxy</Code>. Point the URL at Provisa&apos;s reachable address
+                (not localhost) — its MCP port must be open, and off-box access needs auth.
+              </>
+            )}{" "}
+            The URL is prefilled from how you reached this page — edit it if Claude Desktop runs on
+            another machine or Provisa is behind a proxy.
+          </Text>
+          <TextInput
+            label="MCP URL"
+            size="xs"
+            value={url}
+            onChange={(e) => setUrl(e.currentTarget.value)}
+            mb={6}
+          />
+          <Code block>{snippet}</Code>
+          <Group gap={6} mt={6}>
+            <Button
+              size="xs"
+              leftSection={copied ? <Check size={13} /> : <Copy size={13} />}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(snippet);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1200);
+                } catch {
+                  /* clipboard unavailable (insecure context) */
+                }
+              }}
+            >
+              {copied ? "Copied" : "Copy config"}
+            </Button>
+          </Group>
+          <Text size="xs" c="dimmed" mt={6}>
+            Config file — macOS: ~/Library/Application Support/Claude/claude_desktop_config.json ·
+            Windows: %APPDATA%\Claude\claude_desktop_config.json · Linux:
+            ~/.config/Claude/claude_desktop_config.json
+          </Text>
+        </Paper>
+      </Collapse>
+    </div>
+  );
+}
 
 interface ChatMsg {
   role: "user" | "assistant";
@@ -249,6 +373,8 @@ export function McpExplorePage() {
       <Text size="xs" c="dimmed" mb="sm">
         {t("mcpExplore.roleNote", { role: roleId || t("mcpExplore.noRole") })}
       </Text>
+
+      <ConnectClaudeDesktop roleId={roleId} />
 
       {tools.length > 0 && (
         <Group gap={6} mb="xs" wrap="wrap">

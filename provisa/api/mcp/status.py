@@ -59,7 +59,36 @@ _TOOLS = [
 ]
 
 
-def mcp_status() -> dict:
+def _resolve_mcp_url(request: Request | None, port: int) -> str | None:
+    """The Streamable HTTP URL a client (e.g. Claude Desktop) connects to (REQ-1102).
+
+    Server-side we cannot authoritatively know our externally-reachable domain (reverse proxy,
+    k8s ingress, NAT), so this is best-effort and the UI renders it EDITABLE — never a silently
+    wrong URL. Resolution order:
+      1. PROVISA_MCP_EXTERNAL_URL — an explicit operator override for proxied deployments.
+      2. The host the browser reached the UI on (X-Forwarded-Host / Host, port stripped) — correct
+         for the native/desktop tier (localhost) and a sane default elsewhere. The MCP server runs
+         on its OWN port, so only the hostname is reused; the port is always PROVISA_MCP_PORT.
+    """
+    if not port:
+        return None
+    override = os.environ.get("PROVISA_MCP_EXTERNAL_URL")
+    if override and override.strip():
+        return override.strip()
+    proto = "http"
+    hostname = "localhost"
+    if request is not None:
+        proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
+        raw_host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+        # Strip any UI port from the host header — MCP has its own port. IPv6 hosts are bracketed.
+        if raw_host:
+            hostname = raw_host.rsplit(":", 1)[0] if ":" in raw_host and not raw_host.endswith(
+                "]"
+            ) else raw_host
+    return f"{proto}://{hostname}:{port}/mcp"
+
+
+def mcp_status(request: Request | None = None) -> dict:
     """The MCP server's effective config, read from the same env the start hook uses."""
     port_raw = os.environ.get("PROVISA_MCP_PORT", "0")
     port = int(port_raw) if port_raw.strip() else 0
@@ -76,6 +105,15 @@ def mcp_status() -> dict:
         "port": port if enabled else None,
         # Streamable HTTP is the only transport start_mcp_server binds a port for.
         "transport": "streamable-http" if enabled else None,
+        # The connect URL (editable in the UI) — None when disabled. REQ-1102.
+        "url": _resolve_mcp_url(request, port),
+        # The host-accessible interpreter that runs the bundled mcp-proxy stdio bridge for Claude
+        # Desktop (REQ-1104). Set ONLY by the native launcher (PROVISA_MCP_BRIDGE_COMMAND = the
+        # ~/.provisa/runtime python that ships mcp-proxy). Deliberately NOT sys.executable: on the
+        # container tier that would be the in-VM python, which host Claude Desktop cannot launch.
+        # None -> the panel shows the "supply your own bridge" note instead of a broken config.
+        "bridge_command": os.environ.get("PROVISA_MCP_BRIDGE_COMMAND") or None,
+        "bridge_args": ["-m", "mcp_proxy", "--transport", "streamablehttp"],
         "stdio_role": role,
         "max_rows": max_rows,
         "tools": _TOOLS,
@@ -85,9 +123,9 @@ def mcp_status() -> dict:
 
 
 @router.get("/admin/mcp-server")
-async def get_mcp_server():  # REQ-1008
-    """Effective MCP server status (enabled, port, transport, bound role, tools)."""
-    return mcp_status()
+async def get_mcp_server(request: Request):  # REQ-1008
+    """Effective MCP server status (enabled, port, transport, connect URL, bound role, tools)."""
+    return mcp_status(request)
 
 
 @router.post("/admin/mcp/search-catalog")

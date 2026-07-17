@@ -65,6 +65,17 @@ function Native-Env {
     'PLATFORM_DATABASE_URL' = "sqlite+aiosqlite:///$platformDb"
     'TENANT_DATABASE_URL'   = "sqlite+aiosqlite:///$tenantDb"
   }
+  # Remote MCP on by default for the native/desktop tier (REQ-1101): a ready same-machine Claude
+  # Desktop connector. Loopback bind (127.0.0.1) keeps the always-on server off the LAN. The role
+  # is pinned explicitly (not a silent admin default) - native runs auth:none as one local admin
+  # user, so the governed MCP role is admin. Override any by exporting the env before launch.
+  if (-not $env:PROVISA_MCP_PORT) { $e['PROVISA_MCP_PORT'] = '8009' }
+  if (-not $env:PROVISA_MCP_HOST) { $e['PROVISA_MCP_HOST'] = '127.0.0.1' }
+  if (-not $env:PROVISA_MCP_ROLE) { $e['PROVISA_MCP_ROLE'] = 'admin' }
+  # The bundled runtime python (host-accessible, ships mcp-proxy) that Claude Desktop launches as
+  # the Node-free stdio bridge (REQ-1104). Only the native tier sets this - the Explore/MCP panel
+  # emits the ready-to-paste config only when it is present.
+  $e['PROVISA_MCP_BRIDGE_COMMAND'] = $RuntimePy
   if ($EngineUrl)      { $e['PROVISA_ENGINE_URL'] = $EngineUrl }
   if ($MaterializeUrl) { $e['PROVISA_MATERIALIZE_URL'] = $MaterializeUrl }
   if ($OtlpEndpoint)   { $e['OTEL_EXPORTER_OTLP_ENDPOINT'] = $OtlpEndpoint }

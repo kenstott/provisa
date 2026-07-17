@@ -76,8 +76,13 @@ if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
 # sqlite+aiosqlite and SQLAlchemy async needs greenlet. They are declared runtime deps, but naming
 # them here guarantees the bundle has them even if dependency resolution ever regresses (a missing
 # aiosqlite crashed the native API at startup once).
-& $RuntimePy -m pip install --quiet $RepoRoot uvicorn aiosqlite greenlet
+# mcp-proxy (REQ-1104): the Node-free stdio<->Streamable-HTTP bridge Claude Desktop launches to
+# reach the local MCP server. Bundled INTO the runtime so the connector is fully airgapped (no npx,
+# no user pip). The Explore/MCP panel emits a config whose command is this runtime's own python.
+& $RuntimePy -m pip install --quiet $RepoRoot uvicorn aiosqlite greenlet mcp-proxy
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
+& $RuntimePy -c "import mcp_proxy" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "mcp-proxy missing from the bundled native runtime after install" }
 # Fail the build loudly if the critical native-tier driver did not land.
 & $RuntimePy -c "import aiosqlite" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aiosqlite missing from the bundled native runtime after install" }
