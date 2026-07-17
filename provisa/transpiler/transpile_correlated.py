@@ -20,6 +20,26 @@ import sqlglot  # noqa: F401
 import sqlglot.expressions as exp
 
 
+def _json_agg_object(expr: exp.Expression) -> exp.JSONObject | None:
+    """Return the inner JSONObject if ``expr`` is ``json_agg(json_object(...))``, else None.
+
+    sqlglot (read="postgres") lifts ``json_agg(json_object(...))`` — the shape the compiler
+    emits (sql_selection.py) — into ``exp.JSONArrayAgg(this=JSONObject)``, but parses
+    ``json_agg(<anything-else>)`` into ``exp.Anonymous(name=JSON_AGG)``. Detect both so the
+    one-to-many rewrite fires on real compiler output.
+    """
+    if isinstance(expr, exp.JSONArrayAgg) and isinstance(expr.this, exp.JSONObject):
+        return expr.this
+    if (
+        isinstance(expr, exp.Anonymous)
+        and expr.name.upper() == "JSON_AGG"
+        and expr.expressions
+        and isinstance(expr.expressions[0], exp.JSONObject)
+    ):
+        return expr.expressions[0]
+    return None
+
+
 def _rewrite_correlated_json_to_ctes(sql: str) -> str:
     """Rewrite correlated json_object/json_agg SELECT subqueries to CTEs."""
     # Parse failure must fail loud: returning input skips the required Trino CTE rewrite.
@@ -127,12 +147,8 @@ def _try_rewrite_to_cte(
     inner_expr = inner_exprs[0]
     # Detect json_object (many-to-one) or json_agg(json_object) (one-to-many)
     is_many_to_one = isinstance(inner_expr, exp.JSONObject)
-    is_one_to_many = (
-        isinstance(inner_expr, exp.Anonymous)
-        and inner_expr.name.upper() == "JSON_AGG"
-        and inner_expr.expressions
-        and isinstance(inner_expr.expressions[0], exp.JSONObject)
-    )
+    agg_json_object = _json_agg_object(inner_expr)
+    is_one_to_many = agg_json_object is not None
     if not is_many_to_one and not is_one_to_many:
         return None
 
@@ -164,7 +180,8 @@ def _try_rewrite_to_cte(
     if is_many_to_one:
         json_expr = inner_expr
     else:
-        json_expr = inner_expr.expressions[0]
+        assert agg_json_object is not None  # guarded by is_one_to_many above
+        json_expr = agg_json_object
 
     extra_joins: list[exp.Join] = []
     flat_json = _flatten_json_subqueries(json_expr, extra_joins)
@@ -292,12 +309,8 @@ def _flatten_json_subqueries(
 
         inner_expr = inner_exprs[0]
         is_jbo = isinstance(inner_expr, exp.JSONObject)
-        is_agg = (
-            isinstance(inner_expr, exp.Anonymous)
-            and inner_expr.name.upper() == "JSON_AGG"
-            and inner_expr.expressions
-            and isinstance(inner_expr.expressions[0], exp.JSONObject)
-        )
+        agg_json_object = _json_agg_object(inner_expr)
+        is_agg = agg_json_object is not None
         if not is_jbo and not is_agg:
             new_kvs.append(kv)
             continue
@@ -333,7 +346,8 @@ def _flatten_json_subqueries(
         if is_jbo:
             nested_json = inner_expr
         else:
-            nested_json = inner_expr.expressions[0]
+            assert agg_json_object is not None  # guarded by is_agg above
+            nested_json = agg_json_object
 
         deeper_joins: list[exp.Join] = []
         flat_nested = _flatten_json_subqueries(nested_json, deeper_joins)

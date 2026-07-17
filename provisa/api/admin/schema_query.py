@@ -321,7 +321,7 @@ class Query:  # REQ-021, REQ-042
         # native_schemas returns None only for the engine-backed connector sources that have no
         # cheaper direct pool path. Use the engine for those — reach is the engine's OWN connector
         # registry (REQ-947), not a parallel map: unreachable ⇒ no engine schemas.
-        if not state.federation_engine.reachable(source_type):
+        if not state.federation_engine.engine.reachable(source_type):
             return []
         catalog = source_to_catalog(source_id)
         schemas: list[str] = []

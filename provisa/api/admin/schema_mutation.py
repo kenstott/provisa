@@ -983,6 +983,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Remove a scheduled trigger from config and the live scheduler."""
         return await _ops.delete_scheduled_task_op(task_id)
 
+    @strawberry.mutation
     async def refresh_source_statistics(self, source_id: str) -> MutationResult:  # REQ-276
         """Run ANALYZE on all registered tables for a source (Phase AL).
 
