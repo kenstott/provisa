@@ -31380,7 +31380,7 @@
   - tests/integration/test_trino_flight_engine_e2e.py
   target: "2026-Q4"
 - id: REQ-1098
-  status: in-progress
+  status: complete
   group: "8. Client Access & Protocols"
   category: Served Protocol Surface
   priority: SHOULD
@@ -31413,3 +31413,123 @@
   e2e_reason: External DuckDB client ATTACH/query behavior with server-side governance enforcement can only be verified through a full live-stack round-trip.
   relates_to:
   - REQ-1097
+- id: REQ-1099
+  status: complete
+  group: "8. Client Access & Protocols"
+  category: Query Pushdown & Optimization
+  priority: MUST
+  type: constraint
+  description: >-
+    The DuckDB airport extension delivers filter and projection pushdown via the endpoints
+    DoAction parameters map (json_filters JSON expression tree + column_ids indices). The server
+    translates these to semantic WHERE + projection, folds them into the DoGet ticket, and injects
+    them through _govern_and_route so sources apply filters/projection with RLS/masking layered on.
+  use_case: >-
+    Pushdown minimizes network transfer and leverages source query optimization while maintaining
+    governance invariants. Conformance rule: DoGet must return the FULL advertised schema; projected-out
+    columns are null-filled client-side and DuckDB projects accordingly.
+  code:
+  - provisa/api/airport/pushdown.py
+  - provisa/api/airport/server.py
+  tests:
+  - tests/integration/test_airport_service_e2e.py
+  since: "2026-07"
+  relates_to:
+  - REQ-1098
+- id: REQ-1100
+  status: complete
+  group: "8. Client Access & Protocols"
+  category: Access Control & Projection
+  priority: MUST
+  type: constraint
+  description: >-
+    Airport catalog scan projects only registered semantic columns per role, never SELECT *.
+    Unregistered physical columns (e.g. audit created_at) are neither leaked on read nor sent
+    as NULL on INSERT.
+  use_case: >-
+    Ensures column-level access control is enforced at the protocol boundary and physical schema
+    details remain hidden from federated consumers, preventing accidental data leakage or schema
+    coupling.
+  code:
+  - provisa/api/airport/service.py
+  - provisa/api/airport/query.py
+  tests:
+  - tests/integration/test_airport_service_e2e.py
+  since: "2026-07"
+  relates_to:
+  - REQ-1098
+- id: REQ-1101
+  status: complete
+  group: "8. Client Access & Protocols"
+  category: Transaction Management
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Airport transactions use a real in-memory coordinator (provisa/api/airport/transactions.py).
+    create_transaction mints a UUID identifier; get_transaction_status reports active/committed/aborted.
+    Best-effort read-committed isolation: each governed mutation auto-commits.
+  use_case: >-
+    Provides transaction identity and status tracking for DuckDB clients performing multi-statement
+    workflows against a governed federated catalog without requiring persistent transaction state
+    across connections.
+  scenario: |
+    Given a DuckDB client with airport extension connected to Provisa
+    When the client calls create_transaction
+    Then a unique transaction UUID is minted and returned
+    And get_transaction_status reports the transaction as active
+    And mutations within the transaction auto-commit with read-committed isolation
+  code:
+  - provisa/api/airport/transactions.py
+  - provisa/api/airport/service.py
+  tests:
+  - tests/integration/test_airport_service_e2e.py
+  since: "2026-07"
+  relates_to:
+  - REQ-1098
+- id: REQ-1102
+  status: complete
+  group: "8. Client Access & Protocols"
+  category: Mutation Enforcement
+  priority: MUST
+  type: constraint
+  description: >-
+    Governed DML (INSERT) via do_exchange decodes the Arrow stream and submits semantic INSERT
+    SQL through _compile_govern_execute (the single governed write pipeline), gated on engine
+    writability (is_writable_on / writable.py). Never parallel writers.
+  use_case: >-
+    Ensures all mutations flow through the unified governance pipeline with consistent RLS/masking
+    and audit enforcement, preventing bypass via direct insertion or uncontrolled parallel writes.
+  code:
+  - provisa/api/airport/service.py
+  - provisa/api/airport/query.py
+  - provisa/api/airport/server.py
+  tests:
+  - tests/integration/test_airport_service_e2e.py
+  since: "2026-07"
+  relates_to:
+  - REQ-1098
+- id: REQ-1103
+  status: complete
+  group: "8. Client Access & Protocols"
+  category: Protocol Compliance
+  priority: MUST
+  type: constraint
+  description: >-
+    Operations refused with correct Flight protocol error (never silent no-op). UPDATE/DELETE are
+    refused because governed catalog exposes no rowid pseudo-column (RLS/masking make physical row
+    identity unsafe). column_statistics + table_function_flight_info are refused (governed federation
+    has no precomputed stats and advertises no table functions). create_table, column/struct mutations
+    are refused (physical schema mutation needs admin schema-mutation API's source/governance context
+    absent from airport DDL). DDL create_schema/drop_schema DO map to Provisa domains via control-plane
+    domain repository.
+  use_case: >-
+    Maintains protocol integrity and consistent governance model by rejecting operations that cannot
+    be safely federated, preventing data inconsistency, uncontrolled mutations, or governance bypass.
+  code:
+  - provisa/api/airport/service.py
+  - provisa/api/airport/errors.py
+  tests:
+  - tests/integration/test_airport_service_e2e.py
+  since: "2026-07"
+  relates_to:
+  - REQ-1098
