@@ -73,3 +73,32 @@ def governed_table_scan_arrow(
         ]
         return rows_to_arrow_table(result.rows, columns)
     raise ValueError(f"Route {plan.route!r} is not supported for the airport service")
+
+
+def governed_mutation(
+    state: AppState,  # noqa: ARG001  # kept for call-site symmetry with the scan seam
+    main_loop: asyncio.AbstractEventLoop,
+    sql: str,
+    role_id: str,
+) -> int:
+    """Submit a mutation (INSERT/UPDATE/DELETE) through the ONE governed pipeline (REQ-1098).
+
+    Routes the semantic mutation SQL through the SAME ``_compile_govern_execute`` the
+    ``/data/sql`` endpoint uses, so governance (writable-column ACL, RLS injection on
+    UPDATE/DELETE, domain-access) and the write-routing decision (native → sqlalchemy →
+    engine, via writable.py) apply — the airport DML path is NOT a parallel writer. Runs
+    on an airport worker thread; the coroutine is dispatched to the main event loop that
+    owns the pools.
+
+    Returns the count of rows the driver reported back (RETURNING/affected rows); callers
+    that build a fixed-size mutation use their own input count for the airport
+    ``total_changed`` metadata when the driver reports none.
+    """
+    from provisa.api.app import state as _app_state
+    from provisa.api.data.endpoint_dev import _compile_govern_execute
+
+    result, _sources, _default, _decision, _phys = asyncio.run_coroutine_threadsafe(
+        _compile_govern_execute(sql, role_id, _app_state),
+        main_loop,
+    ).result()
+    return len(result.rows)
