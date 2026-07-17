@@ -31439,3 +31439,87 @@
   - packaging/windows/tests/provisa-native.Tests.ps1
   relates_to:
   - REQ-979
+- id: REQ-1101
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: Desktop MCP Configuration
+  priority: MUST
+  type: infrastructure
+  description: Native/desktop tier enables remote MCP server by default, bound to loopback (PROVISA_MCP_HOST=127.0.0.1),
+    with the governed role pinned explicitly (native auth:none = one local admin). All settings overridable via environment variables.
+  use_case: Provides secure local MCP connectivity for Claude Desktop on native installations without additional configuration,
+    enabling tool use against local Provisa queries.
+  code:
+  - provisa/api/mcp/server.py
+  - packaging/windows/provisa-native.ps1
+  - scripts/provisa
+  tests:
+  - tests/unit/test_mcp_status.py
+- id: REQ-1102
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: MCP Status Endpoint
+  priority: MUST
+  type: behavioral
+  description: The MCP status endpoint returns a resolved, proxy-aware, editable connect URL derived from X-Forwarded-Host/Host
+    headers plus PROVISA_MCP_PORT and /mcp path; PROVISA_MCP_EXTERNAL_URL overrides. Returns null when MCP is disabled.
+  use_case: Enables UI to display and allow editing of the MCP connection URL, accounting for reverse proxies and external
+    domains that the server cannot reliably infer.
+  code:
+  - provisa/api/mcp/status.py
+  tests:
+  - tests/unit/test_mcp_status.py
+  scenario: |
+    Given MCP is enabled on the server with PROVISA_MCP_PORT=9999
+    When the UI calls GET /api/mcp/status with X-Forwarded-Host: example.com
+    Then the endpoint returns {url: "http://example.com:9999/mcp", enabled: true}
+- id: REQ-1103
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: Explore MCP UI Panel
+  priority: MUST
+  type: ui
+  description: The Explore/MCP surface provides a "Connect Claude Desktop" panel that emits a copy-ready claude_desktop_config.json
+    entry with URL prefilled and editable.
+  use_case: Simplifies Claude Desktop setup by providing a complete, copy-paste configuration entry that users can add to their
+    Claude Desktop config file.
+  code:
+  - provisa-ui/src/pages/McpExplorePage.tsx
+  tests:
+  - tests/unit/test_mcp_status.py
+- id: REQ-1104
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: Claude Desktop Bridge
+  priority: MUST
+  type: infrastructure
+  description: "The Claude Desktop connector is Node-free: mcp-proxy (Python stdio-to-Streamable-HTTP bridge) is bundled into the native standalone runtime. The emitted config's command references the bundled interpreter (PROVISA_MCP_BRIDGE_COMMAND). Feature is gated to native tier only; off-tier the panel degrades to \"install mcp-proxy yourself\". No npx, no Node, no user pip, fully airgapped."
+  use_case: Eliminates Node.js and npm as dependencies for Claude Desktop MCP connectivity in native installations, reducing
+    distribution complexity and supporting offline/airgapped environments.
+  code:
+  - packaging/windows/build-sfx.ps1
+  - packaging/macos/build-dmg.sh
+  - pyproject.toml
+  - provisa/api/mcp/status.py
+  - packaging/windows/provisa-native.ps1
+  - scripts/provisa
+  tests:
+  - tests/unit/test_mcp_status.py
+  relates_to:
+  - REQ-979
+- id: REQ-1105
+  status: proposed
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: MCP Authentication
+  priority: MUST
+  type: behavioral
+  description: Wire resolve_token_role into the FastMCP Streamable HTTP transport to map remote bearer tokens to Provisa roles,
+    enabling secure per-caller MCP authentication before exposing MCP off the loopback.
+  use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control and governance.
+  code:
+  - provisa/api/mcp/server.py
