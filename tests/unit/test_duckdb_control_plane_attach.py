@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 1e5c7ac6-a382-434b-8bf2-b3d178dc22a3
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -15,7 +16,6 @@ compiler emits (``org_<id>``), providing exact Trino parity without hardcoding a
 from __future__ import annotations
 
 import sqlite3
-import tempfile
 from pathlib import Path
 
 import pytest
