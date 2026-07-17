@@ -31330,7 +31330,8 @@
   relates_to:
   - REQ-164
 - id: REQ-1097
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: "7. Connectors & Source Adapters"
   category: Test Coverage
   priority: MUST
@@ -31363,6 +31364,8 @@
     downloadable driver testable in this harness (Trino 481 ships no kudu/accumulo connector).
   code:
   - provisa/core/models.py
+  - provisa/federation/trino_connectors.py
+  tests:
   - tests/integration/test_mariadb_source_e2e.py
   - tests/integration/test_tidb_source_e2e.py
   - tests/integration/test_cockroachdb_source_e2e.py
@@ -31378,6 +31381,10 @@
   - tests/integration/test_google_sheets_source_e2e.py
   - tests/integration/test_airport_source_e2e.py
   - tests/integration/test_splunk_source_e2e.py
+  - tests/integration/test_pinot_source_e2e.py
+  - tests/integration/test_druid_source_e2e.py
+  - tests/integration/test_hive_source_e2e.py
+  - tests/integration/test_hive_s3_source_e2e.py
   - tests/integration/test_trino_flight_engine_e2e.py
   target: "2026-Q4"
 - id: REQ-1098
