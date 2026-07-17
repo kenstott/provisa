@@ -163,14 +163,45 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
     # PROVISA_MCP_HOST=127.0.0.1, so its always-on server is loopback-only (same-machine Claude
     # Desktop connector, no LAN exposure) — the safe posture for a default-on data gateway.
     host = os.environ.get("PROVISA_MCP_HOST", "0.0.0.0") or "0.0.0.0"  # nosec B104
+
+    # Optional TLS (REQ-1106): the native tier sets PROVISA_MCP_TLS=1 so Claude Desktop's "Add custom
+    # connector" (which only accepts an https:// URL) can hit https://localhost:<port>/mcp directly -
+    # no stdio bridge. Best-effort with a DESIGN-MANDATED fallback: if a per-machine cert can't be
+    # created, serve plain HTTP (the mcp-proxy bridge still works over http). The ACTIVE scheme is
+    # published to the process env so the status endpoint tells the UI which connect path to show.
+    ssl_kwargs: dict[str, str] = {}
+    scheme = "http"
+    if os.environ.get("PROVISA_MCP_TLS", "").strip().lower() in ("1", "true", "yes"):
+        from provisa.api.mcp.tls import ensure_cert, trust_cert
+
+        pair = ensure_cert()
+        if pair:
+            ssl_kwargs = {"ssl_certfile": pair[0], "ssl_keyfile": pair[1]}
+            scheme = "https"
+            trust_cert(pair[0])  # best-effort OS user-store trust; failure just leaves it untrusted
+    os.environ["PROVISA_MCP_ACTIVE_SCHEME"] = scheme
+
     mcp = build_mcp_server(state)
     mcp.settings.host = host
     mcp.settings.port = port
+    # MCP's DNS-rebinding protection (on by default) only accepts Host headers of localhost/127.0.0.1,
+    # so a non-loopback bind (0.0.0.0 for a WSL-hosted backend, or a LAN/deployment) is rejected with
+    # 421 Misdirected Request when a client connects via the machine's real IP/hostname (e.g. the WSL
+    # VM IP, which is dynamic and unpredictable). That check is a BROWSER-origin defense; MCP clients
+    # here are stdio bridges (mcp-proxy), not browsers, and a non-loopback bind is an explicit opt-in
+    # to off-box access whose real gate is the network binding + role — not the Host header. Disable
+    # it only for non-loopback binds; loopback keeps the strict default (REQ-1106).
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        mcp.settings.transport_security = TransportSecuritySettings(
+            enable_dns_rebinding_protection=False
+        )
     app = mcp.streamable_http_app()
 
     def _serve() -> None:
-        uvicorn.run(app, host=host, port=port, log_level="warning")  # nosec B104
+        uvicorn.run(app, host=host, port=port, log_level="warning", **ssl_kwargs)  # nosec B104
 
     threading.Thread(target=_serve, daemon=True).start()
-    _log.info("MCP Streamable HTTP server listening on %s:%d", host, port)
+    _log.info("MCP Streamable %s server listening on %s:%d", scheme.upper(), host, port)
     return mcp

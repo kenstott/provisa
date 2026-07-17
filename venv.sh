@@ -21,7 +21,9 @@ PYTHON="${PYTHON:-python3.12}"
 VENV="${VENV:-.venv}"
 
 # Always include dev tooling; append any optional groups passed as args.
-EXTRAS="dev"
+# 'desktop' pulls in mcp-proxy so the dev backend's MCP Claude-Desktop bridge fallback resolves
+# (start-ui-install points PROVISA_MCP_BRIDGE_COMMAND at this venv's python).
+EXTRAS="dev,desktop"
 for g in "$@"; do EXTRAS="$EXTRAS,$g"; done
 
 if ! command -v "$PYTHON" >/dev/null 2>&1; then

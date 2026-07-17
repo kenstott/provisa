@@ -75,17 +75,22 @@ def _resolve_mcp_url(request: Request | None, port: int) -> str | None:
     override = os.environ.get("PROVISA_MCP_EXTERNAL_URL")
     if override and override.strip():
         return override.strip()
-    proto = "http"
+    # Scheme: the MCP server's ACTUAL transport wins. start_mcp_server publishes PROVISA_MCP_ACTIVE_
+    # SCHEME (https when TLS is on, http on the fallback), and the MCP port's scheme is independent
+    # of the UI request. Fall back to the request's forwarded scheme for a proxied/remote deployment
+    # where the in-process MCP server didn't run (REQ-1106).
+    active = os.environ.get("PROVISA_MCP_ACTIVE_SCHEME")
+    req_proto = "http"
     hostname = "localhost"
     if request is not None:
-        proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
+        req_proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
         raw_host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
         # Strip any UI port from the host header — MCP has its own port. IPv6 hosts are bracketed.
         if raw_host:
             hostname = raw_host.rsplit(":", 1)[0] if ":" in raw_host and not raw_host.endswith(
                 "]"
             ) else raw_host
-    return f"{proto}://{hostname}:{port}/mcp"
+    return f"{active or req_proto}://{hostname}:{port}/mcp"
 
 
 def mcp_status(request: Request | None = None) -> dict:
@@ -100,20 +105,31 @@ def mcp_status(request: Request | None = None) -> dict:
     max_rows_raw = os.environ.get("PROVISA_MCP_MAX_ROWS")
     max_rows = int(max_rows_raw) if max_rows_raw and max_rows_raw.strip() else 1000
 
+    url = _resolve_mcp_url(request, port)
+    # TLS (REQ-1106): when the MCP server serves https, the UI's primary path is Claude Desktop's
+    # "Add custom connector" (https-only, no bridge). The mcp-proxy bridge fallback then needs
+    # --no-verify-ssl because the cert is a per-machine self-signed one.
+    tls = bool(url and url.startswith("https://"))
+    bridge_args = ["-m", "mcp_proxy", "--transport", "streamablehttp"]
+    if tls:
+        bridge_args.append("--no-verify-ssl")
+
     return {
         "enabled": enabled,
         "port": port if enabled else None,
         # Streamable HTTP is the only transport start_mcp_server binds a port for.
         "transport": "streamable-http" if enabled else None,
         # The connect URL (editable in the UI) — None when disabled. REQ-1102.
-        "url": _resolve_mcp_url(request, port),
+        "url": url,
+        # Whether that URL is https -> the UI leads with the native custom-connector flow. REQ-1106.
+        "tls": tls,
         # The host-accessible interpreter that runs the bundled mcp-proxy stdio bridge for Claude
         # Desktop (REQ-1104). Set ONLY by the native launcher (PROVISA_MCP_BRIDGE_COMMAND = the
         # ~/.provisa/runtime python that ships mcp-proxy). Deliberately NOT sys.executable: on the
         # container tier that would be the in-VM python, which host Claude Desktop cannot launch.
         # None -> the panel shows the "supply your own bridge" note instead of a broken config.
         "bridge_command": os.environ.get("PROVISA_MCP_BRIDGE_COMMAND") or None,
-        "bridge_args": ["-m", "mcp_proxy", "--transport", "streamablehttp"],
+        "bridge_args": bridge_args,
         "stdio_role": role,
         "max_rows": max_rows,
         "tools": _TOOLS,

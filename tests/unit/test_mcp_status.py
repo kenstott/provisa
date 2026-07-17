@@ -43,6 +43,18 @@ class _FakeRequest:
         self.url = _FakeURL(scheme)
 
 
+@pytest.fixture(autouse=True)
+def _clean_mcp_env(monkeypatch):
+    # These process-env signals (set by start_mcp_server / the native launcher) leak across tests;
+    # clear them so every case is deterministic with or without TLS (REQ-1106).
+    for var in (
+        "PROVISA_MCP_ACTIVE_SCHEME",
+        "PROVISA_MCP_EXTERNAL_URL",
+        "PROVISA_MCP_BRIDGE_COMMAND",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 def test_disabled_when_port_unset(monkeypatch):
     monkeypatch.delenv("PROVISA_MCP_PORT", raising=False)
     monkeypatch.delenv("PROVISA_MCP_ROLE", raising=False)
@@ -143,3 +155,30 @@ def test_bridge_command_is_the_bundled_interpreter_on_native(monkeypatch):
     monkeypatch.setenv("PROVISA_MCP_BRIDGE_COMMAND", "/home/u/.provisa/runtime/python")
     s = mcp_status(_FakeRequest({"host": "localhost:3000"}))
     assert s["bridge_command"] == "/home/u/.provisa/runtime/python"
+
+
+# -- REQ-1106: TLS scheme + bridge --no-verify-ssl -----------------------------
+def test_no_tls_by_default(monkeypatch):
+    monkeypatch.setenv("PROVISA_MCP_PORT", "8009")
+    s = mcp_status(_FakeRequest({"host": "localhost:3000"}))
+    assert s["tls"] is False
+    assert s["url"] == "http://localhost:8009/mcp"
+    assert "--no-verify-ssl" not in s["bridge_args"]
+
+
+def test_active_scheme_https_makes_url_https_and_bridge_skip_verify(monkeypatch):
+    monkeypatch.setenv("PROVISA_MCP_PORT", "8009")
+    monkeypatch.setenv("PROVISA_MCP_ACTIVE_SCHEME", "https")
+    s = mcp_status(_FakeRequest({"host": "localhost:3000"}))
+    assert s["url"] == "https://localhost:8009/mcp"
+    assert s["tls"] is True
+    assert s["bridge_args"][-1] == "--no-verify-ssl"
+
+
+def test_active_scheme_overrides_request_proto(monkeypatch):
+    # The MCP server's own scheme (https) wins over the UI request's forwarded proto (http).
+    monkeypatch.setenv("PROVISA_MCP_PORT", "8009")
+    monkeypatch.setenv("PROVISA_MCP_ACTIVE_SCHEME", "https")
+    s = mcp_status(_FakeRequest({"x-forwarded-proto": "http", "host": "acme.com:3000"}))
+    assert s["url"] == "https://acme.com:8009/mcp"
+    assert s["tls"] is True

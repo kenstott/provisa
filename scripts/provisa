@@ -312,6 +312,10 @@ native_env_pairs() {
         "PROVISA_MCP_PORT=${PROVISA_MCP_PORT:-8009}"
         "PROVISA_MCP_HOST=${PROVISA_MCP_HOST:-127.0.0.1}"
         "PROVISA_MCP_ROLE=${PROVISA_MCP_ROLE:-admin}"
+        # MCP stays plain HTTP: Claude Desktop reaches a LOCAL server only via the stdio bridge
+        # (mcp-proxy), which works over http. Its custom-connector URL path is brokered from
+        # Anthropic (needs a public HTTPS endpoint), so TLS buys nothing locally. TLS stays opt-in
+        # (PROVISA_MCP_TLS=1) for a publicly-exposed deployment (REQ-1106).
         # Bundled runtime python (host-accessible, ships mcp-proxy) Claude Desktop launches as the
         # Node-free stdio bridge (REQ-1104). Native tier only; gates the Explore/MCP connector panel.
         "PROVISA_MCP_BRIDGE_COMMAND=$(native_python)"

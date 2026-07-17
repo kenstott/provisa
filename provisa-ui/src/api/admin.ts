@@ -478,6 +478,12 @@ export interface McpServerStatus {
   enabled: boolean;
   port: number | null;
   transport: string | null;
+  // Scheme-aware connect URL (https when the server serves TLS) and the TLS flag — REQ-1102/1106.
+  url?: string | null;
+  tls?: boolean;
+  // Bundled mcp-proxy bridge command/args for the Claude Desktop config fallback — REQ-1104.
+  bridge_command?: string | null;
+  bridge_args?: string[];
   stdio_role: string | null;
   max_rows: number;
   tools: McpTool[];
