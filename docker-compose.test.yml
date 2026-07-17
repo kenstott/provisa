@@ -145,6 +145,29 @@ services:
       retries: 30
       start_period: 120s
 
+  # Connector source (federation-engine → Trino cassandra catalog, not a direct driver).
+  # Trino reaches it in-network at cassandra:9042; ${CASSANDRA_PORT} is host-published only
+  # for seeding via `docker exec ... cqlsh`. Slow to boot (JVM + gossip), hence start_period.
+  cassandra:
+    restart: unless-stopped
+    image: cassandra:5
+    ports:
+      - "${CASSANDRA_PORT:-9042}:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: provisa-itest
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      HEAP_NEWSIZE: 128M
+      MAX_HEAP_SIZE: 512M
+    volumes:
+      - cassandra_test_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+
   singlestore:
     restart: unless-stopped
     image: ghcr.io/singlestore-labs/singlestoredb-dev:latest
@@ -278,6 +301,7 @@ volumes:
   mssql_test_data:
   oracle_test_data:
   singlestore_test_data:
+  cassandra_test_data:
   mongo_test_data:
   es_test_data:
   neo4j_test_data:

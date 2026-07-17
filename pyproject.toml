@@ -176,6 +176,7 @@ markers = [
     "requires_sqlserver: requires SQL Server service (docker compose up sqlserver)",
     "requires_oracle: requires Oracle service (docker compose up oracle)",
     "requires_singlestore: requires SingleStore service (docker compose up singlestore); needs SINGLESTORE_LICENSE",
+    "requires_cassandra: requires Cassandra service (docker compose up cassandra)",
     "requires_prometheus: requires Prometheus service (docker compose up prometheus)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",
