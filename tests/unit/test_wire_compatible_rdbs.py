@@ -52,3 +52,14 @@ def test_tidb_maps_to_mysql():
     assert SOURCE_TO_DIALECT["tidb"] == "mysql"
     assert trino_connector_name("tidb") == "mysql"
     assert _src("tidb").jdbc_url() == "jdbc:mysql://h:5432/db"
+
+
+def test_exasol_and_redshift_jdbc_urls_present():
+    # REQ-1097 regression: both declare a Trino JDBC connector, so jdbc_url() must emit a
+    # non-empty URL — otherwise _TrinoJdbcConnector.details() returns {} and create_catalog()
+    # silently no-ops the catalog. Exasol is colon-delimited (jdbc:exa:host:port, no db);
+    # redshift is standard pgjdbc-shaped.
+    exa = Source(id="s_exa", type=SourceType.exasol, host="h", port=8563, database="db")
+    assert exa.jdbc_url() == "jdbc:exa:h:8563"
+    rs = Source(id="s_rs", type=SourceType.redshift, host="h", port=5439, database="db")
+    assert rs.jdbc_url() == "jdbc:redshift://h:5439/db"

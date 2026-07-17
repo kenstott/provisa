@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 import os
+import platform
 import socket
 import subprocess
 import time
@@ -100,6 +101,7 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_singlestore": ["singlestore"],
     "requires_cassandra": ["cassandra"],
     "requires_firebird": ["firebird"],
+    "requires_exasol": ["exasol"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
@@ -131,6 +133,7 @@ _ITEST_PORT_ENV = [
     "SINGLESTORE_PORT",
     "CASSANDRA_PORT",
     "FIREBIRD_PORT",
+    "EXASOL_PORT",
 ]
 
 
@@ -205,6 +208,12 @@ class _DockerServiceManager:
         # for a test that will just skip anyway.
         if "singlestore" in needed and not os.environ.get("SINGLESTORE_LICENSE"):
             needed.discard("singlestore")
+
+        # exasol/docker-db is amd64-only and can't boot under arm64 emulation; the test is
+        # skipif-gated on arch, but collection already asked for the service — don't try to
+        # bring up a container that will never become healthy on this host.
+        if "exasol" in needed and platform.machine() not in ("x86_64", "amd64"):
+            needed.discard("exasol")
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
         # exported at import time, its own network — the dev stack is never touched.

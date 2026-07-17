@@ -178,6 +178,7 @@ markers = [
     "requires_singlestore: requires SingleStore service (docker compose up singlestore); needs SINGLESTORE_LICENSE",
     "requires_cassandra: requires Cassandra service (docker compose up cassandra)",
     "requires_firebird: requires Firebird service (docker compose up firebird)",
+    "requires_exasol: requires Exasol service (docker compose up exasol); amd64-only image",
     "requires_prometheus: requires Prometheus service (docker compose up prometheus)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",

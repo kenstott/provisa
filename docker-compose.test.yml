@@ -191,6 +191,25 @@ services:
       retries: 30
       start_period: 20s
 
+  # Connector source (Trino exasol catalog). Image is linux/amd64 only — unbootable under arm64
+  # emulation, so the test is arch-gated (skipif) and this service is dropped from provisioning on
+  # non-amd64 hosts (conftest). Trino reaches it in-network at exasol:8563.
+  exasol:
+    restart: unless-stopped
+    image: exasol/docker-db:latest
+    privileged: true
+    shm_size: 2g
+    ports:
+      - "${EXASOL_PORT:-8563}:8563"
+    volumes:
+      - exasol_test_data:/exa
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8563' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 120s
+
   singlestore:
     restart: unless-stopped
     image: ghcr.io/singlestore-labs/singlestoredb-dev:latest
@@ -326,6 +345,7 @@ volumes:
   singlestore_test_data:
   cassandra_test_data:
   firebird_test_data:
+  exasol_test_data:
   mongo_test_data:
   es_test_data:
   neo4j_test_data:

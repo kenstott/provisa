@@ -230,6 +230,8 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
             "mariadb": "jdbc:mariadb",
+            "redshift": "jdbc:redshift",
+            "exasol": "jdbc:exa",
         }
         p = prefix.get(st)
         if p is None:
@@ -238,6 +240,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
             return f"{p}://{h}:{po};databaseName={self.database}"
         if self.type == SourceType.oracle:
             return f"{p}:@{h}:{po}/{self.database}"
+        if self.type == SourceType.exasol:
+            # Exasol JDBC is colon-delimited with no //-authority and no db in the URL
+            # (schema is selected per-query): jdbc:exa:<host>:<port>.
+            return f"{p}:{h}:{po}"
         return f"{p}://{h}:{po}/{self.database}"
 
 
