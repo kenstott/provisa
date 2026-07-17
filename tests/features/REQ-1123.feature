@@ -1,8 +1,8 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
-Feature: REQ-1109 — Transaction Management
+Feature: REQ-1123 — Transaction Management
   # Airport transactions use a real in-memory coordinator (provisa/api/airport/transactions.py). create_transaction mints a…
 
-  Scenario: REQ-1109 default behaviour
+  Scenario: REQ-1123 default behaviour
     Given a DuckDB client with airport extension connected to Provisa
     When the client calls create_transaction
     Then a unique transaction UUID is minted and returned

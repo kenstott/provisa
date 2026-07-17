@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Predicate + projection pushdown translation for the airport service (REQ-1106).
+"""Predicate + projection pushdown translation for the airport service (REQ-1120).
 
 The DuckDB airport extension delivers pushdown through the ``endpoints`` DoAction
 ``parameters`` map (verified against airport-go v0.2.1 flight/doaction_metadata.go):

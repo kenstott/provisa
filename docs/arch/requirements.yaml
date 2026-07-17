@@ -31532,7 +31532,7 @@
   use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control and governance.
   code:
   - provisa/api/mcp/server.py
-- id: REQ-1106
+- id: REQ-1120
   status: complete
   since: "2026-07"
   group: "8. Client Access & Protocols"
@@ -31567,7 +31567,7 @@
   e2e_reason: External DuckDB client ATTACH/query behavior with server-side governance enforcement can only be verified through a full live-stack round-trip.
   relates_to:
   - REQ-1097
-- id: REQ-1107
+- id: REQ-1121
   status: complete
   group: "8. Client Access & Protocols"
   category: Query Pushdown & Optimization
@@ -31589,8 +31589,8 @@
   - tests/integration/test_airport_service_e2e.py
   since: "2026-07"
   relates_to:
-  - REQ-1106
-- id: REQ-1108
+  - REQ-1120
+- id: REQ-1122
   status: complete
   group: "8. Client Access & Protocols"
   category: Access Control & Projection
@@ -31611,8 +31611,8 @@
   - tests/integration/test_airport_service_e2e.py
   since: "2026-07"
   relates_to:
-  - REQ-1106
-- id: REQ-1109
+  - REQ-1120
+- id: REQ-1123
   status: complete
   group: "8. Client Access & Protocols"
   category: Transaction Management
@@ -31639,8 +31639,8 @@
   - tests/integration/test_airport_service_e2e.py
   since: "2026-07"
   relates_to:
-  - REQ-1106
-- id: REQ-1110
+  - REQ-1120
+- id: REQ-1124
   status: complete
   group: "8. Client Access & Protocols"
   category: Mutation Enforcement
@@ -31665,8 +31665,8 @@
   - tests/integration/test_airport_service_e2e.py
   since: "2026-07"
   relates_to:
-  - REQ-1106
-- id: REQ-1111
+  - REQ-1120
+- id: REQ-1125
   status: complete
   group: "8. Client Access & Protocols"
   category: Protocol Compliance
@@ -31699,4 +31699,4 @@
   - tests/integration/test_airport_service_e2e.py
   since: "2026-07"
   relates_to:
-  - REQ-1106
+  - REQ-1120

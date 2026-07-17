@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""DuckDB `airport` extension wire protocol codec (REQ-1106).
+"""DuckDB `airport` extension wire protocol codec (REQ-1120).
 
 Byte-exact reimplementation of the msgpack/zstd envelopes the airport-go
 reference server (github.com/hugr-lab/airport-go v0.2.1) emits, so the real

@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Provisa airport Flight service (REQ-1106) — serves the DuckDB `airport`
+"""Provisa airport Flight service (REQ-1120) — serves the DuckDB `airport`
 community-extension protocol over the governed query pipeline."""
 
 from provisa.api.airport.service import start_airport_server
