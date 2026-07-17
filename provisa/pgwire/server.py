@@ -287,15 +287,27 @@ class ProvisaConnection(Connection):  # REQ-529
         return ProvisaSession()
 
     def parameters(self) -> dict[str, str]:
+        # Startup ParameterStatus set. server_version declares PG 14, so we
+        # report the full PG-14 hard-wired set (PG protocol §54.2), including
+        # the PG-14 additions default_transaction_read_only and in_hot_standby.
+        # Values are sourced from _KNOWN_SETTINGS so the handshake and
+        # SHOW/current_setting stay consistent. Casing follows what PG sends.
+        from provisa.pgwire.catalog_data import _KNOWN_SETTINGS as s
+
         return {
-            "server_version": "14.0.provisa",
-            "server_encoding": "UTF8",
-            "client_encoding": "UTF8",
-            "DateStyle": "ISO, MDY",
-            "TimeZone": "UTC",
-            "integer_datetimes": "on",
-            "standard_conforming_strings": "on",
-            "IntervalStyle": "postgres",
+            "server_version": s["server_version"],
+            "server_encoding": s["server_encoding"],
+            "client_encoding": s["client_encoding"],
+            "application_name": s["application_name"],
+            "is_superuser": s["is_superuser"],
+            "session_authorization": s["session_authorization"],
+            "DateStyle": s["datestyle"],
+            "IntervalStyle": s["intervalstyle"],
+            "TimeZone": s["timezone"],
+            "integer_datetimes": s["integer_datetimes"],
+            "standard_conforming_strings": s["standard_conforming_strings"],
+            "default_transaction_read_only": s["default_transaction_read_only"],
+            "in_hot_standby": s["in_hot_standby"],
         }
 
 

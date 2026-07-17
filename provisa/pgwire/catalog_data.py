@@ -160,6 +160,9 @@ _KNOWN_SETTINGS = {
     "application_name": "",
     "is_superuser": "on",
     "session_authorization": "admin",
+    # PG-14 startup ParameterStatus fields (see PG protocol §54.2).
+    "default_transaction_read_only": "off",
+    "in_hot_standby": "off",
 }
 
 _PG_SYSTEM_ROLES: list[tuple] = [
