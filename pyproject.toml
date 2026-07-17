@@ -182,6 +182,7 @@ markers = [
     "requires_redshift: requires a live AWS Redshift cluster (REDSHIFT_* env); no self-provision",
     "requires_sharepoint: requires a live SharePoint site (SHAREPOINT_* env); no self-provision",
     "requires_splunk: requires Splunk service (docker compose up splunk)",
+    "requires_airport: requires the airport-go Flight shim (docker compose up airport-shim)",
     "requires_prometheus: requires Prometheus service (docker compose up prometheus)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",

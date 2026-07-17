@@ -103,6 +103,7 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_firebird": ["firebird"],
     "requires_exasol": ["exasol"],
     "requires_splunk": ["splunk"],
+    "requires_airport": ["airport-shim"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
@@ -137,6 +138,7 @@ _ITEST_PORT_ENV = [
     "EXASOL_PORT",
     "SPLUNK_MGMT_PORT",
     "SPLUNK_HEC_PORT",
+    "AIRPORT_PORT",
 ]
 
 
