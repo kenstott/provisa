@@ -192,7 +192,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["provisa"]
-omit = ["provisa/proto/*", "provisa/migrations/*"]
+omit = ["provisa/proto/*", "provisa/migrations/*", "provisa/tools/*"]
 # scripts/test-all runs the default lane and the e2e lane as separate processes
 # and `coverage combine`s them; parallel=true tags each run's data file so they
 # don't clobber each other.
