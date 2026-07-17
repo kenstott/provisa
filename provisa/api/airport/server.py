@@ -32,14 +32,19 @@ Implemented (REQ-1098):
     WHERE/projection folded into the DoGet ticket so the SOURCE filters.
   * Transactions: create_transaction / get_transaction_status (best-effort
     read-committed coordinator).
-  * Governed DML: INSERT via do_exchange, submitted as semantic SQL through the
-    SAME governed write pipeline; gated on the target engine's writability.
-  * DDL: create_schema / drop_schema mapped to the Provisa domain catalog.
+  * Governed DML: INSERT / UPDATE / DELETE via do_exchange, submitted as semantic SQL
+    through the SAME governed write pipeline; gated on the target engine's writability.
+    UPDATE/DELETE key rows by the table's PRIMARY KEY, advertised as the airport row
+    identity (``is_rowid`` pseudo-column) so a role can only mutate rows it can see.
+  * DDL: create_schema / drop_schema mapped to the Provisa domain catalog; create_table
+    creates the physical table in the target domain's writable source (schema-mutation
+    pipeline) so the new table joins the catalog and accepts a governed INSERT.
 
 Refused with a correct Flight protocol error (never a silent no-op), each justified
-inline: column_statistics, table_function_flight_info, UPDATE/DELETE, create_table
-and column/struct mutations — see the handlers for why each has no sound meaning for
-a governed federation catalog on the active engine.
+inline: column_statistics, table_function_flight_info, and the physical column/struct
+mutations (add_column / rename_table / add_field / …) — see the handlers for why each
+has no sound meaning for a governed federation catalog on the active engine. UPDATE/
+DELETE are refused ONLY per-table, when a table genuinely has no primary key.
 
 Role: taken from the gRPC ``authorization: Bearer <role>`` header (DuckDB airport
 secret ``auth_token``). Absent → PROVISA_AIRPORT_DEFAULT_ROLE (documented dev
@@ -69,6 +74,15 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _CATALOG_VERSION = 1  # is_fixed catalog for the read MVP (DDL bumps the control-plane, not this)
+
+# The airport row-identity pseudo-column. Advertised as an Arrow field carrying the extension's
+# ``is_rowid`` metadata key (ground-truthed against airport-go v0.2.1 catalog/helpers.go
+# FindRowIDColumn + the Query-farm airport docs): DuckDB hides it from ``SELECT *`` and streams it
+# back on UPDATE/DELETE so the server can identify the affected rows. Provisa fills it with the
+# table's PRIMARY-KEY tuple (JSON-encoded), so the only identities a role receives are the PKs of
+# rows RLS already let it read — a role cannot target a row it cannot see (REQ-1098/REQ-1103).
+_ROWID_FIELD = "rowid"
+_ROWID_META = {b"is_rowid": b"true"}
 
 
 class _HeaderMiddleware(flight.ServerMiddleware):  # pyright: ignore[reportPrivateImportUsage]
@@ -197,8 +211,8 @@ class ProvisaAirportServer(
         col_sql = ", ".join(f'"{n}"' for n in names)
         return f'SELECT {col_sql} FROM "{schema}"."{table}"'
 
-    def _source_type_for(self, role_id: str, schema: str, table: str) -> str:
-        """The physical source type backing (schema, table) for the role, for the write gate."""
+    def _meta_for(self, role_id: str, schema: str, table: str) -> Any:
+        """The role-scoped TableMeta backing (schema, table), or raise if not visible."""
         from provisa.compiler.naming import domain_to_sql_name
         from provisa.compiler.sql_rewrite import semantic_table_name
 
@@ -208,8 +222,48 @@ class ProvisaAirportServer(
                 continue
             s = domain_to_sql_name(meta.domain_id) or "default"
             if s == schema and semantic_table_name(meta) == table:
-                return self._state.source_types.get(meta.source_id) or (meta.source_type or "")
+                return meta
         raise _err(f"airport: table not found for role {role_id!r}: {schema}.{table}")
+
+    def _source_type_for(self, role_id: str, schema: str, table: str) -> str:
+        """The physical source type backing (schema, table) for the role, for the write gate."""
+        meta = self._meta_for(role_id, schema, table)
+        return self._state.source_types.get(meta.source_id) or (meta.source_type or "")
+
+    def _pk_for(self, role_id: str, schema: str, table: str) -> list[str]:
+        """The table's PRIMARY-KEY column names for the role — the airport row identity.
+
+        Sourced from the role's compilation context (``ctx.pk_columns``), which is populated from the
+        source's own PK constraint at startup (``_resolve_pk_from_sources``) and is visibility-scoped:
+        a role only ever sees the PK columns it may read. An empty list means the table has no PK, so
+        no safe governed row identity can be formed and UPDATE/DELETE are refused for THAT table.
+        """
+        ctx = self._state.contexts[role_id]
+        meta = self._meta_for(role_id, schema, table)
+        return list(getattr(ctx, "pk_columns", {}).get(meta.table_id, []))
+
+    @staticmethod
+    def _rowid_field() -> pa.Field:
+        return pa.field(_ROWID_FIELD, pa.string(), nullable=False, metadata=_ROWID_META)
+
+    def _advertised_schema(self, base: pa.Schema, pk: list[str]) -> pa.Schema:
+        """Append the ``is_rowid`` pseudo-column to a base scan schema when the table has a PK.
+
+        Advertised on flight_info/list_schemas AND streamed on do_get so DuckDB plans against — and
+        can echo back on UPDATE/DELETE — the row identity. No PK → base schema unchanged (the table
+        advertises no rowid and DuckDB will not emit an UPDATE/DELETE against it).
+        """
+        if not pk:
+            return base
+        return pa.schema(list(base) + [self._rowid_field()])
+
+    def _append_rowid(self, tbl: pa.Table, pk: list[str]) -> pa.Table:
+        """Append the rowid column = JSON-encoded PK tuple per row (decoded back on UPDATE/DELETE)."""
+        pk_lists = {c: tbl.column(c).to_pylist() for c in pk}
+        values = [
+            json.dumps([pk_lists[c][i] for c in pk], default=str) for i in range(tbl.num_rows)
+        ]
+        return tbl.append_column(self._rowid_field(), pa.array(values, type=pa.string()))
 
     def _lookup(self, role_id: str, schema: str, table: str) -> str:
         for s, t, sql_ref in self._catalog_for_role(role_id):
@@ -308,6 +362,8 @@ class ProvisaAirportServer(
             return [flight.Result(wire._encode({"status": status, "exists": exists}))]  # pyright: ignore[reportPrivateImportUsage]
         if atype == "create_schema":
             return [flight.Result(self._do_create_schema(context, body))]  # pyright: ignore[reportPrivateImportUsage]
+        if atype == "create_table":
+            return [flight.Result(self._do_create_table(context, body))]  # pyright: ignore[reportPrivateImportUsage]
         if atype == "drop_schema":
             self._do_drop_schema(context, body)
             return []  # airport drop_schema returns an empty result stream on success
@@ -329,7 +385,6 @@ class ProvisaAirportServer(
                 "no table functions"
             )
         if atype in (
-            "create_table",
             "drop_table",
             "add_column",
             "remove_column",
@@ -343,13 +398,13 @@ class ProvisaAirportServer(
             "rename_field",
             "remove_field",
         ):
-            # Refused: these mutate a PHYSICAL table's shape. A governed federation catalog binds
-            # a semantic model over heterogeneous, independently-owned sources; airport supplies
-            # only an Arrow schema, with no target source, dialect, governance policy, or PK — so
-            # there is no sound, unambiguous mapping. Physical-shape changes go through the admin
-            # schema-mutation API (create_source/register_table/update_table) with that context.
-            # (Struct-field ops add_field/rename_field/remove_field have no meaning at all for a
-            # relational federation catalog.) create_schema/drop_schema DO map — to domains.
+            # Refused: these ALTER an existing physical table's shape. A governed federation catalog
+            # binds a semantic model over heterogeneous, independently-owned sources; airport supplies
+            # only a single-column Arrow schema, with no source dialect / governance policy — so there
+            # is no sound, unambiguous mapping. Physical-shape ALTERs go through the admin schema-
+            # mutation API (update_table) with that context. (Struct-field ops add_field/rename_field/
+            # remove_field have no meaning at all for a relational federation catalog.) create_schema/
+            # drop_schema map to domains; create_table maps to a governed create in the writable source.
             raise _err(
                 f"airport: action {atype!r} unsupported — physical schema mutation must go through "
                 "Provisa's admin schema-mutation API, which carries the source/governance context "
@@ -364,7 +419,10 @@ class ProvisaAirportServer(
         by_schema: dict[str, list[tuple[str, str, pa.Schema]]] = {}
         for schema, table, sql_ref in self._catalog_for_role(role_id):
             tbl = self._scan_cached(role_id, schema, table, sql_ref)
-            by_schema.setdefault(schema, []).append((schema, table, tbl.schema))
+            pk = self._pk_for(role_id, schema, table)
+            by_schema.setdefault(schema, []).append(
+                (schema, table, self._advertised_schema(tbl.schema, pk))
+            )
 
         schema_payloads: list[dict[str, Any]] = []
         for schema in sorted(by_schema):
@@ -504,6 +562,133 @@ class ProvisaAirportServer(
         async with pool.acquire() as conn:
             return await domain_repo.delete(conn, domain_id)
 
+    # ------------------------------------------------------------- DDL → physical create_table
+    def _do_create_table(self, context: flight.ServerCallContext, body: bytes) -> bytes:  # pyright: ignore[reportPrivateImportUsage]
+        """create_table → CREATE the physical table in the target domain's WRITABLE source, then
+        register it in the governed model so it joins the airport catalog and accepts a governed
+        INSERT (REQ-1098/REQ-1103).
+
+        The airport ``schema_name`` is a Provisa DOMAIN (sql name). The physical table is created in
+        that domain's single writable source (derived from the domain's existing tables — REQ-1000
+        single-writable-or-reject) via the store write face (the SAME face CTAS uses to create tables
+        in a writable relational source), then registered through the schema-mutation core so the ONE
+        catalog serves it. Admin-capability gated, exactly like create_schema.
+        """
+        role_id = self._role(context)
+        self._require_admin(role_id)
+        req = wire.decode_action_request(body)
+        schema = _as_str(req.get("schema_name") or req.get("schema"))
+        table = _as_str(req.get("table_name") or req.get("name"))
+        if not schema or not table:
+            raise _err("airport: create_table requires schema_name and table_name")
+        raw_schema = req.get("arrow_schema")
+        if not raw_schema:
+            raise _err("airport: create_table requires an arrow_schema")
+        if isinstance(raw_schema, str):
+            raw_schema = raw_schema.encode("latin-1")
+        arrow_schema = pa.ipc.read_schema(pa.py_buffer(raw_schema))
+        columns = _arrow_schema_to_columns(arrow_schema)
+
+        source_id, domain_id, phys_schema = self._resolve_writable_target(role_id, schema)
+        asyncio.run_coroutine_threadsafe(
+            self._create_and_register_table(
+                source_id, domain_id, phys_schema, table, columns
+            ),
+            self._main_loop,
+        ).result()
+        # airport create_table response = the new table's FlightInfo protobuf (matches airport-go
+        # buildTableFlightInfo). The fresh table has no PK yet, so it advertises no rowid.
+        return self._table_flight_info(schema, table, arrow_schema).serialize()
+
+    def _resolve_writable_target(self, role_id: str, airport_schema: str) -> tuple[str, str, str]:
+        """Resolve (source_id, domain_id, physical_schema) for a create_table into ``airport_schema``.
+
+        The airport schema is a domain; its writable source is derived from the domain's existing
+        tables (REQ-1000): exactly one writable source is the target, zero is refused (nothing to
+        bind to), more than one is refused as ambiguous — never a silent pick.
+        """
+        from provisa.compiler.naming import domain_to_sql_name
+        from provisa.executor.writable import is_writable_on
+
+        ctx = self._state.contexts[role_id]
+        engine = self._state.federation_engine.engine
+        candidates: dict[str, tuple[str, str]] = {}  # source_id -> (domain_id, physical_schema)
+        for field_name, meta in getattr(ctx, "tables", {}).items():
+            if field_name.endswith(("_aggregate", "_connection", "_group_by", "GroupBy")):
+                continue
+            if (domain_to_sql_name(meta.domain_id) or "default") != airport_schema:
+                continue
+            # Restrict to the SAME source set the airport catalog advertises (see _catalog_for_role):
+            # an external, queryable data pool that is not a streaming (kafka) source. A streaming or
+            # internal/system source is never a valid physical create_table target.
+            if not self._state.source_pools.has(meta.source_id):
+                continue
+            stype = self._state.source_types.get(meta.source_id) or (meta.source_type or "")
+            if stype == "kafka":
+                continue
+            if not is_writable_on(stype, engine):
+                continue
+            candidates.setdefault(meta.source_id, (meta.domain_id, meta.schema_name))
+        if not candidates:
+            raise _err(
+                f"airport: schema {airport_schema!r} has no writable source bound — cannot "
+                "create_table (create the table in the source, or bind a writable source to the domain)"
+            )
+        if len(candidates) > 1:
+            raise _err(
+                f"airport: schema {airport_schema!r} maps to multiple writable sources "
+                f"{sorted(candidates)} — ambiguous create_table target"
+            )
+        source_id, (domain_id, phys_schema) = next(iter(candidates.items()))
+        return source_id, domain_id, phys_schema
+
+    async def _create_and_register_table(
+        self,
+        source_id: str,
+        domain_id: str,
+        phys_schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+    ) -> None:
+        from provisa.api.admin.schema_helpers import _rebuild_schemas
+        from provisa.api.app import state as app_state
+        from provisa.compiler.naming import apply_convention
+        from provisa.core.models import Column as ColumnModel, Table as TableModel
+        from provisa.core.repositories import table as table_repo
+        from provisa.executor.ctas import _source_sqlalchemy_dsn
+        from provisa.federation import store_writer
+
+        # Physical create in the writable source via the store write face — the SAME primitive CTAS
+        # uses to create a table in a writable relational source (not a parallel DDL path).
+        dsn = _source_sqlalchemy_dsn(app_state, source_id)
+        await store_writer.ensure_table(
+            dsn, schema=phys_schema, table=table, columns=columns
+        )
+
+        # Register in the governed model (schema-mutation core: table_repo.upsert + rebuild) so the
+        # one catalog serves it. Columns are visible+writable to every role — a create_table author
+        # publishes an open governed table; governance can be tightened afterward via the admin API.
+        all_roles = list(self._state.roles.keys()) or ["admin"]
+        col_models = [
+            ColumnModel(
+                name=name, data_type=ir_type, visible_to=all_roles, writable_by=all_roles
+            )
+            for name, ir_type in columns
+        ]
+        model = TableModel(
+            source_id=source_id,
+            domain_id=domain_id,
+            schema_name=phys_schema,
+            table_name=table,
+            columns=col_models,
+            alias=apply_convention(table, "apollo_graphql"),
+        )
+        pool = self._state.tenant_db
+        assert pool is not None, "control-plane pool not initialized"  # live at DDL time
+        async with pool.acquire() as conn:
+            await table_repo.upsert(conn, model)
+        await _rebuild_schemas()
+
     # ------------------------------------------------------------- GetFlightInfo
     def get_flight_info(  # pyright: ignore[reportPrivateImportUsage]
         self,
@@ -521,7 +706,8 @@ class ProvisaAirportServer(
     ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]
         sql_ref = self._lookup(role_id, schema, table)
         tbl = self._scan_cached(role_id, schema, table, sql_ref)
-        return self._table_flight_info(schema, table, tbl.schema)
+        pk = self._pk_for(role_id, schema, table)
+        return self._table_flight_info(schema, table, self._advertised_schema(tbl.schema, pk))
 
     # ------------------------------------------------------------- DoGet
     def do_get(  # pyright: ignore[reportPrivateImportUsage]
@@ -542,24 +728,34 @@ class ProvisaAirportServer(
         where = td.get("where")
         sql_ref = self._lookup(role_id, schema, table)
         full = self._scan_cached(role_id, schema, table, sql_ref)  # full advertised schema
+        pk = self._pk_for(role_id, schema, table)
         if not columns and not where:
             # No pushdown — full-table governed scan (cached, schema-stable).
-            return flight.RecordBatchStream(full)  # pyright: ignore[reportPrivateImportUsage]
-        # Pushdown: build the semantic SELECT with source-side projection + WHERE. Injecting the
-        # predicate as a semantic WHERE means it flows through the IDENTICAL governance a user's
-        # /data/sql WHERE would (RLS AND-ed, masking, visibility) — the SOURCE filters and reads
-        # only the projected columns, not just the DuckDB client.
-        col_sql = ", ".join(f'"{c}"' for c in columns) if columns else "*"
-        sql = f'SELECT {col_sql} FROM "{schema}"."{table}"'
-        if where:
-            sql += f" WHERE {where}"
-        _trace_pushdown(sql)
-        scanned = governed_table_scan_arrow(self._state, self._main_loop, sql, role_id)
-        # Return the FULL advertised schema (the airport contract: DuckDB planned the scan against
-        # the flight_info schema and projects client-side; a narrowed DoGet stream would mismatch).
-        # Source-side projection still happened above — unprojected columns are null-filled here and
-        # DuckDB never reads them (they are exactly the columns it projected out).
-        return flight.RecordBatchStream(_pad_to_schema(scanned, full.schema))  # pyright: ignore[reportPrivateImportUsage]
+            out = full
+        else:
+            # Pushdown: build the semantic SELECT with source-side projection + WHERE. Injecting the
+            # predicate as a semantic WHERE means it flows through the IDENTICAL governance a user's
+            # /data/sql WHERE would (RLS AND-ed, masking, visibility) — the SOURCE filters and reads
+            # only the projected columns, not just the DuckDB client.
+            scan_cols = columns
+            if scan_cols is not None and pk:
+                # The rowid is derived from the PK, so the PK columns must be scanned even when the
+                # client projected them out — otherwise the row identity could not be formed.
+                scan_cols = list(dict.fromkeys(scan_cols + [c for c in pk if c not in scan_cols]))
+            col_sql = ", ".join(f'"{c}"' for c in scan_cols) if scan_cols else "*"
+            sql = f'SELECT {col_sql} FROM "{schema}"."{table}"'
+            if where:
+                sql += f" WHERE {where}"
+            _trace_pushdown(sql)
+            scanned = governed_table_scan_arrow(self._state, self._main_loop, sql, role_id)
+            # Return the FULL advertised schema (the airport contract: DuckDB planned the scan against
+            # the flight_info schema and projects client-side; a narrowed DoGet stream would mismatch).
+            # Source-side projection still happened above — unprojected columns are null-filled here
+            # and DuckDB never reads them (they are exactly the columns it projected out).
+            out = _pad_to_schema(scanned, full.schema)
+        if pk:
+            out = self._append_rowid(out, pk)  # the is_rowid pseudo-column DuckDB echoes on UPDATE/DELETE
+        return flight.RecordBatchStream(out)  # pyright: ignore[reportPrivateImportUsage]
 
     # ------------------------------------------------------------- DoExchange (DML)
     def do_exchange(  # pyright: ignore[reportPrivateImportUsage]
@@ -583,19 +779,8 @@ class ProvisaAirportServer(
             self._do_exchange_insert(role_id, schema, table, reader, writer)
             return
         if operation in ("update", "delete"):
-            # Refused by protocol error (correct, not a no-op): the airport UPDATE/DELETE path
-            # keys rows by a server-advertised `rowid` pseudo-column that the client obtained from
-            # a prior scan. The governed catalog deliberately does NOT expose a physical rowid —
-            # RLS row-filtering and column masking mean a stable physical row identity would leak
-            # unfiltered/unmasked identity and let a client target rows it cannot see. Governed
-            # UPDATE/DELETE must therefore be issued as WHERE-qualified SQL via /data/sql, where
-            # the predicate itself is governed. (A conforming DuckDB client will not even emit
-            # these against a table that advertises no rowid.)
-            raise _err(
-                f"airport: {operation} unsupported — the governed catalog exposes no rowid pseudo-"
-                "column (RLS/masking make a physical row identity unsafe to expose); issue a "
-                "WHERE-qualified UPDATE/DELETE through the governed SQL path instead"
-            )
+            self._do_exchange_pk_mutation(role_id, schema, table, operation, reader, writer)
+            return
         raise _err(f"airport: unsupported do_exchange operation {operation!r}")
 
     def _do_exchange_insert(
@@ -629,6 +814,119 @@ class ProvisaAirportServer(
             governed_mutation(self._state, self._main_loop, sql, role_id)
         writer.write_metadata(pa.py_buffer(wire._encode({"total_changed": total})))
 
+    def _do_exchange_pk_mutation(
+        self, role_id: str, schema: str, table: str, operation: str, reader, writer
+    ) -> None:
+        """Governed UPDATE/DELETE keyed by PRIMARY-KEY row identity (REQ-1098/REQ-1103).
+
+        The airport extension echoes back the ``is_rowid`` pseudo-column (Provisa's JSON-encoded PK
+        tuple) for each affected row, plus — for UPDATE — the new column values. We decode the rowids
+        to PK tuples and issue a WHERE-qualified UPDATE/DELETE through the SAME governed write pipeline
+        as /data/sql (``_compile_govern_execute``): writable-column ACL, RLS injection on the WHERE,
+        and write-routing all apply. Because the client's rowids are only PKs RLS already let it read,
+        and the governed WHERE is RLS-filtered again, a role can never mutate a row it cannot see —
+        an attempt is a governed no-op (total_changed 0).
+        """
+        from provisa.executor.writable import is_writable_on
+
+        pk = self._pk_for(role_id, schema, table)
+        if not pk:
+            # Refused ONLY per-table: no primary key → no safe row identity to form a WHERE. Not a
+            # global gap — a table WITH a PK is fully supported.
+            raise _err(
+                f"airport: {operation} unsupported for {schema}.{table} — the table has no primary "
+                "key, so no safe governed row identity can be formed"
+            )
+        source_type = self._source_type_for(role_id, schema, table)
+        if not is_writable_on(source_type, self._state.federation_engine.engine):
+            raise _err(
+                f"airport: source type {source_type!r} for {schema}.{table} is read-only on the "
+                f"active engine — {operation.upper()} refused"
+            )
+
+        # Begin the bidirectional stream (airport requires the server to send a schema before the
+        # client streams the identity/value rows). No RETURNING chunks are emitted — DuckDB reads
+        # only the trailing total_changed metadata.
+        out_schema = self._scan_cached(
+            role_id, schema, table, self._lookup(role_id, schema, table)
+        ).schema
+        writer.begin(out_schema)
+
+        incoming = reader.read_all()
+        total = 0
+        if incoming.num_rows:
+            pk_tuples = self._decode_rowids(incoming, pk)
+            if operation == "delete":
+                sql = self._build_delete_sql(schema, table, pk, pk_tuples)
+                total = governed_mutation(self._state, self._main_loop, sql, role_id)
+            else:
+                total = self._apply_updates(role_id, schema, table, pk, pk_tuples, incoming)
+        writer.write_metadata(pa.py_buffer(wire._encode({"total_changed": total})))
+
+    @staticmethod
+    def _decode_rowids(incoming: pa.Table, pk: list[str]) -> list[list[Any]]:
+        """Decode the incoming ``is_rowid`` column (JSON PK tuples) back to per-row PK value lists."""
+        names = incoming.schema.names
+        rowid_idx = names.index(_ROWID_FIELD) if _ROWID_FIELD in names else None
+        if rowid_idx is None:
+            for i, field in enumerate(incoming.schema):
+                if field.metadata and field.metadata.get(b"is_rowid"):
+                    rowid_idx = i
+                    break
+        if rowid_idx is None:
+            raise _err("airport: UPDATE/DELETE stream carries no rowid identity column")
+        out: list[list[Any]] = []
+        for raw in incoming.column(rowid_idx).to_pylist():
+            decoded = json.loads(raw)
+            if not isinstance(decoded, list) or len(decoded) != len(pk):
+                raise _err(f"airport: malformed rowid {raw!r} for primary key {pk}")
+            out.append(decoded)
+        return out
+
+    def _apply_updates(
+        self,
+        role_id: str,
+        schema: str,
+        table: str,
+        pk: list[str],
+        pk_tuples: list[list[Any]],
+        incoming: pa.Table,
+    ) -> int:
+        """Issue one governed UPDATE per affected row (each row carries its own new column values)."""
+        rows = incoming.to_pylist()
+        set_cols = [c for c in incoming.schema.names if c != _ROWID_FIELD and c not in pk]
+        if not set_cols:
+            return 0  # nothing to change beyond the identity itself
+        total = 0
+        for row, pk_vals in zip(rows, pk_tuples):
+            assignments = ", ".join(f'"{c}" = {_sql_literal(row[c])}' for c in set_cols)
+            where = " AND ".join(
+                f'"{col}" = {_sql_literal(val)}' for col, val in zip(pk, pk_vals)
+            )
+            sql = (
+                f'UPDATE "{schema}"."{table}" SET {assignments} WHERE {where} '
+                f'RETURNING {", ".join(chr(34) + c + chr(34) for c in pk)}'
+            )
+            total += governed_mutation(self._state, self._main_loop, sql, role_id)
+        return total
+
+    @staticmethod
+    def _build_delete_sql(
+        schema: str, table: str, pk: list[str], pk_tuples: list[list[Any]]
+    ) -> str:
+        pk_ret = ", ".join(f'"{c}"' for c in pk)
+        if len(pk) == 1:
+            values = ", ".join(_sql_literal(t[0]) for t in pk_tuples)
+            where = f'"{pk[0]}" IN ({values})'
+        else:
+            # Composite PK — OR of per-row equality tuples.
+            clauses = [
+                "(" + " AND ".join(f'"{c}" = {_sql_literal(v)}' for c, v in zip(pk, t)) + ")"
+                for t in pk_tuples
+            ]
+            where = " OR ".join(clauses)
+        return f'DELETE FROM "{schema}"."{table}" WHERE {where} RETURNING {pk_ret}'
+
     @staticmethod
     def _build_insert_sql(schema: str, table: str, data: pa.Table) -> str:
         cols = list(data.schema.names)
@@ -638,6 +936,55 @@ class ProvisaAirportServer(
         for row in rows:
             values.append("(" + ", ".join(_sql_literal(row[c]) for c in cols) + ")")
         return f'INSERT INTO "{schema}"."{table}" ({col_sql}) VALUES ' + ", ".join(values)
+
+
+def _as_str(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return str(value)
+
+
+def _arrow_schema_to_columns(schema: pa.Schema) -> list[tuple[str, str]]:
+    """Map an airport create_table Arrow schema to (name, IR-type) column defs (REQ-1098).
+
+    IR names are the ONE engine-independent vocabulary (ir_types.py); the store write face renders
+    them per the target source dialect at DDL time. An Arrow type with no faithful IR mapping raises
+    — never a silent ``text`` default, matching the IR hub's no-guess contract.
+    """
+    out: list[tuple[str, str]] = []
+    for field in schema:
+        out.append((field.name, _arrow_type_to_ir(field.type)))
+    return out
+
+
+def _arrow_type_to_ir(t: pa.DataType) -> str:
+    if pa.types.is_boolean(t):
+        return "boolean"
+    if pa.types.is_int8(t) or pa.types.is_int16(t) or pa.types.is_uint8(t):
+        return "smallint"
+    if pa.types.is_int32(t) or pa.types.is_uint16(t):
+        return "integer"
+    if pa.types.is_int64(t) or pa.types.is_uint32(t) or pa.types.is_uint64(t):
+        return "bigint"
+    if pa.types.is_float32(t):
+        return "float"
+    if pa.types.is_float64(t):
+        return "double"
+    if pa.types.is_decimal(t):
+        return "numeric"
+    if pa.types.is_date(t):
+        return "date"
+    if pa.types.is_timestamp(t):
+        return "timestamp"
+    if pa.types.is_time(t):
+        return "time"
+    if pa.types.is_binary(t) or pa.types.is_large_binary(t):
+        return "bytea"
+    if pa.types.is_string(t) or pa.types.is_large_string(t):
+        return "text"
+    raise _err(f"airport: create_table Arrow type {t!r} has no IR mapping")
 
 
 def _pad_to_schema(scanned: pa.Table, full_schema: pa.Schema) -> pa.Table:

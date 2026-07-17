@@ -31381,6 +31381,7 @@
   target: "2026-Q4"
 - id: REQ-1098
   status: complete
+  since: "2026-07"
   group: "8. Client Access & Protocols"
   category: Served Protocol Surface
   priority: SHOULD
@@ -31493,9 +31494,13 @@
   priority: MUST
   type: constraint
   description: >-
-    Governed DML (INSERT) via do_exchange decodes the Arrow stream and submits semantic INSERT
-    SQL through _compile_govern_execute (the single governed write pipeline), gated on engine
-    writability (is_writable_on / writable.py). Never parallel writers.
+    Governed DML (INSERT / UPDATE / DELETE) via do_exchange decodes the Arrow stream and submits
+    semantic SQL through _compile_govern_execute (the single governed write pipeline), gated on
+    engine writability (is_writable_on / writable.py). Never parallel writers. UPDATE/DELETE key
+    rows by the table's PRIMARY KEY, advertised as the airport row identity (is_rowid pseudo-column
+    filled with the JSON-encoded PK tuple), so the WHERE is formed only from PKs RLS already let the
+    role read and is RLS-filtered again through the pipeline — a role can never mutate a row it
+    cannot see (the attempt is a governed no-op).
   use_case: >-
     Ensures all mutations flow through the unified governance pipeline with consistent RLS/masking
     and audit enforcement, preventing bypass via direct insertion or uncontrolled parallel writes.
@@ -31515,19 +31520,28 @@
   priority: MUST
   type: constraint
   description: >-
-    Operations refused with correct Flight protocol error (never silent no-op). UPDATE/DELETE are
-    refused because governed catalog exposes no rowid pseudo-column (RLS/masking make physical row
-    identity unsafe). column_statistics + table_function_flight_info are refused (governed federation
-    has no precomputed stats and advertises no table functions). create_table, column/struct mutations
-    are refused (physical schema mutation needs admin schema-mutation API's source/governance context
-    absent from airport DDL). DDL create_schema/drop_schema DO map to Provisa domains via control-plane
-    domain repository.
+    Operations refused with a correct Flight protocol error (never a silent no-op). UPDATE/DELETE
+    ARE supported via PRIMARY-KEY row identity: the table's PK is advertised as the airport row
+    identity (is_rowid pseudo-column filled with the JSON-encoded PK tuple) so DuckDB echoes it back
+    on update/delete; the server forms a governed WHERE PK IN (...) submitted through the one write
+    pipeline (RLS/masking/writable-ACL apply). They are refused ONLY per-table, when a table has no
+    primary key (no safe row identity). create_table IS supported: it creates the physical table in
+    the target domain's single writable source (schema-mutation pipeline) and registers it, so the
+    new table joins the catalog and accepts a governed INSERT; refused only when the domain has no
+    writable source bound (or maps to more than one — ambiguous). column_statistics +
+    table_function_flight_info are refused (governed federation has no precomputed stats and
+    advertises no table functions). Physical column/struct ALTERs (add_column/rename_table/add_field/
+    …) are refused (they need the admin schema-mutation API's source/governance context absent from
+    the airport DDL payload). DDL create_schema/drop_schema map to Provisa domains via the
+    control-plane domain repository.
   use_case: >-
-    Maintains protocol integrity and consistent governance model by rejecting operations that cannot
-    be safely federated, preventing data inconsistency, uncontrolled mutations, or governance bypass.
+    Maintains protocol integrity and a consistent governance model: safe, governed operations (PK
+    UPDATE/DELETE, create_table into a writable source) are served through the one pipeline, while
+    operations that cannot be safely federated are rejected — preventing data inconsistency,
+    uncontrolled mutations, or governance bypass.
   code:
-  - provisa/api/airport/service.py
-  - provisa/api/airport/errors.py
+  - provisa/api/airport/server.py
+  - provisa/api/airport/query.py
   tests:
   - tests/integration/test_airport_service_e2e.py
   since: "2026-07"

@@ -71,8 +71,61 @@ def governed_table_scan_arrow(
             ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
             for c in result.column_names
         ]
-        return rows_to_arrow_table(result.rows, columns)
+        tbl = rows_to_arrow_table(result.rows, columns)
+        # An EMPTY governed scan (e.g. a freshly created table, or an RLS-emptied one) yields
+        # null-typed Arrow columns from row inference — DuckDB then cannot cast a real value into
+        # the advertised NULL type on a later INSERT. Re-type those columns from the source's own
+        # result-column types (carried by the native driver even for a zero-row result) so the
+        # airport catalog advertises the true column types (REQ-1098).
+        if tbl.num_rows == 0 and result.column_types:
+            tbl = _retype_null_columns(tbl, result.column_types)
+        return tbl
     raise ValueError(f"Route {plan.route!r} is not supported for the airport service")
+
+
+def _retype_null_columns(tbl: pa.Table, column_types: list[str]) -> pa.Table:
+    """Replace null-typed columns of an empty Arrow table with the source's real (mapped) types."""
+    from provisa.core.ir_types import to_ir
+
+    if len(column_types) != tbl.num_columns:
+        return tbl
+    fields: list[pa.Field] = []
+    arrays: list[pa.Array] = []
+    for i, field in enumerate(tbl.schema):
+        if pa.types.is_null(field.type):
+            arrow_t = _ir_to_arrow(to_ir(column_types[i], "postgresql"))
+            fields.append(pa.field(field.name, arrow_t))
+            arrays.append(pa.array([], type=arrow_t))
+        else:
+            fields.append(field)
+            arrays.append(tbl.column(i).combine_chunks())
+    return pa.table(arrays, schema=pa.schema(fields))
+
+
+# Canonical IR type name → Arrow type, for typing an empty governed scan's columns (REQ-1098).
+_IR_TO_ARROW: dict[str, pa.DataType] = {
+    "smallint": pa.int16(),
+    "integer": pa.int32(),
+    "bigint": pa.int64(),
+    "float": pa.float32(),
+    "double": pa.float64(),
+    "numeric": pa.float64(),
+    "boolean": pa.bool_(),
+    "date": pa.date32(),
+    "timestamp": pa.timestamp("us"),
+    "time": pa.time64("us"),
+    "bytea": pa.large_binary(),
+    "uuid": pa.string(),
+    "text": pa.string(),
+    "json": pa.string(),
+}
+
+
+def _ir_to_arrow(ir: str) -> pa.DataType:
+    arrow_t = _IR_TO_ARROW.get(ir)
+    if arrow_t is None:
+        raise ValueError(f"airport: IR type {ir!r} has no Arrow mapping for an empty-scan schema")
+    return arrow_t
 
 
 def governed_mutation(

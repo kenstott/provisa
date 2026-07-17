@@ -234,21 +234,6 @@ def _run_sql(port: int, role: str, stmts: list[str], *, fetch: bool = True) -> d
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 
-def _run_sql_expect_failure(port: int, role: str, stmts: list[str]) -> str:
-    """Run statements expecting a NON-zero exit (a refused-by-protocol-error op). Returns stderr."""
-    result = subprocess.run(
-        [sys.executable, "-c", _SQL_CLIENT_SCRIPT, str(port), role, "0", json.dumps(stmts)],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    assert result.returncode != 0, (
-        f"expected the op to be refused, but it succeeded (role={role}, stmts={stmts}):\n"
-        f"stdout={result.stdout}"
-    )
-    return result.stderr
-
-
 def test_admin_reads_governed_table_via_duckdb_airport(airport_server_port):
     """The real DuckDB airport extension ATTACHes Provisa and reads governed rows (admin)."""
     out = _run_airport_client(airport_server_port, "admin", _SCHEMA, _TABLE)
@@ -319,8 +304,7 @@ def test_projection_pushdown_selects_only_requested_columns(airport_server_port)
 def test_governed_insert_roundtrip_via_airport(airport_server_port):
     """INSERT through the airport do_exchange path lands via the governed write pipeline and is
     then readable back through the governed read path — same catalog, governance intact."""
-    # A high, fixed id unused by the fixture data; the session DB snapshot is restored at teardown,
-    # and DELETE is refused-by-protocol, so no explicit cleanup is possible or needed.
+    # A high, fixed id unused by the fixture data; the session DB snapshot is restored at teardown.
     row_id = 987654
     _run_sql(
         airport_server_port,
@@ -341,14 +325,92 @@ def test_governed_insert_roundtrip_via_airport(airport_server_port):
     assert back["rows"][0][name_idx] == "Airport Insert", back["rows"][0]
 
 
-def test_update_delete_refused_by_protocol_error(airport_server_port):
-    """UPDATE/DELETE are refused with a Flight protocol error (governed catalog exposes no rowid)."""
-    for stmt in (
-        f"UPDATE provisa.\"{_SCHEMA}\".\"{_TABLE}\" SET region = 'x' WHERE id = 1",
-        f"DELETE FROM provisa.\"{_SCHEMA}\".\"{_TABLE}\" WHERE id = 1",
-    ):
-        stderr = _run_sql_expect_failure(airport_server_port, "admin", [stmt]).lower()
-        assert any(k in stderr for k in ("rowid", "unsupported", "does not support", "update", "delete")), stderr
+def test_governed_update_roundtrip_via_airport(airport_server_port):
+    """UPDATE via the airport do_exchange PK-identity path lands through the governed write pipeline
+    and is visible on read-back. DuckDB echoes the advertised rowid (JSON-encoded PK) for the
+    affected row; the server forms a governed WHERE id = <pk>."""
+    row_id = 987655
+    _run_sql(
+        airport_server_port,
+        "admin",
+        [
+            f"""INSERT INTO provisa."{_SCHEMA}"."{_TABLE}" (id, name, email, region)
+                VALUES ({row_id}, 'Update Me', 'um@example.com', 'up-1')"""
+        ],
+        fetch=False,
+    )
+    _run_sql(
+        airport_server_port,
+        "admin",
+        [f"""UPDATE provisa."{_SCHEMA}"."{_TABLE}" SET region = 'up-2' WHERE id = {row_id}"""],
+        fetch=False,
+    )
+    back = _run_sql(
+        airport_server_port,
+        "admin",
+        [f'SELECT id, region FROM provisa."{_SCHEMA}"."{_TABLE}" WHERE id = {row_id}'],
+    )
+    assert len(back["rows"]) == 1, back
+    region_idx = back["columns"].index("region")
+    assert back["rows"][0][region_idx] == "up-2", back["rows"][0]
+
+
+def test_governed_delete_roundtrip_via_airport(airport_server_port):
+    """DELETE via the airport do_exchange PK-identity path removes the row through the governed
+    write pipeline; the row is gone on read-back."""
+    row_id = 987656
+    _run_sql(
+        airport_server_port,
+        "admin",
+        [
+            f"""INSERT INTO provisa."{_SCHEMA}"."{_TABLE}" (id, name, email, region)
+                VALUES ({row_id}, 'Delete Me', 'dm@example.com', 'del-1')"""
+        ],
+        fetch=False,
+    )
+    _run_sql(
+        airport_server_port,
+        "admin",
+        [f'DELETE FROM provisa."{_SCHEMA}"."{_TABLE}" WHERE id = {row_id}'],
+        fetch=False,
+    )
+    back = _run_sql(
+        airport_server_port,
+        "admin",
+        [f'SELECT id FROM provisa."{_SCHEMA}"."{_TABLE}" WHERE id = {row_id}'],
+    )
+    assert back["rows"] == [], back
+
+
+def test_update_denied_for_non_visible_row_is_governed_noop(airport_server_port):
+    """Governance on the write path: analyst's RLS hides all `orders` rows, so it obtains no rowid
+    for any order and an analyst UPDATE targeting one is a governed no-op — admin sees the row
+    unchanged (the row identity is only ever a PK the role's RLS already let it read)."""
+    admin_before = _run_sql(
+        airport_server_port,
+        "admin",
+        [f'SELECT id, status FROM provisa."{_SCHEMA}"."orders" ORDER BY id LIMIT 1'],
+    )
+    assert admin_before["rows"], admin_before
+    oid = admin_before["rows"][0][admin_before["columns"].index("id")]
+    status_before = admin_before["rows"][0][admin_before["columns"].index("status")]
+
+    # analyst attempts to mutate that order — RLS denies row visibility, so nothing changes.
+    _run_sql(
+        airport_server_port,
+        "analyst",
+        [f"""UPDATE provisa."{_SCHEMA}"."orders" SET status = 'hacked' WHERE id = {oid}"""],
+        fetch=False,
+    )
+
+    admin_after = _run_sql(
+        airport_server_port,
+        "admin",
+        [f'SELECT status FROM provisa."{_SCHEMA}"."orders" WHERE id = {oid}'],
+    )
+    assert admin_after["rows"], admin_after
+    assert admin_after["rows"][0][0] == status_before, admin_after
+    assert admin_after["rows"][0][0] != "hacked"
 
 
 # ---------------------------------------------------------------- Increment 5: DDL
@@ -360,13 +422,32 @@ def test_create_schema_maps_to_domain(airport_server_port):
     _run_sql(airport_server_port, "admin", ["DROP SCHEMA provisa.airport_ddl_test"], fetch=False)
 
 
-def test_create_table_refused_by_protocol_error(airport_server_port):
-    """CREATE TABLE is refused with a protocol error — physical shape mutation needs the admin
-    schema-mutation API's source/governance context, absent from the airport DDL payload."""
-    stderr = _run_sql_expect_failure(
-        airport_server_port, "admin", [f'CREATE TABLE provisa."{_SCHEMA}"."ap_new" (x INTEGER)']
+def test_create_table_roundtrip_via_airport(airport_server_port):
+    """CREATE TABLE via airport creates the physical table in the domain's single writable source
+    (schema-mutation pipeline) and registers it: the new table then appears in the catalog and
+    accepts a governed INSERT, read back through the same governed path."""
+    _run_sql(
+        airport_server_port,
+        "admin",
+        [f'CREATE TABLE provisa."{_SCHEMA}"."ap_created" (x INTEGER, label VARCHAR)'],
+        fetch=False,
     )
-    assert "unsupported" in stderr.lower() or "schema-mutation" in stderr.lower(), stderr
+    # A fresh ATTACH re-reads the catalog and sees the newly-registered table; INSERT flows through
+    # the governed write pipeline into the physical table just created.
+    _run_sql(
+        airport_server_port,
+        "admin",
+        [f"""INSERT INTO provisa."{_SCHEMA}"."ap_created" (x, label) VALUES (7, 'seven')"""],
+        fetch=False,
+    )
+    back = _run_sql(
+        airport_server_port,
+        "admin",
+        [f'SELECT x, label FROM provisa."{_SCHEMA}"."ap_created" ORDER BY x'],
+    )
+    assert len(back["rows"]) == 1, back
+    assert back["rows"][0][back["columns"].index("x")] == 7, back["rows"][0]
+    assert back["rows"][0][back["columns"].index("label")] == "seven", back["rows"][0]
 
 
 # ---------------------------------------------------------------- Increment 3: transactions
