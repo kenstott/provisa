@@ -185,6 +185,8 @@ markers = [
     "requires_airport: requires the airport-go Flight shim (docker compose up airport-shim)",
     "requires_pinot: requires Pinot service (docker compose up pinot)",
     "requires_druid: requires Druid service (docker compose up druid)",
+    "requires_hive: requires Hive metastore service (docker compose up hive-metastore)",
+    "requires_hive_s3: requires Hive metastore + MinIO (docker compose up hive-s3-metastore minio)",
     "requires_prometheus: requires Prometheus service (docker compose up prometheus)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",

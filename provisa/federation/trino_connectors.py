@@ -116,8 +116,6 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
     "clickhouse": "clickhouse",
     "redshift": "redshift",
     "databricks": "delta_lake",
-    "hive": "hive",
-    "hive_s3": "hive",
     "delta_lake": "delta_lake",
     "iceberg": "iceberg",
     "exasol": "exasol",
@@ -242,6 +240,86 @@ class TrinoDruidConnector(_TrinoConnector):
             props["connection-password"] = pw
         return props
 
+
+def _hive_metastore_props(source: Source) -> dict:
+    """Common Hive catalog props: the Thrift metastore endpoint (Source.host:port, default 9083).
+    Empty when host is unset — create_catalog then no-ops (a hive source with no metastore host is
+    not reachable, matching the JDBC connectors that return {} for an empty connection-url)."""
+    from provisa.core.secrets import resolve_secrets
+
+    host = resolve_secrets(source.host or "")
+    if not host:
+        return {}
+    port = source.port or 9083  # Hive metastore Thrift default port
+    return {
+        "hive.metastore": "thrift",
+        "hive.metastore.uri": f"thrift://{host}:{port}",
+        # Hive 3/4 metastores translate non-ACID "managed" tables to EXTERNAL; Trino refuses writes to
+        # external tables unless this is enabled. A federated Hive lake's tables are external by nature
+        # (data owned by the warehouse/object store), so governed writes must target them (REQ-1097).
+        "hive.non-managed-table-writes-enabled": "true",
+    }
+
+
+class TrinoHiveConnector(_TrinoConnector):
+    """Apache Hive tables read IN PLACE via a Thrift metastore (SCAN, a lakehouse read — REQ-951).
+    Trino's hive connector is NOT a JDBC connector: it needs hive.metastore.uri
+    (thrift://<metastore>:9083), not connection-url/statistics.enabled, so it cannot reuse
+    _TrinoJdbcConnector (whose jdbc_url() is empty for hive anyway — that empty url is exactly why the
+    generic JDBC path silently no-op'd the hive catalog before REQ-1097). The metastore endpoint comes
+    from Source.host/Source.port; storage is the Hadoop-native filesystem (fs.hadoop.enabled) covering
+    the local/HDFS warehouse paths the metastore records."""
+
+    source_type = "hive"
+    trino_connector = "hive"
+    mechanism = Mechanism.SCAN  # lakehouse read: files/objects the metastore points at, no copy
+
+    def details(self, source: Source) -> dict:
+        props = _hive_metastore_props(source)
+        if not props:
+            return {}
+        # Non-S3 Hive: table data lives on the Hadoop-native filesystem (local file:/ or HDFS paths
+        # the metastore recorded). Trino's hadoop filesystem handles both; no s3.* is emitted.
+        props["fs.hadoop.enabled"] = "true"
+        return props
+
+
+class TrinoHiveS3Connector(TrinoHiveConnector):
+    """S3-backed Hive lake: the same Thrift metastore as ``hive``, but table data lives on S3
+    (MinIO/AWS), so Trino's hive connector is wired with the NATIVE S3 filesystem
+    (fs.native-s3.enabled + s3.* endpoint/credentials/path-style) instead of the Hadoop FS. The S3
+    settings come from the source mapping (endpoint/access_key_id/secret_access_key/region) — a
+    hive_s3 source with no S3 mapping is a misconfiguration, so details() fails loud (no fallback)."""
+
+    source_type = "hive_s3"
+    trino_connector = "hive"
+
+    def details(self, source: Source) -> dict:
+        from provisa.core.secrets import resolve_secrets
+
+        props = _hive_metastore_props(source)
+        if not props:
+            return {}
+        m = {k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()}
+        endpoint = m.get("s3_endpoint") or m.get("endpoint")
+        access = m.get("access_key_id") or m.get("aws_access_key_id")
+        secret = m.get("secret_access_key") or m.get("aws_secret_access_key")
+        region = m.get("region") or m.get("s3_region")
+        if not (endpoint and access and secret and region):
+            raise ValueError(
+                f"Source {source.id!r}: hive_s3 requires s3 endpoint, access_key_id, "
+                "secret_access_key and region in mapping"
+            )
+        props["fs.native-s3.enabled"] = "true"
+        props["s3.endpoint"] = endpoint
+        props["s3.aws-access-key"] = access
+        props["s3.aws-secret-key"] = secret
+        props["s3.region"] = region
+        # path-style addressing is required by MinIO and any non-AWS S3-compatible endpoint; default
+        # on unless the mapping explicitly declares virtual-hosted addressing (documented default,
+        # REQ-1097 — not a silent fallback for a missing required value).
+        props["s3.path-style-access"] = "false" if m.get("path_style") is False else "true"
+        return props
 
 
 class TrinoFilesConnector(_TrinoConnector):
@@ -393,6 +471,8 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoCassandraConnector(),
         TrinoPinotConnector(),
         TrinoDruidConnector(),
+        TrinoHiveConnector(),
+        TrinoHiveS3Connector(),
         TrinoFilesConnector(),
         TrinoSharepointConnector(),
         TrinoSplunkConnector(),

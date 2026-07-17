@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hive Metastore config for the hive_s3 integration test (REQ-1097). Points the warehouse at
+  MinIO (s3a://) and gives the metastore the S3A settings it needs to create the database dir on
+  MinIO. Symlinked over the image's default hive-site.xml via HIVE_CUSTOM_CONF_DIR; a pure metastore
+  ignores the query-engine settings the default file also carried, so only warehouse + S3A remain.
+  The hadoop-aws + aws-sdk jars are added to the classpath via HIVE_AUX_JARS_PATH in compose.
+-->
+<configuration>
+    <property>
+        <name>hive.metastore.warehouse.dir</name>
+        <value>s3a://provisa-hive-s3/warehouse</value>
+    </property>
+    <property>
+        <name>metastore.warehouse.dir</name>
+        <value>s3a://provisa-hive-s3/warehouse</value>
+    </property>
+    <property>
+        <name>fs.s3a.endpoint</name>
+        <value>http://minio:9000</value>
+    </property>
+    <property>
+        <name>fs.s3a.access.key</name>
+        <value>minioadmin</value>
+    </property>
+    <property>
+        <name>fs.s3a.secret.key</name>
+        <value>minioadmin</value>
+    </property>
+    <property>
+        <name>fs.s3a.path.style.access</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>fs.s3a.connection.ssl.enabled</name>
+        <value>false</value>
+    </property>
+    <property>
+        <name>fs.s3a.aws.credentials.provider</name>
+        <value>org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider</value>
+    </property>
+</configuration>

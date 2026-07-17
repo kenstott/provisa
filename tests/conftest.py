@@ -113,6 +113,11 @@ _MARKER_SERVICES: dict[str, list[str]] = {
         "druid-middlemanager",
         "druid",
     ],
+    # Hive metastore (local warehouse shared with Trino) — seeding is done through Trino, so the
+    # test process never reaches the metastore directly (no host-published port needed).
+    "requires_hive": ["hive-metastore"],
+    # S3-backed Hive: the metastore plus the core MinIO (reused) hold the table data on s3a://.
+    "requires_hive_s3": ["hive-s3-metastore"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.

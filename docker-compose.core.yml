@@ -87,6 +87,9 @@ services:
       - ./trino/plugins/trino-file:/usr/lib/trino/plugin/trino-file:ro
       - ./sharepoint.pfx:/certs/sharepoint.pfx:ro
       - ./demo/files:/data/files:ro
+      # Shared with the itest hive-metastore so Trino's Hadoop FS reads the local Hive warehouse
+      # (file:/opt/hive/data/warehouse) the metastore records for non-S3 hive tables (REQ-1097).
+      - hive_warehouse:/opt/hive/data/warehouse
     environment:
       JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
     depends_on:
@@ -121,6 +124,7 @@ services:
       - ./trino/plugins/trino-file:/usr/lib/trino/plugin/trino-file:ro
       - ./sharepoint.pfx:/certs/sharepoint.pfx:ro
       - ./demo/files:/data/files:ro
+      - hive_warehouse:/opt/hive/data/warehouse
     environment:
       JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
     depends_on:
@@ -191,7 +195,8 @@ services:
       /bin/sh -c "
         mc alias set local http://minio:9000 minioadmin minioadmin &&
         mc mb --ignore-existing local/${PROVISA_OTEL_BUCKET:-provisa-otel} &&
-        mc mb --ignore-existing local/provisa-results
+        mc mb --ignore-existing local/provisa-results &&
+        mc mb --ignore-existing local/provisa-hive-s3
       "
 
 volumes:
@@ -203,3 +208,5 @@ volumes:
   trino_logs:
   trino_worker_logs:
   minio_data:
+  # Local Hive warehouse shared between the itest hive-metastore and Trino (REQ-1097).
+  hive_warehouse:

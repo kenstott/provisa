@@ -536,7 +536,54 @@ services:
       timeout: 3s
       retries: 30
 
+  # Hive (local warehouse) as a connector-source: Trino reaches the Thrift metastore at
+  # hive-metastore:9083 and reads table data from a warehouse volume SHARED with Trino at the same
+  # path (/opt/hive/data/warehouse) via Trino's Hadoop-native filesystem (fs.hadoop.enabled). The
+  # metastore records file:/ locations; both containers run uid 1000 so the shared volume is writable
+  # by each. Seeding is done THROUGH Trino (CREATE TABLE / INSERT) — no beeline needed. The Derby
+  # metastore DB is embedded (DB_DRIVER=derby); schema is auto-initialized by the image entrypoint.
+  hive-metastore:
+    restart: unless-stopped
+    image: &hive_image apache/hive:4.0.0
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: derby
+    volumes:
+      - hive_warehouse:/opt/hive/data/warehouse
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/9083' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 90s
+
+  # Hive on S3 (MinIO) as a connector-source: the same Thrift metastore, but the warehouse lives on
+  # s3a://provisa-hive-s3. The metastore is given the bundled hadoop-aws + aws-sdk jars
+  # (HIVE_AUX_JARS_PATH) and the S3A settings (db/hive-s3-conf/hive-site.xml) so it can create the
+  # database dir on MinIO; Trino reads the data via its NATIVE S3 filesystem. Reuses the core MinIO
+  # service (reached at minio:9000 on the project network).
+  hive-s3-metastore:
+    restart: unless-stopped
+    image: *hive_image
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: derby
+      HIVE_CUSTOM_CONF_DIR: /hive-custom-conf
+      HIVE_AUX_JARS_PATH: /opt/hadoop/share/hadoop/tools/lib/hadoop-aws-3.3.6.jar:/opt/hadoop/share/hadoop/tools/lib/aws-java-sdk-bundle-1.12.367.jar
+    volumes:
+      - ./db/hive-s3-conf:/hive-custom-conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/9083' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 90s
+
 volumes:
+  hive_warehouse:
   kafka_test_data:
   mariadb_test_data:
   tidb_test_data:
