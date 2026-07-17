@@ -31523,3 +31523,28 @@
   use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control and governance.
   code:
   - provisa/api/mcp/server.py
+- id: REQ-1106
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: MCP Transport
+  priority: MUST
+  type: constraint
+  description: >-
+    MCP local-connector transport supports plain HTTP by default with optional TLS
+    (PROVISA_MCP_TLS=1 for public deployment). Per-machine self-signed certificates are
+    generated on first start with OS user-store trust and http fallback if cert creation fails.
+    When MCP binds non-loopback (0.0.0.0), DNS-rebinding Host-header protection is disabled
+    (stdio bridges are not subject to browser-origin attacks); loopback binds retain strict protection.
+  use_case: >-
+    Enables local Provisa MCP servers to be reached by Claude Desktop via mcp-proxy stdio bridge
+    without requiring bundled TLS. Supports optional TLS for publicly-exposed deployments while
+    fixing 421 Misdirected Request errors when clients connect via the machine's real IP (e.g. WSL VM IP).
+  code:
+  - provisa/api/mcp/server.py
+  - provisa/api/mcp/tls.py
+  - provisa/api/mcp/status.py
+  tests:
+  - tests/unit/test_mcp_status.py
+  relates_to:
+  - REQ-1104
