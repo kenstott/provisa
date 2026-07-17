@@ -71,6 +71,47 @@ wait_port_free() {
   ! port_in_use "$port"
 }
 
+# Running under WSL? (Windows kernel string leaks into /proc/version). This matters because Claude
+# Desktop runs on the Windows side, across the WSL VM boundary.
+is_wsl() { grep -qiE "microsoft|wsl" /proc/version 2>/dev/null; }
+
+# Probe the MCP port's REAL scheme — never guess from env. The runtime scheme depends on more than
+# PROVISA_MCP_TLS (TLS also needs a cert to have been created, else the server falls back to http),
+# so the only truth is what's listening: a successful TLS handshake => https, otherwise http.
+_mcp_scheme() {
+  local port="$1"
+  curl -sk -o /dev/null --max-time 2 "https://localhost:$port/mcp" 2>/dev/null && echo https || echo http
+}
+
+# Print the MCP connect line + (under WSL) the explanation the WSL/Windows split demands.
+print_mcp_info() {
+  [ -n "${PROVISA_MCP_PORT:-}" ] || return 0
+  local port="$PROVISA_MCP_PORT" scheme host
+  scheme=$(_mcp_scheme "$port")
+  if is_wsl; then
+    # The backend runs in the WSL VM; Claude Desktop runs on Windows. Windows CANNOT reliably reach
+    # a WSL server over `localhost` — the WSL2 localhost relay accepts the TCP connect but drops
+    # MCP's streamed (SSE) response (connect-then-ReadError). So the backend binds 0.0.0.0 (see
+    # PROVISA_MCP_HOST default below) and Windows must connect to the WSL VM IP directly.
+    host=$(hostname -I 2>/dev/null | awk '{print $1}'); host="${host:-<wsl-ip>}"
+    echo "  mcp:     ${scheme}://${host}:${port}/mcp   ← use this WSL IP, NOT localhost"
+    echo ""
+    echo "  Connect Claude Desktop (Windows) to this WSL backend:"
+    echo "    1. On Windows, install a bridge:  pip install mcp-proxy   (needs Windows Python)"
+    echo "    2. Edit %APPDATA%\\Claude\\claude_desktop_config.json (Claude → Settings → Developer →"
+    echo "       Edit Config), then restart Claude:"
+    echo "         {\"mcpServers\":{\"provisa\":{"
+    echo "           \"command\":\"C:\\\\path\\\\to\\\\python.exe\","
+    echo "           \"args\":[\"-m\",\"mcp_proxy\",\"--transport\",\"streamablehttp\",\"${scheme}://${host}:${port}/mcp\"]}}}"
+    echo "    Notes: use the ABSOLUTE python.exe path (the 'python3' Store alias fails to spawn);"
+    echo "           the WSL IP changes on WSL restart (re-check: wsl hostname -I);"
+    echo "           localhost DOES work here inside WSL but NOT from Windows Claude Desktop."
+    echo "    The native Windows installer needs none of this — it runs on Windows (127.0.0.1)."
+  else
+    echo "  mcp:     ${scheme}://localhost:${port}/mcp  (Model Context Protocol; role via OAuth or PROVISA_MCP_ROLE)"
+  fi
+}
+
 # True if the given path lives on an exFAT volume (where macOS AppleDouble "._*"
 # files are created and break Docker build contexts). APFS/HFS+ don't need cleanup.
 is_exfat() {
@@ -421,6 +462,16 @@ start_backend() {
     PROVISA_CONFIG="${PROVISA_CONFIG}"
     PROVISA_CONFIG_REPLACE="true"
     PROVISA_PGWIRE_PORT=5439
+    # MCP on by default in dev too (parity with the native tier) so the Explore -> MCP panel and the
+    # config-file/mcp-proxy bridge work here. Plain HTTP: Claude Desktop reaches a local server only
+    # via the stdio bridge (works over http); its custom-connector URL path is brokered from Anthropic
+    # (public HTTPS only). TLS stays opt-in via PROVISA_MCP_TLS=1. All overridable via env/.env.
+    PROVISA_MCP_PORT="${PROVISA_MCP_PORT:-8009}"
+    # Bind 0.0.0.0 under WSL so Windows Claude Desktop can reach the backend via the WSL VM IP
+    # (the localhost relay drops MCP's streamed response); loopback-only otherwise.
+    PROVISA_MCP_HOST="${PROVISA_MCP_HOST:-$(is_wsl && echo 0.0.0.0 || echo 127.0.0.1)}"
+    PROVISA_MCP_ROLE="${PROVISA_MCP_ROLE:-admin}"
+    PROVISA_MCP_BRIDGE_COMMAND="${PROVISA_MCP_BRIDGE_COMMAND:-$SCRIPT_DIR/.venv/bin/python}"
   )
   # Native tier: in-process DuckDB engine + embedded fakeredis, so no Trino/Redis
   # server is contacted. (Docker mode keeps the Trino engine and real Redis above.)
@@ -578,7 +629,7 @@ if [ "$DEMO" = true ]; then
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
-  [ -n "${PROVISA_MCP_PORT:-}" ] && echo "  mcp:     http://localhost:${PROVISA_MCP_PORT}/mcp  (Model Context Protocol; role via OAuth or PROVISA_MCP_ROLE)"
+  print_mcp_info
   echo ""
   echo "Demo sources:"
   echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
@@ -592,7 +643,7 @@ else
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
-  [ -n "${PROVISA_MCP_PORT:-}" ] && echo "  mcp:     http://localhost:${PROVISA_MCP_PORT}/mcp  (Model Context Protocol; role via OAuth or PROVISA_MCP_ROLE)"
+  print_mcp_info
   echo ""
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."
 fi

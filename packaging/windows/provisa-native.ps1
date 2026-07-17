@@ -72,6 +72,10 @@ function Native-Env {
   if (-not $env:PROVISA_MCP_PORT) { $e['PROVISA_MCP_PORT'] = '8009' }
   if (-not $env:PROVISA_MCP_HOST) { $e['PROVISA_MCP_HOST'] = '127.0.0.1' }
   if (-not $env:PROVISA_MCP_ROLE) { $e['PROVISA_MCP_ROLE'] = 'admin' }
+  # MCP stays plain HTTP: Claude Desktop reaches a LOCAL server only via the claude_desktop_config
+  # stdio bridge (mcp-proxy), which works over http. Its "Add custom connector" URL path is brokered
+  # from Anthropic's servers (needs a public internet HTTPS endpoint), so TLS buys nothing locally.
+  # TLS remains available opt-in (PROVISA_MCP_TLS=1) for a publicly-exposed deployment (REQ-1106).
   # The bundled runtime python (host-accessible, ships mcp-proxy) that Claude Desktop launches as
   # the Node-free stdio bridge (REQ-1104). Only the native tier sets this - the Explore/MCP panel
   # emits the ready-to-paste config only when it is present.

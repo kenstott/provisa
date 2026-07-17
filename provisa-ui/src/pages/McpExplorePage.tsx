@@ -60,13 +60,29 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 // Streamable HTTP server with mcp-proxy. mcp-proxy is bundled INTO the native runtime (REQ-1104),
 // so the command is that runtime's own python (bridge_command from the API) — no Node, no install,
 // airgapped. The URL is resolved server-side (REQ-1102), proxy-aware, and shown editable.
+function useCopy(): [boolean, (text: string) => void] {
+  const [copied, setCopied] = useState(false);
+  const copy = (text: string) => {
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      } catch {
+        /* clipboard unavailable (insecure context) */
+      }
+    })();
+  };
+  return [copied, copy];
+}
+
 function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [bridgeCommand, setBridgeCommand] = useState("");
   const [bridgeArgs, setBridgeArgs] = useState<string[]>([]);
   const [enabled, setEnabled] = useState<boolean | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedCfg, copyCfg] = useCopy();
 
   useEffect(() => {
     let cancelled = false;
@@ -96,17 +112,13 @@ function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
     };
   }, [roleId]);
 
-  // Native tier hands us the bundled interpreter (ships mcp-proxy) -> zero-install config. Elsewhere
-  // (container/remote, no host-side bundled python) fall back to the `mcp-proxy` console script the
-  // user installs themselves, and say so.
+  // Bridge config (fallback / non-TLS). Native tier hands us the bundled interpreter (ships
+  // mcp-proxy) -> zero-install; elsewhere fall back to the `mcp-proxy` console script the user
+  // installs themselves.
   const bundled = Boolean(bridgeCommand);
   const command = bundled ? bridgeCommand : "mcp-proxy";
   const args = bundled ? [...bridgeArgs, url] : ["--transport", "streamablehttp", url];
-  const snippet = JSON.stringify(
-    { mcpServers: { provisa: { command, args } } },
-    null,
-    2,
-  );
+  const snippet = JSON.stringify({ mcpServers: { provisa: { command, args } } }, null, 2);
 
   if (enabled === false) {
     return (
@@ -128,18 +140,17 @@ function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
             Connect Claude Desktop
           </Text>
           <Text size="xs" c="dimmed" mb={6}>
-            Add this to Claude Desktop&apos;s config file, then restart it.{" "}
+            In Claude Desktop, open Settings → Developer → Edit Config (this creates the file if it
+            doesn&apos;t exist yet), paste the JSON below, then restart Claude.{" "}
             {bundled ? (
               <>The bridge (mcp-proxy) ships inside Provisa&apos;s runtime — no Node, no install.</>
             ) : (
               <>
                 The bridge runs on the machine with Claude Desktop, so install it there:{" "}
-                <Code>pip install mcp-proxy</Code>. Point the URL at Provisa&apos;s reachable address
-                (not localhost) — its MCP port must be open, and off-box access needs auth.
+                <Code>pip install mcp-proxy</Code>.
               </>
             )}{" "}
-            The URL is prefilled from how you reached this page — edit it if Claude Desktop runs on
-            another machine or Provisa is behind a proxy.
+            Edit the URL if Provisa is remote or behind a proxy.
           </Text>
           <TextInput
             label="MCP URL"
@@ -152,24 +163,21 @@ function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
           <Group gap={6} mt={6}>
             <Button
               size="xs"
-              leftSection={copied ? <Check size={13} /> : <Copy size={13} />}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(snippet);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1200);
-                } catch {
-                  /* clipboard unavailable (insecure context) */
-                }
-              }}
+              leftSection={copiedCfg ? <Check size={13} /> : <Copy size={13} />}
+              onClick={() => copyCfg(snippet)}
             >
-              {copied ? "Copied" : "Copy config"}
+              {copiedCfg ? "Copied" : "Copy config"}
             </Button>
           </Group>
           <Text size="xs" c="dimmed" mt={6}>
             Config file — macOS: ~/Library/Application Support/Claude/claude_desktop_config.json ·
             Windows: %APPDATA%\Claude\claude_desktop_config.json · Linux:
             ~/.config/Claude/claude_desktop_config.json
+          </Text>
+          <Text size="xs" c="dimmed" mt={6}>
+            Claude Desktop&apos;s <b>Add custom connector</b> (paste-a-URL) option can&apos;t reach a
+            local server — Anthropic connects to it from their servers, so it needs a public,
+            internet-reachable HTTPS endpoint. For a local install, use the config above.
           </Text>
         </Paper>
       </Collapse>

@@ -51,7 +51,7 @@ export function McpServerTab() {
             <Group gap="xs">
               <Text span>{t("mcpServerTab.endpointLabel")}:</Text>
               <Text span data-testid="mcp-endpoint" ff="monospace">
-                http://0.0.0.0:{status.port}
+                {status.url ?? `http://0.0.0.0:${status.port}`}
               </Text>
             </Group>
             <Group gap="xs">
