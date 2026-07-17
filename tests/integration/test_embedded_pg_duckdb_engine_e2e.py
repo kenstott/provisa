@@ -40,11 +40,11 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 asyncpg = pytest.importorskip("asyncpg")
 pgserver = pytest.importorskip("pgserver")
 
-from provisa.federation.connector_duckdb import (
+from provisa.federation.connector_duckdb import (  # noqa: E402
     PgDuckdbCsvConnector,
     PgDuckdbJsonConnector,
     PgDuckdbParquetConnector,
-)  # noqa: E402
+)
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
 _CACHE = Path.home() / ".cache" / "provisa-fdw" / "pg162"
