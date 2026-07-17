@@ -104,15 +104,15 @@ export const TOUR_STEPS: TourStep[] = [
   {
     element: '[data-tour="sources-type"]',
     expandSelect: true,
-    title: "30+ source types",
+    title: "35+ source types",
     description:
       "One connector list spans every category:" +
       "<ul>" +
-      "<li><strong>Databases</strong> — PostgreSQL, MySQL, Oracle, SQL Server</li>" +
-      "<li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse</li>" +
-      "<li><strong>Analytics / OLAP</strong> — ClickHouse, Druid</li>" +
-      "<li><strong>Lakes &amp; files</strong> — Iceberg, Parquet, CSV, JSON</li>" +
-      "<li><strong>NoSQL &amp; graph</strong> — MongoDB, Neo4j</li>" +
+      "<li><strong>Databases</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li>" +
+      "<li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li>" +
+      "<li><strong>Analytics / OLAP</strong> — ClickHouse, Druid, Pinot</li>" +
+      "<li><strong>Lakes &amp; files</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li>" +
+      "<li><strong>NoSQL &amp; graph</strong> — MongoDB, Cassandra, Redis, Neo4j</li>" +
       "<li><strong>APIs</strong> — REST, GraphQL, gRPC</li>" +
       "<li><strong>Streaming</strong> — Kafka</li>" +
       "<li><strong>Enterprise SaaS</strong> — SharePoint, Splunk · plus government data subscriptions</li>" +
