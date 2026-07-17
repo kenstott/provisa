@@ -196,6 +196,29 @@ class TrinoCassandraConnector(_TrinoConnector):
         }
 
 
+class TrinoPinotConnector(_TrinoConnector):
+    source_type = "pinot"
+    trino_connector = "pinot"
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True, aggregate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        from provisa.core.secrets import resolve_secrets
+
+        # Trino's pinot connector reaches the cluster through the Pinot CONTROLLER's REST endpoint
+        # (it discovers brokers/servers from there). pinot.controller-urls is host:port of the
+        # controller — 9000 is the controller's default REST port.
+        host = resolve_secrets(source.host or "")
+        return {"pinot.controller-urls": f"{host}:{source.port or 9000}"}
+
+
+# NOTE: no TrinoKuduConnector — Trino REMOVED the kudu (and phoenix) connector during its Java 24
+# migration (documented through Trino 472, absent from trinodb/trino:481; the runtime factory list
+# and /usr/lib/trino/plugin confirm it). A registry entry here asserts "Trino-reachable"; kudu is
+# not, on this Trino build, so it stays out (REQ-1097). Re-add if a kudu-capable Trino is adopted.
+
+
 class TrinoFilesConnector(_TrinoConnector):
     source_type = "files"
     trino_connector = "file"
@@ -343,6 +366,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoOpenapiConnector(),
         TrinoMongoConnector(),
         TrinoCassandraConnector(),
+        TrinoPinotConnector(),
         TrinoFilesConnector(),
         TrinoSharepointConnector(),
         TrinoSplunkConnector(),

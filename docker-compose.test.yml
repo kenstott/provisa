@@ -277,6 +277,26 @@ services:
       retries: 20
       start_period: 5s
 
+  # Connector source (federation-engine → Trino pinot catalog, not a direct driver) — REQ-1097.
+  # QuickStart -type batch brings up zookeeper+controller+broker+server in ONE container with sample
+  # tables (airlineStats, baseballStats, …). Trino reaches the controller in-network at pinot:9000;
+  # ${PINOT_CONTROLLER_PORT}/${PINOT_BROKER_PORT} are host-published only for the seeding/wait probe.
+  pinot:
+    restart: unless-stopped
+    image: apachepinot/pinot:1.2.0
+    command: ["QuickStart", "-type", "batch"]
+    ports:
+      - "${PINOT_CONTROLLER_PORT:-9000}:9000"
+      - "${PINOT_BROKER_PORT:-8099}:8099"
+    environment:
+      JAVA_OPTS: "-Xms256M -Xmx1G"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 120s
+
   mongodb:
     restart: unless-stopped
     image: mongo:7
