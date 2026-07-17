@@ -31380,11 +31380,18 @@
   - tests/integration/test_trino_flight_engine_e2e.py
   target: "2026-Q4"
 - id: REQ-1098
-  status: proposed
+  status: in-progress
   group: "8. Client Access & Protocols"
   category: Served Protocol Surface
   priority: SHOULD
   type: behavioral
+  scenario: 'Given a DuckDB client with the airport community extension and a role
+
+    When it ATTACHes Provisa (TYPE AIRPORT) and runs SELECT against a federated table
+
+    Then governed rows stream back over the airport protocol via the shared query pipeline
+
+    And row-level security is enforced server-side (deny-by-default when no session var)'
   description: >-
     Provisa serves the DuckDB Airport Arrow-Flight protocol as an outbound data-as-a-service surface,
     allowing external DuckDB clients with the `airport` community extension to ATTACH Provisa (TYPE AIRPORT)
@@ -31395,8 +31402,12 @@
     control server-side. This peer protocol surface complements existing bolt (Neo4j), pgwire (Postgres),
     and Arrow Flight SQL surfaces.
   code:
-  - provisa/api/flight/server.py
+  - provisa/api/airport/server.py
+  - provisa/api/airport/wire.py
+  - provisa/api/airport/query.py
+  - provisa/api/airport/service.py
   - provisa/api/app_startup.py
+  - tests/integration/test_airport_service_e2e.py
   target: "2026-Q4"
   e2e: true
   e2e_reason: External DuckDB client ATTACH/query behavior with server-side governance enforcement can only be verified through a full live-stack round-trip.
