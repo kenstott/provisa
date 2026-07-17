@@ -70,7 +70,7 @@ export const TOUR_STEPS: TourStep[] = [
       "<div class='tour-tags'>" +
       "<span>GraphQL</span><span>SQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span>" +
       "<span>Postgres · pgwire</span><span>Neo4j · Bolt</span>" +
-      "<span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span>" +
+      "<span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span>" +
       "</div>" +
       "<p>It <strong>compiles</strong> each request and <strong>delegates execution to the source</strong>.</p>" +
       "<p>💡 Which one are you?</p>" +
@@ -233,7 +233,7 @@ export const TOUR_STEPS: TourStep[] = [
       "<li><strong>pgwire</strong> — every Postgres-compatible client — psql, DBeaver, Tableau, Power BI — connects out of the box.</li>" +
       "<li><strong>JDBC</strong> — drops into any Java/JVM app, ETL pipeline, or JDBC-capable BI tool.</li>" +
       "<li><strong>Arrow Flight SQL</strong> — columnar streaming for ADBC clients — no row re-encoding, built for large result sets.</li>" +
-      "<li><strong>DuckDB · airport</strong> — ATTACH Provisa from DuckDB and query the governed federation in place. <em>(coming soon)</em></li>" +
+      "<li><strong>DuckDB · airport</strong> — ATTACH Provisa from DuckDB and query the governed federation in place.</li>" +
       "</ul>",
   },
   {
