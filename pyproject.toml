@@ -181,6 +181,7 @@ markers = [
     "requires_exasol: requires Exasol service (docker compose up exasol); amd64-only image",
     "requires_redshift: requires a live AWS Redshift cluster (REDSHIFT_* env); no self-provision",
     "requires_sharepoint: requires a live SharePoint site (SHAREPOINT_* env); no self-provision",
+    "requires_splunk: requires Splunk service (docker compose up splunk)",
     "requires_prometheus: requires Prometheus service (docker compose up prometheus)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",

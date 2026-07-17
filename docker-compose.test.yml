@@ -227,6 +227,34 @@ services:
       retries: 30
       start_period: 120s
 
+  # Connector source (federation-engine → Trino splunk catalog, not a direct driver — see
+  # TrinoSplunkConnector in provisa/federation/trino_connectors.py). Trino reaches it in-network at
+  # splunk:8089 over the Splunk management/REST port (the trino-splunk plugin wraps Calcite's Splunk
+  # JDBC driver, itself REST-based — no separate "query port"). ${SPLUNK_MGMT_PORT} is host-published
+  # so the TEST PROCESS can seed an index/data-model via the same management REST API from outside the
+  # container; ${SPLUNK_HEC_PORT} is host-published only for seeding events via HTTP Event Collector.
+  # Neither host-published port is used by Trino. Newer Splunk images require BOTH the general terms
+  # AND license acceptance env vars or the container refuses to start. Slow to boot (full Splunk
+  # instance init), hence the long start_period — the image ships its own readiness script.
+  splunk:
+    restart: unless-stopped
+    image: splunk/splunk:latest
+    ports:
+      - "${SPLUNK_MGMT_PORT:-8089}:8089"
+      - "${SPLUNK_HEC_PORT:-8088}:8088"
+    environment:
+      SPLUNK_GENERAL_TERMS: --accept-sgt-current-at-splunk-com
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_PASSWORD: Provisa_2026!
+    volumes:
+      - splunk_test_data:/opt/splunk/var
+    healthcheck:
+      test: ["CMD", "/sbin/checkstate.sh"]
+      interval: 15s
+      timeout: 15s
+      retries: 20
+      start_period: 180s
+
   mongodb:
     restart: unless-stopped
     image: mongo:7
@@ -346,6 +374,7 @@ volumes:
   cassandra_test_data:
   firebird_test_data:
   exasol_test_data:
+  splunk_test_data:
   mongo_test_data:
   es_test_data:
   neo4j_test_data:
