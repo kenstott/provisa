@@ -145,6 +145,23 @@ services:
       retries: 30
       start_period: 120s
 
+  singlestore:
+    restart: unless-stopped
+    image: ghcr.io/singlestore-labs/singlestoredb-dev:latest
+    environment:
+      SINGLESTORE_LICENSE: "${SINGLESTORE_LICENSE:-}"
+      ROOT_PASSWORD: provisa
+    ports:
+      - "${SINGLESTORE_PORT:-3306}:3306"
+    volumes:
+      - singlestore_test_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -pprovisa || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
   mongodb:
     restart: unless-stopped
     image: mongo:7
@@ -260,6 +277,7 @@ volumes:
   yugabyte_test_data:
   mssql_test_data:
   oracle_test_data:
+  singlestore_test_data:
   mongo_test_data:
   es_test_data:
   neo4j_test_data:

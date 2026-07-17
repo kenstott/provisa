@@ -97,6 +97,7 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_yugabytedb": ["yugabytedb"],
     "requires_sqlserver": ["sqlserver"],
     "requires_oracle": ["oracle"],
+    "requires_singlestore": ["singlestore"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
@@ -125,6 +126,7 @@ _ITEST_PORT_ENV = [
     "YUGABYTEDB_PORT",
     "SQLSERVER_PORT",
     "ORACLE_PORT",
+    "SINGLESTORE_PORT",
 ]
 
 
@@ -191,6 +193,14 @@ class _DockerServiceManager:
             for marker, services in _MARKER_SERVICES.items():
                 if item.get_closest_marker(marker):
                     needed.update(services)
+
+        # SingleStore's dev image cannot start without a license key in the
+        # environment; the test itself is skipif-gated on SINGLESTORE_LICENSE, but
+        # that skip only fires at call time — collection has already asked for the
+        # service by then. Don't attempt to bring up a container that can't start
+        # for a test that will just skip anyway.
+        if "singlestore" in needed and not os.environ.get("SINGLESTORE_LICENSE"):
+            needed.discard("singlestore")
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
         # exported at import time, its own network — the dev stack is never touched.
