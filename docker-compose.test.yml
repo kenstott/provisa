@@ -51,6 +51,23 @@ services:
       kafka:
         condition: service_healthy
 
+  mariadb:
+    restart: unless-stopped
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: provisa
+      MARIADB_DATABASE: provisa
+    ports:
+      - "${MARIADB_PORT:-3306}:3306"
+    volumes:
+      - mariadb_test_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
   mongodb:
     restart: unless-stopped
     image: mongo:7
@@ -160,6 +177,7 @@ services:
 
 volumes:
   kafka_test_data:
+  mariadb_test_data:
   mongo_test_data:
   es_test_data:
   neo4j_test_data:

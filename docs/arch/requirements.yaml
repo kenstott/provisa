@@ -31330,3 +31330,28 @@
     '
   relates_to:
   - REQ-164
+- id: REQ-1097
+  status: proposed
+  group: "7. Connectors & Source Adapters"
+  category: Test Coverage
+  priority: MUST
+  type: constraint
+  description: >-
+    Every datasource type in SourceType enum (51 types: postgresql, mysql, mariadb,
+    sqlserver, oracle, cockroachdb, yugabytedb, tidb, greenplum, singlestore, snowflake,
+    bigquery, databricks, fabric, synapse, redshift, clickhouse, elasticsearch, pinot,
+    druid, exasol, delta_lake, iceberg, hive, hive_s3, mongodb, cassandra, redis, kudu,
+    accumulo, firebird, duckdb, sqlite, openapi, graphql_remote, grpc_remote, govdata,
+    kafka, neo4j, sparql, prometheus, rss, websocket, sharepoint, splunk, google_sheets,
+    csv, parquet, files, airport, ingest) must have an integration or e2e test against
+    a real (Docker or cloud-provisioned) instance. Unit tests that merely reference the
+    type name do not satisfy this.
+  use_case: >-
+    Ensures all datasource connectors work correctly in practice against real instances,
+    not just as concept or identity-check in code. Currently 21 types lack integration/e2e
+    coverage: pinot, accumulo, airport, cassandra, cockroachdb, druid, exasol, firebird,
+    google_sheets, hive, hive_s3, kudu, mariadb, oracle, redshift, sharepoint, singlestore,
+    splunk, sqlserver, tidb, yugabytedb.
+  code:
+  - provisa/core/models.py
+  target: "2026-Q4"

@@ -91,6 +91,7 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_neo4j": ["neo4j"],
     "requires_sparql": ["fuseki"],
     "requires_prometheus": ["prometheus"],
+    "requires_mariadb": ["mariadb"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
@@ -113,6 +114,7 @@ _ITEST_PORT_ENV = [
     "FUSEKI_PORT",
     "SCHEMA_REGISTRY_PORT",
     "DEBEZIUM_PORT",
+    "MARIADB_PORT",
 ]
 
 
