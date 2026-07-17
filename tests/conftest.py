@@ -99,6 +99,7 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_oracle": ["oracle"],
     "requires_singlestore": ["singlestore"],
     "requires_cassandra": ["cassandra"],
+    "requires_firebird": ["firebird"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
@@ -129,6 +130,7 @@ _ITEST_PORT_ENV = [
     "ORACLE_PORT",
     "SINGLESTORE_PORT",
     "CASSANDRA_PORT",
+    "FIREBIRD_PORT",
 ]
 
 

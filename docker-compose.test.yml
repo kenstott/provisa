@@ -168,6 +168,29 @@ services:
       retries: 30
       start_period: 90s
 
+  # Reached via the DuckDB firebird COMMUNITY EXTENSION (REQ-899), not a Trino connector and not a
+  # direct driver — DuckDBFirebirdConnector ATTACHes it in place from an in-process DuckDB connection.
+  # ${FIREBIRD_PORT} is host-published for both the in-process DuckDB ATTACH and seeding via
+  # `docker exec ... isql`; there is no Trino catalog involved for this source type.
+  firebird:
+    restart: unless-stopped
+    image: jacobalberty/firebird:v4
+    ports:
+      - "${FIREBIRD_PORT:-3050}:3050"
+    environment:
+      FIREBIRD_DATABASE: test.fdb
+      FIREBIRD_USER: provisa
+      FIREBIRD_PASSWORD: provisa
+      ISC_PASSWORD: masterkey
+    volumes:
+      - firebird_test_data:/firebird/data
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /firebird/data/test.fdb || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
   singlestore:
     restart: unless-stopped
     image: ghcr.io/singlestore-labs/singlestoredb-dev:latest
@@ -302,6 +325,7 @@ volumes:
   oracle_test_data:
   singlestore_test_data:
   cassandra_test_data:
+  firebird_test_data:
   mongo_test_data:
   es_test_data:
   neo4j_test_data:
