@@ -18,10 +18,14 @@ from __future__ import annotations
 
 import os
 
-import pyodbc  # pyright: ignore[reportMissingImports]
 import pytest
 
 from provisa.executor.pool import SourcePool
+
+# pyodbc links libodbc (unixODBC) at import; on a host without it the import raises. Use
+# importorskip so an absent unixODBC yields a clean module skip, never a collection error
+# that breaks the whole suite.
+pyodbc = pytest.importorskip("pyodbc", reason="pyodbc/unixODBC not available")
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_sqlserver, pytest.mark.asyncio]
 
