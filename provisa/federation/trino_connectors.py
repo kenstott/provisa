@@ -120,7 +120,6 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
     "hive_s3": "hive",
     "delta_lake": "delta_lake",
     "iceberg": "iceberg",
-    "druid": "druid",
     "exasol": "exasol",
 }
 
@@ -211,6 +210,37 @@ class TrinoPinotConnector(_TrinoConnector):
         # controller — 9000 is the controller's default REST port.
         host = resolve_secrets(source.host or "")
         return {"pinot.controller-urls": f"{host}:{source.port or 9000}"}
+
+
+class TrinoDruidConnector(_TrinoConnector):
+    """Apache Druid, read via its broker's Avatica endpoint. NOT a plain JDBC connector: Trino's druid
+    connector has no table-statistics support and rejects the base ``statistics.enabled`` property
+    ("Configuration property 'statistics.enabled' was not used"), so it cannot reuse
+    _TrinoJdbcConnector. connection-url comes from Source.jdbc_url() (the Avatica URL); user/password
+    are omitted when empty (Druid quickstart has no auth)."""
+
+    source_type = "druid"
+    trino_connector = "druid"
+
+    def capability(self) -> Capability:
+        # Druid is read-only through Trino; it does push down predicates and aggregates.
+        return Capability(predicate_pushdown=True, aggregate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        from provisa.core.secrets import resolve_secrets
+
+        host = resolve_secrets(source.host or "")
+        jdbc_url = source.jdbc_url(host=host, port=source.port)
+        if not jdbc_url:
+            return {}
+        props: dict = {"connection-url": jdbc_url}
+        user = resolve_secrets(source.username or "")
+        pw = resolve_secrets(source.password or "")
+        if user:
+            props["connection-user"] = user
+        if pw:
+            props["connection-password"] = pw
+        return props
 
 
 # NOTE: no TrinoKuduConnector — Trino REMOVED the kudu (and phoenix) connector during its Java 24
@@ -367,6 +397,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoMongoConnector(),
         TrinoCassandraConnector(),
         TrinoPinotConnector(),
+        TrinoDruidConnector(),
         TrinoFilesConnector(),
         TrinoSharepointConnector(),
         TrinoSplunkConnector(),

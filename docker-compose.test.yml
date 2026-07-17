@@ -297,6 +297,138 @@ services:
       retries: 60
       start_period: 120s
 
+  # Druid as a connector-source (federation-engine -> Trino druid catalog, not a direct driver).
+  # Trino reaches the BROKER in-network at druid:8082 over Avatica; the source's jdbc_url() emits
+  # jdbc:avatica:remote:url=http://druid:8082/druid/v2/sql/avatica/ (see provisa/core/models.py).
+  # The official apache/druid image has NO perl, so bin/supervise (the single-container quickstart)
+  # cannot run — Druid must be split into its normal processes (each via /druid.sh <service>) with an
+  # external ZooKeeper and a Postgres metadata store, exactly the upstream multi-container layout.
+  # amd64-only image -> runs under emulation on arm64 (like exasol), hence the generous start_period.
+  # ${DRUID_BROKER_PORT}/${DRUID_COORD_PORT} are host-published ONLY so the test process can poll the
+  # broker and submit ingestion tasks to the overlord (coordinator asOverlord); Trino never uses them.
+  druid-zookeeper:
+    restart: unless-stopped
+    image: zookeeper:3.8
+    environment:
+      ZOO_MY_ID: "1"
+      ZOO_4LW_COMMANDS_WHITELIST: ruok
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc -w2 localhost 2181 | grep -q imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  druid-metadata:
+    restart: unless-stopped
+    image: postgres:16
+    environment:
+      POSTGRES_USER: druid
+      POSTGRES_PASSWORD: diurd
+      POSTGRES_DB: druid
+    volumes:
+      - druid_metadata_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U druid -d druid"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  druid-coordinator:
+    restart: unless-stopped
+    image: &druid_image apache/druid:30.0.0
+    platform: linux/amd64
+    command: ["coordinator"]
+    depends_on:
+      druid-zookeeper: {condition: service_healthy}
+      druid-metadata: {condition: service_healthy}
+    ports:
+      - "${DRUID_COORD_PORT:-8081}:8081"
+    environment: &druid_env
+      ZOOKEEPER: druid-zookeeper
+      DRUID_XMS: 256m
+      DRUID_XMX: 512m
+      DRUID_MAXDIRECTMEMORYSIZE: 512m
+      druid_metadata_storage_type: postgresql
+      druid_metadata_storage_connector_connectURI: jdbc:postgresql://druid-metadata:5432/druid
+      druid_metadata_storage_connector_user: druid
+      druid_metadata_storage_connector_password: diurd
+      druid_extensions_loadList: '["postgresql-metadata-storage", "druid-multi-stage-query"]'
+      druid_storage_type: local
+      druid_storage_storageDirectory: /opt/shared/segments
+      druid_indexer_logs_type: file
+      druid_indexer_logs_directory: /opt/shared/indexing-logs
+      druid_processing_numThreads: "1"
+      druid_processing_numMergeBuffers: "2"
+      druid_processing_buffer_sizeBytes: "50000000"
+      druid_server_maxSize: "100000000"
+      druid_emitter: noop
+      druid_indexer_runner_javaOptsArray: '["-server","-Xms256m","-Xmx256m","-XX:MaxDirectMemorySize=256m","-Duser.timezone=UTC","-Dfile.encoding=UTF-8"]'
+      druid_coordinator_asOverlord_enabled: "true"
+      druid_coordinator_asOverlord_overlordService: druid/overlord
+    volumes:
+      - druid_shared:/opt/shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8081/status/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+
+  druid-historical:
+    restart: unless-stopped
+    image: *druid_image
+    platform: linux/amd64
+    command: ["historical"]
+    depends_on:
+      druid-coordinator: {condition: service_healthy}
+    environment: *druid_env
+    volumes:
+      - druid_shared:/opt/shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8083/status/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+
+  druid-middlemanager:
+    restart: unless-stopped
+    image: *druid_image
+    platform: linux/amd64
+    command: ["middleManager"]
+    depends_on:
+      druid-coordinator: {condition: service_healthy}
+    environment: *druid_env
+    volumes:
+      - druid_shared:/opt/shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8091/status/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+
+  # The BROKER is the query entry point Trino's druid connector attaches to (druid:8082 Avatica).
+  # Named "druid" so the Source.host handed to create_catalog resolves it on the isolated network.
+  druid:
+    restart: unless-stopped
+    image: *druid_image
+    platform: linux/amd64
+    command: ["broker"]
+    depends_on:
+      druid-coordinator: {condition: service_healthy}
+    ports:
+      - "${DRUID_BROKER_PORT:-8082}:8082"
+    environment: *druid_env
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8082/status/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+
   mongodb:
     restart: unless-stopped
     image: mongo:7
@@ -417,6 +549,8 @@ volumes:
   firebird_test_data:
   exasol_test_data:
   splunk_test_data:
+  druid_metadata_data:
+  druid_shared:
   mongo_test_data:
   es_test_data:
   neo4j_test_data:

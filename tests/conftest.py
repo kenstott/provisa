@@ -105,6 +105,14 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_splunk": ["splunk"],
     "requires_airport": ["airport-shim"],
     "requires_pinot": ["pinot"],
+    "requires_druid": [
+        "druid-zookeeper",
+        "druid-metadata",
+        "druid-coordinator",
+        "druid-historical",
+        "druid-middlemanager",
+        "druid",
+    ],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
@@ -142,6 +150,8 @@ _ITEST_PORT_ENV = [
     "AIRPORT_PORT",
     "PINOT_CONTROLLER_PORT",
     "PINOT_BROKER_PORT",
+    "DRUID_BROKER_PORT",
+    "DRUID_COORD_PORT",
 ]
 
 

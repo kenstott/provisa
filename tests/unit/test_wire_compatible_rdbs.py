@@ -63,3 +63,12 @@ def test_exasol_and_redshift_jdbc_urls_present():
     assert exa.jdbc_url() == "jdbc:exa:h:8563"
     rs = Source(id="s_rs", type=SourceType.redshift, host="h", port=5439, database="db")
     assert rs.jdbc_url() == "jdbc:redshift://h:5439/db"
+
+
+def test_druid_jdbc_url_is_avatica():
+    # REQ-1097 regression: TrinoDruidConnector.details() builds connection-url from jdbc_url(), so it
+    # must emit the broker Avatica URL Trino's druid connector wraps — not "" (which would make
+    # details() return {} and create_catalog() silently no-op the catalog). Druid is NOT a standard
+    # jdbc://host:port/db shape and has no database segment.
+    dr = Source(id="s_druid", type=SourceType.druid, host="broker", port=8082)
+    assert dr.jdbc_url() == "jdbc:avatica:remote:url=http://broker:8082/druid/v2/sql/avatica/"

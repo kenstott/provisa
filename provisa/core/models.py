@@ -226,6 +226,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own.
         if st in _MYSQL_WIRE_TYPES:
             return f"jdbc:mysql://{h}:{po}/{self.database}"
+        # Druid is queried through its Avatica endpoint on the broker (Trino's druid connector wraps
+        # the Avatica JDBC driver) — not a standard jdbc://host:port/db shape and no database segment.
+        if st == "druid":
+            return f"jdbc:avatica:remote:url=http://{h}:{po}/druid/v2/sql/avatica/"
         prefix = {
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
