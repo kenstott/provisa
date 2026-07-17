@@ -31387,6 +31387,8 @@
   - tests/integration/test_hive_source_e2e.py
   - tests/integration/test_hive_s3_source_e2e.py
   - tests/integration/test_trino_flight_engine_e2e.py
+  unit_test: false
+  unit_test_reason: This is an integration/e2e coverage requirement by definition — it mandates a real-instance integration or e2e test per SourceType; a unit test that only references the type name explicitly does not satisfy it.
   target: "2026-Q4"
 - id: REQ-1098
   status: complete
@@ -31586,10 +31588,11 @@
   - provisa/api/airport/query.py
   - provisa/api/airport/service.py
   - provisa/api/app_startup.py
+  tests:
   - tests/integration/test_airport_service_e2e.py
+  unit_test: false
+  unit_test_reason: The airport protocol surface is a live-stack behavior (DuckDB airport extension ATTACH + governed streaming); it is verified end-to-end through the real DuckDB client against the running service, not by unit tests.
   target: "2026-Q4"
-  e2e: true
-  e2e_reason: External DuckDB client ATTACH/query behavior with server-side governance enforcement can only be verified through a full live-stack round-trip.
   relates_to:
   - REQ-1097
 - id: REQ-1121
@@ -31612,6 +31615,8 @@
   - provisa/api/airport/server.py
   tests:
   - tests/integration/test_airport_service_e2e.py
+  unit_test: false
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
   since: "2026-07"
   relates_to:
   - REQ-1120
@@ -31634,6 +31639,8 @@
   - provisa/api/airport/query.py
   tests:
   - tests/integration/test_airport_service_e2e.py
+  unit_test: false
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
   since: "2026-07"
   relates_to:
   - REQ-1120
@@ -31662,6 +31669,8 @@
   - provisa/api/airport/service.py
   tests:
   - tests/integration/test_airport_service_e2e.py
+  unit_test: false
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
   since: "2026-07"
   relates_to:
   - REQ-1120
@@ -31688,6 +31697,8 @@
   - provisa/api/airport/server.py
   tests:
   - tests/integration/test_airport_service_e2e.py
+  unit_test: false
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
   since: "2026-07"
   relates_to:
   - REQ-1120
@@ -31722,6 +31733,8 @@
   - provisa/api/airport/query.py
   tests:
   - tests/integration/test_airport_service_e2e.py
+  unit_test: false
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
   since: "2026-07"
   relates_to:
   - REQ-1120
