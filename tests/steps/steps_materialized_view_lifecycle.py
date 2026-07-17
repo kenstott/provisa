@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 842a6813-6f0c-4840-837f-588cb60d8d94
 # Canary: req-234-mv-storage-reclamation-steps
 #
 # This source code is licensed under the Business Source License 1.1

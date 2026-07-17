@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 115449e6-fd23-4e56-b4a5-6b77264c4098
 """REQ-1093: pgwire emits declared UNIQUE constraints as pg_constraint contype 'u'."""
 
 from __future__ import annotations

@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 02c2cc05-41ba-49e2-97dd-8e39d9e941e2
 """GQL remote source config and client — REQ-673."""
 
 from __future__ import annotations

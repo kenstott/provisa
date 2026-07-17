@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 5937f114-da06-4000-8553-f09728344f68
 """Graph-counts helper for GQL remote sources — REQ-673."""
 
 from __future__ import annotations

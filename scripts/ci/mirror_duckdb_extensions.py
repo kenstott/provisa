@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8c42c343-b5d8-48ba-b993-c36286147bda
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Mirror the DuckDB-proper extensions the standalone DuckDB engine needs, for THIS platform + the
 pinned DuckDB version, into a self-hostable repo layout — and prove each LOADs.
 

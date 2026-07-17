@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 404862ab-1488-4e23-9925-f6488c1c7552
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Windows viability probe for the EMBEDDED Postgres path (FDW/extension *building* set aside):
 
   Q1  Does pgserver's embedded PG boot on Windows? (an earlier attempt failed with initdb

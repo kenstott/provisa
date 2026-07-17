@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 7ff16ac2-fbaa-4873-aa03-a81f32100aa6
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 import { test, expect } from './coverage';
 
 const ADMIN_GQL = 'http://localhost:8000/admin/graphql';

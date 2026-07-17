@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 45888e52-d861-4c52-b60a-9985df3de191
 """REQ-1093: unique-constraint wiring — model mapper, ctx population, MCP exposure."""
 
 from __future__ import annotations

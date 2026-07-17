@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 523d26fb-3559-42d2-af9e-2813b07ae080
 # Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1

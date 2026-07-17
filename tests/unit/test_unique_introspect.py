@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: d36197c1-1bf1-4e83-a918-f592b974c88c
 """REQ-1093: declared UNIQUE constraint introspection (PG/MySQL/SQLite)."""
 
 from __future__ import annotations

@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8b8f374f-686e-49cd-8161-bc7901c575e2
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Security integration tests for Provisa backend endpoints (REQ-531, REQ-554, REQ-556, REQ-591, REQ-594, REQ-603, REQ-613, REQ-740, REQ-744, REQ-745, REQ-748).
 
 These tests validate security constraints, isolation boundaries, and governance rules

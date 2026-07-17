@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 50b5c7a7-1c30-467c-bf54-54a96f7c5dec
 // Canary: placeholder
 
 import { useEffect, useState } from "react";

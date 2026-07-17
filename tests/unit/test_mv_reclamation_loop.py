@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ec634bdc-8223-4242-94e7-0ce5b7e1a4c9
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 # REQ-984: the legacy periodic CTAS refresh_loop is retired; reclamation_loop is the sole
 # storage-GC path (drop removed MVs + reap orphans) and never recomputes MVs.
 import inspect

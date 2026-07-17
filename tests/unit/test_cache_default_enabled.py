@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9feb2bee-ac43-41ab-87e5-dd6ac6b3ff0a
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 # REQ-985: caching defaults to ENABLED. A CacheStore always exists — RedisCacheStore(None)
 # falls back to embedded fakeredis when no Redis URL is configured; only an explicit
 # `cache.enabled: false` selects the NoopCacheStore.

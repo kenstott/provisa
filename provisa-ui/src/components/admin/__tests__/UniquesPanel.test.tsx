@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 0eb82c55-2b29-4b2c-b375-608af501cf76
 // REQ-1093: UniquesPanel add/edit/remove behavior.
 
 import { describe, it, expect, vi } from "vitest";

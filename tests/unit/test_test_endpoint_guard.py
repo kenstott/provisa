@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 47411607-eb94-4ed8-ac8e-a7b1e9f208a8
 
 """REQ-004: the developer test endpoint must not be exposed in production."""
 

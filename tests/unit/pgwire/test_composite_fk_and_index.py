@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: f941e4c0-00c2-4d37-be6a-b6fdcd6d79ef
 """Composite FK reconstruction (pg_constraint) and pg_index population.
 
 A composite FK is stored as N single-column joins with no shared identifier;
