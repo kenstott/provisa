@@ -6,8 +6,8 @@
 
 """E2E: Cassandra as a connector-source, read through the Provisa federation engine (REQ-1097).
 
-THIS IS THE REFERENCE TEST for the whole connector-source bucket (druid, pinot, exasol, hive,
-elasticsearch, mongodb, redis, kudu, accumulo, …) — types that have NO direct driver in
+THIS IS THE REFERENCE TEST for the Trino-connector-source bucket (druid, pinot, exasol, hive,
+elasticsearch, mongodb, redis, …) — types that have NO direct driver in
 provisa/executor/drivers/registry.py and are reachable ONLY through the federation engine's Trino
 layer. Copy this pattern for the rest of that bucket; only the seed/query specifics change.
 

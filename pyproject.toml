@@ -185,6 +185,7 @@ markers = [
     "requires_airport: requires the airport-go Flight shim (docker compose up airport-shim)",
     "requires_pinot: requires Pinot service (docker compose up pinot)",
     "requires_druid: requires Druid service (docker compose up druid)",
+    "requires_accumulo: requires Accumulo service (docker compose up accumulo); heavy Hadoop+ZK stack, no maintained image, and no Provisa reach path — the e2e is a reach-gated skip",
     "requires_prometheus: requires Prometheus service (docker compose up prometheus)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",
