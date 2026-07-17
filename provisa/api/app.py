@@ -185,6 +185,11 @@ class AppState:
     source_allowed_domains: dict[
         str, list[str]
     ] = {}  # source_id → allowed domain ids (empty = unrestricted)
+    # REQ-263, REQ-264, REQ-265: full table+column dicts (with visible_to) for every registered
+    # table, populated once at schema-load time and reused by the raw-SQL governance path
+    # (pgwire / Flight SQL / airport).  build_governance_context requires this list to derive
+    # visible_columns and all_columns; an empty list silently skips column governance.
+    tables: list[dict] = []  # populated by _rebuild_schemas from _fetch_tables
     engine_session_hints: dict[
         str, str
     ] = {}  # FTE session properties injected into every the engine query
@@ -624,6 +629,12 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             gql_object_cols=_gql_object_cols,
             rls_rules=rls_rules,
         )
+
+    # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
+    # (pgwire / Flight SQL / airport). build_governance_context reads state.tables to derive
+    # visible_columns and all_columns; without this assignment the list is always empty and
+    # column visibility + masking are silently skipped on every raw-SQL transport.
+    state.tables = tables
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {
