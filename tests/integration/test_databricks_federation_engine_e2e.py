@@ -102,11 +102,13 @@ def runtime():
     try:
         yield rt
     finally:
-        # Clean the e2e catalog so runs are repeatable and nothing is left behind.
+        # Clean the e2e catalog so runs are repeatable and nothing is left behind. Drop the whole
+        # per-source Unity Catalog (CASCADE takes its schema + table) — dropping only the table would
+        # leak the catalog the engine auto-created on first write.
         cat = _to_catalog_name(_SRC)
         cur = rt.connection.cursor()
         try:
-            cur.execute(f"DROP TABLE IF EXISTS `{cat}`.`{_SCHEMA}`.`{_TABLE}`")
+            cur.execute(f"DROP CATALOG IF EXISTS `{cat}` CASCADE")
         finally:
             cur.close()
         rt.close()

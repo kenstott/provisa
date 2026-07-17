@@ -121,7 +121,9 @@ def runtime():
     finally:
         cur = rt.connection.cursor()
         try:
-            cur.execute(f"DROP TABLE IF EXISTS {fq}")
+            # Drop the whole database the fixture created (cascades schema + table) so runs
+            # never leak databases into the account.
+            cur.execute(f'DROP DATABASE IF EXISTS "{_CATALOG}"')
         finally:
             cur.close()
         rt.close()

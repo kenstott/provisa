@@ -95,8 +95,11 @@ def runtime():
     try:
         yield rt
     finally:
-        for tbl in ("orders",):
-            rt.connection.query(f"DROP TABLE IF EXISTS `{_PROJ}`.`{_DS}`.`{tbl}`").result()
+        # Drop the whole per-source datasets (CASCADE takes their tables) — dropping only the
+        # table would leak the dataset materialize_source auto-created. Covers both the landed
+        # dataset and the external-link dataset.
+        for ds in (_DS, "provisa_ext_it_ds"):
+            rt.connection.query(f"DROP SCHEMA IF EXISTS `{_PROJ}`.`{ds}` CASCADE").result()
         rt.close()
 
 

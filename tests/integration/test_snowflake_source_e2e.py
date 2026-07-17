@@ -56,7 +56,9 @@ def seeded():
         yield f"{_DB}.{_SCHEMA}.{_TABLE}"
     finally:
         cur = conn.cursor()
-        cur.execute(f"DROP TABLE IF EXISTS {_DB}.{_SCHEMA}.{_TABLE}")
+        # Drop the whole database the fixture created (cascades schema + table) so runs
+        # never leak databases into the account.
+        cur.execute(f"DROP DATABASE IF EXISTS {_DB}")
         cur.close()
         conn.close()
 

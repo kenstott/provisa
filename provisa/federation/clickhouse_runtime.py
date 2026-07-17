@@ -42,7 +42,7 @@ a live EngineRuntime dispatch calls; routing/HTTP wiring is separate — mirrors
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, cast
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from provisa.executor.result import QueryResult
 
@@ -254,8 +254,10 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
                     _NativeBackend(
                         host=u.hostname or "localhost",
                         port=u.port or 9000,
-                        username=u.username or "default",
-                        password=u.password or "",
+                        # urlparse does not percent-decode; a DSN encodes reserved chars in
+                        # credentials, so decode them back before connecting.
+                        username=unquote(u.username) if u.username else "default",
+                        password=unquote(u.password) if u.password else "",
                     )
                 )
             if variant in ("", "http", "https"):
@@ -263,8 +265,8 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
                     _ServerBackend(
                         host=u.hostname or "localhost",
                         port=u.port or 8123,
-                        username=u.username or "default",
-                        password=u.password or "",
+                        username=unquote(u.username) if u.username else "default",
+                        password=unquote(u.password) if u.password else "",
                     )
                 )
         raise ValueError(

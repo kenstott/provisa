@@ -19,7 +19,7 @@ surfaced through the Provisa Arrow Flight server. Conforms to the NativeEngineBa
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from provisa.executor.result import QueryResult
 from provisa.federation.runtime_support import result_from_dbapi, run_async
@@ -40,7 +40,9 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         self._host = (
             u.hostname
         )  # for the Unity Catalog REST API (credential/external-location install)
-        self._token = u.password or u.username or ""
+        # urlparse does not percent-decode; a DSN encodes reserved chars in the token,
+        # so decode it back before use.
+        self._token = unquote(u.password or u.username or "")
         self._engine: Any = None
         from databricks import sql as dbsql
 
