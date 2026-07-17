@@ -31331,7 +31331,7 @@
   relates_to:
   - REQ-164
 - id: REQ-1097
-  status: proposed
+  status: in-progress
   group: "7. Connectors & Source Adapters"
   category: Test Coverage
   priority: MUST
@@ -31348,10 +31348,17 @@
     type name do not satisfy this.
   use_case: >-
     Ensures all datasource connectors work correctly in practice against real instances,
-    not just as concept or identity-check in code. Currently 21 types lack integration/e2e
-    coverage: pinot, accumulo, airport, cassandra, cockroachdb, druid, exasol, firebird,
-    google_sheets, hive, hive_s3, kudu, mariadb, oracle, redshift, sharepoint, singlestore,
-    splunk, sqlserver, tidb, yugabytedb.
+    not just as concept or identity-check in code. Direct-driver types now covered with
+    self-provisioning integration tests: mariadb, tidb, cockroachdb, yugabytedb, sqlserver,
+    oracle. Remaining 15 types lack integration/e2e coverage: pinot, accumulo, airport,
+    cassandra, druid, exasol, firebird, google_sheets, hive, hive_s3, kudu, redshift,
+    sharepoint, singlestore, splunk.
   code:
   - provisa/core/models.py
+  - tests/integration/test_mariadb_source_e2e.py
+  - tests/integration/test_tidb_source_e2e.py
+  - tests/integration/test_cockroachdb_source_e2e.py
+  - tests/integration/test_yugabytedb_source_e2e.py
+  - tests/integration/test_sqlserver_source_e2e.py
+  - tests/integration/test_oracle_source_e2e.py
   target: "2026-Q4"
