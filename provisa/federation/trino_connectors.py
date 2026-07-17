@@ -243,11 +243,6 @@ class TrinoDruidConnector(_TrinoConnector):
         return props
 
 
-# NOTE: no TrinoKuduConnector — Trino REMOVED the kudu (and phoenix) connector during its Java 24
-# migration (documented through Trino 472, absent from trinodb/trino:481; the runtime factory list
-# and /usr/lib/trino/plugin confirm it). A registry entry here asserts "Trino-reachable"; kudu is
-# not, on this Trino build, so it stays out (REQ-1097). Re-add if a kudu-capable Trino is adopted.
-
 
 class TrinoFilesConnector(_TrinoConnector):
     source_type = "files"

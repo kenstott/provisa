@@ -67,8 +67,6 @@ _POLLING_TYPES = {
     "hive",
     "cassandra",
     "redis",
-    "kudu",
-    "accumulo",
     "google_sheets",
     "prometheus",
 }

@@ -84,15 +84,13 @@ These source types are federation-only — no direct driver, no SQLGlot dialect.
 
 ### NoSQL
 
-`mongodb`, `cassandra`, and `redis` have Trino connectors (`redis` builds its properties from the type's mapping DSL). `kudu` and `accumulo` are registered source types with no Trino connector — they materialize through the API cache pipeline. `kudu` has no connector because Trino REMOVED its Kudu connector during the Java 24 migration (absent from trinodb/trino:481); it can be re-added if a kudu-capable Trino is adopted. [tool-verified: `provisa/federation/trino_connectors.py` lines 160–216; `provisa/core/models.py` lines 71–75] (REQ-017, REQ-1097)
+`mongodb`, `cassandra`, and `redis` have Trino connectors (`redis` builds its properties from the type's mapping DSL). [tool-verified: `provisa/federation/trino_connectors.py`; `provisa/core/models.py`] (REQ-017, REQ-1097)
 
 | Source Type | Connector Name | Mutations |
 | ------------ | ----------------- | ----------- |
 | `mongodb` | mongodb | No |
 | `cassandra` | cassandra | No |
 | `redis` | redis | No |
-| `kudu` | — (materialized; Trino dropped kudu) | No |
-| `accumulo` | — (materialized) | No |
 
 ### Streaming
 

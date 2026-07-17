@@ -78,9 +78,9 @@ def test_prefer_materialized_overrides_attachable():
 
 
 def test_unreachable_when_neither_attach_scan_nor_materializable():
-    # kudu: no Trino connector and not materialize-only → genuinely unreachable.
+    # parquet: no Trino connector here and not materialize-only → genuinely unreachable.
     with pytest.raises(UnreachableSource):
-        federate(_src("o", SourceType.kudu), build_trino_engine())
+        federate(_src("o", SourceType.parquet, path="/o.parquet"), build_trino_engine())
 
 
 def test_engine_federate_method_matches():

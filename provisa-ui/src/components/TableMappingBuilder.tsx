@@ -37,8 +37,6 @@ interface ColumnDef {
   name: string;
   type: string;
   field: string;      // Redis field mapping / ES dot-path / Mongo JSONPath
-  family: string;     // Accumulo column family
-  qualifier: string;  // Accumulo column qualifier
 }
 
 interface TableMappingBuilderProps {
@@ -64,14 +62,12 @@ export interface TableMapping {
   labels?: string[];
   valueColumn?: string;
   defaultRange?: string;
-  // Accumulo-specific
-  accumuloTable?: string;
   // Common
   columns: ColumnDef[];
 }
 
 function emptyColumn(): ColumnDef {
-  return { name: "", type: "VARCHAR", field: "", family: "", qualifier: "" };
+  return { name: "", type: "VARCHAR", field: "" };
 }
 
 /** Redis: key pattern, key column, value type, column rows with field mapping */
@@ -232,26 +228,6 @@ function PrometheusForm({ mapping, setMapping }: {
   );
 }
 
-/** Accumulo: table name, column rows with family/qualifier */
-function AccumuloForm({ mapping, setMapping }: {
-  mapping: TableMapping;
-  setMapping: (m: TableMapping) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <TextInput
-      label={t("tableMappingBuilder.accumuloTable")}
-      value={mapping.accumuloTable ?? ""}
-      onChange={(e) => setMapping({ ...mapping, accumuloTable: e.target.value })}
-      placeholder={t("tableMappingBuilder.accumuloTablePlaceholder")}
-    />
-  );
-}
-
-function showQualifier(sourceType: string): boolean {
-  return sourceType === "accumulo";
-}
-
 export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappingBuilderProps) {
   const { t } = useTranslation();
 
@@ -260,7 +236,6 @@ export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappi
       case "redis": return t("tableMappingBuilder.fieldRedis");
       case "mongodb": return t("tableMappingBuilder.fieldMongo");
       case "elasticsearch": return t("tableMappingBuilder.fieldElasticsearch");
-      case "accumulo": return t("tableMappingBuilder.fieldAccumulo");
       default: return t("tableMappingBuilder.fieldDefault");
     }
   };
@@ -278,7 +253,6 @@ export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappi
     labels: [],
     valueColumn: "value",
     defaultRange: "1h",
-    accumuloTable: "",
     columns: [emptyColumn()],
   });
 
@@ -332,7 +306,6 @@ export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappi
         {sourceType === "mongodb" && <MongoForm mapping={mapping} setMapping={setMapping} />}
         {sourceType === "elasticsearch" && <ElasticsearchForm mapping={mapping} setMapping={setMapping} />}
         {sourceType === "prometheus" && <PrometheusForm mapping={mapping} setMapping={setMapping} />}
-        {sourceType === "accumulo" && <AccumuloForm mapping={mapping} setMapping={setMapping} />}
       </SimpleGrid>
 
       {sourceType !== "prometheus" && (
@@ -357,7 +330,6 @@ export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappi
                 <Table.Th>{t("tableMappingBuilder.columnName")}</Table.Th>
                 <Table.Th>{t("tableMappingBuilder.columnType")}</Table.Th>
                 <Table.Th>{fieldLabel(sourceType)}</Table.Th>
-                {showQualifier(sourceType) && <Table.Th>{t("tableMappingBuilder.qualifier")}</Table.Th>}
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>
@@ -395,17 +367,6 @@ export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappi
                       w="10rem"
                     />
                   </Table.Td>
-                  {showQualifier(sourceType) && (
-                    <Table.Td>
-                      <TextInput
-                        aria-label={t("tableMappingBuilder.qualifier")}
-                        value={col.qualifier}
-                        onChange={(e) => updateColumn(idx, { qualifier: e.target.value })}
-                        placeholder={t("tableMappingBuilder.qualifierPlaceholder")}
-                        w="8rem"
-                      />
-                    </Table.Td>
-                  )}
                   <Table.Td>
                     <ActionIcon
                       variant="subtle"

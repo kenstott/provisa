@@ -22,7 +22,7 @@ live Trino catalog and querying through Trino. The seam, end to end:
      (host/port/mapping). This is the same row the registry API would persist; the test builds it
      in-process instead of going through the HTTP layer.
   2. `provisa.core.catalog.create_catalog(conn, source, resolved_password)` is the real registration
-     path (REQ-012/250/251/842): it looks up the source's type in TRINO_CONNECTORS (the single
+     path (REQ-012/842): it looks up the source's type in TRINO_CONNECTORS (the single
      source of truth for "is this reachable by Trino, and with which connector"), builds the
      catalog .properties dict via `connector.details(source)`, and issues a dynamic
      `CREATE CATALOG ... USING <connector> WITH (...)` against the live Trino coordinator (REST

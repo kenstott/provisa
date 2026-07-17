@@ -2624,7 +2624,6 @@
   - tests/integration/test_introspect.py
   - tests/integration/test_nosql_catalogs.py
   - tests/integration/test_schema_gen.py
-  - tests/unit/test_accumulo_source.py
   - tests/unit/test_core_registration.py
   - tests/unit/test_prometheus_source.py
   - tests/unit/test_redis_source.py
@@ -7609,7 +7608,7 @@
   description: 'Schema inference must be supported where the Trino connector provides auto-discovery (MongoDB,
     Cassandra, Elasticsearch). Sources with inference support should offer a `discover: true` flag that
     introspects and generates a starting column list. Explicit column definitions always take precedence
-    over inferred schemas. Sources without inference capability (Redis, Accumulo) require explicit column
+    over inferred schemas. Sources without inference capability (Redis) require explicit column
     definitions.'
   use_case: Schema inference for supported connectors (MongoDB, Cassandra) reduces manual column definition
     work.
@@ -27184,7 +27183,7 @@
     a connector for EVERY source type the engine can offer: (a) federated via engine''s own connectors,
     (b) direct-route via Provisa''s native async drivers (executor/drivers/registry.py), and (c) adapter-materializable
     (source_adapters/_ADAPTER_MAP). Only then is the source-creation dropdown a pure projection of engine.connectors;
-    today direct-only sources (e.g., duckdb when used alone) and adapter-only sources (accumulo, govdata)
+    today direct-only sources (e.g., duckdb when used alone) and adapter-only sources (govdata)
     are absent from engine.connectors and would be dropped from that projection. Introduce a third Mechanism
     (FETCH) for (c): Provisa''s adapter fetches rows; write face lands them; engine reads the replica.
     This retires the parallel SOURCE_TO_CONNECTOR map and adapter_loaders special-casing.'
@@ -31337,11 +31336,11 @@
   priority: MUST
   type: constraint
   description: >-
-    Every datasource type in SourceType enum (51 types: postgresql, mysql, mariadb,
+    Every datasource type in SourceType enum (49 types: postgresql, mysql, mariadb,
     sqlserver, oracle, cockroachdb, yugabytedb, tidb, greenplum, singlestore, snowflake,
     bigquery, databricks, fabric, synapse, redshift, clickhouse, elasticsearch, pinot,
-    druid, exasol, delta_lake, iceberg, hive, hive_s3, mongodb, cassandra, redis, kudu,
-    accumulo, firebird, duckdb, sqlite, openapi, graphql_remote, grpc_remote, govdata,
+    druid, exasol, delta_lake, iceberg, hive, hive_s3, mongodb, cassandra, redis,
+    firebird, duckdb, sqlite, openapi, graphql_remote, grpc_remote, govdata,
     kafka, neo4j, sparql, prometheus, rss, websocket, sharepoint, splunk, google_sheets,
     csv, parquet, files, airport, ingest) must have an integration or e2e test against
     a real (Docker or cloud-provisioned) instance. Unit tests that merely reference the
@@ -31358,8 +31357,10 @@
     exasol: Source.jdbc_url() omitted exasol/redshift, silently no-op'ing catalog creation. Filed
     issue #74 (zaychik Arrow-Flight auth/protocol gap, found via airport; the Provisa Flight→Trino
     transport itself is verified working — tests/integration/test_trino_flight_engine_e2e.py).
-    Remaining 6 types lack integration/e2e coverage — all heavy multi-container ecosystems:
-    pinot, accumulo, druid, hive, hive_s3, kudu.
+    The heavy multi-container analytics/lake ecosystems are now covered by self-provisioning
+    e2e: pinot and druid (Trino catalog), hive and hive_s3 (Trino hive connector + HMS, S3 on
+    MinIO). kudu and accumulo were removed from SourceType — neither is a SQL-variant with a
+    downloadable driver testable in this harness (Trino 481 ships no kudu/accumulo connector).
   code:
   - provisa/core/models.py
   - tests/integration/test_mariadb_source_e2e.py

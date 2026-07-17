@@ -50,8 +50,6 @@ VIRTUAL_SOURCES: set[str] = {
     "mongodb",
     "cassandra",
     "redis",
-    "kudu",
-    "accumulo",
     # Data Lake
     "delta_lake",
     "iceberg",

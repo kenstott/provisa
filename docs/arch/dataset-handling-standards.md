@@ -127,8 +127,6 @@ These types have no Trino connector and no native introspection path. Both `avai
 | `parquet` | Local or remote Parquet file — schema from file metadata at registration |
 | `google_sheets` | Google Sheets API — schema from spreadsheet columns at registration |
 | `ingest` | HTTP push receiver — schema defined in config at registration (REQ-333) |
-| `kudu` | Apache Kudu — no Trino connector (Trino removed its kudu connector in the Java 24 migration; absent from trino:481); no introspection (REQ-1097) |
-| `accumulo` | Apache Accumulo — no Trino connector configured; no introspection |
 | `pinot` | Apache Pinot — Trino `pinot` connector (`pinot.controller-urls`); introspects live via Trino (REQ-1097) |
 
 ---

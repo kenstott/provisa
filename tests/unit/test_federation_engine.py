@@ -234,9 +234,9 @@ def test_warehouse_native_lands_into_self():
 
 
 def test_unreachable_source_rejected_at_resolve():
-    # Trino has no connector for kudu → rejected, not landed.
+    # Trino has no connector for parquet → rejected, not landed.
     with pytest.raises(UnreachableSource):
-        build_trino_engine().resolve(_src("ku", SourceType.kudu))
+        build_trino_engine().resolve(_src("ku", SourceType.parquet, path="/o.parquet"))
 
 
 # ---- derived catalog + reconcile (REQ-843) ----------------------------------

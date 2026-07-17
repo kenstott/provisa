@@ -27,23 +27,18 @@
     "labelPlaceholder": "e.g. method",
     "removeLabel": "Remove label {{label}}",
     "addLabel": "Add Label",
-    "accumuloTable": "Accumulo Table",
-    "accumuloTablePlaceholder": "e.g. graph_edges",
     "columns": "Columns",
     "addColumn": "Add",
     "columnName": "Name",
     "columnType": "Type",
-    "qualifier": "Qualifier",
     "columnNamePlaceholder": "column_name",
     "fieldPlaceholderMongo": "$.path.to.field",
     "fieldPlaceholderDefault": "field_name",
-    "qualifierPlaceholder": "qualifier",
     "removeColumn": "Remove column {{index}}",
     "saveMapping": "Save Mapping",
     "fieldRedis": "Redis Field",
     "fieldMongo": "JSONPath",
     "fieldElasticsearch": "Dot-Path",
-    "fieldAccumulo": "Family",
     "fieldDefault": "Field"
   }
 }

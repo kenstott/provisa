@@ -429,30 +429,6 @@ services:
       retries: 40
       start_period: 180s
 
-  # Accumulo (REQ-1097). Accumulo needs ZooKeeper + Hadoop HDFS + master/tserver — the heaviest
-  # of the datasource stacks. There is NO maintained upstream image (apache/accumulo and bare
-  # `accumulo` do not exist on Docker Hub); `cybermaggedon/accumulo` is the only community all-in-one
-  # (ZK+Hadoop+Accumulo in one container). This service is DEFINED for completeness but is NEVER
-  # provisioned by the test harness: conftest._DockerServiceManager unconditionally discards
-  # "accumulo" because (a) Provisa has no accumulo reach path yet — the type is absent from
-  # trino_connectors.TRINO_CONNECTORS, events.source_loader._ADAPTER_FETCH_ONLY, and
-  # pgwire_replica.PGWIRE_REPLICA_TYPES, so nothing could query it even if booted — and (b) this
-  # host's Docker memory cannot host a JVM Hadoop stack alongside Trino. ${ACCUMULO_PORT} maps the
-  # ZooKeeper port the Trino accumulo connector would use once a connector is wired.
-  accumulo:
-    restart: unless-stopped
-    image: cybermaggedon/accumulo:1.9.3
-    ports:
-      - "${ACCUMULO_PORT:-2181}:2181"
-    volumes:
-      - accumulo_test_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/2181' || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 30
-      start_period: 180s
-
   mongodb:
     restart: unless-stopped
     image: mongo:7
@@ -575,7 +551,6 @@ volumes:
   splunk_test_data:
   druid_metadata_data:
   druid_shared:
-  accumulo_test_data:
   mongo_test_data:
   es_test_data:
   neo4j_test_data:

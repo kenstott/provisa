@@ -71,8 +71,6 @@ class SourceType(str, Enum):
     mongodb = "mongodb"
     cassandra = "cassandra"
     redis = "redis"
-    kudu = "kudu"
-    accumulo = "accumulo"
     # Streaming
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events

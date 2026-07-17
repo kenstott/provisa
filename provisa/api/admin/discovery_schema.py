@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/schema-discovery", tags=["schema-discovery"])
 
 # Source types that do not support schema discovery
-_NO_DISCOVER = {"redis", "accumulo"}
+_NO_DISCOVER = {"redis"}
 
 
 class DiscoveredUniqueConstraint(BaseModel):  # REQ-1093

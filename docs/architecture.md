@@ -435,7 +435,6 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `mongodb/` | MongoDB source connector |
 | `elasticsearch/` | Elasticsearch source connector |
 | `cassandra/` | Cassandra source connector |
-| `accumulo/` | Apache Accumulo source connector |
 | `prometheus/` | Prometheus metrics source connector |
 | `source_adapters/` | Generic adapter layer for source connections |
 

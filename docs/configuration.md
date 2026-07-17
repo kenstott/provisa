@@ -19,7 +19,7 @@ sources:
     pgbouncer_port: 6432
 ```
 
-Supported source types: `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `snowflake`, `bigquery`, `redshift`, `databricks`, `clickhouse`, `druid`, `exasol`, `hive`, `elasticsearch`, `pinot`, `delta_lake`, `iceberg`, `mongodb`, `cassandra`, `redis`, `kudu`, `accumulo`, `kafka`, `google_sheets`, `prometheus`, `govdata`.
+Supported source types: `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `snowflake`, `bigquery`, `redshift`, `databricks`, `clickhouse`, `druid`, `exasol`, `hive`, `elasticsearch`, `pinot`, `delta_lake`, `iceberg`, `mongodb`, `cassandra`, `redis`, `kafka`, `google_sheets`, `prometheus`, `govdata`.
 
 ## GovData Sources
 

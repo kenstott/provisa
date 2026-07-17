@@ -206,7 +206,7 @@ def shared_data_841():
     target_fixture="shared_data",
 )
 def given_source_and_engine():
-    """Set up a reachable source (postgresql via Trino) and an unreachable one (kudu — no Trino
+    """Set up a reachable source (postgresql via Trino) and an unreachable one (parquet — no Trino
     connector and not materialize-only)."""
     reachable_source = Source(
         id="orders_pg",
@@ -217,12 +217,9 @@ def given_source_and_engine():
         username="reader",
     )
     unreachable_source = Source(
-        id="legacy_kudu",
-        type=SourceType.kudu,
-        host="kudu.example.com",
-        port=7051,
-        database="orcl",
-        username="reader",
+        id="legacy_parquet",
+        type=SourceType.parquet,
+        path="/data/legacy.parquet",
     )
     engine = build_trino_engine()
     return {

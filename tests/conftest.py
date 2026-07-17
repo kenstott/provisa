@@ -105,7 +105,6 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_splunk": ["splunk"],
     "requires_airport": ["airport-shim"],
     "requires_pinot": ["pinot"],
-    "requires_accumulo": ["accumulo"],
     "requires_druid": [
         "druid-zookeeper",
         "druid-metadata",
@@ -153,7 +152,6 @@ _ITEST_PORT_ENV = [
     "PINOT_BROKER_PORT",
     "DRUID_BROKER_PORT",
     "DRUID_COORD_PORT",
-    "ACCUMULO_PORT",
 ]
 
 
@@ -234,15 +232,6 @@ class _DockerServiceManager:
         # bring up a container that will never become healthy on this host.
         if "exasol" in needed and platform.machine() not in ("x86_64", "amd64"):
             needed.discard("exasol")
-
-        # Accumulo has NO Provisa reach path today (REQ-1097): it is absent from
-        # trino_connectors.TRINO_CONNECTORS (trino_connector_name("accumulo") is None), from
-        # events.source_loader._ADAPTER_FETCH_ONLY, and from pgwire_replica.PGWIRE_REPLICA_TYPES,
-        # and provisa/accumulo/source.py is catalog-props-only (never invoked by create_catalog,
-        # which uses the connector classes). The e2e is therefore a reach-gated skip. Its heavy
-        # Hadoop+ZooKeeper+Accumulo stack has no maintained upstream image and cannot fit this
-        # host's Docker memory alongside the Trino stack — never bring it up for a test that skips.
-        needed.discard("accumulo")
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
         # exported at import time, its own network — the dev stack is never touched.

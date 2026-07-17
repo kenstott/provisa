@@ -28,7 +28,6 @@ export const MAPPING_TYPES = new Set([
   "elasticsearch",
   "cassandra",
   "prometheus",
-  "accumulo",
 ]);
 
 export const SOURCE_TYPES = [
@@ -66,8 +65,6 @@ export const SOURCE_TYPES = [
   { value: "mongodb", label: "MongoDB", category: "NoSQL", defaultPort: 27017 },
   { value: "cassandra", label: "Cassandra", category: "NoSQL", defaultPort: 9042 },
   { value: "redis", label: "Redis", category: "NoSQL", defaultPort: 6379 },
-  { value: "kudu", label: "Apache Kudu", category: "NoSQL", defaultPort: 7051 },
-  { value: "accumulo", label: "Accumulo", category: "NoSQL", defaultPort: 9995 },
   // Graph
   { value: "neo4j", label: "Neo4j", category: "Graph", defaultPort: 7474 },
   { value: "sparql", label: "SPARQL", category: "Graph", defaultPort: 443 },
@@ -135,8 +132,6 @@ export const SIMPLE_RDBMS = new Set([
   "mongodb",
   "cassandra",
   "redis",
-  "kudu",
-  "accumulo",
 ]);
 
 // Data lake types

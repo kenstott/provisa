@@ -37,7 +37,6 @@ export const POLL_DELIVERY_TYPES = new Set([
   "hive",
   "mongodb",
   "cassandra",
-  "kudu",
 ]);
 
 export interface LiveCapability {

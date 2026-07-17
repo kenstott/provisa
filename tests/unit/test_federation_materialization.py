@@ -46,7 +46,7 @@ def test_attach_reachable_backend_is_valid():
 
 def test_backend_with_no_connector_rejected():
     with pytest.raises(InvalidMaterializationBackend, match="no connector"):
-        validate_materialization_backend(build_trino_engine(), "kudu")
+        validate_materialization_backend(build_trino_engine(), "parquet")
 
 
 def test_land_only_backend_rejected_as_regress():
@@ -73,7 +73,7 @@ def test_separate_relational_store_uses_sqlalchemy_upsert():
 
 def test_write_face_validates_backend_first():
     with pytest.raises(InvalidMaterializationBackend):
-        select_write_face(build_trino_engine(), "kudu")
+        select_write_face(build_trino_engine(), "parquet")
 
 
 # ---- reactive-replica set (REQ-845) -----------------------------------------
