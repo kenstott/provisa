@@ -31379,3 +31379,63 @@
   - tests/integration/test_splunk_source_e2e.py
   - tests/integration/test_trino_flight_engine_e2e.py
   target: "2026-Q4"
+- id: REQ-1098
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: Native Tier Database
+  priority: MUST
+  type: structural
+  description: The native (DuckDB) tier exposes the tenant control-plane as the `provisa_admin` catalog,
+    enabling meta/ops entities (registered_tables, etc.) to be queryable with parity to the Trino tier. The
+    catalog attaches the tenant SQLite DB READ_ONLY and exposes every table under the compiler-emitted schema
+    `org_<id>` without a hardcoded table list.
+  use_case: Provides full parity with Trino tier where provisa_admin is a real attached catalog. Allows
+    native users to query system metadata and operational state via standard SQL, matching Trino/Presto
+    multi-catalog semantics.
+  code:
+  - provisa/federation/duckdb_runtime.py
+  - provisa/federation/native_backend.py
+  tests:
+  - tests/unit/test_duckdb_control_plane_attach.py
+  relates_to:
+  - REQ-979
+- id: REQ-1099
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: Native Tier Database
+  priority: MUST
+  type: constraint
+  description: The control-plane SQLite (platform + tenant) MUST run in WAL mode (journal_mode=WAL) with
+    busy_timeout enabled. This is the concurrency guarantee that permits the native DuckDB engine to read
+    the tenant DB READ_ONLY while aiosqlite writes config changes without transient "database is locked"
+    errors.
+  use_case: Enables concurrent read-write access to the control-plane SQLite without lock contention or
+    stalling queries. Required for safe multi-client scenarios where the UI (aiosqlite) updates config
+    while the native engine queries system state.
+  code:
+  - provisa/core/database.py
+  tests:
+  - tests/unit/test_admin_database.py
+  relates_to:
+  - REQ-1098
+- id: REQ-1100
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: Desktop Installation
+  priority: MUST
+  type: infrastructure
+  description: The native demo launcher MUST wait for the demo mock servers (petstore :18080, graphql
+    :4000) to answer before starting the API. The launcher MUST gate the browser-open on the API's /health
+    endpoint (served only after lifespan/config-load completes), not merely on the UI proxy port.
+  use_case: Ensures the demo environment is fully initialized before opening the browser to the user. Prevents
+    premature browser navigation to a not-yet-ready environment and reduces failed first-user experience.
+  code:
+  - packaging/windows/provisa-native.ps1
+  tests:
+  - tests/unit/test_desktop_install.py
+  - packaging/windows/tests/provisa-native.Tests.ps1
+  relates_to:
+  - REQ-979
