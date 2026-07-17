@@ -128,7 +128,8 @@ function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
             Connect Claude Desktop
           </Text>
           <Text size="xs" c="dimmed" mb={6}>
-            Add this to Claude Desktop&apos;s config file, then restart it.{" "}
+            In Claude Desktop, open Settings → Developer → Edit Config (this creates the file if it
+            doesn&apos;t exist yet), paste the JSON below, then restart Claude.{" "}
             {bundled ? (
               <>The bridge (mcp-proxy) ships inside Provisa&apos;s runtime — no Node, no install.</>
             ) : (
