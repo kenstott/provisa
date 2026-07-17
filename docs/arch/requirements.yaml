@@ -31348,11 +31348,12 @@
     type name do not satisfy this.
   use_case: >-
     Ensures all datasource connectors work correctly in practice against real instances,
-    not just as concept or identity-check in code. Direct-driver types now covered with
-    self-provisioning integration tests: mariadb, tidb, cockroachdb, yugabytedb, sqlserver,
-    oracle. Remaining 15 types lack integration/e2e coverage: pinot, accumulo, airport,
-    cassandra, druid, exasol, firebird, google_sheets, hive, hive_s3, kudu, redshift,
-    sharepoint, singlestore, splunk.
+    not just as concept or identity-check in code. Covered with self-provisioning tests:
+    direct-driver — mariadb, tidb, cockroachdb, yugabytedb, sqlserver, oracle, singlestore
+    (license-gated skip); connector (federation engine → Trino catalog) — cassandra, which
+    is the reference pattern for the rest of the connector bucket. Remaining 13 types lack
+    integration/e2e coverage: pinot, accumulo, airport, druid, exasol, firebird,
+    google_sheets, hive, hive_s3, kudu, redshift, sharepoint, splunk.
   code:
   - provisa/core/models.py
   - tests/integration/test_mariadb_source_e2e.py
@@ -31361,4 +31362,6 @@
   - tests/integration/test_yugabytedb_source_e2e.py
   - tests/integration/test_sqlserver_source_e2e.py
   - tests/integration/test_oracle_source_e2e.py
+  - tests/integration/test_singlestore_source_e2e.py
+  - tests/integration/test_cassandra_source_e2e.py
   target: "2026-Q4"
