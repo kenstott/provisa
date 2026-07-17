@@ -15,6 +15,7 @@ SNOWFLAKE_USER / SNOWFLAKE_PASSWORD (and install the connector) to enable.
 from __future__ import annotations
 
 import os
+from urllib.parse import quote
 
 import pytest
 
@@ -94,21 +95,25 @@ def runtime():
     user = os.environ["SNOWFLAKE_USER"]
     pw = os.environ["SNOWFLAKE_PASSWORD"]
     wh = os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
-    url = f"snowflake://{user}:{pw}@{acct}/{_CATALOG}/{_SCHEMA}?warehouse={wh}"
+    # Percent-encode credentials: passwords may contain URL-reserved characters
+    # (e.g. '#', '@', '/', ':') that would otherwise corrupt DSN parsing.
+    url = (
+        f"snowflake://{quote(user, safe='')}:{quote(pw, safe='')}"
+        f"@{acct}/{_CATALOG}/{_SCHEMA}?warehouse={wh}"
+    )
     rt = SnowflakeFederationRuntime(url=url)
     # Snowflake is a READ engine (REQ-988): seed the source table directly so the governed query has
     # data to read at the compiler's physical name (database=source catalog, schema, table).
+    # The compiler emits quoted-lowercase physical names (e.g. "e2e_sf"."public"."orders");
+    # Snowflake treats quoted identifiers as case-sensitive, so the seed DDL must quote them
+    # too — unquoted DDL would fold to uppercase (E2E_SF) and the governed query wouldn't resolve.
+    fq = f'"{_CATALOG}"."{_SCHEMA}"."{_TABLE}"'
     cur = rt.connection.cursor()
     try:
-        cur.execute(f"CREATE DATABASE IF NOT EXISTS {_CATALOG}")
-        cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_CATALOG}.{_SCHEMA}")
-        cur.execute(
-            f"CREATE OR REPLACE TABLE {_CATALOG}.{_SCHEMA}.{_TABLE} "
-            "(id NUMBER, region STRING, amount FLOAT)"
-        )
-        cur.execute(
-            f"INSERT INTO {_CATALOG}.{_SCHEMA}.{_TABLE} VALUES (1,'west',100),(2,'east',200)"
-        )
+        cur.execute(f'CREATE DATABASE IF NOT EXISTS "{_CATALOG}"')
+        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{_CATALOG}"."{_SCHEMA}"')
+        cur.execute(f'CREATE OR REPLACE TABLE {fq} ("id" NUMBER, "region" STRING, "amount" FLOAT)')
+        cur.execute(f"INSERT INTO {fq} VALUES (1,'west',100),(2,'east',200)")
     finally:
         cur.close()
     try:
@@ -116,7 +121,7 @@ def runtime():
     finally:
         cur = rt.connection.cursor()
         try:
-            cur.execute(f"DROP TABLE IF EXISTS {_CATALOG}.{_SCHEMA}.{_TABLE}")
+            cur.execute(f"DROP TABLE IF EXISTS {fq}")
         finally:
             cur.close()
         rt.close()

@@ -23,7 +23,7 @@ selectable/declarable; a live connection requires the driver + a Snowflake accou
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import pyarrow as pa
 
@@ -47,10 +47,13 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         import snowflake.connector as sf
 
         self._engine: Any = None
+        # urlparse does not percent-decode components; a DSN must encode reserved
+        # characters (e.g. '#', '@', '/', ':') in credentials, so unquote them back
+        # before handing them to the connector.
         self._conn = sf.connect(
             account=u.hostname,
-            user=u.username,
-            password=u.password or "",
+            user=unquote(u.username),
+            password=unquote(u.password) if u.password else "",
             database=self._database,
             schema=self._schema,
             warehouse=q.get("warehouse", [None])[0],
