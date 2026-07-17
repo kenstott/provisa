@@ -200,8 +200,8 @@ export function NavBar() {
                 <rect x="30" y="18" width="15" height="64" rx="7" />
                 <circle cx="52" cy="35" r="22" />
               </g>
-              <circle cx="52" cy="34" r="10.5" fill="var(--surface)" />
-              <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+              <circle cx="52" cy="35" r="10.5" fill="var(--surface)" />
+              <circle cx="52" cy="35" r="4.5" fill="#10B981" />
             </svg>
             <span>{t("navBar.brand")}</span>
           </NavLink>
