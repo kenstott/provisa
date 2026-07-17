@@ -116,6 +116,21 @@ class NativeEngineBackend(EngineBackend):
             except self._attach_errors:
                 _log.warning("%s attach of %s failed; table not queryable", self.engine.name, key)
 
+        # Native DuckDB path: attach the control-plane SQLite DB as the provisa_admin catalog so
+        # meta/ops entities resolve (parity with Trino, where provisa_admin is a real catalog).
+        # Only runs when: the runtime supports it (DuckDB), the tenant DB is SQLite (native), and
+        # the DB URL points at a real file. Idempotent — the runtime guards with a flag.
+        tdb = getattr(state, "tenant_db", None)
+        if (
+            tdb is not None
+            and getattr(tdb, "dialect", None) == "sqlite"
+            and hasattr(self._runtime, "attach_control_plane")
+        ):
+            _db_url = tdb.engine.url
+            _db_path = str(_db_url.database or "")
+            _org_id = getattr(state, "org_id", "default")
+            self._runtime.attach_control_plane(_db_path, f"org_{_org_id}")
+
     # -- residency prep (REQ-825 stage-4b / REQ-932) ---------------------------
 
     async def materialize_pending(

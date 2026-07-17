@@ -826,6 +826,8 @@ def create_engine_from_url(
     engine = create_async_engine(normalized, **kwargs)
     if engine.dialect.name == "postgresql":
         event.listen(engine.sync_engine, "connect", _on_pg_connect)
+    elif engine.dialect.name == "sqlite":
+        event.listen(engine.sync_engine, "connect", _on_sqlite_connect)
 
     return engine
 
@@ -835,6 +837,25 @@ def _on_pg_connect(dbapi_conn: Any, connection_record: Any) -> None:
     new asyncpg connection (matches the former asyncpg pool ``init``)."""
     del connection_record
     dbapi_conn.run_async(_register_json_codecs)
+
+
+def _on_sqlite_connect(dbapi_conn: Any, connection_record: Any) -> None:
+    """SQLAlchemy ``connect`` listener: put the control-plane SQLite file in WAL mode.
+
+    WAL is the design guarantee that makes concurrent access safe: on the native tier the DuckDB
+    federation engine ATTACHes this same tenant DB file READ_ONLY (``provisa_admin`` catalog) and
+    reads it while SQLAlchemy/aiosqlite writes config changes. Rollback-journal mode (the SQLite
+    default) blocks readers during a write commit and yields transient ``database is locked``; WAL
+    lets one writer proceed alongside concurrent readers. ``busy_timeout`` absorbs the brief
+    checkpoint/commit windows. journal_mode=WAL persists in the file; the pragma is idempotent.
+    A no-op on an in-memory DB (which cannot be WAL)."""
+    del connection_record
+    cur = dbapi_conn.cursor()
+    try:
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=5000")
+    finally:
+        cur.close()
 
 
 # --------------------------------------------------------------------------- #
