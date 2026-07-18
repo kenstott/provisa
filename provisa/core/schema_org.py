@@ -75,6 +75,9 @@ sources = Table(
     Column("cache_enabled", Boolean, nullable=False, server_default=true()),
     Column("cache_ttl", Integer),
     Column("prefer_materialized", Boolean, nullable=False, server_default=false()),
+    Column("load_protected", Boolean, nullable=False, server_default=false()),  # REQ-1141
+    Column("off_peak_window", Text),  # REQ-1141
+    Column("off_peak_tz", Text, nullable=False, server_default="UTC"),  # REQ-1141
     Column("gql_naming_convention", Text),
     Column("path", Text),
     Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
@@ -115,6 +118,9 @@ registered_tables = Table(
     Column("description", Text),
     Column("cache_ttl", Integer),
     Column("prefer_materialized", Boolean),
+    Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
+    Column("off_peak_window", Text),  # REQ-1141
+    Column("off_peak_tz", Text),  # REQ-1141
     Column("gql_naming_convention", Text),
     Column("watermark_column", Text),
     Column("change_signal", Text),  # REQ-929: override source change signal; NULL = inherit

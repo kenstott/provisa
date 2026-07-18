@@ -320,6 +320,9 @@ async def _fetch_table_with_columns(
         description=row.get("description"),
         cache_ttl=row.get("cache_ttl"),
         prefer_materialized=row.get("prefer_materialized"),
+        load_protected=row.get("load_protected"),  # REQ-1141
+        off_peak_window=row.get("off_peak_window"),  # REQ-1141
+        off_peak_tz=row.get("off_peak_tz"),  # REQ-1141
         gql_naming_convention=row.get("gql_naming_convention"),
         watermark_column=row.get("watermark_column"),
         columns=columns,

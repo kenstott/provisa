@@ -83,6 +83,8 @@ def build_execution_plan(
     demand_of: Callable[[str], PushdownDemand] | None = None,
     estimate_of: Callable[[str], Estimate] | None = None,
     prefer_materialized_of: Callable[[str], bool] | None = None,
+    load_protected_of: Callable[[str], bool] | None = None,
+    resident_of: Callable[[str], bool] | None = None,
     materialization_backend: str | None = None,
     freshness_subject_of: Callable[[str], FreshnessSubject] | None = None,
     now: float | None = None,
@@ -105,6 +107,14 @@ def build_execution_plan(
     — else the override resolves to MATERIALIZED with nowhere to land. The guard fails loud here
     at plan time rather than silently at execute (see validate_materialization_backend, REQ-846).
 
+    ``load_protected_of`` marks a source LOAD-PROTECTED (REQ-1141): like prefer_materialized it
+    forces MATERIALIZED (removes the live route), but additionally the READ path must NOT pull the
+    source — the scheduler is the sole writer. A load-protected source is therefore put in the prep
+    phase ONLY when it is not yet resident (``resident_of(s.id)`` is False / unavailable); once a
+    snapshot exists, staleness never triggers a query-path refresh (that is the scheduler's job).
+    ``resident_of`` reports whether a snapshot already exists in the store; absent it, a
+    load-protected source falls back to a single first-load (treated as not resident).
+
     ``freshness_subject_of`` arms the REQ-860 SOURCE-level freshness gate: for a source with
     ``freshness_gate=True`` it supplies that source's observed residency state as a
     FreshnessSubject, and the source's own ``change_signal`` + ``cache_ttl`` freshness predicate —
@@ -114,8 +124,14 @@ def build_execution_plan(
     present); the decision itself stays pure (predicate has no side effects, REQ-856).
     """
     strategies: dict[str, Strategy] = {}
+    load_protected: set[str] = set()
     for s in sources:
-        prefer = prefer_materialized_of(s.id) if prefer_materialized_of is not None else False
+        protected = load_protected_of(s.id) if load_protected_of is not None else False
+        if protected:
+            load_protected.add(s.id)
+        prefer = (
+            prefer_materialized_of(s.id) if prefer_materialized_of is not None else False
+        ) or protected
         strategy = federate(
             s,
             engine,
@@ -136,7 +152,7 @@ def build_execution_plan(
         PrepStep(s.id, strategies[s.id])
         for s in sources
         if requires_residency(strategies[s.id])
-        and _needs_refresh(s, is_stale, freshness_subject_of, now)
+        and _needs_prep(s, is_stale, freshness_subject_of, now, s.id in load_protected, resident_of)
     ]
     route = (
         Route.DIRECT
@@ -146,20 +162,30 @@ def build_execution_plan(
     return Plan(prep=prep, route=route)
 
 
-def _needs_refresh(
+def _needs_prep(
     source: Source,
     is_stale: Callable[[str], bool],
     freshness_subject_of: Callable[[str], FreshnessSubject] | None,
     now: float | None,
+    load_protected: bool,
+    resident_of: Callable[[str], bool] | None,
 ) -> bool:
-    """Whether a MATERIALIZED source needs a residency refresh before this query reads it.
+    """Whether a MATERIALIZED source needs a residency prep before this query reads it.
 
-    REQ-860: a source with ``freshness_gate=True`` is decided by its OWN freshness predicate
-    (built from change_signal + cache_ttl) over its observed residency state — a stale/failed
-    verdict triggers the refresh. Every other source uses the generic ``is_stale`` oracle. When
-    a gated source is present but no ``now`` was supplied, the wall clock is the evaluation
-    time (the decision is pure; sampling the clock here is the caller's effect).
+    REQ-1141: a LOAD-PROTECTED source is refreshed only by the scheduler, never on the query path.
+    A read therefore preps it ONLY when no snapshot exists yet (first load); once resident, a query
+    always serves the last snapshot regardless of staleness (the scheduler owns freshness). Absent a
+    ``resident_of`` oracle, first-load is assumed (treated as not resident) — never a query-path
+    re-pull of an already-resident protected source.
+
+    Otherwise (REQ-860): a source with ``freshness_gate=True`` is decided by its OWN freshness
+    predicate (change_signal + cache_ttl) over its observed residency state — a stale/failed verdict
+    triggers the refresh; every other source uses the generic ``is_stale`` oracle. When a gated
+    source is present but no ``now`` was supplied, the wall clock is the evaluation time (the
+    decision is pure; sampling the clock here is the caller's effect).
     """
+    if load_protected:
+        return not resident_of(source.id) if resident_of is not None else True
     if source.freshness_gate and freshness_subject_of is not None:
         from provisa.freshness.source_gate import gate_source
 

@@ -84,6 +84,9 @@ def _source_from_row(row) -> SourceType:
         cache_enabled=row.get("cache_enabled", True),
         cache_ttl=row.get("cache_ttl"),
         prefer_materialized=bool(row.get("prefer_materialized", False)),
+        load_protected=bool(row.get("load_protected", False)),  # REQ-1141
+        off_peak_window=row.get("off_peak_window"),  # REQ-1141
+        off_peak_tz=row.get("off_peak_tz") or "UTC",  # REQ-1141
         gql_naming_convention=row.get("gql_naming_convention"),
         path=row.get("path"),
         allowed_domains=list(row.get("allowed_domains") or []),

@@ -39,8 +39,11 @@ class SourceType:  # REQ-012
     cache_enabled: bool
     cache_ttl: int | None
     prefer_materialized: bool
-    gql_naming_convention: str | None
-    path: str | None
+    load_protected: bool = False  # REQ-1141: scheduled-refresh-only load protection
+    off_peak_window: str | None = None  # REQ-1141: "HH:MM-HH:MM" maintenance window
+    off_peak_tz: str = "UTC"  # REQ-1141: IANA zone for the window
+    gql_naming_convention: str | None = None
+    path: str | None = None
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     description: str = ""
     mapping_json: str = "{}"
@@ -106,6 +109,9 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     description: str | None
     cache_ttl: int | None
     prefer_materialized: bool | None
+    load_protected: bool | None  # REQ-1141: NULL = inherit source
+    off_peak_window: str | None  # REQ-1141: per-table window override
+    off_peak_tz: str | None  # REQ-1141: per-table window zone override
     gql_naming_convention: str | None
     watermark_column: str | None
     columns: list[TableColumnType]
@@ -239,6 +245,9 @@ class SourceInput:  # REQ-012
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     mapping_json: str | None = None
     change_signal: str = "ttl"  # REQ-929: source default change signal
+    load_protected: bool = False  # REQ-1141: scheduled-refresh-only load protection
+    off_peak_window: str | None = None  # REQ-1141: "HH:MM-HH:MM" maintenance window
+    off_peak_tz: str = "UTC"  # REQ-1141: IANA zone for the window
     cdc: SourceCdcConfigInput | None = None  # REQ-824: source-level CDC transport
 
 
@@ -328,6 +337,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         default_factory=list
     )  # REQ-1093
     view_sql: str | None = None
+    load_protected: bool | None = None  # REQ-1141: NULL = inherit source load protection
+    off_peak_window: str | None = None  # REQ-1141: per-table "HH:MM-HH:MM" window override
+    off_peak_tz: str | None = None  # REQ-1141: per-table window zone override
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class

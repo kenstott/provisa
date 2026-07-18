@@ -158,6 +158,18 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # Force MATERIALIZED federation for this source's tables even when it could be reached live —
     # the manual counterpart to cost-based promotion, for when the connector is a poor fit (REQ-826).
     prefer_materialized: bool = False
+    # REQ-1141: mark this source LOAD-PROTECTED. Implies prefer_materialized (removes the live route)
+    # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
+    # always serve the last materialized snapshot — and the source is refreshed ONLY by the
+    # out-of-band scheduler on the configured gates below. At least one gate (off_peak_window, a
+    # cache_ttl cadence, or a probing change_signal) is REQUIRED; a load-protected source with no
+    # gate is a config error (validated at registration), not a frozen snapshot.
+    load_protected: bool = False
+    # REQ-1141: optional off-peak/maintenance window as "HH:MM-HH:MM" in ``off_peak_tz``; the
+    # scheduler refreshes a load-protected source only while this window is open. None = no window
+    # gate (the cadence/probe gates drive the refresh instead).
+    off_peak_window: str | None = None
+    off_peak_tz: str = "UTC"  # IANA zone the off_peak_window is evaluated in (tracks DST)
     # REQ-929: source-level default change signal — how Provisa learns rows changed. Orthogonal to a
     # table's watermark_column (which gates the poll subscription path + append landing, REQ-926/927).
     # Pull: ttl | probe | ttl_probe. Push: native | debezium | kafka. Tables inherit unless overriding.
@@ -452,6 +464,11 @@ class Table(
     description: str | None = None  # GraphQL type description
     cache_ttl: int | None = None  # overrides source-level; None = inherit
     prefer_materialized: bool | None = None  # overrides source-level; None = inherit (REQ-826)
+    # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
+    load_protected: bool | None = None
+    # REQ-1141: per-table off-peak window override ("HH:MM-HH:MM"); None = inherit source window.
+    off_peak_window: str | None = None
+    off_peak_tz: str | None = None  # None = inherit source off_peak_tz
     gql_naming_convention: str | None = None  # overrides source; None = inherit
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     warm: bool | None = (

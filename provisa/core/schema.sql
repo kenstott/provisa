@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS sources (
     cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     cache_ttl     INTEGER,
     prefer_materialized BOOLEAN NOT NULL DEFAULT FALSE,  -- force MATERIALIZED federation for this source's tables
+    load_protected BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1141: scheduled-refresh-only; query path never pulls the source
+    off_peak_window TEXT,  -- REQ-1141: "HH:MM-HH:MM" maintenance window for the scheduler; NULL = no window gate
+    off_peak_tz   TEXT NOT NULL DEFAULT 'UTC',  -- REQ-1141: IANA zone the off_peak_window is evaluated in
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka)
     gql_naming_convention TEXT,
     path          TEXT  -- file path or URL for file-based sources (csv, parquet, sqlite)
@@ -58,6 +61,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     description TEXT,
     cache_ttl   INTEGER,
     prefer_materialized BOOLEAN,  -- NULL = inherit source; overrides federation strategy to MATERIALIZED
+    load_protected BOOLEAN,  -- REQ-1141: NULL = inherit source; overrides scheduled-refresh-only load protection
+    off_peak_window TEXT,    -- REQ-1141: per-table "HH:MM-HH:MM" window override; NULL = inherit source
+    off_peak_tz TEXT,        -- REQ-1141: per-table window zone override; NULL = inherit source
     gql_naming_convention TEXT,
     watermark_column TEXT,
     change_signal TEXT,  -- REQ-929: override source change signal; NULL = inherit

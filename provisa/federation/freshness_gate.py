@@ -11,11 +11,16 @@
 """The one centralized materialization_store freshness gate (REQ-855).
 
 Per cache entry (per-table, keyed like the replica/view targets) the steward selects one
-of three freshness modes, evaluated lazily on access:
+of four freshness modes, evaluated lazily on access:
 
 - TTL       — bounded staleness; fresh while within the refresh interval.
 - PROBE     — re-probe the upstream on access and rebuild only on change, ignoring TTL.
 - TTL_PROBE — probe only after a TTL floor elapses, capping probe frequency.
+- SCHEDULED — load-protected (REQ-1141): the READ path NEVER re-pulls the source; a query
+              always serves the last materialized snapshot (always fresh to readers). The
+              source is refreshed ONLY by the out-of-band scheduler (scheduled_refresh.py),
+              so the source sees zero query-path load. Bounded staleness is the scheduler's
+              cadence/window, not query traffic.
 
 The probe returns an OPAQUE token; Provisa never interprets it, only compares stored vs.
 fresh by equality: unchanged → keep the materialized rows (zero lag at probe cost),
@@ -39,6 +44,7 @@ class FreshnessMode(str, Enum):  # REQ-855
     TTL = "ttl"
     PROBE = "probe"
     TTL_PROBE = "ttl_probe"
+    SCHEDULED = "scheduled"  # REQ-1141: reader always fresh; refresh is scheduler-only
 
 
 @dataclass(frozen=True)
@@ -67,6 +73,14 @@ def evaluate_freshness(
     probe: FreshnessProbe | None,
 ) -> FreshnessDecision:
     """Evaluate the freshness gate for one materialization_store entry (REQ-855)."""
+    if mode is FreshnessMode.SCHEDULED:
+        # REQ-1141: the READ path never pulls a load-protected source. A query always serves the
+        # last materialized snapshot — even past any TTL — because the scheduler (scheduled_refresh)
+        # is the sole writer. A never-yet-loaded entry (last_refresh_at is None) is the ONE case a
+        # read must wait on: there is nothing to serve, so it is not "fresh" and the caller lands
+        # the first snapshot. Steady state: always fresh, zero query-path source load.
+        return FreshnessDecision(fresh=last_refresh_at is not None)
+
     ttl_elapsed = last_refresh_at is None or (now - last_refresh_at) >= ttl
 
     if mode is FreshnessMode.TTL:
