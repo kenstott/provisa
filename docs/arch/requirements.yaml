@@ -32364,3 +32364,146 @@
     - REQ-826
     - REQ-855
     - REQ-847
+- id: REQ-1144
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Windows Native Launcher
+  priority: MUST
+  type: behavioral
+  description: >-
+    The Windows native launcher displays a visible WinForms splash screen (startup monitor)
+    during first launch instead of running fully hidden. The monitor launches first-launch-native.ps1
+    hidden, tails a progress breadcrumb file (%USERPROFILE%\.provisa\.startup-status), polls the
+    /health endpoint for readiness, warms first-paint UI endpoints, then opens the browser and closes.
+  use_case: >-
+    The prior -WindowStyle Hidden chain showed nothing for tens of seconds during API startup and
+    swallowed fatal staging errors to a hidden console, making failures appear as "nothing happened."
+    A visible monitor surfaces startup progress and fatal errors immediately.
+  code:
+    - packaging/windows/startup-monitor.ps1
+  since: "2026-07"
+  unit_test: false
+  unit_test_reason: >-
+    PowerShell WinForms UI automation requires Windows GUI environment; not reproducible in
+    headless CI/cross-platform test runners. Behavior is verifiable via manual QA on Windows hosts.
+  scenario: |
+    Given a user running the Windows native launcher for the first time
+    When the launcher starts
+    Then a WinForms splash screen appears immediately
+    And the monitor process launches first-launch-native.ps1 hidden in the background
+    And the splash reads .startup-status breadcrumbs in real-time
+    And when /health becomes ready, the monitor warms the UI endpoints
+    And once ready, the monitor opens the browser and closes
+
+    Given a startup failure (e.g. staging error) written as ERROR to .startup-status
+    When the monitor reads the ERROR breadcrumb
+    Then the splash displays the error message and remains open
+    And the user sees the exact failure instead of "nothing happened"
+- id: REQ-1145
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Windows Native Launcher
+  priority: MUST
+  type: behavioral
+  description: >-
+    The launcher surfaces startup progress via breadcrumbs. first-launch-native.ps1 and
+    provisa-native.ps1 write STATE|message lines (STAGING, CONFIG, DEMO, START, WAIT, ERROR)
+    to %USERPROFILE%\.provisa\.startup-status for the monitor to display. Failed breadcrumb
+    writes must never abort startup (best-effort).
+  use_case: >-
+    Breadcrumbs let the monitor and user track each stage of startup (staging runtime, configuring
+    services, starting demo data, waiting for API, etc.), giving visibility into slow stages and
+    enabling the monitor to display progress in real-time.
+  code:
+    - packaging/windows/first-launch-native.ps1
+    - packaging/windows/provisa-native.ps1
+  since: "2026-07"
+  unit_test: false
+  unit_test_reason: >-
+    PowerShell file I/O and breadcrumb state tracking requires Windows file system and process
+    context; not reproducible in headless CI. Behavior is manual-QA verified on Windows hosts.
+  scenario: |
+    Given a startup sequence beginning
+    When first-launch-native.ps1 enters the staging phase
+    Then it writes "STAGING|Extracting runtime..." to .startup-status
+    And as each phase completes (CONFIG, DEMO, START, WAIT), a new breadcrumb is written
+
+    Given a failed breadcrumb write (e.g. permission denied on .startup-status)
+    When the launcher attempts to write
+    Then the write failure is silently caught (best-effort)
+    And startup continues without interruption
+
+    Given an ERROR state
+    When a fatal condition is detected (e.g. runtime staging failed)
+    Then "ERROR|<message>" is written to .startup-status
+    And the launcher halts gracefully
+    And the monitor reads the ERROR and displays it to the user
+- id: REQ-1146
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Windows Native Launcher
+  priority: MUST
+  type: constraint
+  description: >-
+    Runtime upgrade must kill ALL processes holding the runtime before replacing it,
+    including the demo mock servers tracked in .demo.pid, not just .native.pid.
+    A leftover demo python.exe locked the runtime DLLs and made re-staging silently abort,
+    pinning the install to its old runtime.
+  use_case: >-
+    Without killing all demo processes, a stale Python process holding the runtime directory
+    prevents the upgrade from replacing DLLs, causing the installer to silently fail and continue
+    using the old runtime. This constraint ensures clean, uninterrupted runtime upgrades.
+  code:
+    - packaging/windows/provisa-native.ps1
+  since: "2026-07"
+  unit_test: false
+  unit_test_reason: >-
+    Process termination and file locking behavior requires Windows environment with actual
+    DLL locks and process lifecycle control; not reproducible in CI. Verified via integration
+    testing on Windows upgrade scenarios.
+  scenario: |
+    Given a running Windows native install with runtime version 242
+    And a background demo mock server (python.exe) holding a file lock on runtime DLLs
+    When the upgrade to runtime 244 begins
+    Then provisa-native.ps1 reads .demo.pid and .native.pid
+    And kills ALL processes listed in both files
+    And waits for process termination
+    And only then replaces the runtime directory
+    And the upgrade completes successfully to 244
+
+    Given the old behavior where only .native.pid was killed
+    When python.exe from the demo is still running
+    Then DLL replacement silently fails
+    And the install remains on runtime 242
+    And the user observes no error (silent failure)
+- id: REQ-1147
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Windows Native Launcher
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    When the startup monitor drives the launch (env PROVISA_STARTUP_UI=1), provisa-native.ps1
+    must NOT open the browser itself — the monitor owns the readiness wait and browser open.
+    This avoids a double-open race where both the monitor and the native script attempt to open
+    the same URL simultaneously.
+  use_case: >-
+    A double-open race (monitor + native script both calling Start-Process browser) causes
+    unpredictable behavior (duplicate tabs, missed readiness wait, flipped window focus).
+    Centralizing browser open to the monitor ensures a single, coordinated open after confirmed
+    readiness and UI warmup.
+  code:
+    - packaging/windows/provisa-native.ps1
+    - packaging/windows/startup-monitor.ps1
+  since: "2026-07"
+  scenario: |
+    Given env PROVISA_STARTUP_UI=1 (monitor is driving launch)
+    When provisa-native.ps1 reaches the point where it normally opens the browser
+    Then it skips the browser open (checks the env var first)
+    And only waits for the monitor's signal or /health readiness
+    And the monitor, after confirming /health and warming UI endpoints, opens the browser once
+
+    Given env PROVISA_STARTUP_UI not set (standalone native script launch)
+    When provisa-native.ps1 reaches readiness
+    Then it opens the browser directly (legacy behavior)
+    And the user sees the application immediately

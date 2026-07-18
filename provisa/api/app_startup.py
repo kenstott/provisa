@@ -44,6 +44,37 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+async def _warmup_readiness(_log: logging.Logger) -> None:
+    """Prime the lazy per-request paths so a user's FIRST interaction is not the cold one, then flip
+    readiness (state.is_warm → /ready returns 200).
+
+    Lifespan completing (and /health) only means dependencies are up. The first data query still
+    lazily attaches the materialize store, opens the engine terminal, and initializes the transpiler
+    — tens of seconds under load, which read as "the UI hung." This runs those once at boot:
+
+      - cache_catalog() attaches AND boot-validates the API-result-cache / materialization store, so a
+        misconfigured store fails in the STARTUP log, not mid-query after the browser already opened
+        (the exact class of failure that once surfaced as a broken app).
+      - a SELECT 1 engine probe warms the engine connection, the transpile path, and the result
+        pipeline.
+
+    Best-effort: warmup is an optimization, so a failure must NOT wedge readiness (a launcher would
+    never open the browser). It logs loudly and still flips ready; the same operation re-runs and
+    surfaces any genuine error on the real query.
+    """
+    from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
+
+    try:
+        if state.federation_engine.is_connected():
+            state.federation_engine.cache_catalog()  # attach + boot-validate the store
+            await state.federation_engine.execute_engine("SELECT 1")  # warm the engine terminal
+    except Exception:
+        _log.exception("readiness warmup probe failed; serving anyway")
+    finally:
+        state.is_warm = True
+        _log.warning("startup phase %-20s ready", "warmup")
+
+
 def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
     """Start GovData JVM pre-warm in a background thread if govdata sources are active."""
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle

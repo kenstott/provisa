@@ -27,7 +27,7 @@ from pathlib import Path
 
 import asyncpg
 import yaml
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
@@ -69,6 +69,7 @@ from provisa.api.app_startup import (
     _start_background_tasks,
     _start_scheduler,
     _start_servers,
+    _warmup_readiness,
 )
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
 from provisa.compiler.naming import source_to_catalog
@@ -175,6 +176,11 @@ class AppState:
     _hot_refresh_task: asyncio.Task | None = None
     warm_manager: WarmTableManager = WarmTableManager()
     _warm_task: asyncio.Task | None = None
+    # Readiness (REQ /ready): False until the boot warmup probe has primed the lazy per-request paths
+    # (materialize-store attach + a warm engine terminal). /ready returns 503 while this is False so a
+    # launcher/orchestrator holds traffic — and the browser open — until the first interaction is warm.
+    is_warm: bool = False
+    _warmup_task: asyncio.Task | None = None
     apq_cache: APQCache = NoopAPQCache()  # Phase AN: Automatic Persisted Queries
     apq_ttl: int = 86400  # REQ-289: APQ cache TTL (apq.ttl config / PROVISA_APQ_TTL env)
     live_engine: Any | None = None  # Phase AM: LiveEngine instance
@@ -687,6 +693,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     await _start_servers(_log)
 
+    # Prime the lazy per-request paths in the background and flip /ready when warm. Background (not
+    # awaited) so /health and /live serve immediately; a readiness-gated launcher waits on /ready.
+    state._warmup_task = asyncio.create_task(_warmup_readiness(_log))
+
     _start_scheduler(_log)
 
     await _auto_register_graphql_demo(_log)
@@ -720,6 +730,14 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         state._warm_task.cancel()
         try:
             await state._warm_task
+        except asyncio.CancelledError:
+            pass
+
+    # Cancel the readiness warmup probe (it may still be priming if shutdown raced boot)
+    if state._warmup_task:
+        state._warmup_task.cancel()
+        try:
+            await state._warmup_task
         except asyncio.CancelledError:
             pass
 
@@ -1048,7 +1066,13 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.api_route("/ready", methods=["GET", "HEAD"])
-    async def readiness():  # noqa: F841  # pyright: ignore[reportUnusedFunction]
-        return {"status": "ok"}
+    async def readiness(response: Response):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
+        # Readiness = the boot warmup probe has run (store attached, engine terminal warm), so the
+        # first real query is not cold. 503 while warming holds traffic (and the launcher's browser
+        # open) until then. Distinct from /live (process up) and /health (dependencies reachable).
+        if not state.is_warm:
+            response.status_code = 503
+            return {"status": "warming"}
+        return {"status": "ready"}
 
     return app

@@ -83,13 +83,15 @@ function Test-PortOpen {
   } catch { return $false } finally { $client.Close() }
 }
 
-# Ready = the API answers /health 200 (uvicorn serves it only AFTER the lifespan demo-config load) and
-# the UI port is listening. Gating on the API, not just the UI proxy, is why we don't open onto a
-# still-loading app whose calls 502.
+# Ready = the API answers /ready 200 and the UI port is listening. /ready (not /health) is the warmth
+# gate: the API flips it to 200 only AFTER its boot warmup probe has attached the store and warmed the
+# engine terminal, so we don't open onto a still-cold app whose first query stalls. It returns 503
+# ("warming") until then. Invoke-WebRequest treats 503 as a terminating error, so a non-200/refused
+# response is simply "not ready yet" and the caller keeps polling.
 function Test-Ready {
   param([int]$UiPort, [int]$ApiPort)
   if (-not (Test-PortOpen $ApiPort)) { return $false }
-  try { $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 "http://localhost:$ApiPort/health" }
+  try { $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 "http://localhost:$ApiPort/ready" }
   catch { return $false }
   if ($r.StatusCode -ne 200) { return $false }
   return (Test-PortOpen $UiPort)
