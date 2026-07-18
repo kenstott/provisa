@@ -17,6 +17,15 @@ function Write-Info { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor C
 function Write-Err  { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Red }
 function Write-Ok   { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Green }
 
+# Progress breadcrumb for the startup-monitor GUI (startup-monitor.ps1 tails this file). Append-only.
+# Best-effort by design: a failed breadcrumb write is a cosmetic progress glitch and must NEVER abort
+# the install, so it is the one place SilentlyContinue is justified here.
+$StatusFile = Join-Path $ProvisaHome '.startup-status'
+function Write-Status {
+  param([string]$State, [string]$Msg)
+  Add-Content -Path $StatusFile -Value "$State|$Msg" -Encoding UTF8 -ErrorAction SilentlyContinue
+}
+
 New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
 
 # -- Stage the native runtime --------------------------------------------------
@@ -37,6 +46,7 @@ function Stage-Runtime {
   if ((Test-Path $dstPy) -and (($bundleVer -eq '') -or ($bundleVer -eq $stagedVer))) { return }
 
   if (-not (Test-Path $srcPy)) {
+    Write-Status 'ERROR' 'Native runtime not found beside the installer (installer was not built with the native tier).'
     Write-Err "Native runtime not found beside the installer. This installer was not built with the native tier."
     exit 1
   }
@@ -46,10 +56,14 @@ function Stage-Runtime {
     # DLLs (libcrypto etc.), so Remove-Item fails and the upgrade silently aborts - leaving the
     # stale process serving the old (configless, no-demo) app. Stop anything running out of the
     # staged runtime (and the app scripts) first, then re-stage.
-    $pidFile = Join-Path $ProvisaHome '.native.pid'
-    if (Test-Path $pidFile) {
-      foreach ($procId in (Get-Content $pidFile)) {
-        if ($procId) { Stop-Process -Id ([int]$procId) -Force -ErrorAction SilentlyContinue }
+    # The DEMO mock servers (.demo.pid) run out of THIS runtime too and hold its DLLs — they must be
+    # killed as well or the removal below fails (the exact bug that pinned an install to its old
+    # runtime: a "244" install kept running 242 because the demo python.exe never let go).
+    foreach ($pf in @((Join-Path $ProvisaHome '.native.pid'), (Join-Path $ProvisaHome '.demo.pid'))) {
+      if (Test-Path $pf) {
+        foreach ($procId in (Get-Content $pf)) {
+          if ($procId) { Stop-Process -Id ([int]$procId) -Force -ErrorAction SilentlyContinue }
+        }
       }
     }
     Get-Process -ErrorAction SilentlyContinue | Where-Object {
@@ -64,6 +78,7 @@ function Stage-Runtime {
       catch { Start-Sleep -Milliseconds 750 }
     }
     if (-not $removed) {
+      Write-Status 'ERROR' "Could not replace the old runtime — a Provisa process is still holding it. Fully quit Provisa (check the tray/Task Manager for python.exe) and re-run setup."
       Write-Err "Could not replace the old runtime at $RuntimeDst - a Provisa process is still holding it. Fully quit Provisa and re-run setup."
       exit 1
     }
@@ -203,7 +218,12 @@ Write-Host 'Provisa - First Launch Setup (native - no Docker)' -ForegroundColor 
 Write-Host '==================================================='
 Write-Host ''
 
+# Fresh breadcrumb trail for this run (the startup-monitor GUI tails it).
+Set-Content -Path $StatusFile -Value '' -Encoding UTF8 -ErrorAction SilentlyContinue
+
+Write-Status 'STAGING' 'Staging the runtime'
 Stage-Runtime
+Write-Status 'CONFIG' 'Writing configuration'
 Write-ProvisaConfig
 New-Item -ItemType File -Path $Sentinel -Force | Out-Null
 Write-Ok 'First-launch setup complete.'

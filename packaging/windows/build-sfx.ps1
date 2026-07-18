@@ -26,6 +26,7 @@ New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null
 
 # Launch + lifecycle scripts for the native tier (no VirtualBox, no compose).
 Copy-Item (Join-Path $ScriptDir 'setup-wizard.ps1')        $BuildDir
+Copy-Item (Join-Path $ScriptDir 'startup-monitor.ps1')     $BuildDir
 Copy-Item (Join-Path $ScriptDir 'first-launch-native.ps1') $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa-native.ps1')      $BuildDir
 Copy-Item (Join-Path $ScriptDir 'launch-gui.vbs')          $BuildDir

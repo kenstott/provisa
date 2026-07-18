@@ -24,6 +24,14 @@ function Write-Info { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor C
 function Write-Err  { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Red }
 function Write-Ok   { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Green }
 
+# Progress breadcrumb for the startup-monitor GUI (see startup-monitor.ps1). Append-only, best-effort:
+# a failed progress write must never break start/stop, the one justified SilentlyContinue here.
+$StatusFile = Join-Path $ProvisaHome '.startup-status'
+function Write-Status {
+  param([string]$State, [string]$Msg)
+  Add-Content -Path $StatusFile -Value "$State|$Msg" -Encoding UTF8 -ErrorAction SilentlyContinue
+}
+
 # -- Config reader (no yaml parser needed; mirrors scripts/provisa read_config) -
 function Read-Config {
   param([string]$Key, [string]$Default)
@@ -153,8 +161,9 @@ function Start-Native {
 
   # The demo mock servers must be up before the API loads the demo config (its OpenAPI/GraphQL
   # sources introspect the live endpoints at startup).
-  if ($Demo) { Start-DemoServers }
+  if ($Demo) { Write-Status 'DEMO' 'Starting demo services'; Start-DemoServers }
 
+  Write-Status 'START' 'Starting the engine and UI'
   $baseEnv = Native-Env
   foreach ($k in $baseEnv.Keys) { Set-Item -Path "Env:$k" -Value $baseEnv[$k] }
 
@@ -174,6 +183,7 @@ function Start-Native {
 
   "$($api.Id)`n$($ui.Id)" | Set-Content -Path $PidFile -Encoding ASCII
 
+  Write-Status 'WAIT' 'Waiting for the engine to become ready'
   Write-Ok 'Provisa is running.'
   Write-Info "UI:  http://localhost:$UiPort"
   Write-Info "API: http://localhost:$ApiPort"
@@ -247,11 +257,15 @@ function Show-Help {
   Write-Host '  help     Show this help'
 }
 
+# When the startup-monitor GUI is driving the launch (PROVISA_STARTUP_UI=1) it owns the readiness
+# wait and opens the browser itself, so the CLI must NOT also open it — that would race and double-
+# open. A plain CLI/shortcut start still opens the browser here.
+$MonitorDriven = [bool]$env:PROVISA_STARTUP_UI
 $command = if ($args.Count -gt 0) { $args[0] } else { 'help' }
 switch ($command) {
-  'start'   { Start-Native; if ($AutoOpen) { Open-Native } }
+  'start'   { Start-Native; if ($AutoOpen -and -not $MonitorDriven) { Open-Native } }
   'stop'    { Stop-Native }
-  'restart' { Stop-Native; Start-Native; if ($AutoOpen) { Open-Native } }
+  'restart' { Stop-Native; Start-Native; if ($AutoOpen -and -not $MonitorDriven) { Open-Native } }
   'status'  { Status-Native }
   'open'    { Open-Native }
   'help'    { Show-Help }

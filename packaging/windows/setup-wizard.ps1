@@ -14,9 +14,11 @@ $ProvisaHome = Join-Path $env:USERPROFILE '.provisa'
 $ConfigPath  = Join-Path $ProvisaHome 'config.yaml'
 
 function Start-App {
-  # first-launch stages the runtime on first run (config already present), then starts the app.
-  & powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden `
-    -File (Join-Path $ScriptDir 'first-launch-native.ps1')
+  # Show the startup monitor (a visible splash) which launches first-launch HIDDEN, tails its
+  # progress, waits for the API to be ready, then opens the browser. Replaces the old hidden
+  # first-launch call whose progress AND fatal errors were invisible ("nothing happened").
+  & powershell.exe -ExecutionPolicy Bypass `
+    -File (Join-Path $ScriptDir 'startup-monitor.ps1')
 }
 
 # The installer's wizard pages write config.yaml with the chosen deployment. When it exists we are
@@ -207,5 +209,7 @@ $env:PROVISA_INSTALL_DEMO = if ($chkDemo.Checked) { 'y' } else { 'n' }
 $env:PROVISA_UI_PORT = $txtUi.Text
 $env:PROVISA_API_PORT = $txtApi.Text
 
-& powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden `
-  -File (Join-Path $ScriptDir 'first-launch-native.ps1')
+# Hand off to the startup monitor (visible splash); it launches first-launch hidden, shows progress,
+# waits for readiness, then opens the browser. The PROVISA_* env set above is inherited through it.
+& powershell.exe -ExecutionPolicy Bypass `
+  -File (Join-Path $ScriptDir 'startup-monitor.ps1')
