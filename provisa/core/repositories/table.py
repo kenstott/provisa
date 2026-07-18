@@ -84,6 +84,9 @@ async def upsert(
         "change_signal": getattr(table, "change_signal", None),
         "probe_query": getattr(table, "probe_query", None),
         "probe_type": getattr(table, "probe_type", None),
+        "load_protected": getattr(table, "load_protected", None),  # REQ-1141
+        "off_peak_window": getattr(table, "off_peak_window", None),  # REQ-1141
+        "off_peak_tz": getattr(table, "off_peak_tz", None),  # REQ-1141
     }
     _update_columns = [
         "domain_id",
@@ -106,6 +109,9 @@ async def upsert(
         "change_signal",
         "probe_query",
         "probe_type",
+        "load_protected",  # REQ-1141
+        "off_peak_window",  # REQ-1141
+        "off_peak_tz",  # REQ-1141
     ]
     table_id = await conn.upsert_returning(
         registered_tables,

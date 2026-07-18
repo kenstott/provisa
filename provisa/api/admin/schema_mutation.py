@@ -83,6 +83,47 @@ from provisa.api.admin.schema_common import (  # noqa: E402
 )
 
 
+def _validate_load_protection(
+    load_protected: bool | None,
+    off_peak_window: str | None,
+    cache_ttl: int | None,
+    change_signal: str | None,
+    who: str,
+) -> "MutationResult | None":  # REQ-1141
+    """Enforce the REQ-1141 ≥1-gate rule for a load-protected target. Returns a failing
+    MutationResult when load protection is on but no gate is armed, else None."""
+    if not load_protected:
+        return None
+    armed = (
+        bool(off_peak_window)
+        or cache_ttl is not None
+        or (change_signal in ("probe", "ttl_probe"))
+    )
+    if not armed:
+        return MutationResult(
+            success=False,
+            message=(
+                f"{who}: load protection requires at least one refresh gate — set an off-peak "
+                "window, a cache_ttl cadence, or a probing change_signal (probe/ttl_probe) (REQ-1141)"
+            ),
+        )
+    return None
+
+
+def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | None":  # REQ-1141
+    """Validate an off-peak window spec at write time; returns a failing MutationResult on a
+    malformed spec/zone, else None (no silent default window)."""
+    if off_peak_window is None:
+        return None
+    from provisa.federation.scheduled_refresh import parse_off_peak_window
+
+    try:
+        parse_off_peak_window(off_peak_window, tz)
+    except (ValueError, KeyError) as e:  # ZoneInfoNotFoundError subclasses KeyError
+        return MutationResult(success=False, message=f"invalid off-peak window: {e}")
+    return None
+
+
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
@@ -118,6 +159,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             description=input.description,
             mapping=_parse_mapping_json(input.mapping_json),
             change_signal=input.change_signal,
+            load_protected=input.load_protected,  # REQ-1141
+            off_peak_window=input.off_peak_window,  # REQ-1141
+            off_peak_tz=input.off_peak_tz,  # REQ-1141
             cdc=_cdc_model_from_input(input),
         )
         from provisa.api.app import state
@@ -185,6 +229,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 description=input.description,
                 mapping=_parse_mapping_json(input.mapping_json),
                 change_signal=input.change_signal,
+                load_protected=input.load_protected,  # REQ-1141
+                off_peak_window=input.off_peak_window,  # REQ-1141
+                off_peak_tz=input.off_peak_tz,  # REQ-1141
                 cdc=_cdc_model_from_input(input),
             )
             await source_repo.upsert(_conn, model)
@@ -735,6 +782,105 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if (result.rowcount or 0) == 0:
                 return MutationResult(success=False, message=f"Table {table_id} not found")
         return MutationResult(success=True, message=f"prefer_materialized set for table {table_id}")
+
+    @strawberry.mutation
+    async def update_source_load_protection(
+        self,
+        source_id: str,
+        load_protected: bool,
+        off_peak_window: str | None = None,
+        off_peak_tz: str = "UTC",
+    ) -> MutationResult:  # REQ-1141
+        """Mark a source load-protected (scheduled-refresh-only) and set its off-peak window.
+
+        Enforces the REQ-1141 rule that a load-protected source MUST arm at least one refresh gate
+        (off-peak window, a cache_ttl cadence, or a probing change_signal); a validation failure is a
+        governed error, never a silently-accepted no-gate config."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _res = await conn.execute_core(
+                select(sources.c.cache_ttl, sources.c.change_signal).where(
+                    sources.c.id == source_id
+                )
+            )
+            row = _res.fetchone()
+            if row is None:
+                return MutationResult(success=False, message=f"Source {source_id!r} not found")
+            err = _validate_load_protection(
+                load_protected, off_peak_window, row.cache_ttl, row.change_signal, source_id
+            )
+            if err is not None:
+                return err
+            _window = _parsed_off_peak(off_peak_window, off_peak_tz)
+            if isinstance(_window, MutationResult):
+                return _window
+            await conn.execute_core(
+                update(sources)
+                .where(sources.c.id == source_id)
+                .values(
+                    load_protected=load_protected,
+                    off_peak_window=off_peak_window,
+                    off_peak_tz=off_peak_tz,
+                )
+            )
+        return MutationResult(success=True, message=f"load protection set for source {source_id!r}")
+
+    @strawberry.mutation
+    async def update_table_load_protection(
+        self,
+        table_id: int,
+        load_protected: bool | None = None,
+        off_peak_window: str | None = None,
+        off_peak_tz: str | None = None,
+    ) -> MutationResult:  # REQ-1141
+        """Override load protection for one table; None load_protected = inherit the source default.
+
+        When the EFFECTIVE load_protected is True, enforces the REQ-1141 ≥1-gate rule over the
+        effective (table→source) window/cadence/probe."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _res = await conn.execute_core(
+                select(
+                    registered_tables.c.source_id,
+                    registered_tables.c.cache_ttl,
+                    registered_tables.c.change_signal,
+                    registered_tables.c.off_peak_window,
+                ).where(registered_tables.c.id == table_id)
+            )
+            row = _res.fetchone()
+            if row is None:
+                return MutationResult(success=False, message=f"Table {table_id} not found")
+            _sres = await conn.execute_core(
+                select(
+                    sources.c.load_protected,
+                    sources.c.cache_ttl,
+                    sources.c.change_signal,
+                    sources.c.off_peak_window,
+                ).where(sources.c.id == row.source_id)
+            )
+            src = _sres.fetchone()
+            effective_lp = src.load_protected if load_protected is None else load_protected
+            eff_window = off_peak_window or (src.off_peak_window if src else None)
+            eff_ttl = row.cache_ttl if row.cache_ttl is not None else (src.cache_ttl if src else None)
+            eff_sig = row.change_signal or (src.change_signal if src else None)
+            err = _validate_load_protection(
+                effective_lp, eff_window, eff_ttl, eff_sig, f"table {table_id}"
+            )
+            if err is not None:
+                return err
+            _window = _parsed_off_peak(off_peak_window, off_peak_tz or "UTC")
+            if isinstance(_window, MutationResult):
+                return _window
+            await conn.execute_core(
+                update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(
+                    load_protected=load_protected,
+                    off_peak_window=off_peak_window,
+                    off_peak_tz=off_peak_tz,
+                )
+            )
+        return MutationResult(success=True, message=f"load protection set for table {table_id}")
 
     # ── Admin: Naming Convention ──
 

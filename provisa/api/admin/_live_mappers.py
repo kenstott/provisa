@@ -38,6 +38,9 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         change_signal=inp.change_signal,
         probe_query=inp.probe_query,
         probe_type=inp.probe_type,
+        load_protected=inp.load_protected,  # REQ-1141
+        off_peak_window=inp.off_peak_window,  # REQ-1141
+        off_peak_tz=inp.off_peak_tz,  # REQ-1141
         column_presets=presets,
         view_sql=inp.view_sql or None,
         materialize=inp.materialize,

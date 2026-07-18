@@ -81,6 +81,8 @@ import {
   UpdateTableCache,
   UpdateSourcePreferMaterialized,
   UpdateTablePreferMaterialized,
+  UpdateSourceLoadProtection,
+  UpdateTableLoadProtection,
   UpdateSourceNaming,
   UpdateTableNaming,
   UpdateSourceAllowedDomains,
@@ -370,6 +372,52 @@ export function useUpdateTablePreferMaterialized() {
         variables: { tableId, preferMaterialized },
       });
       return (result.data?.updateTablePreferMaterialized ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useUpdateSourceLoadProtection() {
+  const [updateSourceLoadProtection, { loading }] = useMutation<{
+    updateSourceLoadProtection: MutationResult;
+  }>(UpdateSourceLoadProtection);
+  return {
+    updateSourceLoadProtection: async (
+      sourceId: string,
+      loadProtected: boolean,
+      offPeakWindow: string | null,
+      offPeakTz: string,
+    ) => {
+      const result = await updateSourceLoadProtection({
+        variables: { sourceId, loadProtected, offPeakWindow, offPeakTz },
+      });
+      return (result.data?.updateSourceLoadProtection ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useUpdateTableLoadProtection() {
+  const [updateTableLoadProtection, { loading }] = useMutation<{
+    updateTableLoadProtection: MutationResult;
+  }>(UpdateTableLoadProtection);
+  return {
+    updateTableLoadProtection: async (
+      tableId: number,
+      loadProtected: boolean | null,
+      offPeakWindow: string | null,
+      offPeakTz: string | null,
+    ) => {
+      const result = await updateTableLoadProtection({
+        variables: { tableId, loadProtected, offPeakWindow, offPeakTz },
+      });
+      return (result.data?.updateTableLoadProtection ?? {
         success: false,
         message: "",
       }) as MutationResult;

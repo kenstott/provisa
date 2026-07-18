@@ -29,6 +29,9 @@ export interface Source {
   cacheEnabled: boolean;
   cacheTtl: number | null;
   preferMaterialized: boolean;
+  loadProtected: boolean; // REQ-1141: scheduled-refresh-only load protection
+  offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" maintenance window
+  offPeakTz: string; // REQ-1141: IANA zone for the window
   gqlNamingConvention: string | null;
   path: string | null;
   allowedDomains: string[];
@@ -36,6 +39,13 @@ export interface Source {
   mappingJson?: string | null;
   changeSignal: string; // REQ-929: source default change signal, inherited by its tables
   cdc?: SourceCdcConfig | null;
+}
+
+// REQ-1143: server-derived plain-English summary of a table's effective refresh/serving policy.
+export interface RefreshPolicySummary {
+  text: string;
+  serving: "live" | "scheduled" | "cache" | "frozen";
+  warning: string | null;
 }
 
 export interface Domain {
@@ -124,6 +134,10 @@ export interface RegisteredTable {
   description: string | null;
   cacheTtl: number | null;
   preferMaterialized: boolean | null;
+  loadProtected: boolean | null; // REQ-1141: null = inherit source
+  offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" window override
+  offPeakTz: string | null; // REQ-1141: window zone override
+  refreshPolicySummary: RefreshPolicySummary | null; // REQ-1143: server-derived effective policy
   gqlNamingConvention: string | null;
   watermarkColumn: string | null;
   changeSignal: string | null;

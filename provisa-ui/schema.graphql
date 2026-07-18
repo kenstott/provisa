@@ -34,6 +34,9 @@ type SourceType {
   cacheEnabled: Boolean!
   cacheTtl: Int
   preferMaterialized: Boolean!
+  loadProtected: Boolean!
+  offPeakWindow: String
+  offPeakTz: String!
   namingConvention: String
   path: String
   allowedDomains: [String!]!
@@ -58,6 +61,10 @@ type RegisteredTableType {
   description: String
   cacheTtl: Int
   preferMaterialized: Boolean
+  loadProtected: Boolean
+  offPeakWindow: String
+  offPeakTz: String
+  refreshPolicySummary: RefreshPolicySummaryType
   namingConvention: String
   watermarkColumn: String
   columns: [TableColumnType!]!
@@ -66,6 +73,12 @@ type RegisteredTableType {
   apiEndpoint: String
   viewSql: String
   dataProduct: Boolean!
+}
+
+type RefreshPolicySummaryType {
+  text: String!
+  serving: String!
+  warning: String
 }
 
 type UniqueConstraintType {
@@ -240,6 +253,8 @@ type Mutation {
   updateTableCache(tableId: Int!, cacheTtl: Int = null): MutationResult!
   updateSourcePreferMaterialized(sourceId: String!, preferMaterialized: Boolean!): MutationResult!
   updateTablePreferMaterialized(tableId: Int!, preferMaterialized: Boolean = null): MutationResult!
+  updateSourceLoadProtection(sourceId: String!, loadProtected: Boolean!, offPeakWindow: String = null, offPeakTz: String! = "UTC"): MutationResult!
+  updateTableLoadProtection(tableId: Int!, loadProtected: Boolean = null, offPeakWindow: String = null, offPeakTz: String = null): MutationResult!
   updateNamingConvention(convention: String!): MutationResult!
   updateSourceNaming(sourceId: String!, namingConvention: String = null): MutationResult!
   updateSourceAllowedDomains(sourceId: String!, allowedDomains: [String!]!): MutationResult!

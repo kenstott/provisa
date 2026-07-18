@@ -99,6 +99,17 @@ class LiveDeliveryConfigType:  # REQ-565, REQ-813
 
 
 @strawberry.type
+class RefreshPolicySummaryType:  # REQ-1143
+    """Server-derived plain-English summary of a table's effective refresh/serving policy, computed
+    per (source, engine) from the same resolution the planner uses. ``serving`` ∈
+    live|scheduled|cache|frozen; ``warning`` is a non-null misconfiguration note."""
+
+    text: str
+    serving: str
+    warning: str | None = None
+
+
+@strawberry.type
 class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     id: int
     source_id: str
@@ -137,6 +148,16 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     enable_group_by: bool = False
     can_deploy_to_db: bool = False
     live: LiveDeliveryConfigType | None = None
+
+    @strawberry.field
+    async def refresh_policy_summary(self) -> RefreshPolicySummaryType | None:  # REQ-1143
+        """The effective refresh/serving policy summary, DERIVED SERVER-SIDE from the same planner
+        resolution (federate + resolve_refresh_policy) per (source, engine). Returns None when the
+        federation engine is not yet available (startup); never re-derives the decision tree in the
+        client. Resolved lazily — only clients that request the field pay for it."""
+        from provisa.api.admin._refresh_summary import summarize_table_policy
+
+        return await summarize_table_policy(self)
 
 
 @strawberry.type

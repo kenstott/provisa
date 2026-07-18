@@ -56,6 +56,9 @@ query SourcesQuery {
     cacheEnabled
     cacheTtl
     preferMaterialized
+    loadProtected
+    offPeakWindow
+    offPeakTz
     gqlNamingConvention
     allowedDomains
     description
@@ -89,6 +92,14 @@ query TablesQuery {
     description
     cacheTtl
     preferMaterialized
+    loadProtected
+    offPeakWindow
+    offPeakTz
+    refreshPolicySummary {
+      text
+      serving
+      warning
+    }
     gqlNamingConvention
     watermarkColumn
     changeSignal
@@ -442,6 +453,18 @@ mutation UpdateSourcePreferMaterialized($sourceId: String!, $preferMaterialized:
 
 mutation UpdateTablePreferMaterialized($tableId: Int!, $preferMaterialized: Boolean) {
   updateTablePreferMaterialized(tableId: $tableId, preferMaterialized: $preferMaterialized) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateSourceLoadProtection($sourceId: String!, $loadProtected: Boolean!, $offPeakWindow: String, $offPeakTz: String!) {
+  updateSourceLoadProtection(sourceId: $sourceId, loadProtected: $loadProtected, offPeakWindow: $offPeakWindow, offPeakTz: $offPeakTz) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateTableLoadProtection($tableId: Int!, $loadProtected: Boolean, $offPeakWindow: String, $offPeakTz: String) {
+  updateTableLoadProtection(tableId: $tableId, loadProtected: $loadProtected, offPeakWindow: $offPeakWindow, offPeakTz: $offPeakTz) {
     ...MutationResult
   }
 }

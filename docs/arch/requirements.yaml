@@ -32507,3 +32507,84 @@
     When provisa-native.ps1 reaches readiness
     Then it opens the browser directly (legacy behavior)
     And the user sees the application immediately
+- id: REQ-1148
+  status: proposed
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Freshness / Change Detection
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A new freshness PROBE transport whose opaque token comes from a zero-byte
+    SENTINEL marker rather than from scanning the data. Reuses the REQ-855
+    gate unchanged: freshness_token() -> str | None (provisa/events/probes.py:126)
+    compared by equality; a new sentinel drop changes the token -> changed ->
+    re-pull; unchanged -> keep. The sentinel lives at a configured path reachable
+    over a file mount, HTTP, FTP, or SFTP; the token is exists+mtime+size for
+    file/FTP/SFTP, or ETag/Last-Modified for HTTP -- the same HASH token shape
+    files already use (provisa/events/probes.py:46-49). Adds a `sentinel` probe
+    transport + a `sentinel_path` (with transport/credentials) config field;
+    capability classes and the gate machinery are untouched. Selected via
+    change_signal in {probe, ttl_probe} with probe_type=hash pointed at the
+    sentinel.
+  use_case: >-
+    Lets a steward detect upstream readiness from a published sentinel marker
+    (a near-free poll) instead of scanning or querying the source -- and,
+    combined with REQ-1141 load protection, the cheap sentinel poll replaces
+    hammering the operational source while the heavy re-pull still defers to
+    the off-peak window.
+  code:
+    - provisa/events/probes.py
+    - provisa/federation/freshness_gate.py
+  target: 2027-Q1
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Marker-file readiness detection as a first-class freshness signal,
+      decoupled from the data pull, is not a built-in in Denodo/Dremio/Hasura.
+  related_reqs:
+    - REQ-855
+    - REQ-982
+    - REQ-929
+    - REQ-1141
+- id: REQ-1149
+  status: proposed
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Freshness / Change Detection
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A new change_signal PUSH variant, `signal`, for a DATA-LESS external trigger
+    (a Kafka control message on a topic, or an HTTP webhook) that says "the
+    source changed / refresh now" WITHOUT carrying the rows. Distinct from the
+    existing CDC push signals (kafka/debezium/native, provisa/core/change_signal.py:29)
+    where the message CARRIES per-row events and lands as upserts
+    (select_landing_shape -> CDC). A `signal` message instead INVALIDATES the
+    materialized snapshot (marks it stale); the rows are then re-pulled from the
+    SOURCE OF TRUTH on the next refresh -- it does not land the message. It sits
+    between the axes: push-triggered timing, poll-style full/delta re-pull. Adds
+    `signal` to the push-signal vocabulary + a receiver (kafka control topic /
+    webhook endpoint) mapping a trigger to a staleness mark. Under REQ-1141 the
+    signal is the change-detector and the load-protected scheduler still owns
+    WHEN the heavy pull runs (deferred to the off-peak window) -- decoupling the
+    cheap control signal from the data pull.
+  use_case: >-
+    Lets an upstream system announce a change over Kafka/webhook without Provisa
+    polling or the message carrying data; Provisa invalidates and re-pulls from
+    the source on its own schedule -- ideal for load-protected operational sources
+    (REQ-1141) where a control-plane signal must not translate into immediate
+    source load.
+  code:
+    - provisa/core/change_signal.py
+    - provisa/federation/scheduled_refresh.py
+    - provisa/federation/scheduler.py
+  target: 2027-Q1
+  competitive_position:
+    status: ahead
+    rationale: >-
+      A data-less push trigger that invalidates-and-repulls, separate from
+      CDC-carries-data, is not offered natively by competitors.
+  related_reqs:
+    - REQ-929
+    - REQ-932
+    - REQ-855
+    - REQ-1141

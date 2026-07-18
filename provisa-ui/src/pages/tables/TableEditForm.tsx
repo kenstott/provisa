@@ -13,6 +13,7 @@ import { Check, X, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
+  Alert,
   Badge,
   Checkbox,
   Group,
@@ -106,6 +107,33 @@ export function TableEditForm({
   const roleOptions = roles.map((r) => ({ id: r.id, label: r.id }));
   return (
     <>
+      {editingTable.refreshPolicySummary && (
+        <Alert
+          // REQ-1143: server-derived effective refresh/serving policy. `serving` drives the color;
+          // a non-null `warning` flags an inert prefer_materialized or an accidental frozen table.
+          color={
+            editingTable.refreshPolicySummary.warning
+              ? "yellow"
+              : editingTable.refreshPolicySummary.serving === "live"
+                ? "blue"
+                : editingTable.refreshPolicySummary.serving === "scheduled"
+                  ? "teal"
+                  : editingTable.refreshPolicySummary.serving === "cache"
+                    ? "gray"
+                    : "orange"
+          }
+          title={t("tableEditForm.refreshPolicyTitle")}
+          style={{ marginBottom: "0.75rem", gridColumn: "1 / -1" }}
+          data-testid="refresh-policy-summary"
+        >
+          <Text size="sm">{editingTable.refreshPolicySummary.text}</Text>
+          {editingTable.refreshPolicySummary.warning && (
+            <Text size="sm" c="yellow.8" mt={4} fw={500}>
+              ⚠ {editingTable.refreshPolicySummary.warning}
+            </Text>
+          )}
+        </Alert>
+      )}
       <div className="form-card" style={{ marginBottom: "0.75rem" }}>
         <TextInput
           label={
@@ -195,6 +223,68 @@ export function TableEditForm({
           }
           comboboxProps={{ withinPortal: true }}
           allowDeselect={false}
+        />
+        <Select
+          // REQ-1141: load protection — scheduled-refresh-only; the query path never pulls the source.
+          label={
+            <FieldLabel
+              text={t("tableEditForm.loadProtectedLabel")}
+              help={t("tableEditForm.loadProtectedHelp")}
+            />
+          }
+          data={[
+            { value: "inherit", label: t("tableEditForm.inheritSource") },
+            { value: "on", label: t("tableEditForm.on") },
+            { value: "off", label: t("tableEditForm.off") },
+          ]}
+          value={
+            editingTable.loadProtected == null
+              ? "inherit"
+              : editingTable.loadProtected
+                ? "on"
+                : "off"
+          }
+          onChange={(v) =>
+            setEditingTable({
+              ...editingTable,
+              loadProtected: v === "inherit" ? null : v === "on",
+            })
+          }
+          comboboxProps={{ withinPortal: true }}
+          allowDeselect={false}
+        />
+        <TextInput
+          // REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is open.
+          label={
+            <FieldLabel
+              text={t("tableEditForm.offPeakWindowLabel")}
+              help={t("tableEditForm.offPeakWindowHelp")}
+            />
+          }
+          value={editingTable.offPeakWindow ?? ""}
+          onChange={(e) =>
+            setEditingTable({
+              ...editingTable,
+              offPeakWindow: e.target.value || null,
+            })
+          }
+          placeholder={t("tableEditForm.offPeakWindowPlaceholder")}
+        />
+        <TextInput
+          label={
+            <FieldLabel
+              text={t("tableEditForm.offPeakTzLabel")}
+              help={t("tableEditForm.offPeakTzHelp")}
+            />
+          }
+          value={editingTable.offPeakTz ?? ""}
+          onChange={(e) =>
+            setEditingTable({
+              ...editingTable,
+              offPeakTz: e.target.value || null,
+            })
+          }
+          placeholder="UTC"
         />
         <div style={{ gridColumn: "1 / -1" }}>
           <FieldLabel

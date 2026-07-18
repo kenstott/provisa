@@ -29,6 +29,7 @@ import {
   useDeleteTable,
   useUpdateTableCache,
   useUpdateTablePreferMaterialized,
+  useUpdateTableLoadProtection,
   useUpdateTableNaming,
   usePurgeCacheByTable,
   useInvalidateFileSource,
@@ -65,6 +66,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { deleteTable } = useDeleteTable();
   const { updateTableCache } = useUpdateTableCache();
   const { updateTablePreferMaterialized } = useUpdateTablePreferMaterialized();
+  const { updateTableLoadProtection } = useUpdateTableLoadProtection();
   const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { invalidateFileSource } = useInvalidateFileSource();
@@ -365,6 +367,17 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       );
       if (!preferResult.success) {
         setError(preferResult.message);
+        return;
+      }
+      // REQ-1141: persist load protection + off-peak window (validated server-side ≥1-gate rule).
+      const lpResult = await updateTableLoadProtection(
+        editingTable.id,
+        editingTable.loadProtected,
+        editingTable.offPeakWindow,
+        editingTable.offPeakTz,
+      );
+      if (!lpResult.success) {
+        setError(lpResult.message);
         return;
       }
       setEditingTable(null);

@@ -38,6 +38,9 @@ def _source_values(source: Source) -> dict:
         "mapping": source.mapping or {},
         "cdc": source.cdc.model_dump() if source.cdc else None,  # REQ-824
         "change_signal": getattr(source, "change_signal", "ttl"),  # REQ-929
+        "load_protected": getattr(source, "load_protected", False),  # REQ-1141
+        "off_peak_window": getattr(source, "off_peak_window", None),  # REQ-1141
+        "off_peak_tz": getattr(source, "off_peak_tz", "UTC"),  # REQ-1141
     }
 
 
