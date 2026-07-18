@@ -35,6 +35,13 @@ cp -r "${UI_SRC}/." "$UI_DST/"
 echo "[build-wheel] Staging config -> provisa/_config"
 rm -rf "$CONFIG_DST"; mkdir -p "$CONFIG_DST"
 cp "${CONFIG_SRC}/capabilities.yaml" "${CONFIG_SRC}/pg_extension_catalog.yaml" "$CONFIG_DST/"
+# Bundle the demo (`provisa run --demo`, REQ-414): the pre-federated pet-store + shelter config plus
+# its embedded SQLite sample data. The config resolves the SQLite paths via ${env:PROVISA_DEMO_DIR},
+# which cli.py points at provisa/_config/demo/files.
+cp "${CONFIG_SRC}/provisa-install.yaml" "$CONFIG_DST/"
+mkdir -p "$CONFIG_DST/demo/files"
+cp "${REPO_ROOT}/demo/files/pet_store.sqlite" "${REPO_ROOT}/demo/files/inquiries.sqlite" \
+   "$CONFIG_DST/demo/files/"
 
 # ── 3. Build sdist + wheel ──────────────────────────────────────────────────
 echo "[build-wheel] python -m build"

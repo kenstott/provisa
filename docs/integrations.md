@@ -73,7 +73,7 @@ The Provisa JDBC driver uses Arrow Flight as its underlying transport. It is the
 
 ### Connection
 
-Download `provisa-jdbc-<version>.jar` from the [releases page](https://github.com/kenstott/provisa/releases/latest) and add it to your tool's driver path.
+Download [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) (always the latest release) and add it to your tool's driver path.
 
 JDBC URL:
 ```

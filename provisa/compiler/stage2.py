@@ -82,6 +82,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
     ctx: CompilationContext,
     tables: list[dict],
     role: dict | None = None,
+    relationships: list[dict] | None = None,
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
 
@@ -95,6 +96,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
                  max_rows: int | None}.
         role: The requesting role's config dict (carries ``max_rows``, REQ-005).
               When None, no role-level ceiling is applied.
+        relationships: The user-defined relationship registry dicts (int source/target table ids),
+              used for REQ-1132 row-level meta scoping. When None, meta rows are confined to the
+              role's directly-accessible tables with NO 1-hop neighbour expansion (fail-closed).
     """
     gov = GovernanceContext()
 
@@ -120,7 +124,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
     from provisa.security.rights import (
         GOVERNANCE_META_COLUMNS,
         META_DOMAIN_ID,
+        META_ROW_SCOPED_VIEWS,
         Capability,
+        compute_meta_row_scope,
         has_capability,
     )
 
@@ -196,6 +202,27 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
             gov.table_map[f"{domain_to_sql_name(domain_id)}.{original_name}"] = tbl_id
         if schema_name and original_name:
             gov.table_map[f"{schema_name}.{original_name}"] = tbl_id
+
+    # REQ-1132: row-level meta scoping. A DEFAULT-tier role sees meta ROWS only for its reachable
+    # neighbourhood (directly-accessible tables + 1-hop semantic neighbours); admins and meta-grant
+    # roles see all rows (scope None → no filter). The scope is injected as an RLS predicate on the
+    # two described-table meta views (registered_tables_meta.id / table_columns_meta.table_id), so it
+    # flows through the SAME apply_governance WHERE-injection as every other RLS rule — one code path.
+    meta_scope = compute_meta_row_scope(role, tables, relationships)
+    if meta_scope is not None:
+        id_list = ",".join(str(i) for i in sorted(meta_scope)) or "-1"  # empty → matches no row
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+                continue
+            scope_col = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
+            if scope_col is None:
+                continue
+            predicate = f"{scope_col} IN ({id_list})"
+            existing = gov.rls_rules.get(tm.table_id)
+            # AND with any pre-existing rule (e.g. tenant RLS) — never replace another guard.
+            gov.rls_rules[tm.table_id] = (
+                f"({existing}) AND ({predicate})" if existing else predicate
+            )
 
     return gov
 

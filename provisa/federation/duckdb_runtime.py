@@ -27,6 +27,7 @@ This is the engine primitive a live EngineRuntime dispatch would call; routing/H
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 
 import duckdb
@@ -48,7 +49,17 @@ def _mat_table_name(source: Any) -> str:
 
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(self, *, materialize_dsn: str | None = None) -> None:
-        self._con = duckdb.connect()
+        # When PROVISA_DUCKDB_EXT_DIR is set (the embedded tier stages the pinned extension blobs there
+        # from the provisa-duckdb-ext PyPI package), load extensions from it and DISABLE network
+        # autoinstall — an air-gapped/enterprise install must never silently reach extensions.duckdb.org;
+        # a missing extension fails loud instead. Unset (dev/server) keeps DuckDB's default network path.
+        _ext_dir = os.environ.get("PROVISA_DUCKDB_EXT_DIR")
+        _cfg: dict[str, str | bool | int | float | list[str]] = (
+            {"extension_directory": _ext_dir, "autoinstall_known_extensions": False}
+            if _ext_dir
+            else {}
+        )
+        self._con = duckdb.connect(config=_cfg)
         self._engine = build_duckdb_engine()
         # An explicit materialize-store DSN override (tests). When None it is resolved lazily via the
         # engine's invariant (configured store → declared default → error) only when a materialize

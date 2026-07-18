@@ -106,6 +106,7 @@ async def _compile_govern_execute(sql: str, role_id: str, state, *, discovery_mo
         ctx,
         getattr(state, "tables", []),
         role=role,
+        relationships=getattr(state, "relationships", None),
     )
 
     raw_tables = getattr(state, "tables", [])
@@ -836,7 +837,13 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
     role_obj = state.roles.get(role_id)
     gov_ctx = build_governance_context(
-        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", []), role=role_obj
+        role_id,
+        rls,
+        state.masking_rules,
+        ctx,
+        getattr(state, "tables", []),
+        role=role_obj,
+        relationships=getattr(state, "relationships", None),
     )
     raw_tables = getattr(state, "tables", [])
 

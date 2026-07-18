@@ -613,7 +613,13 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
     _role_dict = state.roles.get(role_id) or {}
     _gov_ctx_for_validate = build_governance_context(
-        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", []), role=_role_dict
+        role_id,
+        rls,
+        state.masking_rules,
+        ctx,
+        getattr(state, "tables", []),
+        role=_role_dict,
+        relationships=getattr(state, "relationships", None),
     )
     _violations = _validate_sql(
         semantic_sql,

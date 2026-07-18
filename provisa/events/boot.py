@@ -202,6 +202,10 @@ def specs_from_config(
             if is_poll(args.change_signal)
             else None
         )
+        # REQ-957: a landed source may also declare a preprocess(rows, ctx) hook (run after fetch,
+        # before land) — same purity-checked compile path as the MV branch. None = identity.
+        from provisa.mv.preprocess import compile_preprocess
+
         specs.append(
             NodeSpec(
                 node=node,
@@ -214,6 +218,7 @@ def specs_from_config(
                 # push sources are driven by their listener. Boot lands the first copy either way.
                 probe_factory=factory,
                 probe_type=args.probe_type,
+                preprocess=compile_preprocess(getattr(tbl, "mv_preprocess", None)),  # REQ-957
             )
         )
 

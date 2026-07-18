@@ -88,11 +88,11 @@
     <section class="whatis">
       <div class="container">
         <p>
-          The instant API, the legal join paths, the governance rules, and the
-          telemetry that audits every query all fall out of <em>one model</em> — the
-          registration that describes your data is the same one that operates, governs,
-          and audits it. The federation engine and the data sources beneath are yours to
-          choose.
+          <em>Semantic compilation</em>, from logical design to physical execution: the
+          instant API, the legal join paths, the governance rules, and the telemetry that
+          audits every query all fall out of one model — the registration that describes
+          your data is the same one that operates, governs, and audits it. The federation
+          engine and the data sources beneath are yours to choose.
         </p>
       </div>
     </section>
@@ -132,8 +132,9 @@
           <p class="eyebrow">Query interfaces &amp; wire protocols</p>
           <h2>Write in three languages. Connect over nine protocols.</h2>
           <p class="section-sub">
-            The query language and the wire protocol are independent choices —
-            governance behaves identically across every combination.
+            The query language and the wire protocol are independent choices, and the
+            same governance reaches every entry point — your applications, BI tools, and
+            AI agents alike.
           </p>
         </header>
 
@@ -167,7 +168,7 @@
     <section id="governance" class="section section-alt">
       <div class="container">
         <header class="section-head">
-          <p class="eyebrow">Security model</p>
+          <p class="eyebrow">Active, query-time governance</p>
           <h2>Six layers. Every language. Every transport.</h2>
           <p class="section-sub">
             Governance is applied uniformly — there is no query path that bypasses it.
@@ -339,8 +340,9 @@
         <div>
           <h3>No lock-in — engine or source</h3>
           <p>
-            Your model, semantics, and governance live <em>above</em> the
-            infrastructure, not inside it. Swap the engine — embedded to Trino to your
+            Insulate your data consumers from infrastructure churn: your model,
+            semantics, and governance live <em>above</em> the infrastructure, not inside
+            it. Swap the engine — embedded to Trino to your
             warehouse; new CTO, new strategy, switch it to Databricks — the queries and
             policies don't change. Re-point a table from Oracle to Postgres, or MongoDB
             to Snowflake, and consumers never see it move.
@@ -350,6 +352,32 @@
             a big-bang cutover: migrate sources table by table behind a stable governed
             API, with one uniform governance model applying to legacy and modern sources
             alike throughout the transition.
+          </p>
+          <p>
+            Your warehouse should be a replaceable component, not a place you get
+            stranded — when your semantics live <em>above</em> the engine, vendors
+            compete for your workloads instead of holding them hostage.
+          </p>
+        </div>
+      </div>
+
+      <div class="container lockin">
+        <div class="lockin-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="10.5" width="16" height="10" rx="2" /><path d="M8 10.5V7a4 4 0 0 1 7.5-2" /><path d="M12 14.5v2.5" />
+          </svg>
+        </div>
+        <div>
+          <h3>We don't lock you in either</h3>
+          <p>
+            Provisa is a handful of primitives — domains, tables, relationships, masking,
+            views — compiled deterministically. No proprietary modeling universe to learn,
+            no black box: your model is portable declarative config, and the SQL it
+            compiles is yours to read, export, and keep.
+          </p>
+          <p>
+            Use it as scaffolding in dev if you want. The semantics you write don't die
+            with the tool — because they were never trapped inside it.
           </p>
         </div>
       </div>
@@ -437,7 +465,7 @@
 
         <div class="dl-grid">
           <a class="dl-card" id="dl-macos" data-platform="macOS"
-             href="https://github.com/kenstott/provisa/releases/latest">
+             href="/dl/macos">
             <svg class="dl-os" viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true">
               <path d="M16.37 12.7c-.02-2.05 1.67-3.03 1.75-3.08-.95-1.4-2.44-1.59-2.97-1.61-1.26-.13-2.47.74-3.11.74-.64 0-1.63-.72-2.68-.7-1.38.02-2.65.8-3.36 2.03-1.43 2.49-.37 6.17 1.03 8.19.68.99 1.5 2.1 2.56 2.06 1.03-.04 1.42-.66 2.66-.66 1.24 0 1.59.66 2.68.64 1.11-.02 1.81-1 2.49-2 .78-1.15 1.11-2.26 1.12-2.32-.02-.01-2.16-.83-2.18-3.28zM14.4 6.36c.56-.68.94-1.63.84-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.56-.86 2.48.9.07 1.83-.46 2.39-1.13z"/>
             </svg>
@@ -447,7 +475,7 @@
           </a>
 
           <a class="dl-card" id="dl-windows" data-platform="Windows"
-             href="https://github.com/kenstott/provisa/releases/latest">
+             href="/dl/windows">
             <svg class="dl-os" viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true">
               <path d="M3 5.1 10.4 4v7.3H3V5.1zm0 13.8 7.4 1.1v-7.2H3v6.1zM11.3 3.9 21 2.5v8.8h-9.7V3.9zm0 8.4H21v8.6l-9.7-1.4v-7.2z"/>
             </svg>
@@ -457,7 +485,7 @@
           </a>
 
           <a class="dl-card" id="dl-linux" data-platform="Linux"
-             href="https://github.com/kenstott/provisa/releases/latest">
+             href="/dl/linux">
             <svg class="dl-os" viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true">
               <path d="M12 2c-1.7 0-3 1.5-3 3.3 0 1 .1 1.9-.4 2.8-.5.9-1.6 1.9-2.2 3.6-.6 1.6-.3 2.9-.6 3.6-.3.7-1 1.2-1 2 0 .6.5 1 1.2 1 .8 0 1.4.5 2.2 1 .8.5 1.7 1 3.6 1s2.8-.5 3.6-1c.8-.5 1.4-1 2.2-1 .7 0 1.2-.4 1.2-1 0-.8-.7-1.3-1-2-.3-.7 0-2-.6-3.6-.6-1.7-1.7-2.7-2.2-3.6-.5-.9-.4-1.8-.4-2.8C15 3.5 13.7 2 12 2zm-1.4 3.7c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zm2.8 0c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zM12 8.2c1 0 2.1.6 2.1 1.1 0 .3-.4.5-1 .8-.4.2-.8.6-1.1.6s-.7-.4-1.1-.6c-.6-.3-1-.5-1-.8 0-.5 1.1-1.1 2.1-1.1z"/>
             </svg>
@@ -486,12 +514,11 @@
           </div>
           <div class="dist-terminal" role="img" aria-label="Install Provisa from PyPI and run it">
             <div class="term-bar"><span></span><span></span><span></span></div>
-            <pre><code><span class="c-comment"># One wheel. Everything inside.</span>
+            <pre><code><span class="c-comment"># One wheel. Everything inside. (Requires CPython 3.12)</span>
 <span class="c-cmd">pip</span> install <span class="c-str">"provisa[embedded]"</span>
-<span class="c-cmd">provisa</span> run
 
-<span class="c-comment"># Requires CPython 3.12</span>
-<span class="c-cmd">python</span> --version   <span class="c-comment"># Python 3.12.x</span></code></pre>
+<span class="c-cmd">provisa</span> run          <span class="c-comment"># your data</span>
+<span class="c-cmd">provisa</span> run --demo   <span class="c-comment"># a guided tour on a sample stack</span></code></pre>
           </div>
         </div>
       </div>
@@ -596,32 +623,30 @@
       if (os) document.getElementById('dl-' + os)?.classList.add('dl-primary');
     })();
 
-    // Progressive enhancement: resolve the latest release assets to direct download
-    // URLs. Falls back to the releases page (the default href) if the API is
-    // unreachable or no release exists yet.
+    // Progressive enhancement: the card hrefs point at the /dl/<platform> redirect
+    // Function, which already resolves the newest release (pre-releases included) and
+    // works with no JS. This only fills in the version label and greys out a card whose
+    // asset isn't in the newest release yet. Uses the /releases LIST (not /latest, which
+    // 404s while every release is a pre-release) and takes the newest matching build.
     (function () {
       const match = {
         macos:   n => /macOS\.dmg$/i.test(n) && !/(obs|demo|runtime|container)/i.test(n),
         windows: n => /windows-x64\.exe$/i.test(n) && !/container/i.test(n),
         linux:   n => /linux.*\.AppImage$/i.test(n),
       };
-      fetch('https://api.github.com/repos/kenstott/provisa/releases/latest', {
+      fetch('https://api.github.com/repos/kenstott/provisa/releases?per_page=30', {
         headers: { Accept: 'application/vnd.github+json' },
       })
         .then(r => (r.ok ? r.json() : Promise.reject()))
-        .then(rel => {
-          const assets = rel.assets || [];
+        .then(releases => {
+          const rels = (releases || []).filter(r => !r.draft);
           for (const [plat, test] of Object.entries(match)) {
-            const asset = assets.find(a => test(a.name));
             const card = document.getElementById('dl-' + plat);
             if (!card) continue;
-            if (asset) {
-              card.href = asset.browser_download_url;
-              const ver = card.querySelector('.dl-ver');
-              if (ver && rel.tag_name) ver.textContent = rel.tag_name;
-            } else {
-              card.classList.add('dl-unavailable');
-            }
+            const rel = rels.find(r => (r.assets || []).some(a => test(a.name)));
+            const ver = card.querySelector('.dl-ver');
+            if (rel && ver && rel.tag_name) ver.textContent = rel.tag_name;
+            else if (!rel) card.classList.add('dl-unavailable');
           }
         })
         .catch(() => {});

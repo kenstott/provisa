@@ -31,6 +31,36 @@ import sys
 from pathlib import Path
 
 _DEFAULT_DATA_DIR = Path.home() / ".provisa" / "native"
+_PKG_ROOT = Path(__file__).resolve().parent  # the installed ``provisa`` package
+_REPO_ROOT = Path(__file__).resolve().parents[1]  # repo root when running from source
+
+
+def _resolve_demo() -> tuple[Path, Path]:
+    """Return (demo_config, demo_data_dir): the bundled demo — the pre-federated ``provisa-install``
+    config (pet-store + shelter sample domains over embedded SQLite) plus its sample-data directory.
+
+    Prefers the wheel-staged copy under ``provisa/_config`` (REQ-1127); falls back to the repo tree
+    when running from a source checkout.
+    """
+    pkg_cfg = _PKG_ROOT / "_config" / "provisa-install.yaml"
+    if pkg_cfg.exists():
+        return pkg_cfg, _PKG_ROOT / "_config" / "demo" / "files"
+    return _REPO_ROOT / "config" / "provisa-install.yaml", _REPO_ROOT / "demo" / "files"
+
+
+def _apply_demo_config() -> Path:
+    """Point the embedded runtime at the bundled demo (REQ-414 sample federation). Sets PROVISA_CONFIG
+    to the demo config and PROVISA_DEMO_DIR to its sample-data dir (the config resolves the embedded
+    SQLite paths through ``${env:PROVISA_DEMO_DIR}``). ``setdefault`` so an explicit override wins.
+    Unreachable optional demo sources (the openapi/graphql mocks) are best-effort and never abort
+    startup (app_loaders), so the demo runs fully offline on the two embedded SQLite sources."""
+    cfg, data_dir = _resolve_demo()
+    if not cfg.exists():
+        raise FileNotFoundError(f"demo config not found (looked for {cfg})")
+    os.environ.setdefault("PROVISA_CONFIG", str(cfg))
+    os.environ.setdefault("PROVISA_DEMO_DIR", str(data_dir))
+    os.environ.setdefault("PROVISA_CONFIG_REPLACE", "true")
+    return cfg
 
 
 def _apply_embedded_env(data_dir: Path) -> list[str]:
@@ -47,7 +77,26 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     profile = load_profile("native", data_dir=data_dir)
     for key, value in profile.env.items():
         os.environ.setdefault(key, value)
-    return profile.notes
+    notes = list(profile.notes)
+
+    # Stage the DuckDB extensions OFFLINE from the provisa-duckdb-ext PyPI package (installed by
+    # provisa[embedded]) so LOAD never reaches extensions.duckdb.org — required behind an enterprise
+    # firewall where only PyPI/Maven/npm/NuGet are proxied. Absent package = a dev checkout without the
+    # extra: leave PROVISA_DUCKDB_EXT_DIR unset so DuckDB's network INSTALL still works for local dev.
+    if not os.environ.get("PROVISA_DUCKDB_EXT_DIR"):
+        from provisa.federation.duckdb_extensions import stage_bundled_extensions
+
+        try:
+            ext_dir = stage_bundled_extensions(data_dir / "duckdb-ext")
+        except ModuleNotFoundError:
+            notes.append(
+                "duckdb extensions: provisa-duckdb-ext not installed — DuckDB will INSTALL from the "
+                "network on first use (install provisa[embedded] for an offline/air-gapped setup)"
+            )
+        else:
+            os.environ["PROVISA_DUCKDB_EXT_DIR"] = str(ext_dir)
+            notes.append(f"duckdb extensions: staged offline (no network) -> {ext_dir}")
+    return notes
 
 
 async def _serve(host: str, api_port: int, ui_port: int) -> None:
@@ -72,9 +121,18 @@ async def _serve(host: str, api_port: int, ui_port: int) -> None:
 def _cmd_run(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir).expanduser()
     data_dir.mkdir(parents=True, exist_ok=True)
+    demo_cfg: Path | None = None
+    if args.demo:
+        try:
+            demo_cfg = _apply_demo_config()
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     notes = _apply_embedded_env(data_dir)
 
     print("Provisa (embedded) starting — no Docker, no Node.")
+    if demo_cfg is not None:
+        print(f"  demo: {demo_cfg.name} — pet-store + shelter sample domains (embedded SQLite)")
     for note in notes:
         print(f"  · {note}")
     print(f"  UI:  http://127.0.0.1:{args.ui_port}")
@@ -92,6 +150,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Start the embedded Provisa system (API + UI)")
+    run.add_argument(
+        "--demo",
+        action="store_true",
+        help="Load the bundled demo (pet-store + shelter sample federation over embedded SQLite)",
+    )
     run.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     run.add_argument("--api-port", type=int, default=8000, help="API port (default: 8000)")
     run.add_argument("--ui-port", type=int, default=3000, help="UI port (default: 3000)")

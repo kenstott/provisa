@@ -109,6 +109,7 @@ def test_table_input_maps_consistency():
         mv_debounce_quiet=0.0,
         mv_debounce_max_delay=5.0,
         mv_consistency="distributed",
+        mv_preprocess=None,  # REQ-957
         data_product=False,
         enable_aggregates=False,
         enable_group_by=False,

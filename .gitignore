@@ -122,3 +122,7 @@ coverage.xml
 # Wheel build staging (scripts/build-wheel.sh) — REQ-1127
 provisa/_ui/
 provisa/_config/
+
+# provisa-duckdb-ext blobs are built per-platform by CI (build-duckdb-extensions), not committed.
+packaging/duckdb-ext/provisa_duckdb_ext/_ext/**
+!packaging/duckdb-ext/provisa_duckdb_ext/_ext/.gitkeep

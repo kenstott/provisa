@@ -97,7 +97,7 @@ provisa = "provisa.cli:main"
 # omitted (PyPI carries no JVM server); full multi-engine federation stays available by pointing
 # at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb/aiosqlite/greenlet are
 # already base deps; this extra names the tier explicitly and adds fakeredis for the embedded cache.
-embedded = ["duckdb", "aiosqlite", "greenlet", "fakeredis"]
+embedded = ["duckdb", "aiosqlite", "greenlet", "fakeredis", "provisa-duckdb-ext"]
 # Embedded PostgreSQL for the desktop/native tier (control plane + dedicated
 # telemetry store). Optional because pgserver has no cp313 wheel yet — install
 # under a cpython<=3.12 interpreter.
@@ -169,7 +169,7 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 # REQ-1127: the precompiled React UI (vite build output, staged into provisa/_ui/ by
 # scripts/build-wheel.sh) and the runtime config/ files (staged into provisa/_config/) ship in
 # the wheel so the delivery is self-contained on a Python-only, npm/Node-free host.
-"provisa" = ["_ui/**/*", "_config/*.yaml"]
+"provisa" = ["_ui/**/*", "_config/*.yaml", "_config/demo/files/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]

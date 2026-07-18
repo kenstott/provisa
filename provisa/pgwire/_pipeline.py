@@ -181,6 +181,7 @@ async def _govern_and_route(
         ctx,
         getattr(state, "tables", []),
         role=role,
+        relationships=getattr(state, "relationships", None),
     )
 
     from provisa.security.rights import Capability, has_capability
@@ -404,6 +405,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         ctx,
         getattr(state, "tables", []),
         role=state.roles.get(role_id),
+        relationships=getattr(state, "relationships", None),
     )
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.

@@ -1,0 +1,29 @@
+# provisa-duckdb-ext — the DuckDB extension blobs the embedded tier needs, delivered via PyPI.
+#
+# Why this package exists: the extensions the embedded DuckDB engine loads (sqlite_scanner, iceberg,
+# delta, postgres_scanner, …) are NOT statically linked into the `duckdb` PyPI wheel — DuckDB fetches
+# them from extensions.duckdb.org at runtime. Behind an enterprise firewall where only PyPI/Maven/npm/
+# NuGet are proxied (Artifactory), that host is unreachable and the embedded tier breaks. This package
+# embeds the pinned, per-platform `.duckdb_extension` binaries as ordinary wheel data so acquisition
+# flows through PyPI instead. One universal wheel carries every platform (the blobs are small and
+# DuckDB-version-locked); `provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the
+# running platform's blobs into a writable dir on first run and points PROVISA_DUCKDB_EXT_DIR at it.
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "provisa-duckdb-ext"
+version = "0.1.0"
+description = "Pinned, per-platform DuckDB extension binaries for the Provisa embedded tier (PyPI-delivered, offline)."
+requires-python = ">=3.10"
+# Extensions are locked to the exact DuckDB build they were mirrored from — pin it hard so an
+# incompatible duckdb can never silently load a mismatched extension.
+dependencies = ["duckdb==1.5.3"]
+
+[tool.setuptools]
+packages = ["provisa_duckdb_ext"]
+
+[tool.setuptools.package-data]
+# The blobs: <raw_duckdb_version>/<platform>/<name>.duckdb_extension (+ manifest.json), all platforms.
+"provisa_duckdb_ext" = ["_ext/**/*"]

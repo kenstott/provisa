@@ -203,6 +203,7 @@ relationships = Table(
     Column("alias", Text),
     Column("graphql_alias", Text),
     Column("disable_cypher", Boolean, nullable=False, server_default=false()),
+    Column("hide_target_meta", Boolean, nullable=False, server_default=false()),  # REQ-1132
     Column("source_json_key", Text),
     Column("owner", Text),
     Column("version", Integer, nullable=False, server_default="1"),

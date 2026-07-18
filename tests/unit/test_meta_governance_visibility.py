@@ -89,3 +89,121 @@ class TestREQ1134GovernanceColumnVisibility:
         assert visible is not None
         assert "visible_to" not in visible
         assert "view_sql" not in visible
+
+
+class TestREQ1132ColumnTiering:
+    """REQ-1132 — the CORE/GOVERNANCE column-class split (the column half of the tiered
+    meta visibility rule; the row-level neighbourhood scoping half is tracked separately)."""
+
+    def test_default_tier_sees_core_meta_columns(self):
+        # REQ-1132 — CORE (structural) columns are always discoverable by the default tier.
+        gov = _build({"id": "analyst", "capabilities": []})
+        visible = gov.visible_columns[1]
+        assert visible is not None
+        assert _CORE_COL in visible
+
+    def test_core_and_governance_classes_are_disjoint(self):
+        # REQ-1132 — the two column classes never overlap: CORE excludes every GOVERNANCE column.
+        assert _CORE_COL not in GOVERNANCE_META_COLUMNS
+
+
+# --------------------------------------------------------------------------- #
+# REQ-1132 — row-level neighbourhood scoping of the meta views.               #
+# --------------------------------------------------------------------------- #
+
+# Described data tables: two in 'sales', one in 'hr'; two finance neighbours reached via edges.
+_SALES_A, _SALES_B, _HR, _FIN_OPEN, _FIN_HIDDEN = 10, 11, 20, 30, 31
+# Meta view table ids (the views whose rows describe the data tables above).
+_RT_META_TID, _TC_META_TID = 100, 101
+
+
+def _row_scope_ctx() -> CompilationContext:
+    ctx = CompilationContext()
+    ctx.tables["registered_tables"] = TableMeta(
+        table_id=_RT_META_TID,
+        field_name="registered_tables",
+        type_name="RegisteredTables",
+        source_id="s",
+        catalog_name="main",
+        schema_name="public",
+        table_name="registered_tables_meta",
+        domain_id=META_DOMAIN_ID,
+    )
+    ctx.tables["table_columns"] = TableMeta(
+        table_id=_TC_META_TID,
+        field_name="table_columns",
+        type_name="TableColumns",
+        source_id="s",
+        catalog_name="main",
+        schema_name="public",
+        table_name="table_columns_meta",
+        domain_id=META_DOMAIN_ID,
+    )
+    return ctx
+
+
+def _data_tables() -> list[dict]:
+    return [
+        {"id": _SALES_A, "domain_id": "sales", "columns": []},
+        {"id": _SALES_B, "domain_id": "sales", "columns": []},
+        {"id": _HR, "domain_id": "hr", "columns": []},
+        {"id": _FIN_OPEN, "domain_id": "finance", "columns": []},
+        {"id": _FIN_HIDDEN, "domain_id": "finance", "columns": []},
+    ]
+
+
+def _relationships() -> list[dict]:
+    return [
+        # sales → finance (open): a default sales role discovers _FIN_OPEN via this edge.
+        {"source_table_id": _SALES_A, "target_table_id": _FIN_OPEN, "hide_target_meta": False},
+        # sales → finance (opt-out): _FIN_HIDDEN is suppressed from default discovery.
+        {"source_table_id": _SALES_A, "target_table_id": _FIN_HIDDEN, "hide_target_meta": True},
+        # computed relationship (no concrete target): contributes no neighbour.
+        {"source_table_id": _SALES_B, "target_table_id": None, "hide_target_meta": False},
+    ]
+
+
+def _row_gov(role: dict):
+    return build_governance_context(
+        role["id"],
+        _FakeRLSContext({}),
+        {},
+        _row_scope_ctx(),
+        _data_tables(),
+        role,
+        relationships=_relationships(),
+    )
+
+
+class TestREQ1132RowScope:
+    """REQ-1132 — a DEFAULT-tier role sees meta rows only for its reachable neighbourhood."""
+
+    def test_default_tier_row_predicate_covers_direct_plus_open_neighbor(self):
+        # REQ-1132 — sales role: direct {10,11} + 1-hop open neighbour {30}; hidden {31} excluded.
+        gov = _row_gov({"id": "sales", "capabilities": [], "domain_access": ["sales"]})
+        assert gov.rls_rules[_RT_META_TID] == f"id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
+        assert gov.rls_rules[_TC_META_TID] == f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
+
+    def test_opt_out_target_not_discoverable(self):
+        # REQ-1132 — the hide_target_meta edge's target must never appear in the row predicate.
+        gov = _row_gov({"id": "sales", "capabilities": [], "domain_access": ["sales"]})
+        assert str(_FIN_HIDDEN) not in gov.rls_rules[_RT_META_TID]
+
+    def test_meta_domain_grant_sees_all_rows(self):
+        # REQ-1132 — a meta domain grant lifts the row filter entirely (no predicate injected).
+        gov = _row_gov(
+            {"id": "cataloger", "capabilities": [], "domain_access": ["sales", META_DOMAIN_ID]}
+        )
+        assert _RT_META_TID not in gov.rls_rules
+        assert _TC_META_TID not in gov.rls_rules
+
+    def test_admin_sees_all_rows(self):
+        # REQ-1132 — admin bypass: no meta row filter.
+        gov = _row_gov({"id": "admin", "capabilities": ["admin"], "domain_access": ["sales"]})
+        assert _RT_META_TID not in gov.rls_rules
+        assert _TC_META_TID not in gov.rls_rules
+
+    def test_role_with_no_reachable_tables_sees_no_rows(self):
+        # REQ-1132 — a role whose domain has no tables gets a match-nothing predicate (fail-closed).
+        gov = _row_gov({"id": "empty", "capabilities": [], "domain_access": ["marketing"]})
+        assert gov.rls_rules[_RT_META_TID] == "id IN (-1)"

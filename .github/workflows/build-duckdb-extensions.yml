@@ -71,3 +71,49 @@ jobs:
           files: |
             dist/provisa-duckdb-ext-${{ matrix.label }}.tar.gz
             dist/provisa-duckdb-ext-${{ matrix.label }}.tar.gz.sha256
+
+  # Collect every platform's mirrored blobs into ONE universal py3-none-any wheel (provisa-duckdb-ext)
+  # and publish it to PyPI so `provisa[embedded]` gets the extensions through PyPI/Artifactory — never
+  # extensions.duckdb.org. The runtime (provisa.federation.duckdb_extensions.stage_bundled_extensions)
+  # copies the running platform's blobs out of this wheel on first run.
+  wheel:
+    name: Build + publish provisa-duckdb-ext wheel
+    needs: mirror
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all platform mirror artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: provisa-duckdb-ext-*
+          path: mirror-artifacts
+          merge-multiple: true
+
+      - name: Extract tarballs -> raw <version>/<platform> trees
+        run: |
+          set -euo pipefail
+          mkdir -p mirror-extracted
+          find mirror-artifacts -name '*.tar.gz' -exec tar -xzf {} -C mirror-extracted \;
+          find mirror-extracted -name '*.duckdb_extension' | sed 's|/[^/]*$||' | sort -u
+
+      - name: Collect blobs into the package
+        run: python packaging/duckdb-ext/collect.py mirror-extracted
+
+      - name: Build the universal wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel --sdist --outdir dist-ext packaging/duckdb-ext
+
+      - name: Publish provisa-duckdb-ext to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-ext/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+
+      - name: Attach wheel to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-ext/*

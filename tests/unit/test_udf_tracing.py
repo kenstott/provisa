@@ -50,6 +50,8 @@ def _state(connected=True):
         source_pools=_FakePools(connected=connected),
         udf_trace_sink=MemoryUdfTraceSink(),
         minted_sessions=[],
+        # REQ-885: deny-by-default egress allow-list — permit the http/grpc host these tests reach.
+        udf_egress_allowlist=["svc"],
     )
 
 
@@ -90,7 +92,7 @@ def _kinds(monkeypatch):
     async def fake_http(_m, _u, _p, _t):
         return [{"ok": 1}, {"ok": 2}]
 
-    async def fake_grpc(_target, _method, _payload):
+    async def fake_grpc(_target, _method, _payload, **_kw):
         return [{"g": 1}, {"g": 2}]
 
     async def fake_run(_argv, _payload):

@@ -556,6 +556,9 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
         None  # persisted GraphQL field name override (computed from target+cardinality when absent)
     )
     disable_cypher: bool = False  # when True, exclude this relationship from Cypher graph edges
+    hide_target_meta: bool = (
+        False  # REQ-1132: when True, suppress the TARGET's metadata from DEFAULT-tier meta discovery
+    )
     source_json_key: str | None = (
         None  # when set, JOIN extracts this key from source column as JSON object
     )

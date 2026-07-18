@@ -25,7 +25,9 @@ per-user cache; the federation runtime reads the same variable so what is staged
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass
+from pathlib import Path
 
 import duckdb
 
@@ -38,6 +40,54 @@ _EXT_DIR_ENV = "PROVISA_DUCKDB_EXT_DIR"
 def extension_directory() -> str | None:
     """The bundled DuckDB extension directory, or None to use DuckDB's default per-user cache."""
     return os.environ.get(_EXT_DIR_ENV) or None
+
+
+class BundledExtensionsMissing(RuntimeError):
+    """The provisa-duckdb-ext package is installed but lacks blobs for this DuckDB version/platform.
+
+    This is a packaging defect (the wheel was built against a different DuckDB build), NOT a runtime
+    condition to paper over: an air-gapped/enterprise install must get every extension through PyPI, so
+    we fail loud with a precise remediation rather than silently reaching extensions.duckdb.org.
+    """
+
+
+def stage_bundled_extensions(target: str | Path) -> Path:
+    """Copy the running platform's DuckDB extension blobs from the ``provisa-duckdb-ext`` PyPI package
+    into ``target`` (idempotent) and return it — the offline, firewall-safe alternative to DuckDB's
+    network ``INSTALL``. Point ``PROVISA_DUCKDB_EXT_DIR`` at the returned dir so every ``LOAD`` resolves
+    locally and ``extensions.duckdb.org`` is never contacted.
+
+    Raises ``ModuleNotFoundError`` when the package isn't installed (the caller decides whether to fall
+    back to the network — appropriate only for a dev checkout, never an enterprise embedded install),
+    and ``BundledExtensionsMissing`` when the package is present but has no blobs for this exact DuckDB
+    version + platform.
+    """
+    from provisa_duckdb_ext import ext_root  # type: ignore[import-not-found]  # ModuleNotFoundError propagates by design
+
+    con = duckdb.connect()
+    try:
+        _ver = con.execute("SELECT version()").fetchone()
+        _plat = con.execute("PRAGMA platform").fetchone()
+    finally:
+        con.close()
+    raw_version = _ver[0] if _ver else ""
+    platform = _plat[0] if _plat else ""
+
+    src = ext_root() / raw_version / platform
+    blobs = sorted(src.glob("*.duckdb_extension")) if src.is_dir() else []
+    if not blobs:
+        raise BundledExtensionsMissing(
+            f"provisa-duckdb-ext has no DuckDB extensions for {platform} @ {raw_version} "
+            f"(looked in {src}); rebuild the package against duckdb {raw_version}."
+        )
+
+    dst = Path(target) / raw_version / platform
+    dst.mkdir(parents=True, exist_ok=True)
+    for blob in blobs:
+        out = dst / blob.name
+        if not out.exists():
+            shutil.copy2(blob, out)
+    return Path(target)
 
 
 def _connect() -> duckdb.DuckDBPyConnection:

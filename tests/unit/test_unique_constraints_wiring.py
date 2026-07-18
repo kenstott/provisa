@@ -49,6 +49,7 @@ def test_table_model_from_input_maps_unique_constraints():
         mv_debounce_quiet=0.0,
         mv_debounce_max_delay=5.0,
         mv_consistency="shared",
+        mv_preprocess=None,  # REQ-957
         data_product=False,
         enable_aggregates=False,
         enable_group_by=False,

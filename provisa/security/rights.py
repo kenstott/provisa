@@ -98,3 +98,54 @@ def has_capability(
     if not isinstance(capabilities, (list, tuple, set, frozenset)):
         capabilities = []
     return capability.value in capabilities or Capability.ADMIN.value in capabilities
+
+
+# The two meta views whose ROWS describe registered tables/columns and are therefore subject to
+# the REQ-1132 row-level neighbourhood scoping. Each maps to the meta-view column that carries the
+# DESCRIBED table's id, so the row filter is "<column> IN (<reachable table ids>)".
+META_ROW_SCOPED_VIEWS: dict[str, str] = {
+    "registered_tables_meta": "id",
+    "table_columns_meta": "table_id",
+}
+
+
+def compute_meta_row_scope(
+    role: dict[str, object] | None,
+    tables: list[dict],
+    relationships: list[dict] | None,
+) -> set[int] | None:
+    """REQ-1132: the set of DESCRIBED table ids whose meta rows a role may see, or ``None`` when
+    NO row filter applies (all rows visible).
+
+    ``None`` (unfiltered) is returned for the two tiers that see the whole catalog: an ADMIN role,
+    and a role holding the meta DOMAIN GRANT (or global ``*``/empty domain access). Every other
+    (DEFAULT-tier) role is confined to its directly-accessible tables — those in a domain the role
+    can access — PLUS 1-hop neighbours over user-defined/semantic relationships (the ``relationships``
+    registry holds only user relationships; auto-derived FK/catalog edges are never stored there, so
+    they are excluded by construction). Discovery is bidirectional, EXCEPT a relationship flagged
+    ``hide_target_meta`` suppresses the TARGET from discovery via that edge (the source stays
+    discoverable from the target side). Computed (function-target) relationships have no concrete
+    target table and contribute no neighbour.
+    """
+    if role is None:
+        return None
+    if has_capability(role, Capability.ADMIN):
+        return None
+    accessible = role.get("domain_access") or []
+    if not isinstance(accessible, (list, tuple, set, frozenset)):
+        accessible = []
+    if not accessible or "*" in accessible or META_DOMAIN_ID in accessible:
+        return None  # meta domain grant / global access → the whole catalog
+
+    directly = {t["id"] for t in tables if t.get("domain_id") in accessible}
+    visible = set(directly)
+    for rel in relationships or []:
+        sid = rel.get("source_table_id")
+        tid = rel.get("target_table_id")
+        if sid is None or tid is None or tid == "":
+            continue  # computed/function relationship: no concrete target table
+        if sid in directly and not rel.get("hide_target_meta"):
+            visible.add(tid)
+        if tid in directly:
+            visible.add(sid)
+    return visible

@@ -143,7 +143,7 @@ JOIN conditions in SQL must match a registered, approved relationship between ta
 These layers compose. A role with domain access, RLS, and masked columns has all five constraints active simultaneously. Adding a new data source, column, or relationship does not require updating every rule — each layer is configured independently and applies automatically to any query that touches governed objects.
 
 ### macOS
-1. Download the DMG from the [releases page](https://github.com/kenstott/provisa/releases/latest)
+1. Download [Provisa-macOS.dmg](https://provisa.dev/dl/macos) (always the latest release)
 2. Drag **Provisa.app** to `/Applications` and double-click to launch
 3. First launch completes a one-time setup (~2 min, no internet required)
 4. Open Terminal:
@@ -153,7 +153,7 @@ provisa open    # open the UI in your browser
 ```
 
 ### Linux
-1. Download `Provisa-<version>-linux-x86_64.AppImage` from the [releases page](https://github.com/kenstott/provisa/releases/latest)
+1. Download [Provisa-linux-x86_64.AppImage](https://provisa.dev/dl/linux) (always the latest release)
 2. Make it executable and run it — first launch completes a one-time setup (no internet required):
 ```bash
 chmod +x Provisa-*-linux-x86_64.AppImage
@@ -162,7 +162,7 @@ provisa start && provisa open
 ```
 
 ### Windows
-1. Download `Provisa-<version>-windows-x64.exe` from the [releases page](https://github.com/kenstott/provisa/releases/latest)
+1. Download [Provisa-windows-x64.exe](https://provisa.dev/dl/windows) (always the latest release)
 2. Run the installer — no admin rights required
 3. Open **Provisa First Launch** from the Start Menu — completes a one-time setup (~5 min, no internet required)
 4. Open a new terminal:
@@ -194,7 +194,7 @@ curl -X POST https://provisa.example.com/data/graphql \
 
 ### JDBC (Tableau, DBeaver, Power BI)
 
-Download `provisa-jdbc-<version>.jar` from the [releases page](https://github.com/kenstott/provisa/releases/latest) and add it to your BI tool's driver path.
+Download [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) (always the latest release) and add it to your BI tool's driver path.
 
 ```
 jdbc:provisa://localhost:8815

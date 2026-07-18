@@ -151,7 +151,7 @@ sources:
 - description: "Internal pet store inventory \u2014 tracks animals available for sale,\
     \ pricing, species, and breed assignments managed by the inventory department"
   id: pet-store-sqlite
-  path: ./demo/files/pet_store.sqlite
+  path: ${env:PROVISA_DEMO_DIR:-./demo/files}/pet_store.sqlite
   type: sqlite
 - auth_config:
     type: none
@@ -167,7 +167,7 @@ sources:
     \ submissions tracked by the front-desk team, including inquiry type, message,\
     \ and resolution status"
   id: inquiries-sqlite
-  path: ./demo/files/inquiries.sqlite
+  path: ${env:PROVISA_DEMO_DIR:-./demo/files}/inquiries.sqlite
   type: sqlite
 - description: "Animal shelter GraphQL API \u2014 staff schedules, breed catalogue,\
     \ and animal assignment records managed by shelter operations"

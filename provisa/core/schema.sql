@@ -153,7 +153,10 @@ CREATE TABLE IF NOT EXISTS relationships (
     target_column    TEXT NOT NULL,
     cardinality      TEXT NOT NULL CHECK (cardinality IN ('many-to-one', 'one-to-many')),
     materialize      BOOLEAN NOT NULL DEFAULT FALSE,
-    refresh_interval INTEGER NOT NULL DEFAULT 300
+    refresh_interval INTEGER NOT NULL DEFAULT 300,
+    -- REQ-1132: opt this edge OUT of discovery — its target table's metadata is not exposed to a role
+    -- that reaches the target only via this relationship (a sensitive target behind an innocuous edge).
+    hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- Migration: add materialize columns if missing

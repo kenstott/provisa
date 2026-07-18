@@ -190,6 +190,9 @@ class AppState:
     # (pgwire / Flight SQL / airport).  build_governance_context requires this list to derive
     # visible_columns and all_columns; an empty list silently skips column governance.
     tables: list[dict] = []  # populated by _rebuild_schemas from _fetch_tables
+    # REQ-1132: resolved user-defined relationships (int source/target table ids), published for the
+    # raw-SQL governance path so build_governance_context can compute 1-hop meta row scoping.
+    relationships: list[dict] = []
     engine_session_hints: dict[
         str, str
     ] = {}  # FTE session properties injected into every the engine query
@@ -645,6 +648,9 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # visible_columns and all_columns; without this assignment the list is always empty and
     # column visibility + masking are silently skipped on every raw-SQL transport.
     state.tables = tables
+    # REQ-1132: publish the resolved relationship registry alongside tables so the raw-SQL
+    # governance path can compute 1-hop meta row scoping.
+    state.relationships = relationships
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {

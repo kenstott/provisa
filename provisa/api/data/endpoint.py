@@ -417,7 +417,13 @@ async def _prepare_compiled(
 
     # Governance: compile → semantic SQL → apply RLS/masking/visibility
     gov_ctx = build_governance_context(
-        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", []), role=role
+        role_id,
+        rls,
+        state.masking_rules,
+        ctx,
+        getattr(state, "tables", []),
+        role=role,
+        relationships=getattr(state, "relationships", None),
     )
 
     # Validate semantic SQL — V002 (join relationship check) is always skipped for
