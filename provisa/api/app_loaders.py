@@ -374,6 +374,7 @@ def _load_mv_and_views_config(
             sql=mvc.get("sql"),
             expose_in_sdl=mvc.get("expose_in_sdl", False),
             sdl_config=sdl_cfg,
+            preprocess=mvc.get("preprocess"),  # REQ-957 (purity-checked at boot compile)
         )
         state.mv_registry.register(mv)
 
@@ -436,6 +437,7 @@ def _load_mv_and_views_config(
                     enabled=True,
                     sql=view_sql,
                     expose_in_sdl=False,
+                    preprocess=view_cfg.get("preprocess"),  # REQ-957 (purity-checked at boot compile)
                 )
                 state.mv_registry.register(mv)
                 _view_log.info("Registered materialized view: %s", view_id)

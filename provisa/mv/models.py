@@ -117,6 +117,11 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # recompute). Default False = recompute-to-current (the REQ-966 NRT baseline).
     incremental: bool = False
 
+    # REQ-957: the optional user preprocess hook, as inline Python source defining
+    # preprocess(rows, ctx) -> rows. Run after the MV SQL and before land. None = identity.
+    # Purity-checked at registration and compiled to a callable at boot (provisa.mv.preprocess).
+    preprocess: str | None = None
+
     # REQ-877 (MAY): opt-in per-MV ROW-LEVEL delta capture. Off by default (the hash/diff path is the
     # expensive case). When on, each refresh that changed rows appends insert/update/delete events to
     # the store's mv_delta_ledger (store-independent, never stamped on the target). delta_key is the

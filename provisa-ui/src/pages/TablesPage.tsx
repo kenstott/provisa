@@ -302,6 +302,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         mvDebounceQuiet: editingTable.mvDebounceQuiet,
         mvDebounceMaxDelay: editingTable.mvDebounceMaxDelay,
         mvConsistency: editingTable.mvConsistency,
+        mvPreprocess: editingTable.mvPreprocess || null, // REQ-957
         dataProduct: editingTable.dataProduct,
         enableAggregates: editingTable.enableAggregates,
         enableGroupBy: editingTable.enableGroupBy,

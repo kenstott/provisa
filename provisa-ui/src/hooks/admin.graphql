@@ -101,6 +101,7 @@ query TablesQuery {
     mvDebounceQuiet
     mvDebounceMaxDelay
     mvConsistency
+    mvPreprocess
     dataProduct
     enableAggregates
     enableGroupBy

@@ -45,6 +45,7 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         mv_debounce_quiet=inp.mv_debounce_quiet,  # REQ-963
         mv_debounce_max_delay=inp.mv_debounce_max_delay,  # REQ-963
         mv_consistency=inp.mv_consistency,  # REQ-879
+        mv_preprocess=inp.mv_preprocess,  # REQ-957
         data_product=inp.data_product,
         enable_aggregates=inp.enable_aggregates,
         enable_group_by=inp.enable_group_by,

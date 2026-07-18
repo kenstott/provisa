@@ -502,6 +502,11 @@ class Table(
     # the shared materialized_views catalog; one instance refreshes at a time). "distributed" =
     # per-instance materialization, the distributed tier (eventually consistent).
     mv_consistency: str = "shared"
+    # REQ-957: the one optional user preprocess hook, as inline Python source defining
+    # preprocess(rows, ctx) -> rows. Run after produce (source fetch or MV SQL) and before
+    # land. None = identity. MUST be deterministic (REQ-964): purity-checked at registration
+    # (provisa.mv.preprocess) and executed in a restricted namespace with no dangerous builtins.
+    mv_preprocess: str | None = None
     data_product: bool = False  # publish as a Data Product (catalog export)
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field

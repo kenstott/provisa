@@ -62,6 +62,8 @@ class NodeSpec:
     # demand-driven per-shape router (dependents that subscribe to each shape).
     emit_outcomes: frozenset[str] | None = None
     subscribers_of: Callable[[str, str], list[str]] | None = None
+    # REQ-957: compiled preprocess(rows, ctx) hook, run after produce and before land. None = identity.
+    preprocess: Callable[..., Any] | None = None
 
 
 def _probe_factory(
@@ -275,6 +277,11 @@ def specs_from_config(
         deadline_source, expected, fresh_reader, quiet, max_delay = _resolve_mv_deadline(
             mv, calendar_registry, freshness_of, engine.dialect
         )
+        # REQ-957/964: compile the MV's preprocess hook (purity-checked) to a callable. A bad hook
+        # raises here — boot fails loud rather than wiring a node that would ripple non-determinism.
+        from provisa.mv.preprocess import compile_preprocess
+
+        preprocess = compile_preprocess(getattr(mv, "preprocess", None))
         specs.append(
             NodeSpec(
                 node=node,
@@ -292,6 +299,7 @@ def specs_from_config(
                 freshness_of=fresh_reader,
                 emit_outcomes=emit_set,  # REQ-965 (None → default single-shape fan-out)
                 subscribers_of=subscribers_of if emit_set is not None else None,
+                preprocess=preprocess,  # REQ-957
             )
         )
 
@@ -317,6 +325,7 @@ def build_processors(
             "deadline_source": spec.deadline_source,  # REQ-961/962 periodic
             "expected_events": spec.expected_events,  # REQ-961 freshness contract
             "freshness_of": spec.freshness_of,  # REQ-961 per-input freshness reader
+            "preprocess": spec.preprocess,  # REQ-957 preprocess(rows, ctx) hook
         }
         if spec.kind == "source":
             processors.append(SourceTableProcessor(spec.node, land=spec.handle, **common))

@@ -119,6 +119,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.materialize,
                         _registered_tables_t.c.mv_refresh_interval,
                         _registered_tables_t.c.change_signal,
+                        _registered_tables_t.c.mv_preprocess,  # REQ-957
                     ).where(
                         _registered_tables_t.c.source_id == "__provisa__",
                         _registered_tables_t.c.view_sql.is_not(None),
@@ -170,10 +171,12 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
                             freshness_mode=_fresh,
+                            preprocess=_vr.get("mv_preprocess"),  # REQ-957
                         )
                     )
                 else:
                     _existing.sql = _semantic_sql
+                    _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
 
 
 async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:

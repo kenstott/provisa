@@ -125,6 +125,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_consistency: str = (
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
+    mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False
@@ -337,6 +338,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_consistency: str = (
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
+    mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False

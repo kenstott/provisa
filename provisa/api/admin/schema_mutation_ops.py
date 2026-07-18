@@ -98,6 +98,13 @@ async def register_table(
         )
         for cp in input.column_presets
     ]
+    # REQ-957/964: reject a non-deterministic / unsafe preprocess hook at registration.
+    from provisa.mv.preprocess import validate_preprocess
+
+    try:
+        validate_preprocess(input.mv_preprocess)
+    except ValueError as _pp_err:
+        return MutationResult(success=False, message=str(_pp_err))
     model = _table_model_from_input(input, columns, presets, alias)
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
@@ -185,6 +192,7 @@ async def register_table(
             input.mv_refresh_interval,
             input.change_signal,
             consistency=input.mv_consistency,  # REQ-879
+            preprocess=input.mv_preprocess,  # REQ-957
         )
 
     await _rebuild_schemas()

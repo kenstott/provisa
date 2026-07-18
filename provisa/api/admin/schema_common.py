@@ -299,6 +299,7 @@ def _sync_view_mv(
     debounce_quiet: float = 0.0,
     debounce_max_delay: float | None = None,
     consistency: str = "shared",  # REQ-879
+    preprocess: str | None = None,  # REQ-957
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view."""
     # REQ-879: consistency tier is a closed set — reject anything else loudly (no silent default).
@@ -310,6 +311,11 @@ def _sync_view_mv(
     from provisa.mv.models import MVDefinition, MVStatus
     from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
     from provisa.mv.determinism import check_view_determinism  # REQ-964
+    from provisa.mv.preprocess import validate_preprocess  # REQ-957/964
+
+    # REQ-957/964: a preprocess hook must be deterministic + safe — purity-checked here so a bad hook
+    # is rejected at registration, never wired into the loop where it would ripple non-determinism.
+    validate_preprocess(preprocess)
 
     # REQ-964 (proof obligation 1): an MV's SQL must be deterministic — recompute-to-current
     # and replay demand it. Reject volatile SQL (now()/random/…) at registration; the engine's
@@ -343,6 +349,7 @@ def _sync_view_mv(
         debounce_quiet=debounce_quiet,  # REQ-963
         debounce_max_delay=debounce_max_delay,  # REQ-963
         consistency=consistency,  # REQ-879
+        preprocess=preprocess,  # REQ-957
     )
     state.mv_registry.register(mv)
 

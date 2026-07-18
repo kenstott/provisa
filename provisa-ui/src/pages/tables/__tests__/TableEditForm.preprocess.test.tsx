@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 9e99076c-e8fb-4e48-baae-f67da7a4c7d0
+// Canary: 6d2a8f14-90c7-4e35-b1a8-3f5c7e9d0a42
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -8,11 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-879: the MV consistency selector renders for a materialized view and
-// stages the chosen tier through the shared setEditingTable save path.
+// REQ-957: the preprocess-hook editor renders for a materialized view and stages
+// its Python source through the shared setEditingTable save path.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "../../../test-utils/render";
+import { render, screen, fireEvent } from "../../../test-utils/render";
 import { TableEditForm } from "../TableEditForm";
 import type { RegisteredTable } from "../../../types/admin";
 import i18n from "../../../i18n";
@@ -81,34 +81,49 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
   return setEditingTable;
 }
 
-describe("TableEditForm — MV consistency (REQ-879)", () => {
-  it("renders the selector with the current tier for a materialized view", () => {
-    renderForm(makeTable({ mvConsistency: "distributed" }));
-    const sel = screen.getByRole("textbox", {
-      name: t("tableEditForm.mvConsistencyAria"),
-    }) as HTMLInputElement;
-    expect(sel).toBeTruthy();
-    expect(sel.value).toBe(t("tableEditForm.consistencyDistributed"));
+describe("TableEditForm — MV preprocess hook (REQ-957)", () => {
+  it("renders the editor with the current hook source for a materialized view", () => {
+    const src = "def preprocess(rows, ctx):\n    return rows";
+    renderForm(makeTable({ mvPreprocess: src }));
+    const box = screen.getByRole("textbox", {
+      name: t("tableEditForm.preprocessAria"),
+    }) as HTMLTextAreaElement;
+    expect(box).toBeTruthy();
+    expect(box.value).toBe(src);
   });
 
-  it("stages the chosen tier through setEditingTable", async () => {
+  it("stages the edited hook source through setEditingTable", () => {
     const setEditingTable = renderForm(makeTable());
-    fireEvent.click(
-      screen.getByRole("textbox", { name: t("tableEditForm.mvConsistencyAria") }),
-    );
-    const listbox = await screen.findByRole("listbox");
-    fireEvent.click(
-      within(listbox).getByText(t("tableEditForm.consistencyDistributed")),
-    );
+    const box = screen.getByRole("textbox", {
+      name: t("tableEditForm.preprocessAria"),
+    });
+    fireEvent.change(box, {
+      target: { value: "def preprocess(rows, ctx):\n    return []" },
+    });
     expect(setEditingTable).toHaveBeenCalledWith(
-      expect.objectContaining({ mvConsistency: "distributed" }),
+      expect.objectContaining({
+        mvPreprocess: "def preprocess(rows, ctx):\n    return []",
+      }),
     );
   });
 
-  it("hides the selector when the table is not materialized", () => {
+  it("clears the hook to null when emptied", () => {
+    const setEditingTable = renderForm(
+      makeTable({ mvPreprocess: "def preprocess(rows, ctx):\n    return rows" }),
+    );
+    const box = screen.getByRole("textbox", {
+      name: t("tableEditForm.preprocessAria"),
+    });
+    fireEvent.change(box, { target: { value: "" } });
+    expect(setEditingTable).toHaveBeenCalledWith(
+      expect.objectContaining({ mvPreprocess: null }),
+    );
+  });
+
+  it("hides the editor when the table is not materialized", () => {
     renderForm(makeTable({ materialize: false }));
     expect(
-      screen.queryByRole("textbox", { name: t("tableEditForm.mvConsistencyAria") }),
+      screen.queryByRole("textbox", { name: t("tableEditForm.preprocessAria") }),
     ).toBeNull();
   });
 });
