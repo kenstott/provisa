@@ -25158,15 +25158,15 @@
   type: behavioral
   description: 'Generalize tracked functions (REQ-205–208: source-resident stored procedures exposed as
     GraphQL mutations) to support multiple implementation kinds: source procedure (existing), script (local
-    subprocess), http, grpc, and optionally python (in-process). The grpc transport is not yet functional
-    — _grpc_call raises HTTP 501 ("requires a host-configured channel"); the generic JSON unary bridge
-    is not wired. Implementation kind becomes a selectable dimension at registration; addressing (catalog
-    name) is decoupled from binding (transport+location, swappable). Provisa-hosted functions take relation
-    arguments (kinds: table_ref=lazy, result_set=eager materialized Arrow, column_value=scalar row-wise)
-    and return Arrow buffers materialized as relations, governed at the read-time boundary. Identity model
-    (DEFINER/admin vs INVOKER/user) selected by materialize flag: true ⇒ admin/output-governed; false
-    ⇒ user/input-governed. Composition via view_sql + materialize; no new MV subsystem—reuse MV refresh
-    (REQ-879), CTAS sink, governance, lineage primitives.'
+    subprocess), http, grpc, and optionally python (in-process). All transports now functional: gRPC uses
+    proto-less generic JSON unary bridge (_grpc_call in function_dispatch.py) via grpc.aio insecure/secure
+    channels, with method path normalization and tls/timeout_s binding keys honored. Implementation kind
+    becomes a selectable dimension at registration; addressing (catalog name) is decoupled from binding
+    (transport+location, swappable). Provisa-hosted functions take relation arguments (kinds: table_ref=lazy,
+    result_set=eager materialized Arrow, column_value=scalar row-wise) and return Arrow buffers materialized
+    as relations, governed at the read-time boundary. Identity model (DEFINER/admin vs INVOKER/user) selected
+    by materialize flag: true ⇒ admin/output-governed; false ⇒ user/input-governed. Composition via view_sql
+    + materialize; no new MV subsystem—reuse MV refresh (REQ-879), CTAS sink, governance, lineage primitives.'
   use_case: Enables diverse computation platforms (hosted scripts, external services, Python libraries)
     to act as governed data transformations, returning relations (not just scalar functions). Maintains
     config-as-truthful-model property with URI addressing and spec-driven discovery (OpenAPI/proto/ script-manifest).
@@ -25175,9 +25175,15 @@
   code:
   - provisa/executor/function_dispatch.py
   - provisa/api/data/action_exec.py
+  - provisa/api/app.py
   - provisa/core/models.py
   - provisa/core/repositories/function.py
   - provisa/core/schema_org.py
+  - provisa/api/admin/actions_router.py
+  - provisa-ui/src/pages/commands/CommandFormFields.tsx
+  - provisa-ui/src/pages/commands/CommandsPage.tsx
+  - provisa-ui/src/pages/commands/types.ts
+  - provisa-ui/src/pages/commands/api/actions.ts
   tests:
   - tests/unit/test_extensible_functions.py
   scenario: 'Given a user registers a function with implementation kind=http and argument kinds=[table_ref,
@@ -25203,16 +25209,20 @@
   security_constraints: 'Registration requires admin privilege for system-processed (materialize=true)
     functions; users may register only invoker-context (materialize=false) functions bounded by their
     own rights. Hosted functions receive minted, scoped, single-use, short-TTL credentials (no ambient
-    passwords in env/ config). Egress deny-by-default with allow-list (Provisa pgwire + declared http/grpc
-    endpoints). Process isolation + resource limits close DoS. Row-wise calls to external services are
-    refused/ hard-warned; set-wise/batched required for expensive or external work. Honest staging: ship-now
-    requires trusted-author-only trust model (same as stored procedures/dbt); opening to less-trusted
-    authors requires confinement (egress control + process isolation).'
-  performance_constraint: Row-wise (column_value kind) permitted only for cheap pure local scalars; expensive
+    passwords in env/ config). Egress deny-by-default allow-list enforced: _check_egress refuses http/grpc
+    calls whose host is not in state.udf_egress_allowlist (host or host:port entries); loopback (Provisa
+    pgwire) always allowed. Config sourced from server.udf_egress_allowlist in provisa.yaml and PROVISA_UDF_EGRESS_ALLOWLIST
+    env (comma-separated), loaded in provisa/api/app.py. Process isolation + resource limits close DoS.
+    Row-wise calls to external services are refused/ hard-warned; set-wise/batched required for expensive
+    or external work. Honest staging: ship-now requires trusted-author-only trust model (same as stored
+    procedures/dbt); opening to less-trusted authors requires confinement (egress control + process isolation).'
+  performance_constraint: 'Row-wise (column_value kind) permitted only for cheap pure local scalars; expensive
     or external work must be set-wise and batched (function receives relation, makes batched outbound
-    calls). Row-wise kills pushdown (opaque projection) and prevents engine optimization. Detection via
-    ops-domain audit (REQ-884) duration_ms; prevention via refusal for external row-wise and cardinality
-    warning for row-wise applied past N estimated rows.
+    calls). External row-wise refusal enforced: _reject_rowwise_external refuses an http/grpc function whose
+    declared arguments are all column_value scalars (no table_ref/result_set relation argument). Row-wise
+    kills pushdown (opaque projection) and prevents engine optimization. Detection via ops-domain audit
+    (REQ-884) duration_ms; prevention via refusal for external row-wise and cardinality warning for row-wise
+    applied past N estimated rows.'
   observability: Engine-emitted I/O-boundary trace (REQ-886) is the non-bypassable floor; function-emitted
     OTel tracing via W3C traceparent propagation is encouraged ceiling. Correlation ID stamped into minted
     pgwire session joins invocation to governed reads for precise lineage.

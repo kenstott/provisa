@@ -37,7 +37,26 @@ export interface FormState {
   returnSchemaMode: "table" | "custom";
   sampleJson: string;
   returnSchemaStr: string;
+  // REQ-885: implementation kind + swappable binding (JSON keys per kind) + identity model.
+  implKind: string;
+  binding: Record<string, unknown>;
+  materialize: boolean;
 }
+
+// REQ-885: selectable implementation kinds for the function/command editor.
+export const IMPL_KINDS = [
+  { value: "source_procedure", label: "Source procedure" },
+  { value: "script", label: "Script (local subprocess)" },
+  { value: "http", label: "HTTP endpoint" },
+  { value: "grpc", label: "gRPC service" },
+  { value: "python", label: "Python (in-process)" },
+];
+
+export const ARG_KINDS = [
+  { value: "column_value", label: "column_value (scalar)" },
+  { value: "table_ref", label: "table_ref (lazy)" },
+  { value: "result_set", label: "result_set (materialized)" },
+];
 
 export const EMPTY_FORM: FormState = {
   actionType: "function",
@@ -59,6 +78,9 @@ export const EMPTY_FORM: FormState = {
   returnSchemaMode: "table",
   sampleJson: "",
   returnSchemaStr: "",
+  implKind: "source_procedure",
+  binding: {},
+  materialize: false,
 };
 
 export function inferJsonSchema(jsonStr: string): string {

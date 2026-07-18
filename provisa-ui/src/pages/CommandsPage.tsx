@@ -143,6 +143,9 @@ export function CommandsPage() {
         returnSchemaMode: hasCustomSchema ? "custom" : "table",
         sampleJson: "",
         returnSchemaStr: hasCustomSchema ? JSON.stringify(fn.returnSchema, null, 2) : "",
+        implKind: fn.implKind ?? "source_procedure",
+        binding: fn.binding ?? {},
+        materialize: fn.materialize ?? false,
       });
       setExpandedFn(name);
     } else {
@@ -168,6 +171,9 @@ export function CommandsPage() {
         returnSchemaMode: "table",
         sampleJson: "",
         returnSchemaStr: "",
+        implKind: "source_procedure",
+        binding: {},
+        materialize: false,
       });
       setExpandedWh(name);
     }
@@ -211,6 +217,9 @@ export function CommandsPage() {
           description: form.description || undefined,
           kind: form.kind,
           returnSchema,
+          implKind: form.implKind,
+          binding: form.binding,
+          materialize: form.materialize,
         });
       } else {
         await saveWebhook({

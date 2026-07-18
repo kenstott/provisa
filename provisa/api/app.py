@@ -200,6 +200,9 @@ class AppState:
     )
     tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
     tracked_webhooks: dict[str, dict] = {}  # gql field name → wh dict
+    # REQ-885: deny-by-default egress allow-list for hosted http/grpc UDFs. host or host:port
+    # entries; empty ⇒ all external egress denied (loopback/Provisa pgwire is always allowed).
+    udf_egress_allowlist: list[str] = []
     pg_enum_types: dict = {}  # pg_name → GraphQLEnumType (REQ-221)
     org_id: str = "default"  # REQ-697: org schema scope (ORG_ID env var)
     graphql_remote_sources: dict[str, dict] = {}  # source_id → GraphQL remote registration
@@ -362,6 +365,13 @@ async def _load_and_build(
         or os.environ.get("PROVISA_LIVE_CONFIG_EXPORT", "").lower() in ("1", "true", "yes")
         or _is_demo()
     )
+
+    # REQ-885: hosted-UDF egress allow-list (deny-by-default). Source: server.udf_egress_allowlist
+    # in provisa.yaml, augmented by PROVISA_UDF_EGRESS_ALLOWLIST (comma-separated host[:port]).
+    _egress = list(raw_config.get("server", {}).get("udf_egress_allowlist", []) or [])
+    _egress_env = os.environ.get("PROVISA_UDF_EGRESS_ALLOWLIST", "")
+    _egress += [h.strip() for h in _egress_env.split(",") if h.strip()]
+    state.udf_egress_allowlist = _egress
 
     cache_config = raw_config.get("cache", {})
     # Resolve Redis URL regardless of response-cache enablement so rate limiting

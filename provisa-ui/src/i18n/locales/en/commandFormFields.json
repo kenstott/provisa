@@ -40,6 +40,16 @@
     "arguments": "Arguments",
     "argNamePlaceholder": "Arg name",
     "removeArgument": "Remove argument {{name}}",
-    "addArgument": "+ Add Argument"
+    "addArgument": "+ Add Argument",
+    "implementation": "Implementation",
+    "bindingArgv": "Command (argv)",
+    "bindingUrl": "Endpoint URL",
+    "bindingTarget": "gRPC target (host:port)",
+    "bindingGrpcMethod": "gRPC method",
+    "bindingTls": "Use TLS",
+    "bindingCallable": "Python callable (module:attr)",
+    "materialize": "Materialize (admin/definer identity)",
+    "materializeHint": "On: run as admin, govern the output. Off: run as the caller, govern the inputs.",
+    "argKind": "Argument kind"
   }
 }

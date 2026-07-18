@@ -16,6 +16,7 @@ import {
   Group,
   NumberInput,
   Select,
+  Switch,
   Textarea,
   TextInput,
   Title,
@@ -26,6 +27,8 @@ import type { TableMetadata } from "../../api/admin";
 import type { ActionArg, InlineField } from "../../api/actions";
 import {
   GRAPHQL_TYPES,
+  IMPL_KINDS,
+  ARG_KINDS,
   EMPTY_ARG,
   EMPTY_INLINE,
   inferJsonSchema,
@@ -75,6 +78,14 @@ export function CommandFormFields({
     args[idx] = { ...args[idx], [field]: value };
     setForm({ ...form, arguments: args });
   };
+  const bindingStr = (key: string): string => {
+    const v = form.binding[key];
+    if (v == null) return "";
+    return Array.isArray(v) ? v.join(" ") : String(v);
+  };
+  const setBinding = (key: string, value: unknown) =>
+    setForm({ ...form, binding: { ...form.binding, [key]: value } });
+
   const handleAddInlineField = () =>
     setForm({ ...form, inlineReturnType: [...form.inlineReturnType, { ...EMPTY_INLINE }] });
   const handleRemoveInlineField = (idx: number) =>
@@ -93,55 +104,140 @@ export function CommandFormFields({
       {form.actionType === "function" && (
         <>
           <Select
-            label={t("commandFormFields.source")}
-            placeholder={t("commandFormFields.selectSource")}
-            required
-            data={sources.map((s) => ({ value: s.id, label: `${s.id} (${s.type})` }))}
-            value={form.sourceId || null}
-            onChange={(val) => {
-              const selectedSrc = sources.find((s) => s.id === val);
-              setForm({
-                ...form,
-                sourceId: val ?? "",
-                schemaName: selectedSrc?.type === "openapi" ? "openapi" : form.schemaName,
-                functionName: "",
-              });
-            }}
-            data-testid="command-source-select"
+            label={t("commandFormFields.implementation")}
+            data={IMPL_KINDS}
+            value={form.implKind}
+            onChange={(val) => setForm({ ...form, implKind: val ?? "source_procedure" })}
+            allowDeselect={false}
+            data-testid="command-impl-kind-select"
           />
-          <TextInput
-            label={t("commandFormFields.schema")}
-            value={form.schemaName}
-            onChange={(e) => setForm({ ...form, schemaName: e.currentTarget.value })}
-            readOnly={isOpenApiSource}
-            data-testid="command-schema-input"
-          />
-          {isOpenApiSource ? (
-            <Select
-              label={t("commandFormFields.functionName")}
-              required
-              data={availableFunctions.map((f) => ({
-                value: f.name,
-                label: f.comment ? `${f.name} — ${f.comment}` : f.name,
-              }))}
-              value={form.functionName || null}
-              onChange={(val) => setForm({ ...form, functionName: val ?? "" })}
-              disabled={loadingFunctions}
-              placeholder={
-                loadingFunctions
-                  ? t("commandFormFields.loading")
-                  : t("commandFormFields.selectOperation")
-              }
-              data-testid="command-function-select"
-            />
-          ) : (
+          {form.implKind === "source_procedure" && (
+            <>
+              <Select
+                label={t("commandFormFields.source")}
+                placeholder={t("commandFormFields.selectSource")}
+                required
+                data={sources.map((s) => ({ value: s.id, label: `${s.id} (${s.type})` }))}
+                value={form.sourceId || null}
+                onChange={(val) => {
+                  const selectedSrc = sources.find((s) => s.id === val);
+                  setForm({
+                    ...form,
+                    sourceId: val ?? "",
+                    schemaName: selectedSrc?.type === "openapi" ? "openapi" : form.schemaName,
+                    functionName: "",
+                  });
+                }}
+                data-testid="command-source-select"
+              />
+              <TextInput
+                label={t("commandFormFields.schema")}
+                value={form.schemaName}
+                onChange={(e) => setForm({ ...form, schemaName: e.currentTarget.value })}
+                readOnly={isOpenApiSource}
+                data-testid="command-schema-input"
+              />
+              {isOpenApiSource ? (
+                <Select
+                  label={t("commandFormFields.functionName")}
+                  required
+                  data={availableFunctions.map((f) => ({
+                    value: f.name,
+                    label: f.comment ? `${f.name} — ${f.comment}` : f.name,
+                  }))}
+                  value={form.functionName || null}
+                  onChange={(val) => setForm({ ...form, functionName: val ?? "" })}
+                  disabled={loadingFunctions}
+                  placeholder={
+                    loadingFunctions
+                      ? t("commandFormFields.loading")
+                      : t("commandFormFields.selectOperation")
+                  }
+                  data-testid="command-function-select"
+                />
+              ) : (
+                <TextInput
+                  label={t("commandFormFields.functionName")}
+                  required
+                  value={form.functionName}
+                  onChange={(e) => setForm({ ...form, functionName: e.currentTarget.value })}
+                  placeholder={t("commandFormFields.dbFunctionNamePlaceholder")}
+                  data-testid="command-function-input"
+                />
+              )}
+            </>
+          )}
+          {form.implKind === "script" && (
             <TextInput
-              label={t("commandFormFields.functionName")}
+              label={t("commandFormFields.bindingArgv")}
               required
-              value={form.functionName}
-              onChange={(e) => setForm({ ...form, functionName: e.currentTarget.value })}
-              placeholder={t("commandFormFields.dbFunctionNamePlaceholder")}
-              data-testid="command-function-input"
+              value={bindingStr("argv")}
+              onChange={(e) => setBinding("argv", e.currentTarget.value.split(/\s+/).filter(Boolean))}
+              placeholder="/usr/local/bin/transform --json"
+              data-testid="command-binding-argv"
+            />
+          )}
+          {form.implKind === "http" && (
+            <>
+              <TextInput
+                label={t("commandFormFields.bindingUrl")}
+                required
+                value={bindingStr("url")}
+                onChange={(e) => setBinding("url", e.currentTarget.value)}
+                placeholder="https://svc.internal/fn"
+                data-testid="command-binding-url"
+              />
+              <Select
+                label={t("commandFormFields.method")}
+                data={["POST", "GET", "PUT", "PATCH"]}
+                value={bindingStr("method") || "POST"}
+                onChange={(val) => setBinding("method", val ?? "POST")}
+                allowDeselect={false}
+              />
+            </>
+          )}
+          {form.implKind === "grpc" && (
+            <>
+              <TextInput
+                label={t("commandFormFields.bindingTarget")}
+                required
+                value={bindingStr("target")}
+                onChange={(e) => setBinding("target", e.currentTarget.value)}
+                placeholder="svc.internal:50051"
+                data-testid="command-binding-target"
+              />
+              <TextInput
+                label={t("commandFormFields.bindingGrpcMethod")}
+                required
+                value={bindingStr("method")}
+                onChange={(e) => setBinding("method", e.currentTarget.value)}
+                placeholder="pkg.Service.Method"
+                data-testid="command-binding-grpc-method"
+              />
+              <Switch
+                label={t("commandFormFields.bindingTls")}
+                checked={!!form.binding.tls}
+                onChange={(e) => setBinding("tls", e.currentTarget.checked)}
+              />
+            </>
+          )}
+          {form.implKind === "python" && (
+            <TextInput
+              label={t("commandFormFields.bindingCallable")}
+              required
+              value={bindingStr("callable")}
+              onChange={(e) => setBinding("callable", e.currentTarget.value)}
+              placeholder="my_pkg.udfs:transform"
+              data-testid="command-binding-callable"
+            />
+          )}
+          {form.implKind !== "source_procedure" && (
+            <Switch
+              label={t("commandFormFields.materialize")}
+              description={t("commandFormFields.materializeHint")}
+              checked={form.materialize}
+              onChange={(e) => setForm({ ...form, materialize: e.currentTarget.checked })}
+              data-testid="command-materialize-switch"
             />
           )}
           <Select
@@ -329,6 +425,17 @@ export function CommandFormFields({
               allowDeselect={false}
               w={120}
             />
+            {form.actionType === "function" && form.implKind !== "source_procedure" && (
+              <Select
+                aria-label={t("commandFormFields.argKind")}
+                value={arg.argKind ?? "column_value"}
+                onChange={(val) => handleArgChange(i, "argKind", val ?? "column_value")}
+                data={ARG_KINDS}
+                allowDeselect={false}
+                w={200}
+                data-testid={`command-arg-kind-${i}`}
+              />
+            )}
             <ActionIcon
               variant="subtle"
               color="red"
