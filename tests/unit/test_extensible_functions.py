@@ -45,12 +45,17 @@ class _FakePools:
         return self._result
 
 
-def _state(connected=True, pools=None):
+def _state(connected=True, pools=None, egress=None):
     return SimpleNamespace(
         roles={"ops": {"id": "ops", "capabilities": []}},
         source_pools=pools or _FakePools(connected=connected),
         udf_trace_sink=MemoryUdfTraceSink(),
         minted_sessions=[],
+        # REQ-885: deny-by-default egress allow-list. Tests that reach external endpoints must
+        # allow-list them explicitly; the loopback host is always permitted.
+        udf_egress_allowlist=(
+            ["a.example", "b.example", "svc", "svc:50051"] if egress is None else egress
+        ),
     )
 
 
@@ -157,18 +162,133 @@ async def test_http_missing_url_fails_loud():
 async def test_grpc_kind(monkeypatch):
     seen = {}
 
-    async def fake_grpc(target, method, payload):
+    async def fake_grpc(target, method, payload, **kw):
         seen["target"] = target
         seen["method"] = method
         seen["payload"] = payload
+        seen["kw"] = kw
         return {"g": 1}
 
     monkeypatch.setattr(fd, "_grpc_call", fake_grpc)
-    fn = _fn(impl_kind="grpc", binding={"target": "svc:50051", "method": "Pkg.Fn"})
+    fn = _fn(
+        impl_kind="grpc",
+        binding={"target": "svc:50051", "method": "Pkg.Fn", "timeout_s": 12, "tls": True},
+    )
     rows = await dispatch_function(fn, {"n": 1}, _state(), "ops")
     assert rows == [{"g": 1}]
     assert seen["target"] == "svc:50051"
     assert seen["method"] == "Pkg.Fn"
+    assert seen["kw"] == {"timeout": 12.0, "tls": True}
+
+
+# ---- grpc method-path normalization + JSON unary bridge --------------------
+
+
+def test_grpc_method_path_forms():
+    assert fd._grpc_method_path("/Pkg.Svc/Fn") == "/Pkg.Svc/Fn"
+    assert fd._grpc_method_path("Pkg.Svc/Fn") == "/Pkg.Svc/Fn"
+    assert fd._grpc_method_path("pkg.Svc.Fn") == "/pkg.Svc/Fn"
+    with pytest.raises(HTTPException) as ei:
+        fd._grpc_method_path("nodots")
+    assert ei.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_grpc_bridge_serializes_json_and_decodes_response(monkeypatch):
+    captured = {}
+
+    class _FakeUnaryUnary:
+        async def __call__(self, request, timeout=None):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return b'[{"g": 7}]'
+
+    class _FakeChannel:
+        def unary_unary(self, path, request_serializer, response_deserializer):
+            captured["path"] = path
+            # proto-less bridge: serializers must be byte-identity
+            assert request_serializer(b"x") == b"x"
+            assert response_deserializer(b"y") == b"y"
+            return _FakeUnaryUnary()
+
+        async def close(self):
+            captured["closed"] = True
+
+    fake_grpc_mod = types.SimpleNamespace(
+        aio=types.SimpleNamespace(insecure_channel=lambda t: _FakeChannel()),
+    )
+    monkeypatch.setitem(sys.modules, "grpc", fake_grpc_mod)
+    out = await fd._grpc_call("svc:50051", "Pkg.Svc.Fn", {"args": {"n": 3}}, timeout=5.0)
+    assert out == [{"g": 7}]
+    assert captured["path"] == "/Pkg.Svc/Fn"
+    assert captured["request"] == b'{"args": {"n": 3}}'
+    assert captured["timeout"] == 5.0
+    assert captured["closed"] is True
+
+
+# ---- egress deny-by-default (REQ-885 security_constraint) -------------------
+
+
+@pytest.mark.asyncio
+async def test_http_egress_denied_when_host_not_allowlisted():
+    fn = _fn(impl_kind="http", binding={"url": "https://evil.example/fn"})
+    with pytest.raises(HTTPException) as ei:
+        await dispatch_function(fn, {}, _state(), "ops")
+    assert ei.value.status_code == 403
+    assert "egress" in ei.value.detail
+
+
+@pytest.mark.asyncio
+async def test_grpc_egress_denied_when_target_not_allowlisted():
+    fn = _fn(impl_kind="grpc", binding={"target": "evil:50051", "method": "Pkg.Fn"})
+    with pytest.raises(HTTPException) as ei:
+        await dispatch_function(fn, {}, _state(egress=[]), "ops")
+    assert ei.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_loopback_egress_always_allowed(monkeypatch):
+    async def fake_http(method, url, payload, timeout):
+        return [{"ok": 1}]
+
+    monkeypatch.setattr(fd, "_http_call", fake_http)
+    fn = _fn(impl_kind="http", binding={"url": "http://localhost:8080/fn"})
+    rows = await dispatch_function(fn, {}, _state(egress=[]), "ops")
+    assert rows == [{"ok": 1}]
+
+
+# ---- row-wise-external refusal (REQ-885 performance_constraint) -------------
+
+
+@pytest.mark.asyncio
+async def test_rowwise_external_refused_when_all_args_scalar():
+    fn = _fn(
+        impl_kind="http",
+        binding={"url": "https://a.example/fn"},
+        arguments=[{"name": "n", "type": "Int", "arg_kind": "column_value"}],
+    )
+    with pytest.raises(HTTPException) as ei:
+        await dispatch_function(fn, {"n": 1}, _state(), "ops")
+    assert ei.value.status_code == 400
+    assert "row-wise" in ei.value.detail
+
+
+@pytest.mark.asyncio
+async def test_setwise_external_allowed_with_relation_arg(monkeypatch):
+    async def fake_http(method, url, payload, timeout):
+        return [{"ok": 1}]
+
+    monkeypatch.setattr(fd, "_http_call", fake_http)
+    fn = _fn(
+        impl_kind="http",
+        binding={"url": "https://a.example/fn"},
+        arguments=[
+            {"name": "rs", "type": "String", "arg_kind": "result_set"},
+            {"name": "n", "type": "Int", "arg_kind": "column_value"},
+        ],
+    )
+    rows = await dispatch_function(fn, {"rs": "s3.public.items", "n": 1}, _state(), "ops")
+    assert rows == [{"ok": 1}]
 
 
 @pytest.mark.asyncio

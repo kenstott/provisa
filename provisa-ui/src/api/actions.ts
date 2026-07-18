@@ -15,6 +15,9 @@ const API_BASE = import.meta.env.VITE_API_BASE || '';
 export interface ActionArg {
   name: string;
   type: string;
+  // REQ-885: relation-argument kind for Provisa-hosted functions.
+  //   column_value (default) | table_ref (lazy) | result_set (eager, materialized).
+  argKind?: string;
 }
 
 export interface InlineField {
@@ -35,6 +38,10 @@ export interface TrackedFunction {
   description: string | null;
   kind: string;
   returnSchema?: Record<string, unknown> | null;
+  // REQ-885: implementation kind + swappable binding + identity model.
+  implKind?: string;
+  binding?: Record<string, unknown>;
+  materialize?: boolean;
 }
 
 export interface TrackedWebhook {
@@ -73,6 +80,9 @@ export async function saveFunction(input: {
   description?: string;
   kind?: string;
   returnSchema?: Record<string, unknown> | null;
+  implKind?: string;
+  binding?: Record<string, unknown>;
+  materialize?: boolean;
 }): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/functions`, {
     method: 'POST',

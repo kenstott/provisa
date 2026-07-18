@@ -42,6 +42,26 @@ async def _ensure_tables(pool: "Database") -> None:
         )
 
 
+def _args_to_ui(raw: list[dict] | None) -> list[dict]:
+    """Project stored function arguments to the UI shape (REQ-885: expose argKind)."""
+    return [
+        {"name": a["name"], "type": a["type"], "argKind": a.get("arg_kind", "column_value")}
+        for a in (raw or [])
+    ]
+
+
+def _args_from_ui(raw: list[dict]) -> list[dict]:
+    """Normalize UI arguments to the model shape (argKind → arg_kind), for persistence."""
+    return [
+        {
+            "name": a["name"],
+            "type": a["type"],
+            "arg_kind": a.get("argKind") or a.get("arg_kind") or "column_value",
+        }
+        for a in raw
+    ]
+
+
 def _row_to_function(row: dict) -> dict:
     return {
         "name": row["name"],
@@ -49,13 +69,17 @@ def _row_to_function(row: dict) -> dict:
         "schemaName": row["schema_name"],
         "functionName": row["function_name"],
         "returns": row["returns"],
-        "arguments": row["arguments"] or [],
+        "arguments": _args_to_ui(row["arguments"]),
         "visibleTo": list(row["visible_to"] or []),
         "writableBy": list(row["writable_by"] or []),
         "domainId": row["domain_id"],
         "description": row.get("description"),
         "kind": row.get("kind", "mutation"),
         "returnSchema": row.get("return_schema"),
+        # REQ-885: implementation kind + swappable binding, decoupled from addressing.
+        "implKind": row.get("impl_kind", "source_procedure"),
+        "binding": row.get("binding") or {},
+        "materialize": bool(row.get("materialize", False)),
     }
 
 
@@ -114,6 +138,10 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     description: str | None = None
     kind: str = "mutation"
     returnSchema: dict | None = None
+    # REQ-885: implementation-kind dimension + swappable binding + identity model.
+    implKind: str = "source_procedure"
+    binding: dict = {}
+    materialize: bool = False
 
 
 class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
@@ -150,12 +178,15 @@ async def create_function(
         schema_name=body.schemaName,
         function_name=body.functionName,
         returns=body.returns,
-        arguments=[FunctionArgument(**a) for a in body.arguments],
+        arguments=[FunctionArgument(**a) for a in _args_from_ui(body.arguments)],
         visible_to=body.visibleTo,
         writable_by=body.writableBy,
         domain_id=body.domainId,
         description=body.description,
         kind=body.kind,
+        impl_kind=body.implKind,
+        binding=body.binding,
+        materialize=body.materialize,
     )
     # return_schema is a JSON column — pass the Python object directly (no double-encoding).
     async with state.tenant_db.acquire() as _conn:
@@ -187,13 +218,16 @@ async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, 
                 schema_name=body.schemaName,
                 function_name=body.functionName,
                 returns=body.returns,
-                arguments=body.arguments,
+                arguments=_args_from_ui(body.arguments),
                 visible_to=body.visibleTo,
                 writable_by=body.writableBy,
                 domain_id=body.domainId,
                 description=body.description,
                 kind=body.kind,
                 return_schema=body.returnSchema,
+                impl_kind=body.implKind,
+                binding=body.binding,
+                materialize=body.materialize,
                 updated_at=func.now(),
             )
         )

@@ -83,16 +83,63 @@ async def _http_call(
     return resp.json()
 
 
-async def _grpc_call(
-    target: str, method: str, payload: dict
-) -> object:  # object-ok: decoded external response is truly-any
-    """Invoke a grpc-kind function via the generic JSON unary bridge, return the response."""
-    import grpc  # noqa: F401  (imported for its presence; real channel wiring is host-side)
+_GRPC_DEFAULT_TIMEOUT_S = 30.0
 
-    raise HTTPException(
-        status_code=501,
-        detail=f"grpc transport to {target!r}/{method!r} requires a host-configured channel",
+
+def _grpc_method_path(method: str) -> str:
+    """Normalize a binding ``method`` into a gRPC full method path ``/Service/Method``.
+
+    Accepts an already-slashed path (``/Pkg.Svc/Fn``), a ``Service/Method`` form, or the
+    dotted ``Package.Service.Method`` form — the last dot separates method from service.
+    """
+    if method.startswith("/"):
+        return method
+    if "/" in method:
+        return "/" + method.lstrip("/")
+    if "." not in method:
+        raise HTTPException(
+            status_code=400,
+            detail=f"grpc method {method!r} must be 'Service/Method' or 'pkg.Service.Method'",
+        )
+    service, _, name = method.rpartition(".")
+    return f"/{service}/{name}"
+
+
+async def _grpc_call(
+    target: str,
+    method: str,
+    payload: dict,
+    *,
+    timeout: float = _GRPC_DEFAULT_TIMEOUT_S,
+    tls: bool = False,
+) -> object:  # object-ok: decoded external response is truly-any
+    """Invoke a grpc-kind function via the generic JSON unary bridge, return the response.
+
+    The bridge is proto-less: the JSON payload is sent as the raw unary request body and the
+    unary response body is decoded as JSON. The remote service must expose a method whose
+    request/response are opaque bytes carrying JSON (the Provisa hosted-function contract).
+    """
+    import grpc
+
+    path = _grpc_method_path(method)
+    request = json.dumps(payload).encode()
+    identity = lambda b: b  # noqa: E731 — proto-less: request/response bodies are raw bytes
+    channel = (
+        grpc.aio.secure_channel(target, grpc.ssl_channel_credentials())
+        if tls
+        else grpc.aio.insecure_channel(target)
     )
+    try:
+        rpc = channel.unary_unary(path, request_serializer=identity, response_deserializer=identity)
+        response = await rpc(request, timeout=timeout)
+    except grpc.aio.AioRpcError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"grpc call {target}{path} failed: {exc.code().name}: {exc.details()}",
+        ) from exc
+    finally:
+        await channel.close()
+    return json.loads(response or b"null")
 
 
 # --------------------------------------------------------------------------- #
@@ -161,6 +208,82 @@ def _require(
     return binding[key]
 
 
+# --------------------------------------------------------------------------- #
+# Egress control (REQ-885 security_constraint) — deny-by-default allow-list.   #
+# --------------------------------------------------------------------------- #
+
+# Loopback is the Provisa pgwire boundary — implicitly reachable, never external egress.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+
+def _endpoint_host(endpoint: str, kind: str) -> tuple[str, str]:
+    """Return (host, host:port) for an http url or a grpc ``host:port`` target."""
+    if kind == "http":
+        from urllib.parse import urlparse
+
+        parsed = urlparse(endpoint)
+        host = parsed.hostname or ""
+        hostport = f"{host}:{parsed.port}" if parsed.port else host
+        return host, hostport
+    host = endpoint.rsplit(":", 1)[0] if ":" in endpoint else endpoint
+    return host, endpoint
+
+
+def _check_egress(state, endpoint: str, kind: str) -> None:
+    """Refuse an external call whose host is not on the deny-by-default egress allow-list.
+
+    The allow-list (``state.udf_egress_allowlist``) enumerates the http/grpc endpoints a
+    deployment permits hosted functions to reach; loopback (Provisa pgwire) is always
+    allowed. An empty/absent list denies all external egress — no silent default (REQ-885).
+    """
+    host, hostport = _endpoint_host(endpoint, kind)
+    if host in _LOOPBACK_HOSTS:
+        return
+    allowlist = getattr(state, "udf_egress_allowlist", None) or []
+    if host in allowlist or hostport in allowlist:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            f"egress to {endpoint!r} is denied: host not on the UDF egress allow-list "
+            f"(REQ-885 deny-by-default). Add it to udf_egress_allowlist to permit."
+        ),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Row-wise-external refusal (REQ-885 performance_constraint).                  #
+# --------------------------------------------------------------------------- #
+
+_EXTERNAL_KINDS = frozenset({"http", "grpc"})
+_RELATION_ARG_KINDS = frozenset({"table_ref", "result_set"})
+
+
+def _reject_rowwise_external(fn: dict) -> None:
+    """Refuse an external function whose declared args are all scalar (row-wise).
+
+    Expensive/external work must be set-wise and batched: an http/grpc function that takes
+    only ``column_value`` scalars would be invoked once per row, killing pushdown. It must
+    declare at least one relation argument (``table_ref``/``result_set``) so the service
+    receives a relation and batches outbound calls itself (REQ-885).
+    """
+    if fn.get("impl_kind") not in _EXTERNAL_KINDS:
+        return
+    declared = fn.get("arguments") or []
+    if not declared:
+        return
+    if any(a.get("arg_kind", "column_value") in _RELATION_ARG_KINDS for a in declared):
+        return
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"function {fn.get('name', '')!r} (kind={fn.get('impl_kind')}) is row-wise external: "
+            "all arguments are scalar column_value. Declare a table_ref/result_set relation "
+            "argument so calls are set-wise and batched (REQ-885)."
+        ),
+    )
+
+
 async def _exec_source_procedure(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
     src_id = fn["source_id"]
     if not state.source_pools.has(src_id):
@@ -184,21 +307,25 @@ async def _exec_script(
     return _rows_from_response(json.loads(out or b"[]"))
 
 
-async def _exec_http(fn: dict, _args, _state, payload: dict, session: MintedSession) -> list[dict]:
+async def _exec_http(fn: dict, _args, state, payload: dict, session: MintedSession) -> list[dict]:
     binding = fn["binding"]
     url = str(_require(binding, "url", "http"))
+    _check_egress(state, url, "http")
     method = str(binding.get("method", "POST")).upper()
     timeout = float(binding.get("timeout_s", _HTTP_DEFAULT_TIMEOUT_S))
     body = {"args": payload, "correlation_id": session.correlation_id}
     return _rows_from_response(await _http_call(method, url, body, timeout))
 
 
-async def _exec_grpc(fn: dict, _args, _state, payload: dict, session: MintedSession) -> list[dict]:
+async def _exec_grpc(fn: dict, _args, state, payload: dict, session: MintedSession) -> list[dict]:
     binding = fn["binding"]
     target = str(_require(binding, "target", "grpc"))
     method = str(_require(binding, "method", "grpc"))
+    _check_egress(state, target, "grpc")
+    timeout = float(binding.get("timeout_s", _GRPC_DEFAULT_TIMEOUT_S))
+    tls = bool(binding.get("tls", False))
     body = {"args": payload, "correlation_id": session.correlation_id}
-    return _rows_from_response(await _grpc_call(target, method, body))
+    return _rows_from_response(await _grpc_call(target, method, body, timeout=timeout, tls=tls))
 
 
 async def _exec_python(
@@ -218,8 +345,8 @@ async def _exec_python(
 
 
 def _rows_from_response(
-    body: object,
-) -> list[dict]:  # object-ok: normalizes truly-any transport payload
+    body: object,  # object-ok: normalizes truly-any transport payload
+) -> list[dict]:
     """Normalize an executor response to a list of row dicts."""
     if isinstance(body, list):
         return list(body)
@@ -273,6 +400,7 @@ async def dispatch_function(  # REQ-885, REQ-886
         raise HTTPException(status_code=400, detail=f"Unknown function impl_kind: {impl_kind!r}")
     transport = TRANSPORT_BY_KIND[impl_kind]
     identity = "definer" if fn.get("materialize") else "invoker"
+    _reject_rowwise_external(fn)
 
     if impl_kind == "source_procedure":
         payload: dict = args
