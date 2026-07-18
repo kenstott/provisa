@@ -97,7 +97,11 @@ provisa = "provisa.cli:main"
 # omitted (PyPI carries no JVM server); full multi-engine federation stays available by pointing
 # at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb/aiosqlite/greenlet are
 # already base deps; this extra names the tier explicitly and adds fakeredis for the embedded cache.
-embedded = ["duckdb", "aiosqlite", "greenlet", "fakeredis", "provisa-duckdb-ext"]
+# NOTE: provisa-duckdb-ext (the offline DuckDB extension blobs, REQ-1142) is published by THIS release's
+# build-duckdb-extensions `wheel` job; add it here as a hard dep only in the NEXT release, once it exists
+# on PyPI (a package can't depend on one not yet in the registry). Until then the runtime uses it when
+# present and falls back to DuckDB's network INSTALL when absent.
+embedded = ["duckdb", "aiosqlite", "greenlet", "fakeredis"]
 # Embedded PostgreSQL for the desktop/native tier (control plane + dedicated
 # telemetry store). Optional because pgserver has no cp313 wheel yet — install
 # under a cpython<=3.12 interpreter.
