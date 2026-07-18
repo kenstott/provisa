@@ -9,7 +9,6 @@
 # permission from the copyright holder.
 
 import os
-import platform
 import socket
 import subprocess
 import time
@@ -38,6 +37,26 @@ os.environ.setdefault(
 _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
 _TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
+
+
+def _ensure_odbcsysini() -> None:
+    """Make the installed SQL Server ODBC driver discoverable by pyodbc for requires_sqlserver tests.
+
+    Homebrew's unixODBC ships a broken doubled SYSINI path, so the driver registered in
+    ``<brew>/etc/odbcinst.ini`` isn't found unless ODBCSYSINI points at that DIRECTORY. If pyodbc can
+    already see a SQL Server driver, leave the environment alone; otherwise probe the standard brew
+    prefixes for an odbcinst.ini that registers one and set ODBCSYSINI to its directory. Never edits the
+    user's shell — only this process's env.
+    """
+    _cur = os.environ.get("ODBCSYSINI")
+    # ODBCSYSINI must name the DIRECTORY holding odbcinst.ini. A value pointing AT the odbcinst.ini file
+    # (Homebrew's broken doubled SYSINI default) makes unixODBC find no drivers — normalize to its dir.
+    # Must run before the first pyodbc call, which caches the SYSINI. Unset is fine (host default works).
+    if _cur and os.path.isfile(_cur):
+        os.environ["ODBCSYSINI"] = os.path.dirname(_cur)
+
+
+_ensure_odbcsysini()
 
 
 def _install_subprocess_coverage_pth() -> None:
@@ -124,6 +143,34 @@ _MARKER_SERVICES: dict[str, list[str]] = {
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
 _CORE_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "minio", "zaychik"]
 
+# Heavy relational/analytic engines, each mostly amd64-emulated on arm64. These are NOT
+# session-provisioned: bringing every collected marker service up at once (the session
+# manager below) put ~15 heavyweight DBs on the Docker VM simultaneously, exceeding its
+# memory and OOM-killing containers (cassandra/yugabytedb/splunk exit 137) so the whole
+# stack aborted. Instead each heavy-marked test brings up ONLY its own engine for the
+# duration of that test and tears it down after (see _heavy_db_service), so at most one
+# heavy DB is live at any moment regardless of how many the suite exercises.
+_HEAVY_MARKERS = frozenset(
+    {
+        "requires_oracle",
+        "requires_sqlserver",
+        "requires_greenplum",
+        "requires_yugabytedb",
+        "requires_cockroachdb",
+        "requires_tidb",
+        "requires_mariadb",
+        "requires_cassandra",
+        "requires_firebird",
+        "requires_singlestore",
+        "requires_exasol",
+        "requires_splunk",
+        "requires_pinot",
+        "requires_druid",
+        "requires_hive",
+        "requires_airport",
+    }
+)
+
 # Host-published services whose ephemeral port the in-process app / test clients
 # read from these env vars. compose interpolates the same ${VAR} at `up` time.
 _ITEST_PORT_ENV = [
@@ -180,8 +227,14 @@ def _reserve_free_ports(n: int) -> list[int]:
 def _allocate_itest_ports() -> None:
     """Assign every isolated-stack host port to a fresh ephemeral port and export the
     URL-shaped env the in-process app reads, so the app never hits the dev stack."""
-    for name, port in zip(_ITEST_PORT_ENV, _reserve_free_ports(len(_ITEST_PORT_ENV))):
+    # Reserve one extra port for the isolated Provisa server (PROVISA_URL) IN THE SAME batch,
+    # so it is guaranteed distinct from every docker-service host port. Reserving it in a second
+    # _reserve_free_ports() call would race — those sockets are already closed, so the OS could
+    # hand back a port already assigned to a service, colliding at `up` time.
+    _ports = _reserve_free_ports(len(_ITEST_PORT_ENV) + 1)
+    for name, port in zip(_ITEST_PORT_ENV, _ports):
         os.environ[name] = str(port)
+    _provisa_server_port = _ports[-1]
     # The isolated postgres is provisa/provisa/provisa by construction (see
     # docker-compose.core.yml POSTGRES_*). Export the full credential env — not just
     # the port — so in-process config loads that resolve ${env:PG_PASSWORD} (e.g.
@@ -198,6 +251,17 @@ def _allocate_itest_ports() -> None:
     _kafka = f"localhost:{os.environ['KAFKA_HOST_PORT']}"
     os.environ["KAFKA_BOOTSTRAP"] = _kafka
     os.environ["KAFKA_BOOTSTRAP_SERVERS"] = _kafka
+    # The requires_provisa_server fixture reads PROVISA_URL and REUSES any server already
+    # listening there. Defaulting to :8000 means a developer's running dev instance (config/
+    # provisa-install.yaml on dev PG:5432) gets reused, and its governance/routing return 403s
+    # and timeouts for the isolated tests. Tests must NEVER touch dev ports: pin PROVISA_URL to
+    # a private ephemeral port so the fixture always starts its OWN clean sample_config server
+    # and can never latch onto :8000. `setdefault` lets an explicit orchestrator (CI) override.
+    _server_url = f"http://localhost:{_provisa_server_port}"
+    os.environ.setdefault("PROVISA_URL", _server_url)
+    # Some BDD step modules read PROVISA_BASE_URL instead of PROVISA_URL; point both at the same
+    # private test server so no test path falls back to the dev port.
+    os.environ.setdefault("PROVISA_BASE_URL", os.environ["PROVISA_URL"])
 
 
 # Allocate + export the isolated-stack ports at IMPORT time — before any test module
@@ -220,25 +284,15 @@ class _DockerServiceManager:
         # Which marker services this run needs (kafka/mongo/neo4j/…). schema-registry
         # and debezium ride along with kafka in the SAME isolated project, so they
         # reach it on the project network by service name — no external dev network.
+        # Heavy engines (_HEAVY_MARKERS) are deliberately excluded here and provisioned
+        # per-test by _heavy_db_service, so only one is ever live at a time.
         needed: set[str] = set(_CORE_SERVICES)
         for item in session.items:
             for marker, services in _MARKER_SERVICES.items():
+                if marker in _HEAVY_MARKERS:
+                    continue
                 if item.get_closest_marker(marker):
                     needed.update(services)
-
-        # SingleStore's dev image cannot start without a license key in the
-        # environment; the test itself is skipif-gated on SINGLESTORE_LICENSE, but
-        # that skip only fires at call time — collection has already asked for the
-        # service by then. Don't attempt to bring up a container that can't start
-        # for a test that will just skip anyway.
-        if "singlestore" in needed and not os.environ.get("SINGLESTORE_LICENSE"):
-            needed.discard("singlestore")
-
-        # exasol/docker-db is amd64-only and can't boot under arm64 emulation; the test is
-        # skipif-gated on arch, but collection already asked for the service — don't try to
-        # bring up a container that will never become healthy on this host.
-        if "exasol" in needed and platform.machine() not in ("x86_64", "amd64"):
-            needed.discard("exasol")
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
         # exported at import time, its own network — the dev stack is never touched.
@@ -274,12 +328,51 @@ def pytest_configure(config):
     )
 
 
+@pytest.fixture
+def _heavy_db_service(request):  # pyright: ignore
+    """Bring up ONLY this test's heavy engine, then tear it down when the test ends.
+
+    Heavy DBs (_HEAVY_MARKERS) are excluded from the session-wide bring-up so they never
+    run concurrently — the Docker VM cannot hold ~15 emulated engines at once and OOM-kills
+    them. Provisioning per-test caps the live heavy set at one, at the cost of a cold start
+    per heavy test. Skipped tests (skipif on license/arch) never reach setup, so an engine
+    that cannot start on this host is never asked for.
+    """
+    if os.environ.get("PYTEST_NO_DOCKER"):
+        yield
+        return
+    services: list[str] = []
+    for marker in _HEAVY_MARKERS:
+        if request.node.get_closest_marker(marker):
+            services.extend(_MARKER_SERVICES[marker])
+    if not services:
+        yield
+        return
+    subprocess.run(
+        ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(services)],
+        cwd=_REPO_ROOT,
+        check=True,
+    )
+    try:
+        yield
+    finally:
+        # Reclaim memory immediately (-s stop, -f force, -v drop anon volumes) so the next
+        # heavy-DB test starts with the VM clear.
+        subprocess.run(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "rm", "-fsv", *sorted(services)],
+            cwd=_REPO_ROOT,
+            check=False,
+        )
+
+
 def pytest_collection_modifyitems(config, items):  # pyright: ignore
     for item in items:
         if item.get_closest_marker("requires_provisa_server"):
             item.fixturenames.insert(0, "provisa_server")
         if item.get_closest_marker("requires_debezium"):
             item.fixturenames.insert(0, "debezium_server")
+        if any(item.get_closest_marker(m) for m in _HEAVY_MARKERS):
+            item.fixturenames.insert(0, "_heavy_db_service")
 
 
 @pytest.fixture(autouse=True)

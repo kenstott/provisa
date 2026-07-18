@@ -68,9 +68,25 @@ _BASE="not packaging and not cluster and not isolated"
 _KAFKA="requires_kafka or requires_debezium"
 _DATASTORE="requires_elasticsearch or requires_sparql or requires_mongodb or requires_prometheus"
 
+# The heavy relational/analytic DBs (oracle, druid, splunk, cassandra, greenplum, …) stay in
+# THIS lane but are NOT brought up together: tests/conftest.py::_heavy_db_service provisions
+# each heavy engine only for the test that needs it and tears it down after, so at most one is
+# ever live. That caps memory without further sharding (the earlier attempt to bring the whole
+# heavy set up at session start OOM-killed the Docker VM). kafka/neo4j/datastores remain split
+# out because they ARE session-provisioned (co-resident) and together with core exhaust memory.
+# `e2e`-marked tests that live under tests/integration (NOT tests/e2e, which the e2e lane owns
+# by path) each spin up the full in-process app. Left in the core lane, hundreds of them run
+# alongside the 8400+ unit/bdd tests and their session-scoped app fixtures starve the ~12 GiB
+# Docker VM — the app's postgres seed fails (`assert tenant_db is not None`) and servers get
+# SIGKILL'd (code -9), erroring ~100 tests that PASS in isolation. Give them their own lane so
+# the app starts in a low-memory process; the core lane excludes them via `not e2e`.
 echo "== lane: default/core (unit + bdd + core-only integration) =="
 COVERAGE_FILE=.coverage.default pytest tests tests/steps \
-  -m "$_BASE and not ($_KAFKA or requires_neo4j or $_DATASTORE)" "${COV_ARGS[@]}" "$@" || rc=1
+  -m "$_BASE and not ($_KAFKA or requires_neo4j or $_DATASTORE) and not e2e" "${COV_ARGS[@]}" "$@" || rc=1
+
+echo "== lane: default/app (in-process app startup — e2e-marked integration) =="
+COVERAGE_FILE=.coverage.app pytest tests tests/steps \
+  -m "$_BASE and not ($_KAFKA or requires_neo4j or $_DATASTORE) and e2e" "${COV_ARGS[@]}" "$@" || rc=1
 
 echo "== lane: default/kafka (kafka + debezium) =="
 COVERAGE_FILE=.coverage.kafka pytest tests tests/steps \

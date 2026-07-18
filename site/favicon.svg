@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Provisa">
+  <title>Provisa</title>
+  <rect width="512" height="512" rx="112" fill="#1F2933"/>
+  <g transform="translate(48,66) scale(4.0)">
+    <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff"/>
+    <circle cx="52" cy="35" r="22" fill="#ffffff"/>
+    <circle cx="52" cy="34" r="10.5" fill="#1F2933"/>
+    <circle cx="52" cy="34" r="4.5" fill="#10B981"/>
+  </g>
+</svg>

@@ -43,7 +43,11 @@ NAMED_EXTENSIONS: frozenset[str] = frozenset(
 )
 
 _SCHEMA_VERSION = 1
-_DEFAULT_CATALOG = Path(__file__).resolve().parents[2] / "config" / "pg_extension_catalog.yaml"
+# REQ-1127: prefer the config/ copy embedded in the wheel (provisa/_config/); fall back to the
+# repo-root config/ in the dev tree and Docker image.
+_PACKAGED_CATALOG = Path(__file__).resolve().parents[1] / "_config" / "pg_extension_catalog.yaml"
+_REPO_CATALOG = Path(__file__).resolve().parents[2] / "config" / "pg_extension_catalog.yaml"
+_DEFAULT_CATALOG = _PACKAGED_CATALOG if _PACKAGED_CATALOG.exists() else _REPO_CATALOG
 # On-disk cache the build/CI path already uses (scripts/ci/build_pg_extensions.sh).
 _CACHE_ROOT = Path(os.environ.get("PROVISA_FDW_CACHE", str(Path.home() / ".cache" / "provisa-fdw")))
 _RELEASE_BASE = "https://github.com/kenstott/provisa/releases/download"

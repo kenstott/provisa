@@ -428,21 +428,6 @@ wheels = [
 ]
 
 [[package]]
-name = "buenavista"
-version = "0.5.0.post1"
-source = { editable = "vendor/buenavista" }
-dependencies = [
-    { name = "python-dateutil" },
-    { name = "sqlglot" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "python-dateutil" },
-    { name = "sqlglot" },
-]
-
-[[package]]
 name = "cachecontrol"
 version = "0.14.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2410,7 +2395,6 @@ dependencies = [
     { name = "azure-identity" },
     { name = "bcrypt" },
     { name = "boto3" },
-    { name = "buenavista" },
     { name = "chdb", marker = "sys_platform != 'win32'" },
     { name = "clickhouse-connect" },
     { name = "clickhouse-driver" },
@@ -2457,6 +2441,7 @@ dependencies = [
     { name = "pyiceberg" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pyodbc" },
+    { name = "python-dateutil" },
     { name = "pyyaml" },
     { name = "redis", extra = ["hiredis"] },
     { name = "scipy" },
@@ -2502,6 +2487,12 @@ dev = [
     { name = "ruff" },
     { name = "syrupy" },
 ]
+embedded = [
+    { name = "aiosqlite" },
+    { name = "duckdb" },
+    { name = "fakeredis" },
+    { name = "greenlet" },
+]
 firebase = [
     { name = "firebase-admin" },
 ]
@@ -2544,6 +2535,7 @@ requires-dist = [
     { name = "aioodbc", marker = "extra == 'sqlserver'" },
     { name = "aiosqlite" },
     { name = "aiosqlite", marker = "extra == 'dev'" },
+    { name = "aiosqlite", marker = "extra == 'embedded'" },
     { name = "aisuite", specifier = ">=0.1" },
     { name = "anthropic" },
     { name = "apscheduler", specifier = ">=3.10" },
@@ -2556,7 +2548,6 @@ requires-dist = [
     { name = "bcrypt" },
     { name = "black", marker = "extra == 'dev'" },
     { name = "boto3" },
-    { name = "buenavista", editable = "vendor/buenavista" },
     { name = "chdb", marker = "sys_platform != 'win32'" },
     { name = "clickhouse-connect" },
     { name = "clickhouse-driver" },
@@ -2564,9 +2555,11 @@ requires-dist = [
     { name = "databricks-sql-connector" },
     { name = "defusedxml" },
     { name = "duckdb" },
+    { name = "duckdb", marker = "extra == 'embedded'" },
     { name = "duckdb-engine" },
     { name = "elasticsearch", specifier = ">=8,<9" },
     { name = "fakeredis" },
+    { name = "fakeredis", marker = "extra == 'embedded'" },
     { name = "fastapi" },
     { name = "firebase-admin", marker = "extra == 'firebase'" },
     { name = "google-cloud-bigquery" },
@@ -2577,6 +2570,7 @@ requires-dist = [
     { name = "graphql-core", specifier = ">=3.2" },
     { name = "greenlet" },
     { name = "greenlet", marker = "extra == 'dev'" },
+    { name = "greenlet", marker = "extra == 'embedded'" },
     { name = "grpcio" },
     { name = "grpcio-reflection" },
     { name = "grpcio-status", specifier = "<1.82" },
@@ -2623,6 +2617,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
     { name = "pytest-bdd", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "python-dateutil" },
     { name = "python-pptx", marker = "extra == 'dev'" },
     { name = "pyyaml" },
     { name = "redis", extras = ["hiredis"] },
@@ -2638,7 +2633,7 @@ requires-dist = [
     { name = "uvicorn" },
     { name = "websockets", specifier = ">=11.0" },
 ]
-provides-extras = ["telemetry-pg", "desktop", "mysql", "sqlserver", "oracle", "all-drivers", "govdata", "firebase", "vault", "azure", "gcp", "kms-all", "dev"]
+provides-extras = ["embedded", "telemetry-pg", "desktop", "mysql", "sqlserver", "oracle", "all-drivers", "govdata", "firebase", "vault", "azure", "gcp", "kms-all", "dev"]
 
 [[package]]
 name = "psutil"

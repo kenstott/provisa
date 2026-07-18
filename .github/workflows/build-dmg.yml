@@ -313,6 +313,71 @@ jobs:
           path: provisa-client/dist/
           retention-days: 1
 
+  build-provisa-wheel:
+    name: Build provisa server wheel (embedded tier)
+    runs-on: ubuntu-latest
+    needs: metadata
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node 20 (vite build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Stamp version and build wheel (bundles UI + config + buenavista)
+        run: |
+          sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' pyproject.toml
+          pip install build -q
+          scripts/build-wheel.sh --sdist --wheel
+
+      - name: Verify the wheel is self-contained
+        run: |
+          python - <<'PY'
+          import glob, zipfile, sys
+          wheel = glob.glob("dist/provisa-*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          missing = [n for n in ("provisa/cli.py", "buenavista/core.py") if n not in names]
+          missing += [p for p in ("provisa/_ui/", "provisa/_config/") if not any(n.startswith(p) for n in names)]
+          leaked = [n for n in names if "node_modules" in n or n.startswith("provisa_client/")]
+          if missing or leaked:
+              print("missing:", missing, "\nleaked:", leaked[:5]); sys.exit(1)
+          print(f"OK: {wheel} self-contained ({len(names)} members)")
+          PY
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-wheel-dist
+          path: dist/
+          retention-days: 1
+
+  publish-provisa-pypi:
+    name: Publish provisa server to PyPI
+    runs-on: ubuntu-latest
+    needs: build-provisa-wheel
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-wheel-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+
   build-jdbc:
     name: Build JDBC driver
     runs-on: ubuntu-latest

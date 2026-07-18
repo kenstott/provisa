@@ -54,7 +54,7 @@ VIRTUAL_SOURCES: set[str] = {
     "delta_lake",
     "iceberg",
     "hive",
-    "hive_s3",
+    "hive_s3",  # REQ-229: Hive-on-S3 lake — always routes to Trino, like hive/iceberg/delta_lake
     # Specialized
     "google_sheets",
     "prometheus",
@@ -225,7 +225,7 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
 # File/object source types the engine reads IN PLACE only when it declares the file_native trait
 # (REQ-897) — otherwise the source is LANDED before the engine can read it.
 _FILE_SOURCES: frozenset[str] = frozenset(
-    {"delta_lake", "iceberg", "hive", "hive_s3", "google_sheets"}
+    {"delta_lake", "iceberg", "hive", "google_sheets"}
 )
 
 

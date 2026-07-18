@@ -14,16 +14,23 @@ These tests validate security constraints, isolation boundaries, and governance 
 by making HTTP requests against a running Provisa server. No internal imports.
 """
 
+import os
+
 import pytest
 import httpx
 
 pytestmark = [pytest.mark.e2e, pytest.mark.requires_provisa_server]
 
+# Never hardcode the dev port: the conftest pins PROVISA_URL to a private ephemeral port so the
+# requires_provisa_server fixture starts an ISOLATED sample_config server. Hardcoding :8000 made
+# these tests hit whatever dev instance happened to be running (or nothing → ConnectionRefused).
+_BASE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
+
 
 @pytest.fixture(scope="module")
 def client():
-    """HTTP client for Provisa server."""
-    with httpx.Client(base_url="http://localhost:8000", timeout=30.0) as c:
+    """HTTP client for the isolated Provisa test server."""
+    with httpx.Client(base_url=_BASE_URL, timeout=30.0) as c:
         yield c
 
 

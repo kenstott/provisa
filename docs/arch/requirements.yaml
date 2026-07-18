@@ -7608,8 +7608,7 @@
   description: 'Schema inference must be supported where the Trino connector provides auto-discovery (MongoDB,
     Cassandra, Elasticsearch). Sources with inference support should offer a `discover: true` flag that
     introspects and generates a starting column list. Explicit column definitions always take precedence
-    over inferred schemas. Sources without inference capability (Redis) require explicit column
-    definitions.'
+    over inferred schemas. Sources without inference capability (Redis) require explicit column definitions.'
   use_case: Schema inference for supported connectors (MongoDB, Cassandra) reduces manual column definition
     work.
   code:
@@ -25151,22 +25150,23 @@
   - REQ-074
   - REQ-527
 - id: REQ-885
-  status: complete
-  since: 2026-07
+  status: in-progress
+  target: 2026-Q4
   group: 5. Query Languages, Compilation & Operations
   category: Extensible Functions
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
   description: 'Generalize tracked functions (REQ-205–208: source-resident stored procedures exposed as
     GraphQL mutations) to support multiple implementation kinds: source procedure (existing), script (local
-    subprocess), http, grpc, and optionally python (in-process). Implementation kind becomes a selectable
-    dimension at registration; addressing (catalog name) is decoupled from binding (transport+location,
-    swappable). Provisa-hosted functions take relation arguments (kinds: table_ref=lazy, result_set=eager
-    materialized Arrow, column_value=scalar row-wise) and return Arrow buffers materialized as relations,
-    governed at the read-time boundary. Identity model (DEFINER/admin vs INVOKER/user) selected by materialize
-    flag: true ⇒ admin/output-governed; false ⇒ user/input-governed. Composition via view_sql + materialize;
-    no new MV subsystem—reuse MV refresh (REQ-879), CTAS sink, governance, lineage primitives.'
+    subprocess), http, grpc, and optionally python (in-process). The grpc transport is not yet functional
+    — _grpc_call raises HTTP 501 ("requires a host-configured channel"); the generic JSON unary bridge
+    is not wired. Implementation kind becomes a selectable dimension at registration; addressing (catalog
+    name) is decoupled from binding (transport+location, swappable). Provisa-hosted functions take relation
+    arguments (kinds: table_ref=lazy, result_set=eager materialized Arrow, column_value=scalar row-wise)
+    and return Arrow buffers materialized as relations, governed at the read-time boundary. Identity model
+    (DEFINER/admin vs INVOKER/user) selected by materialize flag: true ⇒ admin/output-governed; false
+    ⇒ user/input-governed. Composition via view_sql + materialize; no new MV subsystem—reuse MV refresh
+    (REQ-879), CTAS sink, governance, lineage primitives.'
   use_case: Enables diverse computation platforms (hosted scripts, external services, Python libraries)
     to act as governed data transformations, returning relations (not just scalar functions). Maintains
     config-as-truthful-model property with URI addressing and spec-driven discovery (OpenAPI/proto/ script-manifest).
@@ -26939,23 +26939,21 @@
   tests:
   - tests/unit/test_lineage.py
 - id: REQ-940
-  status: complete
-  since: 2026-07
+  status: proposed
+  target: 2026-Q4
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: MAY
   type: infrastructure
-  description: 'The external processor tier is a toolkit of transport adapters — shell (stdin/stdout),
-    HTTP (streamed request/response), gRPC (bidi-stream, hardened) — all conforming to ONE streaming input→output
-    contract: a stream of schema-declared rows in, a stream of schema-declared rows out; pure; no side
-    effects; schema-validated both ends. NDJSON default framing, Arrow-stream for throughput. The toolkit
-    owns framing/streaming/backpressure/schema-validation/idempotent-retries/sandboxed invocation; the
-    author implements only the transform.'
+  description: 'PLANNED — not yet implemented (no transport-adapter code exists; the in-process hook of
+    REQ-957 is the only shipped processor tier). The external processor tier is to be a toolkit of transport
+    adapters — shell (stdin/stdout), HTTP (streamed request/response), gRPC (bidi-stream, hardened) —
+    all conforming to ONE streaming input→output contract: a stream of schema-declared rows in, a stream
+    of schema-declared rows out; pure; no side effects; schema-validated both ends. NDJSON default framing,
+    Arrow-stream for throughput. The toolkit owns framing/streaming/backpressure/schema-validation/idempotent-retries/sandboxed
+    invocation; the author implements only the transform.'
   use_case: Pluggable transport adapters allow external processors to be invoked over any mechanism (shell,
     HTTP, gRPC) while maintaining a single streaming contract and declarative schema validation.
-  tests:
-  - tests/unit/test_event_queue.py
-  - tests/unit/test_supervisor.py
 - id: REQ-941
   status: complete
   since: 2026-07
@@ -27183,10 +27181,10 @@
     a connector for EVERY source type the engine can offer: (a) federated via engine''s own connectors,
     (b) direct-route via Provisa''s native async drivers (executor/drivers/registry.py), and (c) adapter-materializable
     (source_adapters/_ADAPTER_MAP). Only then is the source-creation dropdown a pure projection of engine.connectors;
-    today direct-only sources (e.g., duckdb when used alone) and adapter-only sources (govdata)
-    are absent from engine.connectors and would be dropped from that projection. Introduce a third Mechanism
-    (FETCH) for (c): Provisa''s adapter fetches rows; write face lands them; engine reads the replica.
-    This retires the parallel SOURCE_TO_CONNECTOR map and adapter_loaders special-casing.'
+    today direct-only sources (e.g., duckdb when used alone) and adapter-only sources (govdata) are absent
+    from engine.connectors and would be dropped from that projection. Introduce a third Mechanism (FETCH)
+    for (c): Provisa''s adapter fetches rows; write face lands them; engine reads the replica. This retires
+    the parallel SOURCE_TO_CONNECTOR map and adapter_loaders special-casing.'
   use_case: engine.connectors must be complete — federatable ∪ Provisa-direct ∪ adapter-materializable
     — so that the source-creation dropdown dynamically reflects exactly what each federation engine can
     reach, whether through its native connectors, direct drivers, or adapters. Eliminates hardcoded source-type
@@ -27482,8 +27480,7 @@
   related_reqs:
   - REQ-951
 - id: REQ-957
-  status: complete
-  since: 2026-07
+  status: in-progress
   target: 2026-Q4
   group: 9. Live Data & Events
   category: Table Processor (Shared)
@@ -29611,12 +29608,12 @@
   - REQ-267
   - REQ-369
 - id: REQ-1009
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Frontend UI & UX
   category: Component Library Standardization
   priority: MUST
   type: structural
-  target: 2026-Q3
   description: Standardize provisa-ui on the Mantine component library (MIT/OSS) as the single modern
     UI component system. Remove unused @mui/material and Emotion dependencies (dead deps, imported in
     0 source files).
@@ -29625,13 +29622,15 @@
     integration.
   code:
   - provisa-ui/src/
+  tests:
+  - tests/unit/test_ui_modernization_requirements.py
 - id: REQ-1010
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Frontend UI & UX
   category: Design System
   priority: SHOULD
   type: structural
-  target: 2026-Q3
   description: Establish a consistent visual design theme driven by CSS-variable design tokens, mapped
     into Mantine's theme. Primary color is indigo (#6366f1); existing App.css token set is the source
     of truth.
@@ -29639,44 +29638,79 @@
     point of truth for colors, spacing, and typography across the application.
   code:
   - provisa-ui/src/App.css
+  tests:
+  - tests/unit/test_ui_modernization_requirements.py
 - id: REQ-1011
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Frontend UI & UX
   category: Theming
   priority: SHOULD
   type: behavioral
-  target: 2026-Q3
   description: Support both Dark and Light color schemes via Mantine's color-scheme system, with a user-facing
     theme toggle. Current state is dark-only.
   use_case: Light mode improves accessibility for users with certain vision conditions; user choice increases
     accessibility and user satisfaction.
+  code:
+  - provisa-ui/src/main.tsx
+  unit_test: false
+  unit_test_reason: Color-scheme toggle + persistence is a browser-only behavior (localStorage color-scheme
+    manager, useMantineColorScheme); verified end-to-end, not unit-testable in isolation.
   e2e: true
   e2e_reason: Theme toggle is a UI interaction that must be verified end-to-end to ensure the app correctly
     switches and persists the user's choice across page reloads.
+  scenario: 'Given the app rendered with the Mantine color-scheme manager
+
+    When the user activates the theme toggle
+
+    Then the color scheme switches between dark and light and persists across reloads via localStorage
+
+    '
+  tests:
+  - provisa-ui/e2e/
+  - tests/unit/test_ui_modernization_requirements.py
 - id: REQ-1012
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Frontend UI & UX
   category: Internationalization
   priority: SHOULD
   type: behavioral
-  target: 2026-Q3
   description: 'Internationalize the entire frontend: no hardcoded user-facing strings (~536 exist today).
     Use react-i18next with an ''en'' base catalog; include locale-aware date and number formatting. Pipeline
     must support adding additional locales.'
   use_case: i18n enables Provisa to serve global enterprises in their native languages, reducing adoption
     friction and supporting compliance requirements in non-English jurisdictions.
   code:
-  - provisa-ui/src/
+  - provisa-ui/src/main.tsx
+  - provisa-ui/src/i18n/
+  unit_test: false
+  unit_test_reason: i18n catalog wiring and locale-aware rendering are browser-level concerns exercised
+    across the e2e suite (specs assert against i18n catalog keys, not literals).
   e2e: true
   e2e_reason: Locale switching, date/number formatting, and catalog consistency must be verified end-to-end
     with actual locale-aware rendering in the browser.
+  scenario: 'Given the frontend wired with react-i18next and an en base catalog
+
+    When a component renders user-facing text
+
+    Then the text resolves from the i18n catalog (no hardcoded literals) with locale-aware date/number
+    formatting
+
+    '
+  tests:
+  - provisa-ui/e2e/
+  - tests/unit/test_ui_modernization_requirements.py
 - id: REQ-1013
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Frontend UI & UX
   category: Accessibility
   priority: MUST
   type: constraint
-  target: 2026-Q3
+  unit_test: false
+  unit_test_reason: WCAG conformance (focus trap, keyboard operability, ARIA, contrast) is DOM/browser
+    behavior; enforced by the axe-core e2e fixture, not unit tests.
   description: 'Meet enterprise accessibility requirements: WCAG 2.1 Level AA across the app. Includes
     focus management and focus-trap in dialogs, full keyboard operability, correct ARIA roles/attributes
     (e.g. role="dialog"/aria-modal on the 65 modal usages that currently lack them), 4.5:1 text contrast
@@ -29688,6 +29722,8 @@
   e2e_reason: Keyboard navigation, focus trapping, and modal semantics must be verified end-to-end through
     actual user interaction with the app; unit tests cannot detect focus-management bugs or keyboard handling
     flaws.
+  tests:
+  - tests/unit/test_ui_modernization_requirements.py
 - id: REQ-1014
   status: proposed
   group: 11. Frontend UI & UX
@@ -29703,6 +29739,7 @@
   - provisa-ui/e2e/coverage.ts
   tests:
   - provisa-ui/e2e/coverage.ts
+  - tests/unit/test_ui_modernization_requirements.py
   e2e: true
   e2e_reason: Accessibility scanning must run against the real DOM tree rendered in the browser; static
     analysis cannot detect color contrast, focus order, or semantic issues.
@@ -29740,6 +29777,7 @@
   - provisa-ui/src/
   tests:
   - provisa-ui/e2e/
+  - tests/unit/test_ui_modernization_requirements.py
   relates_to:
   - REQ-1009
   - REQ-1012
@@ -31331,37 +31369,32 @@
   - REQ-164
 - id: REQ-1097
   status: complete
-  since: "2026-07"
-  group: "7. Connectors & Source Adapters"
+  since: 2026-07
+  group: 7. Connectors & Source Adapters
   category: Test Coverage
   priority: MUST
   type: constraint
-  description: >-
-    Every datasource type in SourceType enum (49 types: postgresql, mysql, mariadb,
-    sqlserver, oracle, cockroachdb, yugabytedb, tidb, greenplum, singlestore, snowflake,
-    bigquery, databricks, fabric, synapse, redshift, clickhouse, elasticsearch, pinot,
-    druid, exasol, delta_lake, iceberg, hive, hive_s3, mongodb, cassandra, redis,
-    firebird, duckdb, sqlite, openapi, graphql_remote, grpc_remote, govdata,
-    kafka, neo4j, sparql, prometheus, rss, websocket, sharepoint, splunk, google_sheets,
-    csv, parquet, files, airport, ingest) must have an integration or e2e test against
-    a real (Docker or cloud-provisioned) instance. Unit tests that merely reference the
-    type name do not satisfy this.
-  use_case: >-
-    Ensures all datasource connectors work correctly in practice against real instances,
-    not just as concept or identity-check in code. Covered with self-provisioning tests:
-    direct-driver — mariadb, tidb, cockroachdb, yugabytedb, sqlserver, oracle, singlestore
-    (license-gated skip); connector (federation engine → Trino catalog) — cassandra (reference
-    pattern), exasol (arch-gated: amd64-only image), redshift + sharepoint (creds/instance-gated,
-    no self-provision); DuckDB community extension — firebird, airport (live vs zaychik),
-    google_sheets (opt-in gated: DuckDB gsheets extension SA-auth, PROVISA_GSHEETS_LIVE=1);
-    Calcite/Trino — splunk (live, self-provisioned). Fixed a product bug found while covering
-    exasol: Source.jdbc_url() omitted exasol/redshift, silently no-op'ing catalog creation. Filed
-    issue #74 (zaychik Arrow-Flight auth/protocol gap, found via airport; the Provisa Flight→Trino
-    transport itself is verified working — tests/integration/test_trino_flight_engine_e2e.py).
-    The heavy multi-container analytics/lake ecosystems are now covered by self-provisioning
-    e2e: pinot and druid (Trino catalog), hive and hive_s3 (Trino hive connector + HMS, S3 on
-    MinIO). kudu and accumulo were removed from SourceType — neither is a SQL-variant with a
-    downloadable driver testable in this harness (Trino 481 ships no kudu/accumulo connector).
+  description: 'Every datasource type in SourceType enum (49 types: postgresql, mysql, mariadb, sqlserver,
+    oracle, cockroachdb, yugabytedb, tidb, greenplum, singlestore, snowflake, bigquery, databricks, fabric,
+    synapse, redshift, clickhouse, elasticsearch, pinot, druid, exasol, delta_lake, iceberg, hive, hive_s3,
+    mongodb, cassandra, redis, firebird, duckdb, sqlite, openapi, graphql_remote, grpc_remote, govdata,
+    kafka, neo4j, sparql, prometheus, rss, websocket, sharepoint, splunk, google_sheets, csv, parquet,
+    files, airport, ingest) must have an integration or e2e test against a real (Docker or cloud-provisioned)
+    instance. Unit tests that merely reference the type name do not satisfy this.'
+  use_case: 'Ensures all datasource connectors work correctly in practice against real instances, not
+    just as concept or identity-check in code. Covered with self-provisioning tests: direct-driver — mariadb,
+    tidb, cockroachdb, yugabytedb, sqlserver, oracle, singlestore (license-gated skip); connector (federation
+    engine → Trino catalog) — cassandra (reference pattern), exasol (arch-gated: amd64-only image), redshift
+    + sharepoint (creds/instance-gated, no self-provision); DuckDB community extension — firebird, airport
+    (live vs zaychik), google_sheets (opt-in gated: DuckDB gsheets extension SA-auth, PROVISA_GSHEETS_LIVE=1);
+    Calcite/Trino — splunk (live, self-provisioned). Fixed a product bug found while covering exasol:
+    Source.jdbc_url() omitted exasol/redshift, silently no-op''ing catalog creation. Filed issue #74 (zaychik
+    Arrow-Flight auth/protocol gap, found via airport; the Provisa Flight→Trino transport itself is verified
+    working — tests/integration/test_trino_flight_engine_e2e.py). The heavy multi-container analytics/lake
+    ecosystems are now covered by self-provisioning e2e: pinot and druid (Trino catalog), hive and hive_s3
+    (Trino hive connector + HMS, S3 on MinIO). kudu and accumulo were removed from SourceType — neither
+    is a SQL-variant with a downloadable driver testable in this harness (Trino 481 ships no kudu/accumulo
+    connector).'
   code:
   - provisa/core/models.py
   - provisa/federation/trino_connectors.py
@@ -31388,8 +31421,10 @@
   - tests/integration/test_hive_s3_source_e2e.py
   - tests/integration/test_trino_flight_engine_e2e.py
   unit_test: false
-  unit_test_reason: This is an integration/e2e coverage requirement by definition — it mandates a real-instance integration or e2e test per SourceType; a unit test that only references the type name explicitly does not satisfy it.
-  target: "2026-Q4"
+  unit_test_reason: This is an integration/e2e coverage requirement by definition — it mandates a real-instance
+    integration or e2e test per SourceType; a unit test that only references the type name explicitly
+    does not satisfy it.
+  target: 2026-Q4
 - id: REQ-1098
   status: complete
   since: 2026-07
@@ -31398,9 +31433,9 @@
   priority: MUST
   type: structural
   description: The native (DuckDB) tier exposes the tenant control-plane as the `provisa_admin` catalog,
-    enabling meta/ops entities (registered_tables, etc.) to be queryable with parity to the Trino tier. The
-    catalog attaches the tenant SQLite DB READ_ONLY and exposes every table under the compiler-emitted schema
-    `org_<id>` without a hardcoded table list.
+    enabling meta/ops entities (registered_tables, etc.) to be queryable with parity to the Trino tier.
+    The catalog attaches the tenant SQLite DB READ_ONLY and exposes every table under the compiler-emitted
+    schema `org_<id>` without a hardcoded table list.
   use_case: Provides full parity with Trino tier where provisa_admin is a real attached catalog. Allows
     native users to query system metadata and operational state via standard SQL, matching Trino/Presto
     multi-catalog semantics.
@@ -31441,8 +31476,9 @@
   description: The native demo launcher MUST wait for the demo mock servers (petstore :18080, graphql
     :4000) to answer before starting the API. The launcher MUST gate the browser-open on the API's /health
     endpoint (served only after lifespan/config-load completes), not merely on the UI proxy port.
-  use_case: Ensures the demo environment is fully initialized before opening the browser to the user. Prevents
-    premature browser navigation to a not-yet-ready environment and reduces failed first-user experience.
+  use_case: Ensures the demo environment is fully initialized before opening the browser to the user.
+    Prevents premature browser navigation to a not-yet-ready environment and reduces failed first-user
+    experience.
   code:
   - packaging/windows/provisa-native.ps1
   tests:
@@ -31458,9 +31494,10 @@
   priority: MUST
   type: infrastructure
   description: Native/desktop tier enables remote MCP server by default, bound to loopback (PROVISA_MCP_HOST=127.0.0.1),
-    with the governed role pinned explicitly (native auth:none = one local admin). All settings overridable via environment variables.
-  use_case: Provides secure local MCP connectivity for Claude Desktop on native installations without additional configuration,
-    enabling tool use against local Provisa queries.
+    with the governed role pinned explicitly (native auth:none = one local admin). All settings overridable
+    via environment variables.
+  use_case: Provides secure local MCP connectivity for Claude Desktop on native installations without
+    additional configuration, enabling tool use against local Provisa queries.
   code:
   - provisa/api/mcp/server.py
   - packaging/windows/provisa-native.ps1
@@ -31474,18 +31511,22 @@
   category: MCP Status Endpoint
   priority: MUST
   type: behavioral
-  description: The MCP status endpoint returns a resolved, proxy-aware, editable connect URL derived from X-Forwarded-Host/Host
-    headers plus PROVISA_MCP_PORT and /mcp path; PROVISA_MCP_EXTERNAL_URL overrides. Returns null when MCP is disabled.
-  use_case: Enables UI to display and allow editing of the MCP connection URL, accounting for reverse proxies and external
-    domains that the server cannot reliably infer.
+  description: The MCP status endpoint returns a resolved, proxy-aware, editable connect URL derived from
+    X-Forwarded-Host/Host headers plus PROVISA_MCP_PORT and /mcp path; PROVISA_MCP_EXTERNAL_URL overrides.
+    Returns null when MCP is disabled.
+  use_case: Enables UI to display and allow editing of the MCP connection URL, accounting for reverse
+    proxies and external domains that the server cannot reliably infer.
   code:
   - provisa/api/mcp/status.py
   tests:
   - tests/unit/test_mcp_status.py
-  scenario: |
-    Given MCP is enabled on the server with PROVISA_MCP_PORT=9999
+  scenario: 'Given MCP is enabled on the server with PROVISA_MCP_PORT=9999
+
     When the UI calls GET /api/mcp/status with X-Forwarded-Host: example.com
+
     Then the endpoint returns {url: "http://example.com:9999/mcp", enabled: true}
+
+    '
 - id: REQ-1103
   status: complete
   since: 2026-07
@@ -31493,10 +31534,10 @@
   category: Explore MCP UI Panel
   priority: MUST
   type: ui
-  description: The Explore/MCP surface provides a "Connect Claude Desktop" panel that emits a copy-ready claude_desktop_config.json
-    entry with URL prefilled and editable.
-  use_case: Simplifies Claude Desktop setup by providing a complete, copy-paste configuration entry that users can add to their
-    Claude Desktop config file.
+  description: The Explore/MCP surface provides a "Connect Claude Desktop" panel that emits a copy-ready
+    claude_desktop_config.json entry with URL prefilled and editable.
+  use_case: Simplifies Claude Desktop setup by providing a complete, copy-paste configuration entry that
+    users can add to their Claude Desktop config file.
   code:
   - provisa-ui/src/pages/McpExplorePage.tsx
   tests:
@@ -31508,9 +31549,12 @@
   category: Claude Desktop Bridge
   priority: MUST
   type: infrastructure
-  description: "The Claude Desktop connector is Node-free: mcp-proxy (Python stdio-to-Streamable-HTTP bridge) is bundled into the native standalone runtime. The emitted config's command references the bundled interpreter (PROVISA_MCP_BRIDGE_COMMAND). Feature is gated to native tier only; off-tier the panel degrades to \"install mcp-proxy yourself\". No npx, no Node, no user pip, fully airgapped."
-  use_case: Eliminates Node.js and npm as dependencies for Claude Desktop MCP connectivity in native installations, reducing
-    distribution complexity and supporting offline/airgapped environments.
+  description: 'The Claude Desktop connector is Node-free: mcp-proxy (Python stdio-to-Streamable-HTTP
+    bridge) is bundled into the native standalone runtime. The emitted config''s command references the
+    bundled interpreter (PROVISA_MCP_BRIDGE_COMMAND). Feature is gated to native tier only; off-tier the
+    panel degrades to "install mcp-proxy yourself". No npx, no Node, no user pip, fully airgapped.'
+  use_case: Eliminates Node.js and npm as dependencies for Claude Desktop MCP connectivity in native installations,
+    reducing distribution complexity and supporting offline/airgapped environments.
   code:
   - packaging/windows/build-sfx.ps1
   - packaging/macos/build-dmg.sh
@@ -31529,9 +31573,11 @@
   category: MCP Authentication
   priority: MUST
   type: behavioral
-  description: Wire resolve_token_role into the FastMCP Streamable HTTP transport to map remote bearer tokens to Provisa roles,
-    enabling secure per-caller MCP authentication before exposing MCP off the loopback.
-  use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control and governance.
+  description: Wire resolve_token_role into the FastMCP Streamable HTTP transport to map remote bearer
+    tokens to Provisa roles, enabling secure per-caller MCP authentication before exposing MCP off the
+    loopback.
+  use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control
+    and governance.
   code:
   - provisa/api/mcp/server.py
 - id: REQ-1106
@@ -31541,16 +31587,14 @@
   category: MCP Transport
   priority: MUST
   type: constraint
-  description: >-
-    MCP local-connector transport supports plain HTTP by default with optional TLS
-    (PROVISA_MCP_TLS=1 for public deployment). Per-machine self-signed certificates are
-    generated on first start with OS user-store trust and http fallback if cert creation fails.
-    When MCP binds non-loopback (0.0.0.0), DNS-rebinding Host-header protection is disabled
-    (stdio bridges are not subject to browser-origin attacks); loopback binds retain strict protection.
-  use_case: >-
-    Enables local Provisa MCP servers to be reached by Claude Desktop via mcp-proxy stdio bridge
-    without requiring bundled TLS. Supports optional TLS for publicly-exposed deployments while
-    fixing 421 Misdirected Request errors when clients connect via the machine's real IP (e.g. WSL VM IP).
+  description: MCP local-connector transport supports plain HTTP by default with optional TLS (PROVISA_MCP_TLS=1
+    for public deployment). Per-machine self-signed certificates are generated on first start with OS
+    user-store trust and http fallback if cert creation fails. When MCP binds non-loopback (0.0.0.0),
+    DNS-rebinding Host-header protection is disabled (stdio bridges are not subject to browser-origin
+    attacks); loopback binds retain strict protection.
+  use_case: Enables local Provisa MCP servers to be reached by Claude Desktop via mcp-proxy stdio bridge
+    without requiring bundled TLS. Supports optional TLS for publicly-exposed deployments while fixing
+    421 Misdirected Request errors when clients connect via the machine's real IP (e.g. WSL VM IP).
   code:
   - provisa/api/mcp/server.py
   - provisa/api/mcp/tls.py
@@ -31561,8 +31605,8 @@
   - REQ-1104
 - id: REQ-1120
   status: complete
-  since: "2026-07"
-  group: "8. Client Access & Protocols"
+  since: 2026-07
+  group: 8. Client Access & Protocols
   category: Served Protocol Surface
   priority: SHOULD
   type: behavioral
@@ -31573,14 +31617,13 @@
     Then governed rows stream back over the airport protocol via the shared query pipeline
 
     And row-level security is enforced server-side (deny-by-default when no session var)'
-  description: >-
-    Provisa serves the DuckDB Airport Arrow-Flight protocol as an outbound data-as-a-service surface,
-    allowing external DuckDB clients with the `airport` community extension to ATTACH Provisa (TYPE AIRPORT)
-    and query its governed federated catalog with server-side governance (RLS/masking) applied.
-  use_case: >-
-    DuckDB users can integrate Provisa's federated catalog directly into DuckDB workflows without separate
-    ETL, leveraging DuckDB's in-process analytics while Provisa enforces row-level and column-level access
-    control server-side. This peer protocol surface complements existing bolt (Neo4j), pgwire (Postgres),
+  description: Provisa serves the DuckDB Airport Arrow-Flight protocol as an outbound data-as-a-service
+    surface, allowing external DuckDB clients with the `airport` community extension to ATTACH Provisa
+    (TYPE AIRPORT) and query its governed federated catalog with server-side governance (RLS/masking)
+    applied.
+  use_case: DuckDB users can integrate Provisa's federated catalog directly into DuckDB workflows without
+    separate ETL, leveraging DuckDB's in-process analytics while Provisa enforces row-level and column-level
+    access control server-side. This peer protocol surface complements existing bolt (Neo4j), pgwire (Postgres),
     and Arrow Flight SQL surfaces.
   code:
   - provisa/api/airport/server.py
@@ -31591,105 +31634,106 @@
   tests:
   - tests/integration/test_airport_service_e2e.py
   unit_test: false
-  unit_test_reason: The airport protocol surface is a live-stack behavior (DuckDB airport extension ATTACH + governed streaming); it is verified end-to-end through the real DuckDB client against the running service, not by unit tests.
-  target: "2026-Q4"
+  unit_test_reason: The airport protocol surface is a live-stack behavior (DuckDB airport extension ATTACH
+    + governed streaming); it is verified end-to-end through the real DuckDB client against the running
+    service, not by unit tests.
+  target: 2026-Q4
   relates_to:
   - REQ-1097
 - id: REQ-1121
   status: complete
-  group: "8. Client Access & Protocols"
+  group: 8. Client Access & Protocols
   category: Query Pushdown & Optimization
   priority: MUST
   type: constraint
-  description: >-
-    The DuckDB airport extension delivers filter and projection pushdown via the endpoints
-    DoAction parameters map (json_filters JSON expression tree + column_ids indices). The server
-    translates these to semantic WHERE + projection, folds them into the DoGet ticket, and injects
-    them through _govern_and_route so sources apply filters/projection with RLS/masking layered on.
-  use_case: >-
-    Pushdown minimizes network transfer and leverages source query optimization while maintaining
+  description: The DuckDB airport extension delivers filter and projection pushdown via the endpoints
+    DoAction parameters map (json_filters JSON expression tree + column_ids indices). The server translates
+    these to semantic WHERE + projection, folds them into the DoGet ticket, and injects them through _govern_and_route
+    so sources apply filters/projection with RLS/masking layered on.
+  use_case: 'Pushdown minimizes network transfer and leverages source query optimization while maintaining
     governance invariants. Conformance rule: DoGet must return the FULL advertised schema; projected-out
-    columns are null-filled client-side and DuckDB projects accordingly.
+    columns are null-filled client-side and DuckDB projects accordingly.'
   code:
   - provisa/api/airport/pushdown.py
   - provisa/api/airport/server.py
   tests:
   - tests/integration/test_airport_service_e2e.py
   unit_test: false
-  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
-  since: "2026-07"
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the
+    real DuckDB airport extension (live governed round-trip), not by unit tests.
+  since: 2026-07
   relates_to:
   - REQ-1120
 - id: REQ-1122
   status: complete
-  group: "8. Client Access & Protocols"
+  group: 8. Client Access & Protocols
   category: Access Control & Projection
   priority: MUST
   type: constraint
-  description: >-
-    Airport catalog scan projects only registered semantic columns per role, never SELECT *.
-    Unregistered physical columns (e.g. audit created_at) are neither leaked on read nor sent
-    as NULL on INSERT.
-  use_case: >-
-    Ensures column-level access control is enforced at the protocol boundary and physical schema
-    details remain hidden from federated consumers, preventing accidental data leakage or schema
-    coupling.
+  description: Airport catalog scan projects only registered semantic columns per role, never SELECT *.
+    Unregistered physical columns (e.g. audit created_at) are neither leaked on read nor sent as NULL
+    on INSERT.
+  use_case: Ensures column-level access control is enforced at the protocol boundary and physical schema
+    details remain hidden from federated consumers, preventing accidental data leakage or schema coupling.
   code:
   - provisa/api/airport/service.py
   - provisa/api/airport/query.py
   tests:
   - tests/integration/test_airport_service_e2e.py
   unit_test: false
-  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
-  since: "2026-07"
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the
+    real DuckDB airport extension (live governed round-trip), not by unit tests.
+  since: 2026-07
   relates_to:
   - REQ-1120
 - id: REQ-1123
   status: complete
-  group: "8. Client Access & Protocols"
+  group: 8. Client Access & Protocols
   category: Transaction Management
   priority: SHOULD
   type: behavioral
-  description: >-
-    Airport transactions use a real in-memory coordinator (provisa/api/airport/transactions.py).
+  description: 'Airport transactions use a real in-memory coordinator (provisa/api/airport/transactions.py).
     create_transaction mints a UUID identifier; get_transaction_status reports active/committed/aborted.
-    Best-effort read-committed isolation: each governed mutation auto-commits.
-  use_case: >-
-    Provides transaction identity and status tracking for DuckDB clients performing multi-statement
-    workflows against a governed federated catalog without requiring persistent transaction state
-    across connections.
-  scenario: |
-    Given a DuckDB client with airport extension connected to Provisa
+    Best-effort read-committed isolation: each governed mutation auto-commits.'
+  use_case: Provides transaction identity and status tracking for DuckDB clients performing multi-statement
+    workflows against a governed federated catalog without requiring persistent transaction state across
+    connections.
+  scenario: 'Given a DuckDB client with airport extension connected to Provisa
+
     When the client calls create_transaction
+
     Then a unique transaction UUID is minted and returned
+
     And get_transaction_status reports the transaction as active
+
     And mutations within the transaction auto-commit with read-committed isolation
+
+    '
   code:
   - provisa/api/airport/transactions.py
   - provisa/api/airport/service.py
   tests:
   - tests/integration/test_airport_service_e2e.py
   unit_test: false
-  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
-  since: "2026-07"
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the
+    real DuckDB airport extension (live governed round-trip), not by unit tests.
+  since: 2026-07
   relates_to:
   - REQ-1120
 - id: REQ-1124
   status: complete
-  group: "8. Client Access & Protocols"
+  group: 8. Client Access & Protocols
   category: Mutation Enforcement
   priority: MUST
   type: constraint
-  description: >-
-    Governed DML (INSERT / UPDATE / DELETE) via do_exchange decodes the Arrow stream and submits
-    semantic SQL through _compile_govern_execute (the single governed write pipeline), gated on
-    engine writability (is_writable_on / writable.py). Never parallel writers. UPDATE/DELETE key
-    rows by the table's PRIMARY KEY, advertised as the airport row identity (is_rowid pseudo-column
-    filled with the JSON-encoded PK tuple), so the WHERE is formed only from PKs RLS already let the
-    role read and is RLS-filtered again through the pipeline — a role can never mutate a row it
-    cannot see (the attempt is a governed no-op).
-  use_case: >-
-    Ensures all mutations flow through the unified governance pipeline with consistent RLS/masking
+  description: Governed DML (INSERT / UPDATE / DELETE) via do_exchange decodes the Arrow stream and submits
+    semantic SQL through _compile_govern_execute (the single governed write pipeline), gated on engine
+    writability (is_writable_on / writable.py). Never parallel writers. UPDATE/DELETE key rows by the
+    table's PRIMARY KEY, advertised as the airport row identity (is_rowid pseudo-column filled with the
+    JSON-encoded PK tuple), so the WHERE is formed only from PKs RLS already let the role read and is
+    RLS-filtered again through the pipeline — a role can never mutate a row it cannot see (the attempt
+    is a governed no-op).
+  use_case: Ensures all mutations flow through the unified governance pipeline with consistent RLS/masking
     and audit enforcement, preventing bypass via direct insertion or uncontrolled parallel writes.
   code:
   - provisa/api/airport/service.py
@@ -31698,43 +31742,419 @@
   tests:
   - tests/integration/test_airport_service_e2e.py
   unit_test: false
-  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
-  since: "2026-07"
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the
+    real DuckDB airport extension (live governed round-trip), not by unit tests.
+  since: 2026-07
   relates_to:
   - REQ-1120
 - id: REQ-1125
   status: complete
-  group: "8. Client Access & Protocols"
+  group: 8. Client Access & Protocols
   category: Protocol Compliance
   priority: MUST
   type: constraint
-  description: >-
-    Operations refused with a correct Flight protocol error (never a silent no-op). UPDATE/DELETE
-    ARE supported via PRIMARY-KEY row identity: the table's PK is advertised as the airport row
-    identity (is_rowid pseudo-column filled with the JSON-encoded PK tuple) so DuckDB echoes it back
-    on update/delete; the server forms a governed WHERE PK IN (...) submitted through the one write
-    pipeline (RLS/masking/writable-ACL apply). They are refused ONLY per-table, when a table has no
-    primary key (no safe row identity). create_table IS supported: it creates the physical table in
-    the target domain's single writable source (schema-mutation pipeline) and registers it, so the
-    new table joins the catalog and accepts a governed INSERT; refused only when the domain has no
-    writable source bound (or maps to more than one — ambiguous). column_statistics +
-    table_function_flight_info are refused (governed federation has no precomputed stats and
-    advertises no table functions). Physical column/struct ALTERs (add_column/rename_table/add_field/
-    …) are refused (they need the admin schema-mutation API's source/governance context absent from
-    the airport DDL payload). DDL create_schema/drop_schema map to Provisa domains via the
-    control-plane domain repository.
-  use_case: >-
-    Maintains protocol integrity and a consistent governance model: safe, governed operations (PK
-    UPDATE/DELETE, create_table into a writable source) are served through the one pipeline, while
-    operations that cannot be safely federated are rejected — preventing data inconsistency,
-    uncontrolled mutations, or governance bypass.
+  description: 'Operations refused with a correct Flight protocol error (never a silent no-op). UPDATE/DELETE
+    ARE supported via PRIMARY-KEY row identity: the table''s PK is advertised as the airport row identity
+    (is_rowid pseudo-column filled with the JSON-encoded PK tuple) so DuckDB echoes it back on update/delete;
+    the server forms a governed WHERE PK IN (...) submitted through the one write pipeline (RLS/masking/writable-ACL
+    apply). They are refused ONLY per-table, when a table has no primary key (no safe row identity). create_table
+    IS supported: it creates the physical table in the target domain''s single writable source (schema-mutation
+    pipeline) and registers it, so the new table joins the catalog and accepts a governed INSERT; refused
+    only when the domain has no writable source bound (or maps to more than one — ambiguous). column_statistics
+    + table_function_flight_info are refused (governed federation has no precomputed stats and advertises
+    no table functions). Physical column/struct ALTERs (add_column/rename_table/add_field/ …) are refused
+    (they need the admin schema-mutation API''s source/governance context absent from the airport DDL
+    payload). DDL create_schema/drop_schema map to Provisa domains via the control-plane domain repository.'
+  use_case: 'Maintains protocol integrity and a consistent governance model: safe, governed operations
+    (PK UPDATE/DELETE, create_table into a writable source) are served through the one pipeline, while
+    operations that cannot be safely federated are rejected — preventing data inconsistency, uncontrolled
+    mutations, or governance bypass.'
   code:
   - provisa/api/airport/server.py
   - provisa/api/airport/query.py
   tests:
   - tests/integration/test_airport_service_e2e.py
   unit_test: false
-  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the real DuckDB airport extension (live governed round-trip), not by unit tests.
-  since: "2026-07"
+  unit_test_reason: Airport protocol behavior is verified end-to-end against the running service via the
+    real DuckDB airport extension (live governed round-trip), not by unit tests.
+  since: 2026-07
   relates_to:
   - REQ-1120
+- id: REQ-1126
+  status: complete
+  since: 2026-07
+  group: 9. Deployment & Distribution
+  category: PyPI Distribution
+  priority: MUST
+  type: infrastructure
+  description: 'Provisa ships as a pip-installable wheel via `pip install provisa[embedded]`. The wheel
+    contains a fully functional embedded Provisa system (SQLite control plane + embedded DuckDB engine)
+    ready to run immediately: `provisa run`. Supply-chain trust follows existing Artifactory-as-PyPI models
+    already approved and CVE-scanned by regulated enterprises.'
+  use_case: Airgapped/regulated enterprises already trust Artifactory-as-PyPI supply chains (whitelisted,
+    CVE-scanned, hash-pinned via uv.lock) but cannot approve new registries (Docker Hub, notarization
+    services, custom mirrors). Wheel distribution avoids new approval gates.
+  code:
+  - pyproject.toml
+  - provisa/cli.py
+  - scripts/build-wheel.sh
+  target: 2026-Q4
+  tests:
+  - tests/e2e/test_pypi_packaging.py
+  unit_test: false
+  unit_test_reason: Wheel build/install is a packaging flow (python -m build artifact contents + console-script
+    wiring), validated by packaging-marked tests deselected from the default lane, not by unit tests.
+- id: REQ-1127
+  status: complete
+  since: 2026-07
+  group: 9. Deployment & Distribution
+  category: UI Packaging
+  priority: MUST
+  type: structural
+  description: React UI is precompiled into the wheel. CI runs `vite build` (from provisa-ui/package.json),
+    embeds the output into the package tree (e.g. provisa/_ui/), and declares it in [tool.setuptools.package-data]
+    so `python -m build` includes it. ui_server.py serves from the packaged directory path rather than
+    __file__.parent.parent/static, eliminating the need for npm/Node at runtime or post-install. The runtime
+    config/ files are staged into provisa/_config/ the same way so the wheel is fully self-contained.
+  use_case: Airgapped environments have no npm/Node installed. Packaging the precompiled UI into the wheel
+    ensures a self-contained delivery that can be deployed to systems with only Python >=3.12.
+  code:
+  - provisa/ui_server.py
+  - provisa/core/desktop_profile.py
+  - provisa/pg_extensions/catalog.py
+  - scripts/build-wheel.sh
+  - pyproject.toml
+  target: 2026-Q4
+  tests:
+  - tests/e2e/test_pypi_packaging.py
+  unit_test: false
+  unit_test_reason: UI/config packaging is verified against built wheel contents (python -m build artifact),
+    a packaging-marked flow deselected from the default lane, not by unit tests.
+- id: REQ-1128
+  status: complete
+  since: 2026-07
+  group: 9. Deployment & Distribution
+  category: Console Entry Point
+  priority: SHOULD
+  type: structural
+  description: A `provisa` console entry point (provisa = provisa.cli:main) is added to [project.scripts]
+    in pyproject.toml, allowing users to launch the system via the `provisa run` command at the shell
+    without explicitly calling a module or uvicorn.
+  use_case: Improves user experience and follows Python packaging conventions; users expect a single command
+    (`provisa run`) rather than python -m invocations.
+  code:
+  - provisa/cli.py
+  - pyproject.toml
+  target: 2026-Q4
+  tests:
+  - tests/e2e/test_pypi_packaging.py
+  unit_test: false
+  unit_test_reason: The console-script wiring is a pyproject/entry_points declaration verified in the
+    built-wheel packaging flow, deselected from the default lane.
+- id: REQ-1129
+  status: complete
+  since: 2026-07
+  group: 9. Deployment & Distribution
+  category: Embedded Profile Dependencies
+  priority: MUST
+  type: constraint
+  description: 'The [embedded] optional dependency extra pins SQLite control plane + embedded DuckDB engine
+    (REQ-979: native/desktop tier). The bundled Trino JVM is omitted (PyPI cannot carry a JVM server).
+    Full multi-engine federation is preserved by pointing to a customer-provided ("bring your own") external
+    engine via TRINO_HOST/TRINO_PORT env or federation_engine_host/port config (already supported: provisa/federation/engine.py:1201,
+    provisa/core/desktop_profile.py:153). Embedded DuckDB is the default when no external engine is configured.'
+  use_case: Defines a complete, runnable tier for airgapped enterprises while preserving federation capability
+    via bring-your-own external engines. Omitting the JVM avoids GPL licensing complications and PyPI
+    size/upload limits.
+  code:
+  - provisa/federation/engine.py
+  - provisa/core/desktop_profile.py
+  - pyproject.toml
+  target: 2026-Q4
+  tests:
+  - tests/e2e/test_pypi_packaging.py
+  unit_test: false
+  unit_test_reason: The [embedded] extra + bring-your-own-engine env are a packaging/config contract verified
+    in the built-wheel packaging flow and embedded-env resolution test, deselected from the default lane.
+- id: REQ-1130
+  status: complete
+  since: 2026-07
+  group: 9. Deployment & Distribution
+  category: Mirror Preparation
+  priority: SHOULD
+  type: constraint
+  description: 'Python language pin: >=3.12,<3.13. Airgap Artifactory mirrors must pre-seed cp312 platform
+    wheels for all native-wheel dependencies: duckdb, chdb, pyodbc, pyarrow, grpcio, cryptography, bcrypt,
+    psycopg2-binary, snowflake-connector-python, etc. A requirements.lock and "mirror these wheels" checklist
+    is delivered so the customer''s Artifactory admin can prepare in one pass.'
+  use_case: Regulated enterprises run PyPI mirrors (Artifactory, Nexus) with whitelisted wheels. Pre-seeding
+    the checklist avoids deployment surprises and allows the admin to verify all transitive deps are approved
+    before go-live.
+  code:
+  - pyproject.toml
+  - packaging/pypi/requirements-embedded.lock
+  - packaging/pypi/MIRROR-CHECKLIST.md
+  target: 2026-Q4
+  tests:
+  - tests/e2e/test_pypi_packaging.py
+  unit_test: false
+  unit_test_reason: Mirror preparation is deliverable artifacts (hash-pinned lock + checklist) validated
+    for presence in the packaging-marked lane, not by unit tests.
+- id: REQ-1131
+  status: complete
+  since: 2026-07
+  group: 1. Access Governance & Security
+  category: Column Visibility Control
+  priority: MUST
+  type: constraint
+  description: A role with ADMIN capability bypasses per-column visible_to restrictions and always sees
+    every column. The V003 column-visibility check in stage2.py implements this admin override.
+  use_case: Ensures admins can fully inspect and manage the system without being restricted by user-facing
+    visibility policies that apply to ordinary roles.
+  code:
+  - provisa/compiler/stage2.py
+  tests:
+  - tests/unit/test_stage2.py
+  - tests/unit/test_governance.py
+  scenario: 'Given an ADMIN-capability role and a table with columns restricted by per-role visible_to
+
+    When the role queries the table
+
+    Then all columns are returned regardless of visible_to restrictions
+
+    '
+- id: REQ-1132
+  status: proposed
+  target: 2026-Q3
+  group: 1. Access Governance & Security
+  category: Semantic-Layer Meta Visibility
+  priority: MUST
+  type: behavioral
+  description: 'Metadata visibility is tiered by role. The meta domain exposes two column classes: CORE
+    (table_name, column_name, data_type, description, alias, schema_name, domain_id, keys, relationship
+    endpoints) and GOVERNANCE (visible_to, unmasked_to, writable_by, masking rules, view_sql, native_filter_type,
+    scope). DEFAULT tier (every role): sees CORE meta for directly-accessible tables plus 1-hop relationship
+    neighbors (user-defined/semantic relationships only, excluding synthetic catalog edges), bidirectional.
+    Meta DOMAIN GRANT: sees CORE meta for all tables and relationships. Per-relationship opt-out suppresses
+    target metadata from DEFAULT discovery.'
+  use_case: Enables governed discovery over the reachable neighborhood without exposing data. Separates
+    catalog structure knowledge (CORE) from governance configuration (GOVERNANCE), allowing each tier
+    explicit control.
+  scenario: 'Given a role that can query table t1 (connected via semantic relationship to t2 and t3)
+
+    When querying registered_tables and table_columns
+
+    Then sees CORE meta for t1, t2, t3; sees nothing for t4 (no relationship); sees no GOVERNANCE columns
+    unless view_governance capability is granted
+
+    '
+- id: REQ-1133
+  status: complete
+  since: 2026-07
+  group: 1. Access Governance & Security
+  category: Domain Access Control
+  priority: MUST
+  type: constraint
+  description: 'The `ops` domain behaves like any ordinary data domain: roles must be explicitly granted
+    rights to access it. There is no implicit access to ops tables; admins bypass this via the admin capability
+    override.'
+  use_case: Prevents unintended exposure of operational/internal tables. Each role must be explicitly
+    granted access according to their responsibility.
+  code:
+  - provisa/api/startup_seed.py
+  tests:
+  - tests/unit/test_ops_domain.py
+  scenario: 'Given a role without explicit access to the ops domain
+
+    When the role attempts to query ops tables
+
+    Then the query is rejected; ops domain acts as a standard domain requiring explicit grants
+
+    '
+- id: REQ-1134
+  status: proposed
+  target: 2026-Q3
+  group: 1. Access Governance & Security
+  category: Governance Column Visibility
+  priority: MUST
+  type: constraint
+  description: The `view_governance` capability is required to view GOVERNANCE columns in the meta domain
+    (visible_to, unmasked_to, writable_by, mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
+    view_sql, native_filter_type, scope). A role with the meta domain grant does NOT automatically see
+    GOVERNANCE columns; view_governance must be granted independently.
+  use_case: Separates discovery (CORE meta) from administration/audit (GOVERNANCE meta). Allows data stewards
+    to see governance configuration without granting broad meta-domain access, and vice versa.
+  scenario: 'Given a role with meta domain access but without view_governance capability
+
+    When querying the meta domain
+
+    Then sees CORE columns (table_name, column_name, data_type, etc.) but not GOVERNANCE columns (masking
+    rules, role grants)
+
+    Given the same role also granted view_governance capability
+
+    When querying the meta domain again
+
+    Then now sees both CORE and GOVERNANCE columns
+
+    '
+- id: REQ-1135
+  status: proposed
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Licensing
+  priority: MUST
+  type: behavioral
+  description: The installation records a tamper-evident first-use timestamp that survives reinstall.
+    On first startup with no existing anchor, the current date is recorded as first_seen. The anchor payload
+    {first_seen, machine_id} is Ed25519-signed and written to multiple locations outside the application
+    install directory (e.g. ~/.provisa, an OS-native store, and a secondary marker). On every startup
+    the system reads all anchors, takes the earliest (min) first_seen, and rewrites any missing anchor
+    with that value. No network access is required — the mechanism is fully airgapped and time-based.
+  use_case: Enables a 30-day trial clock that cannot be reset by uninstalling and reinstalling the application,
+    without any license server or phone-home.
+  scenario: 'Given a fresh installation with no existing anchor
+
+    When the application first starts
+
+    Then first_seen is set to today and written as a signed anchor to all anchor locations
+
+    Given an existing installation whose app directory is removed and reinstalled
+
+    When the application starts again
+
+    Then the earliest surviving anchor''s first_seen is restored and the trial clock is not reset
+
+    '
+- id: REQ-1136
+  status: proposed
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Licensing
+  priority: MUST
+  type: constraint
+  description: The trial-expiry evaluation is resistant to wall-clock rollback. The system persists a
+    monotonic wall-clock high-water mark and evaluates elapsed time as max(now, high_water) - first_seen.
+    The trial is considered expired when elapsed >= 30 days and no valid license is present. Setting the
+    system clock backward does not extend the trial.
+  use_case: Prevents a user from evading the nag by moving the machine clock backward.
+  scenario: 'Given an installation whose first_seen was 31 days ago
+
+    When the user sets the system clock back 10 days and starts the application
+
+    Then max(now, high_water) - first_seen still exceeds 30 days and the trial is treated as expired
+
+    '
+- id: REQ-1137
+  status: proposed
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Licensing
+  priority: MUST
+  type: behavioral
+  description: After the trial expires and no valid license is present, a self-contained nag message is
+    surfaced on every access surface. It is emitted in the UI as a persistent shell banner, and through
+    each served protocol's native non-fatal notice channel only (pgwire NoticeResponse, Bolt SUCCESS-metadata
+    notifications, Arrow Flight app_metadata, gRPC trailing metadata, REST X-Provisa-License-Notice header
+    plus warnings[] envelope, MCP notifications/message). The nag never modifies the result body, row
+    stream, or any schema-typed field; if a protocol has no safe out-of-band channel the nag is skipped
+    for that protocol. Emission is rate-limited to once per session/connection. The message states that
+    the license is FREE and is used only to gather usage information because Provisa collects no telemetry,
+    that the trial period has elapsed, lists the fields to send (company, position/title, role, first
+    name, last name, email, phone optional), provides both the provisa.dev registration link and the license
+    request email, includes the machine ID, and states how to apply the received license file. The nag
+    never gates or degrades functionality.
+  use_case: Nags the user into registering so end-user contact details are captured — the only means of
+    gathering usage since Provisa ships with no telemetry. The license is free; nothing is charged or
+    blocked.
+  scenario: 'Given an expired trial with no valid license
+
+    When a client connects over pgwire
+
+    Then a single NoticeResponse carrying the license nag is sent and the query results are unaffected
+
+    Given the same state
+
+    When the UI loads any page
+
+    Then a persistent license banner is shown in the shell chrome containing the machine ID, both contact
+    routes, and the required fields
+
+    '
+- id: REQ-1138
+  status: proposed
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Licensing
+  priority: MUST
+  type: structural
+  description: A license file is an Ed25519-signed token issued by provisa.dev (which holds the private
+    key). Its payload contains company, position/title, role, first name, last name, email, optional phone,
+    machine_id, and issued_at. The application embeds only the corresponding public key and verifies the
+    license entirely offline. The license is a one-time registration capture and is the alternative to
+    telemetry — applying it does NOT enable, start, or schedule any telemetry, usage reporting, or ongoing
+    data collection. Provisa never phones home before, during, or after licensing.
+  use_case: Allows offline verification of an authentic, installation-bound license without any runtime
+    call to an issuing server. Registration at install time replaces telemetry entirely; there is no continuous
+    collection.
+- id: REQ-1139
+  status: proposed
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Licensing
+  priority: MUST
+  type: behavioral
+  description: A license file is applied via `provisa license apply <file>`, a UI upload in Settings →
+    License, or by placing it at ~/.provisa/license.json. On apply the system verifies the Ed25519 signature
+    against the embedded public key and checks that the license machine_id matches the local installation's
+    stable machine_id (derived from hardware/OS identifiers, not the app directory, so it survives reinstall).
+    A valid, matching license permanently silences the nag on all surfaces. A signature failure or machine_id
+    mismatch is rejected and the nag continues.
+  use_case: Lets a user remove the nag by applying the installation-bound license they received.
+  scenario: 'Given an expired trial and a license file whose signature is valid and machine_id matches
+    this installation
+
+    When the user runs `provisa license apply <file>`
+
+    Then the license is accepted and the nag no longer appears on any surface
+
+    Given a license file whose machine_id does not match this installation
+
+    When the user applies it
+
+    Then it is rejected and the nag continues
+
+    '
+- id: REQ-1140
+  status: proposed
+  target: 2026-Q3
+  group: 6. Materialized Views & Caching
+  category: Materialized View Governance
+  priority: MUST
+  type: constraint
+  description: A materialized view may only be published if all relationships it depends on are approved.
+    If the requesting user holds the necessary rights to create those relationships, the relationships
+    are automatically created and approved; MV publication proceeds. If the user lacks the required rights,
+    both the relationship creation and MV creation requests are submitted for approval, and MV publication
+    is blocked until all relationships are approved.
+  use_case: Ensures MVs cannot be published over unapproved relationships, preventing uncontrolled data
+    lineage and access patterns. Distinguishes between users who can auto-provision (trusted data engineers)
+    and those who must request approval (least-privilege roles).
+  scenario: 'Given a user with relationship-creation rights attempting to publish an MV that depends on
+    relationships X and Y
+
+    When the user submits the MV publication request
+
+    Then relationships X and Y are automatically created and approved, and the MV is published immediately
+
+    Given a user without relationship-creation rights attempting to publish an MV that depends on relationships
+    X and Y
+
+    When the user submits the MV publication request
+
+    Then both the relationship creation requests and the MV creation request are submitted as a single
+    approval workflow
+
+    And the MV is not published until all relationships have been approved
+
+    '

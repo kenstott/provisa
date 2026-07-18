@@ -65,8 +65,8 @@ class SourceType(str, Enum):
     # Data Lake
     delta_lake = "delta_lake"
     iceberg = "iceberg"
-    hive = "hive"
-    hive_s3 = "hive_s3"  # S3-backed Hive lake table (connector-only; no direct driver)
+    hive = "hive"  # storage backend (hadoop/S3/ADLS) is source.mapping["storage"], not a type
+    hive_s3 = "hive_s3"  # REQ-229: Hive lake on S3 object storage — distinct type, hive connector
     # NoSQL
     mongodb = "mongodb"
     cassandra = "cassandra"

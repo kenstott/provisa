@@ -49,6 +49,12 @@ from provisa.compiler.naming import (
 )
 from provisa.compiler.type_map import JSONScalar, column_type_to_graphql
 from provisa.compiler.schema_types import SchemaInput, _TableInfo
+from provisa.security.rights import (
+    GOVERNANCE_META_COLUMNS,
+    META_DOMAIN_ID,
+    Capability,
+    has_capability,
+)
 from provisa.compiler.actions_schema import _build_action_fields, _mutation_name
 
 from provisa.compiler.schema_directives import (
@@ -71,7 +77,10 @@ from provisa.compiler.schema_inputs import (
 # Domains implicitly reachable via JOIN from any data domain (traversal only).
 # Tables in these domains are included in all role contexts so SQL JOINs
 # can reference them, but V001 still blocks direct FROM-clause access.
-_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta", "ops"})
+# Only the meta (catalog) domain is implicitly discoverable by every role (REQ-1132). Ops is a normal
+# domain a role must be explicitly GRANTED (REQ-1133) — it is NOT implicit, so an ungranted role's
+# schema never exposes ops tables/columns to any query surface.
+_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta"})
 
 
 def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
@@ -100,13 +109,22 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             continue
         col_meta = {m.column_name.lower(): m for m in si.column_types[table_id]}
 
-        # Filter columns by role visibility; split native filter cols from regular cols
-        # visible_to=[] means unrestricted (visible to all roles)
+        # Filter columns by role visibility; split native filter cols from regular cols.
+        # visible_to=[] means unrestricted (visible to all roles). REQ-1132/REQ-1134: in the meta
+        # (catalog) domain, GOVERNANCE columns (visible_to, masks, view_sql, …) are hidden unless the
+        # role holds view_governance (or admin) — enforced HERE so every query surface (GraphQL, SQL,
+        # cypher) that derives from this per-role schema sees the same governed catalog.
+        _hide_meta_gov = (
+            table["domain_id"] == META_DOMAIN_ID
+            and not has_capability(role, Capability.VIEW_GOVERNANCE)
+            and not has_capability(role, Capability.ADMIN)
+        )
         visible_cols = [
             c
             for c in table["columns"]
             if (not c["visible_to"] or role["id"] in c["visible_to"])
             and not c.get("native_filter_type")
+            and not (_hide_meta_gov and c["column_name"] in GOVERNANCE_META_COLUMNS)
         ]
         # Native filter cols are API parameters (path/query params), not data columns.
         # They are always exposed as query args regardless of visible_to — the role

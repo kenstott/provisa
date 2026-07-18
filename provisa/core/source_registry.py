@@ -53,7 +53,7 @@ SOURCE_TO_DIALECT: dict[str, str] = {
 }
 
 # Source types that are CONNECTOR_ONLY — no direct driver, no SQLGlot dialect (REQ-229)
-LAKE_ONLY_SOURCES: set[str] = {"iceberg", "hive_s3", "delta_lake"}
+LAKE_ONLY_SOURCES: set[str] = {"iceberg", "delta_lake", "hive_s3"}
 
 # Source types that support time-travel vithe engine FOR TIMESTAMP/VERSION AS OF (REQ-372)
 TIME_TRAVEL_SOURCES: set[str] = {"iceberg", "delta_lake"}

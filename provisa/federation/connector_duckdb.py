@@ -307,6 +307,26 @@ class DuckDBIcebergConnector(_DuckDBExtensionConnector):  # REQ-899
         }
 
 
+class DuckDBDeltaConnector(_DuckDBExtensionConnector):  # REQ-899
+    """Delta Lake table, referenced in place via a delta_scan scanner view. Like iceberg, delta is a
+    CORE extension (install_from_community=False) — INSTALL delta / LOAD delta registers delta_scan,
+    which reads the table's current version from its ``_delta_log`` (zero copy). The table location is
+    the source's path (a warehouse/object-store URI); object-store access needs httpfs + a DuckDB
+    SECRET, provisioned at attach time and out of scope for the load-only probe."""
+
+    source_type = "delta_lake"
+    key = "duckdb_delta"
+    extension = "delta"
+    install_from_community = False  # core registry — INSTALL delta (no FROM community)
+    probe_symbol = "delta_scan"
+    mechanism = Mechanism.SCAN  # delta_scan scanner view — read in place, no attach (REQ-951)
+
+    def details(self, source: Source) -> dict:
+        return {
+            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM delta_scan('{source.path}')"
+        }
+
+
 # --- Postgres: a single-node federator that ATTACHes remote sources via postgres_fdw (SQL/MED) ---
 
 

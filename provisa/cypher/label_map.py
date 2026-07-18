@@ -30,6 +30,10 @@ if TYPE_CHECKING:
 
 # Requirements: REQ-351, REQ-392, REQ-394, REQ-467, REQ-471, REQ-574
 
+# Catalog domain id — local constant (kept in sync with provisa.security.rights.META_DOMAIN_ID) to
+# avoid importing a higher layer into the cypher package.
+_META_DOMAIN_ID = "meta"
+
 
 @dataclass
 class NodeMapping:
@@ -275,6 +279,19 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                 nodes_by_table,
                 aliases,
             )
+
+        # REQ-1132: meta (catalog) is DISCOVERABLE ONLY BY TRAVERSAL for a role without a meta grant
+        # — it may not be a bare MATCH (n) root (which would emit a direct meta FROM and be V001-blocked,
+        # the same rule SQL enforces). Mark meta nodes traversal_only so MATCH (mine)-[]->(meta) still
+        # works while MATCH (n) roots on the role's own domains only. A meta grant / "*" keeps it direct.
+        if (
+            domain_access is not None
+            and "*" not in domain_access
+            and _META_DOMAIN_ID not in domain_access
+        ):
+            for nm in nodes.values():
+                if nm.domain_id == _META_DOMAIN_ID:
+                    nm.traversal_only = True
 
         return cls(
             nodes=nodes,

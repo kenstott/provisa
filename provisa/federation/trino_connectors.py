@@ -88,7 +88,7 @@ class TrinoSqlServerConnector(_TrinoJdbcConnector):
 
 # Lake/object source types Trino reads IN PLACE via a lakehouse catalog (iceberg/hive/delta) — a SCAN
 # (no copy, freshness follows the files), not a live-DB VIRTUAL attach (REQ-951).
-_TRINO_SCAN_TYPES = frozenset({"hive", "hive_s3", "delta_lake", "iceberg"})
+_TRINO_SCAN_TYPES = frozenset({"hive", "delta_lake", "iceberg"})
 
 
 def _jdbc_trino(source_type: str, trino_connector: str) -> type[_TrinoJdbcConnector]:
@@ -278,48 +278,93 @@ class TrinoHiveConnector(_TrinoConnector):
         props = _hive_metastore_props(source)
         if not props:
             return {}
-        # Non-S3 Hive: table data lives on the Hadoop-native filesystem (local file:/ or HDFS paths
-        # the metastore recorded). Trino's hadoop filesystem handles both; no s3.* is emitted.
-        props["fs.hadoop.enabled"] = "true"
-        return props
+        # One `hive` source type; the object store its tables live on is a config choice — the storage
+        # backend (hadoop/local, S3, or ADLS) is carried in source.mapping["storage"] rather than in a
+        # separate source type. Each backend wires Trino's hive connector with its native filesystem.
+        storage = (source.mapping.get("storage") or "hadoop").lower()
+        if storage in ("hadoop", "hdfs", "local", ""):
+            # Table data on the Hadoop-native filesystem (local file:/ or HDFS paths the metastore
+            # recorded). Trino's hadoop filesystem handles both; no object-store props are emitted.
+            props["fs.hadoop.enabled"] = "true"
+            return props
+        if storage == "s3":
+            return _hive_s3_props(source, props)
+        if storage in ("azure", "adls"):
+            return _hive_adls_props(source, props)
+        raise ValueError(f"Source {source.id!r}: unknown hive storage backend {storage!r}")
 
 
-class TrinoHiveS3Connector(TrinoHiveConnector):
-    """S3-backed Hive lake: the same Thrift metastore as ``hive``, but table data lives on S3
-    (MinIO/AWS), so Trino's hive connector is wired with the NATIVE S3 filesystem
-    (fs.native-s3.enabled + s3.* endpoint/credentials/path-style) instead of the Hadoop FS. The S3
-    settings come from the source mapping (endpoint/access_key_id/secret_access_key/region) — a
-    hive_s3 source with no S3 mapping is a misconfiguration, so details() fails loud (no fallback)."""
+class TrinoHiveS3Connector(_TrinoConnector):
+    """REQ-229: ``hive_s3`` is a distinct Trino-only source type — a Hive lake whose table data lives on
+    S3-compatible object storage. It reuses the Hive Thrift metastore (connector.name is still ``hive``)
+    but, unlike the generic ``hive`` type where the object store is a ``mapping['storage']`` choice,
+    selecting ``hive_s3`` DECLARES S3 storage: it always wires Trino's native S3 filesystem from the
+    source mapping, and a missing s3 mapping is a misconfiguration that fails loud (no fallback)."""
 
     source_type = "hive_s3"
     trino_connector = "hive"
+    mechanism = Mechanism.SCAN  # lakehouse read: S3 objects the metastore points at, no copy
 
     def details(self, source: Source) -> dict:
-        from provisa.core.secrets import resolve_secrets
-
         props = _hive_metastore_props(source)
         if not props:
             return {}
-        m = {k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()}
-        endpoint = m.get("s3_endpoint") or m.get("endpoint")
-        access = m.get("access_key_id") or m.get("aws_access_key_id")
-        secret = m.get("secret_access_key") or m.get("aws_secret_access_key")
-        region = m.get("region") or m.get("s3_region")
-        if not (endpoint and access and secret and region):
-            raise ValueError(
-                f"Source {source.id!r}: hive_s3 requires s3 endpoint, access_key_id, "
-                "secret_access_key and region in mapping"
-            )
-        props["fs.native-s3.enabled"] = "true"
-        props["s3.endpoint"] = endpoint
-        props["s3.aws-access-key"] = access
-        props["s3.aws-secret-key"] = secret
-        props["s3.region"] = region
-        # path-style addressing is required by MinIO and any non-AWS S3-compatible endpoint; default
-        # on unless the mapping explicitly declares virtual-hosted addressing (documented default,
-        # REQ-1097 — not a silent fallback for a missing required value).
-        props["s3.path-style-access"] = "false" if m.get("path_style") is False else "true"
-        return props
+        return _hive_s3_props(source, props, err_ctx="hive_s3")
+
+
+def _hive_s3_props(source: Source, props: dict, err_ctx: str = "hive S3 storage") -> dict:
+    """Wire Trino's hive connector with the NATIVE S3 filesystem (fs.native-s3.enabled + s3.*). The S3
+    settings come from source.mapping (endpoint/access_key_id/secret_access_key/region) — an S3-backed
+    hive source with no S3 mapping is a misconfiguration, so this fails loud (no fallback). ``err_ctx``
+    names the requirement in the error (``hive_s3`` for the dedicated type, ``hive S3 storage`` for the
+    storage-mapping path on the generic ``hive`` type)."""
+    from provisa.core.secrets import resolve_secrets
+
+    m = {k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()}
+    endpoint = m.get("s3_endpoint") or m.get("endpoint")
+    access = m.get("access_key_id") or m.get("aws_access_key_id")
+    secret = m.get("secret_access_key") or m.get("aws_secret_access_key")
+    region = m.get("region") or m.get("s3_region")
+    if not (endpoint and access and secret and region):
+        raise ValueError(
+            f"Source {source.id!r}: {err_ctx} requires s3 endpoint, access_key_id, "
+            "secret_access_key and region in mapping"
+        )
+    props["fs.native-s3.enabled"] = "true"
+    props["s3.endpoint"] = endpoint
+    props["s3.aws-access-key"] = access
+    props["s3.aws-secret-key"] = secret
+    props["s3.region"] = region
+    # path-style addressing is required by MinIO and any non-AWS S3-compatible endpoint; default on
+    # unless the mapping explicitly declares virtual-hosted addressing (documented default, REQ-1097 —
+    # not a silent fallback for a missing required value).
+    props["s3.path-style-access"] = "false" if m.get("path_style") is False else "true"
+    return props
+
+
+def _hive_adls_props(source: Source, props: dict) -> dict:
+    """Wire Trino's hive connector with the NATIVE Azure filesystem (fs.native-azure.enabled +
+    azure.*) for a Hive lake whose tables live on ADLS Gen2. The storage account + credential (shared
+    access key or SAS token) come from source.mapping — a missing account/credential is a
+    misconfiguration, so this fails loud (no fallback)."""
+    from provisa.core.secrets import resolve_secrets
+
+    m = {k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()}
+    account = m.get("storage_account")
+    access_key = m.get("access_key")
+    sas_token = m.get("sas_token")
+    if not account or not (access_key or sas_token):
+        raise ValueError(
+            f"Source {source.id!r}: hive ADLS storage requires storage_account and an access_key "
+            "or sas_token in mapping"
+        )
+    props["fs.native-azure.enabled"] = "true"
+    props["azure.auth-type"] = "ACCESS_KEY" if access_key else "SAS"
+    if access_key:
+        props["azure.access-key"] = access_key
+    else:
+        props["azure.sas-token"] = sas_token
+    return props
 
 
 class TrinoFilesConnector(_TrinoConnector):

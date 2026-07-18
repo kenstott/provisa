@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Provisa — The active semantic layer</title>
+  <meta name="description" content="A single governed API over 46 heterogeneous data sources. Query with GraphQL, Cypher, or SQL; reach it over pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, or an MCP server. Governance is on the path, not bolted on." />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+
+  <meta property="og:title" content="Provisa — The active semantic layer" />
+  <meta property="og:description" content="One governed API over 46 data sources. GraphQL, Cypher, and SQL over pgwire, Bolt, gRPC, REST, Arrow Flight, and JDBC — governance compiled into every query plan." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://provisa.dev" />
+  <link rel="canonical" href="https://provisa.dev/" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+        <span class="brand-tag">Preview</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#interfaces">Interfaces</a>
+        <a href="#governance">Governance</a>
+        <a href="#sources">Sources</a>
+        <a href="#deploy">Deploy</a>
+        <a class="nav-cta" href="#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <span class="hero-badge"><span class="hero-badge-dot"></span>In preview — general availability coming soon</span>
+        <p class="eyebrow">The active semantic layer</p>
+        <h1>Three query languages.<br />Nine protocols. Your engine.</h1>
+        <p class="lead">
+          Query <strong>46 heterogeneous data sources</strong> with
+          <strong>GraphQL, Cypher, or SQL</strong> — all three over the same federated
+          schema, on <em>the engine you choose</em>: <strong>Trino, DuckDB, ClickHouse,
+          Postgres, Snowflake, Databricks, or BigQuery</strong>, or the embedded
+          Trino-compatible engine that ships in the box. Cross-source joins fan out
+          through federation; single-source reads and writes route direct to the
+          driver, transactional and sub-100ms. Reach it over <strong>pgwire, Bolt,
+          Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, or an MCP server</strong>
+          — the same governed schema, every way in.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#download">Download</a>
+          <a class="btn btn-ghost" href="https://github.com/kenstott/provisa">View on GitHub</a>
+        </div>
+
+        <div class="hero-terminal" role="img" aria-label="Example: connect over the Postgres wire protocol and query federated data">
+          <div class="term-bar"><span></span><span></span><span></span></div>
+          <pre><code><span class="c-comment"># psql speaks to Provisa as if it were Postgres — on port 5439</span>
+<span class="c-cmd">psql</span> <span class="c-flag">-h</span> localhost <span class="c-flag">-p</span> 5439 <span class="c-flag">-U</span> analyst
+
+<span class="c-comment"># One SQL query, joined across Postgres, Mongo, and Elasticsearch</span>
+<span class="c-kw">SELECT</span> c.name, o.total, t.trace_id
+<span class="c-kw">FROM</span> customers c
+<span class="c-kw">JOIN</span> orders o   <span class="c-kw">ON</span> o.customer_id = c.id
+<span class="c-kw">JOIN</span> queries t  <span class="c-kw">ON</span> t.actor = c.email
+<span class="c-kw">WHERE</span> o.total &gt; 1000;
+<span class="c-comment"># RLS, masking, and approval already applied. Nothing to remember.</span></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- What it is -->
+    <section class="whatis">
+      <div class="container">
+        <p>
+          The instant API, the legal join paths, the governance rules, and the
+          telemetry that audits every query all fall out of <em>one model</em> — the
+          registration that describes your data is the same one that operates, governs,
+          and audits it. The federation engine and the data sources beneath are yours to
+          choose.
+        </p>
+      </div>
+    </section>
+
+    <!-- Value pillars -->
+    <section class="pillars container" aria-label="Why Provisa">
+      <article class="pillar">
+        <h3>Three languages, one schema</h3>
+        <p>
+          GraphQL, Cypher, and SQL all query the same federated schema and retarget to
+          any source dialect. Governance applies identically across all three —
+          <em>not three integrations, but one</em>.
+        </p>
+      </article>
+      <article class="pillar">
+        <h3>Read and write</h3>
+        <p>
+          Provisa carries analytical <em>and</em> transactional flows through the same
+          governed API: cross-source reads fan out through federation; writes and
+          single-source reads route direct to the driver — transactional and sub-100ms.
+        </p>
+      </article>
+      <article class="pillar">
+        <h3>Smart routing &amp; recorded transforms</h3>
+        <p>
+          Single-source queries bypass federation entirely. Materialized views record
+          the transform that built them, so queries are transparently rewritten onto a
+          fresh MV — partial join matches included. Hot lookups inline as VALUES CTEs.
+        </p>
+      </article>
+    </section>
+
+    <!-- Query interfaces -->
+    <section id="interfaces" class="section">
+      <div class="container">
+        <header class="section-head">
+          <p class="eyebrow">Query interfaces &amp; wire protocols</p>
+          <h2>Write in three languages. Connect over nine protocols.</h2>
+          <p class="section-sub">
+            The query language and the wire protocol are independent choices —
+            governance behaves identically across every combination.
+          </p>
+        </header>
+
+        <div class="grid grid-3">
+          <div class="card"><h4>GraphQL</h4><p>Per-role schemas with field-level visibility, cursor pagination, and aggregates. Schema-constrained to registered relationships — valid by construction. Apollo APQ included.</p></div>
+          <div class="card"><h4>SQL</h4><p>Full SQL over federated data — correlated subqueries and all. Single-source queries bypass federation entirely for sub-100ms latency.</p></div>
+          <div class="card"><h4>Cypher</h4><p>Graph queries over the same federated schema. Traverse relationships as edges, union sources, walk variable-length paths — identical governance.</p></div>
+          <div class="card"><h4>pgwire</h4><p>Any Postgres client (psql, DBeaver, DataGrip, pandas <code>read_sql</code>) connects on port 5439. <code>pg_catalog</code> answered in-memory so schema browsers just work.</p></div>
+          <div class="card"><h4>Bolt (Neo4j)</h4><p>Neo4j Browser, Bloom, and official drivers run Cypher over Bolt. Each role surfaces as a <code>provisa_&lt;role&gt;</code> database.</p></div>
+          <div class="card"><h4>Arrow Flight</h4><p>High-throughput columnar streaming over gRPC; accepts GraphQL or SQL. Unbounded result sets, no server-side materialization.</p></div>
+          <div class="card"><h4>gRPC model API</h4><p>Auto-generated <code>.proto</code> from the registered schema — typed query and insert RPCs per table, streamed responses.</p></div>
+          <div class="card"><h4>JDBC &amp; REST</h4><p>BI tools (Tableau, Power BI, DBeaver) over JDBC; JSON:API 1.1 at <code>/data/jsonapi/{table}</code> with sparse fieldsets and filter expressions.</p></div>
+          <div class="card"><h4>Natural language</h4><p>NL→SQL/Cypher/GraphQL powered by Claude, with an interactive validation loop before anything executes.</p></div>
+          <div class="card"><h4>MCP server</h4><p>A Model Context Protocol server — stdio and remote Streamable HTTP — lets AI agents like Claude query your governed, federated data as tools. The OAuth token maps to a role, so every call is governed; agents get no bypass.</p></div>
+          <div class="card"><h4>Airport (DuckDB)</h4><p>Any DuckDB client attaches Provisa as a database — <code>ATTACH 'grpc://host' AS p (TYPE AIRPORT)</code> — and queries the governed federated schema. Filters and projection push down; writes update by primary key.</p></div>
+          <div class="card"><h4>WebSocket &amp; SSE</h4><p>Subscriptions stream near-real-time change events. Backends: Postgres native, MongoDB native, CDC, or polling — also fanned out over Kafka.</p></div>
+        </div>
+
+        <figure class="shot">
+          <div class="shot-frame">
+            <div class="term-bar"><span></span><span></span><span></span></div>
+            <img src="assets/query-explorer.png" width="1440" height="900" loading="lazy"
+                 alt="The Query Language Explorer: a GraphQL query with its live Semantic SQL and Cypher translations in side panels." />
+          </div>
+          <figcaption>Write a GraphQL query; see its live Semantic SQL and Cypher translations, then jump into either editor.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Governance -->
+    <section id="governance" class="section section-alt">
+      <div class="container">
+        <header class="section-head">
+          <p class="eyebrow">Security model</p>
+          <h2>Six layers. Every language. Every transport.</h2>
+          <p class="section-sub">
+            Governance is applied uniformly — there is no query path that bypasses it.
+            Add a source, column, or relationship and every layer applies automatically.
+          </p>
+        </header>
+
+        <ol class="layers">
+          <li><span class="layer-n">0</span><div><h4>Introspection filtering</h4><p>Schema browsers only ever see what the role is allowed to see.</p></div></li>
+          <li><span class="layer-n">1</span><div><h4>Public access</h4><p>Anonymous surface is explicit, never accidental.</p></div></li>
+          <li><span class="layer-n">2</span><div><h4>Domain access</h4><p>Roles reach only the domains registered to them.</p></div></li>
+          <li><span class="layer-n">3</span><div><h4>Row-level security</h4><p>Per-table, per-role <code>WHERE</code> injection — inherited recursively.</p></div></li>
+          <li><span class="layer-n">4</span><div><h4>Column visibility &amp; masking</h4><p>Regex, constant, or truncate masking with role-based bypass.</p></div></li>
+          <li><span class="layer-n">5</span><div><h4>Predicate guard &amp; approval</h4><p>Pre-execution ABAC hook over webhook, gRPC, or unix socket.</p></div></li>
+        </ol>
+
+        <p class="section-note">
+          <strong>Relationships are governed too — explore with guardrails.</strong>
+          A JOIN, or a graph traversal, is legal only if it matches a registered,
+          approved relationship; unapproved paths are rejected and logged. So the query
+          and graph explorers let people roam the model freely — and let AI agents
+          discover what connects to what — while every path stays inside the edges
+          policy sanctioned. Each relationship carries a human- and agent-readable
+          reason for why the traversal exists.
+        </p>
+        <p class="section-note">
+          And it's a <strong>per-role capability</strong>: the guardrail is a single
+          flag on the role. Leave it on for analysts and agents who should stay on the
+          rails; take the training wheels off for a trusted role and it writes
+          unconstrained JOINs across the whole federated schema — same governed path,
+          just without the relationship guard.
+        </p>
+      </div>
+    </section>
+
+    <!-- Sources -->
+    <section id="sources" class="section">
+      <div class="container">
+        <header class="section-head">
+          <p class="eyebrow">Data sources</p>
+          <h2>46 source types through one API.</h2>
+          <p class="section-sub">
+            Graph and RDF sources are first-class, not adapters. Register REST,
+            GraphQL, gRPC, WebSocket, or RSS endpoints as governed tables — federated
+            joins across API and relational sources work transparently.
+          </p>
+        </header>
+
+        <ul class="chips">
+          <li>PostgreSQL</li><li>MySQL</li><li>MongoDB</li><li>Cassandra</li>
+          <li>Elasticsearch</li><li>Neo4j</li><li>SPARQL</li><li>Kafka</li>
+          <li>Snowflake</li><li>Databricks</li><li>BigQuery</li><li>Fabric</li>
+          <li>ClickHouse</li><li>DuckDB</li><li>Google Sheets</li><li>CSV / Parquet</li>
+          <li>Excel · DOCX · PPTX</li><li>SharePoint</li><li>Splunk</li><li>S3 · FTP · SFTP</li>
+          <li>REST APIs</li><li>GraphQL APIs</li><li>gRPC APIs</li><li>RSS · WebSocket</li>
+        </ul>
+
+        <div class="lake">
+          <div class="lake-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5" /><path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6" />
+            </svg>
+          </div>
+          <div>
+            <h3>An instant data lake — governed on arrival</h3>
+            <p>
+              You don't register files — you register a <em>location</em>. Point Provisa
+              at a folder, a bucket, or a SharePoint site and it crawls the whole tree
+              recursively, discovers every file, and registers each as a governed table.
+              Not just CSV and Parquet — <strong>Excel workbooks</strong>, and even
+              <strong>Word, PowerPoint, HTML, and Markdown documents</strong> converted to
+              tables. Over local disk, <code>s3://</code>, <code>ftp://</code>,
+              <code>sftp://</code>, or SharePoint.
+            </p>
+            <p>
+              Connect <strong>SharePoint</strong> and its lists enumerate as schemas you
+              can query. Run a <strong>Splunk</strong> search and the results come back as
+              a table you can JOIN to your business data. A live <strong>Google
+              Sheet</strong> is just another table. Each lands under the same RLS,
+              masking, and relationship rules as everything else — a data lake that's
+              governed the moment it exists, not months later.
+            </p>
+          </div>
+        </div>
+
+        <figure class="shot">
+          <div class="shot-frame">
+            <div class="term-bar"><span></span><span></span><span></span></div>
+            <img src="assets/graph-view.png" width="1440" height="900" loading="lazy"
+                 alt="The federated schema explored as a live graph: domain and node labels, relationship types, and variable-length traversals across sources." />
+          </div>
+          <figcaption>The same federated schema, explorable as a live graph — domains, node labels, and relationships across every source.</figcaption>
+        </figure>
+
+        <p class="section-note">
+          <strong>Observability as data.</strong> Traces, metrics, and logs are
+          collected via OpenTelemetry, compacted into Iceberg, and registered as
+          queryable tables — join <code>customers</code> to <code>queries</code> to
+          see who ran what and how long it took.
+        </p>
+      </div>
+    </section>
+
+    <!-- Analytics / materialized views -->
+    <section id="analytics" class="section section-alt">
+      <div class="container">
+        <header class="section-head">
+          <p class="eyebrow">Materialized views</p>
+          <h2>Analytics datasets you declare, not pipelines you orchestrate.</h2>
+          <p class="section-sub">
+            Build a materialized view over a view, a source, or another MV — a
+            dependency graph of derived datasets from raw source to final analytics
+            table. No orchestration DAG to write or babysit.
+          </p>
+        </header>
+
+        <div class="grid grid-4">
+          <div class="card"><h4>Layered by design</h4><p>MVs stack on views and other MVs. Your whole analytics layer becomes one declarative graph — the same model that describes and governs your data.</p></div>
+          <div class="card"><h4>Recorded transforms</h4><p>Each MV records the SQL or join that built it and the input signals it read (Iceberg snapshot, RDB watermark). Queries transparently rewrite onto a fresh MV — partial-join matches included.</p></div>
+          <div class="card"><h4>Refresh by freshness</h4><p>An MV rebuilds only when an upstream input actually changed. A change fans out through the graph to its dependents — demand-driven, not recompute-everything.</p></div>
+          <div class="card"><h4>Refresh by calendar</h4><p>Or on a TTL / interval when time, not data, is the trigger. Freshness and calendars are the only knobs — no hand-maintained schedule.</p></div>
+        </div>
+
+        <p class="section-note">
+          Governance still applies to every derived dataset: an MV is a governed table
+          like any other, so RLS, masking, and relationship rules hold all the way up
+          the graph.
+        </p>
+      </div>
+    </section>
+
+    <!-- Distribution / airgap -->
+    <section id="distribution" class="section section-alt">
+      <div class="container dist-inner">
+        <div class="dist-copy">
+          <p class="eyebrow">Enterprise-ready</p>
+          <h2>Airgap-ready. Installs from your own Artifactory.</h2>
+          <p class="section-sub">
+            The embedded profile ships the entire runnable system — precompiled UI and
+            all — as a single Python wheel. Regulated and airgapped orgs already trust
+            Artifactory-as-PyPI, so there's no new supply chain to approve: no Docker
+            registry to mirror, no JVM, no root.
+          </p>
+          <ul class="ticks">
+            <li>SQLite control plane + embedded DuckDB engine — no Docker, no daemon</li>
+            <li>Bring your own engine: point at any Trino with one env var</li>
+            <li>Reproducible and hash-pinned; passes the same CVE gate as every wheel</li>
+          </ul>
+        </div>
+        <div class="dist-terminal" role="img" aria-label="Install Provisa from PyPI and run it">
+          <div class="term-bar"><span></span><span></span><span></span></div>
+          <pre><code><span class="c-comment"># One wheel. Everything inside.</span>
+<span class="c-cmd">pip</span> install <span class="c-str">"provisa[embedded]"</span>
+<span class="c-cmd">provisa</span> run
+
+<span class="c-comment"># Federate against your own engine when you want scale-out</span>
+<span class="c-cmd">export</span> TRINO_HOST=trino.internal
+<span class="c-cmd">export</span> TRINO_PORT=8080
+<span class="c-cmd">provisa</span> run</code></pre>
+        </div>
+      </div>
+
+      <div class="container lockin">
+        <div class="lockin-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="10.5" width="16" height="10" rx="2" /><path d="M8 10.5V7a4 4 0 0 1 8 0" /><path d="M12 14.5v2.5" />
+          </svg>
+        </div>
+        <div>
+          <h3>No lock-in — engine or source</h3>
+          <p>
+            Your model, semantics, and governance live <em>above</em> the
+            infrastructure, not inside it. Swap the engine — embedded to Trino to your
+            warehouse; new CTO, new strategy, switch it to Databricks — the queries and
+            policies don't change. Re-point a table from Oracle to Postgres, or MongoDB
+            to Snowflake, and consumers never see it move.
+          </p>
+          <p>
+            That turns <em>data modernization</em> into an incremental effort instead of
+            a big-bang cutover: migrate sources table by table behind a stable governed
+            API, with one uniform governance model applying to legacy and modern sources
+            alike throughout the transition.
+          </p>
+        </div>
+      </div>
+
+      <div class="container lockin">
+        <div class="lockin-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2 2 7l10 5 10-5-10-5z" /><path d="m2 12 10 5 10-5" /><path d="m2 17 10 5 10-5" />
+          </svg>
+        </div>
+        <div>
+          <h3>Physical fragmentation, logical coherence</h3>
+          <p>
+            Performance needs fragmentation — the right engine per workload, materialized
+            copies at the right granularity. Consumers need one coherent model. The old
+            cost of fragmenting the physical was fragmenting the <em>logical</em> too: a
+            pile of models with clashing objectives and granularity, physical detail
+            bleeding into logical design.
+          </p>
+          <p>
+            Provisa splits them. Specialized engines and materialized views underneath,
+            one governed logical model on top — and the physical never bleeds into the
+            contract your consumers see. The knobs that fragment for speed live in the
+            same declarative model that keeps you coherent, so going faster never spawns
+            a second modeling mess.
+          </p>
+        </div>
+      </div>
+
+      <div class="container lockin">
+        <div class="lockin-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" />
+          </svg>
+        </div>
+        <div>
+          <h3>Domains as products — delegated, not centralized</h3>
+          <p>
+            Give a domain its own owner and scoped rights to build it: register sources,
+            publish tables, wire relationships, ship views — all inside their domain,
+            none of it reaching another. Central policy still governs every query;
+            authorship is federated, enforcement stays absolute. Optional — off by
+            default, on when you need it.
+          </p>
+        </div>
+      </div>
+
+      <div class="container lockin">
+        <div class="lockin-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="9" r="2.5" /><path d="M6 8.5v7" /><path d="M18 11.5c0 4-6 1.5-6 6.5" />
+          </svg>
+        </div>
+        <div>
+          <h3>Promote config like code</h3>
+          <p>
+            Analysts and developers work freely in a dev lane — register sources, publish
+            tables, wire relationships. Their changes export as a unified-diff config
+            patch that flows to test, then prod, reviewed in git like any pull request.
+            Because the estate is declarative, promotion is a <em>diff</em>, not a
+            migration.
+          </p>
+          <p>
+            Where a release also moves data, a materialized view can carry the transform —
+            and land its output into a real source table, not just the internal store.
+            True data migrations may still call for imperative scripts outside Provisa —
+            the model promotes cleanly; the heavy data movement is yours to run.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download -->
+    <section id="download" class="section section-alt">
+      <div class="container">
+        <header class="section-head">
+          <p class="eyebrow">Get Provisa</p>
+          <h2>Download and run in a minute.</h2>
+          <p class="section-sub">
+            Signed desktop installers for every OS, or <code>pip install</code> the
+            embedded runtime. The native tier boots immediately — no Docker, no JVM.
+            Preview builds; <a href="#signup">join the list</a> for the general-availability release.
+          </p>
+        </header>
+
+        <div class="dl-grid">
+          <a class="dl-card" id="dl-macos" data-platform="macOS"
+             href="https://github.com/kenstott/provisa/releases/latest">
+            <svg class="dl-os" viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true">
+              <path d="M16.37 12.7c-.02-2.05 1.67-3.03 1.75-3.08-.95-1.4-2.44-1.59-2.97-1.61-1.26-.13-2.47.74-3.11.74-.64 0-1.63-.72-2.68-.7-1.38.02-2.65.8-3.36 2.03-1.43 2.49-.37 6.17 1.03 8.19.68.99 1.5 2.1 2.56 2.06 1.03-.04 1.42-.66 2.66-.66 1.24 0 1.59.66 2.68.64 1.11-.02 1.81-1 2.49-2 .78-1.15 1.11-2.26 1.12-2.32-.02-.01-2.16-.83-2.18-3.28zM14.4 6.36c.56-.68.94-1.63.84-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.56-.86 2.48.9.07 1.83-.46 2.39-1.13z"/>
+            </svg>
+            <h4>macOS</h4>
+            <span class="dl-btn">Download .dmg</span>
+            <span class="dl-meta">Apple silicon &amp; Intel · <span class="dl-ver">latest release</span></span>
+          </a>
+
+          <a class="dl-card" id="dl-windows" data-platform="Windows"
+             href="https://github.com/kenstott/provisa/releases/latest">
+            <svg class="dl-os" viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true">
+              <path d="M3 5.1 10.4 4v7.3H3V5.1zm0 13.8 7.4 1.1v-7.2H3v6.1zM11.3 3.9 21 2.5v8.8h-9.7V3.9zm0 8.4H21v8.6l-9.7-1.4v-7.2z"/>
+            </svg>
+            <h4>Windows</h4>
+            <span class="dl-btn">Download .exe</span>
+            <span class="dl-meta">x64 · embedded Python, no Docker · <span class="dl-ver">latest release</span></span>
+          </a>
+
+          <a class="dl-card" id="dl-linux" data-platform="Linux"
+             href="https://github.com/kenstott/provisa/releases/latest">
+            <svg class="dl-os" viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true">
+              <path d="M12 2c-1.7 0-3 1.5-3 3.3 0 1 .1 1.9-.4 2.8-.5.9-1.6 1.9-2.2 3.6-.6 1.6-.3 2.9-.6 3.6-.3.7-1 1.2-1 2 0 .6.5 1 1.2 1 .8 0 1.4.5 2.2 1 .8.5 1.7 1 3.6 1s2.8-.5 3.6-1c.8-.5 1.4-1 2.2-1 .7 0 1.2-.4 1.2-1 0-.8-.7-1.3-1-2-.3-.7 0-2-.6-3.6-.6-1.7-1.7-2.7-2.2-3.6-.5-.9-.4-1.8-.4-2.8C15 3.5 13.7 2 12 2zm-1.4 3.7c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zm2.8 0c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zM12 8.2c1 0 2.1.6 2.1 1.1 0 .3-.4.5-1 .8-.4.2-.8.6-1.1.6s-.7-.4-1.1-.6c-.6-.3-1-.5-1-.8 0-.5 1.1-1.1 2.1-1.1z"/>
+            </svg>
+            <h4>Linux</h4>
+            <span class="dl-btn">Download .AppImage</span>
+            <span class="dl-meta">x86_64 · <span class="dl-ver">latest release</span></span>
+          </a>
+        </div>
+
+        <p class="dl-fallback">
+          Looking for the demo build, JDBC driver, or a specific version?
+          <a href="https://github.com/kenstott/provisa/releases">Browse all releases →</a>
+        </p>
+
+        <div class="pip">
+          <div class="pip-copy">
+            <h3>Or install from PyPI</h3>
+            <p>
+              The whole runnable system — precompiled UI included — as a single wheel.
+              Airgap-ready over an Artifactory PyPI mirror: no Docker, no JVM, no root.
+            </p>
+            <p class="pip-note">
+              Federate against your own engine any time with
+              <code>TRINO_HOST</code>/<code>TRINO_PORT</code>.
+            </p>
+          </div>
+          <div class="dist-terminal" role="img" aria-label="Install Provisa from PyPI and run it">
+            <div class="term-bar"><span></span><span></span><span></span></div>
+            <pre><code><span class="c-comment"># One wheel. Everything inside.</span>
+<span class="c-cmd">pip</span> install <span class="c-str">"provisa[embedded]"</span>
+<span class="c-cmd">provisa</span> run
+
+<span class="c-comment"># Requires CPython 3.12</span>
+<span class="c-cmd">python</span> --version   <span class="c-comment"># Python 3.12.x</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Deploy -->
+    <section id="deploy" class="section">
+      <div class="container">
+        <header class="section-head">
+          <p class="eyebrow">Deploy anywhere</p>
+          <h2>From a laptop to a cluster — same platform.</h2>
+          <p class="section-sub">
+            Double-click on your desktop, <code>pip install</code> in an airgap, or
+            provision a cluster with the tooling your ops team already runs.
+          </p>
+        </header>
+
+        <div class="grid grid-4">
+          <div class="card">
+            <h4>Desktop installers</h4>
+            <p>Signed <strong>macOS</strong>, <strong>Windows</strong>, and <strong>Linux</strong> installers — each with a one-click demo build that boots a sample stack you can query immediately.</p>
+          </div>
+          <div class="card">
+            <h4>Python wheel</h4>
+            <p><code>pip install "provisa[embedded]"</code> — the whole runnable system, precompiled UI included. Airgap-ready over Artifactory. No Docker, no JVM, no root.</p>
+          </div>
+          <div class="card">
+            <h4>Kubernetes · Helm</h4>
+            <p>A production Helm chart deploys the control plane, workers, and engine to any cluster — scale the federation tier horizontally behind one governed API.</p>
+          </div>
+          <div class="card">
+            <h4>Cloud &amp; VM · Terraform</h4>
+            <p>Terraform modules for <strong>AWS</strong>, <strong>Azure</strong>, and <strong>GCP</strong> stand up a VM or cluster deployment end to end.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+      <div class="container cta-inner">
+        <h2>Describe your data and govern it in the same act.</h2>
+        <p>One governed path for analytical, application, and human data movement.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://github.com/kenstott/provisa">Get Provisa</a>
+          <a class="btn btn-ghost" href="https://github.com/kenstott/provisa#documentation">Read the docs</a>
+        </div>
+
+        <form id="signup" class="signup" novalidate>
+          <p class="signup-lead">Provisa is in preview. Join the list to get launch access, plus new features and SaaS availability.</p>
+          <div class="signup-row">
+            <input type="text" name="name" placeholder="Your name" autocomplete="name" aria-label="Your name" required />
+            <input type="email" name="email" placeholder="you@company.com" autocomplete="email" aria-label="Email address" required />
+            <button type="submit" class="btn btn-primary">Notify me</button>
+          </div>
+          <!-- honeypot: hidden from users; bots fill it and get silently dropped -->
+          <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <p class="signup-status" role="status" aria-live="polite"></p>
+          <p class="signup-fine">Product updates only. No spam, unsubscribe anytime.</p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="https://github.com/kenstott/provisa">GitHub</a>
+        <a href="#interfaces">Interfaces</a>
+        <a href="#governance">Governance</a>
+        <a href="#distribution">Distribution</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    // Shrink the nav once the page scrolls; respects reduced-motion by being CSS-driven.
+    const nav = document.getElementById('nav');
+    const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    // Highlight the visitor's OS.
+    (function () {
+      const p = (navigator.platform || '') + ' ' + (navigator.userAgent || '');
+      const os = /Mac/i.test(p) ? 'macos'
+        : /Win/i.test(p) ? 'windows'
+        : (/Linux/i.test(p) && !/Android/i.test(p)) ? 'linux' : null;
+      if (os) document.getElementById('dl-' + os)?.classList.add('dl-primary');
+    })();
+
+    // Progressive enhancement: resolve the latest release assets to direct download
+    // URLs. Falls back to the releases page (the default href) if the API is
+    // unreachable or no release exists yet.
+    (function () {
+      const match = {
+        macos:   n => /macOS\.dmg$/i.test(n) && !/(obs|demo|runtime|container)/i.test(n),
+        windows: n => /windows-x64\.exe$/i.test(n) && !/container/i.test(n),
+        linux:   n => /linux.*\.AppImage$/i.test(n),
+      };
+      fetch('https://api.github.com/repos/kenstott/provisa/releases/latest', {
+        headers: { Accept: 'application/vnd.github+json' },
+      })
+        .then(r => (r.ok ? r.json() : Promise.reject()))
+        .then(rel => {
+          const assets = rel.assets || [];
+          for (const [plat, test] of Object.entries(match)) {
+            const asset = assets.find(a => test(a.name));
+            const card = document.getElementById('dl-' + plat);
+            if (!card) continue;
+            if (asset) {
+              card.href = asset.browser_download_url;
+              const ver = card.querySelector('.dl-ver');
+              if (ver && rel.tag_name) ver.textContent = rel.tag_name;
+            } else {
+              card.classList.add('dl-unavailable');
+            }
+          }
+        })
+        .catch(() => {});
+    })();
+
+    // Mailing-list signup → POST /api/subscribe (Pages Function → D1).
+    (function () {
+      const form = document.getElementById('signup');
+      if (!form) return;
+      const status = form.querySelector('.signup-status');
+      const btn = form.querySelector('button[type="submit"]');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        status.className = 'signup-status';
+        const data = {
+          name: form.name.value.trim(),
+          email: form.email.value.trim(),
+          company: form.company.value,
+        };
+        if (!data.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+          status.textContent = 'Enter your name and a valid email.';
+          status.classList.add('is-error');
+          return;
+        }
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/subscribe', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (r.ok && j.ok) {
+            form.reset();
+            status.textContent = "You're on the list. Thanks!";
+            status.classList.add('is-ok');
+          } else {
+            status.textContent = j.error || 'Something went wrong. Try again.';
+            status.classList.add('is-error');
+          }
+        } catch {
+          status.textContent = 'Network error. Try again.';
+          status.classList.add('is-error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

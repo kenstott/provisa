@@ -14,8 +14,13 @@ REQ-369: Per-role rate limits at API layer
 REQ-370: Independent NL query rate limit
 """
 
+import os
+
 import httpx
 import pytest
+
+# Isolated test server (PROVISA_URL, private ephemeral port from conftest), never the dev port.
+_BASE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
 
 
 @pytest.mark.requires_provisa_server
@@ -25,7 +30,7 @@ class TestRateLimitingIntegration:
     @pytest.fixture
     def client(self) -> httpx.Client:
         """Create HTTP client for Provisa API."""
-        return httpx.Client(base_url="http://localhost:8000", timeout=10.0)
+        return httpx.Client(base_url=_BASE_URL, timeout=10.0)
 
     # REQ-369: Per-role rate limits at API layer
 

@@ -45,6 +45,7 @@ import type { Source } from "../types/admin";
 import { cdcTransportApplicable, sourceChangeSignals } from "../liveCapability";
 import {
   CATEGORIES,
+  DATA_LAKE,
   DB_DESCRIPTION_TYPES,
   DISCOVERABLE_TYPES,
   FILE_SOURCES,
@@ -299,6 +300,18 @@ export function SourcesPage() {
     );
     setAuthType("none");
     setAuthFields({});
+    if (DATA_LAKE.has(s.type) && s.mappingJson) {
+      try {
+        const { storage, ...creds } = JSON.parse(s.mappingJson) as Record<string, string>;
+        setAuthType(
+          storage === "s3" ? "aws" : storage === "adls" ? "azure" : storage === "gcs" ? "gcs" : "none",
+        );
+        setAuthFields(creds);
+      } catch {
+        setAuthType("none");
+        setAuthFields({});
+      }
+    }
     if (s.type === "sharepoint" && s.mappingJson) {
       try {
         const m = JSON.parse(s.mappingJson) as Record<string, string>;
@@ -392,6 +405,18 @@ export function SourcesPage() {
         preferMaterialized: _pm,
         ...coreForm
       } = form;
+      // Data-lake storage is a config choice, not a separate source type: the object store its tables
+      // live on (Hadoop/local, S3, ADLS, GCS) + its credentials land in source.mapping, discriminated
+      // by mapping.storage. Derived from the Storage Authentication select (none→hadoop, aws→s3,
+      // azure→adls, gcs→gcs) so the connector wires the matching native filesystem.
+      const lakeStorage =
+        authType === "aws"
+          ? "s3"
+          : authType === "azure"
+            ? "adls"
+            : authType === "gcs"
+              ? "gcs"
+              : "hadoop";
       const spMappingJson =
         form.type === "sharepoint"
           ? JSON.stringify({
@@ -405,7 +430,9 @@ export function SourcesPage() {
             })
           : form.type === "splunk" && splunkDisableSsl
             ? JSON.stringify({ disable_ssl_validation: true })
-            : undefined;
+            : DATA_LAKE.has(form.type)
+              ? JSON.stringify({ storage: lakeStorage, ...authFields })
+              : undefined;
       const sourcePayload = {
         ...coreForm,
         path: FILE_SOURCES.has(form.type) || form.type === "files"

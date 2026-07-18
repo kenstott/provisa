@@ -15,11 +15,14 @@ Copyright (C) 2025 Provisa
 License: BSL 1.1
 """
 
+import os
+
 import pytest
 import httpx
 
-# Use BASE_URL to point to the running Provisa server
-BASE_URL = "http://localhost:8000"
+# Point at the isolated test server (PROVISA_URL, a private ephemeral port pinned by conftest),
+# never a hardcoded dev port. The :8000 fallback is dead in real runs (PROVISA_URL is always set).
+BASE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
 
 
 @pytest.mark.requires_provisa_server

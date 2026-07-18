@@ -38,7 +38,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
-_PINOT_CONTROLLER_PORT = int(os.environ.get("PINOT_CONTROLLER_PORT", "9000"))
+_PINOT_CONTROLLER_PORT = int(os.environ.get("PINOT_CONTROLLER_PORT", "9010"))
 
 _SCHEMA = "default"
 _TABLE = "airlineStats"

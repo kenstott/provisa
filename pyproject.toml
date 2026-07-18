@@ -64,7 +64,12 @@ dependencies = [
     "opentelemetry-instrumentation-pymongo",
     "opentelemetry-instrumentation-elasticsearch",
     "opentelemetry-instrumentation-grpc",
-    "buenavista",
+    # NOTE: the buenavista pgwire engine is a Provisa fork (vendor/buenavista, v0.5.0.post1 — adds
+    # binary codecs for DECIMAL/JSON/array types) NOT published to PyPI. It is bundled INTO this
+    # distribution as a top-level `buenavista` package (see [tool.setuptools.packages.find] below),
+    # not fetched from an index — declaring it as a dependency would pull the wrong upstream package.
+    # Its own runtime deps are folded in here instead (sqlglot already present):
+    "python-dateutil",
     "duckdb",
     "networkx>=3.0",
     "scipy",
@@ -81,7 +86,18 @@ dependencies = [
     "greenlet",
 ]
 
+[project.scripts]
+# REQ-1128: single-command launch of the embedded runtime — `provisa run`.
+provisa = "provisa.cli:main"
+
 [project.optional-dependencies]
+# REQ-1126/REQ-1129: the pip-installable embedded tier. A fully functional, self-contained
+# system — SQLite control plane (aiosqlite + SQLAlchemy async runtime) + embedded DuckDB engine
+# + in-memory (fakeredis) cache — ready to `provisa run` immediately. The bundled Trino JVM is
+# omitted (PyPI carries no JVM server); full multi-engine federation stays available by pointing
+# at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb/aiosqlite/greenlet are
+# already base deps; this extra names the tier explicitly and adds fakeredis for the embedded cache.
+embedded = ["duckdb", "aiosqlite", "greenlet", "fakeredis"]
 # Embedded PostgreSQL for the desktop/native tier (control plane + dedicated
 # telemetry store). Optional because pgserver has no cp313 wheel yet — install
 # under a cpython<=3.12 interpreter.
@@ -135,7 +151,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["provisa*"]
+# The provisa tree plus the vendored buenavista fork, discovered from two roots so both
+# ship as top-level packages in one self-contained wheel (buenavista is a Provisa fork not
+# on PyPI — it must travel inside this distribution). A bare "provisa*" glob also swept in
+# the sibling provisa_client project and namespace dirs under provisa-ui/ (leaking
+# node_modules .py/.proto into the wheel), so discovery is scoped explicitly.
+where = [".", "vendor/buenavista"]
+include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 
 # Non-.py runtime data must ship in the wheel. setuptools bundles only .py by default,
 # so the packaged native runtime lacked provisa/core/schema.sql — init_schema was skipped
@@ -144,6 +166,10 @@ include = ["provisa*"]
 # gRPC approval.proto.
 [tool.setuptools.package-data]
 "*" = ["*.sql", "*.proto"]
+# REQ-1127: the precompiled React UI (vite build output, staged into provisa/_ui/ by
+# scripts/build-wheel.sh) and the runtime config/ files (staged into provisa/_config/) ship in
+# the wheel so the delivery is self-contained on a Python-only, npm/Node-free host.
+"provisa" = ["_ui/**/*", "_config/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]
@@ -269,5 +295,6 @@ line-length = 100
 # Defaults (E, F, W) plus B006: mutable default arguments (0 existing violations).
 extend-select = ["B006"]
 
-[tool.uv.sources]
-buenavista = { path = "vendor/buenavista", editable = true }
+# buenavista is bundled into the provisa distribution itself (see
+# [tool.setuptools.packages.find]); no separate source/editable entry is needed. An editable
+# `pip install -e .` exposes both provisa and the vendored buenavista from the two find roots.

@@ -261,7 +261,8 @@ class TestSQLGovernanceApplied:
 
 
 class TestImplicitTraversalDomains:
-    """meta and ops domain tables are implicitly traversable via JOIN (V002 exempt)."""
+    """meta (catalog) domain tables are implicitly traversable via JOIN (V002 exempt); ops is a normal
+    grantable domain and is NOT implicit (REQ-1132/REQ-1133)."""
 
     def _make_validate_fixtures(self):
         from provisa.compiler.sql_gen import CompilationContext, TableMeta
@@ -355,15 +356,18 @@ class TestImplicitTraversalDomains:
         v002 = [v for v in violations if v.code == "V002"]
         assert v002 == [], f"Expected no V002 violations for meta JOIN, got: {v002}"
 
-    def test_join_to_ops_domain_no_registered_rel_is_allowed(self):
-        """JOIN from a data table to an ops domain table requires no registered relationship (V002 exempt)."""
+    def test_join_to_ops_domain_without_grant_is_blocked(self):
+        """REQ-1133: ops is a normal grantable domain, NOT implicitly traversable. A role without an
+        ops grant JOINing to an ops table has no registered relationship → V002 (same as any regular
+        cross-domain JOIN). Only the meta (catalog) domain stays implicitly traversable (REQ-1132)."""
         from provisa.compiler.sql_validator import validate_sql
 
         ctx, gov_ctx, role, raw_tables = self._make_validate_fixtures()
+        # role's domain_access is ["pet-store"] — no ops grant.
         sql = "SELECT o.id, m.value FROM orders o JOIN metrics m ON o.table_name = m.table_name"
         violations = validate_sql(sql, ctx, gov_ctx, role, raw_tables)
         v002 = [v for v in violations if v.code == "V002"]
-        assert v002 == [], f"Expected no V002 violations for ops JOIN, got: {v002}"
+        assert v002, "Expected V002 for an ungranted JOIN to the ops domain (no longer implicit)"
 
     def test_join_to_regular_domain_without_rel_is_blocked(self):
         """JOIN between two non-implicit domains without a registered relationship still raises V002."""

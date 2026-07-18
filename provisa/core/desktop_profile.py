@@ -25,7 +25,13 @@ from pathlib import Path
 
 import yaml
 
-_CAPABILITIES = Path(__file__).resolve().parents[2] / "config" / "capabilities.yaml"
+# REQ-1127: the pip wheel embeds config/ under provisa/_config/ so the embedded tier (REQ-1126)
+# is self-contained. Prefer the packaged copy; fall back to the repo-root config/ in the dev tree.
+_PACKAGED_CAPABILITIES = Path(__file__).resolve().parents[1] / "_config" / "capabilities.yaml"
+_REPO_CAPABILITIES = Path(__file__).resolve().parents[2] / "config" / "capabilities.yaml"
+_CAPABILITIES = (
+    _PACKAGED_CAPABILITIES if _PACKAGED_CAPABILITIES.exists() else _REPO_CAPABILITIES
+)
 
 # capability engine id -> PROVISA_ENGINE registry key (engine.py _ENGINE_BUILDERS: engine/pg/duckdb/sqlalchemy)
 _ENGINE_KEY = {

@@ -32,7 +32,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-STATIC_DIR = Path(__file__).parent.parent / "static"
+# REQ-1127: the pip wheel embeds the precompiled React UI at provisa/_ui/ so the delivery is
+# self-contained (no npm/Node at runtime). Prefer that packaged directory; fall back to the
+# repo-root static/ used by the Docker image and the dev tree. This is resource location
+# (packaged vs source layout), not error-hiding — the chosen dir is used unconditionally.
+_PACKAGED_UI = Path(__file__).resolve().parent / "_ui"
+_REPO_STATIC = Path(__file__).resolve().parent.parent / "static"
+STATIC_DIR = _PACKAGED_UI if _PACKAGED_UI.is_dir() else _REPO_STATIC
 
 # API container reachable via Docker network hostname; override via env var.
 API_BASE_URL = os.environ.get("PROVISA_API_URL", "http://provisa:8000")

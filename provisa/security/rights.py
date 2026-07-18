@@ -19,6 +19,28 @@ from enum import Enum
 
 # Requirements: REQ-001, REQ-002, REQ-003, REQ-038, REQ-042, REQ-125, REQ-263
 
+# The catalog (meta) domain id and its GOVERNANCE column set (REQ-1132/REQ-1134). Defined here in the
+# low-level rights module so every query surface (schema build, cypher, SQL validation) shares ONE
+# source of truth — the meta visibility rules must be identical across all languages. CORE meta columns
+# are structural (names/types/keys) and drive discovery; GOVERNANCE columns expose the security posture
+# (visible_to, masking secrets, view SQL) and require the view_governance capability (or admin).
+META_DOMAIN_ID = "meta"
+GOVERNANCE_META_COLUMNS: frozenset[str] = frozenset(
+    {
+        "visible_to",
+        "unmasked_to",
+        "writable_by",
+        "mask_type",
+        "mask_pattern",
+        "mask_replace",
+        "mask_value",
+        "mask_precision",
+        "view_sql",
+        "native_filter_type",
+        "scope",
+    }
+)
+
 
 class Capability(str, Enum):  # REQ-042, REQ-060
     SOURCE_REGISTRATION = "source_registration"
@@ -37,6 +59,7 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     COLUMN_GRANT = "column_grant"
     USER_MANAGEMENT = "user_management"
     MASKING_CONFIG = "masking_config"
+    VIEW_GOVERNANCE = "view_governance"  # REQ-1134: see meta GOVERNANCE columns (visible_to, masks, grants)
     SUPERADMIN = "superadmin"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)

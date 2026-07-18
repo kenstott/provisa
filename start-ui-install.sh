@@ -524,6 +524,10 @@ start_backend
 # Stream the backend's startup-phase log lines to the console so the wait isn't a
 # silent black box (the backend logs to backend.log, not this terminal).
 echo "Waiting for Provisa backend — startup phases:"
+# Reap any follower orphaned by an earlier interrupted run. Without this, each
+# surviving `tail -f backend.log | grep` re-prints every appended startup line, so
+# the console shows one copy per leaked follower.
+pkill -f "tail -n0 -f ${LOG_DIR}/backend.log" 2>/dev/null || true
 # Wrap the tail|grep pipeline in a subshell so $! is the subshell (the pipeline's
 # parent). `$!` on a bare `tail | grep &` captures grep, not tail — leaking the tail
 # follower as a live child that the final `wait` then blocks on forever. Killing the

@@ -112,6 +112,27 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
         for col_name, (rule, dtype) in col_map.items():
             gov.masking_rules[(table_id, col_name)] = (rule, dtype)
 
+    # An admin-capability role sees EVERY column regardless of per-column visible_to — admins
+    # always see everything (governance directive). This also makes the semantic meta/ops domains
+    # (seeded visible_to: [] = visible to no role) traversable by admins, while non-admins still
+    # need an explicit grant. Non-admin per-role meta scoping (metadata follows table-query rights)
+    # is tracked separately.
+    from provisa.security.rights import (
+        GOVERNANCE_META_COLUMNS,
+        META_DOMAIN_ID,
+        Capability,
+        has_capability,
+    )
+
+    _is_admin = bool(role) and has_capability(role, Capability.ADMIN)
+    _has_view_gov = bool(role) and has_capability(role, Capability.VIEW_GOVERNANCE)
+    # table_id → domain_id, so meta (catalog) tables can be governed by the tiered rule (REQ-1132)
+    # rather than their static seed (meta columns are seeded visible_to: [] = nobody).
+    _domain_by_tid: dict[int | None, str | None] = {
+        getattr(tm, "table_id", None): getattr(tm, "domain_id", None)
+        for tm in getattr(ctx, "tables", {}).values()
+    }
+
     # Build table_map, visible_columns, all_columns from raw tables
     for tbl in tables:
         table_id = tbl["id"]
@@ -122,18 +143,31 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
             (c["column_name"], c.get("data_type", "varchar")) for c in cols
         ]
 
-        # visible_columns
-        visible: set[str] = set()
-        all_visible = True
-        for c in cols:
-            visible_to = c.get("visible_to")
-            if visible_to is None:
-                visible.add(c["column_name"])
-            elif role_id in visible_to:
-                visible.add(c["column_name"])
-            else:
-                all_visible = False
-        gov.visible_columns[table_id] = None if all_visible else frozenset(visible)
+        # visible_columns — None means "all visible" (no V003 filtering for this table)
+        if _is_admin:
+            gov.visible_columns[table_id] = None
+        elif _domain_by_tid.get(table_id) == META_DOMAIN_ID:
+            # Meta (catalog) domain: CORE/structural columns are visible for discovery; GOVERNANCE
+            # columns (visible_to, masks, view_sql, …) require the view_governance capability. Which
+            # META ROWS a role sees (its readable tables + 1-hop neighbours vs the whole catalog with
+            # a meta grant) is enforced by row-level scoping (REQ-1132), not here.
+            gov.visible_columns[table_id] = frozenset(
+                c["column_name"]
+                for c in cols
+                if _has_view_gov or c["column_name"] not in GOVERNANCE_META_COLUMNS
+            )
+        else:
+            visible: set[str] = set()
+            all_visible = True
+            for c in cols:
+                visible_to = c.get("visible_to")
+                if visible_to is None:
+                    visible.add(c["column_name"])
+                elif role_id in visible_to:
+                    visible.add(c["column_name"])
+                else:
+                    all_visible = False
+            gov.visible_columns[table_id] = None if all_visible else frozenset(visible)
 
         # per-table ceiling (REQ-005)
         tbl_max = tbl.get("max_rows")

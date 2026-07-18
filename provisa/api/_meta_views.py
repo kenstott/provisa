@@ -18,6 +18,11 @@ and ``DROP VIEW`` takes no ``CASCADE``. Runs verbatim on PostgreSQL, SQLite, MyS
 
 from __future__ import annotations
 
+# REQ-1132/REQ-1134: meta (catalog) CORE vs GOVERNANCE column split + the meta domain id. The single
+# source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
+# for callers near the view definitions.
+from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
+
 _META_TABLE_VIEWS: dict[str, str] = {
     "registered_tables": """
         DROP VIEW IF EXISTS registered_tables_meta;

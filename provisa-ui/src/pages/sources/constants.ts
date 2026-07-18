@@ -60,7 +60,7 @@ export const SOURCE_TYPES = [
   // Data Lake
   { value: "delta_lake", label: "Delta Lake", category: "Data Lake", defaultPort: 0 },
   { value: "iceberg", label: "Apache Iceberg", category: "Data Lake", defaultPort: 0 },
-  { value: "hive", label: "Hive / S3 / ADLS", category: "Data Lake", defaultPort: 9083 },
+  { value: "hive", label: "Hive Metastore", category: "Data Lake", defaultPort: 9083 },
   // NoSQL
   { value: "mongodb", label: "MongoDB", category: "NoSQL", defaultPort: 27017 },
   { value: "cassandra", label: "Cassandra", category: "NoSQL", defaultPort: 9042 },

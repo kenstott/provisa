@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "provisa-dev",
+  // The site dir itself is the static output. functions/ is compiled to Pages
+  // Functions (not served as assets); config files are excluded from upload.
+  "pages_build_output_dir": ".",
+  "compatibility_date": "2025-01-01",
+
+  // Private mailing-list store. Create it once, then paste the id here:
+  //   wrangler d1 create provisa-subscribers
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "provisa-subscribers",
+      "database_id": "cd0145bc-e48d-441b-8305-99c9fa90a6dc"
+    }
+  ]
+}

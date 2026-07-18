@@ -449,6 +449,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         DuckDBAirportConnector,
         DuckDBBigQueryConnector,
         DuckDBCsvConnector,
+        DuckDBDeltaConnector,
         DuckDBDuckdbConnector,
         DuckDBFirebirdConnector,
         DuckDBGsheetsConnector,
@@ -478,6 +479,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
             DuckDBGsheetsConnector(),
             DuckDBAirportConnector(),
             DuckDBIcebergConnector(),  # core `iceberg` extension — iceberg_scan (REQ-899)
+            DuckDBDeltaConnector(),  # core `delta` extension — delta_scan (REQ-899)
         ],
         native_store="duckdb",
         driver_class=DriverClass.PARTIAL,

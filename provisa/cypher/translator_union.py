@@ -250,6 +250,12 @@ class _UnionMixin:  # mixin for _Translator
                 continue
             if nm.native_filter_columns:
                 continue
+            # REQ-1132: a bare MATCH (n) roots only on directly-queryable nodes. Traversal-only nodes
+            # (e.g. the meta/catalog domain for a role without a meta grant) are reachable only by
+            # traversing from an owned node, never as a bare-match root — skip them from the __all__
+            # union so this never emits a direct FROM the role would be V001-blocked on.
+            if nm.traversal_only:
+                continue
             had_resolvable = True
             # Metadata-based prune: skip branches where no required property exists.
             # Those branches can only contribute NULL rows, which a WHERE filter would discard.

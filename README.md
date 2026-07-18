@@ -1,10 +1,10 @@
 # Provisa
 
-I almost called this project *Insanity*. The surface area looked impossible — 30+ kinds of data source on one side, a Babel of query languages and wire protocols on the other. Chasing all of it seemed insane.
+I almost called this project *Insanity*. The surface area looked impossible — 46 kinds of data source on one side, a Babel of query languages and wire protocols on the other. Chasing all of it seemed insane.
 
 Then the core fell out: one federation model, one intermediate representation, a thin contract for sources and another for consumers. Once those held, the surface area became tractable — and the real insanity came into focus. It isn't building this. It's trying to govern data from *outside* the data environment: a catalog here, a policy engine there, a lineage graph somewhere else, each a copy of the truth that drifts on freshness, misses on coverage, and describes access instead of enforcing it. The only sane move is to put governance on the path every query already takes.
 
-That's Provisa. A single governed API over 30+ heterogeneous data sources — query it with **GraphQL, Cypher, or SQL**, consume it over **pgwire, Bolt, gRPC, REST, Arrow Flight, or JDBC**. RLS, column masking, and query approval aren't a layer bolted on top; they *are* the path. No query reaches data without passing through governance, so coverage is total by construction, not by diligence.
+That's Provisa. A single governed API over 46 heterogeneous data sources — query it with **GraphQL, Cypher, or SQL**, consume it over **pgwire, Bolt, gRPC, REST, Arrow Flight, or JDBC**. RLS, column masking, and query approval aren't a layer bolted on top; they *are* the path. No query reaches data without passing through governance, so coverage is total by construction, not by diligence.
 
 Put another way, this is what a semantic layer was supposed to be. Every prior one — dbt, Cube, LookML — is *passive*: a metadata description of your data that some other engine may or may not consult. Provisa is an **active semantic layer** — the model isn't documentation the engine reads, it *is* the engine. Registered domains and relationships are the only legal join paths; governance is compiled into the plan; every request is enforced inline because no execution path goes around it. And because the same governed path serves SQL, GraphQL, and Cypher over pgwire, Bolt, Flight, JDBC, and REST, effectively all of your cross-system data movement — system-to-system, analytical, application, and human — travels through one place that both describes the data and enforces the rules on it. Describing your data and governing it become the same act.
 
@@ -51,7 +51,7 @@ These are the connection protocols. SQL, GraphQL, and Cypher ride over them — 
 
 ### Data Sources
 
-- **30+ source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API; graph and RDF sources are first-class, not adapters
+- **46 source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API; graph and RDF sources are first-class, not adapters
 - **Smart routing** — Single-source queries bypass federation (sub-100ms); multi-source queries route through the federation layer — bring your own cluster or use the embedded workers
 - **API sources** — Register REST, GraphQL, gRPC, WebSocket, or RSS endpoints as queryable tables; SPARQL helpers included; federated joins across API sources and relational sources work transparently
 - **Remote schema introspection** — Point at any GraphQL, OpenAPI, or gRPC endpoint; documented operations are automatically surfaced as queryable tables, graph nodes, and edges with full governance applied on top

@@ -23,7 +23,15 @@ To run live tests:
 
 from __future__ import annotations
 
+import os
+from urllib.parse import urlparse
+
 import pytest
+
+# The isolated test server's host:port (conftest pins PROVISA_URL to a private ephemeral port so tests
+# never touch a dev instance on :8000). Build the provisa+http SQLAlchemy URL from it.
+_p = urlparse(os.environ.get("PROVISA_URL", "http://localhost:8000"))
+_LIVE_HOSTPORT = f"{_p.hostname or 'localhost'}:{_p.port or 8000}"
 
 pytestmark = [pytest.mark.integration]
 
@@ -153,9 +161,9 @@ class TestEntryPointRegistration:
 
 @pytest.mark.requires_provisa_server
 class TestLiveSQLAlchemyDialect:
-    """Require running Provisa server at localhost:8001 (Docker Compose stack)."""
+    """Require the isolated Provisa server (PROVISA_URL, a private ephemeral port)."""
 
-    PROVISA_URL = "provisa+http://admin:provisa@localhost:8000"
+    PROVISA_URL = f"provisa+http://admin:provisa@{_LIVE_HOSTPORT}"
 
     @pytest.fixture
     def engine(self):
@@ -217,7 +225,7 @@ class TestLiveSQLAlchemyDialect:
         """Connections with a role header use the role in the request pipeline."""
         from sqlalchemy import create_engine, text
 
-        role_url = "provisa+http://admin:provisa@localhost:8000?role=admin"
+        role_url = f"provisa+http://admin:provisa@{_LIVE_HOSTPORT}?role=admin"
         role_engine = create_engine(role_url)
         with role_engine.connect() as conn:
             result = conn.execute(text("SELECT 1 AS val"))

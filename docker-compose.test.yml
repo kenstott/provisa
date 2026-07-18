@@ -270,7 +270,11 @@ services:
       interval: 15s
       timeout: 15s
       retries: 20
-      start_period: 180s
+      # 180s fits splunk's cold start in isolation (~125s here) but NOT when the
+      # default/core lane brings up ~26 amd64-emulated services at once on arm64:
+      # under that CPU/mem contention splunk crosses 180s, flips starting->unhealthy,
+      # and `up --wait` aborts the whole lane. 420s covers the emulated-under-load case.
+      start_period: 420s
 
   # Reached via the DuckDB `airport` COMMUNITY EXTENSION (REQ-899/1097), not a Trino connector and
   # not a direct driver — DuckDBAirportConnector ATTACHes it in place from an in-process DuckDB
@@ -298,12 +302,15 @@ services:
   # QuickStart -type batch brings up zookeeper+controller+broker+server in ONE container with sample
   # tables (airlineStats, baseballStats, …). Trino reaches the controller in-network at pinot:9000;
   # ${PINOT_CONTROLLER_PORT}/${PINOT_BROKER_PORT} are host-published only for the seeding/wait probe.
+  # Controller host default is 9010, NOT 9000: minio (docker-compose.core.yml) publishes host 9000,
+  # and the default/core lane leaves both env vars unset, so a 9000 default collides at `up --wait`.
+  # In-network is unaffected — Trino/probe still reach the controller at pinot:9000 (container port).
   pinot:
     restart: unless-stopped
     image: apachepinot/pinot:1.2.0
     command: ["QuickStart", "-type", "batch"]
     ports:
-      - "${PINOT_CONTROLLER_PORT:-9000}:9000"
+      - "${PINOT_CONTROLLER_PORT:-9010}:9000"
       - "${PINOT_BROKER_PORT:-8099}:8099"
     environment:
       JAVA_OPTS: "-Xms256M -Xmx1G"
