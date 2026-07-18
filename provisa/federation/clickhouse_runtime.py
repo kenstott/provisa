@@ -41,6 +41,7 @@ a live EngineRuntime dispatch calls; routing/HTTP wiring is separate — mirrors
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import unquote, urlparse
 
@@ -246,8 +247,15 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         u = urlparse(url)
         base, _, variant = u.scheme.partition("+")
         if base == "chdb":
-            # chdb:///var/lib/x → persistent at /var/lib/x; chdb:// → in-memory.
-            return cls(_EmbeddedBackend(path=u.path or None))
+            # chdb:///var/lib/x → persistent at /var/lib/x; chdb:// → in-memory. The chdb DSN uses
+            # the 3-slash=absolute convention, so u.path IS the filesystem path — except on Windows,
+            # where urlparse leaves a leading slash on a drive-letter path (chdb:///C:\x → /C:\x),
+            # which chdb reads as a //C: UNC network path. Strip it only for a drive-letter path so
+            # the POSIX absolute path (/var/lib/x) is untouched.
+            path = u.path or None
+            if path and re.match(r"^/[A-Za-z]:", path):
+                path = path[1:]
+            return cls(_EmbeddedBackend(path=path))
         if base == "clickhouse":
             if variant == "native":
                 return cls(

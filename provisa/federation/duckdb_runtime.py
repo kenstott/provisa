@@ -204,18 +204,22 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         its own defaults — the runtime injects none. A missing store is a hard error (via _store_dsn)."""
         dsn = self._store_dsn()
         if not self._store_attached:
-            from urllib.parse import urlparse
+            from sqlalchemy import make_url
 
-            parsed = urlparse(dsn)
-            scheme = parsed.scheme.split("+", 1)[0]
+            url = make_url(dsn)
+            scheme = url.get_backend_name()
             store_type = self._ATTACH_TYPE_BY_SCHEME.get(scheme)
             if store_type is None:
                 raise RuntimeError(f"materialize store scheme {scheme!r} is not attachable")
             if store_type not in self._NO_EXTENSION_TYPES:
                 self._con.execute(f"INSTALL {store_type}")
                 self._con.execute(f"LOAD {store_type}")
-            # A file-backed store (sqlite) attaches the path; postgres attaches the full URL.
-            target = parsed.path if store_type in self._FILE_ATTACH_TYPES else dsn
+            # A file-backed store (sqlite/duckdb) attaches the FILESYSTEM PATH; postgres attaches the
+            # full URL. Use make_url(...).database, not urlparse(...).path: on Windows a
+            # ``duckdb:///C:\...`` DSN parses to ``/C:\...`` under urlparse (leading slash), which
+            # DuckDB then reads as a ``//C:`` UNC network path and fails ("network path not found").
+            # SQLAlchemy's URL parser strips the leading slash for a drive-letter path on every OS.
+            target = url.database if store_type in self._FILE_ATTACH_TYPES else dsn
             self._con.execute(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
             self._store_attached = True
         return self._MAT_STORE
