@@ -20,6 +20,7 @@ import {
   Select,
   Table,
   Text,
+  Textarea,
   TextInput,
   Tooltip,
 } from "@mantine/core";
@@ -334,6 +335,34 @@ export function TableEditForm({
                 }
                 comboboxProps={{ withinPortal: true }}
                 allowDeselect={false}
+              />
+            )}
+            {editingTable.materialize && (
+              <Textarea
+                style={{ gridColumn: "1 / -1" }}
+                label={
+                  <FieldLabel
+                    text={t("tableEditForm.preprocessLabel")}
+                    help={t("tableEditForm.preprocessHelp")}
+                  />
+                }
+                aria-label={t("tableEditForm.preprocessAria")}
+                data-testid="mv-preprocess"
+                placeholder={t("tableEditForm.preprocessPlaceholder")}
+                autosize
+                minRows={4}
+                maxRows={16}
+                spellCheck={false}
+                styles={{
+                  input: { fontFamily: "var(--mantine-font-family-monospace)" },
+                }}
+                value={editingTable.mvPreprocess ?? ""}
+                onChange={(e) =>
+                  setEditingTable({
+                    ...editingTable,
+                    mvPreprocess: e.currentTarget.value || null,
+                  })
+                }
               />
             )}
           </>

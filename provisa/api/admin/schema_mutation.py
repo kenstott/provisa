@@ -351,6 +351,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             for cp in input.column_presets
         ]
+        # REQ-957/964: reject a non-deterministic / unsafe preprocess hook at registration.
+        from provisa.mv.preprocess import validate_preprocess
+
+        try:
+            validate_preprocess(input.mv_preprocess)
+        except ValueError as _pp_err:
+            return MutationResult(success=False, message=str(_pp_err))
         model = _table_model_from_input(input, columns, presets, input.alias)
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
@@ -405,6 +412,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     debounce_quiet=input.mv_debounce_quiet,  # REQ-963
                     debounce_max_delay=input.mv_debounce_max_delay,  # REQ-963
                     consistency=input.mv_consistency,  # REQ-879
+                    preprocess=input.mv_preprocess,  # REQ-957
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
                 return MutationResult(success=False, message=str(_det_err))

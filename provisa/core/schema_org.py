@@ -133,6 +133,8 @@ registered_tables = Table(
     # REQ-879: MV cross-instance consistency tier — "shared" (fleet-coordinated refresh) or
     # "distributed" (per-instance).
     Column("mv_consistency", Text, nullable=False, server_default="shared"),
+    # REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity.
+    Column("mv_preprocess", Text),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
     Column("live", JSON),

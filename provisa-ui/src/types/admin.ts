@@ -139,6 +139,7 @@ export interface RegisteredTable {
   mvDebounceQuiet: number; // REQ-963: seconds of quiet before firing; 0 = real-time
   mvDebounceMaxDelay: number; // REQ-963: staleness cap under continuous churn
   mvConsistency: string; // REQ-879: "shared" (fleet-coordinated) | "distributed" (per-instance)
+  mvPreprocess: string | null; // REQ-957: inline preprocess(rows, ctx) hook source; null = identity
   dataProduct: boolean;
   enableAggregates: boolean;
   enableGroupBy: boolean;
