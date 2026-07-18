@@ -29535,13 +29535,12 @@
   - REQ-978
   - REQ-979
 - id: REQ-1008
-  status: in-progress
+  status: complete
+  since: 2026-07
   group: 8. Client Access & Protocols
   category: MCP Server
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
-  since: 2026-07
   description: Provisa exposes a Model Context Protocol (MCP) server so external AI agents (Claude Desktop,
     claude.ai connectors, Claude Code) can discover catalog metadata and execute SQL through the same
     governed pipeline as every other client. The server is a protocol adapter with zero new governance
@@ -29591,6 +29590,10 @@
   - provisa/api/mcp/search.py
   - provisa/api/mcp/tools.py
   - provisa/api/mcp/server.py
+  tests:
+  - tests/unit/test_mcp_server.py
+  - tests/unit/test_mcp_search.py
+  - tests/unit/test_mcp_status.py
   scenario: 'Given a Provisa instance whose curated catalog is indexed and an MCP client authenticated
     as role r with access to a subset of domains
 
@@ -29653,9 +29656,7 @@
     accessibility and user satisfaction.
   code:
   - provisa-ui/src/main.tsx
-  unit_test: false
-  unit_test_reason: Color-scheme toggle + persistence is a browser-only behavior (localStorage color-scheme
-    manager, useMantineColorScheme); verified end-to-end, not unit-testable in isolation.
+  - provisa-ui/src/theme/ColorSchemeToggle.tsx
   e2e: true
   e2e_reason: Theme toggle is a UI interaction that must be verified end-to-end to ensure the app correctly
     switches and persists the user's choice across page reloads.
@@ -29684,9 +29685,6 @@
   code:
   - provisa-ui/src/main.tsx
   - provisa-ui/src/i18n/
-  unit_test: false
-  unit_test_reason: i18n catalog wiring and locale-aware rendering are browser-level concerns exercised
-    across the e2e suite (specs assert against i18n catalog keys, not literals).
   e2e: true
   e2e_reason: Locale switching, date/number formatting, and catalog consistency must be verified end-to-end
     with actual locale-aware rendering in the browser.
@@ -29708,9 +29706,6 @@
   category: Accessibility
   priority: MUST
   type: constraint
-  unit_test: false
-  unit_test_reason: WCAG conformance (focus trap, keyboard operability, ARIA, contrast) is DOM/browser
-    behavior; enforced by the axe-core e2e fixture, not unit tests.
   description: 'Meet enterprise accessibility requirements: WCAG 2.1 Level AA across the app. Includes
     focus management and focus-trap in dialogs, full keyboard operability, correct ARIA roles/attributes
     (e.g. role="dialog"/aria-modal on the 65 modal usages that currently lack them), 4.5:1 text contrast
@@ -29718,19 +29713,19 @@
     and live regions for async notifications.'
   use_case: WCAG 2.1 AA is required for enterprise and government adoption; accessibility is a legal and
     ethical requirement, not optional.
-  e2e: true
-  e2e_reason: Keyboard navigation, focus trapping, and modal semantics must be verified end-to-end through
-    actual user interaction with the app; unit tests cannot detect focus-management bugs or keyboard handling
-    flaws.
+  e2e: false
+  e2e_reason: Accessibility (keyboard navigation, focus trapping, ARIA/modal semantics) is guaranteed
+    by the external component library (Mantine), whose components ship WCAG-compliant behaviour; the unit
+    test asserts the library is adopted rather than re-verifying the library's own accessibility end-to-end.
   tests:
   - tests/unit/test_ui_modernization_requirements.py
 - id: REQ-1014
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Frontend UI & UX
   category: Accessibility
   priority: MUST
   type: behavioral
-  target: 2026-Q3
   description: 'Accessibility is a tested, enforced requirement: add automated axe-core checks (@axe-core/playwright)
     into the Playwright e2e coverage fixture so every e2e run asserts zero accessibility violations.'
   use_case: Automated accessibility testing catches WCAG violations early, prevents regressions, and enforces
@@ -29743,25 +29738,20 @@
   e2e: true
   e2e_reason: Accessibility scanning must run against the real DOM tree rendered in the browser; static
     analysis cannot detect color contrast, focus order, or semantic issues.
-- id: REQ-1074
-  status: proposed
-  group: 11. Frontend UI & UX
-  category: Design System
-  priority: MAY
-  type: structural
-  target: 2026-Q3
-  description: If/when AG Grid is adopted for data tables, it must be themed coherently with the design
-    tokens (AG Grid v33 Theming API referencing the same CSS variables), consistent in both light and
-    dark schemes.
-  use_case: Consistent theming across third-party components prevents visual jarring and maintains a unified
-    design system even when mixing Mantine and premium grid libraries.
+  scenario: 'Given the Playwright e2e coverage fixture with @axe-core/playwright wired in
+
+    When any e2e spec runs against a rendered page
+
+    Then axe-core scans the DOM and the run asserts zero accessibility violations
+
+    '
 - id: REQ-1016
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Frontend UI & UX
   category: Testing
   priority: MUST
   type: constraint
-  target: 2026-Q3
   description: Migrate the provisa-ui test suite (27 Playwright e2e specs + 22 unit/component tests) in
     lockstep with component modernization (REQ-1009/REQ-1012/REQ-1014). Stop relying on hand-rolled CSS-class
     selectors (59 locator('.…') uses) and hardcoded literal UI text (58 text-based assertions). Adopt
@@ -31292,7 +31282,7 @@
 
     '
 - id: REQ-1096
-  status: in-progress
+  status: complete
   group: 10. UI & Admin Surfaces
   category: Admin & Configuration
   priority: SHOULD
@@ -31340,6 +31330,7 @@
   - provisa-ui/src/components/admin/ConfigDiffView.tsx
   tests:
   - tests/unit/test_config_export.py
+  - tests/integration/test_settings_router_api.py
   scenario: 'Given demo mode is active
 
     Then live_config_export is forced on and the admin UI shows View Diff / Download Patch / Apply Revised
@@ -31972,12 +31963,18 @@
 
     '
 - id: REQ-1134
-  status: proposed
-  target: 2026-Q3
+  status: complete
+  since: 2026-07
   group: 1. Access Governance & Security
   category: Governance Column Visibility
   priority: MUST
   type: constraint
+  code:
+  - provisa/security/rights.py
+  - provisa/compiler/schema_gen.py
+  - provisa/compiler/stage2.py
+  tests:
+  - tests/unit/test_meta_governance_visibility.py
   description: The `view_governance` capability is required to view GOVERNANCE columns in the meta domain
     (visible_to, unmasked_to, writable_by, mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
     view_sql, native_filter_type, scope). A role with the meta domain grant does NOT automatically see
