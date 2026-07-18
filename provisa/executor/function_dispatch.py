@@ -105,6 +105,10 @@ def _grpc_method_path(method: str) -> str:
     return f"/{service}/{name}"
 
 
+def _grpc_identity(b: bytes) -> bytes:  # proto-less: request/response bodies are raw JSON bytes
+    return b
+
+
 async def _grpc_call(
     target: str,
     method: str,
@@ -123,14 +127,15 @@ async def _grpc_call(
 
     path = _grpc_method_path(method)
     request = json.dumps(payload).encode()
-    identity = lambda b: b  # noqa: E731 — proto-less: request/response bodies are raw bytes
     channel = (
         grpc.aio.secure_channel(target, grpc.ssl_channel_credentials())
         if tls
         else grpc.aio.insecure_channel(target)
     )
     try:
-        rpc = channel.unary_unary(path, request_serializer=identity, response_deserializer=identity)
+        rpc = channel.unary_unary(
+            path, request_serializer=_grpc_identity, response_deserializer=_grpc_identity
+        )
         response = await rpc(request, timeout=timeout)
     except grpc.aio.AioRpcError as exc:
         raise HTTPException(
