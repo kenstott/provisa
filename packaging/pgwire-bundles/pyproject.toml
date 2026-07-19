@@ -1,0 +1,26 @@
+# provisa-pgwire-bundles — the Calcite pgwire connector bundles, delivered via PyPI.
+#
+# Why this package exists: the pgwire connector bundles (pgwire-file, pgwire-sharepoint, pgwire-splunk
+# — REQ-956) are fetched on demand from the pinned github.com/kenstott/calcite release
+# (engine-v0.28.0) at runtime. Behind an enterprise firewall where only PyPI/Maven/npm/NuGet are
+# proxied (Artifactory), github.com/releases is unreachable and those connectors break. This package
+# embeds the pinned bundles as ordinary wheel data so acquisition flows through PyPI instead. The
+# bundles are JVM launchers — platform-independent — so ONE universal wheel carries every connector;
+# provisa.runtime_deps.pgwire_bundles reads provisa_pgwire_bundles.bundle_root() to resolve offline.
+# Mirrors provisa-duckdb-ext (REQ-1142).
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "provisa-pgwire-bundles"
+version = "0.1.0"
+description = "Pinned Calcite pgwire connector bundles for the Provisa embedded tier (PyPI-delivered, offline)."
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["provisa_pgwire_bundles"]
+
+[tool.setuptools.package-data]
+# The bundles: <version>/<connector>/bin/pgwire-<connector> (+ model/, lib/ …), every connector.
+"provisa_pgwire_bundles" = ["_bundles/**/*"]

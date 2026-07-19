@@ -125,3 +125,55 @@ jobs:
           PGDATA_DIR: 'C:/pgd'
           PG16_HOME: 'C:/Program Files/PostgreSQL/16'
         run: python scripts/ci/win_pgserver_probe.py
+
+  # Collect every platform's built bundles into ONE universal py3-none-any wheel (provisa-pg-ext) and
+  # publish it to PyPI so `provisa[embedded]` gets the FDW binaries through PyPI/Artifactory — never
+  # github.com/releases. The runtime (provisa.pg_extensions.catalog) stages the running platform's
+  # blobs out of this wheel via provisa_pg_ext.ext_root(). Mirrors build-duckdb-extensions.yml.
+  wheel:
+    name: Build + publish provisa-pg-ext wheel
+    needs: unix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all platform build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: provisa-pg-ext-*
+          path: pg-ext-artifacts
+          merge-multiple: true
+
+      - name: Extract tarballs -> raw <os>-<arch> trees
+        run: |
+          set -euo pipefail
+          mkdir -p pg-ext-extracted
+          for tb in pg-ext-artifacts/*.tar.gz; do
+            # The tarball name (provisa-pg-ext-<os>-<arch>.tar.gz) carries the platform; its contents
+            # (manifest.json + lib/) are NOT platform-prefixed, so extract each into its own dir.
+            base="$(basename "$tb" .tar.gz)"; plat="${base#provisa-pg-ext-}"
+            mkdir -p "pg-ext-extracted/$plat"
+            tar -xzf "$tb" -C "pg-ext-extracted/$plat"
+          done
+          find pg-ext-extracted -name manifest.json | sort
+
+      - name: Collect blobs into the package
+        run: python packaging/pg-ext/collect.py pg-ext-extracted
+
+      - name: Build the universal wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel --sdist --outdir dist-pg-ext packaging/pg-ext
+
+      - name: Publish provisa-pg-ext to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-pg-ext/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+
+      - name: Attach wheel to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-pg-ext/*

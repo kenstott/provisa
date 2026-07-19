@@ -1,0 +1,54 @@
+name: Build pgwire Bundles
+
+# Mirror the pinned Calcite pgwire connector bundles (pgwire-file, pgwire-sharepoint, pgwire-splunk
+# — REQ-956) into ONE universal py3-none-any wheel (provisa-pgwire-bundles) and publish it to PyPI.
+# The bundles are otherwise fetched at runtime from the github.com/kenstott/calcite release, which is
+# unreachable behind a PyPI/Maven/npm/NuGet-only enterprise proxy; PyPI delivery makes those
+# connectors installable offline. The bundles are JVM launchers — platform-independent — so no matrix.
+# Mirrors build-duckdb-extensions.yml (Family A). Pins come from provisa.runtime_deps.pgwire_bundles.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-pgwire-bundles-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wheel:
+    name: Build + publish provisa-pgwire-bundles wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync (pins provisa — fetch.py reads the release tag + connector set from it)
+        run: uv sync --frozen --extra dev
+
+      - name: Fetch the pinned Calcite pgwire bundles into the package
+        run: uv run python packaging/pgwire-bundles/fetch.py
+
+      - name: Build the universal wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel --sdist --outdir dist-pgwire packaging/pgwire-bundles
+
+      - name: Publish provisa-pgwire-bundles to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-pgwire/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+
+      - name: Attach wheel to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-pgwire/*

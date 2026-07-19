@@ -144,14 +144,32 @@ class BundleResolver:  # REQ-956
         """Whether ``spec`` is already resolved locally (its launcher is present)."""
         return self.launcher_path(spec).exists()
 
+    def bundled_path(self, spec: BundleSpec) -> Path | None:
+        """The offline wheel-carried bundle dir for ``spec``, or None (REQ-1153).
+
+        When the optional ``provisa-pgwire-bundles`` wheel is installed it carries the pinned bundles
+        under ``<bundle_root>/<version>/<artifact_name>`` — the same layout the cache uses — so an
+        enterprise host behind a PyPI/Maven/npm/NuGet-only proxy resolves the connector without the
+        github.com/kenstott/calcite release round trip. Returns the dir only if its launcher exists."""
+        try:
+            from provisa_pgwire_bundles import bundle_root  # type: ignore[import-not-found]
+        except ImportError:
+            return None
+        cand = bundle_root() / spec.version / spec.artifact_name
+        return cand if (cand / "bin" / spec.artifact_name).is_file() else None
+
     def resolve(self, spec: BundleSpec) -> Path:
         """Return the local bundle directory for ``spec``, downloading + caching on a miss (REQ-956).
 
-        A cache hit returns without any download. A miss downloads via the injected downloader; if the
-        launcher is still absent afterwards the bundle is unusable and this fails loud."""
+        A cache hit returns without any download. The offline ``provisa-pgwire-bundles`` wheel is
+        preferred over the network next (REQ-1153). Only then does a miss download via the injected
+        downloader; if the launcher is still absent afterwards the bundle is unusable and fails loud."""
         dest = self.cached_path(spec)
         if self.is_cached(spec):
             return dest
+        bundled = self.bundled_path(spec)
+        if bundled is not None:
+            return bundled
         self._download(spec, dest)
         if not self.is_cached(spec):
             raise BundleUnavailable(

@@ -1,0 +1,26 @@
+# provisa-pg-ext — the embedded-Postgres extension/FDW binaries, delivered via PyPI.
+#
+# Why this package exists: the prebuilt PG extension bundles the embedded tier layers onto pgserver
+# (sqlite_fdw, parquet_fdw, parquet_s3_fdw, pg_lake, pg_duckdb, pg_analytics — REQ-898) are published
+# as GitHub release assets (github.com/kenstott/provisa/releases/download/.../pg-ext/...). Behind an
+# enterprise firewall where only PyPI/Maven/npm/NuGet are proxied (Artifactory), that host is
+# unreachable and the OOTB extension layer breaks. This package embeds the pinned, per-platform
+# binaries as ordinary wheel data so acquisition flows through PyPI instead. One universal wheel
+# carries every platform; provisa.pg_extensions.catalog stages the running platform's blobs from
+# provisa_pg_ext.ext_root() before pgserver's CREATE EXTENSION. Mirrors provisa-duckdb-ext (REQ-1142).
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "provisa-pg-ext"
+version = "0.1.0"
+description = "Pinned, per-platform PostgreSQL extension/FDW binaries for the Provisa embedded tier (PyPI-delivered, offline)."
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["provisa_pg_ext"]
+
+[tool.setuptools.package-data]
+# The blobs: <os>-<arch>/{manifest.json, lib/<name>.{so,dylib,dll}}, all platforms.
+"provisa_pg_ext" = ["_ext/**/*"]
