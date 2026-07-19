@@ -364,23 +364,19 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         _qs_mod.begin()
     _t0 = _time.perf_counter()
 
-    result, sources, _default_source, decision, governed_physical = await _compile_govern_execute(
-        request.sql, role_id, state, discovery_mode=request.discovery_mode
-    )
-
-    rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
-    if stats_enabled:
-        _qs_mod.record(
-            field="sql",
-            source=next(iter(sources), _default_source),
-            strategy=decision.route.value,
-            elapsed_ms=(_time.perf_counter() - _t0) * 1000,
-            rows=len(rows_as_dicts),
-            physical_sql=governed_physical,
-        )
-        qs = _qs_mod.current()
-        if qs is not None:
-            if output_format == "json":
+    def _finalize(result, *, source: str, strategy: str, physical_sql: str | None):
+        rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
+        if stats_enabled:
+            _qs_mod.record(
+                field="sql",
+                source=source,
+                strategy=strategy,
+                elapsed_ms=(_time.perf_counter() - _t0) * 1000,
+                rows=len(rows_as_dicts),
+                physical_sql=physical_sql,
+            )
+            qs = _qs_mod.current()
+            if qs is not None and output_format == "json":
                 from fastapi.encoders import jsonable_encoder
 
                 return JSONResponse(
@@ -390,14 +386,34 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 )
             # non-json formats fall through to standard response (no stats injection)
 
-    if output_format == "json":
-        return {"data": {"sql": rows_as_dicts}}
-    from provisa.compiler.sql_gen import ColumnRef
+        if output_format == "json":
+            return {"data": {"sql": rows_as_dicts}}
+        from provisa.compiler.sql_gen import ColumnRef
 
-    columns = [
-        ColumnRef(alias=None, column=c, field_name=c, nested_in=None) for c in result.column_names
-    ]
-    return _format_response(result.rows, columns, "sql", output_format)
+        columns = [
+            ColumnRef(alias=None, column=c, field_name=c, nested_in=None)
+            for c in result.column_names
+        ]
+        return _format_response(result.rows, columns, "sql", output_format)
+
+    # REQ-1150 parity: a `SELECT fn(...)` naming a registered command routes through the single
+    # governed executor here too, matching pgwire/Flight SQL/MCP — otherwise commands are dark in
+    # the in-app SQL Explorer and fall through to the federation engine as an unknown table function.
+    from provisa.pgwire.function_call import maybe_invoke_registered_function
+
+    cmd_result = await maybe_invoke_registered_function(request.sql, role_id, state)
+    if cmd_result is not None:
+        return _finalize(cmd_result, source="command", strategy="command", physical_sql=request.sql)
+
+    result, sources, _default_source, decision, governed_physical = await _compile_govern_execute(
+        request.sql, role_id, state, discovery_mode=request.discovery_mode
+    )
+    return _finalize(
+        result,
+        source=next(iter(sources), _default_source),
+        strategy=decision.route.value,
+        physical_sql=governed_physical,
+    )
 
 
 def _validate_sql_governance(

@@ -61,6 +61,18 @@ def _is_scalar(gql_type: Any) -> bool:
     return isinstance(gql_type, (GraphQLScalarType, GraphQLEnumType))
 
 
+def _arg_type_to_openapi(arg_type: str) -> dict[str, Any]:
+    """Map a command argument's GraphQL scalar name to an OpenAPI schema (REQ-1155)."""
+    t = (arg_type or "").lower()
+    if t == "int":
+        return {"type": "integer"}
+    if t == "float":
+        return {"type": "number", "format": "double"}
+    if t == "boolean":
+        return {"type": "boolean"}
+    return {"type": "string"}
+
+
 def generate_rest_openapi_spec(
     state: Any, role_id: str, domains: list[str] | None = None
 ) -> dict[str, Any]:
@@ -270,6 +282,77 @@ def generate_rest_openapi_spec(
                     },
                     "404": {
                         "description": "Table not found",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+                        },
+                    },
+                },
+            }
+        }
+
+    # REQ-1155: registered commands are POST paths so they appear in the OpenAPI/Swagger surface
+    # alongside tables. Invocation routes through the same governed executor as every other surface.
+    _seen_cmd: set[str] = set()
+    for fn in (getattr(state, "tracked_functions", {}) or {}).values():
+        cmd_name = fn.get("name")
+        if not cmd_name or cmd_name in _seen_cmd:
+            continue
+        cmd_domain = fn.get("domain_id", "")
+        if domain_filter is not None and cmd_domain not in domain_filter:
+            continue
+        visible_to = fn.get("visible_to") or []
+        if visible_to and role_id not in visible_to:
+            continue
+        _seen_cmd.add(cmd_name)
+
+        arg_props: dict[str, Any] = {}
+        for a in fn.get("arguments") or []:
+            a_name = a.get("name")
+            if not a_name:
+                continue
+            arg_props[a_name] = _arg_type_to_openapi(a.get("type", "String"))
+
+        cmd_path = f"/{cmd_domain}/commands/{cmd_name}"
+        domain_tag_descriptions.setdefault(cmd_domain, fn.get("domain_description"))
+        paths[cmd_path] = {
+            "post": {
+                "summary": f"Run command {cmd_domain}.{cmd_name}",
+                "operationId": f"call_{cmd_name}",
+                "tags": [cmd_domain],
+                **({"description": fn["description"]} if fn.get("description") else {}),
+                "requestBody": {
+                    "required": bool(arg_props),
+                    "content": {
+                        "application/json": {
+                            "schema": {"type": "object", "properties": arg_props}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {"type": "object"},
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "403": {
+                        "description": "Governance policy violation",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+                        },
+                    },
+                    "404": {
+                        "description": "Command not found",
                         "content": {
                             "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
                         },

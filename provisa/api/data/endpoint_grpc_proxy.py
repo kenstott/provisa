@@ -22,6 +22,7 @@ a native gRPC client.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -82,6 +83,92 @@ def _apply_read_mask(proto_rows, mask_map: dict[str, set[str] | None]):
             kept[k] = v if subs is None else _restrict(v, subs)
         projected.append(kept)
     return projected
+
+
+@router.get("/grpc-commands/{role_id}")
+async def grpc_commands(role_id: str):  # REQ-1150
+    """List role-visible registered commands (tracked functions) for the gRPC Explorer.
+
+    The gRPC surface exposes every command through the single generic ``CallCommand`` RPC, so
+    the browser Explorer can't discover them from the proto. Mirror the GraphQL action-field
+    visibility gate (visible_to + domain access) to populate the command picker.
+    """
+    from provisa.api.app import state
+
+    fns = getattr(state, "tracked_functions", {}) or {}
+    role = state.roles.get(role_id) or {}
+    accessible = set(role.get("domain_access") or [])
+    all_access = "*" in accessible
+
+    seen: set[str] = set()
+    out: list[dict] = []
+    for fn in fns.values():
+        name = fn.get("name")
+        if not name or name in seen:
+            continue
+        visible_to = fn.get("visible_to") or []
+        if visible_to and role_id not in visible_to:
+            continue
+        domain_id = fn.get("domain_id", "")
+        if not all_access and domain_id and domain_id not in accessible:
+            continue
+        seen.add(name)
+        out.append(
+            {
+                "name": name,
+                "description": fn.get("description"),
+                "arguments": [
+                    {"name": a.get("name"), "type": a.get("type")}
+                    for a in (fn.get("arguments") or [])
+                    if a.get("name")
+                ],
+            }
+        )
+    return out
+
+
+@router.post("/grpc-command/{role_id}")
+async def grpc_command(role_id: str, request: Request):  # REQ-1150
+    """Invoke a registered command via the shared executor — the HTTP mirror of CallCommand.
+
+    Body: ``{name, args_json}`` (args_json is a JSON object string, matching the CommandRequest
+    proto). writable_by/governance is enforced inside invoke_tracked_function.
+    """
+    import json
+
+    from provisa.api.app import state
+    from provisa.api.data.action_exec import invoke_tracked_function
+
+    body = await request.json()
+    name = body.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="Missing command name")
+    if name not in (getattr(state, "tracked_functions", {}) or {}):
+        raise HTTPException(status_code=404, detail=f"Unknown command {name!r}")
+
+    raw = body.get("args_json")
+    parsed_args: Any
+    if raw in (None, ""):
+        parsed_args = {}
+    elif isinstance(raw, str):
+        try:
+            parsed_args = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"args_json not valid JSON: {exc}")
+    else:
+        parsed_args = raw
+    if not isinstance(parsed_args, dict):
+        raise HTTPException(status_code=400, detail="args_json must be a JSON object")
+    args = parsed_args
+
+    try:
+        rows = await invoke_tracked_function(name, args, state, role_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    from fastapi.encoders import jsonable_encoder
+
+    return JSONResponse(jsonable_encoder(rows))
 
 
 @router.post("/grpc/{type_name}")

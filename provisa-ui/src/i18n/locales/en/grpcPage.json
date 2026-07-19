@@ -4,6 +4,7 @@
     "operationType": "Operation type",
     "query": "Query",
     "mutation": "Mutation",
+    "command": "Command",
     "method": "Method",
     "noMethods": "No methods",
     "cancel": "◼ Cancel",

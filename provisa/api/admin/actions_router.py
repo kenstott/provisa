@@ -517,24 +517,29 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
     await _ensure_tables(state.tenant_db)
 
     if body.actionType == "function":
-        async with state.tenant_db.acquire() as conn:
-            result = await conn.execute_core(
-                select(tracked_functions).where(tracked_functions.c.name == body.name)
-            )
-            fetched = result.fetchone()
-        if not fetched:
+        fn_def = state.tracked_functions.get(body.name)
+        if not fn_def:
             raise HTTPException(status_code=404, detail=f"Function '{body.name}' not found")
-        row = dict(fetched._mapping)
 
-        src_id = row["source_id"]
-        fn = row["function_name"]
-        schema = row["schema_name"]
-        returns = row["returns"] or ""
+        impl_kind = fn_def.get("impl_kind", "source_procedure")
+        role_id = body.role_id
+
+        # REQ-885: non-source-procedure commands (python/script/http/grpc) don't execute
+        # against a source pool — route through the shared dispatcher for a no-arg invocation.
+        if impl_kind != "source_procedure":
+            from provisa.executor.function_dispatch import dispatch_function
+
+            rows = await dispatch_function(fn_def, {}, state, role_id)
+            return {"rows": rows}
+
+        src_id = fn_def["source_id"]
+        fn = fn_def["function_name"]
+        schema = fn_def["schema_name"]
+        returns = fn_def["returns"] or ""
 
         if not state.source_pools.has(src_id):
             raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
 
-        role_id = body.role_id
         gov_ctx = None
         table_id: int | None = None
         rls_filter: str | None = None

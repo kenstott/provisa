@@ -86,6 +86,16 @@ def test_unparseable_sql_returns_none():
     assert detect_sql_function_call("NOT valid ((( sql", _state()) is None
 
 
+def test_detect_inside_sample_wrapper():
+    # The in-app SQL Explorer wraps the query as `SELECT * FROM (<sql>) AS _sample LIMIT N`.
+    # Detection must still find the nested command call so it routes through the executor.
+    name, args = detect_sql_function_call(
+        "SELECT * FROM (SELECT * FROM createOrder(9)) AS _sample LIMIT 100", _state()
+    )
+    assert name == "createOrder"
+    assert args == [9]
+
+
 # ---- result adaptation ------------------------------------------------------
 
 

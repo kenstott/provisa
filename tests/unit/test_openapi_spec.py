@@ -132,6 +132,66 @@ class TestParameters:
         assert params["offset"]["schema"]["minimum"] == 0
 
 
+class TestCommandPaths:
+    """REQ-1155: registered commands appear as POST paths in the OpenAPI surface."""
+
+    def _state_with_commands(self):
+        state = _make_state()
+        grpc_fn = {
+            "name": "random_grpc_set",
+            "domain_id": "default",
+            "visible_to": ["admin"],
+            "description": "demo grpc command",
+            "arguments": [],
+        }
+        py_fn = {
+            "name": "random_python_set",
+            "domain_id": "default",
+            "visible_to": ["admin"],
+            "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
+        }
+        hidden = {
+            "name": "secret_cmd",
+            "domain_id": "default",
+            "visible_to": ["ops"],
+            "arguments": [],
+        }
+        state.tracked_functions = {
+            "random_grpc_set": grpc_fn,
+            "ps__random_grpc_set": grpc_fn,  # prefixed alias must not double-emit
+            "random_python_set": py_fn,
+            "secret_cmd": hidden,
+        }
+        return state
+
+    def test_command_post_path_present(self):
+        spec = generate_rest_openapi_spec(self._state_with_commands(), "admin")
+        assert "post" in spec["paths"]["/default/commands/random_grpc_set"]
+
+    def test_command_not_deduped_alias(self):
+        spec = generate_rest_openapi_spec(self._state_with_commands(), "admin")
+        # exactly one path for the command despite the prefixed alias key
+        cmd_paths = [p for p in spec["paths"] if p.endswith("/commands/random_grpc_set")]
+        assert len(cmd_paths) == 1
+
+    def test_command_hidden_from_unauthorized_role(self):
+        spec = generate_rest_openapi_spec(self._state_with_commands(), "admin")
+        assert "/default/commands/secret_cmd" not in spec["paths"]
+
+    def test_command_request_body_from_arguments(self):
+        spec = generate_rest_openapi_spec(self._state_with_commands(), "admin")
+        op = spec["paths"]["/default/commands/random_python_set"]["post"]
+        props = op["requestBody"]["content"]["application/json"]["schema"]["properties"]
+        assert props == {"rows": {"type": "integer"}, "seed": {"type": "integer"}}
+        assert op["operationId"] == "call_random_python_set"
+
+    def test_command_domain_filter_excludes(self):
+        spec = generate_rest_openapi_spec(
+            self._state_with_commands(), "admin", domains=["other"]
+        )
+        assert not any("/commands/" in p for p in spec["paths"])
+
+
 class TestComponentSchemas:
     def _components(self) -> dict:
         state = _make_state()

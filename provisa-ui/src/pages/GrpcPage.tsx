@@ -18,7 +18,7 @@ import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./GrpcPage.css";
 
-type OperationType = "query" | "mutation";
+type OperationType = "query" | "mutation" | "command";
 type LeftTab = "body" | "proto";
 
 interface ProtoMethod {
@@ -26,6 +26,17 @@ interface ProtoMethod {
   operation: OperationType;
   typeName: string;
   requestMsgName: string;
+}
+
+interface CommandArg {
+  name: string;
+  type: string;
+}
+
+interface CommandDef {
+  name: string;
+  description?: string | null;
+  arguments: CommandArg[];
 }
 
 interface ProtoField {
@@ -77,6 +88,23 @@ function defaultForType(protoType: string): unknown {
   return "";
 }
 
+function defaultForArgType(argType: string): unknown {
+  const t = argType.toLowerCase();
+  if (t === "boolean") return false;
+  if (t === "int") return 0;
+  if (t === "float") return 0.0;
+  return "";
+}
+
+// Commands are invoked through the single generic CallCommand RPC. The Explorer edits an
+// { name, args } object; args is serialized to the CommandRequest.args_json string on send.
+function buildCommandTemplate(cmd: CommandDef | undefined): string {
+  if (!cmd) return "";
+  const args: Record<string, unknown> = {};
+  for (const a of cmd.arguments) args[a.name] = defaultForArgType(a.type);
+  return JSON.stringify({ name: cmd.name, args }, null, 2);
+}
+
 function buildMessageTemplate(method: ProtoMethod, messages: Record<string, ProtoField[]>): string {
   if (method.operation === "query") {
     const filterFields = messages[`${method.typeName}Filter`] ?? [];
@@ -108,6 +136,7 @@ export function GrpcPage() {
   const [protoText, setProtoText] = useState("");
   const [protoError, setProtoError] = useState("");
   const [parsed, setParsed] = useState<ParsedProto>({ methods: [], messages: {} });
+  const [commands, setCommands] = useState<CommandDef[]>([]);
   const [opType, setOpType] = useState<OperationType>("query");
   const [selectedMethod, setSelectedMethod] = useState<ProtoMethod | null>(null);
   const [messageText, setMessageText] = useState("");
@@ -116,9 +145,23 @@ export function GrpcPage() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
 
+  // Synthetic methods for registered commands (one generic CallCommand RPC, one entry per command).
+  const commandsMapRef = useRef<Record<string, CommandDef>>({});
+  const commandMethods: ProtoMethod[] = commands.map((c) => ({
+    name: c.name,
+    operation: "command",
+    typeName: c.name,
+    requestMsgName: "CommandRequest",
+  }));
+  const allMethods = [...parsed.methods, ...commandMethods];
+
   const selectMethod = useCallback((method: ProtoMethod, proto: ParsedProto) => {
     setSelectedMethod(method);
-    setMessageText(buildMessageTemplate(method, proto.messages));
+    setMessageText(
+      method.operation === "command"
+        ? buildCommandTemplate(commandsMapRef.current[method.name])
+        : buildMessageTemplate(method, proto.messages),
+    );
     setResponse("");
     setError("");
   }, []);
@@ -126,15 +169,16 @@ export function GrpcPage() {
   // Auto-select first method whenever op type or parsed proto changes
   const prevOpTypeRef = useRef<OperationType | null>(null);
   useEffect(() => {
-    if (!parsed.methods.length) return;
+    if (!allMethods.length) return;
     if (navSelectDoneRef.current) return;
     if (prevOpTypeRef.current === opType && selectedMethod?.operation === opType) return;
     prevOpTypeRef.current = opType;
-    const first = parsed.methods.find((m) => m.operation === opType);
+    const first = allMethods.find((m) => m.operation === opType);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-selects first method when opType/parsed changes; cannot be derived during render because selectedMethod also has user-driven updates via handleMethodChange
     if (first) selectMethod(first, parsed);
     else { setSelectedMethod(null); setMessageText(""); }
-  }, [opType, parsed, selectMethod, selectedMethod]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- allMethods is derived from parsed+commands, which are the real deps; listing the fresh array each render would loop
+  }, [opType, parsed, commands, selectMethod, selectedMethod]);
 
   const navSelectDoneRef = useRef(false);
 
@@ -172,6 +216,26 @@ export function GrpcPage() {
     if (roleId) void fetchProto(roleId, domainsParam);
   }, [roleId, domainsParam, fetchProto]);
 
+  const fetchCommands = useCallback(async (rid: string) => {
+    try {
+      const res = await fetch(`/data/grpc-commands/${encodeURIComponent(rid)}`);
+      if (!res.ok) {
+        setCommands([]);
+        return;
+      }
+      const list = (await res.json()) as CommandDef[];
+      commandsMapRef.current = Object.fromEntries(list.map((c) => [c.name, c]));
+      setCommands(list);
+    } catch {
+      setCommands([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async command fetch; setState occurs inside the async callback
+    if (roleId) void fetchCommands(roleId);
+  }, [roleId, fetchCommands]);
+
   const handleRun = useCallback(async () => {
     if (!selectedMethod || !roleId) return;
     if (selectedMethod.operation === "mutation") {
@@ -182,6 +246,28 @@ export function GrpcPage() {
     setError("");
     setResponse("");
     try {
+      if (selectedMethod.operation === "command") {
+        // Serialize the edited { name, args } object into a CommandRequest { name, args_json }.
+        let name = selectedMethod.name;
+        let args: unknown = {};
+        try {
+          const parsed_msg = JSON.parse(messageText) as { name?: string; args?: unknown };
+          if (typeof parsed_msg.name === "string") name = parsed_msg.name;
+          if (parsed_msg.args !== undefined) args = parsed_msg.args;
+        } catch { /* use defaults */ }
+        const res = await fetch(`/data/grpc-command/${encodeURIComponent(roleId)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-provisa-role": roleId },
+          body: JSON.stringify({ name, args_json: JSON.stringify(args) }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          setError((json as { detail?: string }).detail ?? JSON.stringify(json));
+        } else {
+          setResponse(JSON.stringify(json, null, 2));
+        }
+        return;
+      }
       let body: Record<string, unknown> = { role_id: roleId };
       try {
         const parsed_msg = JSON.parse(messageText) as Record<string, unknown>;
@@ -212,10 +298,10 @@ export function GrpcPage() {
     void handleRun();
   }, [selectedMethod, navAutoRun, handleRun]);
 
-  const visibleMethods = parsed.methods.filter((m) => m.operation === opType);
+  const visibleMethods = allMethods.filter((m) => m.operation === opType);
 
   const handleMethodChange = (name: string) => {
-    const m = parsed.methods.find((x) => x.name === name);
+    const m = allMethods.find((x) => x.name === name);
     if (m) selectMethod(m, parsed);
   };
 
@@ -240,10 +326,11 @@ export function GrpcPage() {
             allowDeselect={false}
             value={opType}
             onChange={(v) => v && setOpType(v as OperationType)}
-            disabled={parsed.methods.length === 0}
+            disabled={allMethods.length === 0}
             data={[
               { value: "query", label: t("grpcPage.query") },
               { value: "mutation", label: t("grpcPage.mutation") },
+              { value: "command", label: t("grpcPage.command") },
             ]}
           />
           <Select

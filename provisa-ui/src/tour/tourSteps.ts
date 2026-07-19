@@ -204,7 +204,11 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="nav-model"]',
     title: "Build your delivery pipeline",
     description:
-      "Define <strong>views</strong> over any table — ephemeral or materialized — and views over views." +
+      "Two ways to revise the model:" +
+      "<ul>" +
+      "<li>👁️ <strong>Views</strong> — define them over any table, ephemeral or materialized, and views over views.</li>" +
+      "<li>⚡ <strong>Commands</strong> — parameterized, reusable operations that reshape and extend the model, exposed on every surface.</li>" +
+      "</ul>" +
       "<ul>" +
       "<li>⚡ <strong>Liveness</strong> lives on tables and views, so each view republishes as its inputs' freshness changes.</li>" +
       "<li>🔧 Compose your whole delivery pipeline from views and commands — no separate ETL tool.</li>" +

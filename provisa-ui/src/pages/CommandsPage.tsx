@@ -17,6 +17,7 @@ import {
   Button,
   Card,
   Group,
+  Modal,
   Pagination,
   Select,
   Stack,
@@ -881,32 +882,33 @@ export function CommandsPage() {
         />
       </Group>
 
-      {testResult && (
-        <Card withBorder>
-          <Group justify="space-between" mb="sm">
-            <Title order={4}>{t("commandsPage.testResultHeading", { name: testResult.name })}</Title>
-            <Button size="xs" variant="default" onClick={() => setTestResult(null)}>
-              {t("commandsPage.close")}
-            </Button>
-          </Group>
-          {!!(testResult.data && typeof testResult.data === "object" && "enforcement" in testResult.data) && (
-            <Alert color="blue" mb="sm" title={t("commandsPage.governanceApplied")}>
-              <pre style={{ margin: "0.25rem 0 0", fontSize: "0.78rem" }}>
-                {JSON.stringify((testResult.data as Record<string, unknown>).enforcement, null, 2)}
-              </pre>
-            </Alert>
-          )}
-          <pre style={{ fontSize: "0.85rem", overflow: "auto", maxHeight: "300px" }}>
-            {JSON.stringify(
-              testResult.data && typeof testResult.data === "object" && "rows" in testResult.data
-                ? (testResult.data as Record<string, unknown>).rows
-                : testResult.data,
-              null,
-              2,
+      <Modal
+        opened={testResult !== null}
+        onClose={() => setTestResult(null)}
+        size="lg"
+        title={testResult ? t("commandsPage.testResultHeading", { name: testResult.name }) : ""}
+      >
+        {testResult && (
+          <>
+            {!!(testResult.data && typeof testResult.data === "object" && "enforcement" in testResult.data) && (
+              <Alert color="blue" mb="sm" title={t("commandsPage.governanceApplied")}>
+                <pre style={{ margin: "0.25rem 0 0", fontSize: "0.78rem" }}>
+                  {JSON.stringify((testResult.data as Record<string, unknown>).enforcement, null, 2)}
+                </pre>
+              </Alert>
             )}
-          </pre>
-        </Card>
-      )}
+            <pre style={{ fontSize: "0.85rem", overflow: "auto", maxHeight: "60vh" }}>
+              {JSON.stringify(
+                testResult.data && typeof testResult.data === "object" && "rows" in testResult.data
+                  ? (testResult.data as Record<string, unknown>).rows
+                  : testResult.data,
+                null,
+                2,
+              )}
+            </pre>
+          </>
+        )}
+      </Modal>
     </Stack>
   );
 }
