@@ -12,7 +12,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Badge, Button, Group, Select, Tabs, Text, Textarea } from "@mantine/core";
+import { GrpcCodeView } from "./grpc/GrpcCodeView";
+import { Badge, Button, Group, Select, Tabs, Text } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./GrpcPage.css";
@@ -293,30 +294,19 @@ export function GrpcPage() {
             </Tabs.List>
           </Tabs>
           {leftTab === "body" ? (
-            <Textarea
-              aria-label={t("grpcPage.body")}
-              data-testid="grpc-body-editor"
+            <GrpcCodeView
+              language="json"
               value={messageText}
-              onChange={(e) => setMessageText(e.currentTarget.value)}
-              spellCheck={false}
-              placeholder={selectedMethod ? "" : t("grpcPage.selectMethodPlaceholder")}
-              styles={{
-                root: { flex: 1, display: "flex", flexDirection: "column", minHeight: 0 },
-                wrapper: { flex: 1, display: "flex" },
-                input: {
-                  flex: 1,
-                  resize: "none",
-                  border: "none",
-                  fontFamily: "monospace",
-                  fontSize: "0.8rem",
-                  lineHeight: 1.55,
-                },
-              }}
+              onChange={setMessageText}
+              editablePlaceholder={selectedMethod ? "" : t("grpcPage.selectMethodPlaceholder")}
+              data-testid="grpc-body-editor"
             />
           ) : (
-            <pre className="grpc-code">
-              {protoText || (protoError ? "" : t("grpcPage.loading"))}
-            </pre>
+            <GrpcCodeView
+              language="proto"
+              value={protoText}
+              placeholder={protoError ? "" : t("grpcPage.loading")}
+            />
           )}
         </div>
 
@@ -332,9 +322,11 @@ export function GrpcPage() {
               {error}
             </Text>
           )}
-          <pre className="grpc-code grpc-response">
-            {response || (running ? t("grpcPage.waiting") : t("grpcPage.sendPrompt"))}
-          </pre>
+          <GrpcCodeView
+            language="json"
+            value={response}
+            placeholder={running ? t("grpcPage.waiting") : t("grpcPage.sendPrompt")}
+          />
         </div>
       </div>
     </div>

@@ -62,9 +62,15 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
     region: str = "us-east-1"
     default_format: str = "parquet"  # default S3 upload format
     encrypt: bool = False  # REQ-687: client-side envelope-encrypt the bulk payload before upload
+    # Desktop-dev fallback: when the object store is unreachable (or none is configured), the redirect
+    # result is written here and served by /data/redirect-file/<name> instead of a presigned S3 URL —
+    # so redirect can be exercised locally without standing up MinIO/S3.
+    local_dir: str = ""
 
     @staticmethod
     def from_env() -> RedirectConfig:
+        import tempfile
+
         enabled = os.environ.get("PROVISA_REDIRECT_ENABLED", "false").lower() == "true"
         return RedirectConfig(
             enabled=enabled,
@@ -77,6 +83,10 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
             region=os.environ.get("PROVISA_REDIRECT_REGION", "us-east-1"),
             default_format=os.environ.get("PROVISA_REDIRECT_FORMAT", "parquet"),
             encrypt=os.environ.get("PROVISA_REDIRECT_ENCRYPT", "false").lower() == "true",
+            local_dir=os.environ.get(
+                "PROVISA_REDIRECT_LOCAL_DIR",
+                os.path.join(tempfile.gettempdir(), "provisa-redirect-results"),
+            ),
         )
 
 
@@ -256,6 +266,10 @@ async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, RE
     """
     import boto3
     from botocore.config import Config as BotoConfig
+    from botocore.exceptions import (
+        ConnectionError as BotoConnectionError,
+        EndpointConnectionError,
+    )
 
     s3 = boto3.client(
         "s3",
@@ -290,20 +304,59 @@ async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, RE
         content_type = "application/octet-stream"
         ext = ext + ".enc"
 
-    key = f"results/{uuid.uuid4()}{ext}"
+    name = f"{uuid.uuid4()}{ext}"
+    key = f"results/{name}"
 
-    s3.put_object(
-        Bucket=config.bucket,
-        Key=key,
-        Body=body_bytes,
-        ContentType=content_type,
-    )
+    def _store_local(reason: str) -> dict:
+        """Write the payload to the local redirect dir and return a ``file://`` URL to it (desktop dev)."""
+        from pathlib import Path
 
-    url = s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": config.bucket, "Key": key},
-        ExpiresIn=config.ttl,
-    )
+        results_dir = os.path.join(config.local_dir, "results")
+        os.makedirs(results_dir, exist_ok=True)
+        path = os.path.join(results_dir, name)
+        with open(path, "wb") as fh:
+            fh.write(body_bytes)
+        resp = {
+            # A fully-qualified file:// URL to the result on the local filesystem. Note: browsers block
+            # navigating to file:// from an http page, so open it directly (Finder/terminal) or from a
+            # desktop shell — it is not a clickable web download.
+            "redirect_url": Path(path).resolve().as_uri(),
+            "row_count": row_count,
+            "expires_in": config.ttl,
+            "content_type": content_type,
+            "local": True,
+            "note": (
+                f"{reason} Saved locally as a file:// URL ({path}) — for desktop testing only (open it "
+                "directly; browsers won't download file:// from a web page). For shared/production "
+                "access, configure a reachable S3-compatible object store via PROVISA_REDIRECT_ENDPOINT "
+                "(local dev: run MinIO with `docker compose -f docker-compose.core.yml up -d minio minio-init`)."
+            ),
+        }
+        if encryption_meta is not None:
+            resp["encryption"] = encryption_meta
+        return resp
+
+    # No object store configured at all → local fallback (desktop dev).
+    if not config.endpoint_url:
+        return _store_local("No S3-compatible object store is configured.")
+
+    try:
+        s3.put_object(
+            Bucket=config.bucket,
+            Key=key,
+            Body=body_bytes,
+            ContentType=content_type,
+        )
+        url = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": config.bucket, "Key": key},
+            ExpiresIn=config.ttl,
+        )
+    except (EndpointConnectionError, ConnectionError, BotoConnectionError) as e:
+        # The store is configured but unreachable (e.g. MinIO not running). Fall back to local so a
+        # desktop dev can still exercise redirect, and say plainly what happened + how to get shared access.
+        log.warning("Redirect object store %s unreachable (%s); storing locally", config.endpoint_url, e)
+        return _store_local(f"Object store {config.endpoint_url} is not reachable ({type(e).__name__}).")
 
     response = {
         "redirect_url": url,

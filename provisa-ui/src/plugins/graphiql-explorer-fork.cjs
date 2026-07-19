@@ -177,6 +177,23 @@ function unwrapInputType(inputType) {
   return unwrappedType;
 }
 
+// Strip only the outer NonNull wrapper(s), so a List type underneath is preserved. Returns the
+// GraphQLList when the arg is a list (e.g. `by: [Enum!]!`), else the unwrapped non-null type.
+function stripNonNull(inputType) {
+  var t = inputType;
+  while ((0, _graphql.isNonNullType)(t)) {
+    t = t.ofType;
+  }
+  return t;
+}
+
+// The element type of a list arg (`[Enum!]!` -> Enum), fully unwrapped, or null when not a list.
+function listElementType(inputType) {
+  var t = stripNonNull(inputType);
+  if (!(0, _graphql.isListType)(t)) return null;
+  return unwrapInputType(t.ofType);
+}
+
 function coerceArgValue(argType, value) {
   // Handle the case where we're setting a variable as the value
   if (typeof value !== 'string' && value.kind === 'VariableDefinition') {
@@ -461,9 +478,19 @@ var ArgView = function (_React$PureComponent2) {
 
       var argType = unwrapInputType(arg.type);
 
+      var _listElem = listElementType(arg.type);
+
       var argSelection = null;
       if (_this2._previousArgSelection) {
         argSelection = _this2._previousArgSelection;
+      } else if (_listElem && (0, _graphql.isLeafType)(_listElem)) {
+        // List of enums/scalars (e.g. groupBy `by`, `distinct_on`): seed with one element so the
+        // picker renders a usable choice immediately rather than an empty, un-editable `[]`.
+        argSelection = {
+          kind: 'Argument',
+          name: { kind: 'Name', value: arg.name },
+          value: { kind: 'ListValue', values: [defaultValue(_listElem)] }
+        };
       } else if ((0, _graphql.isInputObjectType)(argType)) {
         var _fields2 = argType.getFields();
         argSelection = {
@@ -696,6 +723,7 @@ var AbstractArgView = function (_React$PureComponent4) {
       /* TODO: handle List types*/
 
       var argType = unwrapInputType(arg.type);
+      var _elemType = listElementType(arg.type);
 
       var input = null;
       if (argValue) {
@@ -705,6 +733,86 @@ var AbstractArgView = function (_React$PureComponent4) {
             { style: { color: styleConfig.colors.variable } },
             '$',
             argValue.name.value
+          );
+        } else if (_elemType && (0, _graphql.isLeafType)(_elemType) && argValue.kind === 'ListValue') {
+          // List of enums/scalars (e.g. groupBy `by`, `distinct_on`). Render each element as an
+          // editable control with a remove button, plus an add button — the graphiql-explorer core
+          // never implemented List args (the "TODO: handle List types" gap).
+          var _values = argValue.values || [];
+          var _setList = function _setList(next) {
+            _this6.props.setArgValue({ kind: 'ListValue', values: next }, true);
+          };
+          var _isEnum = (0, _graphql.isEnumType)(_elemType);
+          var _miniBtn = {
+            border: 'none', background: 'transparent', cursor: 'pointer',
+            color: styleConfig.colors.variable, padding: '0 2px', fontWeight: 'bold'
+          };
+          input = React.createElement(
+            'span',
+            { style: { display: 'inline-flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', marginLeft: 4 } },
+            _values.map(function (v, i) {
+              var control = _isEnum
+                ? React.createElement(
+                    'select',
+                    {
+                      key: 'sel' + i,
+                      style: { backgroundColor: 'white', color: styleConfig.colors.string2 },
+                      value: v && v.kind === 'EnumValue' ? v.value : '',
+                      onChange: function onChange(e) {
+                        var next = _values.slice();
+                        next[i] = { kind: 'EnumValue', value: e.target.value };
+                        _setList(next);
+                      }
+                    },
+                    _elemType.getValues().map(function (ev) {
+                      return React.createElement('option', { key: ev.name, value: ev.name }, ev.name);
+                    })
+                  )
+                : React.createElement('input', {
+                    key: 'inp' + i,
+                    style: { color: styleConfig.colors.string2 },
+                    value: v && v.value != null ? String(v.value) : '',
+                    onChange: function onChange(e) {
+                      var next = _values.slice();
+                      next[i] = coerceArgValue(_elemType, e.target.value);
+                      _setList(next);
+                    }
+                  });
+              var removeBtn = React.createElement(
+                'button',
+                {
+                  key: 'rm' + i,
+                  type: 'button',
+                  title: 'Remove',
+                  style: _miniBtn,
+                  onClick: function onClick() {
+                    var next = _values.slice();
+                    next.splice(i, 1);
+                    _setList(next);
+                  }
+                },
+                '×'
+              );
+              return React.createElement(
+                'span',
+                { key: 'item' + i, style: { display: 'inline-flex', alignItems: 'center' } },
+                control,
+                removeBtn
+              );
+            }),
+            React.createElement(
+              'button',
+              {
+                key: 'add',
+                type: 'button',
+                title: 'Add value',
+                style: _miniBtn,
+                onClick: function onClick() {
+                  _setList(_values.concat([defaultValue(_elemType)]));
+                }
+              },
+              '+'
+            )
           );
         } else if ((0, _graphql.isScalarType)(argType)) {
           if (argType.name === 'Boolean') {

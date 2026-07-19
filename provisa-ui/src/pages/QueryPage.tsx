@@ -382,6 +382,9 @@ interface RedirectInfo {
   row_count: number;
   expires_in: number;
   content_type: string;
+  // Present when the result was stored on the local disk fallback (object store unreachable) —
+  // explains where it went and how to configure shared object storage.
+  note?: string;
 }
 
 interface RedirectSettings {
@@ -432,6 +435,7 @@ function createProvisaFetch(
           row_count: body.redirect.row_count,
           expires_in: body.redirect.expires_in,
           content_type: body.redirect.content_type,
+          note: body.redirect.note,
         });
         const synthetic = {
           data: {
@@ -552,6 +556,39 @@ export function QueryPage() {
   const [queryElapsedMs, setQueryElapsedMs] = useState<number | null>(null);
   const [redirectResult, setRedirectResult] = useState<RedirectInfo | null>(null);
   useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
+
+  // Stop browser/OS password managers (iCloud Passwords, 1Password, LastPass, Bitwarden) from
+  // popping saved-credential autofill when the CodeMirror editors gain focus — GraphiQL's editable
+  // nodes otherwise look like fillable fields on localhost. Reapplied via MutationObserver because
+  // GraphiQL rebuilds its editor DOM across tab/schema changes.
+  const pageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = pageRef.current;
+    if (!root) return;
+    const IGNORE: Record<string, string> = {
+      autocomplete: "off",
+      autocorrect: "off",
+      autocapitalize: "off",
+      spellcheck: "false",
+      "data-1p-ignore": "true",
+      "data-lpignore": "true",
+      "data-bwignore": "true",
+      "data-form-type": "other",
+    };
+    const suppress = () => {
+      root
+        .querySelectorAll<HTMLElement>('.cm-content, textarea, [contenteditable="true"]')
+        .forEach((el) => {
+          for (const [k, v] of Object.entries(IGNORE)) {
+            if (el.getAttribute(k) !== v) el.setAttribute(k, v);
+          }
+        });
+    };
+    suppress();
+    const mo = new MutationObserver(suppress);
+    mo.observe(root, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
 
   // Persist which secondary editor tab (Variables/Headers) is active.
   useEffect(() => {
@@ -778,18 +815,23 @@ export function QueryPage() {
   if (!role || !fetcher || !plugins) return <div className="page">{t("queryPage.selectRole")}</div>;
 
   return (
-    <div className="query-page">
+    <div className="query-page" ref={pageRef}>
       <Group className="query-options" gap="md" wrap="nowrap" px="sm" py={6}>
-        <Select
-          label={t("queryPage.redirectLabel")}
-          size="xs"
-          data-testid="redirect-format-select"
-          data={REDIRECT_FORMAT_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
-          value={redirectFormat}
-          onChange={onFormatChange}
-          allowDeselect={false}
-          w={140}
-        />
+        <Group gap="xs" wrap="nowrap">
+          <Text size="xs" fw={500}>
+            {t("queryPage.redirectLabel")}
+          </Text>
+          <Select
+            size="xs"
+            aria-label={t("queryPage.redirectLabel")}
+            data-testid="redirect-format-select"
+            data={REDIRECT_FORMAT_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
+            value={redirectFormat}
+            onChange={onFormatChange}
+            allowDeselect={false}
+            w={140}
+          />
+        </Group>
         <NumberInput
           label={t("queryPage.thresholdLabel")}
           size="xs"
@@ -829,9 +871,9 @@ export function QueryPage() {
         </Alert>
       )}
       {redirectResult && (
-        <Alert color="green" variant="light" py={4} radius={0}>
+        <Alert color={redirectResult.note ? "yellow" : "green"} variant="light" py={4} radius={0}>
           <Group gap="md" wrap="nowrap">
-            <Text size="xs" c="green">
+            <Text size="xs" c={redirectResult.note ? "yellow.8" : "green"}>
               {t("queryPage.redirectReady", {
                 rowCount: redirectResult.row_count,
                 contentType: redirectResult.content_type,
@@ -850,7 +892,7 @@ export function QueryPage() {
             </Text>
             <ActionIcon
               variant="transparent"
-              color="green"
+              color={redirectResult.note ? "yellow" : "green"}
               size="sm"
               ml="auto"
               aria-label={t("queryPage.dismissRedirect")}
@@ -859,6 +901,11 @@ export function QueryPage() {
               <X size={14} />
             </ActionIcon>
           </Group>
+          {redirectResult.note && (
+            <Text size="xs" c="yellow.8" mt={2}>
+              {redirectResult.note}
+            </Text>
+          )}
         </Alert>
       )}
       <GraphiQL
