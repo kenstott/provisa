@@ -32496,6 +32496,11 @@
     - packaging/windows/provisa-native.ps1
     - packaging/windows/startup-monitor.ps1
   since: "2026-07"
+  unit_test: false
+  unit_test_reason: >-
+    Browser-open coordination between provisa-native.ps1 and startup-monitor.ps1 depends on
+    PowerShell Start-Process and Windows process/env context; the double-open race is not
+    reproducible in headless CI. Verified via manual QA on Windows hosts.
   scenario: |
     Given env PROVISA_STARTUP_UI=1 (monitor is driving launch)
     When provisa-native.ps1 reaches the point where it normally opens the browser

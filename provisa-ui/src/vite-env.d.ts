@@ -17,6 +17,7 @@ declare module '*.graphql' {
   export const SourcesQuery: DocumentNode;
   export const DomainsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
+  export const RefreshPolicyPreview: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
   export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;
@@ -63,6 +64,8 @@ declare module '*.graphql' {
   export const UpdateTableCache: DocumentNode;
   export const UpdateSourcePreferMaterialized: DocumentNode;
   export const UpdateTablePreferMaterialized: DocumentNode;
+  export const UpdateSourceLoadProtection: DocumentNode;
+  export const UpdateTableLoadProtection: DocumentNode;
   export const UpdateSourceNaming: DocumentNode;
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;
@@ -77,6 +80,7 @@ declare module '*.gql' {
   export const SourcesQuery: DocumentNode;
   export const DomainsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
+  export const RefreshPolicyPreview: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
   export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;
@@ -122,6 +126,8 @@ declare module '*.gql' {
   export const UpdateTableCache: DocumentNode;
   export const UpdateSourcePreferMaterialized: DocumentNode;
   export const UpdateTablePreferMaterialized: DocumentNode;
+  export const UpdateSourceLoadProtection: DocumentNode;
+  export const UpdateTableLoadProtection: DocumentNode;
   export const UpdateSourceNaming: DocumentNode;
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;
