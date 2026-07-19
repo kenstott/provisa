@@ -181,6 +181,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 relay_pagination=resolved_relay,
                 enable_aggregates=bool(table.get("enable_aggregates", False)),
                 enable_group_by=bool(table.get("enable_group_by", False)),
+                read_only=bool(table.get("view_sql")),  # REQ-1151: MV/view → query-only
             )
         )
 
@@ -839,7 +840,24 @@ def generate_schema(
     mutation_fields: dict[str, GraphQLField] = {}
 
     for t in tables:
+        # Mirror the query-root visibility gate: only seed/root tables get mutation fields, and
+        # implicit-traversal domains (meta/ops) reachable via JOIN are query/traverse-only unless
+        # the role explicitly has access. Without this, a domain-filtered schema exposed mutations
+        # for reachable tables in other domains and for always-visible meta/ops tables.
+        if _root_ids is not None and t.table_id not in _root_ids:
+            continue
+        if (
+            not _all_access
+            and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
+            and t.domain_id not in _accessible_domains
+        ):
+            continue
         if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
+            continue
+        # REQ-1151: a view_sql/MV-backed relation is derived, not a base table. Writes either fail
+        # at the source (non-updatable view) or land in the mv_cache snapshot the next refresh
+        # overwrites — silent data loss. Expose it query-only; never generate insert/update/delete.
+        if t.read_only:
             continue
         mutation_fields.update(_build_mutation_fields_for_table(t, si.enum_types))
 

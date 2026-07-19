@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from enum import Enum, auto
 from typing import Any
 
@@ -691,6 +692,63 @@ async def _impute_relationships(
     return ["r"], edges
 
 
+_CALL_CMD_RE = re.compile(
+    r"^\s*CALL\s+([A-Za-z_]\w*)\s*\((.*?)\)\s*(?:YIELD\b.*)?;?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _parse_call_arg(tok: str) -> Any:
+    """Coerce one CALL argument literal to a Python value (string/number/bool/null)."""
+    tok = tok.strip()
+    if (tok.startswith("'") and tok.endswith("'")) or (tok.startswith('"') and tok.endswith('"')):
+        return tok[1:-1]
+    low = tok.lower()
+    if low == "true":
+        return True
+    if low == "false":
+        return False
+    if low == "null":
+        return None
+    try:
+        return int(tok)
+    except ValueError:
+        try:
+            return float(tok)
+        except ValueError:
+            return tok
+
+
+async def _maybe_invoke_command_call(
+    cypher: str, role_id: str, app_state
+) -> tuple[list[str], list[list[Any]]] | None:
+    """If *cypher* is ``CALL <command>(args)`` for a registered command, invoke it (REQ-1150).
+
+    Returns (columns, rows-of-values) or None to fall through to normal Cypher parsing. The one
+    governed executor (invoke_tracked_function) enforces writable_by/governance, and positional
+    args are mapped to the command's declared argument names.
+    """
+    fns = getattr(app_state, "tracked_functions", None)
+    if not isinstance(fns, dict):
+        return None
+    m = _CALL_CMD_RE.match(cypher.strip())
+    if not m:
+        return None
+    name = m.group(1)
+    fn = fns.get(name)
+    if fn is None:
+        return None
+    raw = m.group(2).strip()
+    values = [_parse_call_arg(t) for t in raw.split(",")] if raw else []
+    declared = [a.get("name") for a in (fn.get("arguments") or [])]
+    args = {declared[i]: v for i, v in enumerate(values) if i < len(declared) and declared[i]}
+    from provisa.api.data.action_exec import invoke_tracked_function
+
+    rows = await invoke_tracked_function(name, args, app_state, role_id)
+    cols = list(rows[0].keys()) if rows else []
+    return cols, [[r.get(c) for c in cols] for r in rows]
+
+
 async def _execute_cypher(
     cypher: str,
     parameters: dict,
@@ -724,6 +782,13 @@ async def _execute_cypher(
     result = _system_query(cypher, ctx, role_id, include_ops, app_state, roles)
     if result is not None:
         return result
+
+    # REQ-1150: `CALL <command>(args)` naming a registered command invokes it through the single
+    # governed executor and returns its rows — so Bolt/Cypher clients (Neo4j Browser/Bloom) can run
+    # a command exactly like GraphQL/SQL. Placed after _system_query so `CALL dbms.*` still wins.
+    cmd = await _maybe_invoke_command_call(cypher, role_id, app_state)
+    if cmd is not None:
+        return cmd
 
     # Browser sysinfo node/rel totals — compute real counts (matches the internal graph browser).
     _q = cypher.strip()

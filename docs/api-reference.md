@@ -534,37 +534,76 @@ Generate LLM-assisted descriptions for a source's tables and columns. [tool-veri
 
 All endpoints are under the `/admin/actions` prefix. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
+Every invocation — from GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, and Provisa gRPC — routes through a single governed executor that enforces `writable_by` and governance uniformly. (REQ-1150) [tool-verified: `provisa/api/data/action_exec.py`] See [docs/integrations.md](integrations.md#invoking-commands-across-protocols) for the per-protocol call syntax.
+
 #### `GET /admin/actions`
 
-Return all tracked DB functions and webhooks. (REQ-242)
+Return all tracked DB functions and webhooks. (REQ-242) [tool-verified: `provisa/api/admin/actions_router.py:104`]
 
 **Response:**
 ```json
 {
   "functions": [
     {
-      "name": "get_account_balance",
-      "sourceId": "sales-pg",
-      "schemaName": "public",
-      "functionName": "get_account_balance",
-      "returns": "numeric",
-      "arguments": [{"name": "account_id", "type": "integer"}],
-      "visibleTo": ["admin", "analyst"],
+      "name": "random_python_set",
+      "implKind": "python",
+      "binding": {"callable": "demo.py_functions:random_dataset"},
+      "returns": "",
+      "returnSchema": {
+        "type": "array",
+        "items": {"type": "object", "properties": {"id": {"type": "integer"}, "region": {"type": "string"}}}
+      },
+      "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
+      "visibleTo": ["admin"],
       "writableBy": [],
-      "domainId": "sales",
-      "description": null,
-      "kind": "mutation"
+      "domainId": "pet-store",
+      "description": "Demo Python command returning random rows",
+      "kind": "query"
     }
   ],
-  "webhooks": [...]
+  "webhooks": [
+    {
+      "name": "add-pet",
+      "url": "https://petstore.example.com/pets",
+      "method": "POST",
+      "kind": "mutation",
+      "approved": true
+    }
+  ]
 }
 ```
 
+Each webhook object carries an `approved` boolean. A webhook is approved once a steward executes its creation request (REQ-209); config-declared webhooks are auto-approved. An unapproved webhook is registered but not exposed on any surface. [tool-verified: `provisa/api/admin/actions_router.py:124-131`]
+
 #### `POST /admin/actions/functions`
 
-Register a tracked DB function. (REQ-205)
+Register a tracked function (command). (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:117`]
 
-**Request body fields:** `name`, `sourceId`, `schemaName`, `functionName`, `returns`, `arguments`, `visibleTo`, `writableBy`, `domainId`, `description`, `kind`, `returnSchema`. [tool-verified: `provisa/api/admin/actions_router.py:117`]
+**Key fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | Yes | Unique command name |
+| `kind` | Yes | `"query"` → GraphQL Query field; `"mutation"` → Mutation field |
+| `implKind` | No | How the command runs — see table below (default `source_procedure`) |
+| `binding` | No | `implKind`-specific connection details (JSON object) |
+| `returnSchema` | No | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}` — makes the command set-returning on every surface |
+| `arguments` | No | `[{name, type}]` argument definitions; positional order matters for SQL and Bolt callers |
+| `visibleTo` | No | Role IDs that can call the command |
+| `writableBy` | No | Role IDs permitted to invoke it as a mutation |
+| `domainId` | No | Domain for GraphQL placement and access control |
+
+**`implKind` values:**
+
+| `implKind` | What runs | `binding` fields |
+|---|---|---|
+| `source_procedure` | Stored procedure on a registered source (default) | `sourceId`, `schemaName`, `functionName` |
+| `script` | Server-side script | `script` |
+| `http` | Outbound HTTP call | `url`, `method` |
+| `grpc` | Outbound gRPC call to an external server | `target`, `method` |
+| `python` | Python callable hosted by Provisa (REQ-885) | `callable` (e.g. `"demo.py_functions:random_dataset"`) |
+
+The demo commands `random_python_set` (`implKind: python`) and `random_grpc_set` (`implKind: grpc`) show set-returning commands with `returnSchema` in practice; both are in `config/provisa-install.yaml`. [tool-verified: `config/provisa-install.yaml:809-856`]
 
 #### `PUT /admin/actions/functions/{name}`
 
@@ -576,11 +615,11 @@ Delete a tracked function by name. [tool-verified: `provisa/api/admin/actions_ro
 
 #### `POST /admin/actions/webhooks`
 
-Register a tracked webhook. (REQ-209) **Request body fields:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`. [tool-verified: `provisa/api/admin/actions_router.py:132`]
+Register a tracked webhook. (REQ-209) Registering or updating a webhook enqueues a steward approval request — the webhook becomes active on all surfaces only after a steward approves it. Config-declared webhooks are auto-approved. **Request body fields:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`. [tool-verified: `provisa/api/admin/actions_router.py:132`, `provisa/api/admin/actions_router.py:325-331`]
 
 #### `PUT /admin/actions/webhooks/{name}`
 
-Update a tracked webhook by name. [tool-verified: `provisa/api/admin/actions_router.py:306`]
+Update a tracked webhook by name. Any edit resets approval to pending until re-approved. [tool-verified: `provisa/api/admin/actions_router.py:306`]
 
 #### `DELETE /admin/actions/webhooks/{name}`
 

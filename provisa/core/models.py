@@ -717,6 +717,9 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # REQ-885 identity model: True ⇒ admin/DEFINER, output-governed; False ⇒ user/INVOKER,
     # input-governed. Selects the identity context stamped into the invocation trace (REQ-886).
     materialize: bool = False
+    # REQ-885: JSON-Schema of a custom (set-returning) return shape when `returns` is not a
+    # registered "schema.table". Drives the generated GraphQL return type for hosted functions.
+    return_schema: dict | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 

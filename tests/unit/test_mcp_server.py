@@ -296,6 +296,27 @@ async def test_run_sql_routes_through_govern_and_route(state, monkeypatch):
     assert result["truncated"] is False
 
 
+async def test_run_sql_invokes_registered_command(state, monkeypatch):
+    # REQ-1150: a SELECT that names a registered command runs through invoke_tracked_function
+    # (the shared function hook), not the table compiler.
+    import provisa.pgwire._pipeline as pipeline
+    import provisa.pgwire.function_call as function_call
+
+    govern = AsyncMock()
+    monkeypatch.setattr(pipeline, "_govern_and_route", govern)
+    monkeypatch.setattr(
+        function_call,
+        "maybe_invoke_registered_function",
+        AsyncMock(return_value=QueryResult(rows=[(1, "east")], column_names=["id", "region"])),
+    )
+
+    result = await tools.run_sql(state, "analyst", "SELECT * FROM random_python_set(3)")
+
+    govern.assert_not_awaited()  # the command hook short-circuits the table pipeline
+    assert result["columns"] == ["id", "region"]
+    assert result["rows"] == [{"id": 1, "region": "east"}]
+
+
 async def test_run_sql_applies_row_cap(state, monkeypatch):
     import provisa.pgwire._pipeline as pipeline
 

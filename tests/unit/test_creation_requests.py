@@ -22,17 +22,25 @@ pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 class _Conn:
     """Vanilla SQLAlchemy Core connection stub."""
 
-    def __init__(self, *, insert_returning=None, rows=None, row=None, rowcount=1):
+    def __init__(
+        self, *, insert_returning=None, rows=None, row=None, rowcount=1, fetchrow_result=None
+    ):
         self._insert_returning = insert_returning
         self._rows = rows or []
         self._row = row
         self._rowcount = rowcount
+        self._fetchrow_result = fetchrow_result
         self.insert_calls: list[tuple] = []
         self.core_calls: list = []
+        self.fetch_calls: list[tuple] = []
 
     async def insert_returning(self, table, values, returning="id"):
         self.insert_calls.append((table, values, returning))
         return self._insert_returning
+
+    async def fetchrow(self, sql, *args):
+        self.fetch_calls.append((sql, args))
+        return self._fetchrow_result
 
     async def execute_core(self, stmt):
         self.core_calls.append(stmt)
@@ -76,6 +84,48 @@ class TestRepo:
         assert await cr_repo.mark_rejected(conn, 1, "bad join", "bob") is True
         stmt = conn.core_calls[0]
         assert "bad join" in stmt.compile().params.values()
+
+
+# --- REQ-209 config pre-approval gate --------------------------------------
+
+
+class TestEnsureExecuted:
+    """ensure_executed pre-approves config-declared webhooks so the exposure gate passes."""
+
+    async def test_latest_status_returns_status(self):
+        conn = _Conn(fetchrow_result={"status": "executed"})
+        assert await cr_repo.latest_status(conn, "webhook", "add_pet") == "executed"
+        # filters by request_type + payload name (mirrors the app_loaders exposure gate)
+        _, args = conn.fetch_calls[0]
+        assert args == ("webhook", "add_pet")
+
+    async def test_latest_status_none_when_no_request(self):
+        conn = _Conn(fetchrow_result=None)
+        assert await cr_repo.latest_status(conn, "webhook", "add_pet") is None
+
+    async def test_ensure_executed_skips_when_already_executed(self):
+        conn = _Conn(fetchrow_result={"status": "executed"})
+        await cr_repo.ensure_executed(conn, "webhook", "add_pet", "config")
+        # idempotent: no new row inserted on restart when already approved
+        assert conn.insert_calls == []
+
+    async def test_ensure_executed_inserts_when_no_request(self):
+        conn = _Conn(fetchrow_result=None, insert_returning=5)
+        await cr_repo.ensure_executed(conn, "webhook", "add_pet", "config")
+        assert len(conn.insert_calls) == 1
+        _, values, _ = conn.insert_calls[0]
+        assert values["status"] == "executed"
+        assert values["payload"] == {"name": "add_pet"}
+        assert values["resolved_by"] == "config"
+        assert values["capability"] == "webhook_registration"
+
+    async def test_ensure_executed_inserts_when_latest_pending(self):
+        # a UI edit enqueued a pending request; config reload re-approves (trusted source)
+        conn = _Conn(fetchrow_result={"status": "pending"}, insert_returning=6)
+        await cr_repo.ensure_executed(conn, "webhook", "add_pet", "config")
+        assert len(conn.insert_calls) == 1
+        _, values, _ = conn.insert_calls[0]
+        assert values["status"] == "executed"
 
 
 # --- has_capability gating -------------------------------------------------

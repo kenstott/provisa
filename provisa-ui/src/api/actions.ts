@@ -56,6 +56,9 @@ export interface TrackedWebhook {
   domainId: string;
   description: string | null;
   kind: string;
+  // REQ-209: false when registered but not yet steward-approved — the webhook is absent from
+  // the GraphQL schema and every other surface until its latest creation_request is executed.
+  approved?: boolean;
 }
 
 export async function fetchActions(): Promise<{

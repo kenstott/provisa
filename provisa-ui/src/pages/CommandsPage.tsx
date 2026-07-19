@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
   Alert,
+  Badge,
   Button,
   Card,
   Group,
@@ -609,6 +610,7 @@ export function CommandsPage() {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("commandsPage.colName")}</Table.Th>
+              <Table.Th>{t("commandsPage.colStatus")}</Table.Th>
               <Table.Th>{t("commandsPage.colDomain")}</Table.Th>
               <Table.Th>{t("commandsPage.colUrl")}</Table.Th>
               <Table.Th>{t("commandsPage.colMethod")}</Table.Th>
@@ -621,7 +623,7 @@ export function CommandsPage() {
           <Table.Tbody>
             {filteredWebhooks.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={8} ta="center" c="dimmed">
+                <Table.Td colSpan={9} ta="center" c="dimmed">
                   {t("commandsPage.noWebhooks")}
                 </Table.Td>
               </Table.Tr>
@@ -642,6 +644,18 @@ export function CommandsPage() {
                     }}
                   >
                     <Table.Td>{wh.name}</Table.Td>
+                    <Table.Td>
+                      <Badge
+                        size="sm"
+                        variant="light"
+                        color={wh.approved === false ? "yellow" : "green"}
+                        data-testid={`webhook-status-${wh.name}`}
+                      >
+                        {wh.approved === false
+                          ? t("commandsPage.statusPending")
+                          : t("commandsPage.statusApproved")}
+                      </Badge>
+                    </Table.Td>
                     <Table.Td>{wh.domainId || t("commandsPage.dash")}</Table.Td>
                     <Table.Td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {wh.url}
@@ -657,7 +671,7 @@ export function CommandsPage() {
                   {isExpanded && (
                     <Table.Tr>
                       <Table.Td
-                        colSpan={8}
+                        colSpan={9}
                         style={{
                           padding: "0.75rem 1rem",
                           background: "var(--bg)",
@@ -688,6 +702,11 @@ export function CommandsPage() {
                           </Stack>
                         ) : (
                           <Stack gap="sm">
+                            {wh.approved === false && (
+                              <Alert color="yellow" data-testid={`webhook-pending-${wh.name}`}>
+                                {t("commandsPage.webhookPendingHint")}
+                              </Alert>
+                            )}
                             <Table withRowBorders={false} verticalSpacing={2}>
                               <Table.Tbody>
                                 <Table.Tr>
@@ -695,6 +714,16 @@ export function CommandsPage() {
                                     <strong>{t("commandsPage.detailName")}</strong>
                                   </Table.Td>
                                   <Table.Td>{wh.name}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                  <Table.Td c="dimmed">
+                                    <strong>{t("commandsPage.detailStatus")}</strong>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    {wh.approved === false
+                                      ? t("commandsPage.statusPending")
+                                      : t("commandsPage.statusApproved")}
+                                  </Table.Td>
                                 </Table.Tr>
                                 <Table.Tr>
                                   <Table.Td c="dimmed">

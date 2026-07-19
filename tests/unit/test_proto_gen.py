@@ -122,6 +122,17 @@ class TestGenerateProto:
         assert "google.protobuf.Timestamp created_at = 2;" in proto
         assert "int32 id = 3;" in proto
 
+    def test_call_command_rpc_generated(self):
+        # REQ-1150: a single generic CallCommand RPC exposes every registered command over gRPC.
+        si = _make_si()
+        proto = generate_proto(si)
+        assert "message CommandRequest {" in proto
+        assert "string name = 1;" in proto
+        assert "string args_json = 2;" in proto
+        assert "message CommandResponse {" in proto
+        assert "string rows_json = 1;" in proto
+        assert "rpc CallCommand(CommandRequest) returns (CommandResponse);" in proto
+
     def test_timestamp_import(self):
         si = _make_si()
         proto = generate_proto(si)

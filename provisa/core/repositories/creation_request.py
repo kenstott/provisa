@@ -46,6 +46,48 @@ async def create(  # REQ-063, REQ-434
     return int(rid)
 
 
+async def latest_status(conn: "Connection", request_type: str, name: str) -> str | None:  # REQ-209
+    """Status of the most-recent request for (request_type, payload name), or None if none exist.
+
+    Mirrors the exposure gate in app_loaders._load_tracked_functions_and_webhooks: an entity is
+    approved when its latest request is 'executed'.
+    """
+    row = await conn.fetchrow(
+        "SELECT status FROM creation_requests "
+        "WHERE request_type = $1 AND payload->>'name' = $2 "
+        "ORDER BY id DESC LIMIT 1",
+        request_type,
+        name,
+    )
+    return None if row is None else row["status"]
+
+
+async def ensure_executed(
+    conn: "Connection", request_type: str, name: str, resolved_by: str | None
+) -> None:  # REQ-209
+    """Idempotently pre-approve a config-declared entity so the REQ-209 exposure gate passes.
+
+    The config file is the trusted source of truth (DB functions load ungated), so a webhook it
+    declares is approved without a steward round-trip. No-op when the latest request is already
+    'executed' — keeps startup idempotent across restarts (no unbounded row growth).
+    """
+    if await latest_status(conn, request_type, name) == "executed":
+        return
+    await conn.insert_returning(
+        creation_requests,
+        {
+            "request_type": request_type,
+            "capability": f"{request_type}_registration",
+            "payload": {"name": name},
+            "requested_by": resolved_by,
+            "status": "executed",
+            "resolved_by": resolved_by,
+            "resolved_at": func.now(),
+        },
+        returning="id",
+    )
+
+
 async def list_pending(conn: "Connection") -> list[dict]:  # REQ-063, REQ-434
     """Return all pending requests, oldest first."""
     result = await conn.execute_core(

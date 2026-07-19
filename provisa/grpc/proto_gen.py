@@ -227,8 +227,25 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     lines.append("}")
     lines.append("")
 
+    # --- Command invocation (REQ-1150) ---
+    # A single generic RPC exposes every registered command (tracked function/webhook) over gRPC
+    # without a per-command proto: the request carries the command name + JSON-encoded args and the
+    # response carries the JSON-encoded governed rows. Invocation routes through the one shared
+    # invoke_tracked_function executor, so writable_by/governance is enforced identically to every
+    # other surface.
+    lines.append("message CommandRequest {")
+    lines.append("  string name = 1;")
+    lines.append("  string args_json = 2;")
+    lines.append("}")
+    lines.append("")
+    lines.append("message CommandResponse {")
+    lines.append("  string rows_json = 1;")
+    lines.append("}")
+    lines.append("")
+
     # --- Service ---
     lines.append("service ProvisaService {")
+    lines.append("  rpc CallCommand(CommandRequest) returns (CommandResponse);")
     for t in sorted(tables, key=lambda t: t.type_name):
         lines.append(
             f"  rpc Query{t.type_name}({t.type_name}Request) returns (stream {t.type_name});"

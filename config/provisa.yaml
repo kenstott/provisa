@@ -812,6 +812,55 @@ tables:
   schema: graphql
   source_id: graphql-demo
   table: scheduleByEmployee
+functions:
+- name: random_python_set
+  description: Demo Provisa-hosted Python command returning a random-valued dataset (set-returning, REQ-885)
+  domain_id: pet-store
+  kind: query
+  impl_kind: python
+  source_id: ""
+  function_name: random_python_set
+  returns: ""
+  binding:
+    callable: demo.py_functions:random_dataset
+  arguments:
+  - name: rows
+    type: Int
+  - name: seed
+    type: Int
+  visible_to:
+  - admin
+  return_schema:
+    type: array
+    items:
+      type: object
+      properties:
+        id: {type: integer}
+        region: {type: string}
+        amount: {type: number}
+        active: {type: boolean}
+- name: random_grpc_set
+  description: Demo gRPC command returning a random-valued dataset (set-returning) via the JSON unary bridge (REQ-885)
+  domain_id: pet-store
+  kind: query
+  impl_kind: grpc
+  source_id: ""
+  function_name: random_grpc_set
+  returns: ""
+  binding:
+    target: ${env:DEMO_GRPC_TARGET:-localhost:50071}
+    method: /provisa.demo.RandomData/GetRandomSet
+  visible_to:
+  - admin
+  return_schema:
+    type: array
+    items:
+      type: object
+      properties:
+        id: {type: integer}
+        region: {type: string}
+        amount: {type: number}
+        active: {type: boolean}
 webhooks:
 - arguments:
   - name: name

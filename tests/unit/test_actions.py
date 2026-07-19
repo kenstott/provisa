@@ -462,6 +462,37 @@ class _FakePool:
         return _Ctx()
 
 
+class TestTrackedLoadParsing:
+    """REQ-209/042: JSON list-columns loaded via raw fetch must be json.loads-ed, not list()-ed —
+    otherwise a role-restricted command's visible_to becomes a char list and it vanishes from the
+    schema for every role."""
+
+    def test_json_list_parses_json_string_not_chars(self):
+        from provisa.api.app_loaders import _json_list
+
+        # the bug: list('["admin"]') == ['[','"','a',...]; must decode to ['admin']
+        assert _json_list('["admin"]') == ["admin"]
+
+    def test_json_list_passes_through_list(self):
+        from provisa.api.app_loaders import _json_list
+
+        assert _json_list(["admin", "steward"]) == ["admin", "steward"]
+
+    def test_json_list_none_is_empty(self):
+        from provisa.api.app_loaders import _json_list
+
+        assert _json_list(None) == []
+
+    def test_json_list_restricted_webhook_stays_visible(self):
+        """A webhook whose visible_to arrives as a JSON string is still matched by its role."""
+        from provisa.api.app_loaders import _json_list
+
+        role_id = "admin"
+        visible_to = _json_list('["admin"]')
+        # the exposure filter in actions_schema: `role_id not in visible_to` must be False
+        assert role_id in visible_to
+
+
 class TestWebhookApprovalGate:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_create_webhook_enqueues_approval_request(self):
@@ -492,3 +523,51 @@ class TestWebhookApprovalGate:
         assert cr_args[2] == "webhook_registration"
         assert cr_args[3] == {"name": "notify"}
         rebuild.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_list_actions_reports_webhook_approval(self):
+        """list_actions surfaces the REQ-209 exposure gate as an `approved` flag per webhook."""
+        from provisa.api.admin import actions_router
+
+        wh_row = {
+            "name": "add_pet",
+            "url": "http://x/pet",
+            "method": "POST",
+            "timeout_ms": 5000,
+            "returns": None,
+            "inline_return_type": [],
+            "arguments": [],
+            "visible_to": ["admin"],
+            "domain_id": "pet-store",
+            "description": None,
+            "kind": "mutation",
+        }
+
+        class _Conn:
+            def __init__(self):
+                self._calls = 0
+
+            async def execute_core(self, _stmt):
+                self._calls += 1
+                result = MagicMock()
+                # first call = functions (none), second = webhooks (one row)
+                rows = [] if self._calls == 1 else [MagicMock(_mapping=wh_row)]
+                result.fetchall.return_value = rows
+                return result
+
+        conn = _Conn()
+        fake_state = MagicMock()
+        fake_state.tenant_db = _FakePool(conn)
+
+        with (
+            patch("provisa.api.app.state", fake_state),
+            patch.object(actions_router, "_ensure_tables", new=AsyncMock()),
+            patch(
+                "provisa.core.repositories.creation_request.latest_status",
+                new=AsyncMock(return_value="pending"),
+            ),
+        ):
+            result = await actions_router.list_actions()
+
+        assert result["webhooks"][0]["name"] == "add_pet"
+        assert result["webhooks"][0]["approved"] is False

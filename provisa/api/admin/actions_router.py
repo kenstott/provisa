@@ -109,6 +109,8 @@ async def list_actions():  # REQ-205, REQ-209
 
     await _ensure_tables(state.tenant_db)
 
+    from provisa.core.repositories import creation_request as cr_repo
+
     async with state.tenant_db.acquire() as conn:
         fn_result = await conn.execute_core(
             select(tracked_functions).order_by(tracked_functions.c.name)
@@ -119,9 +121,18 @@ async def list_actions():  # REQ-205, REQ-209
         )
         wh_rows = wh_result.fetchall()
 
+        # REQ-209: a webhook reaches GraphQL only once its latest creation_request is 'executed'.
+        # Surface that gate to the Commands page so a registered-but-unapproved webhook is not
+        # mistaken for live (the schema loader applies the same gate in app_loaders).
+        webhooks = []
+        for r in wh_rows:
+            wh = _row_to_webhook(dict(r._mapping))
+            wh["approved"] = await cr_repo.latest_status(conn, "webhook", wh["name"]) == "executed"
+            webhooks.append(wh)
+
     return {
         "functions": [_row_to_function(dict(r._mapping)) for r in fn_rows],
-        "webhooks": [_row_to_webhook(dict(r._mapping)) for r in wh_rows],
+        "webhooks": webhooks,
     }
 
 

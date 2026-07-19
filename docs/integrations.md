@@ -194,6 +194,34 @@ Role is passed via the `x-provisa-role` metadata key on every RPC. Streaming que
 
 ---
 
+## Invoking Commands Across Protocols
+
+A **command** is a registered tracked function or webhook — a callable registered in Provisa's semantic layer with a `kind` (`query` or `mutation`) and an `impl_kind` that describes how it runs. Every surface routes invocations through a single governed executor (`invoke_tracked_function`) that enforces `writable_by` and governance uniformly (REQ-1150). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
+
+| `impl_kind` | What runs | Binding fields |
+|------------|-----------|---------------|
+| `source_procedure` | Stored procedure on a registered source (default) | `sourceId`, `schemaName`, `functionName` |
+| `script` | Server-side script | `script` |
+| `http` | Outbound HTTP call | `url`, `method` |
+| `grpc` | Outbound gRPC call to an external server | `target`, `method` |
+| `python` | Python callable hosted by Provisa (REQ-885) | `callable` (e.g. `demo.py_functions:random_dataset`) |
+
+When a command declares a `return_schema` (JSON Schema with `type: array, items: object`), it is set-returning — every surface projects it as a typed row set. The demo commands `random_python_set` (impl_kind `python`) and `random_grpc_set` (impl_kind `grpc`) illustrate both a hosted callable and an external gRPC bridge returning random-valued rows; both are registered in `config/provisa-install.yaml`. [tool-verified: `config/provisa-install.yaml:809-856`]
+
+### Protocol matrix
+
+| Surface | Syntax | Example |
+|---------|--------|---------|
+| GraphQL | `kind=query` → Query field; `kind=mutation` → Mutation field; domain-prefixed when `domain_prefix: true` | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
+| pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` or `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
+| Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
+| Bolt (Neo4j Browser / driver) | `CALL fn(args)` — positional args map to declared argument names | `CALL random_python_set(3, 7)` |
+| Provisa gRPC (port 50051) | Unary `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
+
+The `kind` field controls GraphQL placement only — SQL, Cypher, Bolt, and gRPC surfaces accept both `query` and `mutation` commands identically.
+
+---
+
 ## Apollo Federation
 
 Provisa can act as a Federation v2 subgraph, exposing its published schema to an Apollo Router or Apollo Gateway.

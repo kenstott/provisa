@@ -534,9 +534,24 @@ class ProvisaFlightServer(
         """Execute SQL through the shared governance pipeline and return Arrow record batches."""
         from provisa.compiler.sql_gen import ColumnRef
         from provisa.pgwire._pipeline import _govern_and_route
+        from provisa.pgwire.function_call import maybe_invoke_registered_function
 
         sql = str(request.get("query", ""))
         role_id = str(request.get("role", "admin"))
+
+        # REQ-1150: a `SELECT fn(...)` naming a registered command invokes it through the single
+        # governed executor, matching pgwire/MCP — otherwise commands are dark over Flight SQL.
+        fn_result = asyncio.run_coroutine_threadsafe(
+            maybe_invoke_registered_function(sql, role_id, self._state),
+            self._main_loop,
+        ).result()
+        if fn_result is not None:
+            columns = [
+                ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
+                for c in fn_result.column_names
+            ]
+            table = rows_to_arrow_table(fn_result.rows, columns)
+            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         try:
             plan = asyncio.run_coroutine_threadsafe(

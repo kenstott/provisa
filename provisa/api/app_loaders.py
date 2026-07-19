@@ -750,6 +750,22 @@ async def _load_masking_rules(  # REQ-040, REQ-263
             state.masking_rules[key][col_name] = (mask_rule, data_type)
 
 
+def _json_list(value: Any) -> list:
+    """Coerce a JSON list-column to a Python list, tolerating raw-SQL string returns.
+
+    ``conn.fetch`` executes raw ``text()`` SQL, which bypasses SQLAlchemy's JSON type and returns
+    JSON columns as strings on SQLite/asyncpg. A JSON string must be ``json.loads``-ed, never
+    ``list()``-ed: ``list('["admin"]')`` yields the CHARACTERS ``['[','"','a',...]``, which silently
+    drops every role-restricted function/webhook from the generated schema (its ``visible_to`` no
+    longer contains the role id). See the ``arguments`` handling this mirrors.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return json.loads(value)
+    return list(value)
+
+
 async def _load_tracked_functions_and_webhooks(  # REQ-042
     conn: Any, raw_config: dict | None
 ) -> tuple[list[dict], list[dict]]:
@@ -791,42 +807,49 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     tracked_functions = [
         {
             **dict(r),
-            "arguments": json.loads(r["arguments"])
-            if isinstance(r["arguments"], str)
-            else (r["arguments"] or []),
-            "visible_to": list(r["visible_to"] or []),
+            "arguments": _json_list(r["arguments"]),
+            "visible_to": _json_list(r["visible_to"]),
+            "writable_by": _json_list(r["writable_by"]),
         }
         for r in fn_rows
     ]
     tracked_webhooks = [
         {
             **dict(r),
-            "arguments": json.loads(r["arguments"])
-            if isinstance(r["arguments"], str)
-            else (r["arguments"] or []),
-            "inline_return_type": json.loads(r["inline_return_type"])
-            if isinstance(r["inline_return_type"], str)
-            else (r["inline_return_type"] or []),
-            "visible_to": list(r["visible_to"] or []),
+            "arguments": _json_list(r["arguments"]),
+            "inline_return_type": _json_list(r["inline_return_type"]),
+            "visible_to": _json_list(r["visible_to"]),
         }
         for r in wh_rows
     ]
 
-    from provisa.compiler.naming import domain_to_sql_name as _d2sql
+    # The prefixed alias MUST match the GraphQL field name the schema generator emits, which uses
+    # domain_gql_alias (e.g. pet-store -> "ps"), NOT domain_to_sql_name (-> "pet_store"). Otherwise
+    # _split_action_fields can't find the domain-prefixed field and the command falls through to the
+    # table compiler as an "Unknown root query field" (REQ-1150).
+    from provisa.compiler.naming import domain_gql_alias as _dgql
+
+    _domains_cfg = (raw_config or {}).get("domains", []) or []
+    _alias_stored = {
+        d["id"]: d.get("graphql_alias")
+        for d in _domains_cfg
+        if isinstance(d, dict) and d.get("id")
+    }
+
+    def _domain_prefix(domain_id: str) -> str:
+        return _dgql(domain_id, _alias_stored.get(domain_id))
 
     _dp = raw_config.get("naming", {}).get("domain_prefix", False) if raw_config else False
     state.tracked_functions = {}
     for f in tracked_functions:
         state.tracked_functions[f["name"]] = f
         if _dp and f.get("domain_id"):
-            prefixed = f"{_d2sql(f['domain_id'])}__{f['name']}"
-            state.tracked_functions[prefixed] = f
+            state.tracked_functions[f"{_domain_prefix(f['domain_id'])}__{f['name']}"] = f
     state.tracked_webhooks = {}
     for w in tracked_webhooks:
         state.tracked_webhooks[w["name"]] = w
         if _dp and w.get("domain_id"):
-            prefixed = f"{_d2sql(w['domain_id'])}__{w['name']}"
-            state.tracked_webhooks[prefixed] = w
+            state.tracked_webhooks[f"{_domain_prefix(w['domain_id'])}__{w['name']}"] = w
 
     return tracked_functions, tracked_webhooks
 

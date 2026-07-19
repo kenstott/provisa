@@ -76,3 +76,4 @@ class _TableInfo:
     gql_fields: dict[str, GraphQLField] = field(default_factory=dict)
     enable_aggregates: bool = False  # REQ-653: table-level opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: table-level opt-in for _group_by root field
+    read_only: bool = False  # REQ-1151: view_sql/MV-backed relation — query-only, no mutations

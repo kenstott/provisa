@@ -731,11 +731,16 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
 
     # 8. Tracked DB functions
     for func in config.functions:
-        await function_repo.upsert_function(conn, func)
+        await function_repo.upsert_function(conn, func, return_schema=func.return_schema)
 
-    # 9. Tracked webhooks
+    # 9. Tracked webhooks. Config is the trusted source of truth, so a config-declared webhook is
+    # pre-approved (REQ-209): without an 'executed' creation_request the schema gate in
+    # app_loaders would silently exclude it from GraphQL forever (DB functions load ungated).
+    from provisa.core.repositories import creation_request as cr_repo
+
     for wh in config.webhooks:
         await function_repo.upsert_webhook(conn, wh)
+        await cr_repo.ensure_executed(conn, "webhook", wh.name, "config")
 
     # 10. Policy sweep: dynamically-registered rows (openapi/hasura/graphql_remote) are not
     # in this config file, so the model validator can't catch them. In single-domain mode any

@@ -96,7 +96,43 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 return await self._handle_insert(request, context, type_name)
 
             return insert_handler
+        if name == "CallCommand":  # REQ-1150
+
+            async def call_command_handler(request, context):
+                return await self._handle_call_command(request, context)
+
+            return call_command_handler
         raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
+
+    async def _handle_call_command(self, request, context):
+        """Invoke a registered command (tracked function) via the one governed executor (REQ-1150).
+
+        Request: {name, args_json}; response: {rows_json}. writable_by/governance is enforced inside
+        invoke_tracked_function, identical to the GraphQL/SQL/Cypher surfaces."""
+        import json
+
+        from provisa.api.data.action_exec import invoke_tracked_function
+
+        metadata = dict(context.invocation_metadata())
+        role_id = metadata.get("x-provisa-role")
+        if not role_id:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+            return
+        state = self._state
+        if request.name not in getattr(state, "tracked_functions", {}):
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {request.name!r}")
+            return
+        try:
+            args = json.loads(request.args_json) if request.args_json else {}
+        except json.JSONDecodeError as exc:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"args_json not valid JSON: {exc}")
+            return
+        try:
+            rows = await invoke_tracked_function(request.name, args, state, role_id)
+        except PermissionError as exc:
+            await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            return
+        return self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
 
     async def _handle_insert(self, request, context, type_name: str):
         """Stub handler for insert RPCs."""

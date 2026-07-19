@@ -258,6 +258,7 @@ async def run_sql(
     capped/paged so the full result never lands in an agent's context.
     """
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
+    from provisa.pgwire.function_call import maybe_invoke_registered_function
 
     require_role(role, state)
     if offset < 0:
@@ -267,8 +268,13 @@ async def run_sql(
     if page <= 0:
         raise ValueError("limit must be a positive integer")
 
-    plan = await _govern_and_route(sql, role)  # raises PermissionError / ValueError
-    result = await _execute_plan(plan, state)
+    # REQ-1150: a `SELECT fn(...)` naming a registered command must invoke it through the single
+    # governed executor here too, exactly as the pgwire path does — otherwise commands are dark on
+    # MCP (run_sql lowers via _govern_and_route/_execute_plan, which never sees the function hook).
+    result = await maybe_invoke_registered_function(sql, role, state)
+    if result is None:
+        plan = await _govern_and_route(sql, role)  # raises PermissionError / ValueError
+        result = await _execute_plan(plan, state)
 
     total = len(result.rows)
     window = result.rows[offset : offset + page]

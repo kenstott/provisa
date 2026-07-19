@@ -116,7 +116,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:  # REQ-155, REQ-
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
         "alias, description, column_presets, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
-        "enable_aggregates, enable_group_by "
+        "enable_aggregates, enable_group_by, view_sql "
         "FROM registered_tables ORDER BY id"
     )
     tables = []
