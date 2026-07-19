@@ -51,7 +51,7 @@ import { ViewModal } from "./sql/ViewModal";
 
 export function SqlPage() {
   const { t } = useTranslation();
-  const { checkedDomains } = useDomainFilter();
+  const { checkedDomains, ensureDomainChecked } = useDomainFilter();
   const location = useLocation();
   const navigate = useNavigate();
   const canCreateView = useCapability("create_view");
@@ -589,6 +589,9 @@ export function SqlPage() {
       const newTableId = idMatch ? parseInt(idMatch[1], 10) : null;
       setViewMsg(canCreateView ? "View created." : "View request submitted.");
       setSavedViewId(newTableId);
+      // Reveal the view's domain in the filter so it shows in the schema sidebar / Views list
+      // immediately (the created view is registered under viewDomainId).
+      ensureDomainChecked(viewDomainId.trim());
       refetchTables();
       refetchRelationships();
       localStorage.setItem("provisa.schema.version", String(Date.now()));
@@ -608,6 +611,7 @@ export function SqlPage() {
     registerTable,
     refetchTables,
     refetchRelationships,
+    ensureDomainChecked,
   ]);
 
   const handleRun = useCallback(async () => {

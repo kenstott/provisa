@@ -11,9 +11,10 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { graphqlLoader } from './src/plugins/graphql-loader'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [graphqlLoader(), react()],
   resolve: {
     alias: [
       {

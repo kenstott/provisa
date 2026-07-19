@@ -45,6 +45,7 @@ from provisa.api.admin.types import (
     HotTableStatType,
     MaterializeStoreInfoType,
     MVType,
+    RefreshPolicySummaryType,
     RegisteredTableType,
     RelationshipType,
     RLSRuleType,
@@ -592,6 +593,41 @@ class Query:  # REQ-021, REQ-042
             )
             for mv in state.mv_registry._mvs.values()
         ]
+
+    @strawberry.field
+    async def refresh_policy_preview(  # REQ-1143
+        self,
+        source_id: str,
+        domain_id: str,
+        schema_name: str,
+        table_name: str,
+        cache_ttl: Optional[int] = None,
+        prefer_materialized: Optional[bool] = None,
+        load_protected: Optional[bool] = None,
+        off_peak_window: Optional[str] = None,
+        off_peak_tz: Optional[str] = None,
+        change_signal: Optional[str] = None,
+    ) -> Optional[RefreshPolicySummaryType]:
+        """Preview the effective refresh/serving summary for DRAFT table knobs (REQ-1143).
+
+        Same server-side derivation as ``RegisteredTableType.refresh_policy_summary``, but the knob
+        values come from the in-flight editor form instead of the persisted row — so the top-of-form
+        summary updates as fields change, without persisting or re-deriving the tree in the client.
+        Returns None during startup (engine not yet connected)."""
+        from provisa.api.admin._refresh_summary import preview_table_policy
+
+        return await preview_table_policy(
+            source_id=source_id,
+            domain_id=domain_id,
+            schema_name=schema_name,
+            table_name=table_name,
+            cache_ttl=cache_ttl,
+            prefer_materialized=prefer_materialized,
+            load_protected=load_protected,
+            off_peak_window=off_peak_window,
+            off_peak_tz=off_peak_tz,
+            change_signal=change_signal,
+        )
 
     # ── Admin: Cache Stats ──
 

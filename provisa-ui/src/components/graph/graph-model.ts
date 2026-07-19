@@ -373,10 +373,10 @@ export function injectExclusion(
 
 // ── Graph stats ───────────────────────────────────────────────────────────────
 export interface GraphStats {
-  in_degree: number;
-  out_degree: number;
+  inDegree: number;
+  outDegree: number;
   degree: number;
-  degree_centrality: number;
+  degreeCentrality: number;
   schema_L1?: string;
   schema_L2?: string;
   schema_L3?: string;

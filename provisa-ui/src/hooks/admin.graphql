@@ -147,6 +147,37 @@ query TablesQuery {
   }
 }
 
+# REQ-1143: preview the effective refresh/serving summary for draft (unsaved) editor knobs.
+query RefreshPolicyPreview(
+  $sourceId: String!
+  $domainId: String!
+  $schemaName: String!
+  $tableName: String!
+  $cacheTtl: Int
+  $preferMaterialized: Boolean
+  $loadProtected: Boolean
+  $offPeakWindow: String
+  $offPeakTz: String
+  $changeSignal: String
+) {
+  refreshPolicyPreview(
+    sourceId: $sourceId
+    domainId: $domainId
+    schemaName: $schemaName
+    tableName: $tableName
+    cacheTtl: $cacheTtl
+    preferMaterialized: $preferMaterialized
+    loadProtected: $loadProtected
+    offPeakWindow: $offPeakWindow
+    offPeakTz: $offPeakTz
+    changeSignal: $changeSignal
+  ) {
+    text
+    serving
+    warning
+  }
+}
+
 query RelationshipsQuery {
   relationships {
     id

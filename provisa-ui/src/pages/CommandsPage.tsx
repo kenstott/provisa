@@ -25,6 +25,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
+import { useDomainFilter } from "../context/DomainFilterContext";
 import { Trash2, Pencil, Check, X, Plus } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import {
@@ -55,6 +56,7 @@ export function CommandsPage() {
   const { sources } = useSources();
   const { tables } = useTables();
   const { domains } = useDomains();
+  const { checkedDomains } = useDomainFilter();
   const getAvailableFunctions = useAvailableFunctionsLazy();
   const { activeOrgId } = useAuth();
   const orgId = activeOrgId ?? "root";
@@ -280,14 +282,23 @@ export function CommandsPage() {
 
   if (loading) return <Text p="md">{t("commandsPage.loading")}</Text>;
 
+  // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
+  // matching the TablesPage/SqlPage convention. Rows with no domain are always shown.
+  const inCheckedDomain = (domainId: string | null | undefined) =>
+    !domainId || checkedDomains.size === 0 || checkedDomains.has(domainId);
+
   const filteredFunctions = functions.filter(
-    (fn) => !cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase()),
+    (fn) =>
+      inCheckedDomain(fn.domainId) &&
+      (!cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase())),
   );
   const fnTotalPages = Math.max(1, Math.ceil(filteredFunctions.length / PAGE_SIZE));
   const pagedFunctions = filteredFunctions.slice((fnPage - 1) * PAGE_SIZE, fnPage * PAGE_SIZE);
 
   const filteredWebhooks = webhooks.filter(
-    (wh) => !cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase()),
+    (wh) =>
+      inCheckedDomain(wh.domainId) &&
+      (!cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase())),
   );
   const whTotalPages = Math.max(1, Math.ceil(filteredWebhooks.length / PAGE_SIZE));
   const pagedWebhooks = filteredWebhooks.slice((whPage - 1) * PAGE_SIZE, whPage * PAGE_SIZE);
@@ -381,7 +392,7 @@ export function CommandsPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {functions.length === 0 && (
+            {filteredFunctions.length === 0 && (
               <Table.Tr>
                 <Table.Td colSpan={7} ta="center" c="dimmed">
                   {t("commandsPage.noFunctions")}
@@ -608,7 +619,7 @@ export function CommandsPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {webhooks.length === 0 && (
+            {filteredWebhooks.length === 0 && (
               <Table.Tr>
                 <Table.Td colSpan={8} ta="center" c="dimmed">
                   {t("commandsPage.noWebhooks")}

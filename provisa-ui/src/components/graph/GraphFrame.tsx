@@ -291,8 +291,8 @@ export function GraphFrame({
       const i = degIn.get(k) ?? 0;
       const o = degOut.get(k) ?? 0;
       const deg = i + o;
-      const degree_centrality = totalNodes > 1 ? parseFloat((deg / (totalNodes - 1)).toFixed(4)) : 0;
-      result.set(k, { ...n, properties: { ...n.properties, deg_in: i, deg_out: o, deg_total: deg, degree_centrality } });
+      const degreeCentrality = totalNodes > 1 ? parseFloat((deg / (totalNodes - 1)).toFixed(4)) : 0;
+      result.set(k, { ...n, properties: { ...n.properties, degIn: i, degOut: o, degTotal: deg, degreeCentrality } });
     });
     return result;
   }, [frame.nodes, frame.edges, overlayEdges]);
@@ -411,7 +411,7 @@ export function GraphFrame({
   // followed by any scalar property with more than one distinct value.
   const groupableAttrs = useMemo(() => {
     if (augmentedNodes.size === 0) return [];
-    const SKIP = new Set(["scl1", "scl2", "scl3", "l1Cluster", "l2Cluster", "l3Cluster", "deg_in", "deg_out", "deg_total"]);
+    const SKIP = new Set(["scl1", "scl2", "scl3", "l1Cluster", "l2Cluster", "l3Cluster", "degIn", "degOut", "degTotal"]);
     const schemaVirtuals: string[] = [];
     for (const [virtName, prop] of [
       ["schema_L1", "scl1"],
@@ -426,7 +426,7 @@ export function GraphFrame({
       if (vals.size > 1) schemaVirtuals.push(virtName);
     }
     const degreeVirtuals: string[] = [];
-    for (const key of ["deg_in", "deg_out", "deg_total"] as const) {
+    for (const key of ["degIn", "degOut", "degTotal"] as const) {
       const vals = new Set<string>();
       augmentedNodes.forEach((n) => {
         const v = n.properties[key];
@@ -976,7 +976,7 @@ export function GraphFrame({
     <>
       <div
         className={`gf-frame${expanded ? " gf-expanded" : ""}${dragOver ? " gf-frame--drag-over" : ""}`}
-        style={expanded ? { top: `calc(5vh + ${modalHeaderHeight}px)`, height: `calc(90vh - ${modalHeaderHeight}px)` } : undefined}
+        style={expanded ? { top: `calc(2.5vh + ${modalHeaderHeight}px)`, height: `calc(95vh - ${modalHeaderHeight}px)` } : undefined}
         onDragOver={(e) => {
           if (
             e.dataTransfer.types.includes("text/x-provisa-label") ||

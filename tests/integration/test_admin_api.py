@@ -147,3 +147,76 @@ class TestMutations:
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["createRole"]["success"]
+
+
+class TestViewRegistrationRefreshPolicy:
+    """REQ-1143 regression: a __provisa__ virtual view persists its source `type` as the federation
+    engine name (e.g. "trino"), which is not a SourceType. Resolving refreshPolicySummary over that
+    row must NOT raise — a raise becomes a GraphQL error that (under the UI's Apollo errorPolicy=none)
+    discards the whole `tables` payload, blanking the schema sidebar and Views list."""
+
+    async def test_registered_view_does_not_break_tables_query(self, client):
+        # A domain to hang the view on.
+        resp = await client.post(
+            "/admin/graphql",
+            json={
+                "query": """
+                    mutation {
+                        createDomain(input: { id: "view-reg-domain", description: "views" }) {
+                            success
+                        }
+                    }
+                """,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["createDomain"]["success"]
+
+        # Register a virtual view (source_id __provisa__) with explicit columns (no introspection).
+        resp = await client.post(
+            "/admin/graphql",
+            json={
+                "query": """
+                    mutation {
+                        registerTable(input: {
+                            sourceId: "__provisa__",
+                            domainId: "view-reg-domain",
+                            schemaName: "views",
+                            tableName: "reg_test_view",
+                            alias: "reg_test_view",
+                            viewSql: "SELECT 1 AS n",
+                            columns: [{ name: "n", visibleTo: ["public"] }]
+                        }) { success message }
+                    }
+                """,
+            },
+        )
+        assert resp.status_code == 200
+        reg = resp.json()["data"]["registerTable"]
+        assert reg["success"], reg["message"]
+
+        # The regression guard: querying tables WITH refreshPolicySummary must return no GraphQL
+        # errors and must include the view row (with a null summary — a view has no source policy).
+        resp = await client.post(
+            "/admin/graphql",
+            json={
+                "query": """
+                    {
+                        tables {
+                            tableName
+                            sourceId
+                            viewSql
+                            refreshPolicySummary { serving text }
+                        }
+                    }
+                """,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        tables = body["data"]["tables"]
+        view = next((t for t in tables if t["tableName"] == "reg_test_view"), None)
+        assert view is not None, "registered view missing from tables query"
+        assert view["sourceId"] == "__provisa__"
+        assert view["refreshPolicySummary"] is None

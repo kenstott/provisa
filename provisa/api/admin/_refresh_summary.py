@@ -24,34 +24,86 @@ if TYPE_CHECKING:
     from provisa.api.admin.types import RefreshPolicySummaryType, RegisteredTableType
 
 
-async def summarize_table_policy(table: RegisteredTableType) -> RefreshPolicySummaryType | None:
-    """Compute the effective refresh-policy summary for one admin table (REQ-1143).
+def _resolve_engine():
+    """Navigate app state to the bare FederationEngine, or None during startup (REQ-1143).
 
-    Returns None when the federation engine is not yet available (startup) — a nullable-by-contract
-    "not computable yet" signal for the GraphQL field, not a masked error. Any other missing input
-    (an unknown source) is a real inconsistency and raises."""
-    from provisa.api.admin.types import RefreshPolicySummaryType
+    ``state.federation_engine`` is an EngineRuntime wrapper; ``federate()`` reads ``engine.connectors``,
+    which lives on the bare FederationEngine (runtime.engine). A None here is the nullable-by-contract
+    "not computable yet" signal, not a masked error."""
     from provisa.api.app import state
-    from provisa.core.models import Table
-    from provisa.federation.policy_summary import describe_refresh_policy
 
     runtime = getattr(state, "federation_engine", None)
     if runtime is None:
         return None
-    # state.federation_engine is an EngineRuntime wrapper; federate() reads engine.connectors, which
-    # lives on the bare FederationEngine (runtime.engine). Navigate to it explicitly.
     engine = runtime if getattr(runtime, "connectors", None) is not None else getattr(runtime, "engine", None)
     if engine is None or getattr(engine, "connectors", None) is None:
+        return None
+    return engine
+
+
+async def _summarize(
+    *,
+    source_id: str,
+    domain_id: str,
+    schema_name: str,
+    table_name: str,
+    cache_ttl: int | None,
+    prefer_materialized: bool | None,
+    load_protected: bool | None,
+    off_peak_window: str | None,
+    off_peak_tz: str | None,
+    change_signal: str | None,
+) -> RefreshPolicySummaryType | None:
+    """Marshal a set of table knobs through the pure ``describe_refresh_policy`` (REQ-1143).
+
+    The single choke point for both the persisted-table field and the draft preview — so the decision
+    tree is derived server-side exactly once, never re-derived in the client."""
+    from provisa.api.admin.types import RefreshPolicySummaryType
+    from provisa.core.models import Table
+    from provisa.federation.policy_summary import describe_refresh_policy
+
+    # A __provisa__ virtual view has no external-source freshness — its refresh is governed by the
+    # view/MV config, not a source-refresh policy — and its persisted source `type` is the federation
+    # engine name (e.g. "trino"), which is not a SourceType. Skip the source-policy summary for it so
+    # the tables query never errors on a view row (REQ-1143).
+    if source_id == "__provisa__":
+        return None
+
+    engine = _resolve_engine()
+    if engine is None:
         return None  # engine not connected yet (startup) — field is nullable by contract
 
-    source = await _load_source(table.source_id)
-
+    source = await _load_source(source_id)
     tbl = Table(
+        source_id=source_id,
+        domain_id=domain_id,
+        table_name=table_name,
+        schema_name=schema_name,
+        columns=[],  # policy resolution does not read columns
+        cache_ttl=cache_ttl,
+        prefer_materialized=prefer_materialized,
+        load_protected=load_protected,
+        off_peak_window=off_peak_window,
+        off_peak_tz=off_peak_tz,
+        change_signal=change_signal,
+    )
+    summary = describe_refresh_policy(source, tbl, engine)
+    return RefreshPolicySummaryType(
+        text=summary.text, serving=summary.serving.value, warning=summary.warning
+    )
+
+
+async def summarize_table_policy(table: RegisteredTableType) -> RefreshPolicySummaryType | None:
+    """Compute the effective refresh-policy summary for one persisted admin table (REQ-1143).
+
+    Returns None when the federation engine is not yet available (startup) — a nullable-by-contract
+    "not computable yet" signal for the GraphQL field, not a masked error. Any other missing input
+    (an unknown source) is a real inconsistency and raises."""
+    return await _summarize(
         source_id=table.source_id,
         domain_id=table.domain_id,
-        table=table.table_name,
-        schema=table.schema_name,
-        columns=[],  # policy resolution does not read columns
+        schema_name=table.schema_name,
+        table_name=table.table_name,
         cache_ttl=table.cache_ttl,
         prefer_materialized=table.prefer_materialized,
         load_protected=table.load_protected,
@@ -59,9 +111,37 @@ async def summarize_table_policy(table: RegisteredTableType) -> RefreshPolicySum
         off_peak_tz=table.off_peak_tz,
         change_signal=table.change_signal,
     )
-    summary = describe_refresh_policy(source, tbl, engine)
-    return RefreshPolicySummaryType(
-        text=summary.text, serving=summary.serving.value, warning=summary.warning
+
+
+async def preview_table_policy(
+    *,
+    source_id: str,
+    domain_id: str,
+    schema_name: str,
+    table_name: str,
+    cache_ttl: int | None,
+    prefer_materialized: bool | None,
+    load_protected: bool | None,
+    off_peak_window: str | None,
+    off_peak_tz: str | None,
+    change_signal: str | None,
+) -> RefreshPolicySummaryType | None:
+    """Preview the refresh-policy summary for DRAFT (unsaved) table knobs from the editor (REQ-1143).
+
+    Same pure derivation as the persisted field — only the knob values come from the in-flight form
+    instead of the row — so the top-of-form summary tracks edits without persisting or re-deriving the
+    tree client-side."""
+    return await _summarize(
+        source_id=source_id,
+        domain_id=domain_id,
+        schema_name=schema_name,
+        table_name=table_name,
+        cache_ttl=cache_ttl,
+        prefer_materialized=prefer_materialized,
+        load_protected=load_protected,
+        off_peak_window=off_peak_window,
+        off_peak_tz=off_peak_tz,
+        change_signal=change_signal,
     )
 
 

@@ -462,13 +462,23 @@ def _free_port() -> int:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _wait_for_trino():  # pyright: ignore
+def _wait_for_trino(request):  # pyright: ignore
     """Block until Trino core catalogs are ready or 6 minutes elapse.
 
     Set PROVISA_SKIP_TRINO_WAIT=1 when the test session provisions its own
     Trino (e.g. helm/minikube tests) and external Trino is not available.
+
+    A pure ``tests/unit`` session touches no external service, so the wait is
+    skipped when every collected item lives under tests/unit — otherwise a unit
+    run with no Trino would block 6 minutes and then error at setup. Any item
+    outside tests/unit (integration/features/e2e) keeps the wait engaged.
     """
     if os.environ.get("PROVISA_SKIP_TRINO_WAIT"):
+        return
+    unit_root = os.path.join(os.path.dirname(__file__), "unit") + os.sep
+    if request.session.items and all(
+        str(item.path).startswith(unit_root) for item in request.session.items
+    ):
         return
     host = os.environ.get("TRINO_HOST", "localhost")
     port = int(os.environ.get("TRINO_PORT", "8080"))

@@ -44,7 +44,9 @@ interface InspectorProps {
   pkMap: Record<string, string[]>;
 }
 
-const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "deg_in", "deg_out", "deg_total"]);
+// The injected degree metrics are surfaced in the GRAPH STATS section — hide them from PROPERTIES so
+// they don't appear twice (degreeCentrality was the visible duplicate).
+const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "degIn", "degOut", "degTotal", "degreeCentrality"]);
 
 export function Inspector({
   selected,

@@ -179,7 +179,7 @@ export function Sidebar({
       .filter(([, t]) => isNumericType(t))
       .map(([k]) => k);
     const numericFromData = numericPropsByLabel[node.tableLabel] ?? [];
-    const numericProperties = [...new Set([...numericFromSchema, ...numericFromPropertyTypes, ...numericFromData, "deg_in", "deg_out", "deg_total", "degree_centrality"])];
+    const numericProperties = [...new Set([...numericFromSchema, ...numericFromPropertyTypes, ...numericFromData, "degIn", "degOut", "degTotal", "degreeCentrality"])];
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
@@ -286,10 +286,10 @@ export function Sidebar({
                                     ...schemaNodeLabels
                                       .filter((n) => n.domainLabel === lbl)
                                       .flatMap((n) => numericPropsByLabel[n.tableLabel] ?? []),
-                                    "deg_in",
-                                    "deg_out",
-                                    "deg_total",
-                                    "degree_centrality",
+                                    "degIn",
+                                    "degOut",
+                                    "degTotal",
+                                    "degreeCentrality",
                                   ]),
                                 ];
                                 setContextMenu({

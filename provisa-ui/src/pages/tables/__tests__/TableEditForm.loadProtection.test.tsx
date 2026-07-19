@@ -14,7 +14,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "../../../test-utils/render";
 import { TableEditForm } from "../TableEditForm";
-import type { RegisteredTable } from "../../../types/admin";
+import type { RegisteredTable, Source } from "../../../types/admin";
 import i18n from "../../../i18n";
 
 const t = i18n.getFixedT("en");
@@ -59,7 +59,11 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   };
 }
 
-function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
+function renderForm(
+  table: RegisteredTable,
+  setEditingTable = vi.fn(),
+  sources: Source[] = [],
+) {
   render(
     <TableEditForm
       editingTable={table}
@@ -67,7 +71,7 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       editingColumnTypes={{}}
       cacheTtlEdits={{}}
       setCacheTtlEdits={vi.fn()}
-      sources={[]}
+      sources={sources}
       roles={[]}
       settings={null}
       saving={false}
@@ -121,11 +125,32 @@ describe("TableEditForm — load protection + refresh-policy summary (REQ-1141/1
   });
 
   it("stages an off-peak window edit through setEditingTable", () => {
-    const setEditingTable = renderForm(makeTable());
+    // REQ-1141: off-peak fields render only when load protection is on.
+    const setEditingTable = renderForm(makeTable({ loadProtected: true }));
     const input = screen.getByPlaceholderText(t("tableEditForm.offPeakWindowPlaceholder"));
     fireEvent.change(input, { target: { value: "01:00-03:00" } });
     expect(setEditingTable).toHaveBeenCalledWith(
       expect.objectContaining({ offPeakWindow: "01:00-03:00" }),
     );
+  });
+
+  it("hides the off-peak window/zone when load protection resolves off", () => {
+    // REQ-1141: the off-peak gates only apply to the load-protected scheduled snapshot; with load
+    // protection off they have no effect and must not render.
+    renderForm(makeTable({ loadProtected: false }));
+    expect(
+      screen.queryByPlaceholderText(t("tableEditForm.offPeakWindowPlaceholder")),
+    ).toBeNull();
+    expect(screen.queryByText(t("tableEditForm.offPeakTzLabel"))).toBeNull();
+  });
+
+  it("shows the off-peak fields when load protection inherits an on source", () => {
+    // REQ-1141: inherit (loadProtected=null) resolves to the source's flag.
+    renderForm(makeTable({ loadProtected: null }), vi.fn(), [
+      { id: "src", loadProtected: true } as never,
+    ]);
+    expect(
+      screen.getByPlaceholderText(t("tableEditForm.offPeakWindowPlaceholder")),
+    ).toBeTruthy();
   });
 });

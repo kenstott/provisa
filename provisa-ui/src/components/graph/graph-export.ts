@@ -12,7 +12,7 @@ import type { CyInstance } from "./cytoscape-types";
 import type { GNode, GEdge } from "./graph-model";
 
 const _INTERNAL_NODE_PROPS = new Set([
-  "deg_in", "deg_out", "deg_total",
+  "degIn", "degOut", "degTotal",
   "scl1", "scl2", "scl3",
   "l1Cluster", "l2Cluster", "l3Cluster",
 ]);

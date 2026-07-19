@@ -12,6 +12,7 @@ type Query {
   availableFunctions(sourceId: String!, schemaName: String! = "openapi"): [AvailableTableType!]!
   availableColumns(sourceId: String!, schemaName: String!, tableName: String!): [String!]!
   availableColumnsMetadata(sourceId: String!, schemaName: String!, tableName: String!): [AvailableColumnType!]!
+  refreshPolicyPreview(sourceId: String!, domainId: String!, schemaName: String!, tableName: String!, cacheTtl: Int, preferMaterialized: Boolean, loadProtected: Boolean, offPeakWindow: String, offPeakTz: String, changeSignal: String): RefreshPolicySummaryType
   mvList: [MVType!]!
   cacheStats: CacheStatsType!
   cacheTableStats: [CacheTableStatType!]!

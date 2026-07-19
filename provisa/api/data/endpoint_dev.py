@@ -55,6 +55,20 @@ def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_r
     return auth_role or x_provisa_role or request_role
 
 
+def _references_view(sql: str, view_sql_map: dict[str, str]) -> bool:
+    """True when any table ref in ``sql`` names a __provisa__ view (a view_sql_map key). Parses the
+    SQL so an alias/column that merely shares a view's name never triggers a false positive."""
+    import sqlglot
+    import sqlglot.expressions as exp
+    from sqlglot.errors import SqlglotError
+
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except SqlglotError:
+        return False
+    return any(t.name in view_sql_map for t in tree.find_all(exp.Table))
+
+
 async def _compile_govern_execute(sql: str, role_id: str, state, *, discovery_mode: bool = False):
     """Compile → govern → route → execute semantic SQL (REQ-264, REQ-266, REQ-267).
 
@@ -149,6 +163,17 @@ async def _compile_govern_execute(sql: str, role_id: str, state, *, discovery_mo
         has_json_extract="->>" in governed_semantic,
         source_dsns=getattr(state, "source_dsns", None),
     )
+
+    # REQ-135: a query referencing a __provisa__ view MUST route through the engine, where the view
+    # is inline-expanded (after catalog-qualification). The view's virtual source has no native
+    # driver/catalog, so extract_sources cannot bind it and routing would otherwise pick DIRECT
+    # against a real source, executing the un-expanded view ref → KeyError in the native pool.
+    if state.view_sql_map and _references_view(governed_semantic, state.view_sql_map):
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE, source_id=None, dialect=None, reason="query references a view"
+        )
 
     # --- Step 6: governed_semantic is already physical after Step 1b normalization ---
     governed_physical = governed_semantic

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Fragment } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Check, X, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -28,11 +28,12 @@ import {
 import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
-import type { RegisteredTable, Source } from "../../types/admin";
+import type { RefreshPolicySummary, RegisteredTable, Source } from "../../types/admin";
+import { useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
 import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
 import { sourceProbeTypes } from "../../liveCapability";
-import { NAMING_CONVENTIONS } from "./constants";
+import { IANA_TIME_ZONES, NAMING_CONVENTIONS } from "./constants";
 import { DescriptionField } from "./DescriptionField";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
 
@@ -105,20 +106,108 @@ export function TableEditForm({
 }: TableEditFormProps) {
   const { t } = useTranslation();
   const roleOptions = roles.map((r) => ({ id: r.id, label: r.id }));
+
+  // REQ-1143: keep the top-of-form refresh-policy summary in sync with the draft knobs. The tree is
+  // never re-derived client-side — a debounced preview query re-runs describe_refresh_policy server-
+  // side with the in-flight values, seeded from the persisted summary so it renders before the first
+  // fetch resolves.
+  const previewPolicy = useRefreshPolicyPreview();
+  const [livePolicy, setLivePolicy] = useState<RefreshPolicySummary | null>(
+    editingTable.refreshPolicySummary,
+  );
+  // Effective cache_ttl mirrors the Cache TTL input's resolution: staged edit wins, then the row.
+  const stagedTtl = cacheTtlEdits[editingTable.id]?.value;
+  const effCacheTtl =
+    stagedTtl != null && stagedTtl !== ""
+      ? Number(stagedTtl)
+      : stagedTtl === ""
+        ? null
+        : editingTable.cacheTtl;
+  const {
+    id: tableId,
+    sourceId,
+    domainId,
+    schemaName,
+    tableName,
+    preferMaterialized,
+    loadProtected,
+    offPeakWindow,
+    offPeakTz,
+    changeSignal,
+    refreshPolicySummary,
+  } = editingTable;
+  const previewRef = useRef(previewPolicy);
+  previewRef.current = previewPolicy;
+  useEffect(() => {
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      previewRef
+        .current({
+          sourceId,
+          domainId,
+          schemaName,
+          tableName,
+          cacheTtl: effCacheTtl,
+          preferMaterialized,
+          loadProtected,
+          offPeakWindow,
+          offPeakTz,
+          changeSignal,
+        })
+        .then((summary) => {
+          // A null preview means the engine is not yet connected (startup) — keep the persisted
+          // summary rather than blanking the banner.
+          if (!cancelled && summary) setLivePolicy(summary);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [
+    tableId,
+    sourceId,
+    domainId,
+    schemaName,
+    tableName,
+    effCacheTtl,
+    preferMaterialized,
+    loadProtected,
+    offPeakWindow,
+    offPeakTz,
+    changeSignal,
+    refreshPolicySummary,
+  ]);
+  const shownPolicy = livePolicy ?? refreshPolicySummary;
+
+  // REQ-1141: the off-peak window/zone only gate the load-protected scheduled snapshot. When load
+  // protection resolves off (table override, else source default) they have no effect, so they are
+  // hidden — surfaced only once the table is actually load-protected.
+  const editSource = sources.find((s) => s.id === sourceId);
+  const effLoadProtected =
+    loadProtected == null ? (editSource?.loadProtected ?? false) : loadProtected;
+
+  // A __provisa__ virtual view has no external source, so the source-freshness controls (cache TTL,
+  // prefer_materialized, load protection, off-peak) don't apply — the view/MV rebuild path reads only
+  // materialize + mv_refresh_interval + change_signal. Materialization is driven by the "Materialized
+  // View" checkbox, not prefer_materialized. Hide those fields for a view to avoid contradictory knobs.
+  const isView = editingTable.viewSql != null;
+
   return (
     <>
-      {editingTable.refreshPolicySummary && (
+      {shownPolicy && (
         <Alert
-          // REQ-1143: server-derived effective refresh/serving policy. `serving` drives the color;
-          // a non-null `warning` flags an inert prefer_materialized or an accidental frozen table.
+          // REQ-1143: effective refresh/serving policy, live-previewed from the draft knobs (server-
+          // derived). `serving` drives the color; a non-null `warning` flags an inert
+          // prefer_materialized or an accidental frozen table.
           color={
-            editingTable.refreshPolicySummary.warning
+            shownPolicy.warning
               ? "yellow"
-              : editingTable.refreshPolicySummary.serving === "live"
+              : shownPolicy.serving === "live"
                 ? "blue"
-                : editingTable.refreshPolicySummary.serving === "scheduled"
+                : shownPolicy.serving === "scheduled"
                   ? "teal"
-                  : editingTable.refreshPolicySummary.serving === "cache"
+                  : shownPolicy.serving === "cache"
                     ? "gray"
                     : "orange"
           }
@@ -126,10 +215,10 @@ export function TableEditForm({
           style={{ marginBottom: "0.75rem", gridColumn: "1 / -1" }}
           data-testid="refresh-policy-summary"
         >
-          <Text size="sm">{editingTable.refreshPolicySummary.text}</Text>
-          {editingTable.refreshPolicySummary.warning && (
+          <Text size="sm">{shownPolicy.text}</Text>
+          {shownPolicy.warning && (
             <Text size="sm" c="yellow.8" mt={4} fw={500}>
-              ⚠ {editingTable.refreshPolicySummary.warning}
+              ⚠ {shownPolicy.warning}
             </Text>
           )}
         </Alert>
@@ -172,120 +261,137 @@ export function TableEditForm({
           comboboxProps={{ withinPortal: true }}
           allowDeselect={false}
         />
-        <NumberInput
-          label={
-            <FieldLabel
-              text={t("tableEditForm.cacheTtlLabel")}
-              help={t("tableEditForm.cacheTtlHelp")}
-            />
-          }
-          min={0}
-          value={
-            cacheTtlEdits[editingTable.id]?.value ??
-            (editingTable.cacheTtl != null ? editingTable.cacheTtl : "")
-          }
-          onChange={(v) =>
-            setCacheTtlEdits((prev) => ({
-              ...prev,
-              [editingTable.id]: {
-                ...prev[editingTable.id],
-                value: v === "" ? "" : String(v),
-                dirty: true,
-              },
-            }))
-          }
-          placeholder={t("tableEditForm.cacheTtlPlaceholder")}
-        />
+        {!isView && (
+          <NumberInput
+            label={
+              <FieldLabel
+                text={t("tableEditForm.cacheTtlLabel")}
+                help={t("tableEditForm.cacheTtlHelp")}
+              />
+            }
+            min={0}
+            value={
+              cacheTtlEdits[editingTable.id]?.value ??
+              (editingTable.cacheTtl != null ? editingTable.cacheTtl : "")
+            }
+            onChange={(v) =>
+              setCacheTtlEdits((prev) => ({
+                ...prev,
+                [editingTable.id]: {
+                  ...prev[editingTable.id],
+                  value: v === "" ? "" : String(v),
+                  dirty: true,
+                },
+              }))
+            }
+            placeholder={t("tableEditForm.cacheTtlPlaceholder")}
+          />
+        )}
+        {!isView && (
+          <Select
+            label={
+              <FieldLabel
+                text={t("tableEditForm.preferMaterializedLabel")}
+                help={t("tableEditForm.preferMaterializedHelp")}
+              />
+            }
+            data={[
+              { value: "inherit", label: t("tableEditForm.inheritSource") },
+              { value: "on", label: t("tableEditForm.on") },
+              { value: "off", label: t("tableEditForm.off") },
+            ]}
+            value={
+              editingTable.preferMaterialized == null
+                ? "inherit"
+                : editingTable.preferMaterialized
+                  ? "on"
+                  : "off"
+            }
+            onChange={(v) =>
+              setEditingTable({
+                ...editingTable,
+                preferMaterialized: v === "inherit" ? null : v === "on",
+              })
+            }
+            comboboxProps={{ withinPortal: true }}
+            allowDeselect={false}
+          />
+        )}
+        {!isView && (
+          <Select
+            // REQ-1141: load protection — scheduled-refresh-only; the query path never pulls the source.
+            label={
+              <FieldLabel
+                text={t("tableEditForm.loadProtectedLabel")}
+                help={t("tableEditForm.loadProtectedHelp")}
+              />
+            }
+            data={[
+              { value: "inherit", label: t("tableEditForm.inheritSource") },
+              { value: "on", label: t("tableEditForm.on") },
+              { value: "off", label: t("tableEditForm.off") },
+            ]}
+            value={
+              editingTable.loadProtected == null
+                ? "inherit"
+                : editingTable.loadProtected
+                  ? "on"
+                  : "off"
+            }
+            onChange={(v) =>
+              setEditingTable({
+                ...editingTable,
+                loadProtected: v === "inherit" ? null : v === "on",
+              })
+            }
+            comboboxProps={{ withinPortal: true }}
+            allowDeselect={false}
+          />
+        )}
+        {!isView && effLoadProtected && (
+          <TextInput
+            // REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is open.
+            label={
+              <FieldLabel
+                text={t("tableEditForm.offPeakWindowLabel")}
+                help={t("tableEditForm.offPeakWindowHelp")}
+              />
+            }
+            value={editingTable.offPeakWindow ?? ""}
+            onChange={(e) =>
+              setEditingTable({
+                ...editingTable,
+                offPeakWindow: e.target.value || null,
+              })
+            }
+            placeholder={t("tableEditForm.offPeakWindowPlaceholder")}
+          />
+        )}
+        {!isView && effLoadProtected && (
         <Select
-          label={
-            <FieldLabel
-              text={t("tableEditForm.preferMaterializedLabel")}
-              help={t("tableEditForm.preferMaterializedHelp")}
-            />
-          }
-          data={[
-            { value: "inherit", label: t("tableEditForm.inheritSource") },
-            { value: "on", label: t("tableEditForm.on") },
-            { value: "off", label: t("tableEditForm.off") },
-          ]}
-          value={
-            editingTable.preferMaterialized == null
-              ? "inherit"
-              : editingTable.preferMaterialized
-                ? "on"
-                : "off"
-          }
-          onChange={(v) =>
-            setEditingTable({
-              ...editingTable,
-              preferMaterialized: v === "inherit" ? null : v === "on",
-            })
-          }
-          comboboxProps={{ withinPortal: true }}
-          allowDeselect={false}
-        />
-        <Select
-          // REQ-1141: load protection — scheduled-refresh-only; the query path never pulls the source.
-          label={
-            <FieldLabel
-              text={t("tableEditForm.loadProtectedLabel")}
-              help={t("tableEditForm.loadProtectedHelp")}
-            />
-          }
-          data={[
-            { value: "inherit", label: t("tableEditForm.inheritSource") },
-            { value: "on", label: t("tableEditForm.on") },
-            { value: "off", label: t("tableEditForm.off") },
-          ]}
-          value={
-            editingTable.loadProtected == null
-              ? "inherit"
-              : editingTable.loadProtected
-                ? "on"
-                : "off"
-          }
-          onChange={(v) =>
-            setEditingTable({
-              ...editingTable,
-              loadProtected: v === "inherit" ? null : v === "on",
-            })
-          }
-          comboboxProps={{ withinPortal: true }}
-          allowDeselect={false}
-        />
-        <TextInput
-          // REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is open.
-          label={
-            <FieldLabel
-              text={t("tableEditForm.offPeakWindowLabel")}
-              help={t("tableEditForm.offPeakWindowHelp")}
-            />
-          }
-          value={editingTable.offPeakWindow ?? ""}
-          onChange={(e) =>
-            setEditingTable({
-              ...editingTable,
-              offPeakWindow: e.target.value || null,
-            })
-          }
-          placeholder={t("tableEditForm.offPeakWindowPlaceholder")}
-        />
-        <TextInput
+          // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
+          // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
+          // window can never be saved against an unparseable zone.
           label={
             <FieldLabel
               text={t("tableEditForm.offPeakTzLabel")}
               help={t("tableEditForm.offPeakTzHelp")}
             />
           }
+          data={IANA_TIME_ZONES}
           value={editingTable.offPeakTz ?? ""}
-          onChange={(e) =>
+          onChange={(v) =>
             setEditingTable({
               ...editingTable,
-              offPeakTz: e.target.value || null,
+              offPeakTz: v || null,
             })
           }
+          searchable
+          clearable
           placeholder="UTC"
+          comboboxProps={{ withinPortal: true }}
         />
+        )}
         <div style={{ gridColumn: "1 / -1" }}>
           <FieldLabel
             text={t("tableEditForm.descriptionLabel")}
@@ -540,6 +646,27 @@ export function TableEditForm({
         {(editingTable.changeSignal === "ttl" ||
           editingTable.changeSignal === "ttl_probe") &&
           (() => {
+            // A __provisa__ view has no Cache TTL — its ttl cadence is the materialized view's
+            // Refresh Interval. A non-materialized view can't honor ttl (nothing to refresh).
+            if (isView) {
+              return editingTable.materialize ? (
+                <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
+                  {t("tableEditForm.ttlViewRefreshes", {
+                    sec: editingTable.mvRefreshInterval,
+                  })}
+                </Text>
+              ) : (
+                <Text
+                  style={{ gridColumn: "1 / -1" }}
+                  size="xs"
+                  c="var(--warning, #d19a00)"
+                >
+                  {t("tableEditForm.ttlViewNeedsMv")}{" "}
+                  <strong>{t("tableEditForm.materializedViewLabel")}</strong>{" "}
+                  {t("tableEditForm.ttlViewNeedsMvPost")}
+                </Text>
+              );
+            }
             const cs = sources.find((s) => s.id === editingTable.sourceId);
             // Mirror the Cache TTL input's value resolution: the staged edit
             // (cacheTtlEdits) wins, then the table value, then the source.

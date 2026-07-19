@@ -120,16 +120,32 @@ body {
   align-items: center;
   gap: 0.5rem;
 }
+/* Uniform height + corner radius for every upper-right control (org / domains / role / theme /
+   tour / user) — they otherwise mix Mantine Button (compact-sm), ActionIcon (lg), and custom
+   buttons, each with a different height and radius. */
+.navbar-role .mantine-Button-root,
+.navbar-role .mantine-ActionIcon-root,
+.navbar-domain-btn,
+.navbar-tour-btn,
+.navbar-user-btn {
+  height: 34px;
+  min-height: 34px;
+  border-radius: 6px;
+}
 .navbar-domain-btn {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 0.375rem 0.75rem;
-  border-radius: 4px;
+  padding: 0 0.75rem;
   font-size: 0.875rem;
+  font-weight: 600; /* match Mantine Button (org/role) text weight */
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem; /* space before the chevron, matching Button rightSection */
 }
+.navbar-domain-btn svg { color: var(--text-muted); }
 .navbar-domain-btn:hover { border-color: var(--text-muted); }
 .navbar-domain-wrapper { position: relative; }
 .navbar-domain-panel {
@@ -164,7 +180,6 @@ body {
   border: 1px solid var(--border);
   color: var(--text-muted);
   padding: 0.375rem 0.5rem;
-  border-radius: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -175,7 +190,6 @@ body {
   border: 1px solid var(--border);
   color: var(--text-muted);
   padding: 0.375rem 0.5rem;
-  border-radius: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -878,12 +892,15 @@ main {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  max-height: 620px;
+  /* Fill the panel's available vertical space rather than collapsing to content height, so short
+     diffs don't leave a large empty gap. The editor scrolls internally when the diff is long. */
+  height: calc(100vh - 300px);
+  min-height: 420px;
 }
 .config-diff .cm-mergeView,
 .config-diff .cm-mergeViewEditors { height: 100%; }
 .config-diff .cm-editor {
-  max-height: 620px;
+  height: 100%;
   background: #0d1117; /* github dark canvas */
   color: #e6edf3;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;

@@ -34,7 +34,7 @@ def fake_state(monkeypatch):
         unregister=lambda _: None,
     )
     fed = types.SimpleNamespace(
-        materialize_store_target=lambda _org: ("postgresql", "mv_cache"),
+        materialize_store_target=lambda _: ("postgresql", "mv_cache"),
     )
     state = types.SimpleNamespace(
         mv_registry=registry, org_id="test", engine=None, federation_engine=fed
@@ -103,6 +103,9 @@ def test_table_input_maps_consistency():
         change_signal=None,
         probe_query=None,
         probe_type=None,
+        load_protected=None,  # REQ-1141
+        off_peak_window=None,  # REQ-1141
+        off_peak_tz=None,  # REQ-1141
         view_sql="SELECT 1",
         materialize=True,
         mv_refresh_interval=300,

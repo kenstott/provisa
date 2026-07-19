@@ -12,16 +12,21 @@ import type { ReactElement, ReactNode } from "react";
 import { render, type RenderOptions } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { I18nextProvider } from "react-i18next";
+import { MockedProvider } from "@apollo/client/testing/react";
 import { theme } from "../theme/theme";
 import i18n from "../i18n";
 
 // Wraps components in the same MantineProvider + i18n runtime the app uses so
-// component tests exercise real theming and translated strings (REQ-1016).
+// component tests exercise real theming and translated strings (REQ-1016). The
+// empty MockedProvider satisfies Apollo hooks (e.g. the REQ-1143 refresh-policy
+// preview) that need a client in context; unmocked operations simply never resolve.
 function AllProviders({ children }: { children: ReactNode }) {
   return (
-    <MantineProvider theme={theme} defaultColorScheme="dark">
-      <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
-    </MantineProvider>
+    <MockedProvider mocks={[]}>
+      <MantineProvider theme={theme} defaultColorScheme="dark">
+        <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
+      </MantineProvider>
+    </MockedProvider>
   );
 }
 

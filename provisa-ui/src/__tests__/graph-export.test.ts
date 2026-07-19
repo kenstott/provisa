@@ -65,12 +65,12 @@ describe("buildCypherScript", () => {
       id: 3,
       label: "Person",
       tableLabel: "persons",
-      properties: { name: "Carol", deg_in: 5, deg_out: 3, deg_total: 8, scl1: 0.5, l1Cluster: "A" },
+      properties: { name: "Carol", degIn: 5, degOut: 3, degTotal: 8, scl1: 0.5, l1Cluster: "A" },
     };
     const script = buildCypherScript([nodeWithInternals], []);
     expect(script).toContain("name:");
-    expect(script).not.toContain("deg_in");
-    expect(script).not.toContain("deg_out");
+    expect(script).not.toContain("degIn");
+    expect(script).not.toContain("degOut");
     expect(script).not.toContain("l1Cluster");
   });
 });

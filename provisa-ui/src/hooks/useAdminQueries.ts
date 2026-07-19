@@ -15,6 +15,7 @@ import type {
   Source,
   Domain,
   RegisteredTable,
+  RefreshPolicySummary,
   Relationship,
   RLSRule,
   MutationResult,
@@ -36,6 +37,7 @@ import {
   SourcesQuery as SOURCES_QUERY,
   DomainsQuery as DOMAINS_QUERY,
   TablesQuery as TABLES_QUERY,
+  RefreshPolicyPreview as REFRESH_POLICY_PREVIEW_QUERY,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
   RLSRulesQuery as RLS_RULES_QUERY,
@@ -128,6 +130,32 @@ export function useTables() {
     loading,
     error,
     refetch,
+  };
+}
+
+// REQ-1143: preview the effective refresh/serving summary for draft editor knobs, server-derived
+// (the decision tree is never re-derived client-side). Returns a lazy fetcher the editor debounces.
+export interface RefreshPolicyPreviewVars {
+  sourceId: string;
+  domainId: string;
+  schemaName: string;
+  tableName: string;
+  cacheTtl?: number | null;
+  preferMaterialized?: boolean | null;
+  loadProtected?: boolean | null;
+  offPeakWindow?: string | null;
+  offPeakTz?: string | null;
+  changeSignal?: string | null;
+}
+
+export function useRefreshPolicyPreview() {
+  const [fetch] = useLazyQuery<
+    { refreshPolicyPreview: RefreshPolicySummary | null },
+    RefreshPolicyPreviewVars
+  >(REFRESH_POLICY_PREVIEW_QUERY, { fetchPolicy: "no-cache" });
+  return async (vars: RefreshPolicyPreviewVars): Promise<RefreshPolicySummary | null> => {
+    const res = await fetch({ variables: vars });
+    return res.data?.refreshPolicyPreview ?? null;
   };
 }
 

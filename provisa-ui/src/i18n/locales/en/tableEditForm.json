@@ -113,6 +113,9 @@
     "scopeRestricted": "restricted",
     "unmaskedToAria": "Unmasked to",
     "cancel": "Cancel",
-    "save": "Save"
+    "save": "Save",
+    "ttlViewRefreshes": "Refreshes every {{sec}}s (from the materialized view's Refresh Interval).",
+    "ttlViewNeedsMv": "ttl needs a materialized view — enable",
+    "ttlViewNeedsMvPost": "above and set a Refresh Interval."
   }
 }

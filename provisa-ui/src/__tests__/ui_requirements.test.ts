@@ -490,7 +490,7 @@ describe('REQ-649: sizeByProperty is persisted under key provisa.graph.sizeByPro
 
   it('REQ-649: localStorage key provisa.graph.sizeByProperty stores sizeByProperty map', () => {
     const key = 'provisa.graph.sizeByProperty';
-    const value: Record<string, string> = { Person: 'degree_centrality', Order: 'amount' };
+    const value: Record<string, string> = { Person: 'degreeCentrality', Order: 'amount' };
     localStorage.setItem(key, JSON.stringify(value));
     const stored = JSON.parse(localStorage.getItem(key) ?? '{}');
     expect(stored).toEqual(value);

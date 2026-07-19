@@ -17,3 +17,13 @@ export const NAMING_CONVENTIONS = [
 ];
 
 export const CDC_TYPES = new Set(["postgresql", "mongodb", "kafka", "debezium"]);
+
+// REQ-1141: IANA time-zone identifiers for the off-peak-window zone picklist. Sourced from the
+// runtime's own zone database (Intl.supportedValuesOf) — the same identifiers Python's ZoneInfo
+// accepts server-side. UTC is pinned first as the default; the rest follow in database order.
+const _tzValues: string[] =
+  typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : ["UTC"];
+export const IANA_TIME_ZONES: string[] = [
+  "UTC",
+  ..._tzValues.filter((z) => z !== "UTC"),
+];

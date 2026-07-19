@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { User, Compass } from "lucide-react";
+import { User, Compass, ChevronDown } from "lucide-react";
 import { ActionIcon, Badge, Checkbox, Menu, Stack, Text, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { CapabilityGate } from "./CapabilityGate";
@@ -159,6 +159,8 @@ export function NavBar() {
 
   const onTablesPage =
     location.pathname === "/tables" ||
+    location.pathname === "/views" ||
+    location.pathname === "/commands" ||
     location.pathname === "/relationships" ||
     location.pathname.startsWith("/security") ||
     location.pathname === "/schema" ||
@@ -251,6 +253,7 @@ export function NavBar() {
                       checked: checkedDomains.size,
                       total: domains.length,
                     })}
+                    <ChevronDown size={14} aria-hidden />
                   </button>
                 </Menu.Target>
                 <Menu.Dropdown>

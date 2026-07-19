@@ -43,6 +43,9 @@ def test_table_model_from_input_maps_unique_constraints():
         change_signal=None,
         probe_query=None,
         probe_type=None,
+        load_protected=None,  # REQ-1141
+        off_peak_window=None,  # REQ-1141
+        off_peak_tz=None,  # REQ-1141
         view_sql=None,
         materialize=False,
         mv_refresh_interval=300,

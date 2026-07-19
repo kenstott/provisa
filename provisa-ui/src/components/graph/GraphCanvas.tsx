@@ -419,14 +419,14 @@ export function GraphCanvas({
         let graphStats: GraphStats | undefined;
         if (gn) {
           const totalReal = nodesRef.current.size;
-          const inDeg = Number(gn.properties.deg_in ?? 0);
-          const outDeg = Number(gn.properties.deg_out ?? 0);
+          const inDeg = Number(gn.properties.degIn ?? 0);
+          const outDeg = Number(gn.properties.degOut ?? 0);
           const deg = inDeg + outDeg;
           graphStats = {
-            in_degree: inDeg,
-            out_degree: outDeg,
+            inDegree: inDeg,
+            outDegree: outDeg,
             degree: deg,
-            degree_centrality: totalReal > 1 ? parseFloat((deg / (totalReal - 1)).toFixed(4)) : 0,
+            degreeCentrality: totalReal > 1 ? parseFloat((deg / (totalReal - 1)).toFixed(4)) : 0,
             ...(gn.properties.scl1 != null ? { schema_L1: String(gn.properties.scl1) } : {}),
             ...(gn.properties.scl2 != null ? { schema_L2: String(gn.properties.scl2) } : {}),
             ...(gn.properties.scl3 != null ? { schema_L3: String(gn.properties.scl3) } : {}),
