@@ -20,14 +20,22 @@ from provisa.pg_extensions.catalog import (
     current_platform,
     load_catalog,
 )
+from provisa.pg_extensions.staging import (
+    BundledPgExtensionsMissing,
+    bundle_platform,
+    stage_bundled_pg_extensions,
+)
 
 __all__ = [
     "NAMED_EXTENSIONS",
     "PLATFORM_TAGS",
+    "BundledPgExtensionsMissing",
     "CatalogEntry",
     "ExtensionArtifactUnavailable",
     "ExtensionBuild",
     "ExtensionCatalog",
+    "bundle_platform",
     "current_platform",
     "load_catalog",
+    "stage_bundled_pg_extensions",
 ]
