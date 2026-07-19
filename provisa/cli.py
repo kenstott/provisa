@@ -99,7 +99,53 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     return notes
 
 
-async def _serve(host: str, api_port: int, ui_port: int) -> None:
+async def _announce_ready(
+    host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool
+) -> None:
+    """Wait for the API to be genuinely warm (/ready 200 — the boot warmup probe has attached the
+    store and warmed the engine), then print a completion line and open the browser. /ready (not
+    /health) is the gate so the browser opens onto a warm app whose first query is not cold.
+
+    Best-effort and non-fatal: any failure here must never take down the servers (they run in the
+    same gather), and a timeout still tells the user how to open it manually. ``?tour=1`` auto-starts
+    the guided tour for a demo run (App.tsx reads the query param)."""
+    import httpx
+
+    ready_url = f"http://{host}:{api_port}/ready"
+    url = f"http://{host}:{ui_port}/?tour=1" if demo else f"http://{host}:{ui_port}/"
+    deadline = 300  # seconds; the servers keep running past this — we just stop polling
+    waited = 0.0
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            while waited < deadline:
+                try:
+                    if (await client.get(ready_url)).status_code == 200:
+                        break
+                except httpx.HTTPError:
+                    pass  # not up yet / still warming (503) — keep polling
+                await asyncio.sleep(0.5)
+                waited += 0.5
+            else:
+                print(f"\nProvisa is still starting — open {url} in your browser.", flush=True)
+                return
+
+        print(f"\n✓ Provisa is ready — {url}", flush=True)
+        if open_browser:
+            import webbrowser
+
+            try:
+                opened = webbrowser.open(url)
+            except Exception:
+                opened = False
+            if not opened:
+                print(f"  Open {url} in your browser to get started.", flush=True)
+    except Exception as exc:  # never let the announcer crash the servers
+        print(f"\nProvisa is running — open {url} in your browser (announce: {exc}).", flush=True)
+
+
+async def _serve(
+    host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool
+) -> None:
     import uvicorn
 
     from provisa.api.app import create_app
@@ -115,7 +161,11 @@ async def _serve(host: str, api_port: int, ui_port: int) -> None:
     ui = uvicorn.Server(
         uvicorn.Config(ui_server.app, host=host, port=ui_port, log_level="warning")
     )
-    await asyncio.gather(api.serve(), ui.serve())
+    await asyncio.gather(
+        api.serve(),
+        ui.serve(),
+        _announce_ready(host, api_port, ui_port, demo=demo, open_browser=open_browser),
+    )
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -139,7 +189,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(f"  API: http://127.0.0.1:{args.api_port}")
 
     try:
-        asyncio.run(_serve(args.host, args.api_port, args.ui_port))
+        asyncio.run(
+            _serve(
+                args.host,
+                args.api_port,
+                args.ui_port,
+                demo=args.demo,
+                open_browser=not args.no_browser,
+            )
+        )
     except KeyboardInterrupt:
         print("\nProvisa stopped.")
     return 0
@@ -158,6 +216,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     run.add_argument("--api-port", type=int, default=8000, help="API port (default: 8000)")
     run.add_argument("--ui-port", type=int, default=3000, help="UI port (default: 3000)")
+    run.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not open a browser when the UI is ready (still prints the URL)",
+    )
     run.add_argument(
         "--data-dir",
         default=str(_DEFAULT_DATA_DIR),
