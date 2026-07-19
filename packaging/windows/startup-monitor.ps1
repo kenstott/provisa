@@ -1,4 +1,4 @@
-# Provisa startup monitor (native tier). A small always-on-top WinForms splash that makes the slow
+﻿# Provisa startup monitor (native tier). A small always-on-top WinForms splash that makes the slow
 # first launch legible: it launches the worker (first-launch-native.ps1) HIDDEN, tails the worker's
 # progress breadcrumbs (.startup-status), polls the API /health, then opens the browser and closes
 # itself when the app is genuinely ready.
