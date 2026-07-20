@@ -1,0 +1,2647 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A single governed API over 46 heterogeneous data sources — query with GraphQL, Cypher, or SQL.">
+      
+      
+      
+        <link rel="canonical" href="https://provisa.dev/docs/cypher/">
+      
+      
+        <link rel="prev" href="../api-reference/">
+      
+      
+        <link rel="next" href="../subscriptions/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Cypher - Provisa</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cypher-query-support" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Provisa" class="md-header__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Provisa
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Cypher
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Provisa" class="md-nav__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Provisa
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query & Interfaces
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Query & Interfaces
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cypher
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cypher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#implemented-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implemented Features
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Implemented Features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#clauses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clauses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#match-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Match Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expressions-and-predicates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expressions and Predicates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#map-projections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Map Projections
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aggregation-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregation Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#string-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        String Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#type-conversion-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type Conversion Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#math-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Math Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-comprehensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Comprehensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-comprehensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pattern Comprehensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#correlated-call-subqueries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correlated CALL Subqueries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#protocol-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol Access
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Protocol Access">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#graph-analytics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph Analytics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Limitations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#design-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design constraints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#behaviour-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Behaviour notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expression-and-pattern-coverage-req-913" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expression and pattern coverage (REQ-913)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subscriptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subscriptions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations (JDBC, BI, Flight)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pgwire/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pgwire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data Sources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-schemas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote Schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import (Hasura / DDN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security & Governance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security & Governance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multitenant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multitenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Clients
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Clients
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/fdw_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FDW Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/change-signal-unification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Signal Unification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#implemented-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implemented Features
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Implemented Features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#clauses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clauses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#match-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Match Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expressions-and-predicates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expressions and Predicates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#map-projections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Map Projections
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aggregation-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregation Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#string-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        String Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#type-conversion-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type Conversion Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#math-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Math Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-comprehensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Comprehensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-comprehensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pattern Comprehensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#correlated-call-subqueries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correlated CALL Subqueries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#protocol-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol Access
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Protocol Access">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#graph-analytics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph Analytics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Limitations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#design-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design constraints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#behaviour-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Behaviour notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expression-and-pattern-coverage-req-913" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expression and pattern coverage (REQ-913)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="cypher-query-support">Cypher Query Support<a class="headerlink" href="#cypher-query-support" title="Permanent link">&para;</a></h1>
+<p>Provisa translates a subset of openCypher to SQL via the <code>provisa/cypher/</code> module. (REQ-345, REQ-347) Queries are parsed by a custom recursive-descent parser (no external Cypher library) (REQ-571), schema-resolved against the semantic layer (REQ-351), and emitted as SQLGlot expression trees in PostgreSQL dialect. (REQ-066, REQ-347) The router then transpiles to the target execution dialect (Trino) via SQLGlot. (REQ-066, REQ-067)</p>
+<h2 id="implemented-features">Implemented Features<a class="headerlink" href="#implemented-features" title="Permanent link">&para;</a></h2>
+<h3 id="clauses">Clauses<a class="headerlink" href="#clauses" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Clause</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MATCH (n:Label)</code></td>
+<td>✓</td>
+<td>Node patterns with labels, variables, inline properties</td>
+</tr>
+<tr>
+<td><code>OPTIONAL MATCH</code></td>
+<td>✓</td>
+<td>Emits LEFT JOIN</td>
+</tr>
+<tr>
+<td><code>WHERE</code></td>
+<td>✓</td>
+<td>Full expression support; applied after MATCH</td>
+</tr>
+<tr>
+<td><code>RETURN</code></td>
+<td>✓</td>
+<td>Star, property access, expressions, aliases</td>
+</tr>
+<tr>
+<td><code>RETURN DISTINCT</code></td>
+<td>✓</td>
+<td>Emits SELECT DISTINCT</td>
+</tr>
+<tr>
+<td><code>WITH</code></td>
+<td>✓</td>
+<td>Emits a named CTE (<code>_w0</code>, <code>_w1</code>, …); supports <code>WITH … WHERE</code></td>
+</tr>
+<tr>
+<td><code>ORDER BY</code></td>
+<td>✓</td>
+<td>ASC / DESC</td>
+</tr>
+<tr>
+<td><code>SKIP</code> / <code>LIMIT</code></td>
+<td>✓</td>
+<td>Maps to SQL OFFSET / LIMIT</td>
+</tr>
+<tr>
+<td><code>UNION</code> / <code>UNION ALL</code></td>
+<td>✓</td>
+<td>Recursive union across sub-ASTs</td>
+</tr>
+<tr>
+<td><code>CALL { … }</code></td>
+<td>✓</td>
+<td>Top-level call subquery decomposition via <code>cypher_calls_to_sql_list</code></td>
+</tr>
+<tr>
+<td><code>CALL { WITH x … }</code></td>
+<td>✓</td>
+<td>Correlated subquery → <code>CROSS JOIN LATERAL</code>; see §Correlated CALL</td>
+</tr>
+<tr>
+<td><code>CALL db.labels()</code></td>
+<td>✓</td>
+<td>Returns node labels from the semantic layer; no SQL translation (REQ-572)</td>
+</tr>
+<tr>
+<td><code>CALL db.relationshipTypes()</code></td>
+<td>✓</td>
+<td>Returns relationship types from the semantic layer (REQ-572)</td>
+</tr>
+<tr>
+<td><code>CALL db.propertyKeys()</code></td>
+<td>✓</td>
+<td>Returns all property key names across all node types (REQ-572)</td>
+</tr>
+<tr>
+<td><code>UNWIND</code></td>
+<td>✓</td>
+<td>Array-to-rows expansion; first item becomes FROM, subsequent become CROSS JOIN UNNEST</td>
+</tr>
+</tbody>
+</table>
+<h3 id="match-patterns">Match Patterns<a class="headerlink" href="#match-patterns" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>(n)</code> — unlabeled node</td>
+<td>✓</td>
+<td>UNION ALL over all known types</td>
+</tr>
+<tr>
+<td><code>(n:Label)</code></td>
+<td>✓</td>
+<td>Maps to the registered table for that GraphQL type</td>
+</tr>
+<tr>
+<td><code>(n:Label {prop: val})</code></td>
+<td>✓</td>
+<td>Inline property filter becomes WHERE</td>
+</tr>
+<tr>
+<td><code>(a)-[:TYPE]-&gt;(b)</code></td>
+<td>✓</td>
+<td>Directed, single hop</td>
+</tr>
+<tr>
+<td><code>(a)&lt;-[:TYPE]-(b)</code></td>
+<td>✓</td>
+<td>Backward traversal; join columns reversed</td>
+</tr>
+<tr>
+<td><code>(a)-[]-&gt;(b)</code></td>
+<td>✓</td>
+<td>Any directed relationship a→b; UNION ALL if multiple types match</td>
+</tr>
+<tr>
+<td><code>(a)-[]-(b)</code></td>
+<td>✓</td>
+<td>Bidirectional; expands to UNION ALL of all forward and backward relationships</td>
+</tr>
+<tr>
+<td><code>(a)-[:TYPE*..N]-&gt;(b)</code></td>
+<td>✓</td>
+<td>Variable-length with upper bound; recursive CTE for self-referential, flat JOIN otherwise</td>
+</tr>
+<tr>
+<td><code>(a)-[]-&gt;(b)-[]-&gt;(c)</code></td>
+<td>✓</td>
+<td>Multi-hop chained JOINs</td>
+</tr>
+<tr>
+<td><code>(n:DomainLabel)</code></td>
+<td>✓</td>
+<td>Domain label → UNION ALL subquery over all types in the domain</td>
+</tr>
+<tr>
+<td><code>(n:A\|B)</code></td>
+<td>✓</td>
+<td>Label alternation → ad-hoc domain injected into label map; UNION ALL over matching types</td>
+</tr>
+<tr>
+<td><code>shortestPath(…)</code></td>
+<td>✓</td>
+<td>Flat JOIN for heterogeneous endpoints; WITH RECURSIVE CTE for same-type/self-referential</td>
+</tr>
+<tr>
+<td><code>allShortestPaths(…)</code></td>
+<td>✓</td>
+<td>Same as shortestPath without LIMIT 1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="expressions-and-predicates">Expressions and Predicates<a class="headerlink" href="#expressions-and-predicates" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+<th>SQL mapping</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Property access <code>n.prop</code></td>
+<td>✓</td>
+<td><code>n."prop"</code></td>
+</tr>
+<tr>
+<td>Parameters <code>$name</code></td>
+<td>✓</td>
+<td>Positional <code>$N</code></td>
+</tr>
+<tr>
+<td>Legacy parameters <code>{name}</code></td>
+<td>✓</td>
+<td>Normalised to <code>$name</code> at parse time</td>
+</tr>
+<tr>
+<td>Comparison <code>=</code>, <code>&lt;&gt;</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></td>
+<td>✓</td>
+<td>Direct</td>
+</tr>
+<tr>
+<td><code>AND</code>, <code>OR</code>, <code>NOT</code></td>
+<td>✓</td>
+<td>Direct</td>
+</tr>
+<tr>
+<td><code>IS NULL</code> / <code>IS NOT NULL</code></td>
+<td>✓</td>
+<td>Direct</td>
+</tr>
+<tr>
+<td><code>IN [list]</code></td>
+<td>✓</td>
+<td>SQL IN; Cypher <code>[...]</code> bracket syntax rewritten to <code>(...)</code></td>
+</tr>
+<tr>
+<td><code>STARTS WITH</code></td>
+<td>✓</td>
+<td><code>starts_with(col, val)</code></td>
+</tr>
+<tr>
+<td><code>ENDS WITH</code></td>
+<td>✓</td>
+<td><code>col LIKE CONCAT('%', val)</code></td>
+</tr>
+<tr>
+<td><code>CONTAINS</code></td>
+<td>✓</td>
+<td><code>strpos(col, val) &gt; 0</code></td>
+</tr>
+<tr>
+<td><code>=~</code> regex</td>
+<td>✓</td>
+<td><code>regexp_like(col, pattern)</code></td>
+</tr>
+<tr>
+<td><code>exists(n.prop)</code></td>
+<td>✓</td>
+<td><code>(n.prop) IS NOT NULL</code></td>
+</tr>
+<tr>
+<td><code>EXISTS { MATCH … }</code></td>
+<td>✓</td>
+<td>Correlated <code>EXISTS (SELECT 1 FROM …)</code> subquery</td>
+</tr>
+<tr>
+<td><code>COUNT { MATCH … }</code></td>
+<td>✓</td>
+<td>Correlated <code>(SELECT count(*) FROM …)</code> subquery</td>
+</tr>
+<tr>
+<td><code>COLLECT { MATCH … RETURN x }</code></td>
+<td>✓</td>
+<td>Correlated <code>ARRAY(SELECT x FROM …)</code> subquery</td>
+</tr>
+<tr>
+<td><code>id(n)</code></td>
+<td>✓</td>
+<td>Resolved to the node's configured ID column</td>
+</tr>
+<tr>
+<td><code>labels(n)</code></td>
+<td>✓</td>
+<td><code>ARRAY['Label']</code></td>
+</tr>
+<tr>
+<td><code>keys(n)</code></td>
+<td>✓</td>
+<td><code>ARRAY['prop1', 'prop2', …]</code></td>
+</tr>
+<tr>
+<td><code>type(r)</code></td>
+<td>✓</td>
+<td>Resolved at compile time to <code>'REL_TYPE'</code> string literal; no runtime column</td>
+</tr>
+<tr>
+<td><code>length(p)</code></td>
+<td>✓</td>
+<td><code>_t.hops</code> for recursive CTE paths; <code>1</code> for flat JOIN paths</td>
+</tr>
+<tr>
+<td><code>CASE WHEN … THEN … ELSE … END</code></td>
+<td>✓</td>
+<td>Direct (searched and simple forms)</td>
+</tr>
+<tr>
+<td>Implicit GROUP BY</td>
+<td>✓</td>
+<td>Non-aggregated RETURN items become GROUP BY keys when any item has an aggregate</td>
+</tr>
+</tbody>
+</table>
+<h3 id="map-projections">Map Projections<a class="headerlink" href="#map-projections" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Syntax</th>
+<th>SQL mapping</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>n { .prop1, .prop2 }</code></td>
+<td><code>MAP(ARRAY['prop1','prop2'], ARRAY[n."prop1",n."prop2"])</code></td>
+</tr>
+<tr>
+<td><code>n { .* }</code></td>
+<td><code>MAP(ARRAY[all props...], ARRAY[n."col",...])</code> — expanded from schema</td>
+</tr>
+<tr>
+<td><code>n { .*, extra: expr }</code></td>
+<td>All schema props plus named key; combined MAP</td>
+</tr>
+<tr>
+<td><code>n { key: expr }</code></td>
+<td><code>MAP(ARRAY['key'], ARRAY[expr])</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="aggregation-functions">Aggregation Functions<a class="headerlink" href="#aggregation-functions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Cypher</th>
+<th>SQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>count(*)</code>, <code>count(x)</code></td>
+<td>direct</td>
+</tr>
+<tr>
+<td><code>count(DISTINCT x)</code></td>
+<td><code>count(DISTINCT x)</code></td>
+</tr>
+<tr>
+<td><code>collect(x)</code></td>
+<td><code>array_agg(x)</code></td>
+</tr>
+<tr>
+<td><code>avg</code>, <code>sum</code>, <code>min</code>, <code>max</code></td>
+<td>direct</td>
+</tr>
+<tr>
+<td><code>stDev(x)</code></td>
+<td><code>stddev_samp(x)</code></td>
+</tr>
+<tr>
+<td><code>stDevP(x)</code></td>
+<td><code>stddev_pop(x)</code></td>
+</tr>
+<tr>
+<td><code>percentileCont(x, p)</code></td>
+<td><code>approx_percentile(x, p)</code></td>
+</tr>
+<tr>
+<td><code>percentileDisc(x, p)</code></td>
+<td><code>approx_percentile(x, p)</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="string-functions">String Functions<a class="headerlink" href="#string-functions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Cypher</th>
+<th>SQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>toLower(x)</code></td>
+<td><code>lower(x)</code></td>
+</tr>
+<tr>
+<td><code>toUpper(x)</code></td>
+<td><code>upper(x)</code></td>
+</tr>
+<tr>
+<td><code>ltrim(x)</code>, <code>rtrim(x)</code>, <code>trim(x)</code></td>
+<td>direct</td>
+</tr>
+<tr>
+<td><code>replace(x, a, b)</code></td>
+<td>direct</td>
+</tr>
+<tr>
+<td><code>reverse(x)</code></td>
+<td>direct</td>
+</tr>
+<tr>
+<td><code>split(x, d)</code></td>
+<td>direct</td>
+</tr>
+<tr>
+<td><code>left(x, n)</code></td>
+<td><code>left(x, n)</code></td>
+</tr>
+<tr>
+<td><code>right(x, n)</code></td>
+<td><code>right(x, n)</code></td>
+</tr>
+<tr>
+<td><code>substring(x, start, len)</code></td>
+<td><code>substr(x, start+1, len)</code> (0→1 index)</td>
+</tr>
+<tr>
+<td><code>size(string)</code></td>
+<td><code>char_length(string)</code></td>
+</tr>
+<tr>
+<td><code>size(list)</code></td>
+<td><code>cardinality(list)</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="type-conversion-functions">Type Conversion Functions<a class="headerlink" href="#type-conversion-functions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Cypher</th>
+<th>SQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>toString(x)</code></td>
+<td><code>CAST(x AS VARCHAR)</code></td>
+</tr>
+<tr>
+<td><code>toInteger(x)</code></td>
+<td><code>TRY_CAST(x AS BIGINT)</code></td>
+</tr>
+<tr>
+<td><code>toFloat(x)</code></td>
+<td><code>TRY_CAST(x AS DOUBLE)</code></td>
+</tr>
+<tr>
+<td><code>toBoolean(x)</code></td>
+<td><code>TRY_CAST(x AS BOOLEAN)</code></td>
+</tr>
+<tr>
+<td><code>toStringOrNull</code>, <code>toIntegerOrNull</code>, <code>toFloatOrNull</code>, <code>toBooleanOrNull</code></td>
+<td><code>TRY_CAST</code> variants</td>
+</tr>
+</tbody>
+</table>
+<h3 id="math-functions">Math Functions<a class="headerlink" href="#math-functions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Cypher</th>
+<th>SQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>log(x)</code></td>
+<td><code>ln(x)</code> (natural log)</td>
+</tr>
+<tr>
+<td><code>log2(x)</code></td>
+<td><code>log2(x)</code></td>
+</tr>
+<tr>
+<td><code>range(start, end)</code></td>
+<td><code>sequence(start, end)</code></td>
+</tr>
+<tr>
+<td><code>abs</code>, <code>sqrt</code>, <code>ceil</code>, <code>floor</code>, <code>round</code>, <code>sign</code></td>
+<td>passed through</td>
+</tr>
+</tbody>
+</table>
+<h3 id="list-functions">List Functions<a class="headerlink" href="#list-functions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Cypher</th>
+<th>SQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>head(list)</code></td>
+<td><code>element_at(list, 1)</code></td>
+</tr>
+<tr>
+<td><code>last(list)</code></td>
+<td><code>element_at(list, -1)</code></td>
+</tr>
+<tr>
+<td><code>tail(list)</code></td>
+<td><code>slice(list, 2, cardinality(list))</code></td>
+</tr>
+<tr>
+<td><code>isEmpty(list)</code></td>
+<td><code>cardinality(list) = 0</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="list-comprehensions">List Comprehensions<a class="headerlink" href="#list-comprehensions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Syntax</th>
+<th>SQL mapping</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[x IN list \| f(x)]</code></td>
+<td><code>transform(list, x -&gt; f(x))</code></td>
+</tr>
+<tr>
+<td><code>[x IN list WHERE p(x)]</code></td>
+<td><code>filter(list, x -&gt; p(x))</code></td>
+</tr>
+<tr>
+<td><code>[x IN list WHERE p(x) \| f(x)]</code></td>
+<td><code>transform(filter(list, x -&gt; p(x)), x -&gt; f(x))</code></td>
+</tr>
+<tr>
+<td><code>any(x IN list WHERE p(x))</code></td>
+<td><code>any_match(list, x -&gt; p(x))</code></td>
+</tr>
+<tr>
+<td><code>all(x IN list WHERE p(x))</code></td>
+<td><code>all_match(list, x -&gt; p(x))</code></td>
+</tr>
+<tr>
+<td><code>none(x IN list WHERE p(x))</code></td>
+<td><code>none_match(list, x -&gt; p(x))</code></td>
+</tr>
+<tr>
+<td><code>single(x IN list WHERE p(x))</code></td>
+<td><code>cardinality(filter(list, x -&gt; p(x))) = 1</code></td>
+</tr>
+<tr>
+<td><code>reduce(acc = init, x IN list \| expr)</code></td>
+<td><code>reduce(list, init, (acc, x) -&gt; expr, acc -&gt; acc)</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pattern-comprehensions">Pattern Comprehensions<a class="headerlink" href="#pattern-comprehensions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Syntax</th>
+<th>SQL mapping</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[(a)-[:R]-&gt;(b) \| b.prop]</code></td>
+<td><code>ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)</code></td>
+</tr>
+<tr>
+<td><code>[(a)-[]-&gt;(b:Label) \| b.prop]</code></td>
+<td>type-inferred from semantic layer; same ARRAY subquery form</td>
+</tr>
+</tbody>
+</table>
+<h3 id="correlated-call-subqueries">Correlated CALL Subqueries<a class="headerlink" href="#correlated-call-subqueries" title="Permanent link">&para;</a></h3>
+<p><code>CALL { WITH x MATCH (x)-[:R]-&gt;(n) RETURN n.prop AS alias }</code> translates to <code>CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")</code>. (REQ-573) Rules:
+- The outer-scope variable (<code>x</code>) must appear in <code>WITH</code>
+- Multiple imported vars (<code>WITH a, b</code>) are supported
+- The first relationship in the inner MATCH whose source is a lateral-bound var determines the inner <code>FROM</code> and join condition
+- Non-correlated top-level <code>CALL { ... }</code> blocks (without <code>WITH</code>) are handled by <code>cypher_calls_to_sql_list</code></p>
+<hr />
+<h2 id="writes">Writes<a class="headerlink" href="#writes" title="Permanent link">&para;</a></h2>
+<p>Cypher supports three write patterns through the <code>/data/cypher</code> endpoint, executed by <code>provisa/cypher/write_translator.py</code>. (REQ-818) [tool-verified: <code>provisa/api/rest/cypher_router.py:415-545</code>]</p>
+<table>
+<thead>
+<tr>
+<th>Cypher</th>
+<th>SQL</th>
+<th>Req</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CREATE (n:Label {props})</code></td>
+<td><code>INSERT INTO catalog.schema.table (cols) VALUES (vals)</code></td>
+<td>REQ-666</td>
+</tr>
+<tr>
+<td><code>MATCH (n:Label) WHERE … DELETE n</code></td>
+<td><code>DELETE FROM catalog.schema.table WHERE …</code></td>
+<td>REQ-667</td>
+</tr>
+<tr>
+<td><code>MATCH (n:Label) WHERE … SET n.prop = val, …</code></td>
+<td><code>UPDATE catalog.schema.table SET col = val, … WHERE …</code></td>
+<td>REQ-668</td>
+</tr>
+</tbody>
+</table>
+<p>Property names map to columns via domain-prefix stripping and alias resolution; Cypher scalar values are coerced to the target column type. (REQ-666, REQ-668) The response body carries an <code>affected_rows</code> count. (REQ-670)</p>
+<p>Rules:</p>
+<ul>
+<li>The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. (REQ-661) New labels or types cannot be created through Cypher. (REQ-662)</li>
+<li>Every write is gated on the target table's <code>writable_by</code> ACL; a role without write rights is rejected at compile time. (REQ-663)</li>
+<li>The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time. (REQ-664)</li>
+<li>Relationships cannot be written — they are derived from foreign-key joins, not stored edges. Targeting a relationship is a hard error. (REQ-665)</li>
+<li>Writes run through the full write pipeline: RLS injection, dialect transpilation, and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload). (REQ-798)</li>
+<li><code>MERGE</code>, <code>DETACH DELETE</code>, and <code>REMOVE</code> are unsupported and rejected at parse time. (REQ-671)</li>
+</ul>
+<hr />
+<h2 id="protocol-access">Protocol Access<a class="headerlink" href="#protocol-access" title="Permanent link">&para;</a></h2>
+<p>Cypher reaches the same governed pipeline over two transports:</p>
+<ul>
+<li><strong>HTTP</strong> — <code>POST /data/cypher</code> with a JSON body (<code>{"query": "...", "params": {...}}</code>). Returns typed rows, or <code>affected_rows</code> for writes. Graph variables in the <code>RETURN</code> clause serialize as JSON: nodes carry <code>id</code>, <code>label</code>, <code>tableLabel</code>, and <code>properties</code>; edges carry <code>identity</code>, <code>start</code>, <code>end</code>, <code>type</code>, <code>properties</code>, <code>startNode</code>, and <code>endNode</code>; paths carry <code>nodes</code>, <code>edges</code>, and <code>length</code>/<code>hops</code>. (REQ-750) Registered commands are also callable here via <code>CALL fn(args) YIELD col1, col2</code> — positional args map to the command's declared argument names in order. (REQ-1156) [tool-verified: <code>provisa/api/rest/registered_call.py:113-143</code>]</li>
+<li><strong>Bolt</strong> — a Neo4j-compatible binary protocol server (PackStream codec, chunked framing) that lets Neo4j Browser, Bloom, and Bolt drivers run Cypher over the federated graph. (REQ-802) It starts when <code>PROVISA_BOLT_PORT</code> is set to a non-zero value and is disabled by default; set <code>PROVISA_BOLT_CERT</code> / <code>PROVISA_BOLT_KEY</code> for TLS. [tool-verified: <code>provisa/api/app_startup.py:317-338</code>] Bolt auth maps principal to user and database to role: <code>SHOW DATABASES</code> lists one entry per (view × role) pair, named <code>provisa_&lt;role&gt;</code> (business domains) or <code>provisa_ops_&lt;role&gt;</code> (with system/meta/ops domains); <code>:use</code> selects the active role and view. (REQ-807) Relationships receive durable integer IDs via a <code>rel_ids</code> table, mirroring the <code>node_ids</code> design. (REQ-806) Registered commands are callable with <code>CALL command(args)</code> — positional args map to declared argument names in order; <code>CALL dbms.*</code> / <code>CALL db.*</code> procedures take precedence. (REQ-1156) [tool-verified: <code>provisa/bolt/session.py:722-749</code>]</li>
+</ul>
+<h3 id="graph-analytics">Graph Analytics<a class="headerlink" href="#graph-analytics" title="Permanent link">&para;</a></h3>
+<p><code>POST /data/graph-analytics</code> runs a Cypher query, builds an in-memory NetworkX graph from the resulting nodes and edges, executes a named algorithm, and merges a <code>_analytics</code> dict into each node and edge before returning them as JSON with an <code>elapsed_ms</code> field. (REQ-642) The <code>_analytics</code> keys vary by algorithm: centrality yields <code>score</code>; community detection yields <code>cluster</code>; k-core yields <code>core_number</code>; degree centrality adds <code>in_degree</code> and <code>out_degree</code>. (REQ-643) The endpoint rejects graphs above a configurable size (default 10,000 nodes / 50,000 edges) with HTTP 413; Girvan-Newman is capped at 500 nodes unless the caller passes <code>force=true</code>. (REQ-650, REQ-651)</p>
+<hr />
+<h2 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">&para;</a></h2>
+<h3 id="design-constraints">Design constraints<a class="headerlink" href="#design-constraints" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>Writes are limited to <code>CREATE</code>, <code>SET</code>, and <code>DELETE</code>.</strong> These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. (REQ-818, REQ-666, REQ-667, REQ-668) See §Writes below. <code>MERGE</code>, <code>DETACH DELETE</code>, and <code>REMOVE</code> are rejected at parse time. (REQ-671, REQ-818) APOC procedures are also rejected.</p>
+</li>
+<li>
+<p><strong>No relationship properties.</strong> Relationships (<code>-[r:TYPE]-&gt;</code>) exist solely as join metadata in the semantic layer. (REQ-574) They carry no stored attributes, so <code>WHERE r.since &gt; 2020</code> or <code>RETURN r.weight</code> has no meaning and is not supported.</p>
+</li>
+<li>
+<p><strong>Bidirectional traversal</strong> <code>(a)-[]-(b)</code> rewrites to the forward+backward UNION ALL of all matching directed relationships from the semantic layer. (REQ-575) Every relationship in the semantic layer is directional; bidirectional syntax is sugar that expands to both directions. Extra branches are emitted at the outermost query level — subsequent MATCH patterns in the same query are not duplicated across branches (limitation for multi-MATCH bidirectional).</p>
+</li>
+<li>
+<p><strong>Recursive paths require a bound.</strong> Variable-length patterns (<code>[*]</code>) must include an upper bound (e.g. <code>[*..10]</code>). (REQ-348) Unbounded traversal is rejected at parse time to prevent runaway recursive CTEs.</p>
+</li>
+</ol>
+<h3 id="behaviour-notes">Behaviour notes<a class="headerlink" href="#behaviour-notes" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong><code>shortestPath</code> on non-self-referential paths uses flat JOIN, not hops ordering.</strong> When start and end types differ and no self-referential relationship exists in the schema, the translator emits a flat JOIN chain (the shortest schema path). (REQ-576) It does not emit <code>ORDER BY hops</code> because hops are not tracked in that code path. The result is the structurally shortest schema path, not the data-shortest path across multiple rows.</p>
+</li>
+<li>
+<p><strong>Multiple schema paths produce <code>UNION ALL</code>.</strong> When two schema paths of equal hop count connect the same start and end types (e.g. <code>Person -[WORKS_AT]-&gt; Company</code> and <code>Person -[MANAGES]-&gt; Company</code>), both are emitted as <code>UNION ALL</code> branches. (REQ-577) Deduplication of rows that appear in both branches is not performed.</p>
+</li>
+<li>
+<p><strong>One <code>RelationshipMapping</code> per source→target pair and rel_type combination.</strong> If two GraphQL fields on the same source type produce the same <code>rel_type</code> string (after uppercasing) to the same target type, the second registration overwrites the first in <code>CypherLabelMap.relationships</code>. The relationship key includes source and target type names, so distinct source/target pairs with the same type name each get their own entry and are not affected.</p>
+</li>
+<li>
+<p><strong><code>WITH</code> clause CTEs are named <code>_w0</code>, <code>_w1</code>, …</strong> (REQ-578) Names are assigned positionally within a single translation call. Composing multiple translated queries (e.g. in a batch) can produce colliding CTE names if they are concatenated naively.</p>
+</li>
+</ol>
+<h3 id="expression-and-pattern-coverage-req-913">Expression and pattern coverage (REQ-913)<a class="headerlink" href="#expression-and-pattern-coverage-req-913" title="Permanent link">&para;</a></h3>
+<p>Cypher expressions are parsed into an AST and lowered node-to-node to SQL (<code>provisa/cypher/expr_parser.py</code>, <code>provisa/cypher/expr_visitor.py</code>). The grammar follows the openCypher <code>oC_Expression</code> precedence tower. Supported: literals, parameters, property access, <code>n.prop</code>, index and slice, arithmetic (<code>+ - * / % ^</code>), comparison, <code>IN</code>, <code>STARTS WITH</code> / <code>ENDS WITH</code> / <code>CONTAINS</code> / <code>=~</code>, <code>IS [NOT] NULL</code>, boolean <code>AND</code> / <code>OR</code> / <code>XOR</code> / <code>NOT</code>, <code>CASE</code>, list and map literals, list and pattern comprehensions (including the <code>p = (…)</code> path binding), map projection, <code>reduce</code>, the <code>all</code> / <code>any</code> / <code>none</code> / <code>single</code> quantifiers, existential subqueries, and function calls.</p>
+<ol>
+<li>
+<p><strong>Labels are fixed; you cannot create object types through Cypher.</strong> A label resolves to a known domain, a known object type, or a qualified <code>domain:object_type</code> — the closed set defined by the registered schema. Cypher never introduces a new label or type. Instance creation is possible only for types already defined within a writable data source; <code>CREATE</code> writes rows into such a table (see §Writes) but cannot define a new label or type. (REQ-662) Both label forms are accepted and mean the same test: the postfix <code>n:Label</code> and the verbose <code>n IS :Label</code> (and their negation <code>n IS NOT :Label</code>). A qualified label is written <code>n:domain:object_type</code>.</p>
+</li>
+<li>
+<p><strong><code>shortestPath</code> and <code>allShortestPaths</code> are supported only inside <code>MATCH</code>, not as expressions.</strong> In a pattern (<code>MATCH p = shortestPath((a:Person)-[:KNOWS*..5]-&gt;(b:Person))</code>) they translate to a <code>WITH RECURSIVE</code> CTE and require labeled source and target nodes. Used in expression position — for example <code>RETURN shortestPath((a)-[*]-&gt;(b))</code> or <code>WHERE length(shortestPath((a)-[*]-&gt;(b))) &lt; 5</code> — they are not supported, because the recursive rewrite is driven off the <code>MATCH</code> clause rather than a correlated subquery.</p>
+</li>
+<li>
+<p><strong>List comprehensions, <code>REDUCE</code>, and quantifiers run against list values; pattern comprehensions traverse.</strong> <code>reduce(...)</code>, <code>all/any/none/single(...)</code>, and the list comprehension <code>[x IN list | …]</code> operate over a list expression and lower to the engine's higher-order list functions — they do not themselves walk the graph. The <strong>pattern</strong> comprehension <code>[(a)-[:R]-&gt;(b) WHERE p | e]</code> does traverse: its graph pattern is addressed out as a correlated subquery, so it is a comprehension whose source is a traversal. Feed traversal results into the list forms with <code>nodes(p)</code> / <code>relationships(p)</code> / <code>collect(...)</code>, or use a pattern comprehension directly.</p>
+</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../api-reference/" class="md-footer__link md-footer__link--prev" aria-label="Previous: API Reference">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                API Reference
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../subscriptions/" class="md-footer__link md-footer__link--next" aria-label="Next: Subscriptions">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Subscriptions
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,2466 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A single governed API over 46 heterogeneous data sources — query with GraphQL, Cypher, or SQL.">
+      
+      
+      
+        <link rel="canonical" href="https://provisa.dev/docs/multitenant/">
+      
+      
+        <link rel="prev" href="../security/">
+      
+      
+        <link rel="next" href="../python-client/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Multitenancy - Provisa</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#multi-tenant-saas-mode" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Provisa" class="md-header__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Provisa
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Multitenancy
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Provisa" class="md-nav__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Provisa
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query & Interfaces
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Query & Interfaces
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cypher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cypher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subscriptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subscriptions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations (JDBC, BI, Flight)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pgwire/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pgwire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data Sources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-schemas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote Schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import (Hasura / DDN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security & Governance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security & Governance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multitenancy
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multitenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#enabling-saas-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enabling SaaS Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jwt-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JWT Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tenant_id-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tenant_id columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#row-level-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Row Level Security
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-local-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SET LOCAL mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#orgs-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        orgs table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema-per-org-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema-per-org isolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-kms-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS KMS Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AWS KMS Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-iam-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required IAM permissions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#region-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Region configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#billing-lemon-squeezy-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Billing / Lemon Squeezy Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Billing / Lemon Squeezy Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#webhook-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plans-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plans and limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#billing-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Billing endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#redis-cache-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis Cache Isolation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#federated-query-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Federated Query Isolation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Federated Query Isolation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#warm-table-schema-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Warm table schema isolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#org-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Org Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Org Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#org-crud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Org CRUD
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#membership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Membership
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invite-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invite flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audit-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit Logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paths-that-bypass-tenantmiddleware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paths That Bypass TenantMiddleware
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Clients
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Clients
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/fdw_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FDW Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/change-signal-unification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Signal Unification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#enabling-saas-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enabling SaaS Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jwt-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JWT Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Database Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tenant_id-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tenant_id columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#row-level-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Row Level Security
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-local-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SET LOCAL mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#orgs-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        orgs table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema-per-org-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema-per-org isolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-kms-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS KMS Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AWS KMS Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-iam-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required IAM permissions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#region-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Region configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#billing-lemon-squeezy-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Billing / Lemon Squeezy Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Billing / Lemon Squeezy Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#webhook-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plans-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plans and limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#billing-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Billing endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#redis-cache-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis Cache Isolation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#federated-query-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Federated Query Isolation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Federated Query Isolation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#warm-table-schema-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Warm table schema isolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#org-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Org Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Org Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#org-crud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Org CRUD
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#membership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Membership
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invite-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invite flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audit-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit Logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paths-that-bypass-tenantmiddleware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paths That Bypass TenantMiddleware
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="multi-tenant-saas-mode">Multi-Tenant SaaS Mode<a class="headerlink" href="#multi-tenant-saas-mode" title="Permanent link">&para;</a></h1>
+<p>Provisa ships in single-tenant mode by default. Every deployment shares one configuration namespace, one set of metadata tables, and one Postgres connection pool. For most enterprise on-prem deployments, this is correct — you own the machine, you own the data.</p>
+<p>Multi-tenant mode flips three things simultaneously: it activates PostgreSQL Row Level Security (RLS) on all metadata tables, installs <code>TenantMiddleware</code> into the request pipeline, and creates a per-tenant AWS KMS Customer Master Key (CMK) for config encryption. Use it when you are building a SaaS product on top of Provisa and need hard isolation between paying customers running on shared infrastructure.</p>
+<hr />
+<h2 id="enabling-saas-mode">Enabling SaaS Mode<a class="headerlink" href="#enabling-saas-mode" title="Permanent link">&para;</a></h2>
+<p>Set <code>multitenancy: true</code> in <code>config/provisa.yaml</code> [tool-verified: <code>provisa/core/models.py</code> line 623]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">multitenancy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<p>At startup, when <code>config.multitenancy</code> is <code>True</code>, the application does two things [tool-verified: <code>provisa/api/app.py</code> lines 769–774]:</p>
+<ol>
+<li>Calls <code>_init_meta_rls()</code>, which enables RLS on every metadata table.</li>
+<li>Registers <code>TenantMiddleware</code> via <code>app.add_middleware(TenantMiddleware)</code>.</li>
+</ol>
+<p>The billing router (<code>/billing/*</code>) is always included regardless of this flag [tool-verified: <code>provisa/api/app.py</code> lines 2255–2256].</p>
+<hr />
+<h2 id="jwt-requirements">JWT Requirements<a class="headerlink" href="#jwt-requirements" title="Permanent link">&para;</a></h2>
+<p>Every authenticated request must carry a JWT with a <code>tenant_id</code> claim. <code>TenantMiddleware</code> reads <code>identity.raw_claims.get("tenant_id")</code> [tool-verified: <code>provisa/api/middleware/tenant_middleware.py</code> line 35]. If the claim is absent, the middleware returns HTTP 401 with <code>{"detail": "tenant_id claim missing"}</code>.</p>
+<p>The <code>tenant_id</code> value must match a row in the <code>tenants</code> table created during signup. It is a UUID string.</p>
+<p>Your auth provider (Firebase, Auth0, or any OIDC-compatible IdP) must inject this claim at token issuance time. How you do that is IdP-specific, but the claim name must be <code>tenant_id</code> — no aliases.</p>
+<hr />
+<h2 id="database-setup">Database Setup<a class="headerlink" href="#database-setup" title="Permanent link">&para;</a></h2>
+<h3 id="tenant_id-columns">tenant_id columns<a class="headerlink" href="#tenant_id-columns" title="Permanent link">&para;</a></h3>
+<p>The schema migration at the bottom of <code>provisa/core/schema.sql</code> adds a <code>tenant_id UUID</code> column (nullable) to seven metadata tables [tool-verified: <code>provisa/core/schema.sql</code> lines 520–529]:</p>
+<ul>
+<li><code>registered_tables</code></li>
+<li><code>table_columns</code></li>
+<li><code>domains</code></li>
+<li><code>relationships</code></li>
+<li><code>rls_rules</code></li>
+<li><code>persisted_queries</code></li>
+<li><code>roles</code></li>
+</ul>
+<p>Existing rows have <code>tenant_id = NULL</code>. The RLS policy treats <code>NULL</code> as a system row visible to all tenants, which allows shared baseline configuration alongside per-tenant customization.</p>
+<h3 id="row-level-security">Row Level Security<a class="headerlink" href="#row-level-security" title="Permanent link">&para;</a></h3>
+<p>When multitenancy is enabled, <code>_init_meta_rls()</code> runs the following pattern for each metadata table [tool-verified: <code>provisa/api/app.py</code> lines 512–530]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">ALTER</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="o">&lt;</span><span class="k">table</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ENABLE</span><span class="w"> </span><span class="k">ROW</span><span class="w"> </span><span class="k">LEVEL</span><span class="w"> </span><span class="k">SECURITY</span><span class="p">;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">ALTER</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="o">&lt;</span><span class="k">table</span><span class="o">&gt;</span><span class="w"> </span><span class="k">FORCE</span><span class="w"> </span><span class="k">ROW</span><span class="w"> </span><span class="k">LEVEL</span><span class="w"> </span><span class="k">SECURITY</span><span class="p">;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">CREATE</span><span class="w"> </span><span class="n">POLICY</span><span class="w"> </span><span class="n">tenant_isolation_</span><span class="o">&lt;</span><span class="k">table</span><span class="o">&gt;</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="k">ON</span><span class="w"> </span><span class="o">&lt;</span><span class="k">table</span><span class="o">&gt;</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="k">USING</span><span class="w"> </span><span class="p">(</span><span class="n">tenant_id</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">OR</span><span class="w"> </span><span class="n">tenant_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">current_setting</span><span class="p">(</span><span class="s1">&#39;app.tenant_id&#39;</span><span class="p">,</span><span class="w"> </span><span class="k">true</span><span class="p">)::</span><span class="n">uuid</span><span class="p">);</span>
+</code></pre></div>
+<p><code>FORCE ROW LEVEL SECURITY</code> applies the policy even to the table owner, preventing privilege escalation through ownership.</p>
+<h3 id="set-local-mechanism">SET LOCAL mechanism<a class="headerlink" href="#set-local-mechanism" title="Permanent link">&para;</a></h3>
+<p>At the start of each database transaction, <code>set_tenant_context()</code> injects the tenant's UUID as a Postgres session variable [tool-verified: <code>provisa/core/db.py</code> lines 66–69]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">await</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;SET LOCAL app.tenant_id = &#39;</span><span class="si">{</span><span class="n">tenant_id</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><code>SET LOCAL</code> scopes the variable to the current transaction. When the transaction commits or rolls back, the variable resets. The RLS policy then reads <code>current_setting('app.tenant_id', true)</code> to filter rows. This means tenant isolation is enforced at the database level, not just in application logic — a query that bypasses middleware cannot read another tenant's rows.</p>
+<h3 id="orgs-table">orgs table<a class="headerlink" href="#orgs-table" title="Permanent link">&para;</a></h3>
+<p>Each tenant maps to an org. The <code>orgs</code> table [tool-verified: <code>provisa/core/schema.sql</code> lines 453–466] stores org namespaces. The <code>root</code> org is seeded automatically for single-tenant deployments. In multi-tenant mode you create one org per customer via the admin API. <code>user_org_memberships</code> tracks which users belong to which org.</p>
+<h3 id="schema-per-org-isolation">Schema-per-org isolation<a class="headerlink" href="#schema-per-org-isolation" title="Permanent link">&para;</a></h3>
+<p>For on-prem multi-org deployments, Provisa also scopes internal PostgreSQL state to a per-org schema named <code>org_&lt;org_id&gt;</code> — semantic metadata, non-SQL cache, audit log, and materialized-view definitions all live inside it [tool-verified: <code>provisa/core/db.py</code>; REQ-695, REQ-697]. The asyncpg pool sets <code>search_path</code> to the org schema on every connection init, and <code>init_schema()</code> takes an <code>org_id</code> parameter, defaulting to <code>org_default</code> when the <code>ORG_ID</code> env var is unset. Existing single-org deployments transparently use <code>org_default</code>. Platform tables (<code>tenants</code>, <code>tenant_config</code>) live in a dedicated platform schema that org <code>search_path</code> never touches (REQ-696). Each org gets a dedicated PostgreSQL role <code>role_&lt;org_id&gt;</code> with rights on its own schema only (REQ-699).</p>
+<p>Not-schema-capable backends (SQLite, DuckDB) carry the org in the database file instead: <code>OrgRouter</code> maps <code>org_id</code> to a per-org engine, and cross-org queries are impossible across the file boundary [tool-verified: <code>provisa/core/database.py</code>; REQ-851, REQ-852].</p>
+<hr />
+<h2 id="aws-kms-setup">AWS KMS Setup<a class="headerlink" href="#aws-kms-setup" title="Permanent link">&para;</a></h2>
+<p>Status: encryption service complete; per-tenant config write path not yet wired. Provisa ships a pluggable <code>EncryptionService</code> (REQ-684, REQ-685, REQ-694, all <code>complete</code>) with <code>LocalKeychain</code>, <code>AwsKms</code>, <code>AzureKeyVault</code>, and <code>NullEncryption</code> providers, selected via <code>encryption.provider</code> / <code>encryption.key_id</code> in <code>provisa.yaml</code> [tool-verified: <code>provisa/encryption/factory.py</code>, <code>provisa/encryption/providers.py</code>]. An unknown or unavailable provider fails closed rather than degrading to plaintext.</p>
+<p>The billing KMS helpers below (<code>provisa/api/billing/kms.py</code>) are the per-tenant config-encryption path. The decrypt/read path is wired — <code>TenantMiddleware._build_tenant_context</code> decrypts <code>tenant_config</code> on each request [tool-verified: <code>provisa/api/middleware/tenant_middleware.py</code> lines 71–87] — but the write path is not: <code>generate_data_key</code>, <code>aes_encrypt</code>, and <code>upsert_config_entity</code> have no callers, so <code>tenant_config</code> is never populated. At-rest per-tenant config encryption is therefore not yet active.</p>
+<p>The designed model gives each tenant a dedicated Customer Master Key (CMK). At signup, <code>create_tenant_key(tenant_id)</code> calls <code>kms.create_key()</code> with <code>KeyUsage="ENCRYPT_DECRYPT"</code> and returns the key ARN [tool-verified: <code>provisa/api/billing/kms.py</code> lines 21–31]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">response</span> <span class="o">=</span> <span class="n">kms_client</span><span class="o">.</span><span class="n">create_key</span><span class="p">(</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">Description</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;provisa-tenant-</span><span class="si">{</span><span class="n">tenant_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">KeyUsage</span><span class="o">=</span><span class="s2">&quot;ENCRYPT_DECRYPT&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">return</span> <span class="n">response</span><span class="p">[</span><span class="s2">&quot;KeyMetadata&quot;</span><span class="p">][</span><span class="s2">&quot;Arn&quot;</span><span class="p">]</span>
+</code></pre></div>
+<p>The designed per-request encryption uses envelope encryption: <code>generate_data_key()</code> calls KMS to produce a 256-bit AES data encryption key (DEK). The plaintext DEK encrypts the config payload with AES-256-GCM via <code>aes_encrypt()</code>. Only the encrypted DEK is persisted in <code>tenant_config</code> alongside the ciphertext and IV. These primitives exist [tool-verified: <code>provisa/api/billing/kms.py</code> lines 34–65, <code>provisa/api/billing/tenant_db.py</code> lines 15–37].</p>
+<h3 id="required-iam-permissions">Required IAM permissions<a class="headerlink" href="#required-iam-permissions" title="Permanent link">&para;</a></h3>
+<p>The Provisa process role needs these KMS permissions:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;Effect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Allow&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">&quot;Action&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="s2">&quot;kms:CreateKey&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="s2">&quot;kms:GenerateDataKey&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="s2">&quot;kms:Decrypt&quot;</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="p">],</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span><span class="nt">&quot;Resource&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;*&quot;</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="p">}</span>
+</code></pre></div>
+<p>Restrict <code>Resource</code> to <code>arn:aws:kms:&lt;region&gt;:&lt;account&gt;:key/*</code> in production, or tighten further with a key tag condition.</p>
+<h3 id="region-configuration">Region configuration<a class="headerlink" href="#region-configuration" title="Permanent link">&para;</a></h3>
+<p>The KMS client reads <code>AWS_KMS_REGION</code> and defaults to <code>us-east-1</code> [tool-verified: <code>provisa/api/billing/kms.py</code> line 17]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_KMS_REGION</span><span class="o">=</span>us-east-1
+</code></pre></div>
+<p>Standard AWS credential chain applies: environment variables, instance profile, or ECS task role. No custom credential configuration is needed beyond what boto3 already supports.</p>
+<hr />
+<h2 id="billing-lemon-squeezy-setup">Billing / Lemon Squeezy Setup<a class="headerlink" href="#billing-lemon-squeezy-setup" title="Permanent link">&para;</a></h2>
+<p>Billing runs through Lemon Squeezy as Merchant of Record. Provisa integrates over the Lemon Squeezy REST API (JSON:API) and signed webhooks — no vendor SDK, a thin <code>httpx</code> wrapper [tool-verified: <code>provisa/api/billing/lemonsqueezy_client.py</code>; REQ-1075].</p>
+<h3 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LEMONSQUEEZY_API_KEY</code></td>
+<td>Yes</td>
+<td>Lemon Squeezy API key (Bearer token)</td>
+</tr>
+<tr>
+<td><code>LEMONSQUEEZY_STORE_ID</code></td>
+<td>Yes</td>
+<td>Store ID that checkouts are created against</td>
+</tr>
+<tr>
+<td><code>LEMONSQUEEZY_SIGNING_SECRET</code></td>
+<td>Yes</td>
+<td>Webhook signing secret (HMAC-SHA256 key)</td>
+</tr>
+<tr>
+<td><code>LEMONSQUEEZY_BASE_URL</code></td>
+<td>No</td>
+<td>Override for the API base URL (used in tests); production uses <code>https://api.lemonsqueezy.com/v1</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each variable is read directly from <code>os.environ</code> — a missing value raises <code>KeyError</code> at first use [tool-verified: <code>provisa/api/billing/lemonsqueezy_client.py</code> lines 27–31, 45, 77].</p>
+<h3 id="webhook-configuration">Webhook configuration<a class="headerlink" href="#webhook-configuration" title="Permanent link">&para;</a></h3>
+<p>In your Lemon Squeezy store, create a webhook pointing to <code>https://&lt;your-host&gt;/billing/webhook</code>. This path bypasses <code>TenantMiddleware</code> [tool-verified: <code>provisa/api/middleware/tenant_middleware.py</code> lines 23–30].</p>
+<p>The handler verifies the <code>X-Signature</code> header as an HMAC-SHA256 of the raw request body keyed by <code>LEMONSQUEEZY_SIGNING_SECRET</code>, compared in constant time [tool-verified: <code>provisa/api/billing/lemonsqueezy_client.py</code> lines 74–79]. It drives plan lifecycle from <code>meta.event_name</code> [tool-verified: <code>provisa/api/billing/router.py</code> lines 78–117]:</p>
+<ul>
+<li><code>subscription_created</code> / <code>subscription_updated</code> — link the Lemon Squeezy customer ID to the tenant and set plan + source limit from the subscription variant name</li>
+<li><code>subscription_cancelled</code> / <code>subscription_expired</code> — revert the tenant to the <code>trial</code> plan</li>
+</ul>
+<p>The <code>tenant_id</code> is carried in checkout <code>custom_data</code> and echoed back in webhook <code>meta.custom_data</code> to resolve the tenant.</p>
+<h3 id="plans-and-limits">Plans and limits<a class="headerlink" href="#plans-and-limits" title="Permanent link">&para;</a></h3>
+<p>Three plans are defined [tool-verified: <code>provisa/api/billing/models.py</code> lines 18–24]:</p>
+<table>
+<thead>
+<tr>
+<th>Plan</th>
+<th>Source limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>trial</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td><code>starter</code></td>
+<td>10</td>
+</tr>
+<tr>
+<td><code>pro</code></td>
+<td>100</td>
+</tr>
+</tbody>
+</table>
+<p>The variant name is matched case-insensitively against these tiers: a name containing <code>"pro"</code> maps to <code>pro</code>, <code>"starter"</code> to <code>starter</code>, <code>"trial"</code> to <code>trial</code>. An unrecognized variant name is a hard error — never a silent default [tool-verified: <code>provisa/api/billing/models.py</code> lines 27–35; REQ-1075].</p>
+<h3 id="billing-endpoints">Billing endpoints<a class="headerlink" href="#billing-endpoints" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/billing/signup</code></td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/billing/checkout</code></td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/billing/webhook</code></td>
+<td>No (Lemon Squeezy signature)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/billing/portal</code></td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/billing/status</code></td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<p><code>/billing/signup</code> creates the tenant record and its KMS key, returning <code>tenant_id</code>, <code>plan</code>, and <code>source_limit</code>. Call it once per customer onboarding. <code>/billing/checkout</code> takes <code>tenant_id</code>, a Lemon Squeezy <code>variant_id</code>, and a <code>redirect_url</code>, and returns the hosted <code>checkout_url</code>. <code>/billing/portal</code> returns the Lemon Squeezy customer portal URL for a tenant [tool-verified: <code>provisa/api/billing/router.py</code> lines 54–131].</p>
+<hr />
+<h2 id="redis-cache-isolation">Redis Cache Isolation<a class="headerlink" href="#redis-cache-isolation" title="Permanent link">&para;</a></h2>
+<p>No configuration change is needed. When <code>tenant_id</code> is present, <code>RedisCacheStore</code> automatically prefixes every key [tool-verified: <code>provisa/cache/store.py</code> lines 111–119]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Single-tenant: provisa:cache:&lt;sha256_key&gt;
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>Multi-tenant:  provisa:cache:&lt;tenant_id&gt;:&lt;sha256_key&gt;
+</code></pre></div>
+<p>Table invalidation keys follow the same pattern: <code>provisa:table:&lt;tenant_id&gt;:&lt;table_id&gt;</code>. This means one tenant's cache flush never touches another tenant's cached results.</p>
+<p>The APQ (Automatic Persisted Queries) cache uses the same convention [tool-verified: <code>provisa/apq/cache.py</code> lines 90–93]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>Single-tenant: provisa:apq:&lt;sha256_hex&gt;
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>Multi-tenant:  provisa:apq:&lt;tenant_id&gt;:&lt;sha256_hex&gt;
+</code></pre></div>
+<p>Default APQ TTL is 86400 seconds. Override with <code>PROVISA_APQ_TTL</code>.</p>
+<hr />
+<h2 id="federated-query-isolation">Federated Query Isolation<a class="headerlink" href="#federated-query-isolation" title="Permanent link">&para;</a></h2>
+<p>In multi-tenant mode, the federated query engine scopes every connection to the requesting tenant's UUID [tool-verified: <code>provisa/api/trino_setup.py</code> lines 112–126]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">if</span> <span class="n">tenant_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;user&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">tenant_id</span>
+</code></pre></div>
+<p>The federated engine's resource group configuration uses <code>${USER}</code> to route queries to per-tenant groups. Configure your resource group rules to match on <code>user</code> to enforce per-tenant memory and concurrency limits.</p>
+<h3 id="warm-table-schema-isolation">Warm table schema isolation<a class="headerlink" href="#warm-table-schema-isolation" title="Permanent link">&para;</a></h3>
+<p>Each <code>WarmTableManager</code> instance scoped to a tenant writes promoted tables to a tenant-specific schema [tool-verified: <code>provisa/cache/warm_tables.py</code> lines 63–75]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">if</span> <span class="n">tenant_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_iceberg_schema</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;warm_cache_</span><span class="si">{</span><span class="n">tenant_id</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;_&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+</code></pre></div>
+<p>A tenant with ID <code>550e8400-e29b-41d4-a716-446655440000</code> gets schema <code>warm_cache_550e8400_e29b_41d4_a716_446655440000</code>. Schemas never overlap across tenants.</p>
+<hr />
+<h2 id="org-management">Org Management<a class="headerlink" href="#org-management" title="Permanent link">&para;</a></h2>
+<p>Orgs are the logical namespace for tenants and their users. All org management endpoints live under <code>/admin/orgs</code> [tool-verified: <code>provisa/api/admin/orgs_router.py</code>].</p>
+<h3 id="org-crud">Org CRUD<a class="headerlink" href="#org-crud" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/admin/orgs/</code></td>
+<td>List all orgs</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/admin/orgs/</code></td>
+<td>Create org (<code>id</code>, <code>name</code>)</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/admin/orgs/{org_id}</code></td>
+<td>Rename org</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/admin/orgs/{org_id}</code></td>
+<td>Delete org (blocked for <code>root</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="membership">Membership<a class="headerlink" href="#membership" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/admin/orgs/{org_id}/members</code></td>
+<td>List members with profile data</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/admin/orgs/{org_id}/members</code></td>
+<td>Add member (<code>user_id</code>)</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/admin/orgs/{org_id}/members/{user_id}</code></td>
+<td>Remove member</td>
+</tr>
+</tbody>
+</table>
+<h3 id="invite-flow">Invite flow<a class="headerlink" href="#invite-flow" title="Permanent link">&para;</a></h3>
+<p>Org invites let administrators onboard new users without direct IdP access. The invite system is only meaningful when <code>auth.provider</code> is <code>basic</code> — invite tokens bypass normal registration flow to place a new user into a specific org.</p>
+<p><strong>Create an invite</strong> (<code>POST /admin/invites/</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">&quot;org_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;acme-corp&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">&quot;role_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;analyst&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">&quot;expires_in_days&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">}</span>
+</code></pre></div>
+<p>Returns a <code>token</code> (UUID). Send this token to the invitee out-of-band.</p>
+<p><strong>Redeem the invite</strong> (<code>POST /register</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">&quot;username&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alice&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">&quot;password&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;…&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">&quot;email&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alice@acme.com&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span><span class="nt">&quot;invite_token&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;token&gt;&quot;</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="p">}</span>
+</code></pre></div>
+<p>On success, the user is created in <code>local_users</code>, added to <code>user_org_memberships</code> for the invite's org, and the invite is stamped <code>used_at</code> [tool-verified: <code>provisa/api/auth_router.py</code> lines 152–170]. Used tokens cannot be redeemed again.</p>
+<p><strong>List invites</strong> (<code>GET /admin/invites/</code>) — returns all invites with org name, expiry, and redemption status.</p>
+<p><strong>Revoke an invite</strong> (<code>DELETE /admin/invites/{token}</code>) — only succeeds if the invite has not yet been used.</p>
+<p>Invites expire after the configured <code>expires_in_days</code> (default 7). An expired or used token returns HTTP 400 [tool-verified: <code>provisa/api/auth_router.py</code> line 161].</p>
+<hr />
+<h2 id="audit-logging">Audit Logging<a class="headerlink" href="#audit-logging" title="Permanent link">&para;</a></h2>
+<p>Every query is recorded in <code>query_audit_log</code> [tool-verified: <code>provisa/audit/query_log.py</code> lines 19–45]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">query_audit_log</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="n">id</span><span class="w">          </span><span class="n">BIGSERIAL</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="n">tenant_id</span><span class="w">   </span><span class="n">UUID</span><span class="p">,</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="n">user_id</span><span class="w">     </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="n">role_id</span><span class="w">     </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="n">query_hash</span><span class="w">  </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="w">   </span><span class="c1">-- SHA-256 of query text</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span><span class="n">table_ids</span><span class="w">   </span><span class="nb">TEXT</span><span class="p">[]</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="p">,</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="k">source</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="n">status_code</span><span class="w"> </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="n">duration_ms</span><span class="w"> </span><span class="nb">INT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">    </span><span class="n">logged_at</span><span class="w">   </span><span class="n">TIMESTAMPTZ</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">now</span><span class="p">()</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="p">);</span>
+</code></pre></div>
+<p>Two database rules block destructive operations [tool-verified: <code>provisa/audit/query_log.py</code> lines 33–41]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">RULE</span><span class="w"> </span><span class="n">no_delete_audit</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">query_audit_log</span><span class="w"> </span><span class="k">DO</span><span class="w"> </span><span class="k">INSTEAD</span><span class="w"> </span><span class="k">NOTHING</span><span class="p">;</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">RULE</span><span class="w"> </span><span class="n">no_update_audit</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">UPDATE</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">query_audit_log</span><span class="w"> </span><span class="k">DO</span><span class="w"> </span><span class="k">INSTEAD</span><span class="w"> </span><span class="k">NOTHING</span><span class="p">;</span>
+</code></pre></div>
+<p>The table is append-only. Deletes and updates silently no-op at the database level — they cannot be circumvented by application code.</p>
+<p>Query text is never stored verbatim — only its SHA-256 hash. This satisfies data minimization requirements while preserving the ability to detect repeated queries.</p>
+<p>Two indexes cover the primary access patterns [tool-verified: <code>provisa/audit/query_log.py</code> lines 43–44]:</p>
+<ul>
+<li><code>(tenant_id, logged_at DESC)</code> — tenant-scoped time-range queries</li>
+<li><code>(user_id, logged_at DESC)</code> — per-user activity audits</li>
+</ul>
+<hr />
+<h2 id="paths-that-bypass-tenantmiddleware">Paths That Bypass TenantMiddleware<a class="headerlink" href="#paths-that-bypass-tenantmiddleware" title="Permanent link">&para;</a></h2>
+<p>The following paths skip tenant resolution entirely [tool-verified: <code>provisa/api/middleware/tenant_middleware.py</code> lines 23–30]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">_SKIP_PATHS</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="s2">&quot;/billing/signup&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="s2">&quot;/billing/webhook&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="s2">&quot;/health&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="s2">&quot;/data/openapi/docs&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    <span class="s2">&quot;/data/openapi/redoc&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    <span class="s2">&quot;/data/openapi/openapi.json&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li><code>/billing/signup</code> — tenant does not exist yet at signup time</li>
+<li><code>/billing/webhook</code> — Lemon Squeezy calls this; it does not carry a tenant JWT</li>
+<li><code>/health</code> — infrastructure health checks must not require auth</li>
+<li><code>/data/openapi/docs</code>, <code>/data/openapi/redoc</code>, <code>/data/openapi/openapi.json</code> — OpenAPI UI and spec, typically blocked at the load balancer in production</li>
+</ul>
+<p>All other paths require a valid JWT with a <code>tenant_id</code> claim. A request with no identity returns HTTP 401 <code>{"detail": "Unauthenticated"}</code> before tenant lookup begins [tool-verified: <code>provisa/api/middleware/tenant_middleware.py</code> lines 40–42].</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../security/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Security Model">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Security Model
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../python-client/" class="md-footer__link md-footer__link--next" aria-label="Next: Python Client">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Python Client
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

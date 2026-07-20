@@ -1,0 +1,4075 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A single governed API over 46 heterogeneous data sources — query with GraphQL, Cypher, or SQL.">
+      
+      
+      
+        <link rel="canonical" href="https://provisa.dev/docs/api-reference/">
+      
+      
+        <link rel="prev" href="../deployment/">
+      
+      
+        <link rel="next" href="../cypher/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>API Reference - Provisa</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Provisa" class="md-header__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Provisa
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              API Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Provisa" class="md-nav__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Provisa
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query & Interfaces
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Query & Interfaces
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-datagraphql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /data/graphql
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#content-negotiation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content Negotiation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redirect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redirect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-datasql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /data/sql
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-dataquery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /data/query
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datarestdomain_idtable_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/rest/{domain_id}/{table_name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datajsonapidomain_idtable_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/jsonapi/{domain_id}/{table_name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-querynl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /query/nl
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datasdl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/sdl
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-dataintrospection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/introspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datagraph-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/graph-schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datadomains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/domains
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-dataschema-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/schema-version
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-dataprotorole_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/proto/{role_id}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datasubscribetable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/subscribe/{table}
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#admin-rest-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin REST Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Admin REST Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Config">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-adminconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-adminconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /admin/config
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-adminsettings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-adminsettings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /admin/settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Observability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-admintracesrecent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/traces/recent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminquery-enginereload-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/query-engine/reload-catalog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminquery-enginerestart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/query-engine/restart
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Discovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-admindiscoverrelationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/discover/relationships
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-admindiscovercandidates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/discover/candidates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-admindiscovercandidatescandidate_idaccept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/discover/candidates/{candidate_id}/accept
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-admindiscovercandidatescandidate_idreject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/discover/candidates/{candidate_id}/reject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-admindiscovercandidatesrejectedcount" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/discover/candidates/rejected/count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-admindiscovercandidatesrejected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /admin/discover/candidates/rejected
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-crawl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Crawl
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Source Crawl">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-adminsourcescrawl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/sources/crawl
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-table-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Table Search
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Source Table Search">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-adminsourcessource_idtablessearch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/sources/{source_id}/tables/search
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-profiling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table Profiling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Table Profiling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-admintablestable_idprofile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/tables/{table_id}/profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-descriptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Descriptions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Source Descriptions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-adminsource-metadb-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/source-meta/db-description
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#actions-functions-and-webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Actions (Functions and Webhooks)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Actions (Functions and Webhooks)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-adminactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminactionsfunctions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/actions/functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-adminactionsfunctionsname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /admin/actions/functions/{name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-adminactionsfunctionsname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /admin/actions/functions/{name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminactionswebhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/actions/webhooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-adminactionswebhooksname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /admin/actions/webhooks/{name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-adminactionswebhooksname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /admin/actions/webhooks/{name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminactionstest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/actions/test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Users
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#organizations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organizations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invites
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-graphql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin GraphQL
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Admin GraphQL">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-admingraphql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/graphql
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-setupstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /setup/status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /setup/
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health Check
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Health Check">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-health-or-head-health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /health or HEAD /health
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Responses
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arrow-flight-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arrow Flight Endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#protobuf-grpc-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protobuf gRPC Endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jdbc-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JDBC Driver
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#orderby-argument-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        orderBy Argument Format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subscriptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subscriptions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cypher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cypher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subscriptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subscriptions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations (JDBC, BI, Flight)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pgwire/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pgwire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data Sources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-schemas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote Schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import (Hasura / DDN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security & Governance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security & Governance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multitenant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multitenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Clients
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Clients
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/fdw_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FDW Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/change-signal-unification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Signal Unification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-datagraphql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /data/graphql
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#content-negotiation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content Negotiation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redirect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redirect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-datasql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /data/sql
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-dataquery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /data/query
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datarestdomain_idtable_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/rest/{domain_id}/{table_name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datajsonapidomain_idtable_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/jsonapi/{domain_id}/{table_name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-querynl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /query/nl
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datasdl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/sdl
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-dataintrospection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/introspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datagraph-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/graph-schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datadomains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/domains
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-dataschema-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/schema-version
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-dataprotorole_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/proto/{role_id}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-datasubscribetable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /data/subscribe/{table}
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#admin-rest-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin REST Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Admin REST Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Config">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-adminconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-adminconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /admin/config
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-adminsettings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-adminsettings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /admin/settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Observability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-admintracesrecent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/traces/recent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminquery-enginereload-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/query-engine/reload-catalog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminquery-enginerestart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/query-engine/restart
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Discovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-admindiscoverrelationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/discover/relationships
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-admindiscovercandidates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/discover/candidates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-admindiscovercandidatescandidate_idaccept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/discover/candidates/{candidate_id}/accept
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-admindiscovercandidatescandidate_idreject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/discover/candidates/{candidate_id}/reject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-admindiscovercandidatesrejectedcount" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/discover/candidates/rejected/count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-admindiscovercandidatesrejected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /admin/discover/candidates/rejected
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-crawl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Crawl
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Source Crawl">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-adminsourcescrawl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/sources/crawl
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-table-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Table Search
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Source Table Search">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-adminsourcessource_idtablessearch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/sources/{source_id}/tables/search
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-profiling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table Profiling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Table Profiling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-admintablestable_idprofile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/tables/{table_id}/profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-descriptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Descriptions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Source Descriptions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-adminsource-metadb-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/source-meta/db-description
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#actions-functions-and-webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Actions (Functions and Webhooks)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Actions (Functions and Webhooks)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-adminactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /admin/actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminactionsfunctions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/actions/functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-adminactionsfunctionsname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /admin/actions/functions/{name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-adminactionsfunctionsname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /admin/actions/functions/{name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminactionswebhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/actions/webhooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-adminactionswebhooksname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /admin/actions/webhooks/{name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-adminactionswebhooksname" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /admin/actions/webhooks/{name}
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-adminactionstest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/actions/test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Users
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#organizations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organizations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invites
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-graphql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin GraphQL
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Admin GraphQL">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-admingraphql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /admin/graphql
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-setupstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /setup/status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /setup/
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health Check
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Health Check">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-health-or-head-health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /health or HEAD /health
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Responses
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arrow-flight-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arrow Flight Endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#protobuf-grpc-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protobuf gRPC Endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jdbc-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JDBC Driver
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#orderby-argument-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        orderBy Argument Format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subscriptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subscriptions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>Provisa exposes REST endpoints under two prefixes: <code>/data</code> for query execution and schema introspection, and <code>/admin</code> for configuration management. (REQ-043) Most data endpoints require a role identifier. Admin configuration operations use a Strawberry GraphQL API at <code>/admin/graphql</code>. (REQ-164)</p>
+<hr />
+<h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
+<p>When <code>auth.provider</code> is configured in <code>provisa.yaml</code>, all endpoints except <code>/health</code> and <code>/setup/status</code> require an <code>Authorization: Bearer &lt;token&gt;</code> header. (REQ-120) [tool-verified: <code>provisa/api/app.py</code>, <code>provisa/auth/wiring.py</code>]</p>
+<p>Without auth configured, the server runs in dev mode. Any request is treated as the <code>anonymous</code> identity, which maps to all configured roles with wildcard domain access. (REQ-535)</p>
+<p><strong>Login (<code>POST /auth/login</code>)</strong> is provided by the active auth provider when <code>provider: basic</code> is configured. (REQ-124) Credential format and response depend on the provider.</p>
+<p><strong>Identity introspection:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>GET /auth/me
+</code></pre></div>
+<p>Returns the authenticated user's id, email, display name, org memberships, and role assignments. In dev mode returns <code>dev_mode: true</code> with all role IDs listed. [tool-verified: <code>provisa/api/auth_router.py</code>]</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>GET /auth/provider-type
+</code></pre></div>
+<p>Returns <code>{"provider": "&lt;name&gt;"}</code> or <code>{"provider": null}</code> when auth is unconfigured. [tool-verified: <code>provisa/api/auth_router.py</code>]</p>
+<hr />
+<h2 id="data-endpoints">Data Endpoints<a class="headerlink" href="#data-endpoints" title="Permanent link">&para;</a></h2>
+<h3 id="post-datagraphql"><code>POST /data/graphql</code><a class="headerlink" href="#post-datagraphql" title="Permanent link">&para;</a></h3>
+<p>Execute a GraphQL query or mutation. (REQ-043) [tool-verified: <code>provisa/api/data/endpoint.py:151</code>]</p>
+<p><strong>Request body:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{ orders(where: {region: {eq: \&quot;us\&quot;}}) { id amount } }&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">&quot;variables&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">&quot;extensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>The <code>role</code> field is used only in dev mode (no auth). When auth is active, the authenticated user's role is used and <code>role</code> in the body is ignored.</p>
+<p>The <code>extensions</code> field supports the Automatic Persisted Query (APQ) protocol: (REQ-288)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;extensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;persistedQuery&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;sha256Hash&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;sha256-of-query&gt;&quot;</span><span class="p">}}</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="p">}</span>
+</code></pre></div></p>
+<p><strong>Headers:</strong>
+- <code>X-Provisa-Role</code> — override role (dev mode)
+- <code>Accept</code> — response format (see Content Negotiation)
+- <code>Authorization</code> — <code>Bearer &lt;token&gt;</code> when auth is enabled
+- <code>X-Provisa-Redirect-Format</code> — MIME type for S3 redirect output (REQ-137)
+- <code>X-Provisa-Redirect-Threshold</code> — row count above which redirect triggers (REQ-137)
+- <code>X-Provisa-Redirect</code> — <code>true</code> to force redirect unconditionally (REQ-029)</p>
+<p><strong>Response (JSON inline):</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">&quot;orders&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">      </span><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;amount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">99.99</span><span class="p">}</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="p">]</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">}</span>
+</code></pre></div></p>
+<p><strong>Response (redirect):</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;orders&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">},</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">&quot;redirect&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">&quot;redirect_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://...&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">&quot;row_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50000</span><span class="p">,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">&quot;expires_in&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3600</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">&quot;content_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;application/vnd.apache.parquet&quot;</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">}</span>
+</code></pre></div></p>
+<p><strong>Response (multi-root with mixed inline/redirect):</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">&quot;orders&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">}],</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">&quot;customers&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span><span class="nt">&quot;redirects&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">&quot;customers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">      </span><span class="nt">&quot;redirect_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://...&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">      </span><span class="nt">&quot;row_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10000</span><span class="p">,</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">      </span><span class="nt">&quot;expires_in&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3600</span><span class="p">,</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">      </span><span class="nt">&quot;content_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;application/vnd.apache.parquet&quot;</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>Multi-root queries run each root field independently. Fields below the redirect threshold return inline; fields above redirect. The <code>redirects</code> key (plural) maps field names to redirect info. (REQ-029) [tool-verified: <code>provisa/api/data/endpoint.py</code>]</p>
+<p><strong>Cache headers:</strong></p>
+<ul>
+<li><code>X-Provisa-Cache: HIT|MISS</code> (REQ-536)</li>
+<li><code>X-Provisa-Cache-Age: &lt;seconds&gt;</code> (on HIT) (REQ-536)</li>
+</ul>
+<p><strong>Required capabilities:</strong> <code>QUERY_DEVELOPMENT</code> for all requests including introspection. [tool-verified: <code>provisa/api/data/endpoint.py:186-283</code>]</p>
+<hr />
+<h3 id="content-negotiation">Content Negotiation<a class="headerlink" href="#content-negotiation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Accept Header</th>
+<th>Format</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>application/json</code></td>
+<td>JSON (default)</td>
+</tr>
+<tr>
+<td><code>application/x-ndjson</code></td>
+<td>Newline-delimited JSON</td>
+</tr>
+<tr>
+<td><code>text/csv</code></td>
+<td>CSV</td>
+</tr>
+<tr>
+<td><code>application/vnd.apache.parquet</code></td>
+<td>Parquet</td>
+</tr>
+<tr>
+<td><code>application/vnd.apache.arrow.stream</code></td>
+<td>Arrow IPC</td>
+</tr>
+</tbody>
+</table>
+<p>(REQ-047, REQ-048, REQ-049, REQ-050) [tool-verified: <code>provisa/api/data/endpoint.py:84-90</code>]</p>
+<hr />
+<h3 id="redirect">Redirect<a class="headerlink" href="#redirect" title="Permanent link">&para;</a></h3>
+<p>Results above a configured row threshold (or when <code>X-Provisa-Redirect: true</code>) are written to S3 and a presigned URL is returned. (REQ-029, REQ-044)</p>
+<table>
+<thead>
+<tr>
+<th>Redirect Format</th>
+<th>Written by</th>
+<th>Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>application/vnd.apache.parquet</code></td>
+<td>federated CTAS</td>
+<td>None — data never passes through Provisa</td>
+</tr>
+<tr>
+<td><code>application/x-orc</code></td>
+<td>federated CTAS</td>
+<td>None — data never passes through Provisa</td>
+</tr>
+<tr>
+<td><code>application/json</code></td>
+<td>Provisa</td>
+<td>Memory-bound</td>
+</tr>
+<tr>
+<td><code>application/x-ndjson</code></td>
+<td>Provisa</td>
+<td>Memory-bound</td>
+</tr>
+<tr>
+<td><code>text/csv</code></td>
+<td>Provisa</td>
+<td>Memory-bound</td>
+</tr>
+<tr>
+<td><code>application/vnd.apache.arrow.stream</code></td>
+<td>Provisa</td>
+<td>Memory-bound</td>
+</tr>
+</tbody>
+</table>
+<p>For large analytical exports, use Parquet or ORC redirect. The federation engine writes directly to S3 in parallel — no data passes through Provisa. (REQ-138)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>X-Provisa-Redirect-Format: application/vnd.apache.parquet
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>X-Provisa-Redirect-Threshold: 1000
+</code></pre></div>
+<hr />
+<h3 id="post-datasql"><code>POST /data/sql</code><a class="headerlink" href="#post-datasql" title="Permanent link">&para;</a></h3>
+<p>Execute raw SQL through the Stage 2 governance pipeline. (REQ-267) [tool-verified: <code>provisa/api/data/endpoint_dev.py:62</code>]</p>
+<p><strong>Request body:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">&quot;sql&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SELECT id, amount FROM orders WHERE region = &#39;us&#39;&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">&quot;discovery_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>The <code>discovery_mode</code> flag widens the table visibility check to include all tables from all contexts. Only for internal tooling. [tool-verified: <code>provisa/api/data/endpoint_dev.py:148-152</code>]</p>
+<p><strong>Required capabilities:</strong> <code>QUERY_DEVELOPMENT</code>.</p>
+<p>Governance violations on <code>POST /data/sql</code> return HTTP 403. (REQ-002, REQ-266)</p>
+<p><strong>Response:</strong> Same format as <code>/data/graphql</code> (JSON rows by default, content-negotiated via <code>Accept</code>).</p>
+<hr />
+<h3 id="post-dataquery"><code>POST /data/query</code><a class="headerlink" href="#post-dataquery" title="Permanent link">&para;</a></h3>
+<p>Unified query endpoint. Accepts GraphQL, SQL, or Cypher — syntax is auto-detected. (REQ-267) [tool-verified: <code>provisa/api/data/endpoint_dev.py:509</code>]</p>
+<p>Cypher queries can also be submitted to the Cypher-only <code>POST /query/cypher</code> endpoint. (REQ-345)</p>
+<p><strong>Request body:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{ orders { id } }&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">&quot;params&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">&quot;variables&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>Returns <code>{"data": ...}</code> for GraphQL, <code>{"columns": [...], "rows": [...]}</code> for SQL and Cypher.</p>
+<hr />
+<h3 id="get-datarestdomain_idtable_name"><code>GET /data/rest/{domain_id}/{table_name}</code><a class="headerlink" href="#get-datarestdomain_idtable_name" title="Permanent link">&para;</a></h3>
+<p>Auto-generated plain REST endpoint for every registered table. The query string maps to GraphQL arguments and the request compiles and executes through the same pipeline (RLS, masking, routing) as GraphQL. (REQ-256) [tool-verified: <code>provisa/api/rest/generator.py:153</code>]</p>
+<p><strong>Query parameters:</strong>
+- <code>limit</code> — max rows (≥ 1)
+- <code>offset</code> — skip rows (≥ 0)
+- <code>fields</code> — comma-separated column names (defaults to all scalar fields)
+- <code>filter</code> — JSON array of <code>{"field", "comparator", "value"}</code> filter objects
+- <code>orderBy</code> — JSON array of <code>{"field", "direction"}</code> sort objects</p>
+<p>The authenticated role is required; unauthenticated requests return <code>401</code>. An OpenAPI spec for these routes is served at <code>GET /data/rest/openapi.json</code> with Swagger UI at <code>GET /data/rest/docs</code>.</p>
+<hr />
+<h3 id="get-datajsonapidomain_idtable_name"><code>GET /data/jsonapi/{domain_id}/{table_name}</code><a class="headerlink" href="#get-datajsonapidomain_idtable_name" title="Permanent link">&para;</a></h3>
+<p>Auto-generated <a href="https://jsonapi.org">JSON:API</a>-compliant endpoint for every registered table. Same RLS, masking, and routing as GraphQL. (REQ-257) [tool-verified: <code>provisa/api/jsonapi/generator.py:284</code>]</p>
+<p><strong><code>Accept</code> header:</strong> must include <code>application/vnd.api+json</code> (the JSON:API media type) or the request returns <code>406</code>.</p>
+<p><strong>Query parameters:</strong>
+- <code>fields[&lt;type&gt;]</code> — sparse fieldsets, e.g. <code>?fields[orders]=amount</code>
+- <code>filter[&lt;col&gt;]</code> / <code>filter[&lt;col&gt;][&lt;op&gt;]</code> — e.g. <code>?filter[region]=US</code>, <code>?filter[amount][gt]=100</code>
+- <code>sort</code> — comma-separated, <code>-</code> prefix for descending, e.g. <code>?sort=-created_at,amount</code>
+- <code>page[number]</code> / <code>page[size]</code> — pagination</p>
+<p>Responses are resource objects with <code>type</code>/<code>id</code>/<code>attributes</code>. Errors follow the JSON:API error object shape.</p>
+<hr />
+<h3 id="post-querynl"><code>POST /query/nl</code><a class="headerlink" href="#post-querynl" title="Permanent link">&para;</a></h3>
+<p>Submit a natural-language question. The service starts an async job and returns <code>202 Accepted</code> with a <code>job_id</code> immediately. Requires an LLM provider configured under the <code>ai_models</code> config section. (REQ-354) [tool-verified: <code>provisa/api/rest/nl_router.py:50</code>]</p>
+<p><strong>Request body:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span><span class="nt">&quot;q&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;How many orders were placed last month?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span><span class="p">}</span>
+</code></pre></div></p>
+<p>Returns <code>{"job_id": "&lt;id&gt;"}</code>. Exceeding the per-role NL rate limit returns <code>429</code> with a <code>Retry-After</code> header. (REQ-370)</p>
+<p><strong>Retrieve the result:</strong></p>
+<ul>
+<li><code>GET /query/nl/{job_id}</code> — poll. Returns the job document.</li>
+<li><code>GET /query/nl/{job_id}/stream</code> — SSE. One <code>branch</code> event per generation target as it completes, then a <code>done</code> event. (REQ-357, REQ-358)</li>
+</ul>
+<p>Three generation loops (Cypher, GraphQL, SQL) run in parallel, each validated through the compiler and refined on error. (REQ-355) The prompt is scoped to the role's visible schema. (REQ-356) The result document keys each branch by target: (REQ-357) [tool-verified: <code>provisa/nl/job.py:69</code>]</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">&quot;job_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;id&gt;&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;complete&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">&quot;branches&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="nt">&quot;cypher&quot;</span><span class="p">:</span><span class="w">  </span><span class="p">{</span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;MATCH ...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="err">...</span><span class="p">],</span><span class="w"> </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">},</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">    </span><span class="nt">&quot;graphql&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{ ... }&quot;</span><span class="p">,</span><span class="w">   </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="err">...</span><span class="p">},</span><span class="w"> </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">},</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="nt">&quot;sql&quot;</span><span class="p">:</span><span class="w">     </span><span class="p">{</span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SELECT ...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="err">...</span><span class="p">],</span><span class="w"> </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="p">}</span>
+</code></pre></div>
+<p>A branch that exhausts its iteration limit returns <code>query: null</code>, <code>result: null</code>, and an <code>error</code> string. Every generated query executes under the consumer's rights with Stage 2 governance applied — the service never bypasses governance. (REQ-359)</p>
+<hr />
+<h3 id="get-datasdl"><code>GET /data/sdl</code><a class="headerlink" href="#get-datasdl" title="Permanent link">&para;</a></h3>
+<p>Return the GraphQL SDL for a role's schema. (REQ-008) [tool-verified: <code>provisa/api/data/sdl.py:137</code>]</p>
+<p><strong>Headers:</strong> <code>X-Role: &lt;role_id&gt;</code> (required)</p>
+<p><strong>Query parameters:</strong>
+- <code>domain</code> — comma-separated domain IDs. When set, the response is filtered to the named domain(s) and tables reachable from them.</p>
+<p><strong>Response:</strong> <code>text/plain</code> GraphQL SDL.</p>
+<hr />
+<h3 id="get-dataintrospection"><code>GET /data/introspection</code><a class="headerlink" href="#get-dataintrospection" title="Permanent link">&para;</a></h3>
+<p>Return GraphQL introspection JSON, optionally domain-filtered. [tool-verified: <code>provisa/api/data/sdl.py:200</code>]</p>
+<p><strong>Headers:</strong> <code>X-Provisa-Role: &lt;role_id&gt;</code> (required)</p>
+<p><strong>Query parameters:</strong> <code>domain</code> — comma-separated domain IDs.</p>
+<p><strong>Response:</strong> <code>application/json</code> introspection result.</p>
+<hr />
+<h3 id="get-datagraph-schema"><code>GET /data/graph-schema</code><a class="headerlink" href="#get-datagraph-schema" title="Permanent link">&para;</a></h3>
+<p>Return the graph view of the role's schema: node labels and their relationship types, for Cypher/graph clients. Includes <code>pk_columns</code> per node label so callers can determine primary-key columns. (REQ-398) [tool-verified: <code>provisa/api/rest/cypher_router.py:689</code>]</p>
+<p><strong>Response:</strong> <code>application/json</code> with <code>node_labels</code> (each carrying <code>pk</code>/<code>pk_columns</code>) and <code>relationship_types</code>.</p>
+<hr />
+<h3 id="get-datadomains"><code>GET /data/domains</code><a class="headerlink" href="#get-datadomains" title="Permanent link">&para;</a></h3>
+<p>Return domain IDs accessible to the requesting role. [tool-verified: <code>provisa/api/data/sdl.py:116</code>]</p>
+<p><strong>Headers:</strong> <code>X-Role: &lt;role_id&gt;</code> (required)</p>
+<p><strong>Response:</strong> <code>["sales", "support", ...]</code></p>
+<hr />
+<h3 id="get-dataschema-version"><code>GET /data/schema-version</code><a class="headerlink" href="#get-dataschema-version" title="Permanent link">&para;</a></h3>
+<p>Return the current schema version string. Combines a per-boot nonce with a rebuild counter. Clients use this to invalidate schema caches after server restarts. (REQ-537) [tool-verified: <code>provisa/api/data/sdl.py:102</code>]</p>
+<p><strong>Response:</strong> <code>{"version": "&lt;boot-id&gt;-&lt;counter&gt;"}</code></p>
+<hr />
+<h3 id="get-dataprotorole_id"><code>GET /data/proto/{role_id}</code><a class="headerlink" href="#get-dataprotorole_id" title="Permanent link">&para;</a></h3>
+<p>Return the auto-generated <code>.proto</code> file for a role. [tool-verified: <code>provisa/api/data/endpoint_dev.py:49</code>]</p>
+<p><strong>Response:</strong> <code>text/plain</code> protobuf schema.</p>
+<p>Each registered table produces a proto <code>message</code>. Relationships produce nested message fields. Type mapping: <code>integer → int32</code>, <code>bigint → int64</code>, <code>varchar → string</code>, <code>decimal → double</code>, <code>boolean → bool</code>, <code>timestamp → google.protobuf.Timestamp</code>. (REQ-538)</p>
+<hr />
+<h3 id="get-datasubscribetable"><code>GET /data/subscribe/{table}</code><a class="headerlink" href="#get-datasubscribetable" title="Permanent link">&para;</a></h3>
+<p>Server-Sent Events stream for real-time change notifications from a table. (REQ-219, REQ-258) [tool-verified: <code>provisa/api/data/subscribe.py:239</code>]</p>
+<p>Notification delivery uses a pluggable provider chosen per source type: PostgreSQL sources use <code>LISTEN/NOTIFY</code> (via asyncpg), MongoDB sources use Change Streams (<code>collection.watch()</code>), and Kafka sources use consumer groups. Each provider implements a common async watch interface. RLS filtering and schema validation apply regardless of provider. (REQ-258) WebSocket and RSS sources are also supported. (REQ-338, REQ-342)</p>
+<p><strong>Header — <code>X-Provisa-Sink</code>:</strong> Set to a Kafka target (e.g. <code>kafka://broker:9092/topic</code>) to redirect change events to a Kafka sink instead of the SSE response. The server launches a sink consumer and returns <code>202 Accepted</code> rather than an open stream. (REQ-812) [tool-verified: <code>provisa/api/data/subscription_sse.py:137</code>]</p>
+<hr />
+<h2 id="admin-rest-endpoints">Admin REST Endpoints<a class="headerlink" href="#admin-rest-endpoints" title="Permanent link">&para;</a></h2>
+<h3 id="config">Config<a class="headerlink" href="#config" title="Permanent link">&para;</a></h3>
+<h4 id="get-adminconfig"><code>GET /admin/config</code><a class="headerlink" href="#get-adminconfig" title="Permanent link">&para;</a></h4>
+<p>Download the current <code>provisa.yaml</code> as <code>application/x-yaml</code> with a <code>Content-Disposition: attachment</code> header. (REQ-164) [tool-verified: <code>provisa/api/admin/settings_router.py:19</code>]</p>
+<h4 id="put-adminconfig"><code>PUT /admin/config</code><a class="headerlink" href="#put-adminconfig" title="Permanent link">&para;</a></h4>
+<p>Upload a revised config YAML. The server writes a <code>.bak</code> backup, saves the new file, and reloads all schemas, sources, and materialized views. (REQ-164) [tool-verified: <code>provisa/api/admin/settings_router.py:32</code>]</p>
+<p><strong>Request body:</strong> Raw YAML content.</p>
+<p><strong>Response:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Config uploaded and reloaded&quot;</span><span class="p">}</span>
+</code></pre></div></p>
+<p>On reload failure: <code>{"success": false, "message": "&lt;error&gt;"}</code>.</p>
+<hr />
+<h3 id="settings">Settings<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h3>
+<h4 id="get-adminsettings"><code>GET /admin/settings</code><a class="headerlink" href="#get-adminsettings" title="Permanent link">&para;</a></h4>
+<p>Return current platform settings as JSON. (REQ-165) [tool-verified: <code>provisa/api/admin/settings_router.py:50</code>]</p>
+<p><strong>Response:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">&quot;redirect&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10000</span><span class="p">,</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="nt">&quot;default_format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;application/vnd.apache.parquet&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">    </span><span class="nt">&quot;ttl&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3600</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">  </span><span class="nt">&quot;sampling&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">    </span><span class="nt">&quot;default_sample_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">  </span><span class="nt">&quot;cache&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">    </span><span class="nt">&quot;default_ttl&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">300</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="w">  </span><span class="nt">&quot;naming&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="w">    </span><span class="nt">&quot;domain_prefix&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">    </span><span class="nt">&quot;convention&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;apollo_graphql&quot;</span>
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="w">  </span><span class="nt">&quot;relationships&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a><span class="w">    </span><span class="nt">&quot;auto_track_fk&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a><span class="w">  </span><span class="nt">&quot;otel&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a><span class="w">    </span><span class="nt">&quot;endpoint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://otel-collector:4318&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-23" name="__codelineno-13-23" href="#__codelineno-13-23"></a><span class="w">    </span><span class="nt">&quot;service_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;provisa&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-24" name="__codelineno-13-24" href="#__codelineno-13-24"></a><span class="w">    </span><span class="nt">&quot;sample_rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-13-25" name="__codelineno-13-25" href="#__codelineno-13-25"></a><span class="w">    </span><span class="nt">&quot;support_endpoint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-26" name="__codelineno-13-26" href="#__codelineno-13-26"></a><span class="w">    </span><span class="nt">&quot;support_redact_sql_literals&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-13-27" name="__codelineno-13-27" href="#__codelineno-13-27"></a><span class="w">    </span><span class="nt">&quot;support_redact_attributes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a><span class="p">}</span>
+</code></pre></div></p>
+<h4 id="put-adminsettings"><code>PUT /admin/settings</code><a class="headerlink" href="#put-adminsettings" title="Permanent link">&para;</a></h4>
+<p>Update platform settings at runtime. All fields are optional — only keys present in the body are updated. (REQ-165) [tool-verified: <code>provisa/api/admin/settings_router.py:100</code>]</p>
+<p><strong>Request body (partial example):</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p">{</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">&quot;otel&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="nt">&quot;support_endpoint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://telemetry.vendor.com/v1/traces&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="nt">&quot;support_redact_sql_literals&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="nt">&quot;support_redact_attributes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;db.statement&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;user.email&quot;</span><span class="p">]</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">  </span><span class="nt">&quot;cache&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;default_ttl&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">600</span><span class="p">}</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>Updatable fields per section:</p>
+<ul>
+<li><code>redirect</code>: <code>enabled</code>, <code>threshold</code>, <code>default_format</code>, <code>ttl</code></li>
+<li><code>sampling</code>: <code>default_sample_size</code></li>
+<li><code>cache</code>: <code>default_ttl</code></li>
+<li><code>naming</code>: <code>domain_prefix</code>, <code>convention</code> — writes to config file and triggers schema reload (REQ-253)</li>
+<li><code>relationships</code>: <code>auto_track_fk</code></li>
+<li><code>otel</code>: <code>endpoint</code>, <code>service_name</code>, <code>sample_rate</code>, <code>support_endpoint</code>, <code>support_redact_sql_literals</code>, <code>support_redact_attributes</code></li>
+</ul>
+<p><strong>Response:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">{</span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;updated&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;otel.support_endpoint&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;cache.default_ttl&quot;</span><span class="p">]}</span>
+</code></pre></div></p>
+<hr />
+<h3 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h3>
+<h4 id="get-admintracesrecent"><code>GET /admin/traces/recent</code><a class="headerlink" href="#get-admintracesrecent" title="Permanent link">&para;</a></h4>
+<p>Return up to N recent completed spans from the in-memory span buffer. (REQ-302) [tool-verified: <code>provisa/api/admin/settings_router.py:317</code>]</p>
+<p><strong>Query parameters:</strong> <code>limit</code> (default 50, max 200)</p>
+<p><strong>Response:</strong> <code>{"traces": [...]}</code></p>
+<h4 id="post-adminquery-enginereload-catalog"><code>POST /admin/query-engine/reload-catalog</code><a class="headerlink" href="#post-adminquery-enginereload-catalog" title="Permanent link">&para;</a></h4>
+<p>Hot-reload a named catalog in the federation engine coordinator via its REST API. Reconnects Provisa's internal connection and re-runs OTel DDL. [tool-verified: <code>provisa/api/admin/settings_router.py:208</code>]</p>
+<p><strong>Query parameters:</strong> <code>catalog</code> (default <code>"otel"</code>)</p>
+<p><strong>Response:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p">{</span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;errors&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]}</span>
+</code></pre></div></p>
+<h4 id="post-adminquery-enginerestart"><code>POST /admin/query-engine/restart</code><a class="headerlink" href="#post-adminquery-enginerestart" title="Permanent link">&para;</a></h4>
+<p>Restart the federation engine container (single-node dev only). [tool-verified: <code>provisa/api/admin/settings_router.py:287</code>]</p>
+<p><strong>Query parameters:</strong> <code>container</code> (defaults to <code>QUERY_ENGINE_CONTAINER</code> env var, then <code>"trino"</code>)</p>
+<hr />
+<h3 id="discovery">Discovery<a class="headerlink" href="#discovery" title="Permanent link">&para;</a></h3>
+<h4 id="post-admindiscoverrelationships"><code>POST /admin/discover/relationships</code><a class="headerlink" href="#post-admindiscoverrelationships" title="Permanent link">&para;</a></h4>
+<p>Trigger relationship discovery. Always runs FK introspection from the federation engine. (REQ-018) Runs LLM inference if <code>ANTHROPIC_API_KEY</code> is set. (REQ-167) [tool-verified: <code>provisa/api/admin/discovery.py:55</code>]</p>
+<p><strong>Request body:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="p">{</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;domain&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span><span class="nt">&quot;domain_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sales&quot;</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="p">}</span>
+</code></pre></div></p>
+<p><code>scope</code> must be one of <code>"table"</code>, <code>"domain"</code>, <code>"cross-domain"</code>. For <code>"table"</code> scope, <code>table_id</code> (integer) is required. For <code>"domain"</code> scope, <code>domain_id</code> is required.</p>
+<p><strong>Response:</strong> <code>{"candidates_found": 12, "stored_ids": [1, 2, 3, ...]}</code></p>
+<h4 id="get-admindiscovercandidates"><code>GET /admin/discover/candidates</code><a class="headerlink" href="#get-admindiscovercandidates" title="Permanent link">&para;</a></h4>
+<p>List pending relationship candidates. [tool-verified: <code>provisa/api/admin/discovery.py:96</code>]</p>
+<h4 id="post-admindiscovercandidatescandidate_idaccept"><code>POST /admin/discover/candidates/{candidate_id}/accept</code><a class="headerlink" href="#post-admindiscovercandidatescandidate_idaccept" title="Permanent link">&para;</a></h4>
+<p>Accept a candidate and register it as a relationship. [tool-verified: <code>provisa/api/admin/discovery.py:103</code>]</p>
+<p><strong>Request body (optional):</strong> <code>{"name": "custom-relationship-name"}</code></p>
+<h4 id="post-admindiscovercandidatescandidate_idreject"><code>POST /admin/discover/candidates/{candidate_id}/reject</code><a class="headerlink" href="#post-admindiscovercandidatescandidate_idreject" title="Permanent link">&para;</a></h4>
+<p>Reject a candidate. [tool-verified: <code>provisa/api/admin/discovery.py:110</code>]</p>
+<p><strong>Request body:</strong> <code>{"reason": "Not a real join"}</code></p>
+<h4 id="get-admindiscovercandidatesrejectedcount"><code>GET /admin/discover/candidates/rejected/count</code><a class="headerlink" href="#get-admindiscovercandidatesrejectedcount" title="Permanent link">&para;</a></h4>
+<p>Return count of rejected candidates. [tool-verified: <code>provisa/api/admin/discovery.py:118</code>]</p>
+<h4 id="delete-admindiscovercandidatesrejected"><code>DELETE /admin/discover/candidates/rejected</code><a class="headerlink" href="#delete-admindiscovercandidatesrejected" title="Permanent link">&para;</a></h4>
+<p>Delete all rejected candidates. [tool-verified: <code>provisa/api/admin/discovery.py:128</code>]</p>
+<hr />
+<h3 id="source-crawl">Source Crawl<a class="headerlink" href="#source-crawl" title="Permanent link">&para;</a></h3>
+<h4 id="post-adminsourcescrawl"><code>POST /admin/sources/crawl</code><a class="headerlink" href="#post-adminsourcescrawl" title="Permanent link">&para;</a></h4>
+<p>Crawl a data source to introspect its schema and register tables. (REQ-012) [tool-verified: <code>provisa/api/admin/crawl_router.py:36</code>]</p>
+<hr />
+<h3 id="source-table-search">Source Table Search<a class="headerlink" href="#source-table-search" title="Permanent link">&para;</a></h3>
+<h4 id="get-adminsourcessource_idtablessearch"><code>GET /admin/sources/{source_id}/tables/search</code><a class="headerlink" href="#get-adminsourcessource_idtablessearch" title="Permanent link">&para;</a></h4>
+<p>Search available (not yet registered) tables in a source by name. [tool-verified: <code>provisa/api/admin/table_search_router.py:103</code>]</p>
+<hr />
+<h3 id="table-profiling">Table Profiling<a class="headerlink" href="#table-profiling" title="Permanent link">&para;</a></h3>
+<h4 id="post-admintablestable_idprofile"><code>POST /admin/tables/{table_id}/profile</code><a class="headerlink" href="#post-admintablestable_idprofile" title="Permanent link">&para;</a></h4>
+<p>Run a column profile on a registered table — cardinality, min/max, null rates. [tool-verified: <code>provisa/api/admin/table_profile_router.py:28</code>]</p>
+<hr />
+<h3 id="source-descriptions">Source Descriptions<a class="headerlink" href="#source-descriptions" title="Permanent link">&para;</a></h3>
+<h4 id="post-adminsource-metadb-description"><code>POST /admin/source-meta/db-description</code><a class="headerlink" href="#post-adminsource-metadb-description" title="Permanent link">&para;</a></h4>
+<p>Generate LLM-assisted descriptions for a source's tables and columns. [tool-verified: <code>provisa/api/admin/source_meta_router.py:48</code>]</p>
+<hr />
+<h3 id="actions-functions-and-webhooks">Actions (Functions and Webhooks)<a class="headerlink" href="#actions-functions-and-webhooks" title="Permanent link">&para;</a></h3>
+<p>All endpoints are under the <code>/admin/actions</code> prefix. (REQ-205) [tool-verified: <code>provisa/api/admin/actions_router.py:24</code>]</p>
+<p>Every invocation — from GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP <code>run_sql</code>, and Provisa gRPC — routes through a single governed executor that enforces <code>writable_by</code> and governance uniformly. (REQ-1156) [tool-verified: <code>provisa/api/data/action_exec.py</code>] See <a href="../integrations/#invoking-commands-across-protocols">docs/integrations.md</a> for the per-protocol call syntax.</p>
+<h4 id="get-adminactions"><code>GET /admin/actions</code><a class="headerlink" href="#get-adminactions" title="Permanent link">&para;</a></h4>
+<p>Return all tracked DB functions and webhooks. (REQ-242) [tool-verified: <code>provisa/api/admin/actions_router.py:104</code>]</p>
+<p><strong>Response:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="p">{</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">  </span><span class="nt">&quot;functions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;random_python_set&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">      </span><span class="nt">&quot;implKind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;python&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">      </span><span class="nt">&quot;binding&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;callable&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;demo.py_functions:random_dataset&quot;</span><span class="p">},</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">      </span><span class="nt">&quot;returns&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="w">      </span><span class="nt">&quot;returnSchema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="w">        </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;integer&quot;</span><span class="p">},</span><span class="w"> </span><span class="nt">&quot;region&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">}}}</span>
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="w">      </span><span class="p">},</span>
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="w">      </span><span class="nt">&quot;arguments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rows&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Int&quot;</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;seed&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Int&quot;</span><span class="p">}],</span>
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="w">      </span><span class="nt">&quot;visibleTo&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;admin&quot;</span><span class="p">],</span>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="w">      </span><span class="nt">&quot;writableBy&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a><span class="w">      </span><span class="nt">&quot;domainId&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pet-store&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="w">      </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Demo Python command returning random rows&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a><span class="w">      </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;query&quot;</span>
+<a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="w">  </span><span class="p">],</span>
+<a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a><span class="w">  </span><span class="nt">&quot;webhooks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-18-22" name="__codelineno-18-22" href="#__codelineno-18-22"></a><span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;add-pet&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-23" name="__codelineno-18-23" href="#__codelineno-18-23"></a><span class="w">      </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://petstore.example.com/pets&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-24" name="__codelineno-18-24" href="#__codelineno-18-24"></a><span class="w">      </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-25" name="__codelineno-18-25" href="#__codelineno-18-25"></a><span class="w">      </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mutation&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-26" name="__codelineno-18-26" href="#__codelineno-18-26"></a><span class="w">      </span><span class="nt">&quot;approved&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-18-27" name="__codelineno-18-27" href="#__codelineno-18-27"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-18-28" name="__codelineno-18-28" href="#__codelineno-18-28"></a><span class="w">  </span><span class="p">]</span>
+<a id="__codelineno-18-29" name="__codelineno-18-29" href="#__codelineno-18-29"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>Each webhook object carries an <code>approved</code> boolean. A webhook is approved once a steward executes its creation request (REQ-209); config-declared webhooks are auto-approved. An unapproved webhook is registered but not exposed on any surface. [tool-verified: <code>provisa/api/admin/actions_router.py:124-131</code>]</p>
+<h4 id="post-adminactionsfunctions"><code>POST /admin/actions/functions</code><a class="headerlink" href="#post-adminactionsfunctions" title="Permanent link">&para;</a></h4>
+<p>Register a tracked function (command). (REQ-205) [tool-verified: <code>provisa/api/admin/actions_router.py:117</code>]</p>
+<p><strong>Key fields:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>Yes</td>
+<td>Unique command name</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>Yes</td>
+<td><code>"query"</code> → GraphQL Query field; <code>"mutation"</code> → Mutation field</td>
+</tr>
+<tr>
+<td><code>implKind</code></td>
+<td>No</td>
+<td>How the command runs — see table below (default <code>source_procedure</code>)</td>
+</tr>
+<tr>
+<td><code>binding</code></td>
+<td>No</td>
+<td><code>implKind</code>-specific connection details (JSON object)</td>
+</tr>
+<tr>
+<td><code>returnSchema</code></td>
+<td>No</td>
+<td>JSON Schema <code>{type:"array", items:{type:"object", properties:{...}}}</code> — makes the command set-returning on every surface</td>
+</tr>
+<tr>
+<td><code>arguments</code></td>
+<td>No</td>
+<td><code>[{name, type}]</code> argument definitions; positional order matters for SQL and Bolt callers</td>
+</tr>
+<tr>
+<td><code>visibleTo</code></td>
+<td>No</td>
+<td>Role IDs that can call the command</td>
+</tr>
+<tr>
+<td><code>writableBy</code></td>
+<td>No</td>
+<td>Role IDs permitted to invoke it as a mutation</td>
+</tr>
+<tr>
+<td><code>domainId</code></td>
+<td>No</td>
+<td>Domain for GraphQL placement and access control</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>implKind</code> values:</strong></p>
+<table>
+<thead>
+<tr>
+<th><code>implKind</code></th>
+<th>What runs</th>
+<th><code>binding</code> fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_procedure</code></td>
+<td>Stored procedure on a registered source (default)</td>
+<td><code>sourceId</code>, <code>schemaName</code>, <code>functionName</code></td>
+</tr>
+<tr>
+<td><code>script</code></td>
+<td>Server-side script</td>
+<td><code>script</code></td>
+</tr>
+<tr>
+<td><code>http</code></td>
+<td>Outbound HTTP call</td>
+<td><code>url</code>, <code>method</code></td>
+</tr>
+<tr>
+<td><code>grpc</code></td>
+<td>Outbound gRPC call to an external server</td>
+<td><code>target</code>, <code>method</code></td>
+</tr>
+<tr>
+<td><code>python</code></td>
+<td>Python callable hosted by Provisa (REQ-885)</td>
+<td><code>callable</code> (e.g. <code>"demo.py_functions:random_dataset"</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>The demo commands <code>random_python_set</code> (<code>implKind: python</code>) and <code>random_grpc_set</code> (<code>implKind: grpc</code>) show set-returning commands with <code>returnSchema</code> in practice; both are in <code>config/provisa-install.yaml</code>. [tool-verified: <code>config/provisa-install.yaml:809-856</code>]</p>
+<h4 id="put-adminactionsfunctionsname"><code>PUT /admin/actions/functions/{name}</code><a class="headerlink" href="#put-adminactionsfunctionsname" title="Permanent link">&para;</a></h4>
+<p>Update a tracked function by name. [tool-verified: <code>provisa/api/admin/actions_router.py:182</code>]</p>
+<h4 id="delete-adminactionsfunctionsname"><code>DELETE /admin/actions/functions/{name}</code><a class="headerlink" href="#delete-adminactionsfunctionsname" title="Permanent link">&para;</a></h4>
+<p>Delete a tracked function by name. [tool-verified: <code>provisa/api/admin/actions_router.py:233</code>]</p>
+<h4 id="post-adminactionswebhooks"><code>POST /admin/actions/webhooks</code><a class="headerlink" href="#post-adminactionswebhooks" title="Permanent link">&para;</a></h4>
+<p>Register a tracked webhook. (REQ-209) Registering or updating a webhook enqueues a steward approval request — the webhook becomes active on all surfaces only after a steward approves it. Config-declared webhooks are auto-approved. <strong>Request body fields:</strong> <code>name</code>, <code>url</code>, <code>method</code>, <code>timeoutMs</code>, <code>returns</code>, <code>inlineReturnType</code>, <code>arguments</code>, <code>visibleTo</code>, <code>domainId</code>, <code>description</code>, <code>kind</code>. [tool-verified: <code>provisa/api/admin/actions_router.py:132</code>, <code>provisa/api/admin/actions_router.py:325-331</code>]</p>
+<h4 id="put-adminactionswebhooksname"><code>PUT /admin/actions/webhooks/{name}</code><a class="headerlink" href="#put-adminactionswebhooksname" title="Permanent link">&para;</a></h4>
+<p>Update a tracked webhook by name. Any edit resets approval to pending until re-approved. [tool-verified: <code>provisa/api/admin/actions_router.py:306</code>]</p>
+<h4 id="delete-adminactionswebhooksname"><code>DELETE /admin/actions/webhooks/{name}</code><a class="headerlink" href="#delete-adminactionswebhooksname" title="Permanent link">&para;</a></h4>
+<p>Delete a tracked webhook by name. [tool-verified: <code>provisa/api/admin/actions_router.py:355</code>]</p>
+<h4 id="post-adminactionstest"><code>POST /admin/actions/test</code><a class="headerlink" href="#post-adminactionstest" title="Permanent link">&para;</a></h4>
+<p>Test an action (function or webhook) by name. (REQ-245) [tool-verified: <code>provisa/api/admin/actions_router.py:384</code>]</p>
+<hr />
+<h3 id="roles">Roles<a class="headerlink" href="#roles" title="Permanent link">&para;</a></h3>
+<p>All endpoints are under the <code>/admin/roles</code> prefix. [tool-verified: <code>provisa/api/admin/roles_router.py:18</code>]</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/admin/roles/</code></td>
+<td>List all roles</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/admin/roles/</code></td>
+<td>Create a role</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/admin/roles/{role_id}</code></td>
+<td>Update a role</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/admin/roles/{role_id}</code></td>
+<td>Delete a role</td>
+</tr>
+</tbody>
+</table>
+<p>[tool-verified: <code>provisa/api/admin/roles_router.py</code>]</p>
+<hr />
+<h3 id="users">Users<a class="headerlink" href="#users" title="Permanent link">&para;</a></h3>
+<p>All endpoints are under the <code>/admin/users</code> prefix. [tool-verified: <code>provisa/api/admin/local_users_router.py:21</code>]</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/admin/users/</code></td>
+<td>Create a local user</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/admin/users/</code></td>
+<td>List local users</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/admin/users/{user_id}</code></td>
+<td>Get a user</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/admin/users/{user_id}</code></td>
+<td>Update a user</td>
+</tr>
+<tr>
+<td><code>PATCH</code></td>
+<td><code>/admin/users/{user_id}/password</code></td>
+<td>Change password</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/admin/users/{user_id}</code></td>
+<td>Delete a user</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/admin/users/{user_id}/assignments</code></td>
+<td>List role assignments</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/admin/users/{user_id}/assignments</code></td>
+<td>Add a role assignment</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/admin/users/{user_id}/assignments/{assignment_id}</code></td>
+<td>Remove a role assignment</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="organizations">Organizations<a class="headerlink" href="#organizations" title="Permanent link">&para;</a></h3>
+<p>All endpoints are under <code>/admin/orgs</code>. [tool-verified: <code>provisa/api/admin/orgs_router.py:18</code>]</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/admin/orgs/</code></td>
+<td>List orgs</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/admin/orgs/</code></td>
+<td>Create an org</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/admin/orgs/{org_id}</code></td>
+<td>Update an org</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/admin/orgs/{org_id}</code></td>
+<td>Delete an org</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/admin/orgs/{org_id}/members</code></td>
+<td>List members</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/admin/orgs/{org_id}/members</code></td>
+<td>Add a member</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/admin/orgs/{org_id}/members/{user_id}</code></td>
+<td>Remove a member</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="invites">Invites<a class="headerlink" href="#invites" title="Permanent link">&para;</a></h3>
+<p>All endpoints are under <code>/admin/invites</code>. [tool-verified: <code>provisa/api/admin/invites_router.py:18</code>]</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/admin/invites/</code></td>
+<td>Create an invite</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/admin/invites/</code></td>
+<td>List pending invites</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/admin/invites/{token}</code></td>
+<td>Revoke an invite</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="admin-graphql">Admin GraphQL<a class="headerlink" href="#admin-graphql" title="Permanent link">&para;</a></h3>
+<h4 id="post-admingraphql"><code>POST /admin/graphql</code><a class="headerlink" href="#post-admingraphql" title="Permanent link">&para;</a></h4>
+<p>Strawberry GraphQL endpoint for all admin operations: source and table CRUD, relationship management, domain configuration, RLS rules, cache control, naming conventions, scheduled task management, and query compilation. (REQ-164) [tool-verified: <code>provisa/api/app.py:2171</code>]</p>
+<p><strong>Key mutations:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c"># Cache</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="k">mutation</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">update_source_cache</span><span class="p">(</span><span class="n">source_id</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;sales-pg&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">enabled</span><span class="p">:</span><span class="w"> </span><span class="nb">true</span><span class="p">,</span><span class="w"> </span><span class="n">ttl</span><span class="p">:</span><span class="w"> </span><span class="mi">600</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">success</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="k">mutation</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">update_table_cache</span><span class="p">(</span><span class="n">table_id</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">ttl</span><span class="p">:</span><span class="w"> </span><span class="mi">60</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">success</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="c"># Naming conventions</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="k">mutation</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">update_source_naming</span><span class="p">(</span><span class="n">source_id</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;legacy-db&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">convention</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;camelCase&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">success</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="k">mutation</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">update_table_naming</span><span class="p">(</span><span class="n">table_id</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">convention</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;PascalCase&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">success</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="c"># Scheduled tasks</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="k">mutation</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">toggle_scheduled_task</span><span class="p">(</span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;daily-report&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">enabled</span><span class="p">:</span><span class="w"> </span><span class="nb">false</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">success</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="c"># Compile a query (returns enforcement metadata and routed SQL)</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="k">mutation</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a><span class="w">  </span><span class="n">compile_query</span><span class="p">(</span><span class="n">input</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="n">role</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;admin&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">query</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{ orders { id } }&quot;</span><span class="p">})</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a><span class="w">    </span><span class="n">sql</span><span class="w"> </span><span class="n">semantic_sql</span><span class="w"> </span><span class="n">trino_sql</span><span class="w"> </span><span class="n">direct_sql</span><span class="w"> </span><span class="n">route</span><span class="w"> </span><span class="n">route_reason</span><span class="w"> </span><span class="n">sources</span><span class="w"> </span><span class="n">root_field</span>
+<a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a><span class="w">    </span><span class="n">enforcement</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">rls_filters_applied</span><span class="w"> </span><span class="n">columns_excluded</span><span class="w"> </span><span class="n">masking_applied</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a><span class="p">}</span>
+</code></pre></div>
+<p>[tool-verified: <code>provisa/api/admin/schema.py</code>, <code>provisa/api/admin/actions_router.py</code>]</p>
+<hr />
+<h3 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">&para;</a></h3>
+<h4 id="get-setupstatus"><code>GET /setup/status</code><a class="headerlink" href="#get-setupstatus" title="Permanent link">&para;</a></h4>
+<p>Return first-run setup status. Always unauthenticated. (REQ-539) [tool-verified: <code>provisa/api/setup_router.py:100</code>]</p>
+<h4 id="post-setup"><code>POST /setup/</code><a class="headerlink" href="#post-setup" title="Permanent link">&para;</a></h4>
+<p>Complete first-run setup. [tool-verified: <code>provisa/api/setup_router.py:142</code>]</p>
+<hr />
+<h2 id="health-check">Health Check<a class="headerlink" href="#health-check" title="Permanent link">&para;</a></h2>
+<h4 id="get-health-or-head-health"><code>GET /health</code> or <code>HEAD /health</code><a class="headerlink" href="#get-health-or-head-health" title="Permanent link">&para;</a></h4>
+<p>Returns <code>{"status": "ok"}</code>. Always unauthenticated. (REQ-539) [tool-verified: <code>provisa/api/app.py:2258</code>]</p>
+<hr />
+<h2 id="error-responses">Error Responses<a class="headerlink" href="#error-responses" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>400</td>
+<td>Invalid query, validation error, or SQL parse error</td>
+</tr>
+<tr>
+<td>401</td>
+<td>Missing or invalid auth token</td>
+</tr>
+<tr>
+<td>403</td>
+<td>Insufficient capabilities; governance violation</td>
+</tr>
+<tr>
+<td>404</td>
+<td>Role, resource, or config file not found</td>
+</tr>
+<tr>
+<td>422</td>
+<td>Missing required header (e.g. <code>X-Role</code>)</td>
+</tr>
+<tr>
+<td>503</td>
+<td>Database or source not connected; dependency unavailable</td>
+</tr>
+<tr>
+<td>504</td>
+<td>Request timed out</td>
+</tr>
+</tbody>
+</table>
+<p>Governance violations on <code>POST /data/sql</code> return HTTP 403 with a structured body: (REQ-002) [tool-verified: <code>provisa/api/data/endpoint_dev.py:184-190</code>]</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="p">{</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">  </span><span class="nt">&quot;detail&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">    </span><span class="nt">&quot;violations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">      </span><span class="p">{</span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;V000&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Table &#39;orders&#39; is not accessible for role &#39;analyst&#39;&quot;</span><span class="p">}</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">    </span><span class="p">]</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="p">}</span>
+</code></pre></div>
+<p>All other errors use: <code>{"detail": "&lt;message&gt;"}</code>.</p>
+<hr />
+<h2 id="arrow-flight-endpoint">Arrow Flight Endpoint<a class="headerlink" href="#arrow-flight-endpoint" title="Permanent link">&para;</a></h2>
+<p>Port <code>8815</code>. Native Arrow columnar transport over gRPC. (REQ-143, REQ-045) [tool-verified: <code>provisa/api/flight/server.py</code>]</p>
+<p>Queries and catalog discovery are both available on the same connection. The full governance pipeline (RLS, masking, sampling) is applied to every query. (REQ-130, REQ-143)</p>
+<p><strong>Ticket format</strong> (JSON):
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="p">{</span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{ customers { name email } }&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;analyst&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;variables&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}}</span>
+</code></pre></div></p>
+<p><strong>Usage (Python):</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pyarrow.flight</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">flight</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="n">client</span> <span class="o">=</span> <span class="n">flight</span><span class="o">.</span><span class="n">FlightClient</span><span class="p">(</span><span class="s2">&quot;grpc://localhost:8815&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="n">ticket</span> <span class="o">=</span> <span class="n">flight</span><span class="o">.</span><span class="n">Ticket</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;{&quot;query&quot;: &quot;{ orders { id amount } }&quot;, &quot;role&quot;: &quot;admin&quot;}&#39;</span><span class="p">)</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="c1"># Stream batch-by-batch</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">client</span><span class="o">.</span><span class="n">do_get</span><span class="p">(</span><span class="n">ticket</span><span class="p">):</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>    <span class="n">process</span><span class="p">(</span><span class="n">batch</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="c1"># Or read all at once</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="n">table</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">do_get</span><span class="p">(</span><span class="n">ticket</span><span class="p">)</span><span class="o">.</span><span class="n">read_all</span><span class="p">()</span>
+</code></pre></div></p>
+<p>When the Zaychik Flight SQL proxy is available (port 8480), record batches stream end-to-end without full materialization. (REQ-144) Falls back to materializing via the federated query layer if Zaychik is unavailable. (REQ-146)</p>
+<hr />
+<h2 id="protobuf-grpc-endpoint">Protobuf gRPC Endpoint<a class="headerlink" href="#protobuf-grpc-endpoint" title="Permanent link">&para;</a></h2>
+<p>Port <code>50051</code> (override with <code>GRPC_PORT</code> env var or <code>server.grpc_port</code> config). (REQ-529) [tool-verified: <code>provisa/grpc/server.py</code>, <code>provisa/api/app.py</code>]</p>
+<p>Pass the role in the <code>x-provisa-role</code> gRPC metadata key. If absent, the server aborts with <code>UNAUTHENTICATED</code>. [tool-verified: <code>provisa/grpc/server.py</code>]</p>
+<p>Download the role-specific proto from <code>GET /data/proto/{role_id}</code>. Only tables and columns visible to that role appear. (REQ-039)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kd">service</span><span class="w"> </span><span class="n">ProvisaService</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">QueryOrders</span><span class="w"> </span><span class="p">(</span><span class="n">QueryOrdersRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">stream</span><span class="w"> </span><span class="n">Orders</span><span class="p">);</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">  </span><span class="k">rpc</span><span class="w"> </span><span class="n">InsertOrders</span><span class="w"> </span><span class="p">(</span><span class="n">InsertOrdersRequest</span><span class="p">)</span><span class="w"> </span><span class="k">returns</span><span class="w"> </span><span class="p">(</span><span class="n">InsertOrdersResponse</span><span class="p">);</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="p">}</span>
+</code></pre></div>
+<p>Each table produces a <code>Query{TypeName}</code> streaming RPC. <code>Insert{TypeName}</code> RPCs exist for schema symmetry but abort with <code>UNIMPLEMENTED</code>. [tool-verified: <code>provisa/grpc/server.py</code>]</p>
+<p><code>grpc_reflection.v1alpha</code> is enabled for service discovery without a pre-compiled proto. (REQ-529) [tool-verified: <code>provisa/grpc/reflection.py</code>]</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>grpcurl<span class="w"> </span>-plaintext<span class="w"> </span>localhost:50051<span class="w"> </span>list
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>grpcurl<span class="w"> </span>-plaintext<span class="w"> </span>-H<span class="w"> </span><span class="s1">&#39;x-provisa-role: analyst&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="w"> </span>localhost:50051<span class="w"> </span>ProvisaService/QueryOrders
+</code></pre></div>
+<p>The gRPC server starts only when a valid proto can be compiled at startup. If schema build fails, the gRPC server does not start. (REQ-529)</p>
+<hr />
+<h2 id="jdbc-driver">JDBC Driver<a class="headerlink" href="#jdbc-driver" title="Permanent link">&para;</a></h2>
+<p>The Provisa JDBC driver (<code>provisa-jdbc-0.1.0.jar</code>) exposes the semantic catalog to BI tools (Tableau, PowerBI, DBeaver). (REQ-126)</p>
+<p><strong>Connection URL:</strong> <code>jdbc:provisa://host:port</code> (REQ-131)</p>
+<p>Domains map to JDBC schemas. (REQ-127) Tables use their registered aliases. Columns use aliases and surface descriptions as <code>REMARKS</code>. (REQ-128) Standard metadata methods (<code>getPrimaryKeys</code>, <code>getImportedKeys</code>, <code>getExportedKeys</code>) expose semantic relationships as PK/FK metadata.</p>
+<p><strong>SQL support:</strong> <code>SELECT * FROM &lt;alias&gt; [WHERE col = 'value']</code>. (REQ-129)</p>
+<p>The driver requests Arrow IPC redirect by default. Results stream batch-by-batch via <code>ArrowStreamReader</code>, bounded to one record batch in memory. (REQ-293)</p>
+<hr />
+<h2 id="orderby-argument-format"><code>orderBy</code> Argument Format<a class="headerlink" href="#orderby-argument-format" title="Permanent link">&para;</a></h2>
+<p>The <code>order_by</code> argument uses <code>{column: direction}</code> objects with a 6-value direction enum: (REQ-200)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="p">{</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{ orders(order_by: [{created_at: desc_nulls_last}]) { id created_at } }&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">  </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;admin&quot;</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="p">}</span>
+</code></pre></div>
+<p>Supported directions: <code>asc</code>, <code>desc</code>, <code>asc_nulls_first</code>, <code>asc_nulls_last</code>, <code>desc_nulls_first</code>, <code>desc_nulls_last</code>. (REQ-201)</p>
+<hr />
+<h2 id="subscriptions">Subscriptions<a class="headerlink" href="#subscriptions" title="Permanent link">&para;</a></h2>
+<p>SSE subscriptions are available at <code>GET /data/subscribe/{table}</code>. (REQ-219, REQ-258) Notification delivery uses a pluggable provider selected per source type: PostgreSQL sources use <code>LISTEN/NOTIFY</code>, MongoDB sources use Change Streams, and Kafka sources use consumer groups. RLS filtering and schema validation apply regardless of provider. WebSocket and RSS sources are also supported via the same endpoint. (REQ-338, REQ-342) [tool-verified: <code>provisa/api/data/subscribe.py:239</code>, <code>provisa/subscriptions/registry.py</code>, <code>provisa/api/app.py</code> <code>_rebuild_schemas</code>]</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../deployment/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Deployment">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Deployment
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../cypher/" class="md-footer__link md-footer__link--next" aria-label="Next: Cypher">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Cypher
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,3864 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A single governed API over 46 heterogeneous data sources — query with GraphQL, Cypher, or SQL.">
+      
+      
+      
+        <link rel="canonical" href="https://provisa.dev/docs/deployment/">
+      
+      
+        <link rel="prev" href="../configuration/">
+      
+      
+        <link rel="next" href="../api-reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Deployment - Provisa</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#deployment" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Provisa" class="md-header__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Provisa
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deployment
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Provisa" class="md-nav__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Provisa
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-a-deployment-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a Deployment Path
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Choosing a Deployment Path">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vm-vs-kubernetes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM vs Kubernetes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#image-acquisition-and-security-scanning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Image acquisition and security scanning
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-from-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development (from source)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Development (from source)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recommended-start-uish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended: start-ui.sh
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-steps-backend-only-no-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual steps (backend only, no UI)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-stack-provisa-in-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full stack (Provisa in container)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Services
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetry-backend-otlp2sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry backend (otlp2sql)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#macos-installer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS Installer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="macOS Installer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data persistence
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windows-installer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows Installer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Windows Installer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#steps_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-persistence_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data persistence
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#linux-appimage-single-or-multi-node-vm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux AppImage — Single or Multi-Node VM
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Linux AppImage — Single or Multi-Node VM">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it is
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps-single-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps — Single Node
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps-multi-node-primary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps — Multi-Node (Primary)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps-multi-node-each-secondary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps — Multi-Node (Each Secondary)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#primary-secondary-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary / secondary topology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#non-interactive-automated-first-launch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-interactive (automated) first-launch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cloud-vm-deployment-terraform-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud VM Deployment — Terraform (AWS)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cloud VM Deployment — Terraform (AWS)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wizard-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wizard questions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#instance-sizing-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instance sizing guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-gets-provisioned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets provisioned
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prerequisites-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kubernetes-helm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kubernetes / Helm
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Kubernetes / Helm">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prerequisites-checklist_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scaling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scaling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#updating-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Updating config
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#high-availability-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High Availability &amp; Recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#federation-engine-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Federation Engine Dependencies
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Federation Engine Dependencies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#python-packages-already-in-core-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python packages (already in core dependencies)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#system-level-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System-level requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-engine-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-engine checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#config-promotion-workflow-dev-test-prod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config promotion workflow (dev → test → prod)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query & Interfaces
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Query & Interfaces
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cypher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cypher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subscriptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subscriptions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations (JDBC, BI, Flight)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pgwire/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pgwire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data Sources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-schemas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote Schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import (Hasura / DDN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security & Governance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security & Governance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multitenant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multitenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Clients
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Clients
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/fdw_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FDW Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/change-signal-unification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Signal Unification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-a-deployment-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a Deployment Path
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Choosing a Deployment Path">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vm-vs-kubernetes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM vs Kubernetes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#image-acquisition-and-security-scanning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Image acquisition and security scanning
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-from-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development (from source)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Development (from source)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recommended-start-uish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended: start-ui.sh
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-steps-backend-only-no-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual steps (backend only, no UI)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-stack-provisa-in-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full stack (Provisa in container)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Services
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetry-backend-otlp2sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry backend (otlp2sql)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#macos-installer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS Installer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="macOS Installer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data persistence
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windows-installer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows Installer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Windows Installer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#steps_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-persistence_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data persistence
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#linux-appimage-single-or-multi-node-vm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux AppImage — Single or Multi-Node VM
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Linux AppImage — Single or Multi-Node VM">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it is
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps-single-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps — Single Node
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps-multi-node-primary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps — Multi-Node (Primary)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps-multi-node-each-secondary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps — Multi-Node (Each Secondary)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#primary-secondary-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary / secondary topology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#non-interactive-automated-first-launch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-interactive (automated) first-launch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cloud-vm-deployment-terraform-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud VM Deployment — Terraform (AWS)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cloud VM Deployment — Terraform (AWS)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wizard-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wizard questions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#instance-sizing-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instance sizing guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-gets-provisioned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets provisioned
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prerequisites-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kubernetes-helm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kubernetes / Helm
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Kubernetes / Helm">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steps_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prerequisites-checklist_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scaling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scaling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#updating-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Updating config
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#high-availability-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High Availability &amp; Recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#federation-engine-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Federation Engine Dependencies
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Federation Engine Dependencies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#python-packages-already-in-core-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python packages (already in core dependencies)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#system-level-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System-level requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-engine-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-engine checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#config-promotion-workflow-dev-test-prod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config promotion workflow (dev → test → prod)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="deployment">Deployment<a class="headerlink" href="#deployment" title="Permanent link">&para;</a></h1>
+<h2 id="choosing-a-deployment-path">Choosing a Deployment Path<a class="headerlink" href="#choosing-a-deployment-path" title="Permanent link">&para;</a></h2>
+<p>Provisa supports six deployment paths. Choose based on your audience and operational context:</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Artifact / Script</th>
+<th>Best for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Development</strong></td>
+<td><code>start-ui.sh</code></td>
+<td>From-source development, evaluation with full demo data</td>
+</tr>
+<tr>
+<td><strong>macOS installer</strong></td>
+<td><code>Provisa-&lt;version&gt;-macOS.dmg</code></td>
+<td>Developer workstations, evaluation</td>
+</tr>
+<tr>
+<td><strong>Windows installer</strong></td>
+<td><code>Provisa-&lt;version&gt;-windows-x64.exe</code></td>
+<td>Developer workstations, evaluation</td>
+</tr>
+<tr>
+<td><strong>Linux AppImage</strong></td>
+<td><code>Provisa.AppImage</code></td>
+<td>On-prem servers, cloud VMs, air-gapped environments</td>
+</tr>
+<tr>
+<td><strong>Cloud VMs (AWS)</strong></td>
+<td><code>terraform/deploy.sh</code></td>
+<td>Multi-node cloud deployment with load balancers</td>
+</tr>
+<tr>
+<td><strong>Kubernetes</strong></td>
+<td><code>helm/provisa/</code></td>
+<td>Teams already operating K8s</td>
+</tr>
+</tbody>
+</table>
+<h3 id="vm-vs-kubernetes">VM vs Kubernetes<a class="headerlink" href="#vm-vs-kubernetes" title="Permanent link">&para;</a></h3>
+<p>Both are enterprise-grade. The VM/AppImage path is simpler: no cluster to provision, no CNI or RBAC policies to configure, and the AppImage is entirely self-contained (REQ-223). It fits naturally into existing server management tooling (Ansible, Puppet, Datadog agents, Splunk forwarders, etc.).</p>
+<p>Choose Kubernetes only if your team already operates a K8s cluster and wants Provisa to participate in that operational model (rolling deploys, HPA, unified observability) (REQ-056). The capabilities are equivalent — Kubernetes adds operational overhead, not capability.</p>
+<h3 id="image-acquisition-and-security-scanning">Image acquisition and security scanning<a class="headerlink" href="#image-acquisition-and-security-scanning" title="Permanent link">&para;</a></h3>
+<p>All production paths require obtaining the Provisa artifacts before any deployment can run. "Air-gapped" refers to what happens at install time on the target machine — the artifacts must be acquired first.</p>
+<p><strong>macOS and Windows installers:</strong> Download from the <a href="https://github.com/provisa/provisa/releases">GitHub releases page</a>. Fully bundled; no internet required after download (REQ-227). Intended for dev/eval, not production — no image scanning gate expected.</p>
+<p><strong>AppImage path:</strong> Download from the <a href="https://github.com/provisa/provisa/releases">GitHub releases page</a> and transfer to the target machine. The AppImage bundles all component images as tarballs inside a squashfs filesystem (REQ-294) — most registry scanners cannot inspect these in-place. Contact your Provisa account team for component image digests to verify against your scanner independently.</p>
+<p><strong>Terraform path:</strong> The AppImage must be uploaded to S3 before running <code>terraform/deploy.sh</code>. EC2 nodes download it at boot via IAM role — they require outbound S3 access (direct or via VPC gateway endpoint). Apply the same scanning policy as the AppImage path.</p>
+<p><strong>Helm / Kubernetes path:</strong> Individual images must be pushed to a registry the cluster can reach. This path is most compatible with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector) — images are first-class objects scanners understand natively. For air-gapped clusters, mirror images to an internal registry and override references in <code>values.yaml</code> (REQ-294).</p>
+<hr />
+<h2 id="development-from-source">Development (from source)<a class="headerlink" href="#development-from-source" title="Permanent link">&para;</a></h2>
+<h3 id="recommended-start-uish">Recommended: <code>start-ui.sh</code><a class="headerlink" href="#recommended-start-uish" title="Permanent link">&para;</a></h3>
+<p>The easiest way to run Provisa from source. Starts all infrastructure, the backend API, and the UI dev server in one command (REQ-055). Ctrl+C shuts everything down cleanly.</p>
+<p><strong>Prerequisites:</strong> Docker Desktop, Node.js, Python virtualenv at <code>.venv/</code></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./start-ui.sh
+</code></pre></div>
+<p>What it does:</p>
+<ul>
+<li>Starts <code>docker-compose.core.yml</code> + <code>docker-compose.dev.yml</code> (all core + demo services) and waits for healthy (REQ-055)</li>
+<li>Seeds Kafka with demo data</li>
+<li>Syncs Python dependencies from <code>.venv/</code></li>
+<li>Starts the backend API on port 8001 (logs to <code>.logs/server.log</code>) (REQ-558)</li>
+<li>Starts the Vite UI dev server on port 3000 (REQ-559)</li>
+<li>Prints URLs and waits; Ctrl+C stops everything and tears down compose</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Backend: http://localhost:8001
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>UI:      http://localhost:3000
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<p><code>--reset-volumes</code> — Runs <code>docker compose down -v</code> before starting, destroying all Docker volumes (PostgreSQL data, MinIO objects, Redis state, etc.) (REQ-170). Use when you want a completely clean slate — after a schema change during development, or when Docker has crashed and left volumes corrupt. <strong>All data will be lost.</strong></p>
+<p><code>--observability</code> — Adds full tracing and metrics instrumentation. Downloads the OpenTelemetry Java agent and patches Trino's <code>jvm.config</code> to load it, instruments the Provisa backend with OTLP export, and starts the OTel collector, Prometheus, Tempo, and Grafana (<code>http://localhost:3100</code>) (REQ-330). The <code>jvm.config</code> patch is automatically reverted on Ctrl+C.</p>
+<h3 id="manual-steps-backend-only-no-ui">Manual steps (backend only, no UI)<a class="headerlink" href="#manual-steps-backend-only-no-ui" title="Permanent link">&para;</a></h3>
+<p>If you only need the API:</p>
+<ol>
+<li>Install <a href="https://docs.docker.com/get-docker/">Docker Desktop</a></li>
+<li>Start core services:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose.core.yml<span class="w"> </span>up<span class="w"> </span>-d
+</code></pre></div></li>
+<li>Start the API:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8001</span>
+</code></pre></div></li>
+<li>Verify: <code>curl http://localhost:8001/health</code></li>
+</ol>
+<h3 id="full-stack-provisa-in-container">Full stack (Provisa in container)<a class="headerlink" href="#full-stack-provisa-in-container" title="Permanent link">&para;</a></h3>
+<p>To run the API as a container instead of on the host:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose.core.yml<span class="w"> </span>-f<span class="w"> </span>docker-compose.app.yml<span class="w"> </span>up<span class="w"> </span>-d
+</code></pre></div>
+<h3 id="services">Services<a class="headerlink" href="#services" title="Permanent link">&para;</a></h3>
+<p><strong>Core (<code>docker-compose.core.yml</code>) — always required:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Port</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PostgreSQL</td>
+<td>5432</td>
+<td>Config metadata + Iceberg catalog (REQ-169)</td>
+</tr>
+<tr>
+<td>PgBouncer</td>
+<td>6432</td>
+<td>Connection pooling (REQ-053)</td>
+</tr>
+<tr>
+<td>Federation engine</td>
+<td>8080</td>
+<td>Query federation (REQ-028)</td>
+</tr>
+<tr>
+<td>Redis</td>
+<td>6379</td>
+<td>Query result cache (REQ-371)</td>
+</tr>
+<tr>
+<td>MinIO</td>
+<td>9000/9001</td>
+<td>S3-compatible object storage (REQ-029, REQ-171)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Demo (<code>docker-compose.dev.yml</code>) — optional, included by <code>start-ui.sh</code>:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Port</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MongoDB</td>
+<td>27017</td>
+<td>Demo NoSQL source</td>
+</tr>
+<tr>
+<td>Kafka</td>
+<td>9092</td>
+<td>Demo streaming source</td>
+</tr>
+<tr>
+<td>Schema Registry</td>
+<td>8081</td>
+<td>Demo Avro/Protobuf schema management</td>
+</tr>
+<tr>
+<td>Debezium</td>
+<td>—</td>
+<td>Demo CDC connector</td>
+</tr>
+<tr>
+<td>Elasticsearch</td>
+<td>9200</td>
+<td>Demo search source</td>
+</tr>
+<tr>
+<td>Neo4j</td>
+<td>7474/7687</td>
+<td>Demo graph source</td>
+</tr>
+<tr>
+<td>Fuseki</td>
+<td>3030</td>
+<td>Demo SPARQL triplestore</td>
+</tr>
+<tr>
+<td>OpenTelemetry Collector</td>
+<td>—</td>
+<td>Trace collection (with <code>--observability</code>) (REQ-302)</td>
+</tr>
+<tr>
+<td>Prometheus</td>
+<td>9090</td>
+<td>Metrics (with <code>--observability</code>) (REQ-330)</td>
+</tr>
+<tr>
+<td>Tempo</td>
+<td>—</td>
+<td>Trace storage (with <code>--observability</code>) (REQ-330)</td>
+</tr>
+<tr>
+<td>Grafana</td>
+<td>3100</td>
+<td>Dashboards (with <code>--observability</code>) (REQ-330)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="telemetry-backend-otlp2sql">Telemetry backend (<code>otlp2sql</code>)<a class="headerlink" href="#telemetry-backend-otlp2sql" title="Permanent link">&para;</a></h3>
+<p>The <code>--observability</code> stack above (Collector → Tempo/Prometheus/Grafana) is one
+telemetry path. The other is <code>otlp2sql</code> (<code>provisa.observability.otlp2sql</code>): an
+OTLP/HTTP receiver that writes traces, metrics, and logs to a SQL database
+chosen by a SQLAlchemy URL, extracting the <code>provisa.*</code> span attributes at ingest
+so no separate compaction job runs. Writes are batched
+(<code>OTLP2SQL_BATCH_MAX_ROWS</code>, default 1000; <code>OTLP2SQL_BATCH_MAX_SECS</code>, default 2s).</p>
+<p>Telemetry gets its own store, separate from the control-plane database. Select
+the backend with <code>PROVISA_OPS_DB_URL</code>:</p>
+<table>
+<thead>
+<tr>
+<th><code>PROVISA_OPS_DB_URL</code></th>
+<th>Backend</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>(unset)</em></td>
+<td>dedicated DuckDB under <code>~/.provisa/telemetry/</code></td>
+<td>default; no server, no Docker</td>
+</tr>
+<tr>
+<td><code>clickhouse+native://user@host/otel</code></td>
+<td>ClickHouse</td>
+<td>high-rate ingest with automatic background merges</td>
+</tr>
+<tr>
+<td><code>postgresql+psycopg2://user@host/otel</code></td>
+<td>PostgreSQL</td>
+<td>moderate volume</td>
+</tr>
+<tr>
+<td><code>trino://user@host:8080/otel</code></td>
+<td>Trino / Iceberg</td>
+<td>technically works, <strong>not recommended</strong> — see below</td>
+</tr>
+</tbody>
+</table>
+<p><strong>On <code>trino://</code>:</strong> the SQLAlchemy Trino dialect emits valid Trino DDL and
+<code>INSERT</code>s, so it is technically feasible as an <code>otlp2sql</code> backend. It is not
+recommended for anything but low ingest rates. Every batch flush becomes a
+distributed Trino <code>INSERT</code> plus an Iceberg snapshot, so high-rate telemetry
+produces many small files and snapshots and still needs periodic
+<code>ALTER TABLE ... EXECUTE optimize</code> / <code>expire_snapshots</code> — which <code>otlp2sql</code> does
+not run. It also puts the query engine in the ingest hot path.</p>
+<p>For high-volume telemetry into Trino/Iceberg, use <code>otlp2parquet</code> instead: it
+writes parquet to object storage without going through Trino, and a scheduled
+Trino compaction rolls the raw files into the live Iceberg tables. For a single
+engine that handles both high-rate ingest and compaction, prefer ClickHouse.</p>
+<p>Point the app and Trino OTLP exporters (<code>OTEL_EXPORTER_OTLP_ENDPOINT</code>) at the
+<code>otlp2sql</code> endpoint, and register the ops domain against the same
+<code>PROVISA_OPS_DB_URL</code> so it reads what the receiver wrote.</p>
+<hr />
+<h2 id="macos-installer">macOS Installer<a class="headerlink" href="#macos-installer" title="Permanent link">&para;</a></h2>
+<p>For developer workstations and evaluation. Fully air-gapped — no internet required after download (REQ-227).</p>
+<p>The base installer is a <strong>native install</strong>: DuckDB federation engine + SQLite control plane + in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis, or MinIO (REQ-972, REQ-979). The federation engine is a wizard choice — DuckDB (native, default), Trino-on-Docker, or an external engine (REQ-973). Observability is always-on self-telemetry viewable in Admin; the Docker collector/Prometheus/Grafana stack is an optional external demonstration, not an on/off switch (REQ-975). The demo data pack is optional and off by default (REQ-978). Trino, the Docker observability stack, and the demo are heavy add-ons resolved local-first (installer-adjacent dir, mounted volumes, <code>~/Downloads</code>, then GitHub release), so enterprises can pre-stage tarballs for air-gapped installs (REQ-977).</p>
+<h3 id="steps">Steps<a class="headerlink" href="#steps" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Download <code>Provisa-&lt;version&gt;-macOS.dmg</code> from the <a href="https://github.com/provisa/provisa/releases">GitHub releases page</a></li>
+<li>Open the DMG and drag <strong>Provisa.app</strong> to <code>/Applications</code></li>
+<li>Double-click <strong>Provisa.app</strong> — first-launch setup runs once; the wizard offers the engine, observability, and demo choices above (REQ-1007)</li>
+<li>Open Terminal:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>provisa<span class="w"> </span>start<span class="w">    </span><span class="c1"># start all services</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>provisa<span class="w"> </span>status<span class="w">   </span><span class="c1"># confirm all services are running</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>provisa<span class="w"> </span>open<span class="w">     </span><span class="c1"># open the UI in the browser</span>
+</code></pre></div></li>
+</ol>
+<p>(REQ-224)</p>
+<h3 id="data-persistence">Data persistence<a class="headerlink" href="#data-persistence" title="Permanent link">&para;</a></h3>
+<p>All data is stored in <code>~/.provisa/</code> (REQ-224). To remove everything: <code>provisa uninstall</code>.</p>
+<hr />
+<h2 id="windows-installer">Windows Installer<a class="headerlink" href="#windows-installer" title="Permanent link">&para;</a></h2>
+<p>For developer workstations and evaluation. Fully air-gapped — no internet required after download (REQ-227).</p>
+<p>Like macOS, the base Windows installer is a <strong>native tier</strong>: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + SQLite control plane, shipping no Docker, no VM, and no container images (REQ-979). The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (<code>Provisa-Container-&lt;version&gt;.exe</code>, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer (REQ-1005).</p>
+<h3 id="steps_1">Steps<a class="headerlink" href="#steps_1" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Download <code>Provisa-&lt;version&gt;-windows-x64.exe</code> from the <a href="https://github.com/provisa/provisa/releases">GitHub releases page</a></li>
+<li>Run the installer — no admin rights required; installs to <code>%LOCALAPPDATA%\Programs\Provisa\</code></li>
+<li>Open <strong>Provisa First Launch</strong> from the Start Menu — native setup runs once and prints the next-steps guidance for the layered add-ons (REQ-1005)</li>
+<li>Open a new terminal:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>provisa status
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>provisa open
+</code></pre></div></li>
+</ol>
+<p>(REQ-224)</p>
+<h3 id="data-persistence_1">Data persistence<a class="headerlink" href="#data-persistence_1" title="Permanent link">&para;</a></h3>
+<p>All data is stored in <code>%USERPROFILE%\.provisa\</code>.</p>
+<hr />
+<h2 id="linux-appimage-single-or-multi-node-vm">Linux AppImage — Single or Multi-Node VM<a class="headerlink" href="#linux-appimage-single-or-multi-node-vm" title="Permanent link">&para;</a></h2>
+<h3 id="what-it-is">What it is<a class="headerlink" href="#what-it-is" title="Permanent link">&para;</a></h3>
+<p><code>Provisa.AppImage</code> is a single self-contained executable bundling (REQ-223, REQ-228):</p>
+<ul>
+<li>A rootless Docker daemon (<code>dockerd-rootless.sh</code> + <code>rootlesskit</code>) — no system Docker or root required</li>
+<li>All container image tarballs (PostgreSQL, PgBouncer, MinIO, Redis, Federation engine, Provisa API) (REQ-294)</li>
+<li>The Provisa CLI wrapper and first-launch setup script</li>
+</ul>
+<p>The Provisa image is pre-built at packaging time — Python source is never included.</p>
+<h3 id="when-to-use">When to use<a class="headerlink" href="#when-to-use" title="Permanent link">&para;</a></h3>
+<ul>
+<li>On-premises bare metal or VM (single node or multi-node)</li>
+<li>Cloud VMs without a K8s cluster</li>
+<li>Air-gapped environments (REQ-294)</li>
+<li>When you want simpler operations than Kubernetes</li>
+</ul>
+<hr />
+<h3 id="steps-single-node">Steps — Single Node<a class="headerlink" href="#steps-single-node" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Download <code>Provisa.AppImage</code> from the <a href="https://github.com/provisa/provisa/releases">GitHub releases page</a> and transfer to the target machine</li>
+<li>Make it executable:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>Provisa.AppImage
+</code></pre></div></li>
+<li>Run first-launch setup:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>./Provisa.AppImage
+</code></pre></div></li>
+<li>The setup wizard asks:</li>
+<li><strong>Role</strong> → select <code>primary</code></li>
+<li><strong>RAM budget</strong> → amount of RAM to allocate (0 = all available); determines Trino worker count</li>
+<li><strong>Hostname</strong> → this node's advertised address</li>
+<li><strong>API port</strong> → default <code>8000</code> (REQ-560)</li>
+<li>Setup loads all container images (~2–5 minutes), writes config, and starts services</li>
+<li>Verify:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>provisa<span class="w"> </span>status
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>curl<span class="w"> </span>http://localhost:8000/health
+</code></pre></div></li>
+</ol>
+<hr />
+<h3 id="steps-multi-node-primary">Steps — Multi-Node (Primary)<a class="headerlink" href="#steps-multi-node-primary" title="Permanent link">&para;</a></h3>
+<p>Run these steps on the primary node first. Secondaries must be set up after the primary is running.</p>
+<ol>
+<li>Download and transfer <code>Provisa.AppImage</code> to the primary machine</li>
+<li>Open required firewall ports (secondaries will connect inbound on these):</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Port</th>
+<th>Service</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5432</td>
+<td>PostgreSQL</td>
+</tr>
+<tr>
+<td>6379</td>
+<td>Redis</td>
+</tr>
+<tr>
+<td>9000</td>
+<td>MinIO</td>
+</tr>
+<tr>
+<td>8080</td>
+<td>Federation engine coordinator</td>
+</tr>
+<tr>
+<td>8000</td>
+<td>Provisa API</td>
+</tr>
+</tbody>
+</table>
+<ol>
+<li>Make executable and run:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>Provisa.AppImage
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>./Provisa.AppImage
+</code></pre></div></li>
+<li>The setup wizard asks:</li>
+<li><strong>Role</strong> → select <code>primary</code></li>
+<li><strong>RAM budget</strong>, <strong>hostname</strong>, <strong>API port</strong> → answer as for single node</li>
+<li>After setup completes, note the <strong>private IP</strong> of this machine — secondaries need it</li>
+<li>The wizard prints an nginx upstream block — save it for your load balancer configuration</li>
+<li>Verify:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>provisa<span class="w"> </span>status
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>curl<span class="w"> </span>http://localhost:8000/health
+</code></pre></div></li>
+</ol>
+<hr />
+<h3 id="steps-multi-node-each-secondary">Steps — Multi-Node (Each Secondary)<a class="headerlink" href="#steps-multi-node-each-secondary" title="Permanent link">&para;</a></h3>
+<p>Repeat these steps on each additional node after the primary is running and reachable.</p>
+<ol>
+<li>Download and transfer <code>Provisa.AppImage</code> to the secondary machine</li>
+<li>Confirm the secondary can reach the primary:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>curl<span class="w"> </span>http://&lt;primary-ip&gt;:8000/health
+</code></pre></div></li>
+<li>Make executable and run:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>Provisa.AppImage
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>./Provisa.AppImage
+</code></pre></div></li>
+<li>The setup wizard asks:</li>
+<li><strong>Role</strong> → select <code>secondary</code></li>
+<li><strong>Primary IP</strong> → enter the primary node's IP (connectivity is verified live)</li>
+<li><strong>RAM budget</strong>, <strong>hostname</strong>, <strong>API port</strong> → answer as above</li>
+<li>Setup loads a reduced image set (no PostgreSQL, PgBouncer, MinIO, Redis — those run only on primary) (REQ-561), starts the Provisa API and a federation engine worker</li>
+<li>Verify:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>provisa<span class="w"> </span>status
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>curl<span class="w"> </span>http://localhost:8000/health
+</code></pre></div></li>
+<li>Add this node to your load balancer upstream</li>
+</ol>
+<hr />
+<h3 id="primary-secondary-topology">Primary / secondary topology<a class="headerlink" href="#primary-secondary-topology" title="Permanent link">&para;</a></h3>
+<p><strong>Primary node</strong> runs all singleton services:</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Why singleton</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PostgreSQL</td>
+<td>Shared schema, app config, semantic model</td>
+</tr>
+<tr>
+<td>Redis</td>
+<td>Shared query result cache and subscription state (REQ-371)</td>
+</tr>
+<tr>
+<td>MinIO</td>
+<td>Shared object store for redirect results and MV snapshots (REQ-029)</td>
+</tr>
+<tr>
+<td>Federation engine coordinator</td>
+<td>All workers (primary + secondaries) register here (REQ-028)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Secondary nodes</strong> run only:</p>
+<ul>
+<li>Provisa API — stateless; reads all config from PostgreSQL on the primary at startup (REQ-057, REQ-562)</li>
+<li>Federation engine worker — self-registers with the coordinator on the primary (REQ-028)</li>
+</ul>
+<p>All application state flows through the primary's PostgreSQL. No manual sync required. (REQ-562)</p>
+<hr />
+<h3 id="non-interactive-automated-first-launch">Non-interactive (automated) first-launch<a class="headerlink" href="#non-interactive-automated-first-launch" title="Permanent link">&para;</a></h3>
+<p>For Terraform, cloud-init, or Ansible — pass flags instead of answering prompts:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Primary</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>./Provisa.AppImage<span class="w"> </span>--non-interactive<span class="w"> </span>--role<span class="w"> </span>primary<span class="w"> </span>--ram-gb<span class="w"> </span><span class="m">32</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># Secondary</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>./Provisa.AppImage<span class="w"> </span>--non-interactive<span class="w"> </span>--role<span class="w"> </span>secondary<span class="w"> </span>--primary-ip<span class="w"> </span><span class="m">10</span>.0.0.10<span class="w"> </span>--ram-gb<span class="w"> </span><span class="m">32</span>
+</code></pre></div>
+<p>Non-interactive mode installs a systemd unit (<code>/etc/systemd/system/provisa.service</code>) for start-on-boot. (REQ-563)</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--non-interactive</code></td>
+<td>Skip all prompts; install systemd unit</td>
+</tr>
+<tr>
+<td><code>--role primary\|secondary</code></td>
+<td>Node role</td>
+</tr>
+<tr>
+<td><code>--primary-ip &lt;ip&gt;</code></td>
+<td>Primary node IP (required for secondary)</td>
+</tr>
+<tr>
+<td><code>--ram-gb &lt;n&gt;</code></td>
+<td>RAM to allocate (0 = all available)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="cloud-vm-deployment-terraform-aws">Cloud VM Deployment — Terraform (AWS)<a class="headerlink" href="#cloud-vm-deployment-terraform-aws" title="Permanent link">&para;</a></h2>
+<p>Provisions a full multi-node Provisa cluster on AWS — VPC, security groups, EC2 instances, ALB, NLB — in one interactive command. (REQ-564)</p>
+<h3 id="files">Files<a class="headerlink" href="#files" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>terraform/deploy.sh</code></td>
+<td>Interactive wrapper — collects parameters, validates credentials, writes <code>terraform.tfvars</code>, runs apply</td>
+</tr>
+<tr>
+<td><code>terraform/aws/variables.tf</code></td>
+<td>All variable definitions with defaults</td>
+</tr>
+<tr>
+<td><code>terraform/aws/main.tf</code></td>
+<td>VPC, subnets, security groups, IAM, EC2, ALB, NLB</td>
+</tr>
+<tr>
+<td><code>terraform/aws/outputs.tf</code></td>
+<td>Endpoint URLs and node IPs</td>
+</tr>
+</tbody>
+</table>
+<h3 id="steps_2">Steps<a class="headerlink" href="#steps_2" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p>Download <code>Provisa.AppImage</code> from the <a href="https://github.com/provisa/provisa/releases">GitHub releases page</a></p>
+</li>
+<li>
+<p>Upload it to an S3 bucket in your AWS account:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>Provisa.AppImage<span class="w"> </span>s3://&lt;your-bucket&gt;/releases/Provisa.AppImage
+</code></pre></div></p>
+</li>
+<li>
+<p>Ensure AWS credentials are available in your shell (any of):</p>
+</li>
+<li>Environment variables: <code>AWS_ACCESS_KEY_ID</code> + <code>AWS_SECRET_ACCESS_KEY</code></li>
+<li>Named profile: <code>export AWS_PROFILE=my-profile</code></li>
+<li>
+<p>Active SSO session: <code>aws sso login</code></p>
+</li>
+<li>
+<p>(Optional) If you want SSH access to nodes, create an EC2 key pair in your target region and note the key pair name</p>
+</li>
+<li>
+<p>Run the deploy wrapper:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>bash<span class="w"> </span>terraform/deploy.sh
+</code></pre></div></p>
+</li>
+<li>
+<p>Answer the wizard questions (see reference table below). The script verifies the AppImage exists in S3 before proceeding and aborts if it does not</p>
+</li>
+<li>
+<p>Review the deployment summary and confirm</p>
+</li>
+<li>
+<p>Terraform provisions all infrastructure (~5–10 minutes). After apply, the script prints:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>api_endpoint      = &quot;http://&lt;alb-dns&gt;:8000&quot;
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>flight_endpoint   = &quot;&lt;nlb-dns&gt;:8815&quot;
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>primary_ip        = &quot;10.0.x.x&quot;
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>secondary_ips     = [&quot;10.0.x.x&quot;, ...]
+</code></pre></div></p>
+</li>
+</ol>
+<p>(REQ-564, REQ-143)</p>
+<ol>
+<li>
+<p>(Optional) Point DNS records at the ALB and NLB DNS names</p>
+</li>
+<li>
+<p>Verify:
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>curl<span class="w"> </span>http://&lt;api_endpoint&gt;/health
+</code></pre></div></p>
+</li>
+</ol>
+<h3 id="wizard-questions">Wizard questions<a class="headerlink" href="#wizard-questions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cloud provider</td>
+<td>—</td>
+<td>AWS only today</td>
+</tr>
+<tr>
+<td>AWS credentials</td>
+<td>—</td>
+<td>Checks for active session first</td>
+</tr>
+<tr>
+<td>Region</td>
+<td><code>us-east-1</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Node count</td>
+<td><code>2</code></td>
+<td>1 = primary only, no LB; 2+ = primary + secondaries + ALB/NLB</td>
+</tr>
+<tr>
+<td>Instance type</td>
+<td><code>m7i.2xlarge</code></td>
+<td>See sizing guide below</td>
+</tr>
+<tr>
+<td>Root volume size</td>
+<td><code>100 GB</code></td>
+<td>Per node</td>
+</tr>
+<tr>
+<td>RAM budget</td>
+<td><code>0</code> (all RAM)</td>
+<td>Determines Trino worker count per node</td>
+</tr>
+<tr>
+<td>S3 bucket</td>
+<td>—</td>
+<td>Verified live before proceeding</td>
+</tr>
+<tr>
+<td>S3 key</td>
+<td><code>releases/Provisa.AppImage</code></td>
+<td></td>
+</tr>
+<tr>
+<td>SSH access</td>
+<td>No</td>
+<td>Requires existing key pair name + admin CIDR</td>
+</tr>
+<tr>
+<td>VPC CIDR</td>
+<td><code>10.0.0.0/16</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="instance-sizing-guide">Instance sizing guide<a class="headerlink" href="#instance-sizing-guide" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>vCPU</th>
+<th>RAM</th>
+<th>Trino workers/node</th>
+<th>Use case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>m7i.xlarge</code></td>
+<td>4</td>
+<td>16 GB</td>
+<td>0</td>
+<td>Dev / small datasets</td>
+</tr>
+<tr>
+<td><code>m7i.2xlarge</code></td>
+<td>8</td>
+<td>32 GB</td>
+<td>1</td>
+<td>Small production</td>
+</tr>
+<tr>
+<td><code>m7i.4xlarge</code></td>
+<td>16</td>
+<td>64 GB</td>
+<td>2</td>
+<td>Medium production</td>
+</tr>
+<tr>
+<td><code>m7i.8xlarge</code></td>
+<td>32</td>
+<td>128 GB</td>
+<td>4</td>
+<td>Large production</td>
+</tr>
+</tbody>
+</table>
+<p>All nodes contribute workers to one coordinator on the primary (REQ-028). A 3-node <code>m7i.4xlarge</code> cluster yields 6 Trino workers total.</p>
+<h3 id="what-gets-provisioned">What gets provisioned<a class="headerlink" href="#what-gets-provisioned" title="Permanent link">&para;</a></h3>
+<ul>
+<li>VPC with two public subnets across two availability zones (REQ-564)</li>
+<li>Security groups: LB group (public ingress on 8000/8815), nodes group (LB → nodes, intra-cluster, optional SSH)</li>
+<li>IAM role + instance profile with S3 GetObject on the AppImage bucket</li>
+<li>Primary EC2 instance — runs first-launch in <code>--non-interactive --role primary</code> mode</li>
+<li>Secondary EC2 instances (node_count − 1) — run first-launch in <code>--non-interactive --role secondary --primary-ip &lt;primary private IP&gt;</code> mode; depend on primary completing first</li>
+<li>ALB on port 8000 — HTTP API, health-checks <code>/health</code> (REQ-560)</li>
+<li>NLB on port 8815 — Arrow Flight / gRPC (REQ-143)</li>
+<li>Both LBs attach to all nodes</li>
+</ul>
+<h3 id="prerequisites-checklist">Prerequisites checklist<a class="headerlink" href="#prerequisites-checklist" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] IAM permissions: EC2 full, ELB full, VPC full, IAM role create, S3 GetObject on AppImage bucket</li>
+<li>[ ] <code>Provisa.AppImage</code> uploaded to S3</li>
+<li>[ ] EC2 nodes have outbound S3 access (direct internet or S3 VPC gateway endpoint)</li>
+<li>[ ] EC2 key pair exists in target region (if SSH is needed)</li>
+<li>[ ] Terraform ≥ 1.5 installed locally</li>
+<li>[ ] DNS records planned for ALB / NLB (optional but recommended)</li>
+<li>[ ] ACM certificate ready if HTTPS is required (not included in base Terraform)</li>
+</ul>
+<h3 id="secrets">Secrets<a class="headerlink" href="#secrets" title="Permanent link">&para;</a></h3>
+<p>No secrets are embedded in Terraform. The AppImage generates credentials during first-launch and writes them to <code>~/.provisa/config.yaml</code> on each node (REQ-563). For production, retrieve the admin token from the primary node after deployment:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>ssh<span class="w"> </span>ubuntu@&lt;primary-public-ip&gt;<span class="w"> </span>cat<span class="w"> </span>~/.provisa/config.yaml<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>admin_token
+</code></pre></div>
+<hr />
+<h2 id="kubernetes-helm">Kubernetes / Helm<a class="headerlink" href="#kubernetes-helm" title="Permanent link">&para;</a></h2>
+<h3 id="when-to-use_1">When to use<a class="headerlink" href="#when-to-use_1" title="Permanent link">&para;</a></h3>
+<p>Your team already operates a Kubernetes cluster and wants Provisa to participate in that operational model (REQ-056). If you are evaluating Provisa or deploying on-premises without an existing cluster, the AppImage path is simpler.</p>
+<p>Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FUSE and a rootless Docker daemon, which are not available in standard pod security profiles.</p>
+<h3 id="steps_3">Steps<a class="headerlink" href="#steps_3" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p>Confirm cluster access:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>kubectl<span class="w"> </span>cluster-info
+</code></pre></div></p>
+</li>
+<li>
+<p>Pull and mirror images to your internal registry (required for air-gapped or scanned environments; skip if pulling from public registries directly) (REQ-294):</p>
+</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Image</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>provisa/provisa:&lt;version&gt;</code></td>
+<td>Provisa API</td>
+</tr>
+<tr>
+<td><code>trinodb/trino:480</code></td>
+<td>Federation engine coordinator + workers (REQ-169)</td>
+</tr>
+<tr>
+<td><code>postgres:16</code></td>
+<td>In-cluster PostgreSQL (if <code>postgresql.enabled</code>) (REQ-169)</td>
+</tr>
+<tr>
+<td><code>edoburu/pgbouncer:latest</code></td>
+<td>In-cluster PgBouncer (if <code>pgbouncer.enabled</code>) (REQ-053)</td>
+</tr>
+<tr>
+<td><code>redis:7.2</code></td>
+<td>In-cluster Redis (if <code>redis.enabled</code> and no <code>redis.host</code>) (REQ-371)</td>
+</tr>
+<tr>
+<td><code>minio/minio:latest</code></td>
+<td>In-cluster MinIO (if <code>minio.enabled</code>) (REQ-029)</td>
+</tr>
+</tbody>
+</table>
+<p>For registry-scanned environments:
+   - Push each image to your staging registry
+   - Run your scanner (Prisma Cloud, Aqua, Trivy, AWS Inspector) and obtain approval
+   - Promote to your production internal registry</p>
+<ol>
+<li>Decide before installing:</li>
+<li><strong>PostgreSQL</strong> — in-cluster (<code>postgresql.enabled: true</code>) or external managed (<code>postgresql.host</code>)? External recommended for production</li>
+<li><strong>Redis</strong> — in-cluster or external (<code>redis.host</code>)? Change the default password (<code>redis.password</code>)</li>
+<li><strong>MinIO / S3</strong> — in-cluster MinIO or native S3? For AWS, use S3 with an IAM role</li>
+<li>
+<p><strong>Secrets</strong> — pass via <code>--set</code> for evaluation; use External Secrets or Vault Agent for production</p>
+</li>
+<li>
+<p>Install the chart:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>helm<span class="w"> </span>install<span class="w"> </span>provisa<span class="w"> </span>helm/provisa/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span>--set<span class="w"> </span>config.pgPassword<span class="o">=</span>&lt;password&gt;<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">  </span>--set<span class="w"> </span>config.adminToken<span class="o">=</span>&lt;token&gt;<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">  </span>--set<span class="w"> </span>s3.endpoint<span class="o">=</span>https://s3.amazonaws.com<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">  </span>--set<span class="w"> </span>s3.bucket<span class="o">=</span>my-provisa-results<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">  </span>--namespace<span class="w"> </span>provisa<span class="w"> </span>--create-namespace
+</code></pre></div></p>
+</li>
+</ol>
+<p>If using an internal registry, add image overrides:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>--set<span class="w"> </span>image.repository<span class="o">=</span>harbor.internal.example.com/provisa/provisa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>--set<span class="w"> </span>image.tag<span class="o">=</span><span class="m">1</span>.2.3<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>--set<span class="w"> </span>trino.image.repository<span class="o">=</span>harbor.internal.example.com/trinodb/trino<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>--set<span class="w"> </span>trino.image.tag<span class="o">=</span><span class="m">480</span>
+</code></pre></div></p>
+<ol>
+<li>
+<p>Verify pods are running:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>provisa
+</code></pre></div></p>
+</li>
+<li>
+<p>Check the API:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>kubectl<span class="w"> </span>port-forward<span class="w"> </span>svc/provisa<span class="w"> </span><span class="m">8000</span>:8000<span class="w"> </span>-n<span class="w"> </span>provisa
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>curl<span class="w"> </span>http://localhost:8000/health
+</code></pre></div></p>
+</li>
+<li>
+<p>(Optional) Enable ingress for external access — set <code>ingress.enabled: true</code> and configure your ingress controller</p>
+</li>
+</ol>
+<h3 id="prerequisites-checklist_1">Prerequisites checklist<a class="headerlink" href="#prerequisites-checklist_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Kubernetes 1.26+, Helm 3.12+</li>
+<li>[ ] Storage class supporting <code>ReadWriteOnce</code> PVCs (for in-cluster stateful services)</li>
+<li>[ ] Images available to the cluster (public or internal registry)</li>
+<li>[ ] PostgreSQL endpoint + credentials (if external)</li>
+<li>[ ] Redis endpoint + credentials (if external)</li>
+<li>[ ] S3 bucket + credentials or IAM role</li>
+<li>[ ] Admin token chosen</li>
+<li>[ ] Ingress controller configured (if external access needed)</li>
+</ul>
+<h3 id="key-values">Key values<a class="headerlink" href="#key-values" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>replicaCount</code></td>
+<td><code>2</code></td>
+<td>Provisa API replicas (stateless) (REQ-057)</td>
+</tr>
+<tr>
+<td><code>config.pgHost</code></td>
+<td><code>postgres</code></td>
+<td>PostgreSQL host</td>
+</tr>
+<tr>
+<td><code>config.pgPassword</code></td>
+<td></td>
+<td>PostgreSQL password</td>
+</tr>
+<tr>
+<td><code>config.adminToken</code></td>
+<td></td>
+<td>Admin API bearer token</td>
+</tr>
+<tr>
+<td><code>redis.enabled</code></td>
+<td><code>true</code></td>
+<td>Deploy in-cluster Redis StatefulSet (REQ-371)</td>
+</tr>
+<tr>
+<td><code>redis.host</code></td>
+<td><code>""</code></td>
+<td>Set to use external Redis</td>
+</tr>
+<tr>
+<td><code>redis.port</code></td>
+<td><code>6379</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>redis.password</code></td>
+<td><code>"provisa"</code></td>
+<td>Change this</td>
+</tr>
+<tr>
+<td><code>redis.tls</code></td>
+<td><code>false</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>trino.enabled</code></td>
+<td><code>true</code></td>
+<td>Deploy federation engine (REQ-028)</td>
+</tr>
+<tr>
+<td><code>trino.workers</code></td>
+<td><code>2</code></td>
+<td>Federation engine worker replicas (REQ-056)</td>
+</tr>
+<tr>
+<td><code>postgresql.enabled</code></td>
+<td><code>true</code></td>
+<td>Deploy in-cluster PostgreSQL (REQ-169)</td>
+</tr>
+<tr>
+<td><code>postgresql.host</code></td>
+<td><code>""</code></td>
+<td>Set to use external PostgreSQL</td>
+</tr>
+<tr>
+<td><code>minio.enabled</code></td>
+<td><code>true</code></td>
+<td>Deploy in-cluster MinIO (REQ-029)</td>
+</tr>
+<tr>
+<td><code>s3.endpoint</code></td>
+<td></td>
+<td>S3-compatible endpoint URL</td>
+</tr>
+<tr>
+<td><code>s3.bucket</code></td>
+<td><code>provisa-results</code></td>
+<td>Bucket for large result redirect (REQ-029, REQ-137)</td>
+</tr>
+<tr>
+<td><code>ingress.enabled</code></td>
+<td><code>false</code></td>
+<td>Enable ingress</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scaling">Scaling<a class="headerlink" href="#scaling" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>kubectl<span class="w"> </span>scale<span class="w"> </span>deployment/provisa<span class="w"> </span>--replicas<span class="o">=</span><span class="m">5</span><span class="w"> </span>--namespace<span class="w"> </span>provisa
+</code></pre></div>
+<p>Federation engine workers scale independently — more workers increase throughput and concurrent query capacity (REQ-056). (REQ-057)</p>
+<h3 id="updating-config">Updating config<a class="headerlink" href="#updating-config" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>kubectl<span class="w"> </span>create<span class="w"> </span>configmap<span class="w"> </span>provisa-config<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="w">  </span>--from-file<span class="o">=</span>config.yaml<span class="o">=</span>./config.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="w">  </span>--namespace<span class="w"> </span>provisa<span class="w"> </span>--dry-run<span class="o">=</span>client<span class="w"> </span>-o<span class="w"> </span>yaml<span class="w"> </span><span class="p">|</span><span class="w"> </span>kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>-
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>kubectl<span class="w"> </span>rollout<span class="w"> </span>restart<span class="w"> </span>deployment/provisa<span class="w"> </span>--namespace<span class="w"> </span>provisa
+</code></pre></div>
+<hr />
+<h2 id="high-availability-recovery">High Availability &amp; Recovery<a class="headerlink" href="#high-availability-recovery" title="Permanent link">&para;</a></h2>
+<p>Provisa applies a two-tier recovery model across all deployment modes (REQ-703):</p>
+<ul>
+<li><strong>Tier 1 — transient errors.</strong> Read operations retry for up to 30 seconds on transient errors using exponential backoff with full jitter. Tune the budget with <code>PROVISA_RETRY_BUDGET_SECS</code>. Write operations are never retried internally, and memory errors are never retryable.</li>
+<li><strong>Tier 2 — component failure.</strong> An internal engine watcher detects and restarts failed software components within 2–3 minutes.</li>
+</ul>
+<p>Machine-level and cluster-level failures remain the operator's responsibility — provision redundant nodes and a load balancer (Terraform and Helm paths above) for node-loss tolerance.</p>
+<h2 id="federation-engine-dependencies">Federation Engine Dependencies<a class="headerlink" href="#federation-engine-dependencies" title="Permanent link">&para;</a></h2>
+<p>The warehouse federation engines require Python packages and system-level components beyond Provisa's default install. All Python packages listed here are declared in <code>pyproject.toml</code> and installed as part of the standard <code>pip install provisa</code> or <code>pip install -e .</code> [tool-verified: <code>pyproject.toml</code> lines 44–52].</p>
+<p>The Python packages ship with Provisa's default install — no optional extras required for any warehouse engine. The system-level items (ODBC driver, cloud CLIs, service-account keys) must be installed separately.</p>
+<h3 id="python-packages-already-in-core-dependencies">Python packages (already in core dependencies)<a class="headerlink" href="#python-packages-already-in-core-dependencies" title="Permanent link">&para;</a></h3>
+<p>[tool-verified: <code>pyproject.toml</code> lines 41–52]</p>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Engine</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>databricks-sql-connector</code></td>
+<td>Databricks</td>
+<td>SQL warehouse connection; Arrow Cloud Fetch (REQ-987)</td>
+</tr>
+<tr>
+<td><code>snowflake-connector-python[pandas]</code></td>
+<td>Snowflake</td>
+<td>Connection + Arrow-native <code>fetch_arrow_table</code> (REQ-988)</td>
+</tr>
+<tr>
+<td><code>google-cloud-bigquery</code></td>
+<td>BigQuery</td>
+<td>Query execution</td>
+</tr>
+<tr>
+<td><code>google-cloud-bigquery-storage</code></td>
+<td>BigQuery</td>
+<td>Storage Read API for Arrow-native reads</td>
+</tr>
+<tr>
+<td><code>google-cloud-storage</code></td>
+<td>BigQuery</td>
+<td>GCS staging for external-table links</td>
+</tr>
+<tr>
+<td><code>pyodbc</code></td>
+<td>Fabric, Synapse</td>
+<td>ODBC connection to T-SQL endpoints</td>
+</tr>
+<tr>
+<td><code>azure-identity</code></td>
+<td>Fabric, Synapse</td>
+<td>Azure AD token via <code>DefaultAzureCredential</code></td>
+</tr>
+<tr>
+<td><code>clickhouse-connect</code></td>
+<td>ClickHouse</td>
+<td>HTTP columnar reads</td>
+</tr>
+<tr>
+<td><code>protobuf&gt;=6.33.5,&lt;7</code></td>
+<td>BigQuery, gRPC</td>
+<td>Compatibility pin — <code>google-cloud-*</code> and OTel share a protobuf runtime; <code>&lt;7</code> keeps them aligned</td>
+</tr>
+<tr>
+<td><code>grpcio-status&lt;1.82</code></td>
+<td>gRPC</td>
+<td>Aligns with the <code>protobuf&lt;7</code> pin</td>
+</tr>
+</tbody>
+</table>
+<h3 id="system-level-requirements">System-level requirements<a class="headerlink" href="#system-level-requirements" title="Permanent link">&para;</a></h3>
+<p>These are not Python packages — they must be installed on the host or container that runs Provisa.</p>
+<p><strong>Microsoft Fabric and Azure Synapse (ODBC)</strong></p>
+<p><code>pyodbc</code> connects through the Microsoft ODBC Driver for SQL Server (<code>msodbcsql18</code>). The driver must be installed on the host — not via pip. [tool-verified: <code>mssql_warehouse_runtime.py</code> line 84 <code>"ODBC Driver 18 for SQL Server"</code> default]</p>
+<p>macOS:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>brew<span class="w"> </span>install<span class="w"> </span>microsoft/mssql-release/msodbcsql18
+</code></pre></div>
+<p>Linux (Ubuntu/Debian):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>curl<span class="w"> </span>https://packages.microsoft.com/keys/microsoft.asc<span class="w"> </span><span class="p">|</span><span class="w"> </span>apt-key<span class="w"> </span>add<span class="w"> </span>-
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>curl<span class="w"> </span>https://packages.microsoft.com/config/ubuntu/22.04/prod.list<span class="w"> </span>&gt;<span class="w"> </span>/etc/apt/sources.list.d/mssql-release.list
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">ACCEPT_EULA</span><span class="o">=</span>Y<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>msodbcsql18
+</code></pre></div>
+<p>Provisa picks up the driver automatically. To override the driver name (for non-standard installs), set:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">PROVISA_MSSQL_ODBC_DRIVER</span><span class="o">=</span><span class="s2">&quot;ODBC Driver 17 for SQL Server&quot;</span>
+</code></pre></div>
+<p><strong>Azure AD authentication (Fabric and Synapse)</strong></p>
+<p>Both engines authenticate via <code>azure.identity.DefaultAzureCredential</code> [tool-verified: <code>mssql_warehouse_runtime.py:79</code>, <code>fabric_shortcuts.py:46</code>]. <code>DefaultAzureCredential</code> checks credential sources in order: environment variables, workload identity, managed identity, VS Code, <code>az login</code>, and others.</p>
+<p>For local development, <code>az login</code> is the simplest path:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>az<span class="w"> </span>login
+</code></pre></div>
+<p>For production, use managed identity (on Azure VMs or AKS) — no credential management needed. For service-principal auth, set:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_TENANT_ID</span><span class="o">=</span>&lt;tenant&gt;
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_CLIENT_ID</span><span class="o">=</span>&lt;app-id&gt;
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_CLIENT_SECRET</span><span class="o">=</span>&lt;secret&gt;
+</code></pre></div>
+<p><strong>BigQuery (service account)</strong></p>
+<p><code>google-cloud-bigquery</code> uses Application Default Credentials. For local development, point to a service-account key file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">GOOGLE_APPLICATION_CREDENTIALS</span><span class="o">=</span>/path/to/sa-key.json
+</code></pre></div>
+<p>For production on GCP (Cloud Run, GKE with Workload Identity, Compute Engine), the library picks up the attached service account automatically — no environment variable needed.</p>
+<p>The service account needs:</p>
+<ul>
+<li><code>roles/bigquery.dataViewer</code> — read data</li>
+<li><code>roles/bigquery.jobUser</code> — run queries</li>
+<li><code>roles/bigquery.dataEditor</code> — create external tables (for ATTACH)</li>
+<li><code>roles/storage.objectViewer</code> — read GCS objects for external tables</li>
+</ul>
+<p><strong>Databricks (CA certificate in dev proxy environments)</strong></p>
+<p>If Provisa runs behind a TLS-intercepting proxy (Charles, mitmproxy, corporate proxies), the Databricks SQL connector may reject the proxy's certificate. Pass a custom CA bundle:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REQUESTS_CA_BUNDLE</span><span class="o">=</span>/path/to/your/proxy-ca.pem
+</code></pre></div>
+<p>The Databricks connector inherits this from <code>requests</code> — no Databricks-specific env var is needed.</p>
+<h3 id="per-engine-checklist">Per-engine checklist<a class="headerlink" href="#per-engine-checklist" title="Permanent link">&para;</a></h3>
+<p><strong>Databricks</strong> (REQ-987)</p>
+<ul>
+<li>[ ] <code>databricks-sql-connector</code> installed (default)</li>
+<li>[ ] Engine URL with <code>http_path</code>: <code>databricks://token:TOKEN@workspace.azuredatabricks.net?http_path=/sql/1.0/warehouses/xxx</code></li>
+<li>[ ] Personal access token or service principal token</li>
+<li>[ ] <code>REQUESTS_CA_BUNDLE</code> set if behind TLS-intercepting proxy</li>
+</ul>
+<p><strong>Snowflake</strong> (REQ-988)</p>
+<ul>
+<li>[ ] <code>snowflake-connector-python[pandas]</code> installed (default)</li>
+<li>[ ] Engine URL: <code>snowflake://user:pass@account.snowflakecomputing.com/database</code></li>
+<li>[ ] <code>account</code> in <code>PROVISA_ENGINE_URL</code> or <code>federation_hints</code></li>
+</ul>
+<p><strong>BigQuery</strong> (REQ-989)</p>
+<ul>
+<li>[ ] <code>google-cloud-bigquery</code>, <code>google-cloud-bigquery-storage</code>, <code>google-cloud-storage</code> installed (default)</li>
+<li>[ ] <code>GOOGLE_APPLICATION_CREDENTIALS</code> set (dev) or workload identity configured (prod)</li>
+<li>[ ] <code>GOOGLE_CLOUD_PROJECT</code> set if the project cannot be inferred from the service account</li>
+<li>[ ] Service account has BigQuery Data Viewer + Job User roles</li>
+</ul>
+<p><strong>Microsoft Fabric</strong> (REQ-989)</p>
+<ul>
+<li>[ ] <code>pyodbc</code> + <code>azure-identity</code> installed (default)</li>
+<li>[ ] <code>msodbcsql18</code> system driver installed</li>
+<li>[ ] <code>FABRIC_SQL_SERVER</code> and <code>FABRIC_DATABASE</code> set</li>
+<li>[ ] Azure AD auth: <code>az login</code> (dev) or managed identity / service principal (prod)</li>
+<li>[ ] <code>FABRIC_WORKSPACE_ID</code> set if using external object-storage links</li>
+</ul>
+<p><strong>Azure Synapse</strong> (REQ-989)</p>
+<ul>
+<li>[ ] Same Python + system requirements as Fabric</li>
+<li>[ ] <code>SYNAPSE_SQL_SERVER</code> and <code>SYNAPSE_DATABASE</code> set</li>
+<li>[ ] Same Azure AD auth setup as Fabric</li>
+</ul>
+<p><strong>ClickHouse</strong> (REQ-986)</p>
+<ul>
+<li>[ ] <code>clickhouse-connect</code> installed (default)</li>
+<li>[ ] Engine URL: <code>clickhouse+http://user:pass@host:8123/database</code></li>
+<li>[ ] <code>secure: "true"</code> in <code>federation_hints</code> for TLS (port 8443)</li>
+</ul>
+<hr />
+<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PG_PASSWORD</code></td>
+<td></td>
+<td>PostgreSQL password</td>
+</tr>
+<tr>
+<td><code>PROVISA_CONFIG</code></td>
+<td><code>config/provisa.yaml</code></td>
+<td>Path to config file (REQ-528)</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_ENABLED</code></td>
+<td><code>false</code></td>
+<td>Enable large result redirect to S3 (REQ-029, REQ-137)</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_THRESHOLD</code></td>
+<td><code>1000</code></td>
+<td>Row count threshold for redirect (REQ-029)</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_BUCKET</code></td>
+<td><code>provisa-results</code></td>
+<td>S3 bucket (REQ-029)</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_ENDPOINT</code></td>
+<td></td>
+<td>S3-compatible endpoint URL (REQ-029)</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_TTL</code></td>
+<td><code>3600</code></td>
+<td>Presigned URL TTL (seconds) (REQ-141)</td>
+</tr>
+<tr>
+<td><code>REDIS_HOST</code></td>
+<td><code>localhost</code></td>
+<td>Redis host</td>
+</tr>
+<tr>
+<td><code>REDIS_PORT</code></td>
+<td><code>6379</code></td>
+<td>Redis port</td>
+</tr>
+<tr>
+<td><code>REDIS_PASSWORD</code></td>
+<td></td>
+<td>Redis password</td>
+</tr>
+<tr>
+<td><code>REDIS_TLS</code></td>
+<td><code>false</code></td>
+<td>Enable TLS for Redis</td>
+</tr>
+<tr>
+<td><code>TRINO_HOST</code></td>
+<td><code>localhost</code></td>
+<td>Trino federation engine coordinator host (REQ-028, REQ-054)</td>
+</tr>
+<tr>
+<td><code>TRINO_PORT</code></td>
+<td><code>8080</code></td>
+<td>Trino federation engine coordinator HTTP port (REQ-028, REQ-054)</td>
+</tr>
+<tr>
+<td><code>PROVISA_ENGINE</code></td>
+<td><code>duckdb</code></td>
+<td>Active federation engine key (REQ-989); overrides persisted config</td>
+</tr>
+<tr>
+<td><code>PROVISA_ENGINE_URL</code></td>
+<td></td>
+<td>Connection URL for URL-driven engines (Databricks, Snowflake, ClickHouse, BigQuery, Fabric, Synapse, SQLAlchemy)</td>
+</tr>
+<tr>
+<td><code>PROVISA_MATERIALIZE_URL</code></td>
+<td></td>
+<td>Materialization store URL override; defaults to engine's own store</td>
+</tr>
+<tr>
+<td><code>PROVISA_MSSQL_ODBC_DRIVER</code></td>
+<td><code>ODBC Driver 18 for SQL Server</code></td>
+<td>ODBC driver name for Fabric / Synapse</td>
+</tr>
+<tr>
+<td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+<td></td>
+<td>Path to GCP service-account key JSON (BigQuery)</td>
+</tr>
+<tr>
+<td><code>GOOGLE_CLOUD_PROJECT</code></td>
+<td></td>
+<td>GCP project ID (BigQuery; inferred from service account when unset)</td>
+</tr>
+<tr>
+<td><code>FABRIC_SQL_SERVER</code></td>
+<td></td>
+<td>Microsoft Fabric SQL analytics endpoint hostname</td>
+</tr>
+<tr>
+<td><code>FABRIC_DATABASE</code></td>
+<td></td>
+<td>Fabric database name</td>
+</tr>
+<tr>
+<td><code>FABRIC_WORKSPACE_ID</code></td>
+<td></td>
+<td>Fabric workspace GUID (required for external object-storage shortcuts)</td>
+</tr>
+<tr>
+<td><code>SYNAPSE_SQL_SERVER</code></td>
+<td></td>
+<td>Azure Synapse dedicated SQL pool or serverless hostname</td>
+</tr>
+<tr>
+<td><code>SYNAPSE_DATABASE</code></td>
+<td></td>
+<td>Synapse database name</td>
+</tr>
+<tr>
+<td><code>AZURE_TENANT_ID</code></td>
+<td></td>
+<td>Azure AD tenant (service-principal auth for Fabric/Synapse)</td>
+</tr>
+<tr>
+<td><code>AZURE_CLIENT_ID</code></td>
+<td></td>
+<td>Azure AD application client ID</td>
+</tr>
+<tr>
+<td><code>AZURE_CLIENT_SECRET</code></td>
+<td></td>
+<td>Azure AD application client secret</td>
+</tr>
+<tr>
+<td><code>REQUESTS_CA_BUNDLE</code></td>
+<td></td>
+<td>Custom CA bundle path (Databricks connector, dev TLS-proxy)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="cli-commands">CLI Commands<a class="headerlink" href="#cli-commands" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>provisa<span class="w"> </span>start<span class="w">              </span><span class="c1"># Start all services</span>
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>provisa<span class="w"> </span>stop<span class="w">               </span><span class="c1"># Stop all services</span>
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>provisa<span class="w"> </span>restart<span class="w">            </span><span class="c1"># Restart</span>
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>provisa<span class="w"> </span>status<span class="w">             </span><span class="c1"># Show service health</span>
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>provisa<span class="w"> </span>open<span class="w">               </span><span class="c1"># Open the UI in the browser</span>
+<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a>provisa<span class="w"> </span>logs<span class="w">               </span><span class="c1"># Tail service logs</span>
+<a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a>provisa<span class="w"> </span><span class="nb">export</span><span class="w">             </span><span class="c1"># Print current config as YAML to stdout</span>
+<a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a>provisa<span class="w"> </span><span class="nb">export</span><span class="w"> </span>FILE<span class="w">        </span><span class="c1"># Write current config as YAML to FILE</span>
+<a id="__codelineno-35-9" name="__codelineno-35-9" href="#__codelineno-35-9"></a>provisa<span class="w"> </span>import<span class="w"> </span>FILE<span class="w">        </span><span class="c1"># Replace running config with YAML from FILE</span>
+</code></pre></div>
+<p>(REQ-224, REQ-164)</p>
+<h3 id="config-promotion-workflow-dev-test-prod">Config promotion workflow (dev → test → prod)<a class="headerlink" href="#config-promotion-workflow-dev-test-prod" title="Permanent link">&para;</a></h3>
+<p>All environment-specific settings (connection strings, secrets, ports) belong in environment variables or secret managers — not in the exported config. The exported YAML captures your semantic model: sources, domains, roles, views. (REQ-164)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="c1"># On dev — export after making changes in the UI</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>provisa<span class="w"> </span><span class="nb">export</span><span class="w"> </span>&gt;<span class="w"> </span>config.yaml
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>git<span class="w"> </span>add<span class="w"> </span>config.yaml<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;chore: update semantic model&quot;</span>
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a>git<span class="w"> </span>push
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a>
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="c1"># On test/prod — pull and import</span>
+<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a>git<span class="w"> </span>pull
+<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a>provisa<span class="w"> </span>import<span class="w"> </span>config.yaml
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../configuration/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Configuration">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Configuration
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../api-reference/" class="md-footer__link md-footer__link--next" aria-label="Next: API Reference">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                API Reference
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

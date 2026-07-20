@@ -1,0 +1,3928 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A single governed API over 46 heterogeneous data sources — query with GraphQL, Cypher, or SQL.">
+      
+      
+      
+        <link rel="canonical" href="https://provisa.dev/docs/configuration/">
+      
+      
+        <link rel="prev" href="../quickstart/">
+      
+      
+        <link rel="next" href="../deployment/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Configuration - Provisa</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Provisa" class="md-header__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Provisa
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Provisa" class="md-nav__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Provisa
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#govdata-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GovData Sources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GovData Sources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#subject-groupings-tool-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subject Groupings [tool-verified]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#domains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Domains
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Naming">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#naming-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming Convention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#domain-prefix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Domain Prefix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#naming-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tables
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aliases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aliases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#descriptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Descriptions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path-computed-json-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path (Computed JSON Extraction)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#masking-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Masking Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relationships
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Relationships">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#auto-materialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-Materialization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Roles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rls-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RLS Rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#materialized-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Materialized Views
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#views-governed-computed-datasets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Views (Governed Computed Datasets)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Views (Governed Computed Datasets)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#materialized-vs-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Materialized vs Live
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query-only-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query-only views
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kafka-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kafka Sources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Kafka Sources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time Window
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discriminator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discriminator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema Source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cache">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cache-hierarchy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache Hierarchy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#auth-provider-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auth Provider Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-auth-config-example-commented-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full Auth Config Example (commented out)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upsert-mutations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upsert Mutations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#distinct-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Distinct On
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#column-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Column Presets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inherited-roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inherited Roles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scheduled-triggers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scheduled Triggers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#orderby-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OrderBy Format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Observability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#telemetry-filters-tool-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry Filters [tool-verified]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#support-endpoint-tool-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Support Endpoint [tool-verified]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#endpoint-protocol-detection-tool-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Endpoint Protocol Detection [tool-verified]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#federation-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Federation Engine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Federation Engine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#federation-engines-tool-verified-enginepy-engine_registry-_engine_builders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Federation engines [tool-verified: engine.py ENGINE_REGISTRY, _ENGINE_BUILDERS]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#engine-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Engine selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#materialization-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Materialization store
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-engine-credentials-and-hints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-engine credentials and hints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query & Interfaces
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Query & Interfaces
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cypher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cypher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subscriptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subscriptions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations (JDBC, BI, Flight)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pgwire/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pgwire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data Sources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-schemas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote Schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import (Hasura / DDN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security & Governance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security & Governance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multitenant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multitenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Clients
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Clients
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/fdw_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FDW Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/change-signal-unification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Signal Unification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#govdata-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GovData Sources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GovData Sources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#subject-groupings-tool-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subject Groupings [tool-verified]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#domains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Domains
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Naming">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#naming-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming Convention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#domain-prefix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Domain Prefix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#naming-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tables
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aliases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aliases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#descriptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Descriptions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path-computed-json-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path (Computed JSON Extraction)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#masking-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Masking Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relationships
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Relationships">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#auto-materialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-Materialization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Roles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rls-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RLS Rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#materialized-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Materialized Views
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#views-governed-computed-datasets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Views (Governed Computed Datasets)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Views (Governed Computed Datasets)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#materialized-vs-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Materialized vs Live
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query-only-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query-only views
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kafka-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kafka Sources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Kafka Sources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time Window
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discriminator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discriminator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema Source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cache">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cache-hierarchy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache Hierarchy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#auth-provider-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auth Provider Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-auth-config-example-commented-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full Auth Config Example (commented out)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upsert-mutations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upsert Mutations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#distinct-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Distinct On
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#column-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Column Presets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inherited-roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inherited Roles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scheduled-triggers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scheduled Triggers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#orderby-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OrderBy Format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Observability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#telemetry-filters-tool-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry Filters [tool-verified]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#support-endpoint-tool-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Support Endpoint [tool-verified]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#endpoint-protocol-detection-tool-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Endpoint Protocol Detection [tool-verified]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#federation-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Federation Engine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Federation Engine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#federation-engines-tool-verified-enginepy-engine_registry-_engine_builders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Federation engines [tool-verified: engine.py ENGINE_REGISTRY, _ENGINE_BUILDERS]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#engine-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Engine selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#materialization-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Materialization store
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-engine-credentials-and-hints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-engine credentials and hints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h1>
+<p>Provisa is configured via a YAML file (default: <code>config/provisa.yaml</code>). (REQ-528)</p>
+<h2 id="sources">Sources<a class="headerlink" href="#sources" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">sources</span><span class="p">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-pg</span><span class="w">           </span><span class="c1"># unique identifier</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgresql</span><span class="w">        </span><span class="c1"># postgresql, mysql, sqlserver, oracle, duckdb, mongodb, cassandra</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgres</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5432</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">provisa</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">provisa</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:PG_PASSWORD}</span><span class="w">  </span><span class="c1"># secret resolution</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">pool_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">pool_max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="nt">use_pgbouncer</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">pgbouncer_port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">6432</span>
+</code></pre></div>
+<p>Supported source types: <code>postgresql</code>, <code>mysql</code>, <code>mariadb</code>, <code>singlestore</code>, <code>sqlserver</code>, <code>oracle</code>, <code>duckdb</code>, <code>snowflake</code>, <code>bigquery</code>, <code>redshift</code>, <code>databricks</code>, <code>clickhouse</code>, <code>druid</code>, <code>exasol</code>, <code>hive</code>, <code>elasticsearch</code>, <code>pinot</code>, <code>delta_lake</code>, <code>iceberg</code>, <code>mongodb</code>, <code>cassandra</code>, <code>redis</code>, <code>kafka</code>, <code>google_sheets</code>, <code>prometheus</code>, <code>govdata</code>.</p>
+<h2 id="govdata-sources">GovData Sources<a class="headerlink" href="#govdata-sources" title="Permanent link">&para;</a></h2>
+<p>Sources of type <code>govdata</code> expose U.S. government open data. (REQ-540) Access is partitioned by subject grouping. [tool-verified: <code>provisa/core/models.py</code> lines 543–574]</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">sources</span><span class="p">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">federal-data</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">govdata</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">subject</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">COMMERCE</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">domain_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">federal-analytics</span>
+</code></pre></div>
+<h3 id="subject-groupings-tool-verified">Subject Groupings [tool-verified]<a class="headerlink" href="#subject-groupings-tool-verified" title="Permanent link">&para;</a></h3>
+<p>Each subject maps to one or more GovData schemas. (REQ-540) Configuring a <code>govdata</code> source with a subject exposes all schemas for that subject automatically. (REQ-540)</p>
+<table>
+<thead>
+<tr>
+<th>Subject</th>
+<th>Schemas</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>COMMERCE</code></td>
+<td><code>sec</code>, <code>patents</code></td>
+</tr>
+<tr>
+<td><code>ECONOMY</code></td>
+<td><code>econ</code>, <code>econ_reference</code></td>
+</tr>
+<tr>
+<td><code>EDUCATION</code></td>
+<td><code>census</code>, <code>edu</code></td>
+</tr>
+<tr>
+<td><code>HEALTH</code></td>
+<td><code>health</code></td>
+</tr>
+<tr>
+<td><code>CYBER</code></td>
+<td><code>cyber_threat</code>, <code>cyber_vuln</code></td>
+</tr>
+<tr>
+<td><code>PUBLIC_SAFETY</code></td>
+<td><code>crime</code></td>
+</tr>
+<tr>
+<td><code>ENVIRONMENT</code></td>
+<td><code>lands</code></td>
+</tr>
+<tr>
+<td><code>WEATHER</code></td>
+<td><code>weather</code></td>
+</tr>
+<tr>
+<td><code>GOVERNMENT</code></td>
+<td><code>fedregister</code>, <code>fec</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>ref</code> and <code>geo</code> schemas are always included as linker schemas — not configurable and not listed above. (REQ-541) Use subject <code>ALL</code> to grant access to every schema. [tool-verified: <code>provisa/core/models.py</code> lines 561–563]</p>
+<h2 id="domains">Domains<a class="headerlink" href="#domains" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">domains</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-analytics</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Sales operational data</span>
+</code></pre></div>
+<h2 id="naming">Naming<a class="headerlink" href="#naming" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">naming</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">convention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apollo_graphql</span><span class="w">   </span><span class="c1"># snake, hasura_graphql, apollo_graphql (default)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">domain_prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">          </span><span class="c1"># prepend domain_id__ to all GraphQL names</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">rules</span><span class="p">:</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;^prod_pg_&quot;</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">      </span><span class="nt">replace</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+</code></pre></div>
+<h3 id="naming-convention">Naming Convention<a class="headerlink" href="#naming-convention" title="Permanent link">&para;</a></h3>
+<p>The naming authority is the single source of truth for client-facing names; physical backend column names are never exposed to clients. (REQ-194) Each query language derives a column's name from its <code>column.alias</code> if set, otherwise from the physical column name via its configured convention. (REQ-194)</p>
+<p>The GraphQL convention is one of three preset enums. (REQ-416) Old free-form strings (<code>none</code>, <code>snake_case</code>, <code>camelCase</code>, <code>PascalCase</code>) are deprecated. (REQ-416)</p>
+<table>
+<thead>
+<tr>
+<th>Preset</th>
+<th>Default</th>
+<th>Type names</th>
+<th>Field names</th>
+<th>Mutation names</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apollo_graphql</code></td>
+<td>yes</td>
+<td>PascalCase</td>
+<td>camelCase</td>
+<td>camelCase</td>
+</tr>
+<tr>
+<td><code>hasura_graphql</code></td>
+<td></td>
+<td>PascalCase</td>
+<td>camelCase</td>
+<td>snake_case</td>
+</tr>
+<tr>
+<td><code>snake</code></td>
+<td></td>
+<td>PascalCase</td>
+<td>snake_case</td>
+<td>snake_case</td>
+</tr>
+</tbody>
+</table>
+<p>The default GraphQL convention is <code>apollo_graphql</code>, which produces camelCase field and mutation names. (REQ-194, REQ-416) The SQL convention is separate, with default <code>snake_case</code>, applied via <code>apply_sql_name()</code>; the GraphQL convention is applied via <code>apply_gql_name()</code>, and the CQL name is derived from the GraphQL name. (REQ-194)</p>
+<p><code>domain_prefix: bool</code> is an orthogonal option that applies regardless of the chosen preset. (REQ-416)</p>
+<p>Explicit <code>column.alias</code> is the canonical name: SQL uses it verbatim with no convention applied, GraphQL applies its convention to it, and CQL derives from the GraphQL name. (REQ-194)</p>
+<p>Per-source override:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">sources</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">legacy-db</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">naming_convention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hasura_graphql</span><span class="w">  </span><span class="c1"># overrides global for this source</span>
+</code></pre></div></p>
+<p>Per-table override:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">source_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">legacy-db</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">table</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">naming_convention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">snake</span><span class="w">  </span><span class="c1"># overrides source for this table</span>
+</code></pre></div></p>
+<h3 id="domain-prefix">Domain Prefix<a class="headerlink" href="#domain-prefix" title="Permanent link">&para;</a></h3>
+<p>When <code>domain_prefix: true</code>, all GraphQL field and type names are prefixed with the domain ID using a double underscore separator: (REQ-154)</p>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Domain</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>orders</code></td>
+<td><code>sales-analytics</code></td>
+<td><code>sales_analytics__orders</code></td>
+</tr>
+<tr>
+<td><code>customer_segments</code></td>
+<td><code>customer-insights</code></td>
+<td><code>customer_insights__customer_segments</code></td>
+</tr>
+</tbody>
+</table>
+<p>This prevents name collisions when different domains have tables with the same name, and makes queries self-documenting.</p>
+<h3 id="naming-rules">Naming Rules<a class="headerlink" href="#naming-rules" title="Permanent link">&para;</a></h3>
+<p>Regex rules applied to table names when generating GraphQL field names. Applied in order before uniqueness resolution. (REQ-542)</p>
+<h2 id="tables">Tables<a class="headerlink" href="#tables" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">source_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-pg</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">domain_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-analytics</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">public</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">table</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="nt">alias</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">purchase_orders</span><span class="w">     </span><span class="c1"># optional: override GraphQL name</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Customer</span><span class="nv"> </span><span class="s">purchase</span><span class="nv"> </span><span class="s">orders&quot;</span><span class="w">  </span><span class="c1"># optional: GraphQL description</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">governance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pre-approved</span><span class="w">    </span><span class="c1"># or: registry-required</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="nt">columns</span><span class="p">:</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">id</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">        </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">        </span><span class="nt">writable_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">           </span><span class="c1"># read-only (empty = no writes)</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">email</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">        </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">        </span><span class="nt">writable_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span><span class="w">      </span><span class="c1"># only admin can mutate</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">        </span><span class="nt">unmasked_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span><span class="w">      </span><span class="c1"># admin sees raw, analyst sees masked</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">        </span><span class="nt">mask_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">regex</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">        </span><span class="nt">mask_pattern</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;^(.{2}).*(@.*)$&quot;</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">        </span><span class="nt">mask_replace</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;$1***$2&quot;</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">        </span><span class="nt">alias</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">email_address</span><span class="w">      </span><span class="c1"># optional: override GraphQL field name</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="w">        </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Primary</span><span class="nv"> </span><span class="s">email</span><span class="nv"> </span><span class="s">address&quot;</span><span class="w">  </span><span class="c1"># optional: appears in SDL</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">amount</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">        </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="w">        </span><span class="nt">writable_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="w">        </span><span class="nt">unmasked_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="w">        </span><span class="nt">mask_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">constant</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="w">        </span><span class="nt">mask_value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0&quot;</span>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">created_at</span>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="w">        </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="w">        </span><span class="nt">writable_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">           </span><span class="c1"># nobody can write</span>
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a><span class="w">        </span><span class="nt">unmasked_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a><span class="w">        </span><span class="nt">mask_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">truncate</span>
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a><span class="w">        </span><span class="nt">mask_precision</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">month</span>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a><span class="w">    </span><span class="nt">column_presets</span><span class="p">:</span><span class="w">               </span><span class="c1"># auto-set values on insert/update</span>
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">created_by</span>
+<a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a><span class="w">        </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">header</span><span class="w">            </span><span class="c1"># from request header</span>
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-User-ID</span>
+<a id="__codelineno-6-38" name="__codelineno-6-38" href="#__codelineno-6-38"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">updated_at</span>
+<a id="__codelineno-6-39" name="__codelineno-6-39" href="#__codelineno-6-39"></a><span class="w">        </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">now</span><span class="w">               </span><span class="c1"># current timestamp</span>
+</code></pre></div>
+<h3 id="aliases">Aliases<a class="headerlink" href="#aliases" title="Permanent link">&para;</a></h3>
+<p>Table and column aliases override the default GraphQL name. (REQ-155) Useful for:
+- Renaming cryptic database names (e.g., <code>tbl_cust_seg</code> → <code>customer_segments</code>)
+- Avoiding abbreviations in the API layer
+- Creating a clean, domain-specific vocabulary</p>
+<h3 id="descriptions">Descriptions<a class="headerlink" href="#descriptions" title="Permanent link">&para;</a></h3>
+<p>Table and column descriptions are included in the generated GraphQL SDL. (REQ-156) They appear in GraphiQL's documentation explorer and introspection queries. Set them in config YAML or via the admin UI.</p>
+<h3 id="path-computed-json-extraction">Path (Computed JSON Extraction)<a class="headerlink" href="#path-computed-json-extraction" title="Permanent link">&para;</a></h3>
+<p>Columns can extract values from a JSON/JSONB source column using a dot-notation <code>path</code>. (REQ-151) This is useful for semi-structured data in Kafka messages, MongoDB documents, or PostgreSQL JSONB columns.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">columns</span><span class="p">:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">payload</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">varchar</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">            </span><span class="c1"># hide the raw JSON column</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order_id</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">integer</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">payload.order_id</span><span class="w">    </span><span class="c1"># extracts from payload column</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">    </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customer_name</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">varchar</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">payload.customer.name</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">    </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>The path format is <code>source_column.key1.key2...</code>. The compiler generates <code>json_extract_scalar(source_column, '$.key1.key2')</code> in the SQL. (REQ-151)</p>
+<p><strong>Routing impact:</strong> Path columns use PostgreSQL JSON operators (<code>-&gt;&gt;</code>), which are natively supported by direct PG routing. (REQ-152) For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine, where SQLGlot transpiles <code>-&gt;&gt;'key'</code> to <code>json_extract_scalar</code>. (REQ-152) Mutations are unaffected since path columns are read-only computed fields. (REQ-153)</p>
+<h3 id="masking-types">Masking Types<a class="headerlink" href="#masking-types" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Fields</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>regex</code></td>
+<td><code>pattern</code>, <code>replace</code></td>
+<td>REGEXP_REPLACE (string columns only)</td>
+</tr>
+<tr>
+<td><code>constant</code></td>
+<td><code>value</code></td>
+<td>Literal replacement (NULL, 0, MAX, MIN, custom)</td>
+</tr>
+<tr>
+<td><code>truncate</code></td>
+<td><code>precision</code></td>
+<td>DATE_TRUNC (date/timestamp columns only)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="relationships">Relationships<a class="headerlink" href="#relationships" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">relationships</span><span class="p">:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders-to-customers</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">source_table_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="nt">target_table_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customers</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="nt">source_column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customer_id</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="nt">target_column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">id</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="nt">cardinality</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">many-to-one</span><span class="w">   </span><span class="c1"># or: one-to-many</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders-to-reviews</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span><span class="nt">source_table_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span><span class="w">        </span><span class="c1"># sales-pg source</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="w">    </span><span class="nt">target_table_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">product_reviews</span><span class="w">  </span><span class="c1"># reviews-mongo source</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="w">    </span><span class="nt">source_column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">product_id</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="w">    </span><span class="nt">target_column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">product_id</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="w">    </span><span class="nt">cardinality</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">one-to-many</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="w">    </span><span class="nt">materialize</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">              </span><span class="c1"># auto-create MV for this cross-source join</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="w">    </span><span class="nt">refresh_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">600</span><span class="w">          </span><span class="c1"># refresh every 10 minutes</span>
+</code></pre></div>
+<h3 id="auto-materialization">Auto-Materialization<a class="headerlink" href="#auto-materialization" title="Permanent link">&para;</a></h3>
+<p>Set <code>materialize: true</code> on a relationship to automatically generate a materialized view for cross-source JOINs. (REQ-158) This avoids expensive federated queries by pre-computing the JOIN result.</p>
+<ul>
+<li>Only cross-source relationships generate MVs (same-source JOINs are already fast) (REQ-159)</li>
+<li>The MV starts stale and is populated by the background refresh loop (REQ-160)</li>
+<li>Mutations to either source table mark the MV as stale for re-refresh (REQ-543)</li>
+<li><code>refresh_interval</code> defaults to 300 seconds (5 minutes) (REQ-543)</li>
+</ul>
+<h2 id="roles">Roles<a class="headerlink" href="#roles" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">roles</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">admin</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="nt">capabilities</span><span class="p">:</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source_registration</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">table_registration</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">relationship_registration</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">security_config</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">query_development</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">full_results</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">admin</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">    </span><span class="nt">domain_access</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;*&quot;</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">    </span><span class="nt">capabilities</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">query_development</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">    </span><span class="nt">domain_access</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">sales-analytics</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">junior_analyst</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="w">    </span><span class="nt">capabilities</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a><span class="w">    </span><span class="nt">domain_access</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">sales-analytics</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="w">    </span><span class="nt">parent_role_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span><span class="w">      </span><span class="c1"># inherits query_development + sales-analytics</span>
+</code></pre></div>
+<p>Roles with <code>parent_role_id</code> inherit capabilities and domain access from the parent. (REQ-215) The hierarchy is flattened at startup. (REQ-215)</p>
+<h3 id="capabilities">Capabilities<a class="headerlink" href="#capabilities" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_registration</code></td>
+<td>Register data sources</td>
+</tr>
+<tr>
+<td><code>table_registration</code></td>
+<td>Register tables</td>
+</tr>
+<tr>
+<td><code>relationship_registration</code></td>
+<td>Define relationships</td>
+</tr>
+<tr>
+<td><code>security_config</code></td>
+<td>Configure RLS, masking</td>
+</tr>
+<tr>
+<td><code>query_development</code></td>
+<td>Execute queries</td>
+</tr>
+<tr>
+<td><code>full_results</code></td>
+<td>Bypass sampling limits</td>
+</tr>
+<tr>
+<td><code>admin</code></td>
+<td>All capabilities</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rls-rules">RLS Rules<a class="headerlink" href="#rls-rules" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">rls_rules</span><span class="p">:</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">table_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="nt">role_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="nt">filter</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;region</span><span class="nv"> </span><span class="s">=</span><span class="nv"> </span><span class="s">current_setting(&#39;provisa.user_region&#39;)&quot;</span>
+</code></pre></div>
+<h2 id="materialized-views">Materialized Views<a class="headerlink" href="#materialized-views" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">materialized_views</span><span class="p">:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mv-orders-customers</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="nt">source_tables</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">orders</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">customers</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="nt">join_pattern</span><span class="p">:</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">      </span><span class="nt">left_table</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">      </span><span class="nt">left_column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customer_id</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">      </span><span class="nt">right_table</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customers</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">      </span><span class="nt">right_column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">id</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">      </span><span class="nt">join_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">left</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">    </span><span class="nt">target_catalog</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgresql</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">    </span><span class="nt">target_schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mv_cache</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="w">    </span><span class="nt">refresh_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<h2 id="views-governed-computed-datasets">Views (Governed Computed Datasets)<a class="headerlink" href="#views-governed-computed-datasets" title="Permanent link">&para;</a></h2>
+<p>Views are SQL-defined computed datasets with full column-level governance. (REQ-133) They are the governed mechanism for adding aggregations, transformations, and derived metrics to the semantic layer. (REQ-136)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">views</span><span class="p">:</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">monthly-revenue</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="nt">sql</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">      </span><span class="no">SELECT DATE_TRUNC(&#39;month&#39;, created_at) AS month,</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">             </span><span class="no">region,</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">             </span><span class="no">SUM(amount) AS revenue,</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">             </span><span class="no">COUNT(*) AS order_count</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">      </span><span class="no">FROM orders</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">      </span><span class="no">GROUP BY 1, 2</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Monthly</span><span class="nv"> </span><span class="s">revenue</span><span class="nv"> </span><span class="s">by</span><span class="nv"> </span><span class="s">region&quot;</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">    </span><span class="nt">domain_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-analytics</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span><span class="nt">governance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">registry-required</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span><span class="nt">materialize</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">    </span><span class="nt">refresh_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3600</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="w">    </span><span class="nt">columns</span><span class="p">:</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">month</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="w">        </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">region</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="w">        </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">revenue</span>
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a><span class="w">        </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order_count</span>
+<a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a><span class="w">        </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Yes</td>
+<td>Unique view identifier</td>
+</tr>
+<tr>
+<td><code>sql</code></td>
+<td>Yes</td>
+<td>SQL SELECT statement defining the view</td>
+</tr>
+<tr>
+<td><code>domain_id</code></td>
+<td>Yes</td>
+<td>Domain for schema visibility</td>
+</tr>
+<tr>
+<td><code>governance</code></td>
+<td>No</td>
+<td><code>pre-approved</code> (default) or <code>registry-required</code></td>
+</tr>
+<tr>
+<td><code>materialize</code></td>
+<td>No</td>
+<td><code>true</code> = periodic CTAS refresh, <code>false</code> = live federated view</td>
+</tr>
+<tr>
+<td><code>refresh_interval</code></td>
+<td>No</td>
+<td>Seconds between refreshes (materialized only, default 300)</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>No</td>
+<td>Appears in GraphQL SDL</td>
+</tr>
+<tr>
+<td><code>alias</code></td>
+<td>No</td>
+<td>Override GraphQL name</td>
+</tr>
+<tr>
+<td><code>columns</code></td>
+<td>Yes</td>
+<td>Column definitions with visibility, masking, descriptions</td>
+</tr>
+</tbody>
+</table>
+<h3 id="materialized-vs-live">Materialized vs Live<a class="headerlink" href="#materialized-vs-live" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>materialize: true</code></strong>: Provisa creates a table via CTAS and refreshes it on a schedule. (REQ-135) Faster queries but data may be stale by up to <code>refresh_interval</code> seconds.</li>
+<li><strong><code>materialize: false</code></strong>: Provisa creates a federated view. (REQ-135) Queries always return live data but may be slower for complex aggregations.</li>
+</ul>
+<p>Views go through the same governance pipeline as tables — RLS, masking, sampling, and role-based visibility. (REQ-134) This ensures no new semantics can be added to the platform without steward oversight. (REQ-136)</p>
+<h3 id="query-only-views">Query-only views<a class="headerlink" href="#query-only-views" title="Permanent link">&para;</a></h3>
+<p>Both <code>materialize: true</code> and <code>materialize: false</code> views expose their GraphQL type as query-only. No insert, upsert, update, or delete mutations are generated for <code>view_sql</code>-backed relations. (REQ-1157) [tool-verified: <code>provisa/compiler/schema_gen.py:184</code>, <code>provisa/compiler/schema_types.py:79</code>]</p>
+<h2 id="kafka-sources">Kafka Sources<a class="headerlink" href="#kafka-sources" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">kafka_sources</span><span class="p">:</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">event-stream</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">bootstrap_servers</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kafka:9092</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="nt">schema_registry_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://schema-registry:8081</span><span class="w">  </span><span class="c1"># optional</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="nt">topics</span><span class="p">:</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order-created</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">        </span><span class="nt">topic</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders.events</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">        </span><span class="nt">default_window</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1h</span><span class="w">          </span><span class="c1"># auto-injected time bound</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">        </span><span class="nt">schema_source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">manual</span><span class="w">       </span><span class="c1"># manual, registry, or sample</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">        </span><span class="nt">value_format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">json</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">        </span><span class="nt">discriminator</span><span class="p">:</span><span class="w">              </span><span class="c1"># filter shared topic by message type</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">          </span><span class="nt">field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">event_type</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">OrderCreated</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="w">        </span><span class="nt">columns</span><span class="p">:</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">event_type</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">            </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">varchar</span>
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order_id</span>
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="w">            </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">integer</span>
+<a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">amount</span>
+<a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a><span class="w">            </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">double</span>
+<a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">metadata</span>
+<a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a><span class="w">            </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">varchar</span><span class="w">           </span><span class="c1"># raw JSON for complex nested data</span>
+<a id="__codelineno-13-23" name="__codelineno-13-23" href="#__codelineno-13-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order-shipped</span>
+<a id="__codelineno-13-24" name="__codelineno-13-24" href="#__codelineno-13-24"></a><span class="w">        </span><span class="nt">topic</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders.events</span><span class="w">        </span><span class="c1"># same physical topic</span>
+<a id="__codelineno-13-25" name="__codelineno-13-25" href="#__codelineno-13-25"></a><span class="w">        </span><span class="nt">default_window</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1h</span>
+<a id="__codelineno-13-26" name="__codelineno-13-26" href="#__codelineno-13-26"></a><span class="w">        </span><span class="nt">discriminator</span><span class="p">:</span>
+<a id="__codelineno-13-27" name="__codelineno-13-27" href="#__codelineno-13-27"></a><span class="w">          </span><span class="nt">field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">event_type</span>
+<a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a><span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">OrderShipped</span>
+<a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a><span class="w">        </span><span class="nt">columns</span><span class="p">:</span>
+<a id="__codelineno-13-30" name="__codelineno-13-30" href="#__codelineno-13-30"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">event_type</span>
+<a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a><span class="w">            </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">varchar</span>
+<a id="__codelineno-13-32" name="__codelineno-13-32" href="#__codelineno-13-32"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order_id</span>
+<a id="__codelineno-13-33" name="__codelineno-13-33" href="#__codelineno-13-33"></a><span class="w">            </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">integer</span>
+<a id="__codelineno-13-34" name="__codelineno-13-34" href="#__codelineno-13-34"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shipped_at</span>
+<a id="__codelineno-13-35" name="__codelineno-13-35" href="#__codelineno-13-35"></a><span class="w">            </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">timestamp</span>
+</code></pre></div>
+<h3 id="time-window">Time Window<a class="headerlink" href="#time-window" title="Permanent link">&para;</a></h3>
+<p><code>default_window</code> bounds every query to a recent time period, preventing unbounded reads from high-volume topics. (REQ-148) Format: <code>1h</code>, <code>30m</code>, <code>7d</code>, <code>60s</code>. Defaults to <code>1h</code>.</p>
+<p>The window is auto-injected as <code>WHERE _timestamp &gt;= CURRENT_TIMESTAMP - INTERVAL '1' HOUR</code>. (REQ-148) Clients can override with their own <code>_timestamp</code> filter in the GraphQL <code>where</code> argument.</p>
+<h3 id="discriminator">Discriminator<a class="headerlink" href="#discriminator" title="Permanent link">&para;</a></h3>
+<p>Multiple topic configs can point to the same physical Kafka topic with different <code>discriminator</code> values, producing separate GraphQL types. (REQ-149) The discriminator is auto-injected as a WHERE clause.</p>
+<h3 id="schema-source">Schema Source<a class="headerlink" href="#schema-source" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>registry</code></td>
+<td>Fetch schema from Confluent Schema Registry</td>
+</tr>
+<tr>
+<td><code>manual</code></td>
+<td>Define columns inline in config (no Schema Registry needed)</td>
+</tr>
+<tr>
+<td><code>sample</code></td>
+<td>Auto-discover from sample messages</td>
+</tr>
+</tbody>
+</table>
+<h2 id="cache">Cache<a class="headerlink" href="#cache" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">cache</span><span class="p">:</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span><span class="nt">redis_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:REDIS_URL}</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span><span class="nt">default_ttl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+</code></pre></div>
+<h3 id="cache-hierarchy">Cache Hierarchy<a class="headerlink" href="#cache-hierarchy" title="Permanent link">&para;</a></h3>
+<p>TTL resolution order (most specific wins): <strong>table</strong> &gt; <strong>source</strong> &gt; <strong>global default</strong>. (REQ-544) First non-null value is used.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">cache</span><span class="p">:</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="nt">redis_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:REDIS_URL}</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span><span class="nt">default_ttl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span><span class="w">              </span><span class="c1"># global fallback: 5 minutes</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="nt">sources</span><span class="p">:</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-pg</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">    </span><span class="nt">cache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">          </span><span class="c1"># toggle caching for all tables in this source</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">    </span><span class="nt">cache_ttl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">600</span><span class="w">               </span><span class="c1"># source override: 10 minutes</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">source_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-pg</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="w">    </span><span class="nt">table</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a><span class="w">    </span><span class="nt">cache_ttl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60</span><span class="w">                </span><span class="c1"># table override: 1 minute (frequently changing)</span>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">source_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-pg</span>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a><span class="w">    </span><span class="nt">table</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customers</span>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="w">    </span><span class="c1"># no cache_ttl → inherits source TTL (600s)</span>
+</code></pre></div>
+<p>Setting <code>cache_enabled: false</code> on a source disables caching for all tables in that source, regardless of table-level TTL. (REQ-544) Cache keys always include <code>role_id</code> + RLS context values for security partitioning. (REQ-544)</p>
+<h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nt">auth</span><span class="p">:</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">simple</span><span class="w">           </span><span class="c1"># none, firebase, keycloak, oauth, simple</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">  </span><span class="nt">superuser</span><span class="p">:</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">admin</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:PROVISA_SUPERUSER_PASSWORD}</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">  </span><span class="nt">simple</span><span class="p">:</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">    </span><span class="nt">allow</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">    </span><span class="nt">jwt_secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:PROVISA_JWT_SECRET}</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">    </span><span class="nt">users</span><span class="p">:</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">admin</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="w">        </span><span class="nt">password_hash</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;$2b$12$...&quot;</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="w">        </span><span class="nt">roles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="w">  </span><span class="nt">role_mapping</span><span class="p">:</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">claim</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">groups</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="w">      </span><span class="nt">contains</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data-analysts</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="w">      </span><span class="nt">provisa_role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="w">    </span><span class="nt">default_role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span>
+</code></pre></div>
+<h3 id="auth-provider-types">Auth Provider Types<a class="headerlink" href="#auth-provider-types" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Use Case</th>
+<th>Token Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>simple</code></td>
+<td>Local dev/testing. Users defined in YAML.</td>
+<td>JWT signed with <code>PROVISA_JWT_SECRET</code></td>
+</tr>
+<tr>
+<td><code>firebase</code></td>
+<td>Firebase Authentication (all methods).</td>
+<td><code>firebase-admin</code> SDK <code>verify_id_token()</code></td>
+</tr>
+<tr>
+<td><code>keycloak</code></td>
+<td>Keycloak OIDC. Tenant + client roles mapped.</td>
+<td>JWKS-based JWT validation</td>
+</tr>
+<tr>
+<td><code>oauth</code></td>
+<td>Generic OIDC (Okta, Azure AD, Auth0, PingFederate).</td>
+<td>JWKS from discovery URL</td>
+</tr>
+</tbody>
+</table>
+<p>Superuser credentials (<code>superuser</code> block) work with any provider and always resolve to admin role with all capabilities. (REQ-125) Used for initial setup before external auth is configured.</p>
+<h3 id="full-auth-config-example-commented-out">Full Auth Config Example (commented out)<a class="headerlink" href="#full-auth-config-example-commented-out" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># auth:</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="c1">#   provider: firebase</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="c1">#</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c1">#   superuser:</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="c1">#     username: admin</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="c1">#     password: ${env:PROVISA_SUPERUSER_PASSWORD}</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="c1">#</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="c1">#   firebase:</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="c1">#     project_id: ${env:FIREBASE_PROJECT_ID}</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="c1">#     service_account_key: ${env:FIREBASE_SERVICE_ACCOUNT}</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="c1">#</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="c1">#   # keycloak:</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="c1">#   #   server_url: https://keycloak.example.com</span>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="c1">#   #   # kc-tenant: set to your Keycloak tenant name (e.g. provisa)</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a><span class="c1">#   #   client_id: provisa-app</span>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a><span class="c1">#   #   client_secret: ${env:KEYCLOAK_CLIENT_SECRET}</span>
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a><span class="c1">#</span>
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a><span class="c1">#   # oauth:</span>
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a><span class="c1">#   #   discovery_url: https://login.example.com/.well-known/openid-configuration</span>
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a><span class="c1">#   #   client_id: provisa</span>
+<a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a><span class="c1">#   #   client_secret: ${env:OAUTH_CLIENT_SECRET}</span>
+<a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a><span class="c1">#   #   role_claim: groups</span>
+<a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a><span class="c1">#   #   audience: provisa-api</span>
+<a id="__codelineno-17-24" name="__codelineno-17-24" href="#__codelineno-17-24"></a><span class="c1">#</span>
+<a id="__codelineno-17-25" name="__codelineno-17-25" href="#__codelineno-17-25"></a><span class="c1">#   role_mapping:</span>
+<a id="__codelineno-17-26" name="__codelineno-17-26" href="#__codelineno-17-26"></a><span class="c1">#     - claim: custom_claims.role</span>
+<a id="__codelineno-17-27" name="__codelineno-17-27" href="#__codelineno-17-27"></a><span class="c1">#       value: admin</span>
+<a id="__codelineno-17-28" name="__codelineno-17-28" href="#__codelineno-17-28"></a><span class="c1">#       provisa_role: admin</span>
+<a id="__codelineno-17-29" name="__codelineno-17-29" href="#__codelineno-17-29"></a><span class="c1">#     - claim: groups</span>
+<a id="__codelineno-17-30" name="__codelineno-17-30" href="#__codelineno-17-30"></a><span class="c1">#       contains: data-analysts</span>
+<a id="__codelineno-17-31" name="__codelineno-17-31" href="#__codelineno-17-31"></a><span class="c1">#       provisa_role: analyst</span>
+<a id="__codelineno-17-32" name="__codelineno-17-32" href="#__codelineno-17-32"></a><span class="c1">#     default_role: analyst</span>
+</code></pre></div>
+<h2 id="upsert-mutations">Upsert Mutations<a class="headerlink" href="#upsert-mutations" title="Permanent link">&para;</a></h2>
+<p>For tables with a primary key, Provisa auto-generates <code>upsert_&lt;table&gt;</code> mutation fields. (REQ-212) These compile to <code>INSERT ... ON CONFLICT (pk) DO UPDATE SET ...</code>. (REQ-212) SQLGlot transpiles to the target dialect (e.g., MySQL <code>ON DUPLICATE KEY UPDATE</code>). (REQ-212)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="k">mutation</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">  </span><span class="n">upsert_orders</span><span class="p">(</span><span class="n">objects</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="n">id</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">amount</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="err">0.00</span><span class="p">,</span><span class="w"> </span><span class="n">region</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;us&quot;</span><span class="p">}])</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">    </span><span class="n">affected_rows</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="p">}</span>
+</code></pre></div>
+<p>Conflict columns are derived from PK metadata. (REQ-212) All column visibility and write permission rules apply.</p>
+<h2 id="distinct-on">Distinct On<a class="headerlink" href="#distinct-on" title="Permanent link">&para;</a></h2>
+<p>The <code>distinct_on</code> argument selects the first row for each distinct value of the specified columns. (REQ-213) Available on root query fields.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="p">{</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">  </span><span class="n">orders</span><span class="p">(</span><span class="n">distinct_on</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="no">region</span><span class="p">],</span><span class="w"> </span><span class="n">order_by</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="n">region</span><span class="p">:</span><span class="w"> </span><span class="no">asc</span><span class="p">,</span><span class="w"> </span><span class="n">created_at</span><span class="p">:</span><span class="w"> </span><span class="no">desc</span><span class="p">}])</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">    </span><span class="n">region</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">    </span><span class="n">amount</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">    </span><span class="n">created_at</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="p">}</span>
+</code></pre></div>
+<p>Compiles to <code>SELECT DISTINCT ON (region) ...</code> in PostgreSQL. (REQ-213) For non-PG dialects, SQLGlot provides a window function fallback. (REQ-213)</p>
+<h2 id="column-presets">Column Presets<a class="headerlink" href="#column-presets" title="Permanent link">&para;</a></h2>
+<p>Auto-inject values into columns on insert/update. (REQ-214) Defined per table in config.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nt">tables</span><span class="p">:</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">source_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-pg</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">    </span><span class="nt">table</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">    </span><span class="nt">column_presets</span><span class="p">:</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">created_by</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="w">        </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">header</span><span class="w">           </span><span class="c1"># from request header</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-User-ID</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">updated_at</span>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="w">        </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">now</span><span class="w">              </span><span class="c1"># current timestamp</span>
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source_system</span>
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a><span class="w">        </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">literal</span><span class="w">          </span><span class="c1"># constant value</span>
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a><span class="w">        </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;provisa&quot;</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>header</code></td>
+<td>Injects value from the named HTTP request header</td>
+</tr>
+<tr>
+<td><code>now</code></td>
+<td>Injects <code>NOW()</code> (current timestamp)</td>
+</tr>
+<tr>
+<td><code>literal</code></td>
+<td>Injects a constant value</td>
+</tr>
+</tbody>
+</table>
+<p>Preset columns are injected during mutation compilation before SQL generation. (REQ-214) They are not visible in the mutation input type. (REQ-214)</p>
+<h2 id="inherited-roles">Inherited Roles<a class="headerlink" href="#inherited-roles" title="Permanent link">&para;</a></h2>
+<p>Roles can inherit capabilities and domain access from a parent role via <code>parent_role_id</code>. (REQ-215) The hierarchy is flattened at startup. (REQ-215)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nt">roles</span><span class="p">:</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">admin</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">    </span><span class="nt">capabilities</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">    </span><span class="nt">domain_access</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;*&quot;</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">    </span><span class="nt">capabilities</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">query_development</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">    </span><span class="nt">domain_access</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">sales-analytics</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">junior_analyst</span>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="w">    </span><span class="nt">capabilities</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="w">    </span><span class="nt">domain_access</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="w">    </span><span class="nt">parent_role_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span><span class="w">      </span><span class="c1"># inherits query_development + sales-analytics</span>
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">intern</span>
+<a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a><span class="w">    </span><span class="nt">capabilities</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a><span class="w">    </span><span class="nt">domain_access</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<a id="__codelineno-21-15" name="__codelineno-21-15" href="#__codelineno-21-15"></a><span class="w">    </span><span class="nt">parent_role_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">junior_analyst</span><span class="w">  </span><span class="c1"># inherits from junior_analyst (and transitively analyst)</span>
+</code></pre></div>
+<p>Multi-level inheritance is supported. (REQ-215) The child role's explicit capabilities and domain_access are merged with the parent's. (REQ-215)</p>
+<h2 id="scheduled-triggers">Scheduled Triggers<a class="headerlink" href="#scheduled-triggers" title="Permanent link">&para;</a></h2>
+<p>Cron-based triggers that call a webhook URL on schedule. (REQ-216) Uses APScheduler. (REQ-216)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nt">scheduled_triggers</span><span class="p">:</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">daily-report</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">    </span><span class="nt">cron</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0</span><span class="nv"> </span><span class="s">8</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*&quot;</span><span class="w">           </span><span class="c1"># 8:00 AM daily</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">    </span><span class="nt">webhook_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://hooks.example.com/daily-report</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hourly-sync</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="w">    </span><span class="nt">cron</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*</span><span class="nv"> </span><span class="s">*&quot;</span><span class="w">           </span><span class="c1"># every hour</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="w">    </span><span class="nt">webhook_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://hooks.example.com/sync</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</code></pre></div>
+<p>Scheduled tasks are managed via the admin UI (enable/disable toggle) or the <code>toggle_scheduled_task</code> admin mutation. (REQ-216)</p>
+<h2 id="orderby-format">OrderBy Format<a class="headerlink" href="#orderby-format" title="Permanent link">&para;</a></h2>
+<p>OrderBy uses the <code>{column: direction}</code> format with a 6-value direction enum: (REQ-200, REQ-201)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="p">{</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">  </span><span class="n">orders</span><span class="p">(</span><span class="n">order_by</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="n">created_at</span><span class="p">:</span><span class="w"> </span><span class="no">desc_nulls_last</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="n">amount</span><span class="p">:</span><span class="w"> </span><span class="no">asc</span><span class="p">}])</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">    </span><span class="n">id</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">    </span><span class="n">created_at</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">    </span><span class="n">amount</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Direction</th>
+<th>SQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>asc</code></td>
+<td><code>ASC</code></td>
+</tr>
+<tr>
+<td><code>desc</code></td>
+<td><code>DESC</code></td>
+</tr>
+<tr>
+<td><code>asc_nulls_first</code></td>
+<td><code>ASC NULLS FIRST</code></td>
+</tr>
+<tr>
+<td><code>asc_nulls_last</code></td>
+<td><code>ASC NULLS LAST</code></td>
+</tr>
+<tr>
+<td><code>desc_nulls_first</code></td>
+<td><code>DESC NULLS FIRST</code></td>
+</tr>
+<tr>
+<td><code>desc_nulls_last</code></td>
+<td><code>DESC NULLS LAST</code></td>
+</tr>
+</tbody>
+</table>
+<p>Relationship ordering is supported via nested objects: (REQ-202)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="p">{</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">  </span><span class="n">orders</span><span class="p">(</span><span class="n">order_by</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="n">customers</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="no">asc</span><span class="p">}}])</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">    </span><span class="n">id</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">    </span><span class="n">customers</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="p">}</span>
+</code></pre></div>
+<h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nt">observability</span><span class="p">:</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">  </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://localhost:4319&quot;</span><span class="w">   </span><span class="c1"># OTLP collector; env OTEL_EXPORTER_OTLP_ENDPOINT overrides</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">  </span><span class="nt">service_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">provisa</span><span class="w">               </span><span class="c1"># env OTEL_SERVICE_NAME overrides</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">  </span><span class="nt">sample_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span><span class="w">                    </span><span class="c1"># 0.0–1.0; TraceIdRatioBased sampler</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">  </span><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WARNING</span><span class="w">                  </span><span class="c1"># env OTEL_LOG_LEVEL overrides</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="w">  </span><span class="nt">compact_batch_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="w">  </span><span class="nt">telemetry_filter</span><span class="p">:</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="w">    </span><span class="nt">redact_sql_literals</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">        </span><span class="c1"># strip literal values from db.statement before export</span>
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="w">    </span><span class="nt">redact_attributes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">             </span><span class="c1"># attribute keys dropped entirely before export</span>
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a><span class="w">  </span><span class="c1"># support_endpoint: &quot;&quot;              # env PROVISA_SUPPORT_OTLP_ENDPOINT; off by default</span>
+<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a><span class="w">  </span><span class="nt">support_telemetry_filter</span><span class="p">:</span>
+<a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a><span class="w">    </span><span class="nt">redact_sql_literals</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">         </span><span class="c1"># default on — strip literals before sending to support</span>
+<a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a><span class="w">    </span><span class="nt">redact_attributes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">             </span><span class="c1"># additional keys dropped before sending to support</span>
+</code></pre></div>
+<h3 id="telemetry-filters-tool-verified">Telemetry Filters [tool-verified]<a class="headerlink" href="#telemetry-filters-tool-verified" title="Permanent link">&para;</a></h3>
+<p>Provisa runs two independent OTLP export paths: your internal collector and the optional Provisa support endpoint. (REQ-545) Each path has its own filter. Filters run inside a wrapping <code>_FilteringExporter</code> before spans leave the process — original span objects are never mutated. (REQ-546) [tool-verified: <code>provisa/api/otel_setup.py</code> lines 156–207]</p>
+<p><strong><code>telemetry_filter</code></strong> — controls what reaches your internal collector.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>redact_sql_literals</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Replaces string and numeric literals in <code>db.statement</code> with <code>?</code></td>
+</tr>
+<tr>
+<td><code>redact_attributes</code></td>
+<td>list[str]</td>
+<td><code>[]</code></td>
+<td>Attribute keys dropped entirely from every span</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>support_telemetry_filter</code></strong> — controls what reaches the Provisa support endpoint. SQL literal redaction defaults to <code>true</code> on this path, since query data belongs to you. (REQ-547) [tool-verified: <code>provisa/api/otel_setup.py</code> line 240]</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>redact_sql_literals</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Replaces string and numeric literals in <code>db.statement</code> with <code>?</code></td>
+</tr>
+<tr>
+<td><code>redact_attributes</code></td>
+<td>list[str]</td>
+<td><code>[]</code></td>
+<td>Attribute keys dropped entirely from every span</td>
+</tr>
+</tbody>
+</table>
+<p>Redacted <code>db.statement</code> example — with <code>redact_sql_literals: true</code>, this span attribute:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>db.statement: SELECT * FROM orders WHERE region = &#39;us-west&#39; AND amount &gt; 500
+</code></pre></div>
+<p>becomes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>db.statement: SELECT * FROM orders WHERE region = ? AND amount &gt; ?
+</code></pre></div>
+<h3 id="support-endpoint-tool-verified">Support Endpoint [tool-verified]<a class="headerlink" href="#support-endpoint-tool-verified" title="Permanent link">&para;</a></h3>
+<p><code>support_endpoint</code> (or env <code>PROVISA_SUPPORT_OTLP_ENDPOINT</code>) forwards telemetry to Provisa support for diagnostics. (REQ-548) When unset, no data leaves your infrastructure via this path. (REQ-548) The support filter applies independently of the internal filter — you can redact SQL literals from both exports while still sharing span timing and error data with support. (REQ-545) [tool-verified: <code>provisa/api/otel_setup.py</code> lines 238–288]</p>
+<h3 id="endpoint-protocol-detection-tool-verified">Endpoint Protocol Detection [tool-verified]<a class="headerlink" href="#endpoint-protocol-detection-tool-verified" title="Permanent link">&para;</a></h3>
+<p>Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. (REQ-549) URLs starting with <code>http://</code> or <code>https://</code> use OTLP/HTTP, with <code>/v1/traces</code>, <code>/v1/metrics</code>, and <code>/v1/logs</code> appended automatically. (REQ-549) Any other scheme uses OTLP/gRPC with <code>insecure=True</code>. (REQ-549) [tool-verified: <code>provisa/api/otel_setup.py</code> lines 60–70]</p>
+<h2 id="federation-engine">Federation Engine<a class="headerlink" href="#federation-engine" title="Permanent link">&para;</a></h2>
+<p>Provisa selects a federation engine at startup. Precedence: explicit <code>PROVISA_ENGINE</code> env var → persisted admin-UI <code>federation_engine</code> config field → <code>duckdb</code> (the zero-config default, REQ-989). Changes take effect on service restart. [tool-verified: <code>engine.py</code> <code>build_engine</code>]</p>
+<h3 id="federation-engines-tool-verified-enginepy-engine_registry-_engine_builders">Federation engines [tool-verified: <code>engine.py</code> <code>ENGINE_REGISTRY</code>, <code>_ENGINE_BUILDERS</code>]<a class="headerlink" href="#federation-engines-tool-verified-enginepy-engine_registry-_engine_builders" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Engine key</th>
+<th>Label</th>
+<th>Dialect</th>
+<th>MPP</th>
+<th>External-link mechanism</th>
+<th>Auth</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>trino</code></td>
+<td>Provisa Federation Engine</td>
+<td>Trino SQL</td>
+<td>Yes</td>
+<td>Trino catalogs (broad connector set)</td>
+<td>JDBC credentials</td>
+</tr>
+<tr>
+<td><code>trino-byo</code></td>
+<td>Trino (bring-your-own)</td>
+<td>Trino SQL</td>
+<td>Yes</td>
+<td>Same as <code>trino</code>; unmanaged coordinator</td>
+<td>JDBC credentials</td>
+</tr>
+<tr>
+<td><code>pg</code></td>
+<td>PostgreSQL</td>
+<td>PostgreSQL</td>
+<td>No</td>
+<td>FDW / pg_duckdb</td>
+<td>PostgreSQL credentials</td>
+</tr>
+<tr>
+<td><code>duckdb</code></td>
+<td>DuckDB</td>
+<td>DuckDB</td>
+<td>No</td>
+<td>Extension-native ATTACH</td>
+<td>None (in-process)</td>
+</tr>
+<tr>
+<td><code>clickhouse</code></td>
+<td>ClickHouse (embedded)</td>
+<td>ClickHouse</td>
+<td>Yes</td>
+<td>S3 / IcebergS3 / DeltaLake table engines</td>
+<td>chdb (in-process, no auth)</td>
+</tr>
+<tr>
+<td><code>clickhouse-server</code></td>
+<td>ClickHouse (Server / Cloud)</td>
+<td>ClickHouse</td>
+<td>Yes</td>
+<td>S3 / IcebergS3 / DeltaLake table engines</td>
+<td>ClickHouse credentials</td>
+</tr>
+<tr>
+<td><code>snowflake</code></td>
+<td>Snowflake</td>
+<td>Snowflake</td>
+<td>Yes</td>
+<td>External stage + external table</td>
+<td><code>PROVISA_ENGINE_URL</code></td>
+</tr>
+<tr>
+<td><code>databricks</code></td>
+<td>Databricks</td>
+<td>Databricks SQL</td>
+<td>Yes</td>
+<td>Unity Catalog external tables via REST</td>
+<td><code>PROVISA_ENGINE_URL</code> (bearer token + <code>http_path</code>)</td>
+</tr>
+<tr>
+<td><code>bigquery</code></td>
+<td>BigQuery</td>
+<td>BigQuery</td>
+<td>Yes</td>
+<td>BigQuery external / BigLake tables</td>
+<td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+</tr>
+<tr>
+<td><code>fabric</code></td>
+<td>Microsoft Fabric</td>
+<td>T-SQL</td>
+<td>Yes</td>
+<td>OneLake shortcuts → OPENROWSET</td>
+<td>Azure AD (<code>az login</code> or managed identity)</td>
+</tr>
+<tr>
+<td><code>synapse</code></td>
+<td>Azure Synapse</td>
+<td>T-SQL</td>
+<td>Yes</td>
+<td>ADLS OPENROWSET / external tables</td>
+<td>Azure AD</td>
+</tr>
+<tr>
+<td><code>sqlalchemy</code></td>
+<td>SQLAlchemy (any RDB)</td>
+<td>Per-dialect</td>
+<td>No</td>
+<td>None (land-only)</td>
+<td>Per-dialect credentials</td>
+</tr>
+</tbody>
+</table>
+<h3 id="engine-selection">Engine selection<a class="headerlink" href="#engine-selection" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="c1"># Environment variable (highest precedence after explicit arg)</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="nv">PROVISA_ENGINE</span><span class="o">=</span>databricks
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="c1"># Or set via admin UI — persisted to config; takes effect on restart</span>
+</code></pre></div>
+<p>For URL-driven engines (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy), set the connection URL:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="c1"># Snowflake</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="nv">PROVISA_ENGINE_URL</span><span class="o">=</span><span class="s2">&quot;snowflake://user:pass@account/db/schema?warehouse=WH&quot;</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="c1"># Databricks</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="nv">PROVISA_ENGINE_URL</span><span class="o">=</span><span class="s2">&quot;databricks://token:TOKEN@my-workspace.azuredatabricks.net?http_path=/sql/1.0/warehouses/xxxx&quot;</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a>
+<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a><span class="c1"># BigQuery (project from URL or $GOOGLE_CLOUD_PROJECT; auth via service-account key)</span>
+<a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a><span class="nv">PROVISA_ENGINE_URL</span><span class="o">=</span><span class="s2">&quot;bigquery://my-project?location=US&quot;</span>
+<a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a>
+<a id="__codelineno-29-10" name="__codelineno-29-10" href="#__codelineno-29-10"></a><span class="c1"># ClickHouse Server</span>
+<a id="__codelineno-29-11" name="__codelineno-29-11" href="#__codelineno-29-11"></a><span class="nv">PROVISA_ENGINE_URL</span><span class="o">=</span><span class="s2">&quot;clickhouse://user:pass@host:9000/db&quot;</span>
+<a id="__codelineno-29-12" name="__codelineno-29-12" href="#__codelineno-29-12"></a>
+<a id="__codelineno-29-13" name="__codelineno-29-13" href="#__codelineno-29-13"></a><span class="c1"># Fabric (blank → reads FABRIC_SQL_SERVER / FABRIC_DATABASE)</span>
+<a id="__codelineno-29-14" name="__codelineno-29-14" href="#__codelineno-29-14"></a><span class="c1"># Synapse (blank → reads SYNAPSE_SQL_SERVER / SYNAPSE_DATABASE)</span>
+</code></pre></div>
+<h3 id="materialization-store">Materialization store<a class="headerlink" href="#materialization-store" title="Permanent link">&para;</a></h3>
+<p>When a source cannot attach live (no ATTACH connector), it lands into the engine's materialization store. The store to use is resolved in this order: explicit <code>PROVISA_MATERIALIZE_URL</code> → engine's declared default → hard error (no silent fallback). [tool-verified: <code>engine.py</code> <code>materialize_store</code>]</p>
+<p>DuckDB declares its embedded file (<code>~/.provisa/materialize.duckdb</code>) as the default, so the DuckDB engine requires no store configuration. All other engines default to the platform <code>TENANT_DATABASE_URL</code> (PostgreSQL). Override with <code>PROVISA_MATERIALIZE_URL</code> for any engine.</p>
+<h3 id="per-engine-credentials-and-hints">Per-engine credentials and hints<a class="headerlink" href="#per-engine-credentials-and-hints" title="Permanent link">&para;</a></h3>
+<p>Extended connection parameters that standard host/port/user/password fields cannot carry go in <code>federation_hints</code> on the source:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="nt">sources</span><span class="p">:</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-databricks</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">databricks</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-workspace.azuredatabricks.net</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:DATABRICKS_TOKEN}</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="w">    </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="w">      </span><span class="nt">http_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/sql/1.0/warehouses/xxxx</span><span class="w">   </span><span class="c1"># required for Databricks sources</span>
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>
+<a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-snowflake</span>
+<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">snowflake</span>
+<a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a><span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">org.snowflakecomputing.com</span>
+<a id="__codelineno-30-12" name="__codelineno-30-12" href="#__codelineno-30-12"></a><span class="w">    </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">svc_provisa</span>
+<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a><span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:SNOWFLAKE_PASSWORD}</span>
+<a id="__codelineno-30-14" name="__codelineno-30-14" href="#__codelineno-30-14"></a><span class="w">    </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-30-15" name="__codelineno-30-15" href="#__codelineno-30-15"></a><span class="w">      </span><span class="nt">account</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myorg-myaccount</span>
+<a id="__codelineno-30-16" name="__codelineno-30-16" href="#__codelineno-30-16"></a><span class="w">      </span><span class="nt">warehouse</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">COMPUTE_WH</span>
+<a id="__codelineno-30-17" name="__codelineno-30-17" href="#__codelineno-30-17"></a>
+<a id="__codelineno-30-18" name="__codelineno-30-18" href="#__codelineno-30-18"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-clickhouse</span>
+<a id="__codelineno-30-19" name="__codelineno-30-19" href="#__codelineno-30-19"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">clickhouse</span>
+<a id="__codelineno-30-20" name="__codelineno-30-20" href="#__codelineno-30-20"></a><span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ch.example.com</span>
+<a id="__codelineno-30-21" name="__codelineno-30-21" href="#__codelineno-30-21"></a><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8123</span>
+<a id="__codelineno-30-22" name="__codelineno-30-22" href="#__codelineno-30-22"></a><span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:CLICKHOUSE_PASSWORD}</span>
+<a id="__codelineno-30-23" name="__codelineno-30-23" href="#__codelineno-30-23"></a><span class="w">    </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-30-24" name="__codelineno-30-24" href="#__codelineno-30-24"></a><span class="w">      </span><span class="nt">secure</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span><span class="w">           </span><span class="c1"># enable TLS on the HTTP interface</span>
+<a id="__codelineno-30-25" name="__codelineno-30-25" href="#__codelineno-30-25"></a>
+<a id="__codelineno-30-26" name="__codelineno-30-26" href="#__codelineno-30-26"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">r2-parquet</span>
+<a id="__codelineno-30-27" name="__codelineno-30-27" href="#__codelineno-30-27"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parquet</span>
+<a id="__codelineno-30-28" name="__codelineno-30-28" href="#__codelineno-30-28"></a><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">s3://my-bucket/data/events.parquet</span>
+<a id="__codelineno-30-29" name="__codelineno-30-29" href="#__codelineno-30-29"></a><span class="w">    </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-30-30" name="__codelineno-30-30" href="#__codelineno-30-30"></a><span class="w">      </span><span class="nt">access_key_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:R2_ACCESS_KEY}</span>
+<a id="__codelineno-30-31" name="__codelineno-30-31" href="#__codelineno-30-31"></a><span class="w">      </span><span class="nt">secret_access_key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:R2_SECRET}</span>
+<a id="__codelineno-30-32" name="__codelineno-30-32" href="#__codelineno-30-32"></a><span class="w">      </span><span class="nt">account_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:R2_ACCOUNT_ID}</span><span class="w">   </span><span class="c1"># Cloudflare R2 account (S3-compatible)</span>
+</code></pre></div>
+<p>For Google Cloud sources, set <code>GOOGLE_APPLICATION_CREDENTIALS</code> to the path of your service-account key file. For Fabric and Synapse, authenticate with <code>az login</code> (developer) or a managed identity (production) — the engine reads credentials via <code>azure-identity</code>'s <code>DefaultAzureCredential</code>.</p>
+<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PROVISA_CONFIG</code></td>
+<td><code>config/provisa.yaml</code></td>
+<td>Config file path</td>
+</tr>
+<tr>
+<td><code>TENANT_DATABASE_URL</code></td>
+<td><code>postgresql+asyncpg://provisa:provisa@localhost:5432/provisa</code></td>
+<td>Control-plane store URI (SQLAlchemy async); accepts <code>sqlite+aiosqlite://…</code> / <code>duckdb://…</code> for the embedded desktop store (REQ-828, REQ-850)</td>
+</tr>
+<tr>
+<td><code>PLATFORM_DATABASE_URL</code></td>
+<td>—</td>
+<td>Platform registry URI (tenant directory, engine registry); required at startup, no fallback (REQ-837)</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIS_EMBEDDED</code></td>
+<td>—</td>
+<td><code>1</code>/<code>true</code> uses embedded fakeredis instead of a Redis server — no Docker (REQ-829)</td>
+</tr>
+<tr>
+<td><code>PG_HOST</code></td>
+<td><code>localhost</code></td>
+<td>PostgreSQL host</td>
+</tr>
+<tr>
+<td><code>PG_PORT</code></td>
+<td><code>5432</code></td>
+<td>PostgreSQL port</td>
+</tr>
+<tr>
+<td><code>PG_DATABASE</code></td>
+<td><code>provisa</code></td>
+<td>PostgreSQL database</td>
+</tr>
+<tr>
+<td><code>PG_USER</code></td>
+<td><code>provisa</code></td>
+<td>PostgreSQL user</td>
+</tr>
+<tr>
+<td><code>PG_PASSWORD</code></td>
+<td><code>provisa</code></td>
+<td>PostgreSQL password</td>
+</tr>
+<tr>
+<td><code>PROVISA_ENGINE</code></td>
+<td><code>duckdb</code></td>
+<td>Federation engine key (REQ-989, REQ-916)</td>
+</tr>
+<tr>
+<td><code>PROVISA_ENGINE_URL</code></td>
+<td>—</td>
+<td>Connection URL for URL-driven engines (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy)</td>
+</tr>
+<tr>
+<td><code>PROVISA_MATERIALIZE_URL</code></td>
+<td>—</td>
+<td>Override materialization store DSN (defaults to engine's declared default)</td>
+</tr>
+<tr>
+<td><code>PROVISA_DATA_DIR</code></td>
+<td><code>~/.provisa</code></td>
+<td>Data directory for the embedded DuckDB store (REQ-989)</td>
+</tr>
+<tr>
+<td><code>TRINO_HOST</code></td>
+<td><code>localhost</code></td>
+<td>Trino coordinator host</td>
+</tr>
+<tr>
+<td><code>TRINO_PORT</code></td>
+<td><code>8080</code></td>
+<td>Trino coordinator HTTP port</td>
+</tr>
+<tr>
+<td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+<td>—</td>
+<td>Path to GCP service-account key JSON (BigQuery engine/source)</td>
+</tr>
+<tr>
+<td><code>GOOGLE_CLOUD_PROJECT</code></td>
+<td>—</td>
+<td>Default GCP project (BigQuery; overridden by URL)</td>
+</tr>
+<tr>
+<td><code>FABRIC_SQL_SERVER</code></td>
+<td>—</td>
+<td>Fabric Warehouse SQL endpoint (alternative to <code>PROVISA_ENGINE_URL</code>)</td>
+</tr>
+<tr>
+<td><code>FABRIC_DATABASE</code></td>
+<td>—</td>
+<td>Fabric Warehouse database name</td>
+</tr>
+<tr>
+<td><code>SYNAPSE_SQL_SERVER</code></td>
+<td>—</td>
+<td>Synapse serverless SQL endpoint</td>
+</tr>
+<tr>
+<td><code>SYNAPSE_DATABASE</code></td>
+<td>—</td>
+<td>Synapse database name</td>
+</tr>
+<tr>
+<td><code>REDIS_URL</code></td>
+<td>—</td>
+<td>Redis connection URL</td>
+</tr>
+<tr>
+<td><code>PROVISA_SAMPLE_SIZE</code></td>
+<td><code>10000</code></td>
+<td>Default sampling limit</td>
+</tr>
+<tr>
+<td><code>PROVISA_DEFAULT_ROW_LIMIT</code></td>
+<td><code>100</code></td>
+<td>Row cap when a query supplies no explicit <code>LIMIT</code></td>
+</tr>
+<tr>
+<td><code>PROVISA_RETRY_BUDGET_SECS</code></td>
+<td><code>30</code></td>
+<td>Tier-1 read-retry budget in seconds; exponential backoff with full jitter (REQ-703)</td>
+</tr>
+<tr>
+<td><code>ZAYCHIK_PORT</code></td>
+<td><code>8480</code></td>
+<td>Zaychik Flight SQL proxy port</td>
+</tr>
+<tr>
+<td><code>FLIGHT_PORT</code></td>
+<td><code>8815</code></td>
+<td>Provisa Arrow Flight server port</td>
+</tr>
+<tr>
+<td><code>GRPC_PORT</code></td>
+<td><code>50051</code></td>
+<td>Provisa Protobuf gRPC server port</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_ENABLED</code></td>
+<td><code>false</code></td>
+<td>Enable server-side threshold redirect</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_THRESHOLD</code></td>
+<td><code>1000</code></td>
+<td>Default row count threshold</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_FORMAT</code></td>
+<td><code>parquet</code></td>
+<td>Default redirect format</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_BUCKET</code></td>
+<td><code>provisa-results</code></td>
+<td>S3 bucket for redirected results</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_ENDPOINT</code></td>
+<td>—</td>
+<td>S3-compatible endpoint URL</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_ACCESS_KEY</code></td>
+<td>—</td>
+<td>S3 access key</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_SECRET_KEY</code></td>
+<td>—</td>
+<td>S3 secret key</td>
+</tr>
+<tr>
+<td><code>PROVISA_REDIRECT_TTL</code></td>
+<td><code>3600</code></td>
+<td>Presigned URL TTL (seconds)</td>
+</tr>
+<tr>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td>—</td>
+<td>Claude API key (discovery)</td>
+</tr>
+<tr>
+<td><code>OTEL_EXPORTER_OTLP_ENDPOINT</code></td>
+<td>—</td>
+<td>Overrides <code>observability.endpoint</code></td>
+</tr>
+<tr>
+<td><code>OTEL_SERVICE_NAME</code></td>
+<td><code>provisa</code></td>
+<td>Overrides <code>observability.service_name</code></td>
+</tr>
+<tr>
+<td><code>OTEL_LOG_LEVEL</code></td>
+<td><code>WARNING</code></td>
+<td>Overrides <code>observability.log_level</code></td>
+</tr>
+<tr>
+<td><code>OTEL_COMPACT_BATCH_SIZE</code></td>
+<td><code>10</code></td>
+<td>Overrides <code>observability.compact_batch_size</code></td>
+</tr>
+<tr>
+<td><code>OTEL_SPAN_EXPORT_DELAY_MILLIS</code></td>
+<td><code>1000</code></td>
+<td>Batch span processor flush delay</td>
+</tr>
+<tr>
+<td><code>PROVISA_SUPPORT_OTLP_ENDPOINT</code></td>
+<td>—</td>
+<td>Overrides <code>observability.support_endpoint</code></td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../quickstart/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Quick Start">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Quick Start
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../deployment/" class="md-footer__link md-footer__link--next" aria-label="Next: Deployment">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Deployment
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

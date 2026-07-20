@@ -1,0 +1,1966 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A single governed API over 46 heterogeneous data sources — query with GraphQL, Cypher, or SQL.">
+      
+      
+      
+        <link rel="canonical" href="https://provisa.dev/docs/pgwire/">
+      
+      
+        <link rel="prev" href="../integrations/">
+      
+      
+        <link rel="next" href="../sources/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>pgwire - Provisa</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#provisa-pgwire-server" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Provisa" class="md-header__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Provisa
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              pgwire
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Provisa" class="md-nav__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Provisa
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query & Interfaces
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Query & Interfaces
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cypher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cypher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subscriptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subscriptions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations (JDBC, BI, Flight)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pgwire
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pgwire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#connection-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection Details
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#select" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SELECT
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ddl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DDL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#copy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        COPY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transactions-and-session-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transactions and Session Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalog-intercept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalog Intercept
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#binary-parameter-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binary Parameter Encoding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driver-recommendations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Recommendations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#caveats-and-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Caveats and Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data Sources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-schemas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote Schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import (Hasura / DDN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security & Governance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security & Governance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multitenant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multitenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Clients
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Clients
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/fdw_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FDW Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/change-signal-unification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Signal Unification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#connection-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection Details
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#select" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SELECT
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ddl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DDL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#copy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        COPY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transactions-and-session-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transactions and Session Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalog-intercept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalog Intercept
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#binary-parameter-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binary Parameter Encoding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driver-recommendations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Recommendations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#caveats-and-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Caveats and Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="provisa-pgwire-server">Provisa pgwire Server<a class="headerlink" href="#provisa-pgwire-server" title="Permanent link">&para;</a></h1>
+<p>Provisa exposes a PostgreSQL wire protocol (pgwire) endpoint. Any tool that speaks the PostgreSQL client protocol — psycopg2, asyncpg, DBeaver, Tableau, JDBC — can connect and query Provisa data through the same governance pipeline that governs the HTTP API. (REQ-266)</p>
+<p>Queries go through the full governance stack: RLS enforcement, masking rules, relationship guards, domain-access checks. (REQ-001, REQ-002, REQ-263) The pgwire interface is not a bypass. (REQ-002, REQ-266)</p>
+<hr />
+<h2 id="connection-details">Connection Details<a class="headerlink" href="#connection-details" title="Permanent link">&para;</a></h2>
+<p>The server starts when <code>PROVISA_PGWIRE_PORT</code> is set to a non-zero integer. It is disabled by default. (REQ-527) [tool-verified: <code>app.py:1739</code>]</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Host: 0.0.0.0  (all interfaces)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>Port: $PROVISA_PGWIRE_PORT
+</code></pre></div>
+<p><strong>TLS.</strong> Set <code>PROVISA_PGWIRE_CERT</code> and <code>PROVISA_PGWIRE_KEY</code> to the paths of a PEM certificate and key. When both are present, the server wraps incoming connections in TLS. When absent, TLS is off and the server replies <code>N</code> to SSL negotiation requests. (REQ-530) [tool-verified: <code>server.py:1746-1750</code>]</p>
+<p><strong>Reported server version.</strong> Clients see <code>14.0.provisa</code>. Tools that gate features on the version number may behave as though connected to PostgreSQL 14. (REQ-579) [tool-verified: <code>server.py:208</code>]</p>
+<hr />
+<h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
+<p>Two modes, controlled by the <code>provider</code> key in <code>auth_config</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th><code>provider</code> value</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Trust</td>
+<td><code>none</code> (or auth middleware inactive)</td>
+<td>Username sent by the client is used directly as the <code>role_id</code>. Password is ignored.</td>
+</tr>
+<tr>
+<td>Simple</td>
+<td><code>simple</code></td>
+<td>Password verified against the <code>simple</code> auth provider (bcrypt). Username becomes <code>role_id</code> on success. (REQ-124)</td>
+</tr>
+</tbody>
+</table>
+<p>Any other provider value returns a FATAL error at login. (REQ-529) The protocol always uses PG auth type 3 (cleartext password). (REQ-529) Do not use trust mode over an unencrypted connection. [tool-verified: <code>server.py:282-311</code>]</p>
+<hr />
+<h2 id="what-works">What Works<a class="headerlink" href="#what-works" title="Permanent link">&para;</a></h2>
+<h3 id="select">SELECT<a class="headerlink" href="#select" title="Permanent link">&para;</a></h3>
+<p>All SELECT statements go through the governance pipeline (<code>_pipeline.py</code>). (REQ-001, REQ-262, REQ-266) The pipeline:</p>
+<ol>
+<li>Rewrites semantic SQL to physical SQL (<code>rewrite_semantic_to_physical</code>)</li>
+<li>Applies governance (RLS, masking, domain access) (REQ-263)</li>
+<li>Validates against registered schema (REQ-011)</li>
+<li>Routes to Trino or direct source pool (REQ-027, REQ-028)</li>
+</ol>
+<p>Multi-statement simple queries are supported. Semicolon-separated statements are split and executed in order. (REQ-580) [tool-verified: <code>server.py:318-381</code>]</p>
+<p>Parameterized queries (<code>$1</code>, <code>$2</code>, ...) are supported in both simple-query and extended-query (Bind/Execute) modes. Parameters are substituted as literals before execution. (REQ-581) [tool-verified: <code>server.py:78-85</code>]</p>
+<p><code>SELECT * FROM fn(args)</code> and <code>SELECT fn(args)</code> — where <code>fn</code> names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (<code>invoke_tracked_function</code>). The result is a typed row set identical to what every other surface returns for that command. <code>writable_by</code> and governance rules are enforced inside the executor. (REQ-1156) [tool-verified: <code>provisa/pgwire/function_call.py:74-88</code>]</p>
+<h3 id="ddl">DDL<a class="headerlink" href="#ddl" title="Permanent link">&para;</a></h3>
+<p>DDL statements are detected by the regex in <code>server.py</code> and dispatched to <code>DdlHandler</code>. The role must have the <code>"ddl"</code> capability. (REQ-042) Without it, the statement is rejected with SQLSTATE 42501. [tool-verified: <code>ddl_handler.py:82-83</code>]</p>
+<p>The recognized DDL forms are:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>ALTER TABLE / INDEX / SEQUENCE / VIEW
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
+</code></pre></div>
+<p>[tool-verified: <code>server.py:56-61</code>]</p>
+<p>Two execution paths exist depending on <code>ddl_catalog</code>: (REQ-582)</p>
+<p><strong>Trino path</strong> — used when <code>ddl_catalog</code> is an Iceberg, Hive, or other non-registered Trino catalog (e.g. <code>iceberg</code>, <code>hive</code>, <code>otel</code>, <code>results</code>). Only <code>CREATE TABLE</code> and <code>CREATE VIEW</code> are supported on this path. Attempting <code>ALTER</code>, <code>DROP</code>, or <code>CREATE INDEX</code> raises an error. The table name is fully qualified as <code>catalog.schema.table</code>. [tool-verified: <code>ddl_handler.py:92-100</code>]</p>
+<p><strong>Direct path</strong> — used when <code>ddl_catalog</code> matches a registered source ID. Full DDL is supported: CREATE, ALTER, DROP, indexes, sequences. <code>CREATE TABLE</code> and <code>CREATE VIEW</code> are schema-qualified as <code>schema.table</code>. All other DDL (ALTER, DROP, CREATE INDEX) passes through as-is after setting the schema context. For PostgreSQL and SQLite sources, context is set with <code>SET search_path TO schema</code>. For MySQL and MariaDB, context is set with <code>USE schema</code>. [tool-verified: <code>ddl_handler.py:139-170</code>, <code>ddl_handler.py:207-213</code>]</p>
+<p>After DDL on either path, the new table is registered into the role's compilation context so it is immediately queryable. (REQ-583) [tool-verified: <code>ddl_handler.py:216-250</code>]</p>
+<p><strong>Write target resolution.</strong> The DDL catalog and schema come from the domain's <code>ddl_catalog</code> and <code>ddl_schema</code> fields. If <code>ddl_catalog</code> is not set, the system defaults to the Iceberg catalog. If <code>ddl_schema</code> is not set, it defaults to the domain ID. The domain is resolved through the role's <code>domain_access</code> list. (REQ-584) [tool-verified: <code>app.py:804-811</code>, <code>ddl_handler.py:104-115</code>]</p>
+<h3 id="copy">COPY<a class="headerlink" href="#copy" title="Permanent link">&para;</a></h3>
+<p><code>COPY ... TO STDOUT</code> and <code>COPY ... FROM STDIN</code> are both supported. (REQ-585) [tool-verified: <code>copy_handler.py:231-257</code>]</p>
+<p><strong>COPY TO STDOUT</strong> — exports query results in PG COPY wire format. Two forms work:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1">-- Table reference</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">COPY</span><span class="w"> </span><span class="n">my_table</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="k">STDOUT</span><span class="w"> </span><span class="k">WITH</span><span class="w"> </span><span class="p">(</span><span class="n">FORMAT</span><span class="w"> </span><span class="n">csv</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1">-- Arbitrary query</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">COPY</span><span class="w"> </span><span class="p">(</span><span class="k">SELECT</span><span class="w"> </span><span class="n">col1</span><span class="p">,</span><span class="w"> </span><span class="n">col2</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">my_table</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="p">...)</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="k">STDOUT</span><span class="w"> </span><span class="k">WITH</span><span class="w"> </span><span class="p">(</span><span class="n">FORMAT</span><span class="w"> </span><span class="nb">text</span><span class="p">)</span>
+</code></pre></div>
+<p>Supported formats: <code>text</code> (tab-delimited, default) and <code>csv</code>. Binary format is not supported on COPY output. [tool-verified: <code>copy_handler.py:36-52</code>]</p>
+<p><strong>COPY FROM STDIN</strong> — inserts rows into a target table. Restricted to sources with types <code>postgresql</code>, <code>mysql</code>, <code>sqlite</code>, or <code>mariadb</code>. (REQ-586) Attempting COPY FROM against a Trino-only source (e.g. Iceberg) raises a permission error. [tool-verified: <code>copy_handler.py:65</code>, <code>copy_handler.py:351-356</code>]</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">COPY</span><span class="w"> </span><span class="n">my_table</span><span class="w"> </span><span class="p">(</span><span class="n">col1</span><span class="p">,</span><span class="w"> </span><span class="n">col2</span><span class="p">)</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="k">STDIN</span><span class="w"> </span><span class="k">WITH</span><span class="w"> </span><span class="p">(</span><span class="n">FORMAT</span><span class="w"> </span><span class="nb">text</span><span class="p">)</span>
+</code></pre></div>
+<p>If no column list is provided, columns are inferred from the registered schema. [tool-verified: <code>copy_handler.py:357</code>]</p>
+<h3 id="transactions-and-session-commands">Transactions and Session Commands<a class="headerlink" href="#transactions-and-session-commands" title="Permanent link">&para;</a></h3>
+<p>SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, and DEALLOCATE are intercepted and return an empty success response. (REQ-587) The server is stateless with respect to transactions — there is no transaction isolation or rollback support. (REQ-587) [tool-verified: <code>catalog.py:27-31</code>, <code>catalog.py:1129-1132</code>]</p>
+<hr />
+<h2 id="catalog-intercept">Catalog Intercept<a class="headerlink" href="#catalog-intercept" title="Permanent link">&para;</a></h2>
+<p>Queries against <code>information_schema</code> and <code>pg_catalog</code> are answered locally without a Trino round-trip. (REQ-532) The intercept layer builds an in-memory DuckDB database per request, populated from the role's compilation context. (REQ-532) [tool-verified: <code>catalog.py:210-213</code>]</p>
+<p>Intercepted tables:</p>
+<p><strong>information_schema:</strong> <code>schemata</code>, <code>tables</code>, <code>columns</code>, <code>views</code>, <code>table_constraints</code>, <code>key_column_usage</code>, <code>referential_constraints</code></p>
+<p><strong>pg_catalog:</strong> <code>pg_namespace</code>, <code>pg_class</code>, <code>pg_attribute</code>, <code>pg_type</code>, <code>pg_attrdef</code>, <code>pg_description</code>, <code>pg_index</code>, <code>pg_constraint</code>, <code>pg_proc</code>, <code>pg_roles</code>, <code>pg_auth_members</code>, <code>pg_database</code>, <code>pg_settings</code>, <code>pg_tables</code>, <code>pg_stat_user_tables</code>, <code>pg_statio_user_tables</code>, <code>pg_am</code>, <code>pg_extension</code>, <code>pg_enum</code>, <code>pg_stat_activity</code></p>
+<p>[tool-verified: <code>catalog.py:39-67</code>]</p>
+<p><code>pg_constraint</code> is populated with real PK and FK data derived from the domain model's <code>pk_columns</code> and <code>joins</code>. (REQ-392, REQ-399) BI tools that inspect foreign-key relationships (Tableau, DBeaver, etc.) will see the join graph Provisa knows about. [tool-verified: <code>catalog.py:551-632</code>] Single-column joins between the same source/target pair whose target columns together form the target's composite primary key are collapsed into one FK row with multi-element <code>conkey</code>/<code>confkey</code> arrays. (REQ-1094) [tool-verified: <code>catalog_constraints.py</code>]</p>
+<p><code>pg_index</code> is populated with one row per primary-key and UNIQUE constraint (<code>indrelid</code> = table oid, <code>indkey</code> = ordered key attnums, <code>indisprimary</code>/<code>indisunique</code> set). Clients that resolve key columns via <code>pg_index.indkey</code> rather than <code>pg_constraint</code> — DataGrip, for example — discover the correct columns through the standard <code>pg_index</code> → <code>pg_attribute</code> join. (REQ-1095) [tool-verified: <code>catalog_constraints.py:340-384</code>]</p>
+<p>The following scalar expressions are also intercepted: (REQ-588)
+- <code>current_user</code>, <code>session_user</code> → the authenticated <code>role_id</code>
+- <code>current_database()</code> → <code>"provisa"</code>
+- <code>current_schema()</code> → <code>"public"</code>
+- <code>version()</code> → <code>"PostgreSQL 14.0 on Provisa"</code>
+- <code>pg_backend_pid()</code> → <code>0</code>
+- <code>current_setting(...)</code> → returns from a fixed settings table
+- <code>SHOW &lt;setting&gt;</code> → returns from the same settings table</p>
+<p>[tool-verified: <code>catalog.py:168-207</code>, <code>catalog.py:1076-1120</code>]</p>
+<hr />
+<h2 id="binary-parameter-encoding">Binary Parameter Encoding<a class="headerlink" href="#binary-parameter-encoding" title="Permanent link">&para;</a></h2>
+<p>The extended-query protocol (Bind/Execute) supports binary-encoded parameters. (REQ-589) The following type OIDs are decoded from binary: [tool-verified: <code>postgres.py:69-97</code>]</p>
+<table>
+<thead>
+<tr>
+<th>OID</th>
+<th>PG type</th>
+<th>Python type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>16</td>
+<td>bool</td>
+<td>bool</td>
+</tr>
+<tr>
+<td>17</td>
+<td>bytea</td>
+<td>bytes</td>
+</tr>
+<tr>
+<td>20</td>
+<td>int8</td>
+<td>int</td>
+</tr>
+<tr>
+<td>21</td>
+<td>int2</td>
+<td>int</td>
+</tr>
+<tr>
+<td>23</td>
+<td>int4</td>
+<td>int</td>
+</tr>
+<tr>
+<td>25</td>
+<td>text</td>
+<td>str</td>
+</tr>
+<tr>
+<td>700</td>
+<td>float4</td>
+<td>float</td>
+</tr>
+<tr>
+<td>701</td>
+<td>float8</td>
+<td>float</td>
+</tr>
+<tr>
+<td>1043</td>
+<td>varchar</td>
+<td>str</td>
+</tr>
+<tr>
+<td>1082</td>
+<td>date</td>
+<td>datetime.date</td>
+</tr>
+<tr>
+<td>1114</td>
+<td>timestamp</td>
+<td>datetime.datetime</td>
+</tr>
+<tr>
+<td>1184</td>
+<td>timestamptz</td>
+<td>datetime.datetime (UTC)</td>
+</tr>
+<tr>
+<td>1700</td>
+<td>numeric</td>
+<td>decimal.Decimal</td>
+</tr>
+<tr>
+<td>2950</td>
+<td>uuid</td>
+<td>str</td>
+</tr>
+</tbody>
+</table>
+<p>Any OID not in this table raises <code>"Unsupported binary parameter type: &lt;oid&gt;"</code>. (REQ-589) [tool-verified: <code>postgres.py:579</code>]</p>
+<p>Result columns are also sent in binary when the client requests it, for the same type set plus ARRAY, JSON, INTERVAL, and BIGINT. (REQ-589) [tool-verified: <code>postgres.py:191-244</code>]</p>
+<hr />
+<h2 id="driver-recommendations">Driver Recommendations<a class="headerlink" href="#driver-recommendations" title="Permanent link">&para;</a></h2>
+<p><strong>Native Python drivers (psycopg2, asyncpg).</strong> These negotiate the extended-query protocol by default and use binary encoding for most types. Type fidelity is highest here — <code>NUMERIC</code> columns arrive as <code>Decimal</code>, <code>TIMESTAMP</code> as <code>datetime</code>, and so on. Use these for Python-based ETL, scripts, or direct integration.</p>
+<p><strong>JDBC (PostgreSQL JDBC driver).</strong> Use this for Java-ecosystem tools: DBeaver, Tableau, Power BI, Metabase, Airflow JDBC operators. JDBC defaults to the simple-query protocol, which avoids binary encoding complications. Connection string:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>jdbc:postgresql://&lt;host&gt;:&lt;PROVISA_PGWIRE_PORT&gt;/provisa?user=&lt;role_id&gt;&amp;password=&lt;password&gt;
+</code></pre></div>
+<p>Some JDBC-based BI tools send a burst of <code>information_schema</code> and <code>pg_catalog</code> queries on connect to populate their schema browser. These are all answered by the catalog intercept layer — no Trino traffic is generated during schema inspection. (REQ-532)</p>
+<p><strong>When to prefer one over the other.</strong> If the client is Python, use psycopg2 or asyncpg for better type handling. If the client is a BI tool or any JVM application, use JDBC. Avoid mixing binary and text protocol expectations in the same connection if you observe type conversion surprises — JDBC's text-mode behavior is simpler to reason about.</p>
+<hr />
+<h2 id="caveats-and-constraints">Caveats and Constraints<a class="headerlink" href="#caveats-and-constraints" title="Permanent link">&para;</a></h2>
+<p><strong>SQL only; no DML mutations.</strong> The pgwire listener parses and executes SQL only — GraphQL and Cypher strings are not accepted. (REQ-614) Plain <code>INSERT</code>, <code>UPDATE</code>, and <code>DELETE</code> are not routed to a write path. (REQ-615) Write data through <code>COPY FROM STDIN</code> (writable sources) or <code>CREATE TABLE AS</code>; row-level mutations go through the GraphQL, Cypher, or Trino write paths instead.</p>
+<p><strong>COPY and DDL require the <code>ddl</code> capability.</strong> Both <code>COPY</code> (in either direction) and DDL are gated on the role's <code>ddl</code> capability; roles without it receive SQLSTATE 42501. (REQ-616)</p>
+<p><strong>No real transaction support.</strong> BEGIN/COMMIT/ROLLBACK are accepted and silently ignored. Each statement runs independently. (REQ-587) [tool-verified: <code>server.py:146-158</code> — <code>in_transaction()</code> always returns <code>False</code>]</p>
+<p><strong>60-second DDL timeout, 120-second query timeout.</strong> These are hard-coded in the handler threads. (REQ-590) Long-running DDL against remote sources (schema changes on large tables) may time out. [tool-verified: <code>ddl_handler.py:136</code>, <code>server.py:186</code>]</p>
+<p><strong>COPY FROM is writable-source-only.</strong> Iceberg, Hive, Trino-only sources, and read-only source types do not accept COPY FROM. The error is SQLSTATE 42501. (REQ-586) [tool-verified: <code>copy_handler.py:65</code>]</p>
+<p><strong>COPY output format is text or csv.</strong> PG binary COPY format (<code>FORMAT binary</code>) is not implemented. [inferred: only <code>text</code> and <code>csv</code> branches exist in <code>_rows_to_copy_text</code> / <code>_rows_to_copy_csv</code>]</p>
+<p><strong>DDL on Trino path is CREATE only.</strong> ALTER, DROP, and CREATE INDEX against Iceberg or Hive catalogs are not supported. Use a registered SQL source as <code>ddl_catalog</code> if you need full DDL. (REQ-582) [tool-verified: <code>ddl_handler.py:92-100</code>]</p>
+<p><strong>Parameter substitution is literal.</strong> <code>$1</code>, <code>$2</code>, ... parameters are substituted as SQL literals before execution, not sent as bind parameters to the upstream engine. This means the upstream engine never sees a prepared statement. For Trino this has no practical impact; for direct-pool sources it bypasses prepared-statement caching. (REQ-581) [tool-verified: <code>server.py:78-85</code>]</p>
+<p><strong><code>pg_stat_activity</code>, <code>pg_stat_user_tables</code>, <code>pg_extension</code>, <code>pg_enum</code>, <code>pg_attrdef</code>, <code>pg_proc</code>.</strong> These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (REQ-532) [tool-verified: <code>catalog.py:519-535</code>, <code>catalog.py:639-934</code>] (<code>pg_index</code> is populated — see Catalog Intercept.)</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../integrations/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Integrations (JDBC, BI, Flight)">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Integrations (JDBC, BI, Flight)
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../sources/" class="md-footer__link md-footer__link--next" aria-label="Next: Sources">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Sources
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

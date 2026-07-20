@@ -1,0 +1,3891 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A single governed API over 46 heterogeneous data sources — query with GraphQL, Cypher, or SQL.">
+      
+      
+      
+        <link rel="canonical" href="https://provisa.dev/docs/sources/">
+      
+      
+        <link rel="prev" href="../pgwire/">
+      
+      
+        <link rel="next" href="../remote-schemas/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Sources - Provisa</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#source-types" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Provisa" class="md-header__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Provisa
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Sources
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Provisa" class="md-nav__button md-logo" aria-label="Provisa" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Provisa
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kenstott/provisa" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    provisa
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query & Interfaces
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Query & Interfaces
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cypher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cypher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subscriptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subscriptions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations (JDBC, BI, Flight)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pgwire/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pgwire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data Sources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sources
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#execution-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#all-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        All Sources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="All Sources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rdbms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RDBMS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cloud-data-warehouses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud Data Warehouses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#analytics-olap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Analytics / OLAP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-lake-open-table-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Lake / Open Table Formats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nosql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NoSQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#streaming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#push-receiver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Push Receiver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#graph-semantic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph &amp; Semantic
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-Based
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observability-other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability &amp; Other
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enterprise-saas-connectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enterprise SaaS Connectors
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Enterprise SaaS Connectors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sharepoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sharepoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#splunk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        splunk
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#api-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Sources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#govdata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GovData
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#warehouses-as-named-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Warehouses as Named Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#source-configuration-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Configuration Fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kafka-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kafka Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#governance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Governance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#column-visibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Column Visibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relationships
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#row-level-security-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Row-Level Security Rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#functions-and-webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Functions and Webhooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Functions and Webhooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#db-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DB Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Routing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#graph-semantic-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph &amp; Semantic Sources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Graph &amp; Semantic Sources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#neo4j" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Neo4j
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SPARQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connection-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Connection Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snowflake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snowflake
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databricks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mongodb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MongoDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cross-source-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Source Query
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote-schemas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote Schemas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import (Hasura / DDN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security & Governance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security & Governance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multitenant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multitenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Clients
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Clients
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/fdw_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FDW Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arch/change-signal-unification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Signal Unification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#execution-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#all-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        All Sources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="All Sources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rdbms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RDBMS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cloud-data-warehouses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud Data Warehouses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#analytics-olap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Analytics / OLAP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-lake-open-table-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Lake / Open Table Formats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nosql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NoSQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#streaming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#push-receiver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Push Receiver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#graph-semantic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph &amp; Semantic
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-Based
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observability-other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability &amp; Other
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enterprise-saas-connectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enterprise SaaS Connectors
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Enterprise SaaS Connectors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sharepoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sharepoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#splunk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        splunk
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#api-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Sources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#govdata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GovData
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#warehouses-as-named-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Warehouses as Named Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#source-configuration-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Configuration Fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kafka-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kafka Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#governance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Governance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#column-visibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Column Visibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relationships
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#row-level-security-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Row-Level Security Rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#functions-and-webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Functions and Webhooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Functions and Webhooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#db-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DB Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Routing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#graph-semantic-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graph &amp; Semantic Sources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Graph &amp; Semantic Sources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#neo4j" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Neo4j
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SPARQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connection-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Connection Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snowflake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snowflake
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databricks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mongodb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MongoDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cross-source-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Source Query
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="source-types">Source Types<a class="headerlink" href="#source-types" title="Permanent link">&para;</a></h1>
+<h2 id="execution-model">Execution Model<a class="headerlink" href="#execution-model" title="Permanent link">&para;</a></h2>
+<p>Every query ultimately executes through the federation engine, which provides federation across all sources. Sources fall into three categories based on their connectivity. [tool-verified: <code>provisa/core/models.py</code> lines 84–132] (REQ-550)</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Has Direct Driver</th>
+<th>Has Federated Connector</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Direct-capable</strong></td>
+<td>Yes</td>
+<td>Yes</td>
+<td>PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB</td>
+</tr>
+<tr>
+<td><strong>Federation only</strong></td>
+<td>No</td>
+<td>Yes</td>
+<td>Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed)</td>
+</tr>
+<tr>
+<td><strong>Direct-read (replica)</strong></td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Snowflake, Databricks, ClickHouse — driver reads data and lands a replica; queries run against the replica in the active engine</td>
+</tr>
+<tr>
+<td><strong>Materialize → Federation</strong></td>
+<td>No</td>
+<td>No</td>
+<td>REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Splunk</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Direct-capable</strong> sources execute single-source queries via their native driver (sub-100ms), bypassing the federation engine (REQ-027, REQ-229). They retain full connector support and participate in federation when joined with other sources (REQ-028).</p>
+<p><strong>Federation only</strong> sources are always queried through the federation layer. No direct driver exists (REQ-229).</p>
+<p><strong>Direct-read (replica)</strong> sources have a DirectDriver that reads from the warehouse natively (Arrow-native where available), lands a replica into the active engine's materialization store, and then queries run against that replica. See <a href="#warehouses-as-named-sources">Warehouses as Named Sources</a>.</p>
+<p><strong>Materialize</strong> sources have no federated connector. Provisa fetches their data (on startup or at query time) and caches it as Parquet in S3 or in PostgreSQL, making it reachable by the federation engine for cross-source queries (REQ-309).</p>
+<hr />
+<h2 id="all-sources">All Sources<a class="headerlink" href="#all-sources" title="Permanent link">&para;</a></h2>
+<p>Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms) (REQ-027). "Connector Name" is the federated connector used when the source participates in multi-source JOINs (REQ-028). [tool-verified: <code>provisa/core/source_registry.py</code> <code>SOURCE_TO_DIALECT</code>; <code>provisa/federation/trino_connectors.py</code> <code>trino_connector_name</code>]</p>
+<h3 id="rdbms">RDBMS<a class="headerlink" href="#rdbms" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Direct Driver</th>
+<th>Connector Name</th>
+<th>SQLGlot Dialect</th>
+<th>Mutations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>postgresql</code></td>
+<td>asyncpg</td>
+<td>postgresql</td>
+<td>postgres</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>mysql</code></td>
+<td>aiomysql</td>
+<td>mysql</td>
+<td>mysql</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>mariadb</code></td>
+<td>aiomysql</td>
+<td>mariadb</td>
+<td>mysql</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>singlestore</code></td>
+<td>—</td>
+<td>singlestore</td>
+<td>singlestore</td>
+<td>Federated</td>
+</tr>
+<tr>
+<td><code>sqlserver</code></td>
+<td>aioodbc</td>
+<td>sqlserver</td>
+<td>tsql</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>oracle</code></td>
+<td>oracledb</td>
+<td>oracle</td>
+<td>oracle</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>duckdb</code></td>
+<td>duckdb</td>
+<td>memory</td>
+<td>duckdb</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>cockroachdb</code></td>
+<td>asyncpg (pg wire)</td>
+<td>postgresql</td>
+<td>postgres</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>yugabytedb</code></td>
+<td>asyncpg (pg wire)</td>
+<td>postgresql</td>
+<td>postgres</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>greenplum</code></td>
+<td>asyncpg (pg wire)</td>
+<td>postgresql</td>
+<td>postgres</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>tidb</code></td>
+<td>aiomysql (mysql wire)</td>
+<td>mysql</td>
+<td>mysql</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<p>Wire-compatible databases reuse a base wire's JDBC driver, native async driver, and SQLGlot dialect — CockroachDB, YugabyteDB, and Greenplum ride the PostgreSQL wire; TiDB rides the MySQL wire. They need only registry entries, no new connector code. [tool-verified: <code>provisa/core/source_registry.py</code> <code>_PG_WIRE_TYPES</code>, <code>_MYSQL_WIRE_TYPES</code>] (REQ-950)</p>
+<p><code>firebird</code> (Firebird 3/4/5) and <code>airport</code> (Arrow Flight server) are registered source types reached in place via DuckDB community extensions when DuckDB is the active engine — no direct driver, no federated connector. [tool-verified: <code>provisa/core/models.py</code> lines 44, 93] (REQ-899)</p>
+<h3 id="cloud-data-warehouses">Cloud Data Warehouses<a class="headerlink" href="#cloud-data-warehouses" title="Permanent link">&para;</a></h3>
+<p>[tool-verified: <code>executor/drivers/snowflake.py</code>, <code>executor/drivers/databricks.py</code>, <code>executor/drivers/registry.py</code>]</p>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Direct Driver</th>
+<th>Connector Name</th>
+<th>SQLGlot Dialect</th>
+<th>Mutations</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>snowflake</code></td>
+<td>SnowflakeDriver</td>
+<td>snowflake</td>
+<td>snowflake</td>
+<td>Federated</td>
+<td>Reads via snowflake-connector-python; lands replica; <code>account</code>/<code>warehouse</code>/<code>role</code> in <code>federation_hints</code> (REQ-988)</td>
+</tr>
+<tr>
+<td><code>bigquery</code></td>
+<td>—</td>
+<td>bigquery</td>
+<td>bigquery</td>
+<td>Federated</td>
+<td>No DirectDriver; reaches via federation engine or BigQuery engine ATTACH</td>
+</tr>
+<tr>
+<td><code>databricks</code></td>
+<td>DatabricksDriver</td>
+<td>delta_lake</td>
+<td>databricks</td>
+<td>Federated</td>
+<td>Reads via databricks-sql-connector (Cloud Fetch, Arrow); lands replica; <code>http_path</code> required in <code>federation_hints</code> (REQ-987)</td>
+</tr>
+<tr>
+<td><code>redshift</code></td>
+<td>—</td>
+<td>redshift</td>
+<td>redshift</td>
+<td>Federated</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>fabric</code></td>
+<td>MssqlWarehouseDriver</td>
+<td>—</td>
+<td>tsql</td>
+<td>Federated</td>
+<td>Microsoft Fabric Warehouse; T-SQL over TDS, Azure AD auth; lands replica (REQ-995)</td>
+</tr>
+<tr>
+<td><code>synapse</code></td>
+<td>MssqlWarehouseDriver</td>
+<td>—</td>
+<td>tsql</td>
+<td>Federated</td>
+<td>Azure Synapse SQL; T-SQL over TDS, Azure AD auth; lands replica (REQ-995)</td>
+</tr>
+<tr>
+<td><code>trino</code></td>
+<td>SQLAlchemyDriver</td>
+<td>—</td>
+<td>—</td>
+<td>Federated</td>
+<td>Remote Trino/Presto coordinator read via the SQLAlchemy trino dialect; lands replica on any engine (REQ-994)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="analytics-olap">Analytics / OLAP<a class="headerlink" href="#analytics-olap" title="Permanent link">&para;</a></h3>
+<p>[tool-verified: <code>executor/drivers/clickhouse.py</code>]</p>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Direct Driver</th>
+<th>Connector Name</th>
+<th>SQLGlot Dialect</th>
+<th>Mutations</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>clickhouse</code></td>
+<td>ClickHouseDriver</td>
+<td>clickhouse</td>
+<td>clickhouse</td>
+<td>Federated</td>
+<td>Reads via clickhouse-connect (HTTP); <code>secure: "true"</code> in <code>federation_hints</code> for TLS (REQ-986)</td>
+</tr>
+<tr>
+<td><code>druid</code></td>
+<td>—</td>
+<td>druid</td>
+<td>druid</td>
+<td>No</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>exasol</code></td>
+<td>—</td>
+<td>exasol</td>
+<td>exasol</td>
+<td>No</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>elasticsearch</code></td>
+<td>—</td>
+<td>elasticsearch</td>
+<td>—</td>
+<td>No</td>
+<td>Connector properties come from the type's mapping DSL [tool-verified: <code>trino_connectors.py:309</code>]</td>
+</tr>
+<tr>
+<td><code>pinot</code></td>
+<td>—</td>
+<td>pinot</td>
+<td>—</td>
+<td>No</td>
+<td>Trino <code>pinot</code> connector; <code>pinot.controller-urls</code> = host:port of the Pinot controller [tool-verified: <code>trino_connectors.py:199</code>]</td>
+</tr>
+</tbody>
+</table>
+<h3 id="data-lake-open-table-formats">Data Lake / Open Table Formats<a class="headerlink" href="#data-lake-open-table-formats" title="Permanent link">&para;</a></h3>
+<p>These source types are federation-only — no direct driver, no SQLGlot dialect. [tool-verified: <code>LAKE_ONLY_SOURCES</code> in <code>provisa/core/source_registry.py</code>] (REQ-229)</p>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Connector Name</th>
+<th>Time Travel</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>iceberg</code></td>
+<td>iceberg</td>
+<td>Yes (<code>as_of</code> argument, REQ-372)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>delta_lake</code></td>
+<td>delta_lake</td>
+<td>Yes (<code>as_of</code> argument, REQ-372)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>hive</code></td>
+<td>hive</td>
+<td>No</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>hive_s3</code></td>
+<td>hive</td>
+<td>No</td>
+<td>S3-backed Hive</td>
+</tr>
+</tbody>
+</table>
+<h3 id="nosql">NoSQL<a class="headerlink" href="#nosql" title="Permanent link">&para;</a></h3>
+<p><code>mongodb</code>, <code>cassandra</code>, and <code>redis</code> have Trino connectors (<code>redis</code> builds its properties from the type's mapping DSL). [tool-verified: <code>provisa/federation/trino_connectors.py</code>; <code>provisa/core/models.py</code>] (REQ-017, REQ-1097)</p>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Connector Name</th>
+<th>Mutations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mongodb</code></td>
+<td>mongodb</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>cassandra</code></td>
+<td>cassandra</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>redis</code></td>
+<td>redis</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h3 id="streaming">Streaming<a class="headerlink" href="#streaming" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Mechanism</th>
+<th>Mutations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kafka</code></td>
+<td>Federated Kafka connector; schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), manual definition, or sample inference (REQ-147, REQ-150)</td>
+<td>Sink only (REQ-176)</td>
+</tr>
+<tr>
+<td><code>websocket</code></td>
+<td>External WebSocket feed — connect, subscribe, receive events; results materialized (REQ-338)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>rss</code></td>
+<td>RSS 2.0 / Atom feed — poll, watermark by pubDate/updated; results materialized (REQ-342, REQ-343)</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h3 id="push-receiver">Push Receiver<a class="headerlink" href="#push-receiver" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Mechanism</th>
+<th>Mutations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ingest</code></td>
+<td>External services POST JSON events; results materialized (REQ-331, REQ-335)</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h3 id="graph-semantic">Graph &amp; Semantic<a class="headerlink" href="#graph-semantic" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Mechanism</th>
+<th>Mutations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>neo4j</code></td>
+<td>Cypher via HTTP API, results cached in PostgreSQL (REQ-295)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>sparql</code></td>
+<td>SPARQL 1.1 POST, results cached in PostgreSQL (REQ-297)</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h3 id="file-based">File-Based<a class="headerlink" href="#file-based" title="Permanent link">&para;</a></h3>
+<p>Two mechanisms cover files. Both use the <code>path</code> field instead of <code>host</code>/<code>port</code>. [tool-verified: <code>provisa/core/models.py</code>] (REQ-553)</p>
+<p><strong>Single-file sources</strong> — <code>sqlite</code>, <code>csv</code>, <code>parquet</code> point <code>path</code> at one file.</p>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Transports</th>
+<th>Mutations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sqlite</code></td>
+<td>local</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>csv</code></td>
+<td>local</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>parquet</code></td>
+<td>local, <code>s3://</code></td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<p>Private buckets need credentials (AWS region and keys from the environment). For CSV over <code>s3://</code> or <code>http(s)://</code>, or to register many files at once, use the <code>files</code> source. [tool-verified: <code>provisa/file_source/source.py</code>]</p>
+<p><strong><code>files</code> source</strong> — points <code>path</code> at a glob, crawls it recursively, and registers the directory as a federated catalog of tables. It reads many formats over many transports; the sets below come from the file connector (kenstott/calcite fork). [tool-verified: <code>provisa/core/catalog.py</code> <code>files</code> branch and <code>provisa/core/models.py</code> <code>SOURCE_TO_CONNECTOR</code>; format and transport lists from the calcite <code>file</code> adapter — <code>FileSchema.java</code>, <code>storage/StorageProviderFactory.java</code>]</p>
+<table>
+<thead>
+<tr>
+<th>Formats</th>
+<th>Transports</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow, and documents converted to tables — HTML, Markdown, DOCX, PPTX</td>
+<td>Local filesystem, HTTP(S), <code>s3://</code>, <code>hdfs://</code>, <code>ftp://</code>/<code>ftps://</code>, <code>sftp://</code>, <code>iceberg://</code>, SharePoint (REST and Microsoft Graph)</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales_files</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">files</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">s3://bucket/sales/**/*.csv</span><span class="w">   </span><span class="c1"># glob; local and http(s):// also supported</span>
+</code></pre></div>
+<h3 id="observability-other">Observability &amp; Other<a class="headerlink" href="#observability-other" title="Permanent link">&para;</a></h3>
+<p><code>prometheus</code> has a Trino connector (properties built from the type's mapping DSL). <code>google_sheets</code> is a registered source type with no Trino connector and materializes through the API cache pipeline. [tool-verified: <code>provisa/federation/trino_connectors.py:314</code>; <code>provisa/core/models.py</code> lines 87–88]</p>
+<table>
+<thead>
+<tr>
+<th>Source Type</th>
+<th>Connector Name</th>
+<th>Mutations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>google_sheets</code></td>
+<td>— (materialized)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>prometheus</code></td>
+<td>prometheus</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h3 id="enterprise-saas-connectors">Enterprise SaaS Connectors<a class="headerlink" href="#enterprise-saas-connectors" title="Permanent link">&para;</a></h3>
+<p>SharePoint and Splunk register through Apache Calcite connectors (kenstott/calcite fork). Neither has a direct driver — Provisa materializes their rows by launching the connector's bundled Calcite pgwire server (<code>pgwire-sharepoint</code>, <code>pgwire-splunk</code>), connecting to it as a generic PostgreSQL endpoint, and landing the rows into the materialize store for federation (REQ-954). Both connectors always enable case-insensitive name matching, matching each product's own case-insensitive semantics (REQ-725, REQ-730). [tool-verified: <code>provisa/core/models.py</code> lines 99–100; <code>provisa/federation/trino_connectors.py</code> lines 223–286]</p>
+<h4 id="sharepoint"><code>sharepoint</code><a class="headerlink" href="#sharepoint" title="Permanent link">&para;</a></h4>
+<p>SharePoint lists are enumerated as schemas and exposed as queryable tables (REQ-726, REQ-731). Two auth methods: <code>CLIENT_CREDENTIALS</code> (default) and certificate-based via a PFX certificate (REQ-727). Secret values in <code>mapping</code> are resolved through the secrets engine before reaching the connector (REQ-729). [tool-verified: <code>provisa/federation/trino_connectors.py</code> lines 230–252]</p>
+<table>
+<thead>
+<tr>
+<th>Source field</th>
+<th>Connector property</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base_url</code> or <code>host</code></td>
+<td><code>site-url</code></td>
+<td>SharePoint site URL</td>
+</tr>
+<tr>
+<td><code>username</code></td>
+<td><code>client-id</code></td>
+<td>Azure app client ID</td>
+</tr>
+<tr>
+<td><code>password</code></td>
+<td><code>client-secret</code></td>
+<td>Azure app client secret</td>
+</tr>
+<tr>
+<td><code>database</code></td>
+<td><code>tenant-id</code></td>
+<td>Azure tenant UUID</td>
+</tr>
+<tr>
+<td><code>mapping.auth_type</code></td>
+<td><code>auth-type</code></td>
+<td><code>CLIENT_CREDENTIALS</code> (default) or <code>CERTIFICATE</code></td>
+</tr>
+<tr>
+<td><code>mapping.certificate_path</code></td>
+<td><code>certificate-path</code></td>
+<td>PFX path when <code>auth_type: CERTIFICATE</code></td>
+</tr>
+<tr>
+<td><code>mapping.certificate_password</code></td>
+<td><code>certificate-password</code></td>
+<td>PFX password</td>
+</tr>
+</tbody>
+</table>
+<p>When the connector does not expose <code>information_schema.columns</code>, register the table with explicit column definitions (obtained from the Microsoft Graph API) via the <code>registerTable</code> mutation (REQ-732).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hr-sharepoint</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sharepoint</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://kenstott.sharepoint.com</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:SP_CLIENT_ID}</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:SP_CLIENT_SECRET}</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:SP_TENANT_ID}</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">mapping</span><span class="p">:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">auth_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CLIENT_CREDENTIALS</span>
+</code></pre></div>
+<h4 id="splunk"><code>splunk</code><a class="headerlink" href="#splunk" title="Permanent link">&para;</a></h4>
+<p>Splunk search results are queryable as tables (e.g. <code>internal_server</code>) (REQ-721). The connector URL comes from <code>base_url</code>, or is constructed as <code>https://{host}:{port}</code> with a default port of <code>8089</code> (REQ-722). Auth: when <code>mapping.use_token</code> is <code>true</code> (the default), <code>password</code> is passed as the API token; when <code>false</code>, <code>username</code> and <code>password</code> are passed as separate credentials (REQ-723). [tool-verified: <code>provisa/federation/trino_connectors.py</code> lines 262–286]</p>
+<table>
+<thead>
+<tr>
+<th>Source field</th>
+<th>Connector property</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base_url</code> / <code>host</code> + <code>port</code></td>
+<td><code>url</code></td>
+<td><code>base_url</code>, else <code>https://host:port</code> (port default 8089)</td>
+</tr>
+<tr>
+<td><code>password</code></td>
+<td><code>token</code> or <code>password</code></td>
+<td>token when <code>use_token: true</code></td>
+</tr>
+<tr>
+<td><code>username</code></td>
+<td><code>user</code></td>
+<td>only when <code>use_token: false</code></td>
+</tr>
+<tr>
+<td><code>database</code></td>
+<td><code>app</code></td>
+<td>restrict to a Splunk app</td>
+</tr>
+<tr>
+<td><code>mapping.datamodel_filter</code></td>
+<td><code>datamodel-filter</code></td>
+<td>filter to a data model</td>
+</tr>
+<tr>
+<td><code>mapping.disable_ssl_validation</code></td>
+<td><code>disable-ssl-validation</code></td>
+<td>for self-signed certs (REQ-724)</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ops-splunk</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">splunk</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">splunk</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8089</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:SPLUNK_TOKEN}</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">mapping</span><span class="p">:</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="nt">use_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="nt">disable_ssl_validation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<h3 id="api-sources">API Sources<a class="headerlink" href="#api-sources" title="Permanent link">&para;</a></h3>
+<p>Register any HTTP endpoint as a queryable table. [tool-verified: <code>provisa/core/models.py</code> <code>SourceType</code> enum] (REQ-314, REQ-307, REQ-322)</p>
+<table>
+<thead>
+<tr>
+<th>API Type</th>
+<th>Discovery</th>
+<th>Column Inference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openapi</code></td>
+<td>OpenAPI spec parsing (REQ-314, REQ-316)</td>
+<td>Primitives → native, objects → JSONB</td>
+</tr>
+<tr>
+<td><code>graphql_remote</code></td>
+<td>Schema introspection (REQ-307, REQ-308)</td>
+<td>Primitives → native, objects → JSONB</td>
+</tr>
+<tr>
+<td><code>grpc_remote</code></td>
+<td>Server reflection (REQ-322, REQ-325)</td>
+<td>Primitives → native, objects → JSONB</td>
+</tr>
+</tbody>
+</table>
+<p>API responses are fetched, cached in PostgreSQL (configurable TTL), and exposed as GraphQL types (REQ-309, REQ-318, REQ-327). Cached tables participate in federated queries like any other source (REQ-313).</p>
+<p><strong>JSONB rules</strong>: Complex columns (objects, arrays) stored as JSONB are not filterable (REQ-119). Sub-field access uses <code>-&gt;&gt;</code> extraction in SQL (REQ-151). Relationships are declared between tables using scalar FK columns — JSONB blob columns are not join targets. Use JSONB promotion to convert nested fields into native scalar columns when filtering or joining on them is needed (REQ-119).</p>
+<h3 id="govdata">GovData<a class="headerlink" href="#govdata" title="Permanent link">&para;</a></h3>
+<p>U.S. government open data. Access is partitioned by subject grouping. [tool-verified: <code>provisa/core/models.py</code> lines 543–609]</p>
+<p>Each <code>govdata</code> source selects one subject. That subject determines which GovData schemas are exposed. The <code>ref</code> and <code>geo</code> schemas are always included as linker schemas — they are not listed per subject but are always present. [tool-verified: <code>provisa/core/models.py</code> line 562–563 comment]</p>
+<table>
+<thead>
+<tr>
+<th>Subject</th>
+<th>Schemas Exposed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>COMMERCE</code></td>
+<td><code>sec</code>, <code>patents</code></td>
+</tr>
+<tr>
+<td><code>ECONOMY</code></td>
+<td><code>econ</code></td>
+</tr>
+<tr>
+<td><code>EDUCATION</code></td>
+<td><code>census</code>, <code>edu</code></td>
+</tr>
+<tr>
+<td><code>HEALTH</code></td>
+<td><code>health</code></td>
+</tr>
+<tr>
+<td><code>CYBER</code></td>
+<td><code>cyber_threat</code>, <code>cyber_vuln</code></td>
+</tr>
+<tr>
+<td><code>PUBLIC_SAFETY</code></td>
+<td><code>crime</code></td>
+</tr>
+<tr>
+<td><code>ENVIRONMENT</code></td>
+<td><code>lands</code></td>
+</tr>
+<tr>
+<td><code>WEATHER</code></td>
+<td><code>weather</code></td>
+</tr>
+<tr>
+<td><code>GOVERNMENT</code></td>
+<td><code>fedregister</code>, <code>fec</code></td>
+</tr>
+<tr>
+<td><code>ALL</code></td>
+<td>Every schema above</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">sources</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">federal-commerce</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">govdata</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">subject</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">COMMERCE</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">domain_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">federal-analytics</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">U.S. commerce and securities data</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">governance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pre-approved</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>Unique identifier</td>
+</tr>
+<tr>
+<td><code>subject</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>One of the subject values above</td>
+</tr>
+<tr>
+<td><code>domain_id</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>Domain this source belongs to</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>No</td>
+<td><code>""</code></td>
+<td>Human-readable description</td>
+</tr>
+<tr>
+<td><code>governance</code></td>
+<td>No</td>
+<td><code>pre-approved</code></td>
+<td>Governance level for all tables in this source</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="warehouses-as-named-sources">Warehouses as Named Sources<a class="headerlink" href="#warehouses-as-named-sources" title="Permanent link">&para;</a></h2>
+<p>Snowflake, Databricks, and ClickHouse can be registered as named sources independently of which federation engine is active. [tool-verified: <code>executor/drivers/snowflake.py</code> (REQ-988), <code>executor/drivers/databricks.py</code> (REQ-987), <code>executor/drivers/clickhouse.py</code> (REQ-986)]</p>
+<p>When registered, Provisa reads the warehouse via the source's DirectDriver and lands a replica into the active engine's materialization store. The query then runs against that replica. This differs from the traditional direct-capable path (asyncpg, aiomysql) where the engine is bypassed entirely — here the engine still executes the query, but against a local replica rather than over the wire to the warehouse on every request.</p>
+<p>Reads are Arrow-native where the warehouse supports it: Databricks uses Cloud Fetch, Snowflake uses <code>fetch_arrow_table</code>, and ClickHouse uses the native columnar HTTP interface.</p>
+<p>Extended connection parameters that the standard <code>host</code>/<code>port</code>/<code>username</code>/<code>password</code> fields cannot carry go in <code>federation_hints</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">sources</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-databricks</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">databricks</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-workspace.azuredatabricks.net</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:DATABRICKS_TOKEN}</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">      </span><span class="nt">http_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/sql/1.0/warehouses/xxxx</span><span class="w">   </span><span class="c1"># required — the SQL Warehouse connection detail</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-snowflake</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">snowflake</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">org.snowflakecomputing.com</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">    </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">svc_provisa</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:SNOWFLAKE_PASSWORD}</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">      </span><span class="nt">account</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myorg-myaccount</span><span class="w">    </span><span class="c1"># required — Snowflake account identifier</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">      </span><span class="nt">warehouse</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">COMPUTE_WH</span><span class="w">       </span><span class="c1"># optional — virtual warehouse to use</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">      </span><span class="nt">role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PROVISA_ROLE</span><span class="w">          </span><span class="c1"># optional — Snowflake role</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-clickhouse</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">clickhouse</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ch.example.com</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8123</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">    </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analytics</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">    </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:CLICKHOUSE_PASSWORD}</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">    </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">      </span><span class="nt">secure</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span><span class="w">              </span><span class="c1"># optional — enables TLS on the HTTP interface</span>
+</code></pre></div>
+<p>Registration as a named source is independent of selecting the same warehouse as the federation engine. A Snowflake source on a DuckDB engine lands a replica into DuckDB, not into Snowflake.</p>
+<p>Cloud object/lake data (parquet, csv, iceberg, delta_lake files on S3 / GCS / R2) is a separate source type that attaches in place when the active engine has an ATTACH connector for that type. No replica is landed — the engine scans the object storage directly. Credentials for those sources also go in <code>federation_hints</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">sources</span><span class="p">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">r2-events</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">parquet</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">s3://my-bucket/events/2026/*.parquet</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">      </span><span class="nt">access_key_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:R2_ACCESS_KEY}</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">      </span><span class="nt">secret_access_key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:R2_SECRET}</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">      </span><span class="nt">account_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:R2_ACCOUNT_ID}</span><span class="w">     </span><span class="c1"># Cloudflare R2 account (S3-compatible)</span>
+</code></pre></div>
+<hr />
+<h2 id="source-configuration-fields">Source Configuration Fields<a class="headerlink" href="#source-configuration-fields" title="Permanent link">&para;</a></h2>
+<p>All sources share a common set of fields. [tool-verified: <code>provisa/core/models.py</code> <code>Source</code> class, lines 138–204]</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>Unique identifier; alphanumeric with hyphens/underscores</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>Source type (see tables above)</td>
+</tr>
+<tr>
+<td><code>host</code></td>
+<td>No</td>
+<td><code>""</code></td>
+<td>Hostname or IP</td>
+</tr>
+<tr>
+<td><code>port</code></td>
+<td>No</td>
+<td><code>0</code></td>
+<td>Port number</td>
+</tr>
+<tr>
+<td><code>database</code></td>
+<td>No</td>
+<td><code>""</code></td>
+<td>Database name</td>
+</tr>
+<tr>
+<td><code>username</code></td>
+<td>No</td>
+<td><code>""</code></td>
+<td>Username</td>
+</tr>
+<tr>
+<td><code>password</code></td>
+<td>No</td>
+<td><code>""</code></td>
+<td>Password; use <code>${env:VAR}</code> for secret resolution</td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>No</td>
+<td><code>null</code></td>
+<td>File path or cloud URI for file-based and object/lake sources</td>
+</tr>
+<tr>
+<td><code>base_url</code></td>
+<td>No</td>
+<td><code>null</code></td>
+<td>Base URL for OpenAPI sources</td>
+</tr>
+<tr>
+<td><code>pool_min</code></td>
+<td>No</td>
+<td><code>1</code></td>
+<td>Minimum connection pool size (REQ-052)</td>
+</tr>
+<tr>
+<td><code>pool_max</code></td>
+<td>No</td>
+<td><code>5</code></td>
+<td>Maximum connection pool size (REQ-052)</td>
+</tr>
+<tr>
+<td><code>use_pgbouncer</code></td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Route connections through PgBouncer (REQ-053)</td>
+</tr>
+<tr>
+<td><code>pgbouncer_port</code></td>
+<td>No</td>
+<td><code>6432</code></td>
+<td>PgBouncer port (REQ-053)</td>
+</tr>
+<tr>
+<td><code>cache_enabled</code></td>
+<td>No</td>
+<td><code>true</code></td>
+<td>Enable API response caching</td>
+</tr>
+<tr>
+<td><code>cache_ttl</code></td>
+<td>No</td>
+<td><code>null</code></td>
+<td>Cache TTL in seconds; inherits global default when null</td>
+</tr>
+<tr>
+<td><code>cache_catalog</code></td>
+<td>No</td>
+<td><code>null</code></td>
+<td>Federated catalog for API cache; defaults to source's own catalog</td>
+</tr>
+<tr>
+<td><code>cache_schema</code></td>
+<td>No</td>
+<td><code>api_cache</code></td>
+<td>Schema within the cache catalog</td>
+</tr>
+<tr>
+<td><code>naming_convention</code></td>
+<td>No</td>
+<td><code>null</code></td>
+<td>Override global naming convention for this source (REQ-194)</td>
+</tr>
+<tr>
+<td><code>federation_hints</code></td>
+<td>No</td>
+<td><code>{}</code></td>
+<td>Session properties passed to the federation engine, and extended connection params for warehouse sources (REQ-278, REQ-281)</td>
+</tr>
+<tr>
+<td><code>mapping</code></td>
+<td>No</td>
+<td><code>{}</code></td>
+<td>Type-specific connector settings for NoSQL and SaaS sources (e.g. SharePoint <code>auth_type</code>, Splunk <code>use_token</code>) (REQ-251)</td>
+</tr>
+<tr>
+<td><code>allowed_domains</code></td>
+<td>No</td>
+<td><code>[]</code></td>
+<td>Restrict source to specific domains; empty = unrestricted</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>No</td>
+<td><code>""</code></td>
+<td>Human-readable description</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="kafka-sources">Kafka Sources<a class="headerlink" href="#kafka-sources" title="Permanent link">&para;</a></h2>
+<p>Kafka topics are configured separately under <code>kafka_sources</code>, keyed by the source <code>id</code> of a registered <code>kafka</code> source. [tool-verified: <code>config/provisa.yaml</code> lines 138–151] (REQ-147)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">kafka_sources</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kafka-support</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">topics</span><span class="p">:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tickets</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">        </span><span class="nt">topic</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">support.tickets</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">        </span><span class="nt">domain_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-analytics</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">        </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Inbound</span><span class="nv"> </span><span class="s">support</span><span class="nv"> </span><span class="s">tickets&quot;</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">        </span><span class="nt">default_window</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1h</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">        </span><span class="nt">columns</span><span class="p">:</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">id</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">subject</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">status</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">created_at</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Must match the <code>id</code> of a source with <code>type: kafka</code></td>
+</tr>
+<tr>
+<td><code>topics[].id</code></td>
+<td>Logical name for this topic within Provisa</td>
+</tr>
+<tr>
+<td><code>topics[].topic</code></td>
+<td>Kafka topic name</td>
+</tr>
+<tr>
+<td><code>topics[].domain_id</code></td>
+<td>Domain this topic belongs to</td>
+</tr>
+<tr>
+<td><code>topics[].description</code></td>
+<td>Human-readable description</td>
+</tr>
+<tr>
+<td><code>topics[].default_window</code></td>
+<td>Default time window for windowed queries (e.g. <code>1h</code>) (REQ-148)</td>
+</tr>
+<tr>
+<td><code>topics[].columns</code></td>
+<td>Column definitions for the topic schema (REQ-150)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="governance">Governance<a class="headerlink" href="#governance" title="Permanent link">&para;</a></h2>
+<p>Every registered table has a <code>governance</code> field. [tool-verified: <code>provisa/core/models.py</code> <code>GovernanceLevel</code> enum, lines 73–76]</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pre-approved</code></td>
+<td>Queries run against this table with user rights alone; no registry approval required (REQ-003)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="column-visibility">Column Visibility<a class="headerlink" href="#column-visibility" title="Permanent link">&para;</a></h2>
+<p>The <code>visible_to</code> field on each column is a list of role IDs that can see that column. [tool-verified: <code>provisa/core/models.py</code> <code>Column</code> class line 248; <code>config/provisa.yaml</code> lines 39–51]</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">columns</span><span class="p">:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">email</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span><span class="w">        </span><span class="c1"># only admin role sees this column</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">region</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># both roles see this column</span>
+</code></pre></div>
+<p>Columns omitted from a role's <code>visible_to</code> list do not appear in that role's GraphQL schema and cannot be queried or referenced in filters (REQ-039).</p>
+<hr />
+<h2 id="relationships">Relationships<a class="headerlink" href="#relationships" title="Permanent link">&para;</a></h2>
+<p>Relationships connect two registered tables and appear as nested fields in GraphQL. [tool-verified: <code>provisa/core/models.py</code> <code>Relationship</code> class lines 323–343; <code>config/provisa.yaml</code> lines 103–110] (REQ-019)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">relationships</span><span class="p">:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders-to-customers</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="nt">source_table_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="nt">target_table_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customers</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="nt">source_column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customer_id</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="nt">target_column</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">id</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">    </span><span class="nt">cardinality</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">many-to-one</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Yes</td>
+<td>Unique identifier for this relationship</td>
+</tr>
+<tr>
+<td><code>source_table_id</code></td>
+<td>Yes</td>
+<td>Table that holds the foreign key</td>
+</tr>
+<tr>
+<td><code>target_table_id</code></td>
+<td>Yes</td>
+<td>Table being referenced; empty for computed relationships</td>
+</tr>
+<tr>
+<td><code>source_column</code></td>
+<td>Yes</td>
+<td>Column on the source table</td>
+</tr>
+<tr>
+<td><code>target_column</code></td>
+<td>Yes</td>
+<td>Column on the target table; empty for computed relationships</td>
+</tr>
+<tr>
+<td><code>cardinality</code></td>
+<td>Yes</td>
+<td><code>many-to-one</code> or <code>one-to-many</code> (REQ-019)</td>
+</tr>
+<tr>
+<td><code>materialize</code></td>
+<td>No</td>
+<td>Auto-create a materialized view for cross-source joins (REQ-158)</td>
+</tr>
+<tr>
+<td><code>refresh_interval</code></td>
+<td>No</td>
+<td>MV refresh interval in seconds (default: 300)</td>
+</tr>
+<tr>
+<td><code>target_function_name</code></td>
+<td>No</td>
+<td>DB function name for computed relationships</td>
+</tr>
+<tr>
+<td><code>function_arg</code></td>
+<td>No</td>
+<td>Which function argument receives the source column value</td>
+</tr>
+<tr>
+<td><code>alias</code></td>
+<td>No</td>
+<td>Human-readable relationship type (e.g. <code>WORKS_FOR</code>)</td>
+</tr>
+<tr>
+<td><code>graphql_alias</code></td>
+<td>No</td>
+<td>Names the SDL field this relationship exposes on the parent type. When absent, the name is derived from the target table's <code>field_name</code> and relationship cardinality. [tool-verified: <code>provisa/compiler/schema_gen.py:1050</code>]</td>
+</tr>
+<tr>
+<td><code>disable_cypher</code></td>
+<td>No</td>
+<td>When <code>true</code>, exclude this relationship from Cypher graph edges</td>
+</tr>
+<tr>
+<td><code>source_json_key</code></td>
+<td>No</td>
+<td>Extract this key from source column as a JSON object before JOIN</td>
+</tr>
+</tbody>
+</table>
+<p>Cardinality values [tool-verified: <code>provisa/core/models.py</code> <code>Cardinality</code> enum, lines 79–81]:</p>
+<ul>
+<li><code>many-to-one</code> — each source row maps to one target row (FK to PK)</li>
+<li><code>one-to-many</code> — each source row maps to multiple target rows (inverse of above)</li>
+</ul>
+<hr />
+<h2 id="row-level-security-rules">Row-Level Security Rules<a class="headerlink" href="#row-level-security-rules" title="Permanent link">&para;</a></h2>
+<p>RLS rules inject <code>WHERE</code> clauses at query time, scoped to a role and optionally to a table or domain. [tool-verified: <code>provisa/core/models.py</code> <code>RLSRule</code> class lines 391–395; <code>config/provisa.yaml</code> lines 128–131] (REQ-041)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">rls_rules</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">table_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orders</span><span class="w">          </span><span class="c1"># applies to orders table only</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="nt">role_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">    </span><span class="nt">filter</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;region</span><span class="nv"> </span><span class="s">=</span><span class="nv"> </span><span class="s">current_setting(&#39;provisa.user_region&#39;)&quot;</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">domain_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-analytics</span><span class="w">  </span><span class="c1"># applies to every table in domain (REQ-402)</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">    </span><span class="nt">role_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">    </span><span class="nt">filter</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;tenant_id</span><span class="nv"> </span><span class="s">=</span><span class="nv"> </span><span class="s">current_setting(&#39;provisa.tenant_id&#39;)&quot;</span>
+</code></pre></div>
+<p>When both a domain-level and a table-level rule exist for the same role, the table-level rule takes precedence (REQ-403).</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>table_id</code></td>
+<td>Conditional</td>
+<td>Table to apply the rule to; mutually exclusive with <code>domain_id</code></td>
+</tr>
+<tr>
+<td><code>domain_id</code></td>
+<td>Conditional</td>
+<td>Domain to apply the rule to; applies to all tables in the domain (REQ-402)</td>
+</tr>
+<tr>
+<td><code>role_id</code></td>
+<td>Yes</td>
+<td>Role this rule applies to</td>
+</tr>
+<tr>
+<td><code>filter</code></td>
+<td>Yes</td>
+<td>SQL predicate injected into <code>WHERE</code>; may reference session variables (REQ-041)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="functions-and-webhooks">Functions and Webhooks<a class="headerlink" href="#functions-and-webhooks" title="Permanent link">&para;</a></h2>
+<h3 id="db-functions">DB Functions<a class="headerlink" href="#db-functions" title="Permanent link">&para;</a></h3>
+<p>Track a database function and expose it as a GraphQL query or mutation. [tool-verified: <code>provisa/core/models.py</code> <code>Function</code> class lines 423–438; <code>config/provisa.yaml</code> lines 152–164] (REQ-205)</p>
+<p>Database sources can also auto-discover their stored procedures and functions from the vendor catalog (<code>pg_proc</code>, <code>information_schema.routines</code>, or vendor equivalents), removing the need to hand-register each one. Discovery reads <code>prokind</code> and <code>provolatile</code>: immutable/stable functions register as parameterized relations (proc arguments become query parameters, the same shape as OpenAPI GET tables), and volatile procedures register as mutations/tracked functions. Discovered routines flow through Stage-2 governance identically to hand-registered ones. [tool-verified: <code>provisa/api/admin/introspect.py:541</code>, <code>provisa/api/admin/introspect.py:593</code>] (REQ-887)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">functions</span><span class="p">:</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">get_customers_by_region</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="nt">source_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-pg</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">public</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="nt">function_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">get_customers_by_region</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="nt">returns</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customers</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="nt">domain_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-analytics</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Returns</span><span class="nv"> </span><span class="s">customers</span><span class="nv"> </span><span class="s">filtered</span><span class="nv"> </span><span class="s">by</span><span class="nv"> </span><span class="s">region&quot;</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">analyst</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">query</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">    </span><span class="nt">arguments</span><span class="p">:</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">p_region</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">String</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>GraphQL field name</td>
+</tr>
+<tr>
+<td><code>source_id</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>Source containing the function</td>
+</tr>
+<tr>
+<td><code>schema</code></td>
+<td>No</td>
+<td><code>public</code></td>
+<td>Database schema</td>
+</tr>
+<tr>
+<td><code>function_name</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>Actual database function name</td>
+</tr>
+<tr>
+<td><code>returns</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>Registered table ID the function returns (REQ-207)</td>
+</tr>
+<tr>
+<td><code>arguments</code></td>
+<td>No</td>
+<td><code>[]</code></td>
+<td>List of <code>{name, type}</code> argument definitions (REQ-211)</td>
+</tr>
+<tr>
+<td><code>visible_to</code></td>
+<td>No</td>
+<td><code>[]</code></td>
+<td>Roles that can call this function</td>
+</tr>
+<tr>
+<td><code>writable_by</code></td>
+<td>No</td>
+<td><code>[]</code></td>
+<td>Roles that can call this as a mutation</td>
+</tr>
+<tr>
+<td><code>domain_id</code></td>
+<td>No</td>
+<td><code>""</code></td>
+<td>Domain this function belongs to</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>No</td>
+<td><code>null</code></td>
+<td>GraphQL field description</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>No</td>
+<td><code>mutation</code></td>
+<td><code>"query"</code> or <code>"mutation"</code> (REQ-205)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="webhooks">Webhooks<a class="headerlink" href="#webhooks" title="Permanent link">&para;</a></h3>
+<p>Expose an external HTTP endpoint as a GraphQL query or mutation. [tool-verified: <code>provisa/core/models.py</code> <code>Webhook</code> class lines 441–455; <code>config/provisa.yaml</code> lines 166–178] (REQ-209)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">webhooks</span><span class="p">:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">notify_support</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:9999/notify</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">POST</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">    </span><span class="nt">timeout_ms</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3000</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="nt">domain_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-analytics</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Send</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">support</span><span class="nv"> </span><span class="s">notification&quot;</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span><span class="nt">visible_to</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">admin</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mutation</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">    </span><span class="nt">arguments</span><span class="p">:</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="w">        </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">String</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>GraphQL field name</td>
+</tr>
+<tr>
+<td><code>url</code></td>
+<td>Yes</td>
+<td>—</td>
+<td>Webhook endpoint URL</td>
+</tr>
+<tr>
+<td><code>method</code></td>
+<td>No</td>
+<td><code>POST</code></td>
+<td>HTTP method</td>
+</tr>
+<tr>
+<td><code>timeout_ms</code></td>
+<td>No</td>
+<td><code>5000</code></td>
+<td>Request timeout in milliseconds</td>
+</tr>
+<tr>
+<td><code>returns</code></td>
+<td>No</td>
+<td><code>null</code></td>
+<td>Registered table ID, or null for inline type</td>
+</tr>
+<tr>
+<td><code>inline_return_type</code></td>
+<td>No</td>
+<td><code>[]</code></td>
+<td>List of <code>{name, type}</code> fields for custom return shapes (REQ-210)</td>
+</tr>
+<tr>
+<td><code>arguments</code></td>
+<td>No</td>
+<td><code>[]</code></td>
+<td>List of <code>{name, type}</code> argument definitions</td>
+</tr>
+<tr>
+<td><code>visible_to</code></td>
+<td>No</td>
+<td><code>[]</code></td>
+<td>Roles that can call this webhook</td>
+</tr>
+<tr>
+<td><code>domain_id</code></td>
+<td>No</td>
+<td><code>""</code></td>
+<td>Domain this webhook belongs to</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>No</td>
+<td><code>null</code></td>
+<td>GraphQL field description</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>No</td>
+<td><code>mutation</code></td>
+<td><code>"query"</code> or <code>"mutation"</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
+<p>Auth is configured under the <code>auth</code> key. [tool-verified: <code>provisa/core/models.py</code> <code>AuthConfig</code> class lines 467–477] (REQ-120)</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>none</code></td>
+<td>No authentication; all requests treated as the <code>default_role</code></td>
+</tr>
+<tr>
+<td><code>firebase</code></td>
+<td>Firebase Authentication; requires <code>project_id</code> and <code>service_account_key</code> (REQ-121)</td>
+</tr>
+<tr>
+<td><code>keycloak</code></td>
+<td>Keycloak OIDC (REQ-122)</td>
+</tr>
+<tr>
+<td><code>oauth</code></td>
+<td>Generic OAuth 2.0 (REQ-123)</td>
+</tr>
+<tr>
+<td><code>simple</code></td>
+<td>Username/password without an external provider (REQ-124)</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">auth</span><span class="p">:</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">firebase</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span><span class="nt">assignments_source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">provisa</span><span class="w">   </span><span class="c1"># &quot;claims&quot; or &quot;provisa&quot;</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span><span class="nt">default_role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">  </span><span class="nt">default_assignments</span><span class="p">:</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">role_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyst</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">      </span><span class="nt">domain_id</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;*&quot;</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">  </span><span class="nt">firebase</span><span class="p">:</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="nt">project_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:FIREBASE_PROJECT_ID}</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">    </span><span class="nt">service_account_key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:FIREBASE_SERVICE_ACCOUNT_KEY}</span>
+</code></pre></div>
+<p><code>assignments_source: claims</code> reads role assignments from JWT claims. <code>assignments_source: provisa</code> reads them from Provisa's own assignment store. [tool-verified: <code>provisa/core/models.py</code> line 476] (REQ-551)</p>
+<hr />
+<h2 id="execution-routing">Execution Routing<a class="headerlink" href="#execution-routing" title="Permanent link">&para;</a></h2>
+<p><strong>Direct execution</strong> — Single-source RDBMS queries route to the native driver for sub-100ms latency (REQ-027). Sources require both a <code>SOURCE_TO_DIALECT</code> entry and a <code>SOURCE_TO_CONNECTOR</code> entry to support this path (REQ-229).</p>
+<p><strong>Federated execution</strong> — Multi-source queries and sources without a direct driver route through the federation engine (REQ-028). Provisa includes an embedded federation engine; point to your own compatible cluster for large-scale deployments (REQ-226).</p>
+<p><strong>Statistics</strong> — On registration, Provisa runs <code>ANALYZE</code> against each published table to prime the cost-based optimizer (row counts, null fraction, distinct values, min/max). Failures are logged and do not block registration (REQ-275).</p>
+<hr />
+<h2 id="graph-semantic-sources">Graph &amp; Semantic Sources<a class="headerlink" href="#graph-semantic-sources" title="Permanent link">&para;</a></h2>
+<h3 id="neo4j">Neo4j<a class="headerlink" href="#neo4j" title="Permanent link">&para;</a></h3>
+<p>Register a Neo4j graph database as a queryable source. Stewards author Cypher queries that project scalar values; Provisa caches results and exposes them as GraphQL types (REQ-295).</p>
+<p>Cypher queries must use property accessors in the <code>RETURN</code> clause (<code>RETURN n.id AS id, n.name AS name</code>) — returning node objects is rejected at registration time (REQ-296).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Register via admin API (no YAML config required)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>POST<span class="w"> </span>/admin/sources/neo4j
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="o">{</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span><span class="s2">&quot;source_id&quot;</span>:<span class="w"> </span><span class="s2">&quot;graph&quot;</span>,
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span><span class="s2">&quot;host&quot;</span>:<span class="w"> </span><span class="s2">&quot;neo4j&quot;</span>,
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span><span class="s2">&quot;port&quot;</span>:<span class="w"> </span><span class="m">7474</span>,
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">  </span><span class="s2">&quot;database&quot;</span>:<span class="w"> </span><span class="s2">&quot;neo4j&quot;</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="o">}</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="c1"># Register a table (preview + validate before persisting)</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>POST<span class="w"> </span>/admin/sources/neo4j/graph/tables
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="o">{</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="w">  </span><span class="s2">&quot;table_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;person_skills&quot;</span>,
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="w">  </span><span class="s2">&quot;cypher&quot;</span>:<span class="w"> </span><span class="s2">&quot;MATCH (p:Person)-[:HAS_SKILL]-&gt;(s:Skill) RETURN p.name AS name, s.skill AS skill, p.experience AS years&quot;</span>,
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="w">  </span><span class="s2">&quot;ttl&quot;</span>:<span class="w"> </span><span class="m">300</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="o">}</span>
+</code></pre></div>
+<p>The preview endpoint (<code>POST /admin/sources/neo4j/{id}/preview</code>) returns sample rows and blocks registration if the Cypher returns node objects (REQ-296).</p>
+<h3 id="sparql">SPARQL<a class="headerlink" href="#sparql" title="Permanent link">&para;</a></h3>
+<p>Register any SPARQL 1.1 compliant triplestore (Apache Jena Fuseki, Virtuoso, Stardog, etc.) as a queryable source (REQ-297).</p>
+<p>Queries must be <code>SELECT</code> queries. Variable names in the <code>SELECT</code> clause become column names automatically (REQ-297).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Register via admin API</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>POST<span class="w"> </span>/admin/sources/sparql
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="o">{</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span><span class="s2">&quot;source_id&quot;</span>:<span class="w"> </span><span class="s2">&quot;knowledge-graph&quot;</span>,
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">  </span><span class="s2">&quot;endpoint_url&quot;</span>:<span class="w"> </span><span class="s2">&quot;http://fuseki:3030/ds/sparql&quot;</span>,
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">  </span><span class="s2">&quot;default_graph_uri&quot;</span>:<span class="w"> </span><span class="s2">&quot;http://example.org/graph&quot;</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="o">}</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="c1"># Register a table (executes LIMIT 5 probe to validate and infer columns)</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>POST<span class="w"> </span>/admin/sources/sparql/knowledge-graph/tables
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="o">{</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">  </span><span class="s2">&quot;table_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;product_categories&quot;</span>,
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="w">  </span><span class="s2">&quot;sparql_query&quot;</span>:<span class="w"> </span><span class="s2">&quot;SELECT ?product ?label ?category WHERE { ?product a :Product ; rdfs:label ?label ; :hasCategory ?category . }&quot;</span>,
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="w">  </span><span class="s2">&quot;ttl&quot;</span>:<span class="w"> </span><span class="m">600</span>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="o">}</span>
+</code></pre></div>
+<p>Both connectors use the API source cache pipeline — results are stored in PostgreSQL with configurable TTL, making them available for cross-source federated JOINs (REQ-295, REQ-297, REQ-299).</p>
+<hr />
+<h2 id="connection-examples">Connection Examples<a class="headerlink" href="#connection-examples" title="Permanent link">&para;</a></h2>
+<h3 id="postgresql">PostgreSQL<a class="headerlink" href="#postgresql" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sales-pg</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgresql</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgres</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5432</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">  </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">provisa</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">  </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">provisa</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">  </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:PG_PASSWORD}</span>
+</code></pre></div>
+<h3 id="snowflake">Snowflake<a class="headerlink" href="#snowflake" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analytics-sf</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">snowflake</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">org.snowflakecomputing.com</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">443</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">  </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ANALYTICS</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">  </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">svc_provisa</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">  </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:SNOWFLAKE_PASSWORD}</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">  </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">    </span><span class="nt">account</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myorg-myaccount</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">    </span><span class="nt">warehouse</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">COMPUTE_WH</span>
+</code></pre></div>
+<h3 id="databricks">Databricks<a class="headerlink" href="#databricks" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">lakehouse-db</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">databricks</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-workspace.azuredatabricks.net</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${env:DATABRICKS_TOKEN}</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">  </span><span class="nt">federation_hints</span><span class="p">:</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">    </span><span class="nt">http_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/sql/1.0/warehouses/xxxx</span>
+</code></pre></div>
+<h3 id="mongodb">MongoDB<a class="headerlink" href="#mongodb" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">reviews-mongo</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongodb</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mongodb</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">27017</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">  </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">provisa</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">  </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">  </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+</code></pre></div>
+<h3 id="cross-source-query">Cross-Source Query<a class="headerlink" href="#cross-source-query" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="p">{</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">  </span><span class="n">orders</span><span class="p">(</span><span class="n">where</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="n">region</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="n">eq</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;us&quot;</span><span class="p">}})</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">    </span><span class="n">id</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">    </span><span class="n">amount</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">    </span><span class="n">customers</span><span class="w"> </span><span class="p">{</span><span class="w">       </span><span class="c"># PostgreSQL</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="w">      </span><span class="n">name</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="w">      </span><span class="n">email</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">    </span><span class="n">productReviews</span><span class="w"> </span><span class="p">{</span><span class="w">  </span><span class="c"># MongoDB (federated)</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="w">      </span><span class="n">rating</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="w">      </span><span class="n">comment</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a><span class="p">}</span>
+</code></pre></div>
+<p>Single-source portions route directly (REQ-027). Cross-source JOINs federate with automatic type coercion (REQ-028, REQ-552).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../pgwire/" class="md-footer__link md-footer__link--prev" aria-label="Previous: pgwire">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                pgwire
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../remote-schemas/" class="md-footer__link md-footer__link--next" aria-label="Next: Remote Schemas">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Remote Schemas
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
