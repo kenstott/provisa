@@ -155,7 +155,7 @@ class ProvisaFlightServer(
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         criteria: bytes,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportUnusedParameter]
     ) -> Iterator[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """List available flights: catalog tables, then registered commands (REQ-1150).
+        """List available flights: catalog tables, then registered commands (REQ-1156).
 
         Commands are listed alongside tables (descriptor path ``["commands", domain, name]``) so a
         Flight client discovers a registered command instead of it being invocable-but-invisible;
@@ -183,7 +183,7 @@ class ProvisaFlightServer(
         """
         path = [p.decode("utf-8") if isinstance(p, bytes) else p for p in descriptor.path]
 
-        # REQ-1150: a command descriptor is ["commands", domain, name] — resolve it to the command
+        # REQ-1156: a command descriptor is ["commands", domain, name] — resolve it to the command
         # FlightInfo so a client can fetch a registered command's shape, not only a table's.
         if len(path) == 3 and path[0] == "commands":
             from provisa.api.data.action_exec import list_visible_commands
@@ -557,7 +557,7 @@ class ProvisaFlightServer(
         sql = str(request.get("query", ""))
         role_id = str(request.get("role", "admin"))
 
-        # REQ-1150: a `SELECT fn(...)` naming a registered command invokes it through the single
+        # REQ-1156: a `SELECT fn(...)` naming a registered command invokes it through the single
         # governed executor, matching pgwire/MCP — otherwise commands are dark over Flight SQL.
         fn_result = asyncio.run_coroutine_threadsafe(
             maybe_invoke_registered_function(sql, role_id, self._state),

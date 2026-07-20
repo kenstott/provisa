@@ -826,7 +826,7 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     # The prefixed alias MUST match the GraphQL field name the schema generator emits, which uses
     # domain_gql_alias (e.g. pet-store -> "ps"), NOT domain_to_sql_name (-> "pet_store"). Otherwise
     # _split_action_fields can't find the domain-prefixed field and the command falls through to the
-    # table compiler as an "Unknown root query field" (REQ-1150).
+    # table compiler as an "Unknown root query field" (REQ-1156).
     from provisa.compiler.naming import domain_gql_alias as _dgql
 
     _domains_cfg = (raw_config or {}).get("domains", []) or []

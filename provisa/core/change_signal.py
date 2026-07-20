@@ -27,7 +27,13 @@ from __future__ import annotations
 
 POLL_SIGNALS = frozenset({"ttl", "probe", "ttl_probe"})
 PUSH_SIGNALS = frozenset({"native", "debezium", "kafka"})
-VALID_SIGNALS = POLL_SIGNALS | PUSH_SIGNALS
+# REQ-1149: a DATA-LESS external trigger ("refresh now" via a Kafka control message or an HTTP
+# webhook) that carries no rows. It sits between the axes: push-TRIGGERED timing, but poll-style
+# full/delta re-pull from the source of truth (it never lands the message like CDC does). The trigger
+# only INVALIDATES the snapshot; under REQ-1141 the load-protected scheduler owns WHEN the heavy pull
+# runs, so ``signal`` is treated as a change-detector (a probe verdict), not a CDC carrier.
+TRIGGER_SIGNALS = frozenset({"signal"})
+VALID_SIGNALS = POLL_SIGNALS | PUSH_SIGNALS | TRIGGER_SIGNALS
 DEFAULT_SIGNAL = "ttl"
 
 
@@ -52,8 +58,13 @@ def is_push(sig: str) -> bool:
     return sig in PUSH_SIGNALS
 
 
+def is_trigger(sig: str) -> bool:
+    """A data-less external refresh trigger (REQ-1149) — push-timed but poll-style re-pull."""
+    return sig in TRIGGER_SIGNALS
+
+
 def to_freshness_mode(sig: str) -> str | None:
-    """Poll signal → its freshness_mode (same value). Push signal → None (event-driven, no gate)."""
+    """Poll signal → its freshness_mode (same value). Push/trigger → None (event-driven, no poll gate)."""
     return sig if sig in POLL_SIGNALS else None
 
 
@@ -89,6 +100,8 @@ def to_provider(sig: str, source_type: str) -> str:
         return "debezium"
     if sig == "kafka":
         return "kafka"
+    if sig == "signal":  # REQ-1149: a data-less trigger receiver (kafka control topic / webhook)
+        return "signal"
     return source_type
 
 

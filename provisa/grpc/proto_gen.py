@@ -92,7 +92,7 @@ def _to_proto_field_name(gql_name: str) -> str:
 
 
 # GraphQL scalar name (command argument type) → proto3 type. Mirrors the REST surface's
-# _arg_type_to_openapi mapping so a command's arg shape is identical across surfaces (REQ-1150).
+# _arg_type_to_openapi mapping so a command's arg shape is identical across surfaces (REQ-1156).
 _ARG_PROTO_TYPE: dict[str, str] = {"int": "int64", "float": "double", "boolean": "bool"}
 
 
@@ -101,7 +101,7 @@ def _arg_proto_type(arg_type: str) -> str:
 
 
 def command_rpc_name(fn_name: str) -> str:
-    """The per-command RPC / request-message base name: ``active_users`` → ``ActiveUsers`` (REQ-1150).
+    """The per-command RPC / request-message base name: ``active_users`` → ``ActiveUsers`` (REQ-1156).
 
     The single naming authority both proto_gen and the server use, so ``Call{name}`` RPCs round-trip
     back to the registered command name deterministically."""
@@ -109,7 +109,7 @@ def command_rpc_name(fn_name: str) -> str:
 
 
 def _visible_commands(si: SchemaInput) -> list[dict]:
-    """Commands (tracked functions) visible to this role, deduped by name (REQ-1150).
+    """Commands (tracked functions) visible to this role, deduped by name (REQ-1156).
 
     ``visible_to`` empty = every role, matching the REST/MCP/Flight surfaces. Role id comes from
     ``si.role``; a command with a non-empty ``visible_to`` that omits the role is not emitted."""
@@ -264,7 +264,7 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     lines.append("}")
     lines.append("")
 
-    # --- Command invocation (REQ-1150) ---
+    # --- Command invocation (REQ-1156) ---
     # A single generic RPC exposes every registered command (tracked function/webhook) over gRPC
     # without a per-command proto: the request carries the command name + JSON-encoded args and the
     # response carries the JSON-encoded governed rows. Invocation routes through the one shared
@@ -280,7 +280,7 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     lines.append("}")
     lines.append("")
 
-    # --- Per-command request messages (REQ-1150) ---
+    # --- Per-command request messages (REQ-1156) ---
     # Beyond the generic CallCommand, every command visible to the role gets a typed request message
     # + its own RPC, so a gRPC client discovers commands by name with typed arguments via reflection
     # (not one opaque CallCommand). Query-kind -> unary CommandResponse (set returns carried as JSON

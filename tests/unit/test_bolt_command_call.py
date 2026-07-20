@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1150: `CALL <command>(args)` over Bolt/Cypher invokes a registered command through the
+"""REQ-1156: `CALL <command>(args)` over Bolt/Cypher invokes a registered command through the
 single governed executor (invoke_tracked_function), mapping positional args to declared names."""
 
 from __future__ import annotations

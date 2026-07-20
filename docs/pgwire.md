@@ -49,7 +49,7 @@ Multi-statement simple queries are supported. Semicolon-separated statements are
 
 Parameterized queries (`$1`, `$2`, ...) are supported in both simple-query and extended-query (Bind/Execute) modes. Parameters are substituted as literals before execution. (REQ-581) [tool-verified: `server.py:78-85`]
 
-`SELECT * FROM fn(args)` and `SELECT fn(args)` — where `fn` names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. `writable_by` and governance rules are enforced inside the executor. (REQ-1150) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
+`SELECT * FROM fn(args)` and `SELECT fn(args)` — where `fn` names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. `writable_by` and governance rules are enforced inside the executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
 ### DDL
 

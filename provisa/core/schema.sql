@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS sources (
     load_protected BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1141: scheduled-refresh-only; query path never pulls the source
     off_peak_window TEXT,  -- REQ-1141: "HH:MM-HH:MM" maintenance window for the scheduler; NULL = no window gate
     off_peak_tz   TEXT NOT NULL DEFAULT 'UTC',  -- REQ-1141: IANA zone the off_peak_window is evaluated in
-    change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka)
+    change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,
     path          TEXT  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- password never stored; resolved at runtime via secrets provider

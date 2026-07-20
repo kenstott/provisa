@@ -96,13 +96,13 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 return await self._handle_insert(request, context, type_name)
 
             return insert_handler
-        if name == "CallCommand":  # REQ-1150
+        if name == "CallCommand":  # REQ-1156
 
             async def call_command_handler(request, context):
                 return await self._handle_call_command(request, context)
 
             return call_command_handler
-        if name.startswith("Call"):  # REQ-1150 — per-command typed RPC Call{Cmd}
+        if name.startswith("Call"):  # REQ-1156 — per-command typed RPC Call{Cmd}
             cmd_name = self._resolve_command_rpc(name[len("Call") :])
 
             async def typed_command_handler(request, context):
@@ -112,7 +112,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
 
     def _resolve_command_rpc(self, cmd_pascal: str) -> str | None:
-        """Reverse the Call{Cmd} RPC name to the registered command name (REQ-1150).
+        """Reverse the Call{Cmd} RPC name to the registered command name (REQ-1156).
 
         proto_gen names each per-command RPC ``Call`` + command_rpc_name(name); match that same
         authority back so ``CallActiveUsers`` resolves to ``active_users``. None if no command matches
@@ -125,7 +125,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         return None
 
     async def _handle_typed_command(self, request, context, cmd_name: str | None):
-        """Invoke a per-command RPC's command via the one governed executor (REQ-1150).
+        """Invoke a per-command RPC's command via the one governed executor (REQ-1156).
 
         Reads declared arguments off the typed request message, routes through
         invoke_tracked_function (writable_by/governance enforced there), and returns the command's
@@ -159,7 +159,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         return self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
 
     async def _handle_call_command(self, request, context):
-        """Invoke a registered command (tracked function) via the one governed executor (REQ-1150).
+        """Invoke a registered command (tracked function) via the one governed executor (REQ-1156).
 
         Request: {name, args_json}; response: {rows_json}. writable_by/governance is enforced inside
         invoke_tracked_function, identical to the GraphQL/SQL/Cypher surfaces."""

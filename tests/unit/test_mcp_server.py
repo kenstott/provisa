@@ -297,7 +297,7 @@ async def test_run_sql_routes_through_govern_and_route(state, monkeypatch):
 
 
 async def test_run_sql_invokes_registered_command(state, monkeypatch):
-    # REQ-1150: a SELECT that names a registered command runs through invoke_tracked_function
+    # REQ-1156: a SELECT that names a registered command runs through invoke_tracked_function
     # (the shared function hook), not the table compiler.
     import provisa.pgwire._pipeline as pipeline
     import provisa.pgwire.function_call as function_call

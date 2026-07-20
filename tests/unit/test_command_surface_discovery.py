@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1150: registered commands are DISCOVERABLE (not only invocable) on every client surface.
+"""REQ-1156: registered commands are DISCOVERABLE (not only invocable) on every client surface.
 
 The invocation half (route through the one ``invoke_tracked_function`` executor) is covered per
 surface elsewhere. This module covers the discovery half — the command-listing each surface

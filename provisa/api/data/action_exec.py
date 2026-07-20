@@ -24,7 +24,7 @@ from provisa.security.mutation_authz import require_mutation_write
 
 
 def list_visible_commands(state, role_id: str | None) -> list[dict]:
-    """Every registered command visible to ``role_id``, as ordered metadata dicts (REQ-1150).
+    """Every registered command visible to ``role_id``, as ordered metadata dicts (REQ-1156).
 
     The one discovery path every surface (MCP, Arrow Flight, gRPC, Cypher/Bolt) projects, so a
     command registered once is listable on all of them — not only invocable. ``visible_to``

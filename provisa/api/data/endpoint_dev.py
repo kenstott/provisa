@@ -396,7 +396,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         ]
         return _format_response(result.rows, columns, "sql", output_format)
 
-    # REQ-1150 parity: a `SELECT fn(...)` naming a registered command routes through the single
+    # REQ-1156 parity: a `SELECT fn(...)` naming a registered command routes through the single
     # governed executor here too, matching pgwire/Flight SQL/MCP — otherwise commands are dark in
     # the in-app SQL Explorer and fall through to the federation engine as an unknown table function.
     from provisa.pgwire.function_call import maybe_invoke_registered_function

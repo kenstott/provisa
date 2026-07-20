@@ -259,10 +259,35 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     state._stale_check_task = asyncio.create_task(_sqlite_stale_loop())
 
 
+def _evaluate_licensing(_log: logging.Logger) -> None:
+    """Evaluate the offline trial/license once at startup; install state + shell banner (REQ-1137).
+
+    The evaluated state is shared with every protocol surface via ``licensing.emit``; the surfaces
+    emit the nag through their own out-of-band notice channels. When the trial has expired with no
+    valid license, the "persistent shell banner" is the startup log line here. Fully offline —
+    never blocks boot."""
+    try:
+        import datetime
+
+        from provisa.licensing import emit
+        from provisa.licensing.state import evaluate
+
+        today = datetime.date.today()
+        state = evaluate(now_epoch=today.toordinal() * 86400, today_iso=today.isoformat())
+        emit.set_state(state)
+        if state.should_nag:
+            _log.warning("[Provisa] %s", state.nag_text)
+    except Exception:
+        # Licensing must NEVER block or degrade the product (REQ-1137) — a failure just skips the nag.
+        _log.exception("licensing evaluation failed; continuing without a nag")
+
+
 async def _start_servers(_log: logging.Logger) -> None:
     """Start gRPC, Arrow Flight, pgwire, Live Query Engine, and APQ cache servers."""
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
     from provisa.api.app_rebuild import _reconcile_live_engine
+
+    _evaluate_licensing(_log)  # REQ-1135–1139: offline trial/license check + shell banner
 
     if state.proto_files:
         try:

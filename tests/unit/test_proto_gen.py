@@ -123,7 +123,7 @@ class TestGenerateProto:
         assert "int32 id = 3;" in proto
 
     def test_call_command_rpc_generated(self):
-        # REQ-1150: a single generic CallCommand RPC exposes every registered command over gRPC.
+        # REQ-1156: a single generic CallCommand RPC exposes every registered command over gRPC.
         si = _make_si()
         proto = generate_proto(si)
         assert "message CommandRequest {" in proto
@@ -134,7 +134,7 @@ class TestGenerateProto:
         assert "rpc CallCommand(CommandRequest) returns (CommandResponse);" in proto
 
     def test_per_command_rpcs_generated(self):
-        # REQ-1150: beyond the generic CallCommand, each visible command gets a typed request
+        # REQ-1156: beyond the generic CallCommand, each visible command gets a typed request
         # message + its own RPC so a gRPC client discovers commands by name via reflection.
         si = _make_si()
         si.functions = [

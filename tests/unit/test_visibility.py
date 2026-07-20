@@ -155,7 +155,7 @@ class TestDomainFilteredMutations:
 
 
 class TestViewMutationsSuppressed:
-    """REQ-1151: a view_sql/MV-backed relation is query-only — no insert/update/delete mutations,
+    """REQ-1157: a view_sql/MV-backed relation is query-only — no insert/update/delete mutations,
     while its read (query) surface is unaffected."""
 
     def _schema(self):

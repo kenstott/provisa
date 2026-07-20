@@ -86,7 +86,7 @@ def _apply_read_mask(proto_rows, mask_map: dict[str, set[str] | None]):
 
 
 @router.get("/grpc-commands/{role_id}")
-async def grpc_commands(role_id: str):  # REQ-1150
+async def grpc_commands(role_id: str):  # REQ-1156
     """List role-visible registered commands (tracked functions) for the gRPC Explorer.
 
     The gRPC surface exposes every command through the single generic ``CallCommand`` RPC, so
@@ -128,7 +128,7 @@ async def grpc_commands(role_id: str):  # REQ-1150
 
 
 @router.post("/grpc-command/{role_id}")
-async def grpc_command(role_id: str, request: Request):  # REQ-1150
+async def grpc_command(role_id: str, request: Request):  # REQ-1156
     """Invoke a registered command via the shared executor — the HTTP mirror of CallCommand.
 
     Body: ``{name, args_json}`` (args_json is a JSON object string, matching the CommandRequest

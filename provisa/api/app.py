@@ -936,6 +936,14 @@ def create_app() -> FastAPI:
             return StarletteResponse(status_code=499)
         if request.url.path.startswith("/admin/graphql"):
             response.headers["X-Schema-Version"] = str(state.schema_version)
+        # REQ-1137: post-trial license nag on the REST surface via an out-of-band header — never
+        # touches the response body or any schema-typed field, never gates the request.
+        from provisa.licensing import emit as _lic_emit
+
+        if _lic_emit.should_nag():
+            st = _lic_emit.current_state()
+            if st is not None:
+                response.headers["X-Provisa-License-Notice"] = st.nag_text.replace("\n", " ")
         return response
 
     from provisa.api.admin.discovery import router as discovery_router

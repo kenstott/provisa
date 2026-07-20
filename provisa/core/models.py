@@ -174,6 +174,11 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # table's watermark_column (which gates the poll subscription path + append landing, REQ-926/927).
     # Pull: ttl | probe | ttl_probe. Push: native | debezium | kafka. Tables inherit unless overriding.
     change_signal: str = "ttl"
+    # REQ-1148: sentinel freshness probe. A URL to a zero-byte marker the producer touches when its
+    # data changes (file:/ftp:/sftp:/http(s):); with change_signal in {probe, ttl_probe} and
+    # probe_type=hash, the poll node reads only this marker's exists+mtime+size (or ETag/Last-Modified)
+    # as its freshness token — never scanning the data. None = no sentinel (the probe degrades to TTL).
+    sentinel_path: str | None = None
     # REQ-860: opt-in source-level freshness gate. When true, a query reading a table from this
     # source is gated by a freshness decision (built from change_signal + cache_ttl via the
     # freshness module, REQ-856/858) before execution; a stale/failed verdict triggers the caller's

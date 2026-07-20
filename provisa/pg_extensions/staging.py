@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Offline staging of the prebuilt PG extension/FDW bundle into a pgserver (REQ-1152).
+"""Offline staging of the prebuilt PG extension/FDW bundle into a pgserver (REQ-1158).
 
 The ``provisa-pg-ext`` PyPI wheel carries the pinned per-platform bundle
 (``<os>-<arch>/{manifest.json, lib/<name>.<suf>, share/extension/*}`` — the exact tree

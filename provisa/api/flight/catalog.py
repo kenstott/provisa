@@ -221,11 +221,11 @@ def build_catalog_tables_from_context(state) -> list[CatalogTable]:  # REQ-127, 
     return tables
 
 
-def command_to_flight_info(  # REQ-1150
+def command_to_flight_info(  # REQ-1156
     command: dict,
     location: flight.Location | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """Build a FlightInfo descriptor for a registered command (REQ-1150).
+    """Build a FlightInfo descriptor for a registered command (REQ-1156).
 
     Descriptor path is ``["commands", <domain>, <name>]`` so a Flight client discovers commands
     alongside tables (path ``[<domain>, <table>]``) without colliding with them. The Arrow schema

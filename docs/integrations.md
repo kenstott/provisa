@@ -196,7 +196,7 @@ Role is passed via the `x-provisa-role` metadata key on every RPC. Streaming que
 
 ## Invoking Commands Across Protocols
 
-A **command** is a registered tracked function or webhook — a callable registered in Provisa's semantic layer with a `kind` (`query` or `mutation`) and an `impl_kind` that describes how it runs. Every surface routes invocations through a single governed executor (`invoke_tracked_function`) that enforces `writable_by` and governance uniformly (REQ-1150). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
+A **command** is a registered tracked function or webhook — a callable registered in Provisa's semantic layer with a `kind` (`query` or `mutation`) and an `impl_kind` that describes how it runs. Every surface routes invocations through a single governed executor (`invoke_tracked_function`) that enforces `writable_by` and governance uniformly (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | What runs | Binding fields |
 |------------|-----------|---------------|

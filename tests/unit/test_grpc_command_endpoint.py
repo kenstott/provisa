@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: cd06a60f-8cd7-4768-82f6-c460d56de3b2
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -7,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1150: HTTP mirror of the gRPC CallCommand RPC used by the gRPC Explorer.
+"""REQ-1156: HTTP mirror of the gRPC CallCommand RPC used by the gRPC Explorer.
 
 Covers the role-visible command listing and the invoke endpoint's arg handling.
 """

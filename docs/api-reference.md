@@ -534,7 +534,7 @@ Generate LLM-assisted descriptions for a source's tables and columns. [tool-veri
 
 All endpoints are under the `/admin/actions` prefix. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
-Every invocation — from GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, and Provisa gRPC — routes through a single governed executor that enforces `writable_by` and governance uniformly. (REQ-1150) [tool-verified: `provisa/api/data/action_exec.py`] See [docs/integrations.md](integrations.md#invoking-commands-across-protocols) for the per-protocol call syntax.
+Every invocation — from GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, and Provisa gRPC — routes through a single governed executor that enforces `writable_by` and governance uniformly. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] See [docs/integrations.md](integrations.md#invoking-commands-across-protocols) for the per-protocol call syntax.
 
 #### `GET /admin/actions`
 

@@ -155,14 +155,18 @@ def build_probe(
     query_scalar: QueryScalar | None = None,
     ref: str | None = None,
     watermark_column: str | None = None,
+    sentinel_path: str | None = None,
 ) -> Transport:
     """Build the ``freshness_token`` transport for a node from its ``probe_type`` (REQ-982).
 
     watermark/count over a SQL-scannable source are wired here; ``hash`` on a SQL source has no cheap
     token (a full-scan checksum is the fetch itself), and ``none`` never probes — both return a
     None-token transport that degrades the node to its TTL cadence, where the REQ-981 output hash gate
-    still suppresses an unchanged ripple. HTTP/file hash transports (ETag / mtime) plug in here as they
-    are wired; until then they too degrade to TTL."""
+    still suppresses an unchanged ripple.
+
+    REQ-1148: a ``hash`` probe with a configured ``sentinel_path`` reads a zero-byte SENTINEL marker
+    (file/ftp/sftp/http) instead of the data — the token is exists+mtime+size or ETag/Last-Modified.
+    This lights the previously-dark ``hash``-on-any-source case without touching the gate machinery."""
 
     async def _none() -> str | None:
         return None
@@ -175,5 +179,9 @@ def build_probe(
         if query_scalar is None or ref is None:
             return _none
         return lambda: sql_count_token(query_scalar, ref)
-    # hash on SQL (no cheap token) and none → TTL degrade; REQ-981 output gate covers correctness.
+    if probe_type == HASH and sentinel_path:
+        from provisa.events.sentinel_probe import build_sentinel_probe
+
+        return build_sentinel_probe(sentinel_path)
+    # hash with no sentinel (no cheap token) and none → TTL degrade; REQ-981 output gate covers it.
     return _none

@@ -23937,7 +23937,8 @@
   - REQ-858
   - REQ-844
 - id: REQ-860
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   code:
   - provisa/core/models.py
@@ -25183,11 +25184,11 @@
     procedures/dbt); opening to less-trusted authors requires confinement (egress control + process isolation).'
   performance_constraint: 'Row-wise (column_value kind) permitted only for cheap pure local scalars; expensive
     or external work must be set-wise and batched (function receives relation, makes batched outbound
-    calls). External row-wise refusal enforced: _reject_rowwise_external refuses an http/grpc function whose
-    declared arguments are all column_value scalars (no table_ref/result_set relation argument). Row-wise
-    kills pushdown (opaque projection) and prevents engine optimization. Detection via ops-domain audit
-    (REQ-884) duration_ms; prevention via refusal for external row-wise and cardinality warning for row-wise
-    applied past N estimated rows.'
+    calls). External row-wise refusal enforced: _reject_rowwise_external refuses an http/grpc function
+    whose declared arguments are all column_value scalars (no table_ref/result_set relation argument).
+    Row-wise kills pushdown (opaque projection) and prevents engine optimization. Detection via ops-domain
+    audit (REQ-884) duration_ms; prevention via refusal for external row-wise and cardinality warning
+    for row-wise applied past N estimated rows.'
   observability: Engine-emitted I/O-boundary trace (REQ-886) is the non-bypassable floor; function-emitted
     OTel tracing via W3C traceparent propagation is encouraged ceiling. Correlation ID stamped into minted
     pgwire session joins invocation to governed reads for precise lineage.
@@ -30348,8 +30349,8 @@
   priority: SHOULD
   type: structural
   unit_test: false
-  unit_test_reason: Static marketing site (framework-free HTML/CSS deployed to Cloudflare
-    Pages) — no in-process interface to unit test. Verified by code review.
+  unit_test_reason: Static marketing site (framework-free HTML/CSS deployed to Cloudflare Pages) — no
+    in-process interface to unit test. Verified by code review.
   target: 2026-Q3
   code:
   - site/
@@ -31544,7 +31545,8 @@
   relates_to:
   - REQ-979
 - id: REQ-1105
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 11. Platform, Infrastructure & Delivery
   category: MCP Authentication
@@ -31555,8 +31557,22 @@
     loopback.
   use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control
     and governance.
+  scenario: 'Given the MCP Streamable HTTP transport bound off the loopback
+
+    When a request arrives carrying an OIDC bearer token
+
+    Then the token is resolved to a Provisa role via the same provider/claim mapping pgwire uses
+
+    And that role governs the tool call for the duration of the request
+
+    And a request with no bearer, or a token that resolves to no role, is rejected 401 (fail closed, never
+    admin)
+
+    '
   code:
   - provisa/api/mcp/server.py
+  tests:
+  - tests/unit/test_mcp_bearer_role.py
 - id: REQ-1106
   status: complete
   since: 2026-07
@@ -31991,12 +32007,19 @@
 
     '
 - id: REQ-1135
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 11. Platform, Infrastructure & Delivery
   category: Licensing
   priority: MUST
   type: behavioral
+  code:
+  - provisa/licensing/anchors.py
+  - provisa/licensing/keys.py
+  - provisa/licensing/machine_id.py
+  tests:
+  - tests/unit/test_licensing.py
   description: The installation records a tamper-evident first-use timestamp that survives reinstall.
     On first startup with no existing anchor, the current date is recorded as first_seen. The anchor payload
     {first_seen, machine_id} is Ed25519-signed and written to multiple locations outside the application
@@ -32019,12 +32042,17 @@
 
     '
 - id: REQ-1136
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 11. Platform, Infrastructure & Delivery
   category: Licensing
   priority: MUST
   type: constraint
+  code:
+  - provisa/licensing/monotonic.py
+  tests:
+  - tests/unit/test_licensing.py
   description: The trial-expiry evaluation is resistant to wall-clock rollback. The system persists a
     monotonic wall-clock high-water mark and evaluates elapsed time as max(now, high_water) - first_seen.
     The trial is considered expired when elapsed >= 30 days and no valid license is present. Setting the
@@ -32038,12 +32066,20 @@
 
     '
 - id: REQ-1137
-  status: proposed
+  status: accepted
   target: 2026-Q3
   group: 11. Platform, Infrastructure & Delivery
   category: Licensing
   priority: MUST
   type: behavioral
+  code:
+  - provisa/licensing/nag.py
+  - provisa/licensing/emit.py
+  - provisa/licensing/state.py
+  - provisa/api/app_startup.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_licensing.py
   description: After the trial expires and no valid license is present, a self-contained nag message is
     surfaced on every access surface. It is emitted in the UI as a persistent shell banner, and through
     each served protocol's native non-fatal notice channel only (pgwire NoticeResponse, Bolt SUCCESS-metadata
@@ -32074,12 +32110,18 @@
 
     '
 - id: REQ-1138
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 11. Platform, Infrastructure & Delivery
   category: Licensing
   priority: MUST
   type: structural
+  code:
+  - provisa/licensing/license.py
+  - provisa/licensing/keys.py
+  tests:
+  - tests/unit/test_licensing.py
   description: A license file is an Ed25519-signed token issued by provisa.dev (which holds the private
     key). Its payload contains company, position/title, role, first name, last name, email, optional phone,
     machine_id, and issued_at. The application embeds only the corresponding public key and verifies the
@@ -32090,12 +32132,19 @@
     call to an issuing server. Registration at install time replaces telemetry entirely; there is no continuous
     collection.
 - id: REQ-1139
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 11. Platform, Infrastructure & Delivery
   category: Licensing
   priority: MUST
   type: behavioral
+  code:
+  - provisa/licensing/license.py
+  - provisa/licensing/machine_id.py
+  - provisa/cli.py
+  tests:
+  - tests/unit/test_licensing.py
   description: A license file is applied via `provisa license apply <file>`, a UI upload in Settings →
     License, or by placing it at ~/.provisa/license.json. On apply the system verifies the Ed25519 signature
     against the embedded public key and checks that the license machine_id matches the local installation's
@@ -32118,7 +32167,8 @@
 
     '
 - id: REQ-1140
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 6. Materialized Views & Caching
   category: Materialized View Governance
@@ -32150,102 +32200,145 @@
     And the MV is not published until all relationships have been approved
 
     '
+  code:
+  - provisa/api/admin/mv_relationship_gate.py
+  - provisa/api/admin/schema_mutation_ops.py
+  tests:
+  - tests/unit/test_mv_relationship_gate.py
 - id: REQ-1141
-  status: proposed
-  group: "6. Execution, Routing, Caching & Performance"
+  status: complete
+  since: 2026-07
+  group: 6. Execution, Routing, Caching & Performance
   category: Caching
   priority: SHOULD
   type: behavioral
-  description: >-
-    A steward can mark an operational database source as load-sensitive and configure it for
+  description: 'A steward can mark an operational database source as load-sensitive and configure it for
     scheduled-refresh-only materialization, with a required constraint: at least one of three independent
-    optional gates MUST be configured. The gates are off-peak window (a time range), refresh cadence
-    (refresh_interval), and freshness probe (FreshnessMode.PROBE, checking for source change). The
-    refresh fires on the AND of ONLY the configured gates — an unconfigured gate is vacuously true
-    (ignored). Trigger clocks vary: window-only pulls once per window-open edge; cadence-only pulls every
-    interval regardless of time; probe-only pulls on each evaluation if changed. Probe always gates
-    further: if configured and returns unchanged, the scheduler resets its clock, zero data pull. The
-    query path never touches the source: it serves the last snapshot via FreshnessMode.SCHEDULED (always
-    fresh=true), decoupling query-path load from source access. REQ-1141's contract is scheduler-driven
-    refresh: without a configured gate, there is no scheduler discipline and the source is not
-    load-protected. Boundary principle: MATERIALIZATION REQUIRES A REFRESH POLICY (a REQ-1141 gate OR
-    a cache_ttl). Prefer_materialized + cache_ttl (no gates) is REQ-826 lazy read-through (query-triggered
-    on staleness). Prefer_materialized + no gates + no cache_ttl splits on reachability: if the engine
-    can ATTACH/VIRTUAL the source live, prefer_materialized is inert and the source degrades to live
-    serving; if unreachable (_MATERIALIZE_ONLY type — APIs/NoSQL/streams with no live option), it is a
-    load-once-then-frozen snapshot, only meaningful for static reference data or REQ-847 mutation-driven
-    invalidation.
-  use_case: >-
-    Lets a steward protect an operational database by serving it entirely from scheduled snapshots,
-    with fine-grained control over refresh timing (maintenance windows, periodic intervals, or
-    change-driven). The probe signal avoids wasted re-pulls when the source is unchanged. Query traffic
-    never touches the source — only predictable background refresh traffic, bounded by configured gates
-    and staleness by scheduler policy, not query load.
+    optional gates MUST be configured. The gates are off-peak window (a time range), refresh cadence (refresh_interval),
+    and freshness probe (FreshnessMode.PROBE, checking for source change). The refresh fires on the AND
+    of ONLY the configured gates — an unconfigured gate is vacuously true (ignored). Trigger clocks vary:
+    window-only pulls once per window-open edge; cadence-only pulls every interval regardless of time;
+    probe-only pulls on each evaluation if changed. Probe always gates further: if configured and returns
+    unchanged, the scheduler resets its clock, zero data pull. The query path never touches the source:
+    it serves the last snapshot via FreshnessMode.SCHEDULED (always fresh=true), decoupling query-path
+    load from source access. REQ-1141''s contract is scheduler-driven refresh: without a configured gate,
+    there is no scheduler discipline and the source is not load-protected. Boundary principle: MATERIALIZATION
+    REQUIRES A REFRESH POLICY (a REQ-1141 gate OR a cache_ttl). Prefer_materialized + cache_ttl (no gates)
+    is REQ-826 lazy read-through (query-triggered on staleness). Prefer_materialized + no gates + no cache_ttl
+    splits on reachability: if the engine can ATTACH/VIRTUAL the source live, prefer_materialized is inert
+    and the source degrades to live serving; if unreachable (_MATERIALIZE_ONLY type — APIs/NoSQL/streams
+    with no live option), it is a load-once-then-frozen snapshot, only meaningful for static reference
+    data or REQ-847 mutation-driven invalidation.'
+  use_case: Lets a steward protect an operational database by serving it entirely from scheduled snapshots,
+    with fine-grained control over refresh timing (maintenance windows, periodic intervals, or change-driven).
+    The probe signal avoids wasted re-pulls when the source is unchanged. Query traffic never touches
+    the source — only predictable background refresh traffic, bounded by configured gates and staleness
+    by scheduler policy, not query load.
   code:
-    - provisa/core/models.py
-    - provisa/federation/strategy.py
-    - provisa/federation/freshness_gate.py
-    - provisa/federation/read_through.py
-  target: "2026-Q4"
-  scenario: |
-    Given a load_protected_policy: scheduled_refresh source with window-only config (off-peak: 22:00-02:00 UTC, no cadence, no probe)
+  - provisa/core/models.py
+  - provisa/federation/scheduled_refresh.py
+  - provisa/federation/freshness_gate.py
+  - provisa/federation/scheduler.py
+  - provisa/federation/read_through.py
+  tests:
+  - tests/unit/test_scheduled_refresh.py
+  - tests/unit/test_scheduler_driver.py
+  target: 2026-Q4
+  scenario: 'Given a load_protected_policy: scheduled_refresh source with window-only config (off-peak:
+    22:00-02:00 UTC, no cadence, no probe)
+
     When the off-peak window opens at 22:00
+
     Then the scheduler fires a refresh attempt (window-open edge trigger)
+
     And then idles until 02:00 when the window closes and opens again the next night
 
+
     Given the same source reconfigured with cadence-only (refresh_interval: 1h, no window, no probe)
+
     When the scheduler ticks every 1h at any time
+
     Then each tick drives a refresh attempt, regardless of local time
 
+
     Given the source with probe-only (no window, no cadence)
+
     When the scheduler continuously evaluates (e.g. on demand or via a background loop)
+
     And the probe reports unchanged (token == stored_token)
+
     Then the scheduler resets its clock without pulling, zero cost
+
     And when the probe reports changed (token != stored_token), a pull is triggered
 
+
     Given the source with window+cadence (window: 22:00-02:00, refresh_interval: 30m, no probe)
+
     When a cadence tick fires
+
     Then pull only if the tick landed inside the window
 
+
     Given the source with window+probe (window: 22:00-02:00, no cadence)
+
     When the off-peak window opens
+
     Then call the probe; pull only if it reports changed
 
+
     Given the source with all three (window, cadence, probe)
+
     When a cadence tick fires inside the window
+
     Then call the probe; pull only if changed
 
+
     When a query arrives at any time
+
     Then the query path serves the last materialized snapshot with FreshnessMode.SCHEDULED (always fresh=true)
+
     And the source never sees query-path traffic
 
-    Given a source configured prefer_materialized: true, cache_ttl: 3600, with NO gates (no window, no cadence, no probe)
+
+    Given a source configured prefer_materialized: true, cache_ttl: 3600, with NO gates (no window, no
+    cadence, no probe)
+
     Then this source is NOT a REQ-1141 scheduled refresh; it is REQ-826 lazy read-through
+
     And the query path triggers re-pulls on staleness (query-driven, not scheduler-driven)
 
+
     Given a source configured prefer_materialized: true, with NO gates AND NO cache_ttl
+
     Then MATERIALIZATION REQUIRES A REFRESH POLICY, so behavior splits on reachability:
 
+
     If the engine can ATTACH/VIRTUAL the source live (reachable):
+
     Then prefer_materialized is inert and the source degrades to live/VIRTUAL serving
+
     And no refresh policy = no scheduler discipline = live query-path access
 
+
     If the source is unreachable (_MATERIALIZE_ONLY type: APIs, NoSQL, streams, no live option):
+
     Then it is a load-once-then-frozen snapshot
+
     And it is only meaningful for static reference data or REQ-847 mutation-driven invalidation
+
+    '
   competitive_position:
     status: ahead
-    rationale: >-
-      Denodo and Dremio cache for query latency and fall back to live source execution on cache miss
-      or staleness. A declared load-protection policy combining optional independent gates (window,
+    rationale: Denodo and Dremio cache for query latency and fall back to live source execution on cache
+      miss or staleness. A declared load-protection policy combining optional independent gates (window,
       cadence, probe) with change detection — guaranteeing zero query-path load and snapshot-only serving
       with bounded staleness per configuration — is not a built-in feature in comparable products.
   related_reqs:
-    - REQ-236
-    - REQ-825
-    - REQ-826
-    - REQ-847
-    - REQ-855
+  - REQ-236
+  - REQ-825
+  - REQ-826
+  - REQ-847
+  - REQ-855
 - id: REQ-1142
   status: complete
   since: 2026-07
@@ -32253,514 +32346,503 @@
   category: Embedded Tier Deployment
   priority: MUST
   type: behavioral
-  description: >-
-    DuckDB extensions (sqlite_scanner, postgres_scanner, iceberg, delta, community) required by
-    the embedded engine are shipped offline via a separate PyPI package `provisa-duckdb-ext`
-    (py3-none-any universal wheel) that embeds pinned, per-platform `.duckdb_extension` blobs.
-    On embedded launch, the extensions are staged into a writable local directory without any
-    call to extensions.duckdb.org. Missing extensions fail loud; silent network fallback is disabled.
-  use_case: >-
-    Behind enterprise firewalls where only PyPI/Maven/npm/NuGet are proxied (e.g. Artifactory),
-    extensions.duckdb.org is unreachable, breaking the embedded tier and `provisa run --demo`.
-    Offline delivery via PyPI—already reachable—ensures embedded deployments work in air-gapped
-    environments without network access to DuckDB's extension registry.
+  description: DuckDB extensions (sqlite_scanner, postgres_scanner, iceberg, delta, community) required
+    by the embedded engine are shipped offline via a separate PyPI package `provisa-duckdb-ext` (py3-none-any
+    universal wheel) that embeds pinned, per-platform `.duckdb_extension` blobs. On embedded launch, the
+    extensions are staged into a writable local directory without any call to extensions.duckdb.org. Missing
+    extensions fail loud; silent network fallback is disabled.
+  use_case: Behind enterprise firewalls where only PyPI/Maven/npm/NuGet are proxied (e.g. Artifactory),
+    extensions.duckdb.org is unreachable, breaking the embedded tier and `provisa run --demo`. Offline
+    delivery via PyPI—already reachable—ensures embedded deployments work in air-gapped environments without
+    network access to DuckDB's extension registry.
   code:
-    - provisa/federation/duckdb_extensions.py
-    - provisa/federation/duckdb_runtime.py
-    - packaging/duckdb-ext/
+  - provisa/federation/duckdb_extensions.py
+  - provisa/federation/duckdb_runtime.py
+  - packaging/duckdb-ext/
   tests:
-    - tests/unit/test_duckdb_ext_staging.py
-  scenario: |
-    Given an air-gapped environment with only PyPI proxy access
+  - tests/unit/test_duckdb_ext_staging.py
+  scenario: 'Given an air-gapped environment with only PyPI proxy access
+
     And provisa[embedded] installed (which depends on provisa-duckdb-ext)
+
     When `provisa run --demo` launches the embedded DuckDB engine
+
     Then stage_bundled_extensions copies platform-specific .duckdb_extension blobs
+
     from the package into ~/.provisa/native/duckdb-ext (idempotent)
+
     And PROVISA_DUCKDB_EXT_DIR is set to that directory
+
     And the engine connects with extension_directory=PROVISA_DUCKDB_EXT_DIR
+
     and autoinstall_known_extensions=false
+
     And all required extensions load from local blobs without network access
+
     And a missing extension raises BundledExtensionsMissing, never a silent fallback
+
+    '
 - id: REQ-1143
-  status: proposed
-  group: "6. Execution, Routing, Caching & Performance"
+  status: complete
+  since: 2026-07
+  group: 6. Execution, Routing, Caching & Performance
   category: Caching
   priority: SHOULD
   type: behavioral
-  description: >-
-    The table detail view shows a derived, human-readable refresh_policy_summary that
-    expresses the effective refresh/serving behavior per (source, engine) pair, computed
-    server-side from the same resolution logic (federate + freshness_gate + REQ-1141 gates)
-    that the planner uses. The summary states the effective outcome (Live, Scheduled
-    snapshot, or Lazy cache) and warns when prefer_materialized is inert or the table is
-    accidentally frozen.
-  use_case: >-
-    A steward cannot decode six interacting config fields (prefer_materialized, gates,
-    cache_ttl, cadence, freshness probe, off-peak window) to understand whether a table
-    is served live, from a scheduled snapshot, or from a lazy cache. The server-derived
-    summary, shown in one sentence, eliminates manual decoding and surface misconfiguration
-    warnings at author time.
+  description: The table detail view shows a derived, human-readable refresh_policy_summary that expresses
+    the effective refresh/serving behavior per (source, engine) pair, computed server-side from the same
+    resolution logic (federate + freshness_gate + REQ-1141 gates) that the planner uses. The summary states
+    the effective outcome (Live, Scheduled snapshot, or Lazy cache) and warns when prefer_materialized
+    is inert or the table is accidentally frozen.
+  use_case: A steward cannot decode six interacting config fields (prefer_materialized, gates, cache_ttl,
+    cadence, freshness probe, off-peak window) to understand whether a table is served live, from a scheduled
+    snapshot, or from a lazy cache. The server-derived summary, shown in one sentence, eliminates manual
+    decoding and surface misconfiguration warnings at author time.
   code:
-    - provisa/federation/strategy.py
-    - provisa/federation/freshness_gate.py
-    - provisa-ui/src/pages/tables/TableEditForm.tsx
+  - provisa/federation/policy_summary.py
+  - provisa/api/admin/_refresh_summary.py
+  - provisa-ui/src/pages/tables/TableEditForm.tsx
+  tests:
+  - tests/unit/test_policy_summary.py
+  - tests/unit/test_refresh_summary_view.py
   target: 2027-Q1
-  scenario: |
-    Given a steward viewing a table detail
+  scenario: 'Given a steward viewing a table detail
+
     When the table detail renders at the top of the edit form
+
     Then a refresh_policy_summary is displayed, derived from
+
     federate(source, engine) resolution plus freshness_gate plus REQ-1141 gates
+
     And the summary shows one of: "served live" (VIRTUAL/SCAN reached directly),
+
     "refreshed [cadence] [window], only when changed; queries never touch the source"
+
     (load-protected snapshot), or "refreshed on access when older than [ttl]" (lazy cache)
+
     And misconfiguration warnings appear for: prefer_materialized with no gates/cache
+
     (reachable source → "inert on this engine — served live" | unreachable source →
+
     "frozen snapshot — loaded once, never refreshes")
+
     And the summary is recomputed per (source, engine) pair, showing different prose
+
     if reachability changes across engines
+
+    '
   competitive_position:
     status: ahead
-    rationale: >-
-      Deriving a human-readable effective-policy summary from the real planner resolution
-      (per source AND per engine), with author-time misconfiguration warnings, is not
-      offered by Denodo, Dremio, or Hasura, which expose only raw cache configuration
-      fields to the user.
+    rationale: Deriving a human-readable effective-policy summary from the real planner resolution (per
+      source AND per engine), with author-time misconfiguration warnings, is not offered by Denodo, Dremio,
+      or Hasura, which expose only raw cache configuration fields to the user.
   e2e: true
-  e2e_reason: >-
-    The summary is derived from real planner resolution and freshness logic that
-    cannot be unit-tested independently; end-to-end UI verification with actual
-    (source, engine) pairs in a live table detail view is required.
+  e2e_reason: The summary is derived from real planner resolution and freshness logic that cannot be unit-tested
+    independently; end-to-end UI verification with actual (source, engine) pairs in a live table detail
+    view is required.
   related_reqs:
-    - REQ-1141
-    - REQ-826
-    - REQ-855
-    - REQ-847
+  - REQ-1141
+  - REQ-826
+  - REQ-855
+  - REQ-847
 - id: REQ-1144
   status: complete
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Windows Native Launcher
   priority: MUST
   type: behavioral
-  description: >-
-    The Windows native launcher displays a visible WinForms splash screen (startup monitor)
+  description: The Windows native launcher displays a visible WinForms splash screen (startup monitor)
     during first launch instead of running fully hidden. The monitor launches first-launch-native.ps1
-    hidden, tails a progress breadcrumb file (%USERPROFILE%\.provisa\.startup-status), polls the
-    /health endpoint for readiness, warms first-paint UI endpoints, then opens the browser and closes.
-  use_case: >-
-    The prior -WindowStyle Hidden chain showed nothing for tens of seconds during API startup and
-    swallowed fatal staging errors to a hidden console, making failures appear as "nothing happened."
+    hidden, tails a progress breadcrumb file (%USERPROFILE%\.provisa\.startup-status), polls the /health
+    endpoint for readiness, warms first-paint UI endpoints, then opens the browser and closes.
+  use_case: The prior -WindowStyle Hidden chain showed nothing for tens of seconds during API startup
+    and swallowed fatal staging errors to a hidden console, making failures appear as "nothing happened."
     A visible monitor surfaces startup progress and fatal errors immediately.
   code:
-    - packaging/windows/startup-monitor.ps1
-  since: "2026-07"
+  - packaging/windows/startup-monitor.ps1
+  since: 2026-07
   unit_test: false
-  unit_test_reason: >-
-    PowerShell WinForms UI automation requires Windows GUI environment; not reproducible in
-    headless CI/cross-platform test runners. Behavior is verifiable via manual QA on Windows hosts.
-  scenario: |
-    Given a user running the Windows native launcher for the first time
+  unit_test_reason: PowerShell WinForms UI automation requires Windows GUI environment; not reproducible
+    in headless CI/cross-platform test runners. Behavior is verifiable via manual QA on Windows hosts.
+  scenario: 'Given a user running the Windows native launcher for the first time
+
     When the launcher starts
+
     Then a WinForms splash screen appears immediately
+
     And the monitor process launches first-launch-native.ps1 hidden in the background
+
     And the splash reads .startup-status breadcrumbs in real-time
+
     And when /health becomes ready, the monitor warms the UI endpoints
+
     And once ready, the monitor opens the browser and closes
 
+
     Given a startup failure (e.g. staging error) written as ERROR to .startup-status
+
     When the monitor reads the ERROR breadcrumb
+
     Then the splash displays the error message and remains open
+
     And the user sees the exact failure instead of "nothing happened"
+
+    '
 - id: REQ-1145
   status: complete
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Windows Native Launcher
   priority: MUST
   type: behavioral
-  description: >-
-    The launcher surfaces startup progress via breadcrumbs. first-launch-native.ps1 and
-    provisa-native.ps1 write STATE|message lines (STAGING, CONFIG, DEMO, START, WAIT, ERROR)
-    to %USERPROFILE%\.provisa\.startup-status for the monitor to display. Failed breadcrumb
-    writes must never abort startup (best-effort).
-  use_case: >-
-    Breadcrumbs let the monitor and user track each stage of startup (staging runtime, configuring
-    services, starting demo data, waiting for API, etc.), giving visibility into slow stages and
-    enabling the monitor to display progress in real-time.
+  description: The launcher surfaces startup progress via breadcrumbs. first-launch-native.ps1 and provisa-native.ps1
+    write STATE|message lines (STAGING, CONFIG, DEMO, START, WAIT, ERROR) to %USERPROFILE%\.provisa\.startup-status
+    for the monitor to display. Failed breadcrumb writes must never abort startup (best-effort).
+  use_case: Breadcrumbs let the monitor and user track each stage of startup (staging runtime, configuring
+    services, starting demo data, waiting for API, etc.), giving visibility into slow stages and enabling
+    the monitor to display progress in real-time.
   code:
-    - packaging/windows/first-launch-native.ps1
-    - packaging/windows/provisa-native.ps1
-  since: "2026-07"
+  - packaging/windows/first-launch-native.ps1
+  - packaging/windows/provisa-native.ps1
+  since: 2026-07
   unit_test: false
-  unit_test_reason: >-
-    PowerShell file I/O and breadcrumb state tracking requires Windows file system and process
-    context; not reproducible in headless CI. Behavior is manual-QA verified on Windows hosts.
-  scenario: |
-    Given a startup sequence beginning
+  unit_test_reason: PowerShell file I/O and breadcrumb state tracking requires Windows file system and
+    process context; not reproducible in headless CI. Behavior is manual-QA verified on Windows hosts.
+  scenario: 'Given a startup sequence beginning
+
     When first-launch-native.ps1 enters the staging phase
+
     Then it writes "STAGING|Extracting runtime..." to .startup-status
+
     And as each phase completes (CONFIG, DEMO, START, WAIT), a new breadcrumb is written
 
+
     Given a failed breadcrumb write (e.g. permission denied on .startup-status)
+
     When the launcher attempts to write
+
     Then the write failure is silently caught (best-effort)
+
     And startup continues without interruption
 
+
     Given an ERROR state
+
     When a fatal condition is detected (e.g. runtime staging failed)
+
     Then "ERROR|<message>" is written to .startup-status
+
     And the launcher halts gracefully
+
     And the monitor reads the ERROR and displays it to the user
+
+    '
 - id: REQ-1146
   status: complete
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Windows Native Launcher
   priority: MUST
   type: constraint
-  description: >-
-    Runtime upgrade must kill ALL processes holding the runtime before replacing it,
-    including the demo mock servers tracked in .demo.pid, not just .native.pid.
-    A leftover demo python.exe locked the runtime DLLs and made re-staging silently abort,
-    pinning the install to its old runtime.
-  use_case: >-
-    Without killing all demo processes, a stale Python process holding the runtime directory
-    prevents the upgrade from replacing DLLs, causing the installer to silently fail and continue
-    using the old runtime. This constraint ensures clean, uninterrupted runtime upgrades.
+  description: Runtime upgrade must kill ALL processes holding the runtime before replacing it, including
+    the demo mock servers tracked in .demo.pid, not just .native.pid. A leftover demo python.exe locked
+    the runtime DLLs and made re-staging silently abort, pinning the install to its old runtime.
+  use_case: Without killing all demo processes, a stale Python process holding the runtime directory prevents
+    the upgrade from replacing DLLs, causing the installer to silently fail and continue using the old
+    runtime. This constraint ensures clean, uninterrupted runtime upgrades.
   code:
-    - packaging/windows/provisa-native.ps1
-  since: "2026-07"
+  - packaging/windows/provisa-native.ps1
+  since: 2026-07
   unit_test: false
-  unit_test_reason: >-
-    Process termination and file locking behavior requires Windows environment with actual
-    DLL locks and process lifecycle control; not reproducible in CI. Verified via integration
-    testing on Windows upgrade scenarios.
-  scenario: |
-    Given a running Windows native install with runtime version 242
+  unit_test_reason: Process termination and file locking behavior requires Windows environment with actual
+    DLL locks and process lifecycle control; not reproducible in CI. Verified via integration testing
+    on Windows upgrade scenarios.
+  scenario: 'Given a running Windows native install with runtime version 242
+
     And a background demo mock server (python.exe) holding a file lock on runtime DLLs
+
     When the upgrade to runtime 244 begins
+
     Then provisa-native.ps1 reads .demo.pid and .native.pid
+
     And kills ALL processes listed in both files
+
     And waits for process termination
+
     And only then replaces the runtime directory
+
     And the upgrade completes successfully to 244
 
+
     Given the old behavior where only .native.pid was killed
+
     When python.exe from the demo is still running
+
     Then DLL replacement silently fails
+
     And the install remains on runtime 242
+
     And the user observes no error (silent failure)
+
+    '
 - id: REQ-1147
   status: complete
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Windows Native Launcher
   priority: SHOULD
   type: behavioral
-  description: >-
-    When the startup monitor drives the launch (env PROVISA_STARTUP_UI=1), provisa-native.ps1
-    must NOT open the browser itself — the monitor owns the readiness wait and browser open.
-    This avoids a double-open race where both the monitor and the native script attempt to open
-    the same URL simultaneously.
-  use_case: >-
-    A double-open race (monitor + native script both calling Start-Process browser) causes
-    unpredictable behavior (duplicate tabs, missed readiness wait, flipped window focus).
-    Centralizing browser open to the monitor ensures a single, coordinated open after confirmed
-    readiness and UI warmup.
+  description: When the startup monitor drives the launch (env PROVISA_STARTUP_UI=1), provisa-native.ps1
+    must NOT open the browser itself — the monitor owns the readiness wait and browser open. This avoids
+    a double-open race where both the monitor and the native script attempt to open the same URL simultaneously.
+  use_case: A double-open race (monitor + native script both calling Start-Process browser) causes unpredictable
+    behavior (duplicate tabs, missed readiness wait, flipped window focus). Centralizing browser open
+    to the monitor ensures a single, coordinated open after confirmed readiness and UI warmup.
   code:
-    - packaging/windows/provisa-native.ps1
-    - packaging/windows/startup-monitor.ps1
-  since: "2026-07"
+  - packaging/windows/provisa-native.ps1
+  - packaging/windows/startup-monitor.ps1
+  since: 2026-07
   unit_test: false
-  unit_test_reason: >-
-    Browser-open coordination between provisa-native.ps1 and startup-monitor.ps1 depends on
-    PowerShell Start-Process and Windows process/env context; the double-open race is not
-    reproducible in headless CI. Verified via manual QA on Windows hosts.
-  scenario: |
-    Given env PROVISA_STARTUP_UI=1 (monitor is driving launch)
+  unit_test_reason: Browser-open coordination between provisa-native.ps1 and startup-monitor.ps1 depends
+    on PowerShell Start-Process and Windows process/env context; the double-open race is not reproducible
+    in headless CI. Verified via manual QA on Windows hosts.
+  scenario: 'Given env PROVISA_STARTUP_UI=1 (monitor is driving launch)
+
     When provisa-native.ps1 reaches the point where it normally opens the browser
+
     Then it skips the browser open (checks the env var first)
-    And only waits for the monitor's signal or /health readiness
+
+    And only waits for the monitor''s signal or /health readiness
+
     And the monitor, after confirming /health and warming UI endpoints, opens the browser once
 
+
     Given env PROVISA_STARTUP_UI not set (standalone native script launch)
+
     When provisa-native.ps1 reaches readiness
+
     Then it opens the browser directly (legacy behavior)
+
     And the user sees the application immediately
+
+    '
 - id: REQ-1148
-  status: proposed
-  group: "6. Execution, Routing, Caching & Performance"
-  category: Freshness / Change Detection
-  priority: SHOULD
-  type: behavioral
-  description: >-
-    A new freshness PROBE transport whose opaque token comes from a zero-byte
-    SENTINEL marker rather than from scanning the data. Reuses the REQ-855
-    gate unchanged: freshness_token() -> str | None (provisa/events/probes.py:126)
-    compared by equality; a new sentinel drop changes the token -> changed ->
-    re-pull; unchanged -> keep. The sentinel lives at a configured path reachable
-    over a file mount, HTTP, FTP, or SFTP; the token is exists+mtime+size for
-    file/FTP/SFTP, or ETag/Last-Modified for HTTP -- the same HASH token shape
-    files already use (provisa/events/probes.py:46-49). Adds a `sentinel` probe
-    transport + a `sentinel_path` (with transport/credentials) config field;
-    capability classes and the gate machinery are untouched. Selected via
-    change_signal in {probe, ttl_probe} with probe_type=hash pointed at the
-    sentinel.
-  use_case: >-
-    Lets a steward detect upstream readiness from a published sentinel marker
-    (a near-free poll) instead of scanning or querying the source -- and,
-    combined with REQ-1141 load protection, the cheap sentinel poll replaces
-    hammering the operational source while the heavy re-pull still defers to
-    the off-peak window.
-  code:
-    - provisa/events/probes.py
-    - provisa/federation/freshness_gate.py
-  target: 2027-Q1
-  competitive_position:
-    status: ahead
-    rationale: >-
-      Marker-file readiness detection as a first-class freshness signal,
-      decoupled from the data pull, is not a built-in in Denodo/Dremio/Hasura.
-  related_reqs:
-    - REQ-855
-    - REQ-982
-    - REQ-929
-    - REQ-1141
-- id: REQ-1149
-  status: proposed
-  group: "6. Execution, Routing, Caching & Performance"
-  category: Freshness / Change Detection
-  priority: SHOULD
-  type: behavioral
-  description: >-
-    A new change_signal PUSH variant, `signal`, for a DATA-LESS external trigger
-    (a Kafka control message on a topic, or an HTTP webhook) that says "the
-    source changed / refresh now" WITHOUT carrying the rows. Distinct from the
-    existing CDC push signals (kafka/debezium/native, provisa/core/change_signal.py:29)
-    where the message CARRIES per-row events and lands as upserts
-    (select_landing_shape -> CDC). A `signal` message instead INVALIDATES the
-    materialized snapshot (marks it stale); the rows are then re-pulled from the
-    SOURCE OF TRUTH on the next refresh -- it does not land the message. It sits
-    between the axes: push-triggered timing, poll-style full/delta re-pull. Adds
-    `signal` to the push-signal vocabulary + a receiver (kafka control topic /
-    webhook endpoint) mapping a trigger to a staleness mark. Under REQ-1141 the
-    signal is the change-detector and the load-protected scheduler still owns
-    WHEN the heavy pull runs (deferred to the off-peak window) -- decoupling the
-    cheap control signal from the data pull.
-  use_case: >-
-    Lets an upstream system announce a change over Kafka/webhook without Provisa
-    polling or the message carrying data; Provisa invalidates and re-pulls from
-    the source on its own schedule -- ideal for load-protected operational sources
-    (REQ-1141) where a control-plane signal must not translate into immediate
-    source load.
-  code:
-    - provisa/core/change_signal.py
-    - provisa/federation/scheduled_refresh.py
-    - provisa/federation/scheduler.py
-  target: 2027-Q1
-  competitive_position:
-    status: ahead
-    rationale: >-
-      A data-less push trigger that invalidates-and-repulls, separate from
-      CDC-carries-data, is not offered natively by competitors.
-  related_reqs:
-    - REQ-929
-    - REQ-932
-    - REQ-855
-    - REQ-1141
-- id: REQ-1150
   status: complete
   since: 2026-07
-  group: "8. Client Access & Protocols"
+  group: 6. Execution, Routing, Caching & Performance
+  category: Freshness / Change Detection
+  priority: SHOULD
+  type: behavioral
+  scenario: |
+    Given a source with sentinel_path pointing at a zero-byte marker and change_signal=probe, probe_type=hash
+    When the poll node evaluates and the marker's mtime/size (or ETag/Last-Modified) is unchanged
+    Then the freshness token equals the stored baseline and no data is pulled
+    And when the producer touches the marker the token changes, so the node re-pulls from the source
+    And a missing/unreachable marker yields a None token, degrading the node to its TTL cadence
+  description: 'A new freshness PROBE transport whose opaque token comes from a zero-byte SENTINEL marker
+    rather than from scanning the data. Reuses the REQ-855 gate unchanged: freshness_token() -> str |
+    None (provisa/events/probes.py:126) compared by equality; a new sentinel drop changes the token ->
+    changed -> re-pull; unchanged -> keep. The sentinel lives at a configured path reachable over a file
+    mount, HTTP, FTP, or SFTP; the token is exists+mtime+size for file/FTP/SFTP, or ETag/Last-Modified
+    for HTTP -- the same HASH token shape files already use (provisa/events/probes.py:46-49). Adds a `sentinel`
+    probe transport + a `sentinel_path` (with transport/credentials) config field; capability classes
+    and the gate machinery are untouched. Selected via change_signal in {probe, ttl_probe} with probe_type=hash
+    pointed at the sentinel.'
+  use_case: Lets a steward detect upstream readiness from a published sentinel marker (a near-free poll)
+    instead of scanning or querying the source -- and, combined with REQ-1141 load protection, the cheap
+    sentinel poll replaces hammering the operational source while the heavy re-pull still defers to the
+    off-peak window.
+  code:
+  - provisa/events/probes.py
+  - provisa/events/sentinel_probe.py
+  - provisa/events/boot.py
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_sentinel_probe.py
+  target: 2027-Q1
+  competitive_position:
+    status: ahead
+    rationale: Marker-file readiness detection as a first-class freshness signal, decoupled from the data
+      pull, is not a built-in in Denodo/Dremio/Hasura.
+  related_reqs:
+  - REQ-855
+  - REQ-982
+  - REQ-929
+  - REQ-1141
+- id: REQ-1149
+  status: complete
+  since: 2026-07
+  group: 6. Execution, Routing, Caching & Performance
+  category: Freshness / Change Detection
+  priority: SHOULD
+  type: behavioral
+  scenario: |
+    Given a source with change_signal=signal, load-protected under REQ-1141
+    When a data-less trigger arrives (a Kafka control message or an HTTP webhook), carrying no rows
+    Then the change-trigger token for that source bumps, marking its snapshot stale
+    And the load-protected scheduler treats the bumped token as a changed probe and re-pulls the
+    rows from the source of truth on its own schedule (deferred to the off-peak window)
+    And with no trigger the token is unchanged, so the scheduler pulls nothing
+  description: 'A new change_signal PUSH variant, `signal`, for a DATA-LESS external trigger (a Kafka
+    control message on a topic, or an HTTP webhook) that says "the source changed / refresh now" WITHOUT
+    carrying the rows. Distinct from the existing CDC push signals (kafka/debezium/native, provisa/core/change_signal.py:29)
+    where the message CARRIES per-row events and lands as upserts (select_landing_shape -> CDC). A `signal`
+    message instead INVALIDATES the materialized snapshot (marks it stale); the rows are then re-pulled
+    from the SOURCE OF TRUTH on the next refresh -- it does not land the message. It sits between the
+    axes: push-triggered timing, poll-style full/delta re-pull. Adds `signal` to the push-signal vocabulary
+    + a receiver (kafka control topic / webhook endpoint) mapping a trigger to a staleness mark. Under
+    REQ-1141 the signal is the change-detector and the load-protected scheduler still owns WHEN the heavy
+    pull runs (deferred to the off-peak window) -- decoupling the cheap control signal from the data pull.'
+  use_case: Lets an upstream system announce a change over Kafka/webhook without Provisa polling or the
+    message carrying data; Provisa invalidates and re-pulls from the source on its own schedule -- ideal
+    for load-protected operational sources (REQ-1141) where a control-plane signal must not translate
+    into immediate source load.
+  code:
+  - provisa/core/change_signal.py
+  - provisa/federation/change_trigger.py
+  - provisa/federation/scheduled_refresh.py
+  - provisa/federation/scheduler.py
+  tests:
+  - tests/unit/test_change_trigger_signal.py
+  target: 2027-Q1
+  competitive_position:
+    status: ahead
+    rationale: A data-less push trigger that invalidates-and-repulls, separate from CDC-carries-data,
+      is not offered natively by competitors.
+  related_reqs:
+  - REQ-929
+  - REQ-932
+  - REQ-855
+  - REQ-1141
+- id: REQ-1156
+  status: complete
+  since: 2026-07
+  group: 8. Client Access & Protocols
   category: Protocol Support
   priority: SHOULD
   type: behavioral
-  description: >-
-    Registered commands (tracked functions and webhooks -- REQ-205..208, REQ-242,
-    REQ-885) MUST be invocable and discoverable across ALL client-facing protocol
-    surfaces, not only the three that expose them today (GraphQL, pgwire SQL, REST).
-    A command carries two orthogonal dimensions that every surface must honor:
-    `kind` (query vs mutation) and set-vs-scalar return shape (`return_schema` /
-    `returns = "schema.table"` -> set-returning / table-valued). Current state
-    (verified): GraphQL exposes commands as query/mutation fields
-    (provisa/compiler/actions_schema.py:183-185, wired at
-    provisa/compiler/schema_gen.py:846-848); pgwire SQL invokes `SELECT fn(...)` /
-    `SELECT * FROM fn(...)` and projects them into the pg_proc/routines catalog
-    (provisa/pgwire/function_call.py:83-87, provisa/pgwire/function_catalog.py:67-90),
-    but SQL invocation is gated by a SINGLE hook `maybe_invoke_registered_function`
-    that lives ONLY in `execute_pgwire_sql` (provisa/pgwire/_pipeline.py:528); REST
-    invokes via provisa/api/rest/registered_call.py:162-164. The following surfaces
-    are DARK and MUST be lit: (1) MCP -- run_sql and any tool that runs SQL through
-    `_govern_and_route`/`_execute_plan` (provisa/api/mcp/tools.py:270-272) bypasses
-    the function hook, so even `SELECT fn(...)` does not invoke a command; expose
-    commands as MCP tools and/or route MCP SQL through the shared function hook.
-    (2) Arrow Flight -- ListFlights/catalog lists tables only
-    (provisa/api/flight/catalog.py:87) and do_get runs SQL via `_govern_and_route`
-    (provisa/api/flight/server.py:536-543), bypassing the hook; commands must be
-    listed as Flights and invocable. (3) gRPC (Provisa's OWN server) -- proto_gen
-    emits only per-table Query{T}/Insert{T} RPCs (provisa/grpc/proto_gen.py:231-239)
-    and never iterates si.functions; generate an RPC per command (query-kind ->
-    unary/server-streaming for set returns, mutation-kind -> unary MutationResponse).
-    (4) Cypher/Bolt -- no tracked-function path exists; APOC-style CALL is rejected
-    (provisa/cypher/parser.py:864) and Bolt RUN routes only to _execute_cypher
-    (provisa/bolt/session.py:284); expose commands via a CALL procedure surface (or
-    equivalent) that reaches invoke_tracked_function. The single shared executor
-    `invoke_tracked_function` (provisa/api/data/action_exec.py) MUST remain the one
-    invocation path so per-mutation writable_by / governance (REQ-869) is enforced
-    uniformly regardless of surface; the fix is to route each protocol's
-    function-call path through that executor rather than reimplementing dispatch.
-  use_case: >-
-    A steward registers a command once and every client -- a GraphQL app, a psql /
-    DBeaver session, a REST caller, an MCP-connected assistant, an Arrow Flight
-    consumer, a gRPC service, and a Neo4j/Bolt/Cypher client -- can invoke and
-    discover it with identical governance, instead of the command silently working
+  description: 'Registered commands (tracked functions and webhooks -- REQ-205..208, REQ-242, REQ-885)
+    MUST be invocable and discoverable across ALL client-facing protocol surfaces, not only the three
+    that expose them today (GraphQL, pgwire SQL, REST). A command carries two orthogonal dimensions that
+    every surface must honor: `kind` (query vs mutation) and set-vs-scalar return shape (`return_schema`
+    / `returns = "schema.table"` -> set-returning / table-valued). Current state (verified): GraphQL exposes
+    commands as query/mutation fields (provisa/compiler/actions_schema.py:183-185, wired at provisa/compiler/schema_gen.py:846-848);
+    pgwire SQL invokes `SELECT fn(...)` / `SELECT * FROM fn(...)` and projects them into the pg_proc/routines
+    catalog (provisa/pgwire/function_call.py:83-87, provisa/pgwire/function_catalog.py:67-90), but SQL
+    invocation is gated by a SINGLE hook `maybe_invoke_registered_function` that lives ONLY in `execute_pgwire_sql`
+    (provisa/pgwire/_pipeline.py:528); REST invokes via provisa/api/rest/registered_call.py:162-164. The
+    following surfaces are DARK and MUST be lit: (1) MCP -- run_sql and any tool that runs SQL through
+    `_govern_and_route`/`_execute_plan` (provisa/api/mcp/tools.py:270-272) bypasses the function hook,
+    so even `SELECT fn(...)` does not invoke a command; expose commands as MCP tools and/or route MCP
+    SQL through the shared function hook. (2) Arrow Flight -- ListFlights/catalog lists tables only (provisa/api/flight/catalog.py:87)
+    and do_get runs SQL via `_govern_and_route` (provisa/api/flight/server.py:536-543), bypassing the
+    hook; commands must be listed as Flights and invocable. (3) gRPC (Provisa''s OWN server) -- proto_gen
+    emits only per-table Query{T}/Insert{T} RPCs (provisa/grpc/proto_gen.py:231-239) and never iterates
+    si.functions; generate an RPC per command (query-kind -> unary/server-streaming for set returns, mutation-kind
+    -> unary MutationResponse). (4) Cypher/Bolt -- no tracked-function path exists; APOC-style CALL is
+    rejected (provisa/cypher/parser.py:864) and Bolt RUN routes only to _execute_cypher (provisa/bolt/session.py:284);
+    expose commands via a CALL procedure surface (or equivalent) that reaches invoke_tracked_function.
+    The single shared executor `invoke_tracked_function` (provisa/api/data/action_exec.py) MUST remain
+    the one invocation path so per-mutation writable_by / governance (REQ-869) is enforced uniformly regardless
+    of surface; the fix is to route each protocol''s function-call path through that executor rather than
+    reimplementing dispatch.'
+  use_case: A steward registers a command once and every client -- a GraphQL app, a psql / DBeaver session,
+    a REST caller, an MCP-connected assistant, an Arrow Flight consumer, a gRPC service, and a Neo4j/Bolt/Cypher
+    client -- can invoke and discover it with identical governance, instead of the command silently working
     on three surfaces and being invisible or a no-op on the rest.
   code:
-    - provisa/api/data/action_exec.py
-    - provisa/api/mcp/tools.py
-    - provisa/api/mcp/server.py
-    - provisa/api/flight/server.py
-    - provisa/api/flight/catalog.py
-    - provisa/grpc/proto_gen.py
-    - provisa/grpc/server.py
-    - provisa/cypher/parser.py
-    - provisa/bolt/session.py
-    - provisa/api/rest/registered_call.py
+  - provisa/api/data/action_exec.py
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/server.py
+  - provisa/api/flight/server.py
+  - provisa/api/flight/catalog.py
+  - provisa/grpc/proto_gen.py
+  - provisa/grpc/server.py
+  - provisa/cypher/parser.py
+  - provisa/bolt/session.py
+  - provisa/api/rest/registered_call.py
   tests:
-    - tests/unit/test_command_surface_discovery.py
-    - tests/unit/test_grpc_command_endpoint.py
-    - tests/unit/test_bolt_command_call.py
-    - tests/unit/test_proto_gen.py
-    - tests/unit/test_tracked_function_invocation.py
+  - tests/unit/test_command_surface_discovery.py
+  - tests/unit/test_grpc_command_endpoint.py
+  - tests/unit/test_bolt_command_call.py
+  - tests/unit/test_proto_gen.py
+  - tests/unit/test_tracked_function_invocation.py
   target: 2026-Q4
-  scenario: >-
-    Given a command `active_users` registered as a set-returning query-kind
-    tracked function
-    When it is invoked over MCP, Arrow Flight, gRPC, and Cypher/Bolt
-    Then each surface returns the same governed row set and the command is
-    discoverable in that surface's catalog/schema, with writable_by / governance
+  scenario: Given a command `active_users` registered as a set-returning query-kind tracked function When
+    it is invoked over MCP, Arrow Flight, gRPC, and Cypher/Bolt Then each surface returns the same governed
+    row set and the command is discoverable in that surface's catalog/schema, with writable_by / governance
     enforced identically to the GraphQL, pgwire, and REST surfaces
   competitive_position:
     status: ahead
-    rationale: >-
-      Uniform command invocation with a single governed executor across GraphQL,
-      SQL, REST, gRPC, MCP, Arrow Flight, and Cypher/Bolt from one registration is
-      not offered by any competing federation or GraphQL-over-data product.
+    rationale: Uniform command invocation with a single governed executor across GraphQL, SQL, REST, gRPC,
+      MCP, Arrow Flight, and Cypher/Bolt from one registration is not offered by any competing federation
+      or GraphQL-over-data product.
   related_reqs:
-    - REQ-205
-    - REQ-242
-    - REQ-869
-    - REQ-872
-    - REQ-885
-- id: REQ-1151
+  - REQ-205
+  - REQ-242
+  - REQ-869
+  - REQ-872
+  - REQ-885
+- id: REQ-1157
   status: proposed
-  group: "5. Query Languages, Compilation & Operations"
+  group: 5. Query Languages, Compilation & Operations
   category: Materialized Views & Caching
   priority: SHOULD
   type: behavioral
-  description: >-
-    A registered relation backed by `view_sql` (a Provisa-managed view or, with
-    materialize=true, a materialized view -- REQ-885/REQ-543, provisa/core/models.py:496-498)
-    is DERIVED, not a base table, and MUST be exposed query-only: the schema
-    generator MUST NOT emit insert/upsert/update/delete GraphQL mutations for it,
-    and raw-SQL surfaces (pgwire / Flight SQL / Bolt) MUST reject writes to it.
-    Rationale: a write to a view either fails at the source (non-updatable view) or
-    lands in the mv_cache snapshot that the next REQ-879 refresh silently overwrites
-    -- data loss with no error, violating the project's no-silent-failure rule.
-    Implementation: fetch_tables carries `view_sql`
-    (provisa/api/admin/db_queries.py:114), _build_visible_tables sets
-    _TableInfo.read_only = bool(view_sql) (provisa/compiler/schema_types.py,
-    provisa/compiler/schema_gen.py:_build_visible_tables), and the mutation-field
-    loop skips read_only relations (provisa/compiler/schema_gen.py). The GraphQL
-    read surface (query fields, aggregates, relationships) is UNCHANGED -- only the
-    write surface is withdrawn. A base table is never affected (view_sql is null).
-  use_case: >-
-    A steward composes an MV over a Provisa-hosted function (REQ-885) and it appears
-    in GraphQL for querying, but insert/update/delete mutations are no longer
-    generated for it -- so a client cannot issue a write that would be lost on the
-    next refresh. The relation reads like any table; it just cannot be written.
+  description: 'A registered relation backed by `view_sql` (a Provisa-managed view or, with materialize=true,
+    a materialized view -- REQ-885/REQ-543, provisa/core/models.py:496-498) is DERIVED, not a base table,
+    and MUST be exposed query-only: the schema generator MUST NOT emit insert/upsert/update/delete GraphQL
+    mutations for it, and raw-SQL surfaces (pgwire / Flight SQL / Bolt) MUST reject writes to it. Rationale:
+    a write to a view either fails at the source (non-updatable view) or lands in the mv_cache snapshot
+    that the next REQ-879 refresh silently overwrites -- data loss with no error, violating the project''s
+    no-silent-failure rule. Implementation: fetch_tables carries `view_sql` (provisa/api/admin/db_queries.py:114),
+    _build_visible_tables sets _TableInfo.read_only = bool(view_sql) (provisa/compiler/schema_types.py,
+    provisa/compiler/schema_gen.py:_build_visible_tables), and the mutation-field loop skips read_only
+    relations (provisa/compiler/schema_gen.py). The GraphQL read surface (query fields, aggregates, relationships)
+    is UNCHANGED -- only the write surface is withdrawn. A base table is never affected (view_sql is null).'
+  use_case: A steward composes an MV over a Provisa-hosted function (REQ-885) and it appears in GraphQL
+    for querying, but insert/update/delete mutations are no longer generated for it -- so a client cannot
+    issue a write that would be lost on the next refresh. The relation reads like any table; it just cannot
+    be written.
   code:
-    - provisa/api/admin/db_queries.py
-    - provisa/compiler/schema_types.py
-    - provisa/compiler/schema_gen.py
+  - provisa/api/admin/db_queries.py
+  - provisa/compiler/schema_types.py
+  - provisa/compiler/schema_gen.py
   target: 2026-Q4
-  scenario: >-
-    Given a registered relation `daily_totals` whose view_sql materializes a
-    Provisa-hosted function
-    When a role introspects the GraphQL schema and issues SQL against it
-    Then daily_totals exposes query fields (and aggregates) but NO
-    insert/upsert/update/delete mutation, and a raw-SQL INSERT/UPDATE/DELETE against
-    it is rejected rather than silently overwritten on the next refresh
+  scenario: Given a registered relation `daily_totals` whose view_sql materializes a Provisa-hosted function
+    When a role introspects the GraphQL schema and issues SQL against it Then daily_totals exposes query
+    fields (and aggregates) but NO insert/upsert/update/delete mutation, and a raw-SQL INSERT/UPDATE/DELETE
+    against it is rejected rather than silently overwritten on the next refresh
   competitive_position:
     status: parity
-    rationale: >-
-      Read-only exposure of derived/materialized relations matches the expected
-      behavior of mature data platforms; the value is preventing silent data loss.
+    rationale: Read-only exposure of derived/materialized relations matches the expected behavior of mature
+      data platforms; the value is preventing silent data loss.
   related_reqs:
-    - REQ-885
-    - REQ-543
-    - REQ-879
-    - REQ-032
-- id: REQ-1152
+  - REQ-885
+  - REQ-543
+  - REQ-879
+  - REQ-032
+- id: REQ-1158
   status: proposed
-  group: "9. Installation & Deployment"
+  group: 9. Installation & Deployment
   category: Package Distribution
   priority: MUST
   type: infrastructure
-  description: >-
-    A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned
-    per-platform PostgreSQL extension and FDW binaries (sqlite_fdw, parquet_fdw,
-    parquet_s3_fdw, pg_lake, pg_duckdb, pg_analytics — the REQ-898 set),
-    published to PyPI so the embedded tier acquires them via PyPI/Artifactory
-    instead of github.com/kenstott/provisa/releases (unreachable behind
-    PyPI/Maven/npm-only enterprise proxies). Built by new `wheel` job in
-    .github/workflows/build-pg-extensions.yml collecting per-platform build
-    tarballs. Package skeleton at packaging/pg-ext/ with provisa_pg_ext.ext_root()
-    locator for runtime discovery.
-  use_case: >-
-    Embedded tier (and enterprise deployments behind restricted proxies) can
-    install PostgreSQL extensions offline via standard PyPI/Artifactory channels
-    instead of fetching from unreachable GitHub releases.
+  description: A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned per-platform
+    PostgreSQL extension and FDW binaries (sqlite_fdw, parquet_fdw, parquet_s3_fdw, pg_lake, pg_duckdb,
+    pg_analytics — the REQ-898 set), published to PyPI so the embedded tier acquires them via PyPI/Artifactory
+    instead of github.com/kenstott/provisa/releases (unreachable behind PyPI/Maven/npm-only enterprise
+    proxies). Built by new `wheel` job in .github/workflows/build-pg-extensions.yml collecting per-platform
+    build tarballs. Package skeleton at packaging/pg-ext/ with provisa_pg_ext.ext_root() locator for runtime
+    discovery.
+  use_case: Embedded tier (and enterprise deployments behind restricted proxies) can install PostgreSQL
+    extensions offline via standard PyPI/Artifactory channels instead of fetching from unreachable GitHub
+    releases.
   code:
-    - packaging/pg-ext/
-    - .github/workflows/build-pg-extensions.yml
+  - packaging/pg-ext/
+  - .github/workflows/build-pg-extensions.yml
   target: 2026-Q3
   competitive_position:
     status: neutral
-    rationale: >-
-      PyPI-distributed extension binaries enable standard enterprise packaging;
-      the competitive dimension is deployment flexibility rather than feature parity.
+    rationale: PyPI-distributed extension binaries enable standard enterprise packaging; the competitive
+      dimension is deployment flexibility rather than feature parity.
   related_reqs:
-    - REQ-1142
-    - REQ-898
-- id: REQ-1153
-  status: accepted
-  group: "9. Installation & Deployment"
-  category: Package Distribution
-  priority: MUST
-  type: infrastructure
-  unit_test: false
-  unit_test_reason: Build/packaging infrastructure — the wheel-build + PyPI-publish path
-    is exercised only by the release CI workflow on a v* tag; there is no in-process
-    interface to unit test. Verified by code review, accepted manually.
-  description: >-
-    A universal py3-none-any wheel package `provisa-pgwire-bundles` carrying the
-    pinned Calcite pgwire connector bundles (pgwire-file, pgwire-sharepoint,
-    pgwire-splunk — REQ-956, JVM launchers, platform-independent), published to
-    PyPI so pgwire connectors install offline instead of fetching from
-    github.com/kenstott/calcite release at runtime. Built by new workflow
-    .github/workflows/build-pgwire-bundles.yml. Package skeleton at
-    packaging/pgwire-bundles/ with provisa_pgwire_bundles.bundle_root() locator;
-    pins sourced from provisa.runtime_deps.pgwire_bundles.
-  use_case: >-
-    pgwire connector tier (and enterprise deployments behind restricted proxies)
-    can install Calcite pgwire connectors offline via PyPI/Artifactory instead of
-    fetching from unreachable GitHub releases at runtime.
-  code:
-    - packaging/pgwire-bundles/
-    - .github/workflows/build-pgwire-bundles.yml
-  target: 2026-Q3
-  competitive_position:
-    status: neutral
-    rationale: >-
-      PyPI-distributed connector bundles enable standard enterprise packaging;
-      the competitive dimension is deployment flexibility rather than feature parity.
-  related_reqs:
-    - REQ-1142
-    - REQ-956
+  - REQ-1142
+  - REQ-898

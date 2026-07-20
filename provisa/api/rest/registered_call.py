@@ -35,7 +35,7 @@ _PROC_RE = _re.compile(
     r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE
 )
 
-# REQ-1150: a command-listing procedure so an HTTP Cypher client discovers registered commands
+# REQ-1156: a command-listing procedure so an HTTP Cypher client discovers registered commands
 # (name/signature) — parity with the Bolt SHOW PROCEDURES surface. dbms.procedures is the Neo4j name.
 _COMMANDS_PROC_RE = _re.compile(
     r"^\s*CALL\s+(?:dbms\.procedures|provisa\.commands)\s*\(\s*\)\s*(?:YIELD\b.*)?$", _re.IGNORECASE

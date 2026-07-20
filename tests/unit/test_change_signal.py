@@ -70,8 +70,13 @@ class TestClassification:
         assert is_push(sig) and not is_poll(sig)
 
     def test_sets_are_disjoint_and_cover_valid(self):
+        from provisa.core.change_signal import TRIGGER_SIGNALS
+
         assert POLL_SIGNALS.isdisjoint(PUSH_SIGNALS)
-        assert POLL_SIGNALS | PUSH_SIGNALS == VALID_SIGNALS
+        assert POLL_SIGNALS.isdisjoint(TRIGGER_SIGNALS)
+        assert PUSH_SIGNALS.isdisjoint(TRIGGER_SIGNALS)
+        # REQ-1149: the trigger axis (`signal`) joins poll+push to cover the full valid set.
+        assert POLL_SIGNALS | PUSH_SIGNALS | TRIGGER_SIGNALS == VALID_SIGNALS
 
 
 class TestToFreshnessMode:

@@ -505,7 +505,7 @@ def _system_query(
         return ["name", "database", "location", "url", "user"], []
 
     # SHOW PROCEDURES / SHOW FUNCTIONS — list registered commands so a Bolt client (Neo4j
-    # Browser/Bloom) discovers what `CALL <command>(...)` can invoke, not just run it blind (REQ-1150).
+    # Browser/Bloom) discovers what `CALL <command>(...)` can invoke, not just run it blind (REQ-1156).
     if q_upper.startswith("SHOW PROCEDURES") or q_upper.startswith("SHOW FUNCTIONS"):
         _dbg.warning("[BOLT] _system_query: intercepted SHOW PROCEDURES/FUNCTIONS")
         return ["name", "description", "signature"], [
@@ -724,14 +724,14 @@ def _parse_call_arg(tok: str) -> Any:
 
 
 def _list_commands(app_state, role_id: str | None) -> list[dict]:
-    """Commands visible to *role_id*, for SHOW PROCEDURES discovery (REQ-1150)."""
+    """Commands visible to *role_id*, for SHOW PROCEDURES discovery (REQ-1156)."""
     from provisa.api.data.action_exec import list_visible_commands
 
     return list_visible_commands(app_state, role_id)
 
 
 def _command_signature(cmd: dict) -> str:
-    """A Neo4j-style procedure signature for a command: ``name(arg :: TYPE) :: (ROWS)`` (REQ-1150)."""
+    """A Neo4j-style procedure signature for a command: ``name(arg :: TYPE) :: (ROWS)`` (REQ-1156)."""
     args = ", ".join(f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"])
     ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
     return f"{cmd['name']}({args}) :: ({ret})"
@@ -740,7 +740,7 @@ def _command_signature(cmd: dict) -> str:
 async def _maybe_invoke_command_call(
     cypher: str, role_id: str, app_state
 ) -> tuple[list[str], list[list[Any]]] | None:
-    """If *cypher* is ``CALL <command>(args)`` for a registered command, invoke it (REQ-1150).
+    """If *cypher* is ``CALL <command>(args)`` for a registered command, invoke it (REQ-1156).
 
     Returns (columns, rows-of-values) or None to fall through to normal Cypher parsing. The one
     governed executor (invoke_tracked_function) enforces writable_by/governance, and positional
@@ -801,7 +801,7 @@ async def _execute_cypher(
     if result is not None:
         return result
 
-    # REQ-1150: `CALL <command>(args)` naming a registered command invokes it through the single
+    # REQ-1156: `CALL <command>(args)` naming a registered command invokes it through the single
     # governed executor and returns its rows — so Bolt/Cypher clients (Neo4j Browser/Bloom) can run
     # a command exactly like GraphQL/SQL. Placed after _system_query so `CALL dbms.*` still wins.
     cmd = await _maybe_invoke_command_call(cypher, role_id, app_state)

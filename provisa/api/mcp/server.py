@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextvars import ContextVar
 from typing import Any
 
 from provisa.api.mcp import tools
@@ -35,16 +36,18 @@ from provisa.api.mcp import tools
 log = logging.getLogger(__name__)
 
 
-def resolve_token_role(token: str, state: Any) -> str:
-    """Map a remote OAuth/OIDC bearer token to a provisa role.
+# Per-request role resolved from the remote HTTP bearer token (REQ-1105). Set by the transport
+# middleware for the duration of one Streamable-HTTP request so the bound tools pick it up without
+# the caller passing an explicit ``role`` argument (a remote MCP client sends a token, not a role).
+_request_role: ContextVar[str | None] = ContextVar("provisa_mcp_request_role", default=None)
 
-    Reuses the exact provider + claim->role mapping pgwire uses
-    (provisa.pgwire.server._authenticate_oidc). No admin default: if auth is not
-    configured or the token yields no role, this raises — the MCP call then
-    fails rather than silently escalating.
+
+async def _resolve_token_role_async(token: str, state: Any) -> str:
+    """Async core of :func:`resolve_token_role` — safe to await inside a running event loop.
+
+    Reuses the exact provider + claim->role mapping pgwire uses. No admin default: if auth is not
+    configured or the token yields no role, this raises so the MCP call fails rather than escalating.
     """
-    import asyncio
-
     from provisa.auth.role_mapping import resolve_role
     from provisa.auth.wiring import build_auth_provider
 
@@ -53,13 +56,24 @@ def resolve_token_role(token: str, state: Any) -> str:
         raise PermissionError("MCP OAuth requested but no auth config is loaded")
 
     provider = build_auth_provider(auth_config)
-    identity = asyncio.run(provider.validate_token(token))
+    identity = await provider.validate_token(token)
     default_role = auth_config.get("default_role")
     if not default_role:
         # No admin fallback: a token that matches no mapping rule and has no
         # configured default_role is rejected rather than escalated.
         raise PermissionError("token matched no role and no default_role is configured")
     return resolve_role(identity, auth_config.get("role_mapping", []), default_role)
+
+
+def resolve_token_role(token: str, state: Any) -> str:
+    """Map a remote OAuth/OIDC bearer token to a provisa role (sync wrapper, REQ-1105).
+
+    For a synchronous caller only — the Streamable-HTTP transport awaits
+    :func:`_resolve_token_role_async` directly. Raises rather than defaulting to admin.
+    """
+    import asyncio
+
+    return asyncio.run(_resolve_token_role_async(token, state))
 
 
 def _pinned_stdio_role() -> str:
@@ -94,6 +108,11 @@ def build_mcp_server(state: Any):
     def _role(role: str | None) -> str:
         if role and str(role).strip():
             return str(role).strip()
+        # Remote HTTP: the transport middleware resolved the bearer token to a role for this
+        # request (REQ-1105); prefer it over any ambient stdio role.
+        req_role = _request_role.get()
+        if req_role and req_role.strip():
+            return req_role.strip()
         # stdio: fall back to the explicitly-pinned dev role (never admin).
         return _pinned_stdio_role()
 
@@ -114,7 +133,7 @@ def build_mcp_server(state: Any):
 
     @mcp.tool()
     async def list_commands(role: str | None = None) -> list[dict]:
-        """List registered commands the role may invoke: name, domain, kind, arguments (REQ-1150)."""
+        """List registered commands the role may invoke: name, domain, kind, arguments (REQ-1156)."""
         return tools.list_commands(state, _role(role))
 
     @mcp.tool()
@@ -143,6 +162,61 @@ def build_mcp_server(state: Any):
         return await tools.search_catalog(state, _role(role), query, k=k)
 
     return mcp
+
+
+def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
+    """Wrap the Streamable-HTTP ASGI app so a request's bearer token sets the per-request role (REQ-1105).
+
+    A pure-ASGI middleware (not BaseHTTPMiddleware) so the ``_request_role`` ContextVar it sets is
+    visible to the downstream tool coroutine — the tools read it via ``_role``. A present bearer is
+    resolved through the same OIDC path pgwire uses; a token that fails to resolve is 401 (fail
+    closed, never a silent role). When ``require_token`` (a non-loopback bind), a request with no
+    bearer is 401 — MCP is not exposed off the loopback without per-caller auth.
+    """
+    import json as _json
+
+    async def _send_401(send: Any, detail: str) -> None:
+        body = _json.dumps({"error": "unauthorized", "detail": detail}).encode("utf-8")
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"www-authenticate", b"Bearer"),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+
+    async def _middleware(scope: dict, receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await app(scope, receive, send)
+            return
+        headers = dict(scope.get("headers") or [])
+        auth = headers.get(b"authorization")
+        token = None
+        if auth and auth.lower().startswith(b"bearer "):
+            token = auth[len(b"bearer ") :].decode("utf-8").strip()
+        if not token:
+            if require_token:
+                await _send_401(send, "bearer token required")
+                return
+            await app(scope, receive, send)  # loopback stdio-style: pinned role applies
+            return
+        try:
+            role = await _resolve_token_role_async(token, state)
+        except (PermissionError, ValueError) as exc:
+            # Token present but rejected (bad/expired token, or no mapped role) — fail closed.
+            await _send_401(send, str(exc))
+            return
+        reset = _request_role.set(role)
+        try:
+            await app(scope, receive, send)
+        finally:
+            _request_role.reset(reset)
+
+    return _middleware
 
 
 def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | None:
@@ -203,6 +277,11 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
             enable_dns_rebinding_protection=False
         )
     app = mcp.streamable_http_app()
+    # REQ-1105: map each remote request's bearer token to a role before it reaches a tool. A
+    # non-loopback bind exposes MCP off-box, so a bearer is REQUIRED there (no anonymous off-loopback
+    # access); a loopback bind keeps the pinned-role stdio posture but still honors a bearer if sent.
+    require_token = host not in ("127.0.0.1", "localhost", "::1")
+    app = _wrap_role_auth(app, state, require_token=require_token)
 
     def _serve() -> None:
         uvicorn.run(app, host=host, port=port, log_level="warning", **ssl_kwargs)  # nosec B104

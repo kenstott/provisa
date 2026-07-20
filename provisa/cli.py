@@ -168,6 +168,37 @@ async def _serve(
     )
 
 
+def _cmd_license_apply(args: argparse.Namespace) -> int:
+    """`provisa license apply <file>` — verify + install a license offline (REQ-1139)."""
+    from provisa.licensing import apply_license
+
+    result = apply_license(Path(args.file).expanduser())
+    if result.valid:
+        print("License applied. The trial nag is now silenced on all surfaces.")
+        return 0
+    print(f"License rejected: {result.reason}", file=sys.stderr)
+    return 1
+
+
+def _cmd_license_status(args: argparse.Namespace) -> int:  # noqa: ARG001
+    """`provisa license status` — show machine id, trial state, and license validity (REQ-1139)."""
+    import datetime
+
+    from provisa.licensing.state import evaluate
+
+    today = datetime.date.today()
+    st = evaluate(
+        now_epoch=today.toordinal() * 86400,
+        today_iso=today.isoformat(),
+    )
+    print(f"Machine ID:   {st.machine_id}")
+    print(f"First seen:   {st.first_seen}")
+    print(f"Elapsed:      {st.elapsed_days:.1f} days")
+    print(f"Trial:        {'EXPIRED' if st.trial_expired else 'active'}")
+    print(f"Licensed:     {'yes' if st.licensed else f'no ({st.license_reason})'}")
+    return 0
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir).expanduser()
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -227,6 +258,15 @@ def main(argv: list[str] | None = None) -> int:
         help=f"State directory for the SQLite control plane (default: {_DEFAULT_DATA_DIR})",
     )
     run.set_defaults(func=_cmd_run)
+
+    # REQ-1139: offline license application + status.
+    lic = sub.add_parser("license", help="Manage the Provisa license (offline)")
+    lic_sub = lic.add_subparsers(dest="license_command", required=True)
+    lic_apply = lic_sub.add_parser("apply", help="Verify and install a license file")
+    lic_apply.add_argument("file", help="Path to the license.json issued by provisa.dev")
+    lic_apply.set_defaults(func=_cmd_license_apply)
+    lic_status = lic_sub.add_parser("status", help="Show machine id, trial state, and license status")
+    lic_status.set_defaults(func=_cmd_license_status)
 
     args = parser.parse_args(argv)
     return args.func(args)

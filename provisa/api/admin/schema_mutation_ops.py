@@ -42,9 +42,92 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
+async def _apply_mv_relationship_gate(
+    info: StrawberryInfo, input: TableInput
+) -> MutationResult | None:  # REQ-1140
+    """Gate MV publication on approved relationships (REQ-1140).
+
+    Returns None to let publication proceed, or a queued ``MutationResult`` to BLOCK it. A materialized
+    view (``view_sql`` + ``materialize``) may publish only if every relationship its SQL joins over is
+    approved (present in ``relationships``). Missing relationships split on the caller's rights:
+    - holds ``create_relationship`` (or admin) → auto-create + approve each missing relationship now,
+      then proceed (returns None);
+    - otherwise → queue a ``relationship`` creation request per missing dependency AND the ``view``
+      creation request, and block publication (returns the queued result). Re-executing the queued
+      view request after the relationships are approved re-runs this gate, which now passes.
+    """
+    if not (input.view_sql and input.materialize):
+        return None
+
+    from provisa.api.admin.capabilities import has_capability
+    from provisa.api.admin.mv_relationship_gate import evaluate_gate
+    from provisa.core.models import Cardinality, Relationship
+    from provisa.core.repositories import relationship as relationship_repo
+    from provisa.core.repositories import table as table_repo
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        relationships = await relationship_repo.list_all(conn)
+
+        async def _resolve(name: str) -> int | None:
+            tbl = await table_repo.find_by_table_name(conn, name)
+            return tbl["id"] if tbl is not None else None
+
+        decision = await evaluate_gate(
+            view_sql=input.view_sql,
+            dialect=None,
+            relationships=relationships,
+            resolve_table_id=_resolve,
+        )
+        if decision.satisfied:
+            return None
+
+        if has_capability(info, "create_relationship"):
+            # Trusted author: auto-create + approve each missing relationship (a row IS approval).
+            # Cardinality is unknowable from an equi-join alone; default many-to-one (source→target),
+            # the FK direction, which the author may later refine.
+            for m in decision.missing:
+                d = m.dep
+                await relationship_repo.upsert(
+                    conn,
+                    Relationship(
+                        id=f"mv_{d.left_table}_{d.left_column}__{d.right_table}_{d.right_column}",
+                        source_table_id=d.left_table,
+                        target_table_id=d.right_table,
+                        source_column=d.left_column,
+                        target_column=d.right_column,
+                        cardinality=Cardinality.many_to_one,
+                        owner=getattr(_identity_user(info), "user_id", None),
+                    ),
+                )
+            return None
+
+    # Least-privilege author: queue every missing relationship AND the view, block publication.
+    from provisa.api.admin.types import RelationshipInput
+
+    for m in decision.missing:
+        d = m.dep
+        rel_input = RelationshipInput(
+            id=f"mv_{d.left_table}_{d.left_column}__{d.right_table}_{d.right_column}",
+            source_table_id=d.left_table,
+            target_table_id=d.right_table,
+            source_column=d.left_column,
+            target_column=d.right_column,
+            cardinality=Cardinality.many_to_one.value,
+        )
+        await _queue_creation_request(info, "relationship", "create_relationship", rel_input)
+    return await _queue_creation_request(info, "view", "create_view", input)
+
+
+def _identity_user(info: StrawberryInfo):
+    from provisa.api.admin.capabilities import _identity_from_info
+
+    return _identity_from_info(info)
+
+
 async def register_table(
     info: StrawberryInfo, input: TableInput
-) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
+) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434, REQ-1140
     import logging
 
     logging.getLogger(__name__).warning(
@@ -66,6 +149,11 @@ async def register_table(
             if not (caps & {"create_view", "query_development", "admin", "superadmin"}):
                 # REQ-434/366: lacking view-create authority queues a request.
                 return await _queue_creation_request(info, "view", "create_view", input)
+        # REQ-1140: a materialized view publishes only over approved relationships; the gate either
+        # auto-creates them (rights) or queues them + the view and blocks (returns a queued result).
+        gate_result = await _apply_mv_relationship_gate(info, input)
+        if gate_result is not None:
+            return gate_result
     else:
         require_capability(info, "table_registration", domain_id=input.domain_id)
     from provisa.core.repositories import table as table_repo

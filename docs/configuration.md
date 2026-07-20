@@ -350,7 +350,7 @@ Views go through the same governance pipeline as tables — RLS, masking, sampli
 
 ### Query-only views
 
-Both `materialize: true` and `materialize: false` views expose their GraphQL type as query-only. No insert, upsert, update, or delete mutations are generated for `view_sql`-backed relations. (REQ-1151) [tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]
+Both `materialize: true` and `materialize: false` views expose their GraphQL type as query-only. No insert, upsert, update, or delete mutations are generated for `view_sql`-backed relations. (REQ-1157) [tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]
 
 ## Kafka Sources
 

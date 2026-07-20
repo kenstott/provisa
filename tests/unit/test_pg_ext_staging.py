@@ -3,7 +3,7 @@
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
-"""Offline staging of the bundled PG extensions (provisa-pg-ext PyPI package, REQ-1152).
+"""Offline staging of the bundled PG extensions (provisa-pg-ext PyPI package, REQ-1158).
 
 stage_bundled_pg_extensions must copy the running platform's FDW modules + control/SQL files out of
 the wheel into a pgserver's pginstall WITHOUT touching github.com/releases, and fail loud

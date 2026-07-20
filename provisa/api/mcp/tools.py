@@ -249,7 +249,7 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
 
 
 def list_commands(state: Any, role: str) -> list[dict]:
-    """Registered commands the role may invoke (REQ-1150).
+    """Registered commands the role may invoke (REQ-1156).
 
     Without this an agent can invoke a command via `SELECT fn(...)` only if it already knows the
     name — the command is dark to discovery. Projects the shared command-listing (visible_to
@@ -281,7 +281,7 @@ async def run_sql(
     if page <= 0:
         raise ValueError("limit must be a positive integer")
 
-    # REQ-1150: a `SELECT fn(...)` naming a registered command must invoke it through the single
+    # REQ-1156: a `SELECT fn(...)` naming a registered command must invoke it through the single
     # governed executor here too, exactly as the pgwire path does — otherwise commands are dark on
     # MCP (run_sql lowers via _govern_and_route/_execute_plan, which never sees the function hook).
     result = await maybe_invoke_registered_function(sql, role, state)

@@ -72,6 +72,7 @@ def _probe_factory(
     query_scalar: Any | None,
     ref: str | None,
     watermark_column: str | None,
+    sentinel_path: str | None = None,
 ) -> Callable[[], Probe]:
     """Build a node's probe factory from its resolved ``probe_type`` (REQ-982). Each fire yields a
     fresh transport (``() -> str | None``) via :func:`probes.build_probe`; ``check_node`` compares the
@@ -86,6 +87,7 @@ def _probe_factory(
             query_scalar=query_scalar,
             ref=ref,
             watermark_column=watermark_column,
+            sentinel_path=sentinel_path,
         )
 
     return factory
@@ -198,6 +200,7 @@ def specs_from_config(
                 query_scalar=probe_scalar(src, tbl) if probe_scalar is not None else None,
                 ref=ref,
                 watermark_column=args.watermark_column,
+                sentinel_path=getattr(src, "sentinel_path", None),  # REQ-1148
             )
             if is_poll(args.change_signal)
             else None
