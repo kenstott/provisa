@@ -170,19 +170,25 @@ def _output_columns(tree: exp.Expression) -> list[str]:
 
 
 def _node_for(sqlglot_node, command_names: frozenset[str]) -> Node:
-    """Map a sqlglot lineage node to a graph Node (id ``relation.column`` or bare column)."""
+    """Map a sqlglot lineage node to a graph Node.
+
+    A base-table column is keyed by its REAL relation name (``orders.amount``), not the query alias
+    (``o.amount``) — so the same physical column is one node across every statement that reads it, and
+    a view's qualified output stitches to a downstream view's source reference (REQ-1161). CTE/derived
+    columns keep their (stable, in-statement) name; a command call keeps its alias (statement-local,
+    resolved by the splice)."""
     name = sqlglot_node.name
     source = sqlglot_node.source
-    relation, column = (name.rsplit(".", 1)) if "." in name else (None, name)
+    column = name.rsplit(".", 1)[-1]
     if isinstance(source, exp.Table):
         inner = source.this
         if isinstance(inner, exp.Anonymous) and inner.name in command_names:
-            kind = "command"
-        else:
-            kind = "source"
-    else:
-        kind = "derived"
-    return Node(id=name, column=column, relation=relation, kind=kind)
+            relation = name.rsplit(".", 1)[0] if "." in name else None
+            return Node(id=name, column=column, relation=relation, kind="command")
+        real = source.name  # the underlying table name, not the alias
+        return Node(id=f"{real}.{column}", column=column, relation=real, kind="source")
+    relation = name.rsplit(".", 1)[0] if "." in name else None
+    return Node(id=name, column=column, relation=relation, kind="derived")
 
 
 def build_column_graph(
@@ -266,10 +272,39 @@ def _input_relation(command: dict, arg_values: list) -> tuple[str | None, list[s
     return None, []
 
 
+def qualify_outputs(graph: LineageGraph, relation: str) -> None:
+    """Re-key a graph's bare output columns to ``relation.column`` (REQ-1161).
+
+    A single-statement graph's final outputs are bare column names; to stitch into the federation graph
+    a VIEW's outputs must be addressable as ``<view_relation>.<column>`` — the same id a downstream
+    view uses when it references this view as a source. Rewrites the output nodes, their edges, and the
+    outputs list in place."""
+    rename: dict[str, str] = {}
+    for out in graph.outputs:
+        node = graph.nodes.get(out)
+        if node is None:
+            continue
+        rename[out] = f"{relation}.{node.column}"
+    if not rename:
+        return
+    for old, new in rename.items():
+        node = graph.nodes.pop(old)
+        node.id = new
+        node.relation = relation
+        graph.nodes[new] = node
+    graph.edges = [
+        Edge(rename.get(e.source, e.source), rename.get(e.target, e.target), e.transform, e.ops)
+        for e in graph.edges
+    ]
+    graph.outputs = [rename.get(o, o) for o in graph.outputs]
+
+
 def _walk(sqlglot_node, graph: LineageGraph, command_names: frozenset[str]) -> None:
-    graph.add_node(_node_for(sqlglot_node, command_names))
+    node = _node_for(sqlglot_node, command_names)
+    graph.add_node(node)
     for child in sqlglot_node.downstream:
-        graph.add_node(_node_for(child, command_names))
+        child_node = _node_for(child, command_names)
+        graph.add_node(child_node)
         transform, ops = name_transform(sqlglot_node.expression, command_names)
-        graph.add_edge(Edge(source=child.name, target=sqlglot_node.name, transform=transform, ops=ops))
+        graph.add_edge(Edge(source=child_node.id, target=node.id, transform=transform, ops=ops))
         _walk(child, graph, command_names)

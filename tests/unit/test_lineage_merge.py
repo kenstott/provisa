@@ -15,7 +15,12 @@ from __future__ import annotations
 import pytest
 
 from provisa.lineage.graph import Edge, LineageGraph, Node, TransformOp
-from provisa.lineage.merge import mark_materialized, merge_graphs, slice_graph
+from provisa.lineage.merge import (
+    build_federation_graph,
+    mark_materialized,
+    merge_graphs,
+    slice_graph,
+)
 
 
 def _n(nid, kind="derived", materialized=False):
@@ -110,3 +115,36 @@ def test_merged_to_dict_includes_cycles():
     d = merge_graphs([g]).to_dict()
     assert "cycles" in d and d["cycles"][0]["classification"] == "error"
     assert {"nodes", "edges", "outputs", "cycles"} <= set(d)
+
+
+# ---- REQ-1161: federation build (stitch views by real relation identity) ----
+
+
+def test_federation_stitches_views_end_to_end():
+    views = [
+        ("mv_daily", "SELECT o.amount AS total FROM orders o"),
+        ("report", "SELECT d.total * 2 AS grand FROM mv_daily d"),
+    ]
+    m = build_federation_graph(views, materialized_relations={"mv_daily"})
+    edges = {(e.source, e.target) for e in m.graph.edges}
+    # base source → materialized view output → downstream view output, one continuous chain
+    assert ("orders.amount", "mv_daily.total") in edges
+    assert ("mv_daily.total", "report.grand") in edges
+    assert m.graph.nodes["mv_daily.total"].materialized is True
+
+
+def test_federation_cycle_across_views_is_characterized():
+    # a → b (materialized) → a: legal feedback because the loop crosses a materialized boundary
+    views = [
+        ("mv_b", "SELECT a.x AS x FROM mv_a a"),
+        ("mv_a", "SELECT b.x AS x FROM mv_b b"),
+    ]
+    m = build_federation_graph(views, materialized_relations={"mv_a", "mv_b"})
+    assert len(m.cycles) == 1
+    assert m.cycles[0].classification == "feedback"
+
+
+def test_federation_skips_unparseable_view():
+    views = [("good", "SELECT o.a AS a FROM orders o"), ("bad", "NOT ((( valid")]
+    m = build_federation_graph(views)
+    assert "good.a" in m.graph.nodes  # the good view still contributes despite the bad one

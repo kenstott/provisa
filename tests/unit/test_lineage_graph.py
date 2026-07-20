@@ -45,8 +45,9 @@ def test_preserves_intermediate_cte_nodes():
     g = build_column_graph(sql)
     # intermediate CTE columns exist as their own nodes (not collapsed to leaves)
     assert "t.gross" in g.nodes and "t.id" in g.nodes
-    assert g.nodes["o.amount"].kind == "source"
-    assert ("o.amount", "t.gross") in _edges(g)
+    # base-table columns are keyed by the REAL relation name, not the query alias 'o'
+    assert g.nodes["orders.amount"].kind == "source"
+    assert ("orders.amount", "t.gross") in _edges(g)
     assert ("t.gross", "gross") in _edges(g)
 
 
@@ -140,3 +141,27 @@ def test_router_core_splices_commands():
     kinds = {n["id"]: n["kind"] for n in g["nodes"]}
     assert kinds.get("e.embedding") == "command"
     assert kinds.get("main.public.orders.region") == "source"
+
+
+def test_registry_views_extracts_materialized_views():
+    from types import SimpleNamespace
+
+    from provisa.api.admin.lineage_router import _registry_views
+
+    mvs = [
+        SimpleNamespace(sql="SELECT o.a AS a FROM orders o", target_table="mv_x", id="x"),
+        SimpleNamespace(sql=None, target_table="mv_empty", id="e"),  # no sql → skipped
+    ]
+    state = SimpleNamespace(mv_registry=SimpleNamespace(all=lambda: mvs))
+    views, mats = _registry_views(state)
+    assert views == [("mv_x", "SELECT o.a AS a FROM orders o")]
+    assert mats == {"mv_x"}
+
+
+def test_registry_views_no_registry_is_empty():
+    from types import SimpleNamespace
+
+    from provisa.api.admin.lineage_router import _registry_views
+
+    views, mats = _registry_views(SimpleNamespace())
+    assert views == [] and mats == set()

@@ -26,7 +26,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from provisa.lineage.graph import LineageGraph, Node
+from sqlglot.errors import SqlglotError
+
+from provisa.lineage.graph import LineageGraph, Node, build_column_graph, qualify_outputs
 
 
 @dataclass
@@ -198,3 +200,30 @@ def _reach(start: str, adj: dict[str, list[str]], depth: int | None, keep: set[s
             if nxt not in keep:
                 keep.add(nxt)
                 frontier.append((nxt, d + 1))
+
+
+def build_federation_graph(
+    views: list[tuple[str, str]],
+    *,
+    commands: dict[str, dict] | None = None,
+    materialized_relations: set[str] | None = None,
+    dialect: str = "postgres",
+) -> MergedGraph:
+    """Merge every view/MV definition into one federation-wide provenance graph (REQ-1161).
+
+    ``views`` is a list of (relation_name, sql). Each is resolved to a single-statement graph, its
+    outputs qualified as ``relation_name.column`` so a downstream view's source reference stitches to
+    the upstream view's output node. ``materialized_relations`` are flagged BEFORE the merge so cycle
+    characterization sees the version boundaries. A view whose SQL will not parse is skipped (it cannot
+    contribute lineage), not fatal to the whole federation graph."""
+    mats = materialized_relations or set()
+    graphs: list[LineageGraph] = []
+    for relation, sql in views:
+        try:
+            g = build_column_graph(sql, dialect=dialect, commands=commands or {})
+        except SqlglotError:
+            continue
+        qualify_outputs(g, relation)
+        mark_materialized(g, mats)
+        graphs.append(g)
+    return merge_graphs(graphs)
