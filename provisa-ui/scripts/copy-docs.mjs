@@ -3,16 +3,24 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-// Build-time doc staging: copy a curated, user-facing set of markdown docs from the
-// repo into public/docs/ so Vite bundles them into dist. The in-app Docs page reads
-// them SAME-ORIGIN (works airgapped, no network). A live-from-repo fallback in the UI
-// only kicks in when a doc isn't bundled and the machine is online.
+// Build-time doc staging: copy the FULL published documentation set into
+// public/guides-md/ so Vite bundles it into dist. The in-app Docs page (/docs)
+// reads it SAME-ORIGIN so the complete docs are available offline/airgapped.
+// A live-from-repo fallback in the UI only kicks in when a doc isn't bundled
+// and the machine is online.
 //
-// Runs as the `prebuild` npm hook. Output (public/docs/) is git-ignored and regenerated.
+// Single source of truth: ../mkdocs.yml nav. The in-app reader and the hosted
+// MkDocs site (https://provisa.dev/docs/) therefore publish the same set. The
+// nav "Home: index.md" entry maps to README.md — the reader rewrites relative
+// links/images itself, so it consumes the README directly rather than the
+// generated docs/index.md.
+//
+// Runs as the `prebuild` npm hook. Output (public/guides-md/) is git-ignored.
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = join(HERE, "..");
@@ -20,26 +28,42 @@ const REPO_ROOT = join(UI_ROOT, "..");
 // Served under /guides-md/ (NOT /docs — that path is FastAPI's reserved Swagger UI).
 const OUT_DIR = join(UI_ROOT, "public", "guides-md");
 
-// Curated allowlist — user-facing docs only (no internal/marketing/release material).
-// `repoPath` is used for the live GitHub-raw fallback in the UI.
-const DOCS = [
-  { slug: "readme",        title: "Overview",         repoPath: "README.md" },
-  { slug: "quickstart",    title: "Getting Started",  repoPath: "docs/quickstart.md" },
-  { slug: "sources",       title: "Sources",          repoPath: "docs/sources.md" },
-  { slug: "configuration", title: "Configuration",    repoPath: "docs/configuration.md" },
-  { slug: "admin",         title: "Administration",   repoPath: "docs/admin.md" },
-  { slug: "api-reference", title: "API Reference",    repoPath: "docs/api-reference.md" },
-  { slug: "architecture",  title: "Architecture",     repoPath: "docs/architecture.md" },
-  { slug: "cypher",        title: "Cypher",           repoPath: "docs/cypher.md" },
-  { slug: "pgwire",        title: "Postgres Wire",    repoPath: "docs/pgwire.md" },
-  { slug: "import",        title: "Import / Export",  repoPath: "docs/import.md" },
-  { slug: "integrations",  title: "Integrations",     repoPath: "docs/integrations.md" },
-  { slug: "python-client", title: "Python Client",    repoPath: "docs/python-client.md" },
-  { slug: "security",      title: "Security",         repoPath: "docs/security.md" },
-  { slug: "deployment",    title: "Deployment",       repoPath: "docs/deployment.md" },
-  { slug: "multitenant",   title: "Multi-tenant",     repoPath: "docs/multitenant.md" },
-  { slug: "subscriptions", title: "Subscriptions",    repoPath: "docs/subscriptions.md" },
-];
+// Flatten the mkdocs nav (list of `{Title: "path.md"}` leaves and
+// `{Section: [ ...nested ]}` groups) into ordered {title, section, path} leaves.
+// The in-app sidebar is flat, so `section` is carried to disambiguate leaves
+// that share a label across sections (e.g. two "Overview" pages).
+function flattenNav(nav, section = null) {
+  const out = [];
+  for (const item of nav) {
+    for (const [title, value] of Object.entries(item)) {
+      if (typeof value === "string") out.push({ title, section, path: value });
+      else if (Array.isArray(value)) out.push(...flattenNav(value, title));
+    }
+  }
+  return out;
+}
+
+const mkdocs = parse(readFileSync(join(REPO_ROOT, "mkdocs.yml"), "utf8"));
+if (!Array.isArray(mkdocs.nav)) throw new Error("mkdocs.yml: nav missing or not a list");
+
+// Map each nav leaf to a bundled doc entry. `repoPath` drives the live
+// GitHub-raw fallback in the UI; `slug` is the same-origin filename.
+// Normalize labels first (Home -> Overview), then qualify any that recur across
+// sections with their section name so the flat sidebar has no duplicate labels.
+const leaves = flattenNav(mkdocs.nav).map((l) => ({
+  ...l,
+  title: l.path === "index.md" && l.title === "Home" ? "Overview" : l.title,
+}));
+const labelCounts = leaves.reduce((m, l) => m.set(l.title, (m.get(l.title) ?? 0) + 1), new Map());
+const DOCS = leaves.map(({ title, section, path }) => {
+  const label = labelCounts.get(title) > 1 && section ? `${section}: ${title}` : title;
+  if (path === "index.md") {
+    // The site homepage is generated from README; the in-app reader consumes
+    // the README source directly (it rewrites relative paths at render time).
+    return { slug: "readme", title: label, repoPath: "README.md" };
+  }
+  return { slug: path.replace(/\.md$/, "").replace(/\//g, "-"), title: label, repoPath: `docs/${path}` };
+});
 
 rmSync(OUT_DIR, { recursive: true, force: true });
 mkdirSync(OUT_DIR, { recursive: true });

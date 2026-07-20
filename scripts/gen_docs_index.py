@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0d650b7b-e8ea-464f-9386-26674f37e9d8
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Regenerate docs/index.md from README.md.
 
 README.md is the single source of truth. This rewrites its repo-relative paths

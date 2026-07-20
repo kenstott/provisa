@@ -1,14 +1,33 @@
 # Provisa
 
-I almost called this project *Insanity*. The surface area looked impossible — 46 kinds of data source on one side, a Babel of query languages and wire protocols on the other. Chasing all of it seemed insane.
+Provisa is an **active semantic layer**: a single definition of your data estate — every domain, relationship, and policy across your sources, excluding only the systems of origin themselves — that both operates the estate and governs it. The definition is not documentation an engine may consult; it *is* the engine. Registered domains and relationships are the only legal join paths, and access policies are compiled into every query plan. One model, three jobs:
 
-Then the core fell out: one federation model, one intermediate representation, a thin contract for sources and another for consumers. Once those held, the surface area became tractable — and the real insanity came into focus. It isn't building this. It's trying to govern data from *outside* the data environment: a catalog here, a policy engine there, a lineage graph somewhere else, each a copy of the truth that drifts on freshness, misses on coverage, and describes access instead of enforcing it. The only sane move is to put governance on the path every query already takes.
+- **Define** — Domains, columns, and relationships are declared once. That declaration is the schema every consumer sees and the only set of join paths any query may take.
+- **Enforce** — Row-level security, column masking, column visibility, and query approval are applied inline on the execution path. No query reaches data without passing through them, so coverage is total by construction rather than by diligence.
+- **Audit** — Because every request travels the same governed path, who queried what, under which role, and against which policy is recorded uniformly. Distributed traces, metrics, and logs are themselves registered as queryable tables alongside your business data.
 
-That's Provisa. A single governed API over 46 heterogeneous data sources — query it with **GraphQL, Cypher, or SQL**, consume it over **pgwire, Bolt, gRPC, REST, Arrow Flight, or JDBC**. RLS, column masking, and query approval aren't a layer bolted on top; they *are* the path. No query reaches data without passing through governance, so coverage is total by construction, not by diligence.
+One governed core serves every language and transport. Query with **GraphQL, Cypher, or SQL**; consume over **pgwire, Bolt, gRPC, REST, Arrow Flight, or JDBC**. Each query language lowers to a single intermediate representation where governance is injected once — so a policy cannot drift between languages — and that IR retargets to each source's native dialect on the way out. Adding a language is a new front-end onto the shared core, not a new engine.
 
-Put another way, this is what a semantic layer was supposed to be. Every prior one — dbt, Cube, LookML — is *passive*: a metadata description of your data that some other engine may or may not consult. Provisa is an **active semantic layer** — the model isn't documentation the engine reads, it *is* the engine. Registered domains and relationships are the only legal join paths; governance is compiled into the plan; every request is enforced inline because no execution path goes around it. And because the same governed path serves SQL, GraphQL, and Cypher over pgwire, Bolt, Flight, JDBC, and REST, effectively all of your cross-system data movement — system-to-system, analytical, application, and human — travels through one place that both describes the data and enforces the rules on it. Describing your data and governing it become the same act.
+The estate is both analytical and transactional. Cross-source reads fan out through the federation layer; writes and single-source reads route directly to the source driver — governed identically, but transactional and sub-100ms. Arrow Flight columnar streaming is built in.
 
-GraphQL, Cypher, and SQL are all first-class over federated data — something no federated engine offers natively. And that's not three integrations but one. Every query language lowers to a single intermediate representation, and governance is injected there — one place, so it cannot drift between languages, and the same IR retargets to any source dialect on the way out. A new query language is a front-end onto that shared governed core, not a new engine, which is why the IR can absorb almost any query dialect. If that sounds too good to be true: some languages carry a small compromise at the edges, but every core language feature is supported — you are not writing a crippled subset. And it isn't read-only: most federation engines are. Provisa carries both analytical and transactional flows through the same governed API. Cross-source reads fan out through the federation layer; writes and single-source reads route direct to the source driver — governed the same way, but transactional and sub-100ms. Arrow Flight columnar streaming is built in, not bolted on. Distributed traces, metrics, and logs are automatically registered as queryable tables in the same schema as your business data, so observability is just another join.
+The whole model is built from a handful of primitives — domains, relationships, roles, and policies. Small vocabulary, so the definition is easy to comprehend and simple to evaluate and audit: you can read the policy set and know what it does. Provisa is a light query compiler, not a runtime that sits in the data path. It converts a request into native queries, routes them, and gets out of the way — which is why the estate performs.
+
+That design supports two ways of using it, and they are not exclusive:
+
+- **As scaffolding for modernization** — Model your estate, let Provisa generate the native SQL for each source, then capture that SQL and adopt it directly in the target system. Provisa is the transition layer, not a permanent dependency.
+- **As permanent policy-enforcing infrastructure** — Keep it in place as the governed path every query takes, so definition, enforcement, and audit stay unified for as long as the estate exists.
+
+## The federation model
+
+The model rests on one reduction: every source is expressed as a collection of two-dimensional tables over a single, generalized type system. That is the contract a source must meet to join the estate, and it is the same contract for all of them. Some sources already fit — a MySQL or PostgreSQL table *is* a typed 2-D relation. Some fit with a projection: a GraphQL query result, once flattened, is a table. Some are foreign to the shape — SPARQL triplestores, Neo4j — but remain workable, because the user supplies a query whose result set is tabular; the query is the adapter. Whatever the source, the estate sees rows, columns, and generalized types, and nothing else. Onboarding a new kind of source is meeting that one contract, sometimes with a step of human intervention, not writing a bespoke integration.
+
+On top of that uniform shape, federation here means both live query and warehousing — the same span a live query engine like Trino covers, plus the materialization such engines lean on. The concept that unifies them is **reachability**: for any source, can the engine query it in place, or must its data first be materialized somewhere queryable? Reachability partitions the estate into what is queried live and what is copied first.
+
+Most databases already carry some notion of a live link — DuckDB `ATTACH`, PostgreSQL `postgres_fdw`, Databricks external links. So most databases can act as a federation engine to some degree. None is comprehensive: each reaches a particular set of sources and materializes the rest, with no single account of which is which. The model closes that gap by making reachability explicit — a defined set of methods, per source, that state what the engine can reach live and, by elimination, what must be materialized.
+
+What remains is freshness: for each non-reachable source, how current must its materialized copy be? In practice this reduces to a small set of strategies — on demand, on a schedule, on a change signal (CDC, watermark, snapshot), or pinned. Choosing one per source is the whole freshness policy.
+
+Reachability plus freshness is a general model for data federation: a definition that says what is live, what is materialized, and how fresh each copy stays — independent of any one engine's reach. The outcome is freedom from proprietary lock-in. The model is portable; the estate is not captive to whichever vendor's federation happens to reach the most sources today.
 
 ## Features
 
@@ -143,18 +162,22 @@ JOIN conditions in SQL must match a registered, approved relationship between ta
 These layers compose. A role with domain access, RLS, and masked columns has all five constraints active simultaneously. Adding a new data source, column, or relationship does not require updating every rule — each layer is configured independently and applies automatically to any query that touches governed objects.
 
 ### macOS
+
 1. Download [Provisa-macOS.dmg](https://provisa.dev/dl/macos) (always the latest release)
 2. Drag **Provisa.app** to `/Applications` and double-click to launch
 3. First launch completes a one-time setup (~2 min, no internet required)
 4. Open Terminal:
+
 ```bash
 provisa start   # start all services
 provisa open    # open the UI in your browser
 ```
 
 ### Linux
+
 1. Download [Provisa-linux-x86_64.AppImage](https://provisa.dev/dl/linux) (always the latest release)
 2. Make it executable and run it — first launch completes a one-time setup (no internet required):
+
 ```bash
 chmod +x Provisa-*-linux-x86_64.AppImage
 ./Provisa-*-linux-x86_64.AppImage
@@ -162,11 +185,13 @@ provisa start && provisa open
 ```
 
 ### Windows
+
 1. Download [Provisa-windows-x64.exe](https://provisa.dev/dl/windows) (always the latest release)
 2. Run the installer — no admin rights required
 3. Open **Provisa First Launch** from the Start Menu — completes a one-time setup (~5 min, no internet required)
 4. Open a new terminal:
-```
+
+```bash
 provisa start
 ```
 
@@ -196,7 +221,7 @@ curl -X POST https://provisa.example.com/data/graphql \
 
 Download [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) (always the latest release) and add it to your BI tool's driver path.
 
-```
+```text
 jdbc:provisa://localhost:8815
 ```
 
@@ -314,7 +339,7 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 ## Documentation
 
 | Topic | Doc |
-|-------|-----|
+| --- | --- |
 | Developer quick start (running from source) | [docs/quickstart.md](docs/quickstart.md) |
 | Full YAML configuration reference | [docs/configuration.md](docs/configuration.md) |
 | Endpoint reference (GraphQL, REST, Flight, gRPC) | [docs/api-reference.md](docs/api-reference.md) |
@@ -334,11 +359,11 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 Provisa includes a built-in federation engine for multi-source queries. At first launch you choose a RAM budget; Provisa derives the number of local federation workers automatically.
 
 | Host RAM | Workers | Typical workload |
-|----------|---------|-----------------|
-| < 24 GB  | 0       | Development, single-source queries, small teams |
-| 24–47 GB | 1       | Small team, moderate cross-source queries |
-| 48–95 GB | 2       | Departmental deployment, mixed BI + notebook usage |
-| 96 GB+   | 4       | Large department, heavy concurrent federation |
+| --- | --- | --- |
+| < 24 GB | 0 | Development, single-source queries, small teams |
+| 24–47 GB | 1 | Small team, moderate cross-source queries |
+| 48–95 GB | 2 | Departmental deployment, mixed BI + notebook usage |
+| 96 GB+ | 4 | Large department, heavy concurrent federation |
 
 Worker count can be changed at any time by editing `~/.provisa/config.yaml` (`federation_workers: N`) and running `provisa restart`. Set to `0` to run coordination-only (single-node).
 
@@ -361,4 +386,4 @@ license. See [LICENSE](LICENSE).
 
 The Licensor does not consent to use of this work for AI/ML training. See
 [NOTICE](NOTICE), [ai.txt](ai.txt), and [robots.txt](robots.txt). For commercial
-or AI-training licenses: kennethstott@gmail.com
+or AI-training licenses: <kennethstott@gmail.com>
