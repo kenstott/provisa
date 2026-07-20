@@ -130,3 +130,6 @@ packaging/duckdb-ext/provisa_duckdb_ext/_ext/**
 # MkDocs build output (generated homepage + build dir)
 docs/index.md
 docs_site/
+# Auto-generated site assets: MkDocs build output + wrangler cache (never commit)
+site/docs/
+site/.wrangler/
