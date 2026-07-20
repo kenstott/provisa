@@ -16,14 +16,17 @@ request as opaque unary bytes and decodes the unary response as JSON. Two method
   /provisa.demo.RandomData/GetRandomSet  — args in → a set of random-valued rows (a "command that
       RETURNS a set", driven by scalar args; it receives no input relation).
 
-  /provisa.demo.Enrich/EnrichRows        — a result_set relation in → the SAME rows back, each with
-      two derived columns. This is the enrichment perspective: Provisa materializes a referenced
-      relation, sends its rows as the request body, and the service returns them transformed. The
-      derivation is DETERMINISTIC (no wall-clock, no randomness) so the demo is reproducible:
+  /provisa.demo.Enrich/EnrichRows        — a NARROW result_set relation ({id, region}) in → only
+      DERIVED columns ({id, embedding, geo}) out. This is the enrichment perspective under the
+      REQ-1159 dataset contract: Provisa materializes the referenced relation, validates it against
+      the declared input columns, sends its rows as the request body, and validates the returned
+      rows against the declared output columns. The derivation is DETERMINISTIC (no wall-clock, no
+      randomness) so the demo is reproducible:
+        - id:        passthrough (identity)
         - embedding: a fixed-dim unit vector hashed from the whole row (whole-row derivation)
-        - geo:       a canned lat,lon marker keyed off a 'region' field, "" otherwise (field
-                     derivation — the address→geo-marker use case, canned so the demo needs no
-                     external geocoder)
+        - geo:       a canned lat,lon marker keyed off the 'region' field (field derivation — the
+                     address→geo-marker use case, canned so the demo needs no external geocoder)
+      A narrow input + derived-only output keeps the taint-closure lineage tight (no `row` blob).
 
 Run: python -m demo.grpc_server.server   (DEMO_GRPC_PORT env overrides the default 50071)
 """
@@ -110,16 +113,19 @@ def _relation_rows(args: dict) -> list[dict]:
 
 
 async def _enrich_rows(request: bytes, _context) -> bytes:
-    """Decode the request, read the input relation, return each row + embedding + geo as JSON bytes.
+    """Decode the request, read the input relation, return real DERIVED columns as JSON bytes.
 
-    Schema-agnostic: the original row is echoed back as a JSON string so the response contract is
-    stable regardless of the input relation's columns."""
+    Models the disciplined shape (REQ-1159): the declared input contract is a NARROW projection
+    ({id, region}) and the output is only derived columns ({id, embedding, geo}) — no opaque `row`
+    blob. `id` passes through (identity), `embedding` derives from the whole row, `geo` from region.
+    A tight input contract keeps the taint-closure lineage tight: embedding/geo depend on exactly the
+    two declared inputs, not a wide echoed relation."""
     payload = json.loads(request or b"{}")
     args = payload.get("args", {}) if isinstance(payload, dict) else {}
     rows = _relation_rows(args)
     enriched = [
         {
-            "row": json.dumps(row, sort_keys=True),
+            "id": row["id"],
             "embedding": json.dumps(_embedding(row)),
             "geo": _geo_marker(row),
         }

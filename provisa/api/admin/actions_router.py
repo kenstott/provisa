@@ -43,23 +43,30 @@ async def _ensure_tables(pool: "Database") -> None:
 
 
 def _args_to_ui(raw: list[dict] | None) -> list[dict]:
-    """Project stored function arguments to the UI shape (REQ-885: expose argKind)."""
-    return [
-        {"name": a["name"], "type": a["type"], "argKind": a.get("arg_kind", "column_value")}
-        for a in (raw or [])
-    ]
+    """Project stored function arguments to the UI shape (REQ-885: argKind; REQ-1159: dataset columns)."""
+    out = []
+    for a in raw or []:
+        arg = {"name": a["name"], "type": a["type"], "argKind": a.get("arg_kind", "column_value")}
+        if a.get("columns"):  # REQ-1159: per-dataset input column contract
+            arg["columns"] = a["columns"]
+        out.append(arg)
+    return out
 
 
 def _args_from_ui(raw: list[dict]) -> list[dict]:
     """Normalize UI arguments to the model shape (argKind → arg_kind), for persistence."""
-    return [
-        {
+    out = []
+    for a in raw:
+        norm = {
             "name": a["name"],
             "type": a["type"],
             "arg_kind": a.get("argKind") or a.get("arg_kind") or "column_value",
         }
-        for a in raw
-    ]
+        cols = a.get("columns")  # REQ-1159: per-dataset input column contract [{name,type}]
+        if cols:
+            norm["columns"] = cols
+        out.append(norm)
+    return out
 
 
 def _row_to_function(row: dict) -> dict:
@@ -76,6 +83,7 @@ def _row_to_function(row: dict) -> dict:
         "description": row.get("description"),
         "kind": row.get("kind", "mutation"),
         "returnSchema": row.get("return_schema"),
+        "outputColumns": row.get("output_columns"),  # REQ-1159: IR-typed output dataset contract
         # REQ-885: implementation kind + swappable binding, decoupled from addressing.
         "implKind": row.get("impl_kind", "source_procedure"),
         "binding": row.get("binding") or {},
@@ -149,6 +157,8 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     description: str | None = None
     kind: str = "mutation"
     returnSchema: dict | None = None
+    # REQ-1159: canonical IR-typed output dataset contract [{name,type}]; returnSchema is its projection.
+    outputColumns: list[dict] | None = None
     # REQ-885: implementation-kind dimension + swappable binding + identity model.
     implKind: str = "source_procedure"
     binding: dict = {}
@@ -198,6 +208,7 @@ async def create_function(
         impl_kind=body.implKind,
         binding=body.binding,
         materialize=body.materialize,
+        output_columns=body.outputColumns,  # REQ-1159 (pydantic coerces [{name,type}] → DatasetColumn)
     )
     # return_schema is a JSON column — pass the Python object directly (no double-encoding).
     async with state.tenant_db.acquire() as _conn:
@@ -236,6 +247,7 @@ async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, 
                 description=body.description,
                 kind=body.kind,
                 return_schema=body.returnSchema,
+                output_columns=body.outputColumns,  # REQ-1159
                 impl_kind=body.implKind,
                 binding=body.binding,
                 materialize=body.materialize,

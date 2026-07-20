@@ -685,16 +685,32 @@ class EventTrigger(BaseModel):  # REQ-565
     enabled: bool = True
 
 
+class DatasetColumn(BaseModel):  # REQ-1159
+    """One declared column of a dataset argument's contract: an IR-typed field.
+
+    ``type`` is a canonical IR type name (provisa.core.ir_types) — the ONE vocabulary the platform
+    speaks, matching the ``data_type`` a real relation column already carries. GraphQL/SQL type
+    spellings are edge projections, never stored here."""
+
+    name: str
+    type: str  # canonical IR type name (provisa.core.ir_types)
+
+
 class FunctionArgument(BaseModel):
     """Argument definition for a tracked DB function."""
 
     name: str
-    type: str  # GraphQL scalar type name: String, Int, Float, Boolean, DateTime
+    type: str  # IR type name (provisa.core.ir_types) for a scalar arg; GraphQL/SQL are projections
     # REQ-885: relation-argument kind for Provisa-hosted functions.
     #   column_value = scalar, passed row-wise (default; existing behaviour)
     #   table_ref    = lazy reference (relation name/metadata passed, not materialized)
     #   result_set   = eager, referenced relation materialized to an Arrow buffer
     arg_kind: str = "column_value"
+    # REQ-1159: for a dataset arg (table_ref/result_set), the declared column contract of the input
+    # relation — an ordered list of IR-typed columns, validated on the way in (fail-loud). None for
+    # a column_value scalar. This is the per-DATASET contract; the output dataset's contract is
+    # Function.return_schema. The dataset is what carries the contract, not the command.
+    columns: list[DatasetColumn] | None = None
 
 
 class InlineType(BaseModel):
@@ -736,8 +752,13 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # input-governed. Selects the identity context stamped into the invocation trace (REQ-886).
     materialize: bool = False
     # REQ-885: JSON-Schema of a custom (set-returning) return shape when `returns` is not a
-    # registered "schema.table". Drives the generated GraphQL return type for hosted functions.
+    # registered "schema.table". Drives the generated GraphQL return type for hosted functions —
+    # the edge PROJECTION of the output contract, not the canonical contract (REQ-1159).
     return_schema: dict | None = None
+    # REQ-1159: the canonical IR-typed output dataset contract — the ONE output relation the command
+    # returns, symmetric with each input dataset arg's `columns`. Validated on the way out (fail-loud).
+    # This is the source of truth; return_schema is its GraphQL projection. None ⇒ output unvalidated.
+    output_columns: list[DatasetColumn] | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 

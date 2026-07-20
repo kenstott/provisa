@@ -19,18 +19,53 @@ wrong-typed value into the pipeline. Validation is FAIL-LOUD (project rule): a v
 
 from __future__ import annotations
 
+import datetime as _dt
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from decimal import Decimal as _Decimal
 
-# GraphQL scalar name -> the Python types accepted for that column. Mirrors the arg/type vocabulary
-# used across the surfaces (String/Int/Float/Boolean); an unknown declared type accepts any value.
+from provisa.core.ir_types import to_ir
+
+# Canonical IR type name -> the Python types accepted for that column. The declared type is the SAME
+# IR vocabulary the whole platform speaks (provisa.core.ir_types, REQ-846/932) — a column's data_type
+# IS an IR name — so a contract validates like-for-like against the relation it describes; there is no
+# parallel GraphQL/SQL type system here, only IR (GraphQL/SQL are edge projections). A declared type
+# is normalized through ``to_ir`` first, so native/alias spellings (varchar, int4, jsonb, …) resolve.
+# Temporal scalars arrive as ISO strings over NDJSON framing but as date/time objects from an
+# in-process (python impl_kind) transform, so both are accepted.
 _TYPE_ACCEPTS: dict[str, tuple[type, ...]] = {
-    "string": (str,),
-    "int": (int,),
-    "float": (float, int),  # an int is a valid float
+    "smallint": (int,),
+    "integer": (int,),
+    "bigint": (int,),
     "boolean": (bool,),
+    "float": (float, int),  # an int is a valid float
+    "double": (float, int),
+    "numeric": (float, int, _Decimal),
+    "text": (str,),
+    "uuid": (str,),
+    "date": (str, _dt.date),  # datetime.datetime subclasses datetime.date, so date covers both
+    "timestamp": (str, _dt.date),
+    "time": (str, _dt.time),
+    "bytea": (bytes, str),  # raw bytes in-process; base64/hex string over the wire
 }
+# IR types that accept ANY value shape (structured JSON, incl. dict/list/bool). Validation of these
+# is presence-only — the type check is skipped, so a bool/object is not spuriously rejected.
+_ANY_TYPES: frozenset[str] = frozenset({"json"})
+
+
+def _accepts_for(dtype: str) -> tuple[type, ...] | None:
+    """Accepted Python types for a declared column type, or None when the type is unconstrained.
+
+    The declared type is normalized to canonical IR (``to_ir``) so native/alias spellings resolve;
+    ``json`` and any type outside the IR vocabulary are treated as accept-any (presence-only)."""
+    try:
+        ir = to_ir(dtype)
+    except ValueError:
+        return None  # not an IR type — opaque, accept any value (still presence-checked)
+    if ir in _ANY_TYPES:
+        return None
+    return _TYPE_ACCEPTS.get(ir)
 
 
 @dataclass(frozen=True)
@@ -38,7 +73,7 @@ class Field:  # REQ-940
     """One declared column in a processor schema."""
 
     name: str
-    type: str = "String"
+    type: str = "text"  # IR type name (provisa.core.ir_types); default is the IR text scalar
 
 
 @dataclass(frozen=True)
@@ -51,7 +86,7 @@ class Schema:  # REQ-940
     def of(cls, *fields: tuple[str, str] | str) -> "Schema":
         out = []
         for f in fields:
-            out.append(Field(f, "String") if isinstance(f, str) else Field(f[0], f[1]))
+            out.append(Field(f, "text") if isinstance(f, str) else Field(f[0], f[1]))
         return cls(tuple(out))
 
     @property
@@ -74,10 +109,11 @@ def _validate_row(row: dict, schema: Schema, *, where: str) -> dict:
         value = row[name]
         if value is None:
             continue  # nullability is not part of this minimal contract
-        accepts = _TYPE_ACCEPTS.get(dtype.lower())
-        # bool is an int subclass — reject a bool where a non-boolean scalar is declared.
+        accepts = _accepts_for(dtype)
+        # bool is an int subclass — reject a bool where a non-boolean IR type is declared.
         if accepts is not None and (
-            not isinstance(value, accepts) or (dtype.lower() != "boolean" and isinstance(value, bool))
+            not isinstance(value, accepts)
+            or (to_ir(dtype) != "boolean" and isinstance(value, bool))
         ):
             raise SchemaViolation(
                 f"{where}: field {name!r} expected {dtype}, got {type(value).__name__}"

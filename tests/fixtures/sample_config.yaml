@@ -121,3 +121,37 @@ rls_rules:
   - table_id: orders
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
+
+functions:
+  # REQ-1159: python-impl command that ENRICHES orders inline (composed-command E2E). In-process,
+  # so no external service; narrow input contract {id, region}, derived-only output.
+  - name: enrich_orders
+    description: Enrich orders inline — deterministic score + region label (REQ-1159)
+    domain_id: sales-analytics
+    kind: query
+    impl_kind: python
+    source_id: ""
+    function_name: enrich_orders
+    returns: ""
+    binding:
+      callable: demo.py_functions:enrich_orders
+    arguments:
+      - name: input
+        type: String
+        arg_kind: result_set
+        columns:
+          - {name: id, type: integer}
+          - {name: region, type: text}
+    visible_to: [admin]
+    output_columns:
+      - {name: id, type: integer}
+      - {name: score, type: double}
+      - {name: region_label, type: text}
+    return_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          id: {type: integer}
+          score: {type: number}
+          region_label: {type: string}

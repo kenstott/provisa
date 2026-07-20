@@ -534,6 +534,8 @@ tracked_functions = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("kind", Text, nullable=False, server_default="mutation"),
     Column("return_schema", JSON),
+    # REQ-1159: canonical IR-typed output dataset contract [{name,type}]; return_schema projects it to GraphQL.
+    Column("output_columns", JSON),
     # REQ-885: implementation kind + swappable binding, decoupled from addressing.
     Column("impl_kind", Text, nullable=False, server_default="source_procedure"),
     Column("binding", JSON, nullable=False, default=dict, server_default="{}"),

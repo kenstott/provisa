@@ -30,6 +30,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Double,
     Float,
     Integer,
     LargeBinary,
@@ -48,7 +49,7 @@ _IR_TO_SA: dict[str, Any] = {
     "text": Text,
     "boolean": Boolean,
     "float": Float,
-    "double": Float,
+    "double": Double,  # DOUBLE PRECISION — distinct from single-precision Float (no silent precision loss)
     "numeric": Numeric,
     "date": Date,
     "timestamp": DateTime,

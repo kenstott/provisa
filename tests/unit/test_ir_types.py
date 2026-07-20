@@ -77,7 +77,9 @@ def test_unknown_type_raises_no_varchar_default():
 def test_to_sqlalchemy_maps_ir_and_native():
     assert to_sqlalchemy("bigint").__name__ == "BigInteger"
     assert to_sqlalchemy("varchar").__name__ == "Text"  # native spelling normalized first
-    assert to_sqlalchemy("double precision").__name__ == "Float"
+    # double is DOUBLE PRECISION, distinct from single-precision float (no silent precision loss)
+    assert to_sqlalchemy("double precision").__name__ == "Double"
+    assert to_sqlalchemy("float").__name__ == "Float"
 
 
 def test_is_ir_type():

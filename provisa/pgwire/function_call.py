@@ -41,10 +41,14 @@ def _literal_value(node):
 
 
 def detect_sql_function_call(sql: str, state) -> tuple[str, list] | None:
-    """Return (registered function name, positional arg values) for a function-call SELECT.
+    """Return (registered function name, positional arg values) for a STANDALONE function-call SELECT.
 
-    Handles ``SELECT * FROM fn(args)`` and ``SELECT fn(args)``; returns None when the SQL
-    is a normal query or names no registered tracked function.
+    Handles only the direct forms where the command IS the whole query: ``SELECT fn(args)`` (scalar)
+    and ``SELECT * FROM fn(args)`` (sole source, no joins). Returns None for a normal query, for SQL
+    naming no registered function, OR for a COMPOSED statement (the command joined/sub-queried with
+    other relations, or several commands) — composition is handled by inline localization in the
+    shared _govern_and_route pipeline (REQ-1159), so this hook must NOT fire and mis-run one command
+    as the whole result.
     """
     fns = getattr(state, "tracked_functions", None)
     if not isinstance(fns, dict):
@@ -57,10 +61,17 @@ def detect_sql_function_call(sql: str, state) -> tuple[str, list] | None:
         tree = sqlglot.parse_one(sql, dialect="postgres")
     except (SqlglotError, RecursionError):
         return None
-    for node in tree.find_all(exp.Anonymous):
-        if node.name in fns:
-            return node.name, [_literal_value(a) for a in node.expressions]
-    return None
+    cmd_nodes = [n for n in tree.find_all(exp.Anonymous) if n.name in fns]
+    if len(cmd_nodes) != 1:
+        return None  # zero commands, or several composed → not the standalone path
+    if list(tree.find_all(exp.Join)):
+        return None  # joined with another relation → composed → localization owns it
+    for tbl in tree.find_all(exp.Table):
+        inner = tbl.this
+        if not (isinstance(inner, exp.Anonymous) and inner.name in fns):
+            return None  # a non-command table source is present → composed
+    node = cmd_nodes[0]
+    return node.name, [_literal_value(a) for a in node.expressions]
 
 
 def rows_to_query_result(rows: list[dict]) -> QueryResult:

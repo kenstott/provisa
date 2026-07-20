@@ -150,6 +150,7 @@ export function CommandsPage() {
         implKind: fn.implKind ?? "source_procedure",
         binding: fn.binding ?? {},
         materialize: fn.materialize ?? false,
+        outputColumns: fn.outputColumns ?? [], // REQ-1159
       });
       setExpandedFn(name);
     } else {
@@ -178,6 +179,7 @@ export function CommandsPage() {
         implKind: "source_procedure",
         binding: {},
         materialize: false,
+        outputColumns: [],
       });
       setExpandedWh(name);
     }
@@ -221,6 +223,7 @@ export function CommandsPage() {
           description: form.description || undefined,
           kind: form.kind,
           returnSchema,
+          outputColumns: form.outputColumns.filter((c) => c.name.trim() !== ""), // REQ-1159
           implKind: form.implKind,
           binding: form.binding,
           materialize: form.materialize,

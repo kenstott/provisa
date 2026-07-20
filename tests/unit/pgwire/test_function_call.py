@@ -96,6 +96,26 @@ def test_detect_inside_sample_wrapper():
     assert args == [9]
 
 
+# ---- REQ-1159: composed statements are NOT the standalone path (localization owns them) ----
+
+
+def test_composed_join_is_not_standalone():
+    sql = "SELECT o.id, e.x FROM orders o JOIN createOrder('a') e ON o.id = e.id"
+    assert detect_sql_function_call(sql, _state()) is None
+
+
+def test_command_with_other_table_is_not_standalone():
+    sql = "SELECT * FROM orders o, createOrder('a') e"
+    assert detect_sql_function_call(sql, _state()) is None
+
+
+def test_two_commands_is_not_standalone():
+    st = _state()
+    st.tracked_functions["labelRows"] = {"name": "labelRows", "kind": "query"}
+    sql = "SELECT * FROM createOrder('a') e JOIN labelRows('b') l ON e.id = l.id"
+    assert detect_sql_function_call(sql, st) is None
+
+
 # ---- result adaptation ------------------------------------------------------
 
 

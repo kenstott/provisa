@@ -84,4 +84,36 @@ describe("CommandFormFields — REQ-885 implementation kinds", () => {
     );
     expect(screen.getByTestId("command-arg-kind-0")).toBeInTheDocument();
   });
+
+  // REQ-1159: IR-typed dataset contract editors
+  it("shows the input-columns editor for a dataset (result_set) argument", () => {
+    render(
+      <Harness
+        initial={{
+          actionType: "function",
+          implKind: "grpc",
+          arguments: [{ name: "input", type: "String", argKind: "result_set" }],
+        }}
+      />,
+    );
+    expect(screen.getByTestId("dataset-columns-0")).toBeInTheDocument();
+  });
+
+  it("hides the input-columns editor for a scalar (column_value) argument", () => {
+    render(
+      <Harness
+        initial={{
+          actionType: "function",
+          implKind: "grpc",
+          arguments: [{ name: "n", type: "Int", argKind: "column_value" }],
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("dataset-columns-0")).not.toBeInTheDocument();
+  });
+
+  it("shows the output-columns editor for a hosted command", () => {
+    render(<Harness initial={{ actionType: "function", implKind: "grpc" }} />);
+    expect(screen.getByTestId("output-columns")).toBeInTheDocument();
+  });
 });
