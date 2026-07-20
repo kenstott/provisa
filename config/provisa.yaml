@@ -861,6 +861,31 @@ functions:
         region: {type: string}
         amount: {type: number}
         active: {type: boolean}
+- name: enrich_grpc_set
+  description: Demo gRPC command that ENRICHES an input relation — materializes the referenced result_set, sends its rows to the service, returns each row plus a deterministic embedding + geo marker (REQ-885)
+  domain_id: pet-store
+  kind: query
+  impl_kind: grpc
+  source_id: ""
+  function_name: enrich_grpc_set
+  returns: ""
+  binding:
+    target: ${env:DEMO_GRPC_TARGET:-localhost:50071}
+    method: /provisa.demo.Enrich/EnrichRows
+  arguments:
+  - name: input
+    type: String
+    arg_kind: result_set
+  visible_to:
+  - admin
+  return_schema:
+    type: array
+    items:
+      type: object
+      properties:
+        row: {type: string}
+        embedding: {type: string}
+        geo: {type: string}
 webhooks:
 - arguments:
   - name: name

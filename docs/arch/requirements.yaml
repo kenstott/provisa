@@ -32888,3 +32888,151 @@
     Then it is caught and silently logged
     And the URL is printed as a fallback
     And the servers keep running
+- id: REQ-1159
+  status: proposed
+  group: "5. Query Languages, Compilation & Operations"
+  category: Extensible Functions
+  priority: MUST
+  type: behavioral
+  description: >-
+    Registered commands (tracked functions) MUST be composable INLINE within a larger
+    SQL statement — e.g. `SELECT o.id, e.embedding FROM orders o JOIN enrich_cmd('main.public.orders')
+    e ON o.id = e.id` — not only as a standalone top-level `SELECT * FROM fn(args)` /
+    `SELECT fn(args)`, and this MUST work across ALL client-facing surfaces (GraphQL, pgwire
+    SQL, REST, MCP run_sql, Arrow Flight, Provisa gRPC, Bolt/Cypher), routed through the one
+    shared invoke_tracked_function executor and the shared _govern_and_route /
+    _govern_and_route_compiled pipeline. Current gap: provisa/pgwire/function_call.py
+    detect_sql_function_call returns the FIRST Anonymous node match and
+    maybe_invoke_registered_function runs only that command, returning its rows as the whole
+    result, so a command embedded in a join/CTE within a larger statement misfires. Target:
+    a command-localization rewrite pass inside the shared pipeline that (a) detects every
+    command call in the parsed tree, (b) executes each to a local relation typed by the
+    command's declared output dataset contract, substituting the call site via a size-adaptive
+    mechanism (VALUES CTE below a row threshold, registered Arrow table above), (c) forces
+    local federation execution (Route.ENGINE — a command cannot be pushed to a remote source),
+    (d) applies governance at the correct DEFINER/INVOKER identity for the command's input
+    plus the caller's governance for the outer SQL, and (e) validates rows in/out against the
+    command's declared input/output dataset schema (fail-loud). Prerequisite: a canonical
+    per-dataset contract — one or more scalar (column_value) args plus one or more TYPED input
+    datasets (result_set/table_ref args, each carrying an ordered relational field-list) and
+    exactly one TYPED output dataset; canonical field-list is the source of truth (single
+    GraphQL-scalar vocabulary), with JSON Schema and GraphQL SDL as edge projections (seed-in /
+    render-out), not stored truth.
+  use_case: >-
+    A steward composes a governed external transform directly in ordinary SQL joined against
+    federated tables, on any surface, and — because the command declares and validates its
+    input/output dataset columns — column-level lineage can close across the opaque RPC
+    boundary via taint-closure splicing at the function node.
+  code:
+  - provisa/pgwire/_pipeline.py
+  - provisa/pgwire/function_call.py
+  - provisa/executor/function_dispatch.py
+  - provisa/api/data/action_exec.py
+  - provisa/processors/contract.py
+  - provisa/core/models.py
+  - provisa-ui/src/pages/commands/CommandFormFields.tsx
+  - provisa-ui/src/api/actions.ts
+  target: 2026-Q4
+  related_reqs:
+  - REQ-885
+  - REQ-1156
+  - REQ-862
+  - REQ-940
+- id: REQ-1160
+  status: proposed
+  group: "6. Data Lineage & Provenance"
+  category: Column-Level Lineage Graph
+  priority: MUST
+  type: behavioral
+  description: >-
+    From a SINGLE SQL statement — including one or more inline-composed commands (REQ-1159) —
+    the platform MUST be able to produce a complete column-level lineage DAG for the entire
+    view, from source inputs to final output columns, with command nodes as first-class,
+    contract-validated (non-opaque) nodes in the graph. Computable STATICALLY from the view
+    definition plus each command's declared input/output dataset contract (no execution
+    required); optionally reconciled with runtime refresh-version records (REQ-862 spans /
+    input versions) to stamp which version flowed. Requires extending the lineage resolver
+    from the current leaf-collapsed output-column -> source-column list
+    (provisa/lineage/columns.py resolve_column_lineage returns flat ColumnDerivation leaves,
+    discarding intermediate nodes) to a full node+edge graph that preserves intermediate
+    relations (CTEs, subqueries, joins). Each inline command, once localized into a typed
+    CTE/Arrow relation, contributes real edges: taint-closure by default (each declared
+    output column derives from ALL declared input columns) or precise per-column edges when
+    declared; command nodes are visually distinct opaque-transform boundaries tagged with the
+    command name and its contract. Two grains from one graph: relation-level zoom-out and
+    column-level drill-in. New surfaces (none exist today — column lineage is currently only
+    OTel span attributes emitted at MV refresh): an API that takes a view/statement and
+    returns graph JSON (nodes + edges), and a UI DAG visualization. Each transform (edge) MUST
+    be NAMED and/or DEFINED, not left as an opaque SQL-expression string: the resolver decomposes
+    each projection expression and matches every operation against the union vocabulary of SQL
+    operators/standard functions (SQLGlot expression nodes), engine built-in scalar functions,
+    and registered commands (projected into pg_proc/routines, each carrying its declared
+    contract) — so e.g. lat,lng <- city, state is labeled as the chain "concat/+ (SQL op) ->
+    geocode (command, contract as its def)". This is a sub-DAG inside the edge: the column-level
+    graph states the derivation, and zooming into an edge reveals the named operation chain
+    (expression-level command nodes reuse the same contract / taint-closure machinery). A
+    transform matching no known op is itself a signal worth flagging.
+  use_case: >-
+    A steward inspects the end-to-end derivation of any view's output columns — across SQL and
+    opaque command boundaries alike — as a rendered DAG; the visualization doubles as a
+    discipline mirror, since an over-declared "frankenstein" command renders as a wide fan-in
+    node, making sloppy contracts visible.
+  code:
+  - provisa/lineage/columns.py
+  - provisa/lineage/versions.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/api/
+  - provisa-ui/src/
+  target: 2026-Q4
+  competitive_position:
+    status: ahead
+    rationale: Column-level, definitional (config-derived, not crawler-based), transparent
+      through opaque inline transforms — versus peers offering table-level or externally
+      batch-crawled lineage only.
+  related_reqs:
+  - REQ-1159
+  - REQ-862
+- id: REQ-1161
+  status: proposed
+  group: "6. Data Lineage & Provenance"
+  category: Federation-Wide Provenance Graph
+  priority: MUST
+  type: behavioral
+  description: >-
+    The platform MUST be able to merge every per-view / per-statement column-level lineage DAG
+    (REQ-1160) into ONE federation-wide provenance graph — spanning all registered views, MVs,
+    and inline-composed commands across all sources — by unioning nodes on canonical resolved
+    dataset identity + column name. Base source columns -> every derived column everywhere,
+    with command boundaries transparent via their declared contracts. Node key = resolved
+    dataset identity (physical/semantic, via the centralized dataset identity service, never
+    ad-hoc string comparison — docs/dataset-handling-standards.md "Dataset Identity"): if two
+    references to the same dataset do not resolve to one node, the merged graph fragments
+    silently, which MUST NOT happen. Computed whole but RENDERED progressively: relation-level
+    is the default view, column-level on drill-in, with focus/scoping tools required
+    (ego-graph around a node, upstream-only / downstream-only slice, domain filter) — a literal
+    full-graph render is unusable at federation scale. Built INCREMENTALLY: recompute a view's
+    sub-DAG on its definition change and union incrementally; never rebuild the entire graph.
+    CYCLE handling is detect + CHARACTERIZE + surface, NOT auto-reject: a cycle that crosses a
+    materialization boundary (an MV reading a prior snapshot of a downstream MV) is a LEGAL
+    time-lagged feedback loop — the snapshot is the version boundary that makes it well-defined;
+    a cycle with NO materialization boundary on it is the likely design error (no evaluation
+    order, no stable value). The platform describes the distinction and surfaces it (in the
+    graph and as a diagnostic) for operator judgment; it does not unilaterally reject.
+  use_case: >-
+    An operator runs impact analysis (change a source column, see everything affected across
+    every domain), traces any derived column back to its sources across the whole federation,
+    and inspects circular definitions with enough context to judge whether a cycle is an
+    intended time-lagged feedback loop or a design error.
+  code:
+  - provisa/lineage/
+  - provisa/api/
+  - provisa-ui/src/
+  target: 2027-Q1
+  competitive_position:
+    status: ahead
+    rationale: A live, column-level, cross-source, command-transparent provenance map of the
+      entire federation — versus catalogs offering only table-level or batch-crawled lineage.
+  related_reqs:
+  - REQ-1160
+  - REQ-640
+  - REQ-372
