@@ -54,6 +54,10 @@ markdown_extensions:
 plugins:
   - search
 
+# Auto-link every REQ-NNN mention to its section on the Requirements page.
+hooks:
+  - scripts/mkdocs_hooks.py
+
 nav:
   - Home: index.md
   - Getting Started:
