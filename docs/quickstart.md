@@ -1,6 +1,6 @@
 # Developer Quick Start
 
-For evaluating Provisa without building from source, see the [README Quick Start](../README.md#quick-start) — download the macOS, Windows, or Linux installer and run `provisa start`. (REQ-223, REQ-224, REQ-227)
+For evaluating Provisa without building from source, see the [Quick Start](index.md) — download the macOS, Windows, or Linux installer and run `provisa start`. (REQ-223, REQ-224, REQ-227)
 
 This guide is for running Provisa **from the repository** — active development, debugging, or contributing.
 

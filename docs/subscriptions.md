@@ -154,7 +154,7 @@ tables:
           key_column: id
 ```
 
-See [Kafka Sinks](./kafka-sinks.md) for full sink configuration reference.
+See [Kafka Sinks](sources.md) for full sink configuration reference.
 
 ## Security
 

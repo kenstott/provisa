@@ -126,3 +126,7 @@ provisa/_config/
 # provisa-duckdb-ext blobs are built per-platform by CI (build-duckdb-extensions), not committed.
 packaging/duckdb-ext/provisa_duckdb_ext/_ext/**
 !packaging/duckdb-ext/provisa_duckdb_ext/_ext/.gitkeep
+
+# MkDocs build output (generated homepage + build dir)
+docs/index.md
+docs_site/

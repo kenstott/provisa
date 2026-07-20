@@ -1,0 +1,104 @@
+site_name: Provisa
+site_description: A single governed API over 46 heterogeneous data sources — query with GraphQL, Cypher, or SQL.
+site_url: https://provisa.dev/docs/
+site_dir: docs_site
+repo_url: https://github.com/kenstott/provisa
+repo_name: provisa
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Quick Start: quickstart.md
+      - Configuration: configuration.md
+      - Deployment: deployment.md
+  - Query & Interfaces:
+      - API Reference: api-reference.md
+      - Cypher: cypher.md
+      - Subscriptions: subscriptions.md
+      - Integrations (JDBC, BI, Flight): integrations.md
+      - pgwire: pgwire.md
+  - Data Sources:
+      - Sources: sources.md
+      - Remote Schemas: remote-schemas.md
+      - Import (Hasura / DDN): import.md
+  - Security & Governance:
+      - Security Model: security.md
+      - Multitenancy: multitenant.md
+  - Clients:
+      - Python Client: python-client.md
+  - Administration:
+      - Admin API: admin.md
+      - Releasing: releasing.md
+  - Architecture:
+      - Overview: architecture.md
+      - Requirements: arch/requirements.md
+      - Graph Model: arch/graph.md
+      - FDW Catalog: arch/fdw_catalog.md
+      - Vectors: arch/vectors.md
+      - Change Signal Unification: arch/change-signal-unification.md
+
+not_in_nav: |
+  competitive_analysis.md
+  marketing.md
+  testing-plan.md
+  dataset-handling-standards.md
+  domain-principles.md
+  arch/adr/**
+  arch/requirements.yaml
+  arch/dataset-handling-standards.md
+  arch/deployment.md
+  arch/jdbc-client-side-encryption.md
+
+validation:
+  omitted_files: ignore
+  absolute_links: ignore
+  unrecognized_links: ignore
