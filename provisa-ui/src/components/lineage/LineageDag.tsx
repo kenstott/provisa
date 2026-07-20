@@ -22,9 +22,12 @@ interface LineageDagProps {
   onNodeClick?: (nodeId: string) => void;
 }
 
-const KIND_COLOR: Record<string, string> = {
-  source: "#2f9e44", // green — a real base column
-  derived: "#1c7ed6", // blue — produced by SQL
+// Colour by ROLE in the flow (computed from in/out degree), not just kind: a column that is both
+// produced AND consumed is an intermediate hand-off between datasets and gets its own colour.
+const ROLE_COLOR: Record<string, string> = {
+  source: "#2f9e44", // green — a base column leaf (no upstream)
+  intermediate: "#0c8599", // teal — produced here AND consumed downstream (a dataset hand-off)
+  output: "#1c7ed6", // blue — produced here, not consumed further (a terminal result column)
   command: "#9c36b5", // purple — an opaque command boundary
 };
 
@@ -43,6 +46,16 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
     }
     const outputs = new Set(graph.outputs);
 
+    // In/out degree drives the role colour: a node consumed downstream (hasOut) that is also
+    // produced (hasIn) is an intermediate. Sources and commands keep their kind colour.
+    const hasIn = new Set(graph.edges.map((e) => e.target));
+    const hasOut = new Set(graph.edges.map((e) => e.source));
+    const roleOf = (n: { id: string; kind: string }): string => {
+      if (n.kind === "command") return "command";
+      if (n.kind === "source") return "source";
+      return hasIn.has(n.id) && hasOut.has(n.id) ? "intermediate" : "output";
+    };
+
     // Group columns under a parent box per relation (dataset), so columns read as members of a
     // table/view/dataset rather than free-standing nodes. Nodes without a relation stay top-level.
     const relations = Array.from(
@@ -60,6 +73,7 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
           parent: n.relation ? parentId(n.relation) : undefined,
           label: n.column,
           kind: n.kind,
+          role: roleOf(n),
           materialized: n.materialized ? "yes" : "no",
           cycle: cycleClass[n.id] ?? "no",
           output: outputs.has(n.id) ? "yes" : "no",
@@ -72,10 +86,10 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
           target: e.target,
           // A pure passthrough (identity/constant) has no transform to name — leave the edge
           // unlabelled rather than repeating the column name. Only real ops (functions, operators,
-          // commands) get labelled.
+          // commands) get labelled, rendered as a formula with their literal args: substring(1, 3).
           label: (e.ops ?? [])
             .filter((o) => o.kind !== "identity" && o.kind !== "constant")
-            .map((o) => o.name)
+            .map((o) => (o.args?.length ? `${o.name}(${o.args.join(", ")})` : o.name))
             .join(" "),
           command: (e.ops ?? []).some((o) => o.kind === "command") ? "yes" : "no",
         },
@@ -89,7 +103,7 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
         {
           selector: "node",
           style: {
-            "background-color": (el: cytoscape.NodeSingular) => KIND_COLOR[el.data("kind")] ?? "#868e96",
+            "background-color": (el: cytoscape.NodeSingular) => ROLE_COLOR[el.data("role")] ?? "#868e96",
             label: "data(label)",
             "text-wrap": "wrap",
             "text-valign": "center",

@@ -38,6 +38,9 @@ class TransformOp:  # REQ-1160
 
     name: str  # e.g. "UPPER", "*", "geocode"
     kind: str  # "sql_function" | "operator" | "command" | "identity" | "constant"
+    # REQ-1160: the op's literal (constant) arguments, so an edge reads as a formula — substring(1, 3),
+    # *(2). Column operands are omitted (they are the incoming edge); only constants are shown.
+    args: tuple[str, ...] = ()
 
 
 @dataclass
@@ -97,7 +100,7 @@ class LineageGraph:  # REQ-1160
                     "source": e.source,
                     "target": e.target,
                     "transform": e.transform,
-                    "ops": [{"name": o.name, "kind": o.kind} for o in e.ops],
+                    "ops": [{"name": o.name, "kind": o.kind, "args": list(o.args)} for o in e.ops],
                 }
                 for e in self.edges
             ],
@@ -135,14 +138,31 @@ def name_transform(expression: exp.Expression | None, command_names: frozenset[s
     if isinstance(inner, exp.Literal) or inner.find(exp.Column) is None:
         return raw, (TransformOp(raw, "constant"),)
     for sub in inner.walk():
-        node = sub
+        node = cast(exp.Expression, sub)
         if isinstance(node, exp.Anonymous):
-            ops.append(TransformOp(node.name, "command" if node.name in command_names else "sql_function"))
+            kind = "command" if node.name in command_names else "sql_function"
+            ops.append(TransformOp(node.name, kind, _op_literals(cast(exp.Expression, node))))
         elif isinstance(node, exp.Func):
-            ops.append(TransformOp(_func_name(node), "sql_function"))
+            ops.append(
+                TransformOp(_func_name(node), "sql_function", _op_literals(cast(exp.Expression, node)))
+            )
         elif type(node) in _OPERATORS:
-            ops.append(TransformOp(_OPERATORS[type(node)], "operator"))
+            ops.append(
+                TransformOp(_OPERATORS[type(node)], "operator", _op_literals(cast(exp.Expression, node)))
+            )
     return raw, tuple(ops)
+
+
+def _op_literals(node: exp.Expression) -> tuple[str, ...]:
+    """The literal (constant) arguments directly on an op — the numbers/strings that parameterize it,
+    e.g. ``substring(name, 1, 3)`` → ``('1', '3')``, ``amount * 2`` → ``('2',)``. Column operands are
+    the incoming lineage edge, not shown here. Nested-expression literals belong to their own op."""
+    lits: list[str] = []
+    for arg in node.args.values():
+        for item in arg if isinstance(arg, list) else [arg]:
+            if isinstance(item, exp.Literal):
+                lits.append(item.name)
+    return tuple(lits)
 
 
 def _func_name(node: exp.Func) -> str:

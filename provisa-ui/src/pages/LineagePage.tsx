@@ -25,9 +25,10 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 
 const LEGEND: { label: string; color: string }[] = [
   { label: "source column", color: "#2f9e44" },
-  { label: "derived (SQL)", color: "#1c7ed6" },
+  { label: "intermediate (in → out)", color: "#0c8599" },
+  { label: "result column", color: "#1c7ed6" },
   { label: "command boundary", color: "#9c36b5" },
-  { label: "output (orange ring)", color: "#f08c00" },
+  { label: "final output (orange ring)", color: "#f08c00" },
 ];
 
 const DEFAULT_SQL =

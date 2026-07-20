@@ -15,6 +15,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 export interface LineageTransformOp {
   name: string;
   kind: "sql_function" | "operator" | "command" | "identity" | "constant";
+  args?: string[]; // REQ-1160: literal arguments, so an edge reads as a formula — substring(1, 3)
 }
 
 export interface LineageNode {
