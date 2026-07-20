@@ -165,8 +165,14 @@ def _output_columns(tree: exp.Expression) -> list[str]:
     for proj in selects:
         name = proj.alias_or_name
         if name and name != "*":
-            cols.append(name)
+            cols.append(_unquote(name))
     return cols
+
+
+def _unquote(ident: str) -> str:
+    """Strip identifier quoting from each dotted segment so a quoted reference and its bare form are
+    ONE node: ``"inquiry_count"`` and ``inquiry_count`` must dedup within a dataset (REQ-1161)."""
+    return ".".join(p.strip('"`') for p in ident.split("."))
 
 
 def _node_for(sqlglot_node, command_names: frozenset[str]) -> Node:
@@ -176,8 +182,8 @@ def _node_for(sqlglot_node, command_names: frozenset[str]) -> Node:
     (``o.amount``) — so the same physical column is one node across every statement that reads it, and
     a view's qualified output stitches to a downstream view's source reference (REQ-1161). CTE/derived
     columns keep their (stable, in-statement) name; a command call keeps its alias (statement-local,
-    resolved by the splice)."""
-    name = sqlglot_node.name
+    resolved by the splice). Identifier quoting is normalized away so quoted/bare forms are one node."""
+    name = _unquote(sqlglot_node.name)
     source = sqlglot_node.source
     column = name.rsplit(".", 1)[-1]
     if isinstance(source, exp.Table):
@@ -185,7 +191,7 @@ def _node_for(sqlglot_node, command_names: frozenset[str]) -> Node:
         if isinstance(inner, exp.Anonymous) and inner.name in command_names:
             relation = name.rsplit(".", 1)[0] if "." in name else None
             return Node(id=name, column=column, relation=relation, kind="command")
-        real = source.name  # the underlying table name, not the alias
+        real = _unquote(source.name)  # the underlying table name, not the alias
         return Node(id=f"{real}.{column}", column=column, relation=real, kind="source")
     relation = name.rsplit(".", 1)[0] if "." in name else None
     return Node(id=name, column=column, relation=relation, kind="derived")
@@ -214,7 +220,7 @@ def build_column_graph(
             graph.add_node(Node(id=out, column=out, relation=None, kind="derived"))
             graph.outputs.append(out)
             continue
-        graph.outputs.append(root.name)
+        graph.outputs.append(_unquote(root.name))
         _walk(root, graph, command_names)
     _splice_commands(tree, graph, commands)
     return graph
