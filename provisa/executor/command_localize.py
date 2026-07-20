@@ -63,18 +63,14 @@ def find_command_calls(tree: exp.Expression, command_names: frozenset[str]) -> l
     return hits
 
 
-def _table_alias(tbl: exp.Table) -> str:
-    """The alias a command call MUST carry to be referenced in the surrounding query. Fail loud when
-    absent — an un-aliased inline relation cannot be joined/projected unambiguously (REQ-1159)."""
+def _table_alias(tbl: exp.Table, index: int) -> str:
+    """The alias the localized relation takes. A composed call is aliased (``fn(...) AS e``) so the
+    query references its columns by that alias; a bare standalone call (``FROM fn(...)``) carries
+    none, so a stable synthetic alias is minted — nothing references it in that case."""
     alias = tbl.args.get("alias")
-    if alias is None or not alias.this:
-        anon = tbl.this
-        name = anon.name if isinstance(anon, exp.Anonymous) else "?"
-        raise ValueError(
-            f"inline command {name!r} must carry an alias (e.g. {name}(...) AS e) so the composed "
-            "query can reference its columns"
-        )
-    return alias.this.name
+    if alias is not None and alias.this:
+        return alias.this.name
+    return f"_cmd{index}"
 
 
 def _arg_values(tbl: exp.Table) -> list:
@@ -197,9 +193,9 @@ async def localize_commands(
     # Cache the EXECUTED result per (name, args) — a command runs at most once per statement; each
     # call site then builds its own source node with that site's alias.
     cache: dict[tuple, tuple[list[dict], list[str], dict[str, str], str | None]] = {}
-    for tbl in hits:
+    for index, tbl in enumerate(hits):
         name = tbl.this.name
-        alias = _table_alias(tbl)
+        alias = _table_alias(tbl, index)
         arg_values = _arg_values(tbl)
         key = (name, tuple(arg_values))
         if key not in cache:

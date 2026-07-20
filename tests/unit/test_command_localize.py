@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import duckdb
-import pytest
 import sqlglot
 
 from provisa.executor.command_localize import localize_commands
@@ -101,9 +100,12 @@ def test_empty_result_yields_empty_typed_relation():
     assert duckdb.sql(out).fetchall() == []
 
 
-def test_unaliased_command_fails_loud():
-    with pytest.raises(ValueError, match="must carry an alias"):
-        _run("SELECT * FROM enrich('a')", {"enrich": [{"id": 1, "embedding": "x", "geo": "y"}]})
+def test_unaliased_standalone_synthesizes_alias():
+    # A bare `FROM fn(args)` (no alias) still localizes — a synthetic alias is minted, nothing
+    # references it. Executable in duckdb.
+    hit, out, calls = _run("SELECT * FROM enrich('a')", {"enrich": [{"id": 1, "embedding": "x", "geo": "y"}]})
+    assert hit is True and "_cmd0" in out
+    assert duckdb.sql(out).fetchall() == [(1, "x", "y")]
 
 
 def test_types_pinned_from_contract():

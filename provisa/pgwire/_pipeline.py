@@ -142,9 +142,30 @@ def _reject_physical_source_refs(parsed: Any, state: Any) -> None:
             )
 
 
+async def _localize_inline_commands(tree, role_id: str, state) -> bool:
+    """REQ-1159: rewrite every inline command call in ``tree`` to a typed local relation, in place.
+
+    Each command executes via the ONE shared governed executor (invoke_tracked_function) — its input
+    governance (DEFINER/INVOKER) and I/O dataset contract are enforced there, identically to a direct
+    call — so the outer statement only ever sees ordinary local relations. Returns True on any hit
+    (the caller then forces engine execution). No-op when no command is composed in the statement."""
+    commands = getattr(state, "tracked_functions", None)
+    if not commands:
+        return False
+    from provisa.api.data.action_exec import invoke_tracked_function
+    from provisa.executor.command_localize import localize_commands
+
+    async def _run(name: str, args: dict) -> list[dict]:
+        return await invoke_tracked_function(name, args, state, role_id)
+
+    # normalized_sql is postgres downstream (then transpiled per route), so build the inline
+    # relations in the postgres dialect for a faithful round-trip.
+    return await localize_commands(tree, commands, _run, dialect="postgres")
+
+
 async def _govern_and_route(
     sql: str, role_id: str, *, session_vars: dict[str, str] | None = None
-) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120
+) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159
     import sqlglot
     import sqlglot.expressions as exp
 
@@ -171,6 +192,15 @@ async def _govern_and_route(
         _parsed_input = sqlglot.parse_one(normalized_sql, read="postgres")
     except Exception as exc:
         raise ValueError(f"SQL parse error: {exc}") from exc
+
+    # REQ-1159: localize any INLINE command call (a registered command composed within this statement
+    # — joined/sub-queried) BEFORE governance/validation/routing. Each command runs via the shared
+    # governed executor (its own input governance + I/O contract enforced there) and its call site is
+    # replaced by a typed local relation, so the rest of the pipeline sees ordinary relations. A hit
+    # forces local (engine) execution — an inline local relation cannot be pushed to a remote source.
+    _localized = await _localize_inline_commands(_parsed_input, role_id, state)
+    if _localized:
+        normalized_sql = _parsed_input.sql(dialect="postgres")
 
     _reject_physical_source_refs(_parsed_input, state)
 
@@ -267,7 +297,10 @@ async def _govern_and_route(
 
     exec_params = embedded_params or None
 
-    if decision.route == Route.ENGINE:
+    # REQ-1159: a localized statement carries an inline local relation (VALUES / registered) that
+    # cannot be pushed to a single remote source — force the federation (engine) route, which pulls
+    # every input local and joins the command output against the rest.
+    if _localized or decision.route == Route.ENGINE:
         _known_cats_pgwire = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
             "otel",
