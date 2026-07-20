@@ -19,6 +19,8 @@
     "descriptionPlaceholder": "Appears in SDL docs",
     "dataProductLabel": "Data Product",
     "dataProductHint": "(publish to catalog / export to Atlas, Atlan, etc.)",
+    "discoverLabel": "Discover columns",
+    "discoverHint": "(infer columns from the live source at registration — for schemaless/NoSQL sources; no manual column selection needed)",
     "watermarkLabel": "Watermark Column",
     "watermarkHintOptional": "(optional — polling fallback if triggers unavailable)",
     "watermarkHintRequired": "(required for subscriptions)",

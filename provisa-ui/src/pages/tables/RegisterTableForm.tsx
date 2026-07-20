@@ -83,6 +83,7 @@ export function RegisterTableForm({
   const [uniqueConstraints, setUniqueConstraints] = useState<UniqueConstraint[]>([]); // REQ-1093
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
   const [dataProduct, setDataProduct] = useState(false);
+  const [discover, setDiscover] = useState(false); // REQ-252: infer columns from the live source
   const [loadingColumns, setLoadingColumns] = useState(false);
 
   const { schemas: availableSchemas, loading: loadingSchemas } = useAvailableSchemas(
@@ -216,7 +217,8 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorRequiredFields"));
       return;
     }
-    if (selectedCols.length === 0) {
+    // REQ-252: with discover on, columns are inferred from the live source, so none need be selected.
+    if (!discover && selectedCols.length === 0) {
       setError(t("registerTableForm.errorNoColumnsSelected"));
       return;
     }
@@ -230,6 +232,7 @@ export function RegisterTableForm({
         description: tableDescription || undefined,
         watermarkColumn: watermarkColumn || null,
         dataProduct,
+        discover, // REQ-252
         columns: selectedCols,
         // REQ-1093: drop empty/incomplete rows — a constraint needs a name and >=1 column.
         uniqueConstraints: uniqueConstraints
@@ -250,6 +253,7 @@ export function RegisterTableForm({
       setUniqueConstraints([]);
       setWatermarkColumn("");
       setDataProduct(false);
+      setDiscover(false);
       onSuccess();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -363,6 +367,19 @@ export function RegisterTableForm({
             {t("registerTableForm.dataProductLabel")}{" "}
             <Text span fw="normal" c="dimmed" fz="xs">
               {t("registerTableForm.dataProductHint")}
+            </Text>
+          </>
+        }
+      />
+      <Checkbox
+        checked={discover}
+        onChange={(e) => setDiscover(e.currentTarget.checked)}
+        data-testid="discover-columns-checkbox"
+        label={
+          <>
+            {t("registerTableForm.discoverLabel")}{" "}
+            <Text span fw="normal" c="dimmed" fz="xs">
+              {t("registerTableForm.discoverHint")}
             </Text>
           </>
         }
