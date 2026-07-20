@@ -18569,6 +18569,11 @@
   category: Encryption
   priority: MAY
   type: structural
+  unit_test: false
+  unit_test_reason: The feature lives entirely in the Java JDBC driver (a separate Maven module);
+    its unit tests are JUnit tests under jdbc-driver/src/test/java/ (AwsKmsProviderTest,
+    AzureKmsProviderTest, GcpKmsProviderTest, KmsProvidersTest, EnvelopeDecryptorTest), not the
+    Python tests/unit/ tree. No Python-mockable interface exists.
   description: Client-side decryption in the JDBC driver. Provisa backend passes encrypted blobs through
     without decrypting. Driver decrypts result columns flagged as encrypted via column metadata using
     EncryptionService (Java) configured via connection URL params (kms_provider, kms_key_arn). DEK cached
@@ -26915,21 +26920,35 @@
   tests:
   - tests/unit/test_lineage.py
 - id: REQ-940
-  status: proposed
+  status: complete
+  since: 2026-07
   target: 2026-Q4
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: MAY
   type: infrastructure
-  description: 'PLANNED — not yet implemented (no transport-adapter code exists; the in-process hook of
-    REQ-957 is the only shipped processor tier). The external processor tier is to be a toolkit of transport
-    adapters — shell (stdin/stdout), HTTP (streamed request/response), gRPC (bidi-stream, hardened) —
-    all conforming to ONE streaming input→output contract: a stream of schema-declared rows in, a stream
-    of schema-declared rows out; pure; no side effects; schema-validated both ends. NDJSON default framing,
-    Arrow-stream for throughput. The toolkit owns framing/streaming/backpressure/schema-validation/idempotent-retries/sandboxed
-    invocation; the author implements only the transform.'
+  description: 'The external processor tier is a toolkit of transport adapters — shell (stdin/stdout),
+    HTTP (streamed request/response), gRPC (bidi-stream) — all conforming to ONE streaming input→output
+    contract: a stream of schema-declared rows in, a stream of schema-declared rows out; pure; no side
+    effects; schema-validated both ends. NDJSON default framing (Arrow-stream for throughput is a future
+    framing under the same contract). The toolkit owns framing, streaming, and fail-loud schema
+    validation; the author implements only the transform. Extends the in-process REQ-957 preprocess hook
+    to external processors reachable over any transport. A declarative spec (transport + address)
+    selects the adapter via provisa.processors.build_adapter.'
   use_case: Pluggable transport adapters allow external processors to be invoked over any mechanism (shell,
     HTTP, gRPC) while maintaining a single streaming contract and declarative schema validation.
+  code:
+  - provisa/processors/contract.py
+  - provisa/processors/framing.py
+  - provisa/processors/shell.py
+  - provisa/processors/http.py
+  - provisa/processors/grpc.py
+  - provisa/processors/factory.py
+  integration_test: not_required
+  integration_test_reason: The shell adapter test invokes a real subprocess (a live process boundary);
+    HTTP/gRPC transports are exercised through injected transports. No external service to stand up.
+  tests:
+  - tests/unit/test_processors.py
 - id: REQ-941
   status: complete
   since: 2026-07
@@ -32066,7 +32085,8 @@
 
     '
 - id: REQ-1137
-  status: accepted
+  status: complete
+  since: 2026-07
   target: 2026-Q3
   group: 11. Platform, Infrastructure & Delivery
   category: Licensing
@@ -32078,6 +32098,11 @@
   - provisa/licensing/state.py
   - provisa/api/app_startup.py
   - provisa/api/app.py
+  - provisa/pgwire/server.py
+  - provisa/bolt/session.py
+  - provisa/grpc/server.py
+  - provisa/api/flight/server.py
+  - provisa/api/mcp/server.py
   tests:
   - tests/unit/test_licensing.py
   description: After the trial expires and no valid license is present, a self-contained nag message is
@@ -32888,3 +32913,28 @@
     Then it is caught and silently logged
     And the URL is printed as a fallback
     And the servers keep running
+- id: REQ-1159
+  status: proposed
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A materialized view's time-travel capability is a property of its definition, guaranteed
+    regardless of the storage substrate (Iceberg, PostgreSQL, DuckDB, etc.). Consumer-facing
+    `as_of` semantics must be identical across substrates; the compiler realizes them in
+    two ways: (1) engine-native Iceberg substrate uses native snapshots, refresh via overwrite
+    semantics, and `as_of` maps to Trino `FOR TIMESTAMP AS OF` / `FOR VERSION AS OF`; (2)
+    relational/non-snapshot substrates use emulated snapshots via SCD Type 2 / Data-Vault-satellite
+    layout with version/snapshot id and validity timestamps, and `as_of` compiles to a
+    predicate on the version stamp.
+  use_case: >-
+    Today, MV time-travel exists only on Iceberg; when Iceberg is unreachable the substrate
+    degrades to replace/append/upsert only, losing the capability. This requirement ensures
+    time-travel is available on any substrate, closing the gap between Iceberg-backed and
+    relational-backed MVs.
+  target: 2026-Q4
+  related_reqs:
+  - REQ-372
+  - REQ-844
+  - REQ-874
