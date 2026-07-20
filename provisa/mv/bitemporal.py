@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: f0ee5c0d-42e9-4613-b23e-479c1d748b40
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -172,8 +173,10 @@ def _append_delta(
     # rest NULL (a tombstone records identity, not attributes); op = delete.
     key = list(spec.key)
     non_key = [c for c in business_cols if c not in spec.key]
+    # Bare NULL (not CAST): the INSERT's target column already types it. An explicit cast to a
+    # filler type is rejected by strict engines — Postgres won't assign varchar to an int column.
     tomb_select = ", ".join(
-        [f'{_q("c")}.{_q(c)}' for c in key] + [f"CAST(NULL AS {_col_type_hint()}) AS {_q(c)}" for c in non_key]
+        [f'{_q("c")}.{_q(c)}' for c in key] + [f"NULL AS {_q(c)}" for c in non_key]
     )
     ordered = ", ".join(_q(c) for c in (key + non_key))
     tombstones = (
@@ -184,12 +187,6 @@ def _append_delta(
         f"WHERE {_match(key, 'c', 'f', dialect)})"
     )
     return [upserts, tombstones]
-
-
-def _col_type_hint() -> str:
-    # Tombstone non-key columns are NULL; a bare NULL is untyped in some engines, so cast to a
-    # permissive type. The column already exists with its real type; the cast only types the literal.
-    return "VARCHAR"
 
 
 def current_state_sql(target: str, spec: BitemporalSpec, business_cols: list[str]) -> str:
