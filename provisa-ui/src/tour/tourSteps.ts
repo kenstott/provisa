@@ -212,6 +212,7 @@ export const TOUR_STEPS: TourStep[] = [
       "<ul>" +
       "<li>⚡ <strong>Liveness</strong> lives on tables and views, so each view republishes as its inputs' freshness changes.</li>" +
       "<li>🔧 Compose your whole delivery pipeline from views and commands — no separate ETL tool.</li>" +
+      "<li>🧬 <strong>Lineage isn't opaque</strong> — commands are declaratively defined, so every step is captured, and materialized views retain full lineage by definition.</li>" +
       "</ul>" +
       "<p>Now let's query it. →</p>",
   },
