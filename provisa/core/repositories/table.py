@@ -80,6 +80,9 @@ async def upsert(
         "mv_preprocess": getattr(table, "mv_preprocess", None),  # REQ-957
         "mv_bitemporal_mode": getattr(table, "mv_bitemporal_mode", None),  # REQ-1162
         "mv_bitemporal_key": getattr(table, "mv_bitemporal_key", []),  # REQ-1162
+        "mv_persist": getattr(table, "mv_persist", "replace"),  # REQ-965
+        "mv_primary_key": getattr(table, "mv_primary_key", []),  # REQ-970
+        "mv_incremental": getattr(table, "mv_incremental", False),  # REQ-969
         "enable_aggregates": getattr(table, "enable_aggregates", False),
         "enable_group_by": getattr(table, "enable_group_by", False),
         "live": table.live.model_dump() if table.live else None,
@@ -107,6 +110,9 @@ async def upsert(
         "mv_preprocess",
         "mv_bitemporal_mode",  # REQ-1162
         "mv_bitemporal_key",  # REQ-1162
+        "mv_persist",  # REQ-965
+        "mv_primary_key",  # REQ-970
+        "mv_incremental",  # REQ-969
         "enable_aggregates",
         "enable_group_by",
         "live",

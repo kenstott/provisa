@@ -156,6 +156,9 @@ export interface RegisteredTable {
   mvPreprocess: string | null; // REQ-957: inline preprocess(rows, ctx) hook source; null = identity
   mvBitemporalMode: string | null; // REQ-1162: null | "snapshot" | "delta" (append-only time travel)
   mvBitemporalKey: string[]; // REQ-1162: business key a version belongs to (required for delta)
+  mvPersist: string; // REQ-965: replace | append | upsert
+  mvPrimaryKey: string[]; // REQ-970: row identity (required for upsert / incremental)
+  mvIncremental: boolean; // REQ-969: incremental maintenance
   dataProduct: boolean;
   enableAggregates: boolean;
   enableGroupBy: boolean;

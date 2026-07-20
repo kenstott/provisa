@@ -341,6 +341,9 @@ async def _fetch_table_with_columns(
         mv_preprocess=row.get("mv_preprocess"),  # REQ-957
         mv_bitemporal_mode=row.get("mv_bitemporal_mode"),  # REQ-1162
         mv_bitemporal_key=list(row.get("mv_bitemporal_key") or []),  # REQ-1162
+        mv_persist=row.get("mv_persist") or "replace",  # REQ-965
+        mv_primary_key=list(row.get("mv_primary_key") or []),  # REQ-970
+        mv_incremental=bool(row.get("mv_incremental", False)),  # REQ-969
         data_product=bool(row.get("data_product", False)),
         enable_aggregates=bool(row.get("enable_aggregates", False)),
         enable_group_by=bool(row.get("enable_group_by", False)),

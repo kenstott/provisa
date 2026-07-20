@@ -51,6 +51,9 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         mv_preprocess=inp.mv_preprocess,  # REQ-957
         mv_bitemporal_mode=inp.mv_bitemporal_mode,  # REQ-1162
         mv_bitemporal_key=list(inp.mv_bitemporal_key),  # REQ-1162
+        mv_persist=inp.mv_persist,  # REQ-965
+        mv_primary_key=list(inp.mv_primary_key),  # REQ-970
+        mv_incremental=inp.mv_incremental,  # REQ-969
         data_product=inp.data_product,
         enable_aggregates=inp.enable_aggregates,
         enable_group_by=inp.enable_group_by,

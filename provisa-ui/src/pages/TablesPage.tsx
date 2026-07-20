@@ -307,6 +307,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         mvPreprocess: editingTable.mvPreprocess || null, // REQ-957
         mvBitemporalMode: editingTable.mvBitemporalMode || null, // REQ-1162
         mvBitemporalKey: editingTable.mvBitemporalKey, // REQ-1162
+        mvPersist: editingTable.mvPersist, // REQ-965
+        mvPrimaryKey: editingTable.mvPrimaryKey, // REQ-970
+        mvIncremental: editingTable.mvIncremental, // REQ-969
         dataProduct: editingTable.dataProduct,
         enableAggregates: editingTable.enableAggregates,
         enableGroupBy: editingTable.enableGroupBy,

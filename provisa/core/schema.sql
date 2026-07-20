@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
     mv_bitemporal_mode TEXT,  -- REQ-1162: NULL | 'snapshot' | 'delta' (append-only time travel)
     mv_bitemporal_key JSONB,  -- REQ-1162: business key columns (required for delta)
+    mv_persist TEXT NOT NULL DEFAULT 'replace',  -- REQ-965: replace | append | upsert
+    mv_primary_key JSONB,  -- REQ-970: row identity (required for upsert / incremental)
+    mv_incremental BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-969: incremental maintenance
     unique_constraints JSONB NOT NULL DEFAULT '[]',  -- REQ-1093: table-level UNIQUE constraints
     UNIQUE (source_id, schema_name, table_name)
 );
@@ -147,6 +150,9 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_preprocess TEXT;  -- REQ-957
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_mode TEXT;  -- REQ-1162
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_key JSONB;  -- REQ-1162
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_persist TEXT NOT NULL DEFAULT 'replace';  -- REQ-965
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_primary_key JSONB;  -- REQ-970
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_incremental BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-969
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_aggregates BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_group_by BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS live JSONB;

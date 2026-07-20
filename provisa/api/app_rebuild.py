@@ -122,6 +122,9 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.mv_preprocess,  # REQ-957
                         _registered_tables_t.c.mv_bitemporal_mode,  # REQ-1162
                         _registered_tables_t.c.mv_bitemporal_key,  # REQ-1162
+                        _registered_tables_t.c.mv_persist,  # REQ-965
+                        _registered_tables_t.c.mv_primary_key,  # REQ-970
+                        _registered_tables_t.c.mv_incremental,  # REQ-969
                     ).where(
                         _registered_tables_t.c.source_id == "__provisa__",
                         _registered_tables_t.c.view_sql.is_not(None),
@@ -199,12 +202,18 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             freshness_mode=_fresh,
                             preprocess=_vr.get("mv_preprocess"),  # REQ-957
                             bitemporal=_bt_spec,  # REQ-1162: survive restart
+                            persist=_vr.get("mv_persist") or "replace",  # REQ-965
+                            primary_key=list(_vr.get("mv_primary_key") or []),  # REQ-970
+                            incremental=bool(_vr.get("mv_incremental")),  # REQ-969
                         )
                     )
                 else:
                     _existing.sql = _semantic_sql
                     _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
                     _existing.bitemporal = _bt_spec  # REQ-1162
+                    _existing.persist = _vr.get("mv_persist") or "replace"  # REQ-965
+                    _existing.primary_key = list(_vr.get("mv_primary_key") or [])  # REQ-970
+                    _existing.incremental = bool(_vr.get("mv_incremental"))  # REQ-969
 
 
 async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:

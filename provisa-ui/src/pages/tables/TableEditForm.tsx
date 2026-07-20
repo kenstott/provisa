@@ -582,6 +582,70 @@ export function TableEditForm({
                 }
               />
             )}
+            {/* REQ-965/969/970: MV persistence outcome + incremental. Not shown for bitemporal
+                views, whose append-only strategy supersedes the persist axis. */}
+            {editingTable.materialize && !editingTable.mvBitemporalMode && (
+              <Select
+                label={
+                  <FieldLabel
+                    text={t("tableEditForm.persistLabel")}
+                    help={t("tableEditForm.persistHelp")}
+                  />
+                }
+                aria-label={t("tableEditForm.persistAria")}
+                data-testid="mv-persist"
+                data={[
+                  { value: "replace", label: t("tableEditForm.persistReplace") },
+                  { value: "append", label: t("tableEditForm.persistAppend") },
+                  { value: "upsert", label: t("tableEditForm.persistUpsert") },
+                ]}
+                value={editingTable.mvPersist || "replace"}
+                onChange={(v) => setEditingTable({ ...editingTable, mvPersist: v || "replace" })}
+                comboboxProps={{ withinPortal: true }}
+                allowDeselect={false}
+              />
+            )}
+            {editingTable.materialize && !editingTable.mvBitemporalMode && (
+              <Checkbox
+                mt="1.75rem"
+                data-testid="mv-incremental"
+                checked={editingTable.mvIncremental}
+                label={
+                  <FieldLabel
+                    text={t("tableEditForm.incrementalLabel")}
+                    help={t("tableEditForm.incrementalHelp")}
+                  />
+                }
+                onChange={(e) =>
+                  setEditingTable({ ...editingTable, mvIncremental: e.currentTarget.checked })
+                }
+              />
+            )}
+            {editingTable.materialize &&
+              !editingTable.mvBitemporalMode &&
+              (editingTable.mvPersist === "upsert" || editingTable.mvIncremental) && (
+                <TextInput
+                  label={
+                    <FieldLabel
+                      text={t("tableEditForm.mvPrimaryKeyLabel")}
+                      help={t("tableEditForm.mvPrimaryKeyHelp")}
+                    />
+                  }
+                  aria-label={t("tableEditForm.mvPrimaryKeyAria")}
+                  data-testid="mv-primary-key"
+                  placeholder="id"
+                  value={editingTable.mvPrimaryKey.join(", ")}
+                  onChange={(e) =>
+                    setEditingTable({
+                      ...editingTable,
+                      mvPrimaryKey: e.currentTarget.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                />
+              )}
             {editingTable.materialize && (
               <Textarea
                 style={{ gridColumn: "1 / -1" }}

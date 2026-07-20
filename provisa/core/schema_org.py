@@ -145,6 +145,10 @@ registered_tables = Table(
     # mv_bitemporal_key is the business-key column list a version belongs to (required for delta).
     Column("mv_bitemporal_mode", Text),
     Column("mv_bitemporal_key", JSON),
+    # REQ-965/969/970: MV persistence outcome + row identity + incremental maintenance.
+    Column("mv_persist", Text, nullable=False, server_default="replace"),
+    Column("mv_primary_key", JSON),
+    Column("mv_incremental", Boolean, nullable=False, server_default=false()),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
     Column("live", JSON),

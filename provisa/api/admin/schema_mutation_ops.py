@@ -283,6 +283,9 @@ async def register_table(
             preprocess=input.mv_preprocess,  # REQ-957
             bitemporal_mode=input.mv_bitemporal_mode,  # REQ-1162
             bitemporal_key=list(input.mv_bitemporal_key),  # REQ-1162
+            persist=input.mv_persist,  # REQ-965
+            primary_key=list(input.mv_primary_key),  # REQ-970
+            incremental=input.mv_incremental,  # REQ-969
         )
 
     await _rebuild_schemas()

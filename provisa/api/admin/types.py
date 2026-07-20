@@ -145,6 +145,9 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
     mv_bitemporal_mode: str | None = None  # REQ-1162: None | "snapshot" | "delta"
     mv_bitemporal_key: list[str] = strawberry.field(default_factory=list)  # REQ-1162: business key
+    mv_persist: str = "replace"  # REQ-965: replace | append | upsert
+    mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
+    mv_incremental: bool = False  # REQ-969: incremental maintenance
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False
@@ -376,6 +379,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
     mv_bitemporal_mode: str | None = None  # REQ-1162: None | "snapshot" | "delta"
     mv_bitemporal_key: list[str] = strawberry.field(default_factory=list)  # REQ-1162: business key
+    mv_persist: str = "replace"  # REQ-965: replace | append | upsert
+    mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
+    mv_incremental: bool = False  # REQ-969: incremental maintenance
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False

@@ -115,6 +115,9 @@ query TablesQuery {
     mvPreprocess
     mvBitemporalMode
     mvBitemporalKey
+    mvPersist
+    mvPrimaryKey
+    mvIncremental
     dataProduct
     enableAggregates
     enableGroupBy

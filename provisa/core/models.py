@@ -535,6 +535,13 @@ class Table(
     # derived at read time from the immutable append log — no UPDATE ever retires a row.
     mv_bitemporal_mode: str | None = None
     mv_bitemporal_key: list[str] = []
+    # REQ-965/969/970: how a materialized view's recompute is applied to its own store, and whether
+    # it is maintained incrementally. mv_persist ∈ replace|append|upsert; mv_primary_key is the row
+    # identity (required for upsert and for incremental); mv_incremental applies upstream deltas
+    # instead of a full recompute (an infeasible declaration is an explicit error, not a fallback).
+    mv_persist: str = "replace"
+    mv_primary_key: list[str] = []
+    mv_incremental: bool = False
     data_product: bool = False  # publish as a Data Product (catalog export)
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field

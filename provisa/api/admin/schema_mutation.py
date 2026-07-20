@@ -462,6 +462,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     preprocess=input.mv_preprocess,  # REQ-957
                     bitemporal_mode=input.mv_bitemporal_mode,  # REQ-1162
                     bitemporal_key=list(input.mv_bitemporal_key),  # REQ-1162
+                    persist=input.mv_persist,  # REQ-965
+                    primary_key=list(input.mv_primary_key),  # REQ-970
+                    incremental=input.mv_incremental,  # REQ-969
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
                 return MutationResult(success=False, message=str(_det_err))

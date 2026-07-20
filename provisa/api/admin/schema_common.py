@@ -302,6 +302,9 @@ def _sync_view_mv(
     preprocess: str | None = None,  # REQ-957
     bitemporal_mode: str | None = None,  # REQ-1162: None | "snapshot" | "delta"
     bitemporal_key: list[str] | None = None,  # REQ-1162: business key (required for delta)
+    persist: str = "replace",  # REQ-965: replace | append | upsert
+    primary_key: list[str] | None = None,  # REQ-970: row identity
+    incremental: bool = False,  # REQ-969: incremental maintenance
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view."""
     # REQ-879: consistency tier is a closed set — reject anything else loudly (no silent default).
@@ -362,6 +365,9 @@ def _sync_view_mv(
         consistency=consistency,  # REQ-879
         preprocess=preprocess,  # REQ-957
         bitemporal=bitemporal,  # REQ-1162
+        persist=persist,  # REQ-965
+        primary_key=list(primary_key or []),  # REQ-970
+        incremental=incremental,  # REQ-969
     )
     state.mv_registry.register(mv)
 
