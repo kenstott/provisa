@@ -48,6 +48,9 @@ class Node:  # REQ-1160
     column: str
     relation: str | None  # source/intermediate relation name; None for a bare output column
     kind: str  # "source" | "derived" | "command"
+    # REQ-1161: True when this node's relation is materialized (an MV / CTAS snapshot). A cycle that
+    # crosses a materialized node is a legal time-lagged feedback loop, not a design error.
+    materialized: bool = False
 
 
 @dataclass
@@ -80,7 +83,13 @@ class LineageGraph:  # REQ-1160
         """Serialize to a render-ready graph JSON (nodes + edges + outputs) — the API/UI payload."""
         return {
             "nodes": [
-                {"id": n.id, "column": n.column, "relation": n.relation, "kind": n.kind}
+                {
+                    "id": n.id,
+                    "column": n.column,
+                    "relation": n.relation,
+                    "kind": n.kind,
+                    "materialized": n.materialized,
+                }
                 for n in self.nodes.values()
             ],
             "edges": [
