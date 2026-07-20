@@ -98,15 +98,25 @@ def _describe_scheduled(policy) -> str:
 
 
 def describe_refresh_policy(
-    source: Source, table: Table, engine: FederationEngine
+    source: Source, table: Table, engine: FederationEngine, default_ttl: int = 300
 ) -> PolicySummary:
     """Derive the plain-English refresh-policy summary for one (source, table, engine) (REQ-1143).
 
     Mirrors the planner's decision tree exactly; every branch below is the effective outcome, not a
     restatement of the raw knobs. The two no-refresh-policy warnings are the SAME condition
-    resolving differently by engine-specific reachability (REQ-1141 boundary)."""
+    resolving differently by engine-specific reachability (REQ-1141 boundary).
+
+    ``default_ttl`` is the global response-cache TTL (``state.response_cache_default_ttl``). It is the
+    read-through refresh cadence a table gets when it sets no explicit ``cache_ttl`` — the SAME chain
+    the Effective-TTL column resolves (table → source → global). Without it the summary called an
+    inheriting API/materialized table "frozen" while the query path actually refetched every
+    ``default_ttl`` seconds."""
     policy = resolve_refresh_policy(source, table)
     live = _live_reachable(source, engine)
+
+    # The effective read-through TTL: explicit cache_ttl (table→source, == policy.cadence) else the
+    # global default. <= 0 means caching is disabled (never re-fetched from the cache path).
+    eff_ttl = policy.cadence if policy.cadence is not None else default_ttl
 
     # 1. Load-protected + armed → scheduler-only refresh, zero query-path load.
     if policy.load_protected and policy.armed:
@@ -129,9 +139,15 @@ def describe_refresh_policy(
     if not prefer:
         if live:
             return PolicySummary("Live — reached directly, always fresh.", Serving.LIVE)
-        # Unreachable live, not forced to materialize, no cadence: served from the store as loaded.
+        # Not live-reachable and not forced to materialize: served through the response cache, which
+        # re-fetches on access once older than the effective TTL (frozen only if caching is disabled).
+        if eff_ttl > 0:
+            return PolicySummary(
+                f"Cached — re-fetched on access when older than {_fmt_cadence(eff_ttl)}.",
+                Serving.CACHE,
+            )
         return PolicySummary(
-            "Snapshot — loaded on first access, no automatic refresh configured.",
+            "Snapshot — loaded on first access, never re-fetched (caching disabled).",
             Serving.FROZEN,
         )
 

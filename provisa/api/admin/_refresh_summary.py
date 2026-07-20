@@ -73,6 +73,10 @@ async def _summarize(
     if engine is None:
         return None  # engine not connected yet (startup) — field is nullable by contract
 
+    from provisa.api.app import state
+
+    default_ttl = getattr(state, "response_cache_default_ttl", 300)
+
     source = await _load_source(source_id)
     tbl = Table(
         source_id=source_id,
@@ -87,7 +91,7 @@ async def _summarize(
         off_peak_tz=off_peak_tz,
         change_signal=change_signal,
     )
-    summary = describe_refresh_policy(source, tbl, engine)
+    summary = describe_refresh_policy(source, tbl, engine, default_ttl)
     return RefreshPolicySummaryType(
         text=summary.text, serving=summary.serving.value, warning=summary.warning
     )

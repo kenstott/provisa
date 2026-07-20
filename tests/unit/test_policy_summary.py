@@ -86,6 +86,22 @@ def test_prefer_materialized_no_policy_on_unreachable_warns_frozen():
     assert "never refreshes" in r.text
 
 
+def test_unreachable_no_prefer_inherits_global_ttl_cache():
+    # openapi is not live-reachable and not prefer_materialized; with no explicit cache_ttl it still
+    # refetches on the global response-cache TTL, so it is CACHE, not FROZEN (REQ-1143 accuracy fix).
+    s = _src("api", SourceType.openapi, base_url="http://x")
+    r = describe_refresh_policy(s, _tbl("api"), build_trino_engine(), default_ttl=300)
+    assert r.serving is Serving.CACHE
+    assert "5m" in r.text and r.warning is None
+
+
+def test_unreachable_no_prefer_caching_disabled_is_frozen():
+    s = _src("api", SourceType.openapi, base_url="http://x")
+    r = describe_refresh_policy(s, _tbl("api"), build_trino_engine(), default_ttl=0)
+    assert r.serving is Serving.FROZEN
+    assert "caching disabled" in r.text
+
+
 def test_reachability_is_engine_specific():
     # csv SCANs live on DuckDB (file_native) but is unreachable-live on a Trino build without a csv
     # connector — the SAME source's summary differs per engine (REQ-1143/REQ-826).
