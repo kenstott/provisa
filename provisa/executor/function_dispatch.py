@@ -152,8 +152,12 @@ async def _grpc_call(
 # --------------------------------------------------------------------------- #
 
 
-async def _materialize_relation(ref: str, state) -> dict:
-    """Eagerly materialize a referenced relation to an Arrow-compatible batch (result_set)."""
+async def _materialize_relation(ref: str, state, columns: list[str] | None = None) -> dict:
+    """Eagerly materialize a referenced relation to an Arrow-compatible batch (result_set).
+
+    REQ-1159: when the arg declares an input column contract, project ONLY those columns (a narrow
+    input keeps the taint-closure lineage tight and satisfies the contract exactly — a ``SELECT *``
+    would carry extra columns the contract rejects). No contract ⇒ full ``SELECT *``."""
     parts = ref.split(".")
     if len(parts) < _QUALIFIED_REF_PARTS:
         raise HTTPException(
@@ -163,7 +167,8 @@ async def _materialize_relation(ref: str, state) -> dict:
     src_id, schema, table = parts[0], parts[1], parts[2]
     if not state.source_pools.has(src_id):
         raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
-    sql = f'SELECT * FROM "{schema}"."{table}"'
+    projection = ", ".join(f'"{c}"' for c in columns) if columns else "*"
+    sql = f'SELECT {projection} FROM "{schema}"."{table}"'
     result = await state.source_pools.execute(src_id, sql, [])
     from provisa.executor.serialize import _convert_value
 
@@ -201,8 +206,21 @@ def _validate_against(rows: list[dict], schema, *, where: str) -> list[dict]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+def _bind_arg_names(fn: dict, args: dict) -> dict:
+    """Bind positional args (``a0``, ``a1`` …, as the SQL surfaces pass them) to the declared argument
+    NAMES, so arg_kind / column-contract resolution (keyed by name) applies. A named-arg mapping (the
+    GraphQL path) passes through unchanged. Without this a positional ``result_set`` ref is mistaken
+    for a scalar and never materialized (REQ-1159)."""
+    declared = [a["name"] for a in fn.get("arguments") or []]
+    keys = list(args)
+    if declared and keys and all(k == f"a{i}" for i, k in enumerate(keys)):
+        return {declared[i]: v for i, v in enumerate(args.values()) if i < len(declared)}
+    return args
+
+
 async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
     """Prepare a hosted-function payload by relation-argument kind; collect input refs."""
+    args = _bind_arg_names(fn, args)
     kinds = _arg_kinds(fn)
     columns_by_arg = {a["name"]: a.get("columns") for a in fn.get("arguments") or []}
     payload: dict = {}
@@ -218,8 +236,10 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
             payload[name] = {"kind": "table_ref", "ref": value}
             input_refs.append(str(value))
         elif kind == "result_set":  # eager: materialize referenced relation to Arrow
-            materialized = await _materialize_relation(str(value), state)
-            schema = _schema_from_columns(columns_by_arg.get(name))
+            declared = columns_by_arg.get(name)
+            col_names = [c["name"] for c in declared] if declared else None
+            materialized = await _materialize_relation(str(value), state, col_names)
+            schema = _schema_from_columns(declared)
             if schema is not None:  # REQ-1159: enforce the declared input dataset contract, fail-loud
                 materialized["rows"] = _validate_against(
                     materialized["rows"], schema, where=f"command {fn.get('name')!r} input {name!r}"

@@ -95,13 +95,18 @@ def _literal(node: exp.Expression):
     return node.sql()
 
 
+# sqlglot dialect name -> SQLAlchemy dialect name for to_physical (they diverge: sqlglot 'postgres'
+# is SQLAlchemy 'postgresql'). Same-named dialects (duckdb, mysql, sqlite) fall through unchanged.
+_SA_DIALECT: dict[str, str] = {"postgres": "postgresql"}
+
+
 def _cast_sql(value, ir_type: str | None, dialect: str) -> str:
     """A single VALUES cell rendered as SQL, cast to its IR type's physical form when known so the
     inline relation's column types are pinned (not left to the engine's literal inference)."""
     lit = _render_literal(value)
     if ir_type is None:
         return lit
-    return f"CAST({lit} AS {to_physical(ir_type, dialect)})"
+    return f"CAST({lit} AS {to_physical(ir_type, _SA_DIALECT.get(dialect, dialect))})"
 
 
 def _render_literal(value) -> str:

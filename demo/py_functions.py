@@ -43,3 +43,24 @@ def random_dataset(payload: dict[str, Any], _session: Any) -> list[dict[str, Any
         }
         for i in range(1, n + 1)
     ]
+
+
+def enrich_orders(payload: dict[str, Any], _session: Any) -> list[dict[str, Any]]:
+    """ENRICH a relation (REQ-1159): take the materialized result_set input dataset and return only
+    DERIVED columns per row — {id, score, region_label}. In-process (python impl_kind), so no external
+    service; deterministic so a composed-command E2E is reproducible. Proves inline command
+    composition through the real server: Provisa materializes the referenced relation, validates it
+    against the declared input contract, runs this transform, validates the output contract, and
+    substitutes the result as a local relation joined against the outer query."""
+    relation = next(
+        (v for v in payload.values() if isinstance(v, dict) and v.get("kind") == "result_set"),
+        None,
+    )
+    if relation is None:
+        raise ValueError("enrich_orders expects a result_set relation argument (arg_kind: result_set)")
+    out: list[dict[str, Any]] = []
+    for row in relation.get("rows") or []:
+        # deterministic score derived from id; region_label derived from region (field derivation)
+        score = round(((int(row["id"]) * 37) % 100) / 100.0, 2)
+        out.append({"id": int(row["id"]), "score": score, "region_label": f"R-{row['region']}"})
+    return out

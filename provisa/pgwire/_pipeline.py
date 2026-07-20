@@ -297,10 +297,12 @@ async def _govern_and_route(
 
     exec_params = embedded_params or None
 
-    # REQ-1159: a localized statement carries an inline local relation (VALUES / registered) that
-    # cannot be pushed to a single remote source — force the federation (engine) route, which pulls
-    # every input local and joins the command output against the rest.
-    if _localized or decision.route == Route.ENGINE:
+    # REQ-1159: a localized statement carries an inline local relation as a VALUES list, which rides
+    # along on whichever route the router picks — DIRECT inlines the VALUES into the single source's
+    # SQL (the source executes it), and a genuinely cross-source statement is detected and routed to
+    # the engine by decide_route as usual. So the localizer does NOT force a route; it lets routing
+    # decide, which keeps a single-source composed query on the source instead of the org store.
+    if decision.route == Route.ENGINE:
         _known_cats_pgwire = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
             "otel",
