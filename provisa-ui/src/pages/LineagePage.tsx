@@ -12,9 +12,12 @@
 // (command boundaries spliced continuous to source columns, transforms named), or load the
 // federation-wide provenance graph over every view/MV with cycles characterized.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Alert, Badge, Button, Group, Paper, Stack, Text, Textarea, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, Input, Paper, Stack, Text, Title } from "@mantine/core";
+import CodeMirror from "@uiw/react-codemirror";
+import { sql as sqlLang, PostgreSQL } from "@codemirror/lang-sql";
+import { EditorView } from "@codemirror/view";
 import { LineageDag } from "../components/lineage/LineageDag";
 import { fetchLineageGraph, fetchFederationGraph } from "../api/lineage";
 import type { LineageGraphData } from "../api/lineage";
@@ -89,6 +92,10 @@ export function LineagePage(): React.ReactElement {
   }, []);
 
   const cycles = graph?.cycles ?? [];
+  const sqlExtensions = useMemo(
+    () => [sqlLang({ dialect: PostgreSQL }), EditorView.lineWrapping],
+    [],
+  );
 
   return (
     <Stack p="md" gap="md">
@@ -99,15 +106,24 @@ export function LineagePage(): React.ReactElement {
         "what feeds this column?" before you publish a view or command. Or choose{" "}
         <b>Complete Lineage</b> to see provenance across every registered view and dataset at once.
       </Text>
-      <Textarea
+      <Input.Wrapper
         label="Query to analyze"
         description="Any SELECT that reads your registered tables, views, or commands. This query is only analyzed, never run — nothing is executed and no data is read."
-        value={sql}
-        onChange={(e) => setSql(e.currentTarget.value)}
-        autosize
-        minRows={3}
-        data-testid="lineage-sql"
-      />
+      >
+        <div
+          data-testid="lineage-sql"
+          style={{ border: "1px solid var(--mantine-color-default-border)", borderRadius: 4, marginTop: 4 }}
+        >
+          <CodeMirror
+            value={sql}
+            onChange={setSql}
+            extensions={sqlExtensions}
+            minHeight="72px"
+            basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
+            style={{ fontSize: "0.85rem" }}
+          />
+        </div>
+      </Input.Wrapper>
       <Group>
         <Button onClick={() => run(() => fetchLineageGraph(sql))} loading={loading} data-testid="lineage-build">
           Statement Lineage

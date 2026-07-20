@@ -143,6 +143,26 @@ def test_router_core_splices_commands():
     assert kinds.get("main.public.orders.region") == "source"
 
 
+def test_statement_selecting_a_view_column_stitches_to_its_lineage():
+    # REQ-1161: selecting an individual column from a view traces THROUGH the view to base sources —
+    # the view reference (bare 'test') requalifies to 'pet_store.test' and stitches to the view's
+    # output node, not a disconnected leaf.
+    from provisa.api.admin.lineage_router import lineage_graph_for
+
+    view_sql = (
+        "SELECT users.name, COUNT(inquiries.id) AS inquiry_count "
+        'FROM "default"."users" JOIN "default"."inquiries" ON users.id = inquiries.user_id '
+        "GROUP BY users.name"
+    )
+    views = [("pet_store.test", view_sql)]
+    g = lineage_graph_for('SELECT name FROM "pet_store"."test"', {}, views=views)
+    edges = {(e["source"], e["target"]) for e in g["edges"]}
+    # users.name → pet_store.test.name → name : one connected chain, no orphan 'test.name'.
+    assert ("users.name", "pet_store.test.name") in edges
+    assert ("pet_store.test.name", "name") in edges
+    assert not any(n["relation"] == "test" for n in g["nodes"])
+
+
 def test_registry_views_uses_user_facing_names_marking_materialized():
     # REQ-1161: the graph spans EVERY registered view, named by its USER-FACING relation
     # <domain>.<table> (semantic SQL) — never the physical materialized target. The MV registry only

@@ -68,6 +68,10 @@ def lineage_graph_for(
     referenced = [(rel, view_map[rel]) for rel in _referenced_relations(sql, dialect) if rel in view_map]
     if not referenced:
         return stmt.to_dict()
+    # The statement graph names a ``schema.table`` reference by its bare table (sqlglot drops the
+    # schema), so ``pet_store.test`` becomes ``test`` and would NOT match the view's qualified output
+    # node. Requalify those refs to the full relation first, so the stitch lands.
+    _requalify_view_refs(stmt, {rel for rel, _ in referenced})
     # Expand each referenced view to its own lineage (down to base sources), then stitch the statement
     # on top: a view's output node ``<schema>.<table>.<col>`` shares the id the statement reads it by,
     # so merge_graphs connects them. A ``SELECT *`` (empty statement graph) simply yields the view's
@@ -76,6 +80,28 @@ def lineage_graph_for(
         referenced, commands=commands or {}, materialized_relations=materialized or set()
     )
     return merge_graphs([fed.graph, stmt]).to_dict()
+
+
+def _requalify_view_refs(graph, view_relations: set[str]) -> None:
+    """Rename statement source nodes that reference a view by its bare table name to the view's full
+    ``<schema>.<table>`` relation, so they share the id of the view's output node and stitch on merge.
+    Mutates ``graph`` in place (node ids, relations, edge endpoints, outputs)."""
+    bare_to_full = {rel.split(".")[-1]: rel for rel in view_relations}
+    rename: dict[str, str] = {}
+    for node in list(graph.nodes.values()):
+        full = bare_to_full.get(node.relation)
+        if full and node.relation != full:
+            new_id = f"{full}.{node.column}"
+            rename[node.id] = new_id
+            node.id = new_id
+            node.relation = full
+    if not rename:
+        return
+    graph.nodes = {n.id: n for n in graph.nodes.values()}
+    for e in graph.edges:
+        e.source = rename.get(e.source, e.source)
+        e.target = rename.get(e.target, e.target)
+    graph.outputs = [rename.get(o, o) for o in graph.outputs]
 
 
 @router.post("/admin/lineage/graph")
