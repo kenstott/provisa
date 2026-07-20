@@ -76,6 +76,25 @@ class LineageGraph:  # REQ-1160
     def add_edge(self, edge: Edge) -> None:
         self.edges.append(edge)
 
+    def to_dict(self) -> dict:
+        """Serialize to a render-ready graph JSON (nodes + edges + outputs) — the API/UI payload."""
+        return {
+            "nodes": [
+                {"id": n.id, "column": n.column, "relation": n.relation, "kind": n.kind}
+                for n in self.nodes.values()
+            ],
+            "edges": [
+                {
+                    "source": e.source,
+                    "target": e.target,
+                    "transform": e.transform,
+                    "ops": [{"name": o.name, "kind": o.kind} for o in e.ops],
+                }
+                for e in self.edges
+            ],
+            "outputs": list(self.outputs),
+        }
+
 
 # --------------------------------------------------------------------------- #
 # Transform naming — match ops against SQL / built-in / command vocabularies.  #

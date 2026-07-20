@@ -109,3 +109,34 @@ def test_shared_intermediate_is_one_node():
     g = build_column_graph(sql)
     assert "t.amt" in g.nodes
     assert ("t.amt", "a") in _edges(g) and ("t.amt", "b") in _edges(g)
+
+
+def test_to_dict_is_render_ready():
+    g = build_column_graph("SELECT o.amount * 2 AS x FROM orders o")
+    d = g.to_dict()
+    assert set(d) == {"nodes", "edges", "outputs"}
+    assert {"id", "column", "relation", "kind"} <= set(d["nodes"][0])
+    edge = next(e for e in d["edges"] if e["target"] == "x")
+    assert {"source", "target", "transform", "ops"} <= set(edge)
+    assert any(o["kind"] == "operator" for o in edge["ops"])
+
+
+def test_router_core_bad_sql_raises_valueerror():
+    from provisa.api.admin.lineage_router import lineage_graph_for
+
+    import pytest
+
+    with pytest.raises(ValueError, match="could not parse"):
+        lineage_graph_for("NOT ((( valid", {})
+
+
+def test_router_core_splices_commands():
+    from provisa.api.admin.lineage_router import lineage_graph_for
+
+    g = lineage_graph_for(
+        "SELECT e.embedding FROM orders o JOIN enrich('main.public.orders') e ON o.id = e.id",
+        _ENRICH,
+    )
+    kinds = {n["id"]: n["kind"] for n in g["nodes"]}
+    assert kinds.get("e.embedding") == "command"
+    assert kinds.get("main.public.orders.region") == "source"
