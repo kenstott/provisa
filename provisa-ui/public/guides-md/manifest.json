@@ -1,0 +1,117 @@
+[
+  {
+    "slug": "readme",
+    "title": "Overview",
+    "repoPath": "README.md"
+  },
+  {
+    "slug": "quickstart",
+    "title": "Quick Start",
+    "repoPath": "docs/quickstart.md"
+  },
+  {
+    "slug": "configuration",
+    "title": "Configuration",
+    "repoPath": "docs/configuration.md"
+  },
+  {
+    "slug": "deployment",
+    "title": "Deployment",
+    "repoPath": "docs/deployment.md"
+  },
+  {
+    "slug": "api-reference",
+    "title": "API Reference",
+    "repoPath": "docs/api-reference.md"
+  },
+  {
+    "slug": "cypher",
+    "title": "Cypher",
+    "repoPath": "docs/cypher.md"
+  },
+  {
+    "slug": "subscriptions",
+    "title": "Subscriptions",
+    "repoPath": "docs/subscriptions.md"
+  },
+  {
+    "slug": "integrations",
+    "title": "Integrations (JDBC, BI, Flight)",
+    "repoPath": "docs/integrations.md"
+  },
+  {
+    "slug": "pgwire",
+    "title": "pgwire",
+    "repoPath": "docs/pgwire.md"
+  },
+  {
+    "slug": "sources",
+    "title": "Sources",
+    "repoPath": "docs/sources.md"
+  },
+  {
+    "slug": "remote-schemas",
+    "title": "Remote Schemas",
+    "repoPath": "docs/remote-schemas.md"
+  },
+  {
+    "slug": "import",
+    "title": "Import (Hasura / DDN)",
+    "repoPath": "docs/import.md"
+  },
+  {
+    "slug": "security",
+    "title": "Security Model",
+    "repoPath": "docs/security.md"
+  },
+  {
+    "slug": "multitenant",
+    "title": "Multitenancy",
+    "repoPath": "docs/multitenant.md"
+  },
+  {
+    "slug": "python-client",
+    "title": "Python Client",
+    "repoPath": "docs/python-client.md"
+  },
+  {
+    "slug": "admin",
+    "title": "Admin API",
+    "repoPath": "docs/admin.md"
+  },
+  {
+    "slug": "releasing",
+    "title": "Releasing",
+    "repoPath": "docs/releasing.md"
+  },
+  {
+    "slug": "architecture",
+    "title": "Architecture: Overview",
+    "repoPath": "docs/architecture.md"
+  },
+  {
+    "slug": "arch-requirements",
+    "title": "Requirements",
+    "repoPath": "docs/arch/requirements.md"
+  },
+  {
+    "slug": "arch-graph",
+    "title": "Graph Model",
+    "repoPath": "docs/arch/graph.md"
+  },
+  {
+    "slug": "arch-fdw_catalog",
+    "title": "FDW Catalog",
+    "repoPath": "docs/arch/fdw_catalog.md"
+  },
+  {
+    "slug": "arch-vectors",
+    "title": "Vectors",
+    "repoPath": "docs/arch/vectors.md"
+  },
+  {
+    "slug": "arch-change-signal-unification",
+    "title": "Change Signal Unification",
+    "repoPath": "docs/arch/change-signal-unification.md"
+  }
+]

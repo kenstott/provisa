@@ -94,7 +94,25 @@ def build_mcp_server(state: Any):
     may omit it and the pinned PROVISA_MCP_ROLE is used; a remote HTTP caller's
     role is derived from its bearer token by the transport layer and passed in.
     """
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.fastmcp import Context, FastMCP
+
+    # ``from __future__ import annotations`` stringizes the ``ctx: Context`` annotation on the
+    # run_sql tool; FastMCP evaluates tool annotations against the module globals, so expose Context
+    # there (the import is deferred to keep ``mcp`` optional at module import time).
+    globals()["Context"] = Context
+
+    async def _emit_mcp_nag(ctx: Context) -> None:
+        """Emit the REQ-1137 license nag once per session as an MCP notifications/message (an
+        out-of-band log notification — never part of a tool result). Best-effort; never fails a call."""
+        try:
+            from provisa.licensing import emit as _lic_emit
+
+            key = f"mcp:{getattr(ctx, 'client_id', None) or id(getattr(ctx, 'session', ctx))}"
+            msg = _lic_emit.nag_for_connection(key)
+            if msg:
+                await ctx.info(msg.replace("\n", " "))
+        except Exception:
+            log.debug("MCP license nag emission skipped", exc_info=True)
 
     mcp = FastMCP(
         "provisa",
@@ -139,12 +157,15 @@ def build_mcp_server(state: Any):
     @mcp.tool()
     async def run_sql(
         sql: str,
+        ctx: Context,
         role: str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> dict:
         """Execute SQL through the governed pipeline; returns row-capped JSON rows."""
-        return await tools.run_sql(state, _role(role), sql, limit=limit, offset=offset)
+        result = await tools.run_sql(state, _role(role), sql, limit=limit, offset=offset)
+        await _emit_mcp_nag(ctx)  # REQ-1137: out-of-band license nag, once per session
+        return result
 
     @mcp.tool()
     async def explain_sql(sql: str, role: str | None = None) -> dict:

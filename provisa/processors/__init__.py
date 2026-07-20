@@ -26,6 +26,7 @@ from provisa.processors.contract import (
     TransportAdapter,
     validate_rows,
 )
+from provisa.processors.factory import build_adapter
 from provisa.processors.framing import ndjson_decode, ndjson_encode
 from provisa.processors.grpc import GrpcAdapter
 from provisa.processors.http import HttpAdapter
@@ -34,6 +35,7 @@ from provisa.processors.shell import ProcessorError, ShellAdapter
 __all__ = [
     "Field",
     "GrpcAdapter",
+    "build_adapter",
     "HttpAdapter",
     "ProcessorError",
     "Schema",

@@ -111,6 +111,22 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return typed_command_handler
         raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
 
+    def _emit_license_nag(self, context) -> None:
+        """Attach the REQ-1137 license nag to the RPC's trailing metadata, once per peer.
+
+        Trailing metadata is an out-of-band channel — the response messages/stream are untouched.
+        Best-effort: a failure never affects the RPC."""
+        try:
+            from provisa.licensing import emit as _lic_emit
+
+            text = _lic_emit.nag_for_connection(f"grpc:{context.peer()}")
+            if text:
+                context.set_trailing_metadata(
+                    (("x-provisa-license-notice", text.replace("\n", " ")),)
+                )
+        except Exception:
+            log.debug("gRPC license nag emission skipped", exc_info=True)
+
     def _resolve_command_rpc(self, cmd_pascal: str) -> str | None:
         """Reverse the Call{Cmd} RPC name to the registered command name (REQ-1156).
 
@@ -154,6 +170,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return
+        self._emit_license_nag(context)  # REQ-1137
         if fn.get("kind") == "mutation":
             return self._pb2.MutationResponse(affected_rows=len(rows))
         return self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
@@ -237,6 +254,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return
 
+        self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
         # Stream rows as proto messages, mapping result column names to proto fields by the same key
         # (governance may re-case or alias a column).
         _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}

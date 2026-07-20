@@ -185,3 +185,34 @@ def test_all_adapters_share_one_contract():
     for a in adapters:
         assert isinstance(a, TransportAdapter)
         assert list(a.process(rows, schema_in=SCHEMA, schema_out=SCHEMA)) == rows
+
+
+# ------------------------------------------------------- factory
+
+
+def test_build_adapter_shell():
+    from provisa.processors import build_adapter
+
+    a = build_adapter({"transport": "shell", "argv": ["/bin/cat"]})
+    assert isinstance(a, ShellAdapter)
+
+
+def test_build_adapter_http():
+    from provisa.processors import build_adapter
+
+    a = build_adapter({"transport": "http", "url": "https://p/x"})
+    assert isinstance(a, HttpAdapter)
+
+
+def test_build_adapter_unknown_transport_fails_loud():
+    from provisa.processors import build_adapter
+
+    with pytest.raises(ValueError, match="unknown processor transport"):
+        build_adapter({"transport": "carrier-pigeon"})
+
+
+def test_build_adapter_shell_requires_argv():
+    from provisa.processors import build_adapter
+
+    with pytest.raises(ValueError, match="non-empty 'argv'"):
+        build_adapter({"transport": "shell"})

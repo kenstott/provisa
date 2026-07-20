@@ -257,3 +257,79 @@ def test_emit_no_nag_when_licensed():
     assert not emit.should_nag()
     assert emit.nag_for_connection("c1") is None
     emit.set_state(None)
+
+
+# ------------------------------------------------------- REQ-1137 per-surface channels
+
+
+def test_bolt_success_metadata_notification(monkeypatch):
+    from provisa.bolt.session import BoltSession
+    from provisa.licensing import emit
+
+    emit.set_state(_expired_state())
+    sess = BoltSession(writer=object(), bolt_version=(5, 4))
+    note = sess._license_nag_notification()
+    assert note is not None
+    assert note["severity"] == "WARNING"
+    assert MID in note["description"]
+    assert sess._license_nag_notification() is None  # once per connection
+    emit.set_state(None)
+
+
+def test_grpc_trailing_metadata_nag(monkeypatch):
+    from provisa.grpc.server import ProvisaServicer
+    from provisa.licensing import emit
+
+    emit.set_state(_expired_state())
+    captured = {}
+
+    class _Ctx:
+        def peer(self):
+            return "ipv4:1.2.3.4:5"
+
+        def set_trailing_metadata(self, md):
+            captured["md"] = md
+
+    servicer = ProvisaServicer(state=object(), pb2_module=object(), pb2_grpc_module=object())
+    servicer._emit_license_nag(_Ctx())
+    assert captured["md"][0][0] == "x-provisa-license-notice"
+    assert MID in captured["md"][0][1]
+    emit.set_state(None)
+
+
+def test_flight_license_stream_attaches_app_metadata(monkeypatch):
+    import pyarrow as pa
+
+    from provisa.api.flight.server import ProvisaFlightServer
+    from provisa.licensing import emit
+
+    emit.set_state(_expired_state())
+    # build the server object without opening a port
+    srv = ProvisaFlightServer.__new__(ProvisaFlightServer)
+    table = pa.table({"a": [1, 2]})
+    stream = srv._license_stream(table, "analyst")
+    # nagging → a GeneratorStream (carries app_metadata), not a plain RecordBatchStream
+    import pyarrow.flight as flight
+
+    assert isinstance(stream, flight.GeneratorStream)
+    emit.set_state(None)
+    # not nagging → plain RecordBatchStream
+    stream2 = srv._license_stream(table, "analyst")
+    assert isinstance(stream2, flight.RecordBatchStream)
+
+
+def test_pgwire_notice_frame_encoding():
+    import io
+    import struct
+
+    from provisa.pgwire.server import ProvisaHandler
+
+    h = ProvisaHandler.__new__(ProvisaHandler)
+    h.wfile = io.BytesIO()
+    h._send_pg_notice("trial expired")
+    data = h.wfile.getvalue()
+    assert data[:1] == b"N"  # NoticeResponse frame tag
+    length = struct.unpack("!i", data[1:5])[0]
+    assert length == len(data) - 1
+    assert b"trial expired" in data
+    assert b"NOTICE" in data

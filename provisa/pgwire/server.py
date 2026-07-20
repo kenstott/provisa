@@ -330,6 +330,36 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.wfile.write(out)
         self.wfile.flush()
 
+    def _send_pg_notice(self, message: str) -> None:
+        """Send a NoticeResponse (a non-fatal, out-of-band message) — never touches result rows."""
+        buf = BVBuffer()
+        for field, value in (
+            (b"S", "NOTICE"),
+            (b"V", "NOTICE"),
+            (b"C", "01000"),  # SQLSTATE warning class
+            (b"M", message),
+        ):
+            buf.write_bytes(field)
+            buf.write_string(value)
+        buf.write_bytes(b"\x00")
+        out = buf.get_value()
+        self.wfile.write(struct.pack("!ci", ServerResponse.NOTICE_RESPONSE, len(out) + 4))
+        self.wfile.write(out)
+        self.wfile.flush()
+
+    def handle_post_auth(self, ctx):  # type: ignore[override]
+        """After a successful auth, emit the REQ-1137 license nag once per connection as a
+        NoticeResponse (out-of-band; the query results are never modified or gated)."""
+        super().handle_post_auth(ctx)
+        try:
+            from provisa.licensing import emit as _lic_emit
+
+            text = _lic_emit.nag_for_connection(f"pgwire:{getattr(ctx, 'process_id', id(ctx))}")
+            if text:
+                self._send_pg_notice(text.replace("\n", " "))
+        except Exception:  # nag must never break a connection (REQ-1137)
+            log.debug("pgwire license nag emission skipped", exc_info=True)
+
     def handle_startup(self, conn: Connection) -> Optional[BVContext]:  # type: ignore[override]
         msglen = self.r.read_uint32() - 4
         code = self.r.read_uint32()

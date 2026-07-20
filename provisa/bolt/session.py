@@ -304,7 +304,33 @@ class BoltSession:
 
         in_tx = self.state in (State.TX_READY, State.TX_STREAMING)
         self.state = State.TX_STREAMING if in_tx else State.STREAMING
-        self.send_success({"fields": columns, "t_first": 0})
+        meta: dict = {"fields": columns, "t_first": 0}
+        note = self._license_nag_notification()  # REQ-1137
+        if note is not None:
+            meta["notifications"] = [note]
+        self.send_success(meta)
+
+    def _license_nag_notification(self) -> dict | None:
+        """The REQ-1137 license nag as a Bolt SUCCESS-metadata notification, once per connection.
+
+        Returned in the RUN SUCCESS ``notifications`` field — an out-of-band advisory channel that
+        Neo4j clients surface without touching the record stream. None when not nagging / already
+        emitted for this connection."""
+        try:
+            from provisa.licensing import emit as _lic_emit
+
+            text = _lic_emit.nag_for_connection(f"bolt:{id(self)}")
+        except Exception:  # nag must never break a session (REQ-1137)
+            return None
+        if not text:
+            return None
+        return {
+            "code": "Provisa.License.TrialExpired",
+            "severity": "WARNING",
+            "category": "GENERIC",
+            "title": "Provisa license",
+            "description": text.replace("\n", " "),
+        }
 
     def handle_pull(self, fields: list[Any]) -> None:
         if self.state == State.FAILED:

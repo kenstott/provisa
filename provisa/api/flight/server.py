@@ -544,10 +544,34 @@ class ProvisaFlightServer(
             return self._do_get_sql_governed(request)
         return self._do_get_graphql(request)
 
+    def _license_stream(self, table: "pa.Table", role_id: str):  # REQ-1137
+        """Return a Flight stream for ``table``, attaching the license nag as app_metadata on the
+        first batch when nagging (out-of-band — the row data is untouched). Once per role/session."""
+        try:
+            from provisa.licensing import emit as _lic_emit
+
+            text = _lic_emit.nag_for_connection(f"flight:{role_id}")
+        except Exception:
+            text = None
+        if not text:
+            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        meta = pa.py_buffer(text.replace("\n", " ").encode("utf-8"))
+
+        def _gen():
+            first = True
+            for batch in table.to_batches():
+                if first:
+                    first = False
+                    yield (batch, meta)  # app_metadata rides the first chunk
+                else:
+                    yield batch
+
+        return flight.GeneratorStream(table.schema, _gen())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
     def _do_get_sql_governed(
         self, request: dict[str, object]
     ) -> (
-        flight.RecordBatchStream
+        flight.RecordBatchStream | flight.GeneratorStream
     ):  # REQ-267, REQ-266  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute SQL through the shared governance pipeline and return Arrow record batches."""
         from provisa.compiler.sql_gen import ColumnRef
@@ -569,7 +593,7 @@ class ProvisaFlightServer(
                 for c in fn_result.column_names
             ]
             table = rows_to_arrow_table(fn_result.rows, columns)
-            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return self._license_stream(table, role_id)  # REQ-1137
 
         try:
             plan = asyncio.run_coroutine_threadsafe(
@@ -588,7 +612,7 @@ class ProvisaFlightServer(
                 table = self._state.federation_engine.execute_engine_arrow(plan.physical_sql, [])
             except RuntimeError as exc:
                 raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return self._license_stream(table, role_id)  # REQ-1137
         elif plan.route == Route.DIRECT:
             result = asyncio.run_coroutine_threadsafe(
                 self._state.federation_engine.execute_native(
@@ -604,7 +628,7 @@ class ProvisaFlightServer(
                 for c in result.column_names
             ]
             table = rows_to_arrow_table(result.rows, columns)
-            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return self._license_stream(table, role_id)  # REQ-1137
         else:
             raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 f"Route {plan.route!r} is not supported for SQL via Flight"

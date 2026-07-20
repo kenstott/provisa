@@ -1,0 +1,267 @@
+# Graph Analytics — Architecture
+
+## Overview
+
+Graph analytics runs as a server-side Python pipeline. REQ-642 The browser submits a Cypher query and an algorithm name; the backend executes the query, builds an in-memory graph, runs the algorithm via NetworkX or igraph, and returns augmented node/edge data with algorithm output merged into properties. REQ-642
+
+---
+
+## Endpoint
+
+```
+POST /data/graph-analytics
+Content-Type: application/json
+
+{
+  "query": "MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 500",
+  "algorithm": "pagerank",
+  "params": { "alpha": 0.85 }
+}
+```
+
+**Response:**
+```json
+{
+  "nodes": [
+    { "id": "42", "label": "Person", "properties": { "name": "Alice" }, "_analytics": { "score": 0.031, "cluster": 2 } }
+  ],
+  "edges": [...],
+  "algorithm": "pagerank",
+  "elapsed_ms": 142
+}
+```
+
+The `_analytics` object is merged into each node/edge. REQ-643 Keys vary by algorithm (see table below).
+
+---
+
+## Algorithms
+
+| Name | `algorithm` key | Output keys | Library |
+|------|----------------|-------------|---------|
+| PageRank | `pagerank` | `score` | NetworkX |
+| Betweenness centrality | `betweenness` | `score` | NetworkX |
+| Closeness centrality | `closeness` | `score` | NetworkX |
+| Degree centrality | `degree` | `score`, `in_degree`, `out_degree` | NetworkX |
+| Eigenvector centrality | `eigenvector` | `score` | NetworkX |
+| Louvain community detection | `louvain` | `cluster` | `python-louvain` |
+| Leiden community detection | `leiden` | `cluster` | `leidenalg` |
+| Girvan-Newman communities | `girvan_newman` | `cluster` | NetworkX |
+| K-core decomposition | `kcore` | `core_number` | NetworkX |
+| Local clustering coefficient | `clustering` | `score` | NetworkX |
+
+(REQ-643)
+
+---
+
+## Backend Implementation
+
+### Location
+`provisa/api/rest/graph_analytics_router.py`
+
+### Pipeline
+
+```
+POST /data/graph-analytics
+  │
+  ├─ 1. Execute Cypher query → rows via existing cypher_router pipeline
+  │
+  ├─ 2. Extract nodes + edges from rows (reuse extractElements logic)
+  │
+  ├─ 3. Build networkx.DiGraph
+  │      nodes: id → {label, properties}
+  │      edges: (src_id, tgt_id, {type, properties})
+  │
+  ├─ 4. Run algorithm (dispatch table keyed on algorithm name)
+  │
+  ├─ 5. Merge _analytics dict into each node/edge
+  │
+  └─ 6. Return augmented nodes + edges as JSON
+```
+
+### Dependencies
+Add to `pyproject.toml` optional group `[graph]`:
+- `networkx>=3.0`
+- `python-louvain>=0.16` (for Louvain)
+- `leidenalg>=0.10` (for Leiden, requires `igraph`)
+
+### Algorithm dispatch (pseudocode)
+
+```python
+ALGORITHMS = {
+    "pagerank":    lambda G, p: nx.pagerank(G, **p),
+    "betweenness": lambda G, p: nx.betweenness_centrality(G, **p),
+    "closeness":   lambda G, p: nx.closeness_centrality(G, **p),
+    "degree":      lambda G, p: {n: {"score": d, "in_degree": G.in_degree(n), "out_degree": G.out_degree(n)} for n, d in nx.degree_centrality(G).items()},
+    "eigenvector": lambda G, p: nx.eigenvector_centrality_numpy(G, **p),
+    "louvain":     lambda G, p: community.best_partition(G.to_undirected(), **p),
+    "kcore":       lambda G, p: nx.core_number(G),
+    "clustering":  lambda G, p: nx.clustering(G.to_undirected(), **p),
+}
+```
+
+---
+
+## UI Integration
+
+### GraphFrame changes
+- "Analyze" button (⬡▸) in frame header, visible when graph data is present
+- Opens an `AnalyticsPanel` overlay (dropdown of algorithms + param inputs + Run button)
+- On submit: POST to `/data/graph-analytics` with current frame's query + chosen algorithm
+- On response: merge `_analytics` into frame nodes/edges; re-render graph
+
+### Visual encoding
+Node size and color driven by analytics output:
+
+| Output key | Visual mapping |
+|------------|---------------|
+| `score` (centrality) | Node radius scales linearly with score |
+| `cluster` (community) | Node color overridden by cluster ID → PALETTE index |
+| `core_number` | Node opacity by k-core tier |
+
+Cytoscape style functions read `ele.data("_analytics")` at render time.
+
+### State
+`colorOverrides` in `GraphFrame` is extended to support cluster-based coloring:
+```ts
+analyticsOverrides: Record<string, { color?: string; size?: number }>
+// keyed by node id, merged into cytoscape style functions
+```
+
+---
+
+## Node Grouping
+
+### Core Principle
+
+Grouping is a **view transform**, not a data transform. REQ-644 The underlying nodes and edges are unchanged; the rendering layer applies a grouping function `node → groupKey` derived from any attribute. REQ-644 This keeps the model clean and composable across arbitrary attributes — data properties, injected metadata (`domain`), or analytics output (`cluster`).
+
+---
+
+### Attribute Discovery
+
+After any query result or analytics pass, scan all node properties to build a per-label map of groupable attributes (categorical fields: strings, low-cardinality integers). REQ-645 `domain` is always available as a grouping attribute (derived from the node label prefix set by the semantic layer). REQ-645 `cluster` appears after community detection analytics. REQ-645 Schema cluster attributes (`schema_L1`, `schema_L2`, `schema_L3`) are available when schema clustering has run. (REQ-645) All other attributes come from the data itself.
+
+```ts
+// Derived from frame nodes after each result
+type GroupableAttributes = Record<string, string[]>
+// { "Person": ["domain", "industry", "cluster", "country"],
+//   "Company": ["domain", "sector", "cluster", "region"] }
+```
+
+The UI builds the grouping controls dynamically from this map — no hardcoding of attribute names. REQ-645
+
+---
+
+### Grouping State
+
+```ts
+type GroupingEncoding = "color" | "hull" | "ring";
+
+interface GroupingLayer {
+  attribute: string;       // e.g. "domain", "cluster", "country"
+  encoding: GroupingEncoding;
+  colorMap: Record<string, string>; // groupValue → hex color
+}
+
+interface GroupingState {
+  layers: GroupingLayer[];
+  collapsed: Set<string>;  // groupKeys currently collapsed to supernodes
+}
+```
+
+Multiple layers are supported simultaneously, each using a different visual channel (color, hull, ring) to avoid overloading any single encoding.
+
+---
+
+### Rendering Phases
+
+#### Phase 1 — Color encoding + convex hull overlays
+
+One active grouping attribute at a time. The attribute drives two simultaneous encodings:
+
+- **Color**: node `background-color` overridden by `colorMap[node.properties[attribute]]` REQ-646
+- **Hull**: translucent filled SVG ellipse drawn around each group's node positions, labeled with the group value REQ-647
+
+Hulls render in an SVG layer overlaid on the Cytoscape canvas. REQ-647 Node positions are read from `cy.nodes().positions()` after layout stabilizes. REQ-647 Hulls recompute on pan/zoom via a Cytoscape `viewport` event listener. REQ-647
+
+#### Phase 2 — Multiple simultaneous groupings
+
+Each layer in `GroupingState.layers` uses a distinct visual channel:
+
+| Encoding | Implementation |
+|----------|---------------|
+| `color` | Overrides node `background-color` in Cytoscape style function |
+| `hull` | SVG ellipse per group value, drawn on overlay layer |
+| `ring` | Outer `border-color` + thicker `border-width` on node circle |
+
+Only one layer may use `color`; only one may use `ring`. Multiple `hull` layers are permitted (nested/overlapping hulls with different stroke colors).
+
+#### Phase 3 — Collapse groups
+
+A "collapse" toggle per group in the legend. When collapsed: REQ-648
+
+1. All nodes in the group are hidden from view in Cytoscape REQ-648
+2. A synthetic supernode is added representing the group (count badge, group label) REQ-648
+3. Edges to/from hidden members are rewritten to point to/from the supernode REQ-648
+4. Clicking the supernode expands the group and restores original nodes/edges REQ-648
+
+Supernode ids use a reserved prefix to avoid collision with real node ids. REQ-648
+
+---
+
+### UI Control Placement
+
+Grouping controls belong in the **frame header actions bar** inside `gf-header`. The Inspector (right panel) is for selected-item details only — grouping is a frame-level concern.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  [header actions] … ⬡ group [domain ▾]                  │  ← gf-header-actions
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│              Cytoscape canvas                           │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Header actions components:**
+
+- `gf-attr-select` dropdown: populates from discovered groupable attributes for the current frame
+- `GroupLegend`: shows each group value as a colored swatch; each swatch has a collapse toggle (Phase 3)
+
+**Inspector read-only display:** The Inspector panel shows the selected node's group membership as additional read-only fields alongside its other properties (e.g. `domain: Finance`, `cluster: 3`). No controls here.
+
+---
+
+### Component Structure
+
+```
+GraphFrame
+  ├── gf-header (query, view buttons, gf-attr-select grouping dropdown)
+  └── gf-graph-area
+        ├── GraphCanvas (Cytoscape)
+        ├── HullOverlay (SVG)       ← hull ellipses
+        └── Inspector
+```
+
+`GroupingState` is held in `GraphFrame` state and passed down to both `GraphCanvas` (for color encoding) and `HullOverlay` (for SVG hull drawing). REQ-644 `gf-attr-select` receives the `groupableAttributes` map derived from the current frame's nodes. REQ-645
+
+---
+
+### Interaction with Analytics
+
+Analytics output (`_analytics.cluster`, `_analytics.score`) is just more node data. The grouping system treats it identically to any other attribute: REQ-644
+
+- After a community detection run, `cluster` appears in `groupableAttributes` (REQ-643)
+- The user can immediately select "Group by cluster" in the controls bar
+- Nodes are colored and hulled by cluster ID automatically REQ-646
+- Centrality `score` is not groupable (continuous, not categorical) — it drives size encoding instead REQ-649
+
+---
+
+## Constraints
+
+- Max graph size for analytics: 10,000 nodes / 50,000 edges (configurable). REQ-650 Return 413 if exceeded. REQ-650
+- Algorithms run synchronously in the request thread for now. Move to background task if p99 > 5s.
+- Leiden requires `igraph` C extension — document build dependency in `Dockerfile`.
+- Girvan-Newman is O(n³); restrict to graphs < 500 nodes or require explicit `force=true` param. REQ-651
