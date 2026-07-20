@@ -182,7 +182,7 @@ async def test_dq_scorecard_is_an_mv_over_warn_error_emissions(tmp_path):
 
     def warn_hook(rows, ctx):
         ctx.warn("late arrival on order 1")  # REQ-957 advisory → a warn event about the node
-        return rows
+        return ctx.ok()  # REQ-1165: a check returns a verdict, not rows
 
     def error_hook(rows, ctx):
         raise ValueError("schema drift")  # REQ-957 fatal → an error event about the node

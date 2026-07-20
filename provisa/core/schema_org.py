@@ -697,7 +697,7 @@ events = Table(
     Column("payload", JSON, default=dict, server_default="{}"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
-        "event_type IN ('delta','append','replace','warn','error')",
+        "event_type IN ('delta','append','replace','warn','error','quarantine')",
         name="events_event_type_check",
     ),
 )

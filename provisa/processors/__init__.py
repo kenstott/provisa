@@ -19,6 +19,13 @@ streaming, and schema validation; the processor author implements only the row t
 
 from __future__ import annotations
 
+from provisa.processors.arrow import (
+    arrow_decode,
+    arrow_encode,
+    record_batches,
+    rows_of,
+    stream_preflight,
+)
 from provisa.processors.contract import (
     Field,
     Schema,
@@ -42,7 +49,12 @@ __all__ = [
     "SchemaViolation",
     "ShellAdapter",
     "TransportAdapter",
+    "arrow_decode",
+    "arrow_encode",
     "ndjson_decode",
     "ndjson_encode",
+    "record_batches",
+    "rows_of",
+    "stream_preflight",
     "validate_rows",
 ]

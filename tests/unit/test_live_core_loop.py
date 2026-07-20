@@ -339,21 +339,30 @@ async def test_req957_absent_hook_is_identity(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_req957_empty_return_is_row_level_noop(tmp_path):
+async def test_req1165_quarantine_holds_without_land_or_poison(tmp_path):
+    """REQ-1165: a QUARANTINE verdict holds — no land, a non-fanned ``quarantine`` event, and the
+    claimed events are completed. Distinct from ABORT (which poisons dependents)."""
     dsn = _store_dsn(tmp_path)
 
-    def drop_all(rows, ctx):
-        return []
+    def hold(rows, ctx):
+        return ctx.quarantine("held for review")
 
     async with _db(tmp_path) as db:
         async with db.acquire() as conn:
             await _fan_to(conn, "s.orders")
-        proc = _src_proc(db, dsn, preprocess=drop_all)
+        proc = _src_proc(db, dsn, preprocess=hold, deps=["down.x"])
         async with db.acquire() as conn:
-            assert await proc.process_pending(conn) is None  # nothing lands
-            assert await _events_for(conn, "s.orders") == []  # no re-post
-            # the claimed upstream event is still completed (not left to re-fire)
+            ev = await proc.process_pending(conn)
+            assert ev is not None  # the quarantine event id
+            evs = await _events_for(conn, "s.orders")
+            assert [e["event_type"] for e in evs] == ["quarantine"]  # held, no landed change
+            assert evs[0]["payload"]["reason"] == "held for review"
+            # the claimed upstream event is completed (not left to re-fire)
             assert await queue.peek_pending(conn, dependent_table="s.orders") == []
+            # NOT fanned to dependents — a hold does not poison the DAG
+            assert await queue.claim(
+                conn, dependent_table="down.x", processor_name="p", now=_now()
+            ) == []
         async with store_writer.store_connection(dsn) as sc:
             from sqlalchemy.exc import OperationalError
 
@@ -370,7 +379,7 @@ async def test_req957_warn_emits_advisory_and_still_lands(tmp_path):
 
     def warn_then_pass(rows, ctx):
         ctx.warn(["late row", "coerced status"])
-        return rows
+        return ctx.ok()
 
     async with _db(tmp_path) as db:
         async with db.acquire() as conn:
@@ -480,7 +489,7 @@ async def test_req957_ctx_carries_readonly_envelope(tmp_path):
         seen["kind"] = ctx.kind
         seen["claimed"] = list(ctx.claimed)
         seen["columns"] = ctx.columns
-        return rows
+        return ctx.ok()
 
     async with _db(tmp_path) as db:
         async with db.acquire() as conn:

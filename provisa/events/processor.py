@@ -34,6 +34,7 @@ from provisa.events.calendars import Window
 from provisa.events.deadlines import DeadlineSource, LiveDebounce
 from provisa.events.freshness_contract import evaluate_contract
 from provisa.freshness.subject import FreshnessSubject
+from provisa.mv.preflight import CONTINUE, Decision, Verdict
 
 
 def _now() -> datetime:
@@ -58,24 +59,39 @@ class OwnershipLost(Exception):
 
 
 class PreprocessError(Exception):
-    """REQ-957: a user ``preprocess`` hook raised — a FATAL data outcome, not an infra crash. The loop
-    catches it, emits an ``error`` event about the node, short-circuits the land, and fans the error to
-    dependents (poison propagation). Distinct from any other exception, which is a genuine crash that
-    MUST propagate for at-least-once resume (REQ-960)."""
+    """REQ-957/REQ-1165: the ABORT preflight verdict (or a hook that ``raise``d) — a FATAL data
+    outcome, not an infra crash. The loop catches it, emits an ``error`` event about the node,
+    short-circuits the land, and fans the error to dependents (poison propagation). Distinct from
+    any other exception, which is a genuine crash that MUST propagate for at-least-once resume
+    (REQ-960)."""
+
+
+class PreflightQuarantine(Exception):
+    """REQ-1165: the QUARANTINE preflight verdict — a NON-fatal hold. The loop catches it, emits a
+    ``quarantine`` event about the node (recorded, NOT fanned — dependents are not poisoned), records
+    the node as not-fresh (a downstream contract sees a hold, not stale-but-fresh), and does NOT
+    land. Distinct from ABORT (which poisons the fan-out) and from a clean no-change (which is
+    fresh)."""
+
+    def __init__(self, reason: str | None = None) -> None:
+        super().__init__(reason or "quarantined")
+        self.reason = reason
 
 
 @dataclass
 class NodeContext:
-    """REQ-957: the read-only processing envelope handed to a node's ``preprocess(rows, ctx)`` hook.
+    """REQ-957/REQ-1165: the read-only processing envelope handed to a node's ``preflight(rows, ctx)``
+    check.
 
-    Carries what the hook may inspect — node identity/kind, the claimed-event summary, the landing
+    Carries what the check may inspect — node identity/kind, the claimed-event summary, the landing
     columns/schema, the forced-refresh flag, and the last-landed content hash — plus the ``warn``
-    channel. ``window``/``window_id``/``frontier`` are the REQ-958 windowed-processing peg: the
-    half-open ``[start, end)`` and its calendar-addressable id, set at fire from the node's deadline
-    source (None for a live/real-time node with no calendar peg). ``produce`` reads as-of
-    ``window[1]`` (window.end) to stay deterministic/replayable, and the result lands keyed on
-    ``window_id``. ``warn`` is the ONLY mutation: it records advisory reasons the loop emits as a
-    non-fatal ``warn`` event; every data field is informational."""
+    channel and the verdict constructors (:meth:`ok` / :meth:`abort` / :meth:`quarantine`).
+    ``window``/``window_id``/``frontier`` are the REQ-958 windowed-processing peg: the half-open
+    ``[start, end)`` and its calendar-addressable id, set at fire from the node's deadline source
+    (None for a live/real-time node with no calendar peg). ``produce`` reads as-of ``window[1]``
+    (window.end) to stay deterministic/replayable, and the result lands keyed on ``window_id``.
+    ``warn`` is the only field mutation; the verdict constructors return a value (they do not mutate);
+    every data field is informational."""
 
     node: str
     kind: str
@@ -95,6 +111,20 @@ class NodeContext:
             self.warns.append(reasons)
         else:
             self.warns.extend(reasons)
+
+    # REQ-1165: verdict constructors a preflight check returns. Kept as ctx methods (not free
+    # functions) so a purity-gated hook can build a verdict without importing anything.
+    def ok(self) -> Verdict:
+        """The CONTINUE verdict — the dataset passed; land it unchanged."""
+        return CONTINUE
+
+    def abort(self, reason: str | None = None) -> Verdict:
+        """The ABORT verdict — a fatal reject; do not land, poison the fan-out."""
+        return Verdict(Decision.ABORT, reason)
+
+    def quarantine(self, reason: str | None = None) -> Verdict:
+        """The QUARANTINE verdict — a non-fatal hold; do not land, do not poison."""
+        return Verdict(Decision.QUARANTINE, reason)
 
 
 class TableProcessor(ABC):
@@ -307,12 +337,16 @@ class TableProcessor(ABC):
         # LAND runs inside ``handle`` against the STORE database — outside the control-plane
         # transaction below (different DB, no shared txn) and idempotent on the node key, so a
         # re-run after a crash re-lands harmlessly. (event_type, payload, content_hash|None) | None.
-        # REQ-957: preprocess runs inside handle (after produce, before land); a raise surfaces as
-        # PreprocessError → fatal error event; ctx.warn accumulates advisory reasons on ctx.
+        # REQ-957/REQ-1165: the preflight check runs inside handle (after produce, before land). An
+        # ABORT verdict (or a raise) surfaces as PreprocessError → fatal error event + poison; a
+        # QUARANTINE verdict surfaces as PreflightQuarantine → non-fatal hold; ctx.warn accumulates
+        # advisory reasons on ctx.
         try:
             result = await self.handle(pending, prior_hash=prior_hash, ctx=ctx)
         except PreprocessError as exc:
             return await self._emit_error(conn, claimed, now, {"error": str(exc)})
+        except PreflightQuarantine as exc:
+            return await self._emit_quarantine(conn, claimed, now, exc.reason)
         # REQ-960: post + fan_out + complete run AFTER land in ONE control-plane transaction,
         # post-BEFORE-complete. A crash between land and this commit re-claims and re-runs (the
         # land is idempotent), so the downstream ripple is never lost and the claim never orphaned.
@@ -380,6 +414,27 @@ class TableProcessor(ABC):
                     conn, source_table=self.node, event_type="error", payload=payload
                 )
                 await queue.fan_out(conn, event_id, self._dependents_of(self.node))
+                await self._complete_all(conn, claimed, now)
+        except OwnershipLost:
+            return None
+        return event_id
+
+    async def _emit_quarantine(
+        self, conn: Any, claimed: list[int], now: datetime, reason: str | None
+    ) -> int | None:
+        """REQ-1165: emit this node's ``quarantine`` event and complete the claimed set — the
+        non-fatal HOLD path. Unlike ``error`` it is NOT fanned to dependents (a hold does not poison
+        the DAG) and unlike a clean no-change it records the node NOT-fresh, so a downstream periodic
+        contract treats this input as held rather than fresh. No land, one REQ-960 CAS-guarded
+        transaction (post-before-complete). Returns the event id, or None on OwnershipLost."""
+        try:
+            async with conn.transaction():
+                event_id = await queue.post_event(
+                    conn,
+                    source_table=self.node,
+                    event_type="quarantine",
+                    payload={"reason": reason},
+                )
                 await self._complete_all(conn, claimed, now)
         except OwnershipLost:
             return None

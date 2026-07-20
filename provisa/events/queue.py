@@ -31,7 +31,7 @@ from sqlalchemy import and_, insert, or_, select, update
 
 from provisa.core.schema_org import event_status, events, node_freshness_state
 
-_VALID_EVENT = {"delta", "append", "replace", "warn", "error"}
+_VALID_EVENT = {"delta", "append", "replace", "warn", "error", "quarantine"}  # REQ-1165 hold
 
 
 async def post_event(
