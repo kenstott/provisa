@@ -12,12 +12,21 @@ import type { MutationResult } from '../types/admin';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
+export interface DatasetColumn {
+  name: string;
+  // REQ-1159: canonical IR type name (provisa.core.ir_types), NOT a GraphQL scalar.
+  type: string;
+}
+
 export interface ActionArg {
   name: string;
   type: string;
   // REQ-885: relation-argument kind for Provisa-hosted functions.
   //   column_value (default) | table_ref (lazy) | result_set (eager, materialized).
   argKind?: string;
+  // REQ-1159: for a dataset arg (table_ref/result_set), the declared IR-typed column contract of
+  // the input relation, validated on the way in. Absent for a column_value scalar.
+  columns?: DatasetColumn[];
 }
 
 export interface InlineField {
@@ -38,6 +47,8 @@ export interface TrackedFunction {
   description: string | null;
   kind: string;
   returnSchema?: Record<string, unknown> | null;
+  // REQ-1159: canonical IR-typed output dataset contract; returnSchema is its GraphQL projection.
+  outputColumns?: DatasetColumn[] | null;
   // REQ-885: implementation kind + swappable binding + identity model.
   implKind?: string;
   binding?: Record<string, unknown>;
@@ -83,6 +94,7 @@ export async function saveFunction(input: {
   description?: string;
   kind?: string;
   returnSchema?: Record<string, unknown> | null;
+  outputColumns?: DatasetColumn[] | null;
   implKind?: string;
   binding?: Record<string, unknown>;
   materialize?: boolean;

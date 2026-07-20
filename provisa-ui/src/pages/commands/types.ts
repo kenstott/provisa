@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { ActionArg, InlineField } from "../../api/actions";
+import type { ActionArg, DatasetColumn, InlineField } from "../../api/actions";
 
 export const GRAPHQL_TYPES = ["String", "Int", "Float", "Boolean", "DateTime", "Date", "BigInt", "JSON"];
 
@@ -41,6 +41,8 @@ export interface FormState {
   implKind: string;
   binding: Record<string, unknown>;
   materialize: boolean;
+  // REQ-1159: canonical IR-typed output dataset contract (returnSchema is its GraphQL projection).
+  outputColumns: DatasetColumn[];
 }
 
 // REQ-885: selectable implementation kinds for the function/command editor.
@@ -57,6 +59,29 @@ export const ARG_KINDS = [
   { value: "table_ref", label: "table_ref (lazy)" },
   { value: "result_set", label: "result_set (materialized)" },
 ];
+
+// REQ-1159/REQ-846: the canonical IR type vocabulary (provisa.core.ir_types) — the ONE type system a
+// dataset contract speaks. GraphQL/SQL spellings are edge projections, never authored here.
+export const IR_TYPES = [
+  "smallint",
+  "integer",
+  "bigint",
+  "text",
+  "boolean",
+  "float",
+  "double",
+  "numeric",
+  "date",
+  "timestamp",
+  "time",
+  "uuid",
+  "bytea",
+  "json",
+];
+
+// REQ-1159: a dataset arg's argKind is a relation → it carries a column contract.
+export const DATASET_ARG_KINDS = new Set(["table_ref", "result_set"]);
+export const EMPTY_DATASET_COLUMN = { name: "", type: "text" };
 
 export const EMPTY_FORM: FormState = {
   actionType: "function",
@@ -81,6 +106,7 @@ export const EMPTY_FORM: FormState = {
   implKind: "source_procedure",
   binding: {},
   materialize: false,
+  outputColumns: [],
 };
 
 export function inferJsonSchema(jsonStr: string): string {
