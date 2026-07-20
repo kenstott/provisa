@@ -14,7 +14,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Alert, Badge, Button, Group, Input, Paper, Stack, Text, Title } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Input,
+  MultiSelect,
+  Paper,
+  Stack,
+  Text,
+  Title,
+} from "@mantine/core";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql as sqlLang, PostgreSQL } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
@@ -57,7 +68,7 @@ export function LineagePage(): React.ReactElement {
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { checkedDomains } = useDomainFilter();
+  const { checkedDomains, domains, toggleDomain, domainsEnabled } = useDomainFilter();
 
   // Persist query + graph on every change so a later remount restores exactly what was here.
   useEffect(() => {
@@ -109,28 +120,49 @@ export function LineagePage(): React.ReactElement {
         "what feeds this column?" before you publish a view or command. Or choose{" "}
         <b>Complete Lineage</b> to see provenance across every registered view and dataset at once.
       </Text>
-      <Input.Wrapper
-        label="Query to analyze"
-        description="Any SELECT that reads your registered tables, views, or commands. This query is only analyzed, never run — nothing is executed and no data is read."
-      >
-        <div
-          data-testid="lineage-sql"
-          style={{ border: "1px solid var(--mantine-color-default-border)", borderRadius: 4, marginTop: 4 }}
+      <Group align="flex-end" wrap="nowrap">
+        <Input.Wrapper
+          label="Query to analyze"
+          description="Any SELECT that reads your registered tables, views, or commands. This query is only analyzed, never run — nothing is executed and no data is read."
+          style={{ flex: 1 }}
         >
-          <CodeMirror
-            value={sql}
-            onChange={setSql}
-            extensions={sqlExtensions}
-            minHeight="72px"
-            basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
-            style={{ fontSize: "0.85rem" }}
-          />
-        </div>
-      </Input.Wrapper>
-      <Group>
+          <div
+            data-testid="lineage-sql"
+            style={{ border: "1px solid var(--mantine-color-default-border)", borderRadius: 4, marginTop: 4 }}
+          >
+            <CodeMirror
+              value={sql}
+              onChange={setSql}
+              extensions={sqlExtensions}
+              minHeight="72px"
+              basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
+              style={{ fontSize: "0.85rem" }}
+            />
+          </div>
+        </Input.Wrapper>
         <Button onClick={() => run(() => fetchLineageGraph(sql))} loading={loading} data-testid="lineage-build">
           Statement Lineage
         </Button>
+      </Group>
+      <Group align="flex-end">
+        {domainsEnabled && domains.length > 0 && (
+          <MultiSelect
+            label="Domains"
+            description="Complete Lineage covers these domains (none selected = all)."
+            placeholder={checkedDomains.size === 0 ? "All domains" : undefined}
+            data={domains}
+            value={Array.from(checkedDomains)}
+            onChange={(next) => {
+              const nextSet = new Set(next);
+              domains.forEach((d) => {
+                if (checkedDomains.has(d) !== nextSet.has(d)) toggleDomain(d);
+              });
+            }}
+            clearable
+            style={{ minWidth: 280 }}
+            data-testid="lineage-domain-filter"
+          />
+        )}
         <Button
           variant="light"
           onClick={() => run(() => fetchFederationGraph({ domains: Array.from(checkedDomains) }))}

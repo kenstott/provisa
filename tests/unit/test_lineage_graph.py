@@ -163,6 +163,22 @@ def test_statement_selecting_a_view_column_stitches_to_its_lineage():
     assert not any(n["relation"] == "test" for n in g["nodes"])
 
 
+def test_statement_traces_through_a_view_that_reads_another_view():
+    # REQ-1161: selecting from pet_store.fun (which reads pet_store.test) traces the FULL chain to base
+    # sources — the transitive closure of referenced views is expanded, not just the direct one.
+    from provisa.api.admin.lineage_router import lineage_graph_for
+
+    test_sql = "SELECT users.name AS name FROM users u JOIN inquiries i ON u.id = i.user_id"
+    fun_sql = 'SELECT substring(t.name, 2) AS first_two FROM "pet_store"."test" t'
+    views = [("pet_store.test", test_sql), ("pet_store.fun", fun_sql)]
+    g = lineage_graph_for('SELECT first_two AS zzz FROM "pet_store"."fun"', {}, views=views)
+    edges = {(e["source"], e["target"]) for e in g["edges"]}
+    assert not any(n["relation"] == "test" for n in g["nodes"])  # no bare, unexpanded view
+    assert ("users.name", "pet_store.test.name") in edges
+    assert ("pet_store.test.name", "pet_store.fun.first_two") in edges
+    assert ("pet_store.fun.first_two", "zzz") in edges
+
+
 def test_registry_views_uses_user_facing_names_marking_materialized():
     # REQ-1161: the graph spans EVERY registered view, named by its USER-FACING relation
     # <domain>.<table> (semantic SQL) — never the physical materialized target. The MV registry only

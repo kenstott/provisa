@@ -66,21 +66,44 @@ def lineage_graph_for(
     except SqlglotError as exc:
         raise ValueError(f"could not parse SQL for lineage: {exc}") from exc
     view_map = dict(views or [])
-    referenced = [(rel, view_map[rel]) for rel in _referenced_relations(sql, dialect) if rel in view_map]
-    if not referenced:
+    # Transitive closure: a referenced view may itself read other views (pet_store.fun reads
+    # pet_store.test). Expand ALL of them, not just the directly-referenced ones, so the statement
+    # traces through every intervening view down to the base sources — the FULL lineage.
+    closure = _referenced_view_closure(sql, view_map, dialect)
+    if not closure:
         return stmt.to_dict()
     # The statement graph names a ``schema.table`` reference by its bare table (sqlglot drops the
     # schema), so ``pet_store.test`` becomes ``test`` and would NOT match the view's qualified output
     # node. Requalify those refs to the full relation first, so the stitch lands.
-    requalify_relations(stmt, {rel.split(".")[-1]: rel for rel, _ in referenced})
-    # Expand each referenced view to its own lineage (down to base sources), then stitch the statement
-    # on top: a view's output node ``<schema>.<table>.<col>`` shares the id the statement reads it by,
-    # so merge_graphs connects them. A ``SELECT *`` (empty statement graph) simply yields the view's
-    # lineage — exactly "the lineage of the columns in this view".
+    requalify_relations(stmt, {rel.split(".")[-1]: rel for rel, _ in closure})
+    # Expand each view to its own lineage (down to base sources), then stitch the statement on top: a
+    # view's output node ``<schema>.<table>.<col>`` shares the id the statement (or a downstream view)
+    # reads it by, so merge_graphs connects them. A ``SELECT *`` (empty statement graph) simply yields
+    # the view's lineage — exactly "the lineage of the columns in this view".
     fed = build_federation_graph(
-        referenced, commands=commands or {}, materialized_relations=materialized or set()
+        closure, commands=commands or {}, materialized_relations=materialized or set()
     )
     return merge_graphs([fed.graph, stmt]).to_dict()
+
+
+def _referenced_view_closure(
+    sql: str, view_map: dict[str, str], dialect: str
+) -> list[tuple[str, str]]:
+    """(relation, definition) for every view the statement reads, TRANSITIVELY — a referenced view's
+    own view references are followed so the whole chain expands to base sources (REQ-1161)."""
+    seen: set[str] = set()
+    stack = [r for r in _referenced_relations(sql, dialect) if r in view_map]
+    closure: list[tuple[str, str]] = []
+    while stack:
+        rel = stack.pop()
+        if rel in seen:
+            continue
+        seen.add(rel)
+        closure.append((rel, view_map[rel]))
+        stack.extend(
+            r for r in _referenced_relations(view_map[rel], dialect) if r in view_map and r not in seen
+        )
+    return closure
 
 
 @router.post("/admin/lineage/graph")
