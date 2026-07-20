@@ -91,7 +91,7 @@ export function SchemaBrowser({
           background: "var(--bg)",
         }}
       >
-        <ScrollArea style={{ width: 210, height: "100%" }} type="auto">
+        <ScrollArea style={{ width: 210, height: "100%" }} type="auto" offsetScrollbars>
           <div style={{ padding: "0.5rem 0" }}>
             <Text
               component="div"
