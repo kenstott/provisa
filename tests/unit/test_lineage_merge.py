@@ -133,6 +133,21 @@ def test_federation_stitches_views_end_to_end():
     assert m.graph.nodes["mv_daily.total"].materialized is True
 
 
+def test_federation_stitches_schema_qualified_view_reference():
+    # REQ-1161: a view that reads another view by its schema-qualified name (pet_store.test) — sqlglot
+    # drops the schema to a bare 'test', which must requalify to the full relation so the two stitch
+    # instead of leaving a duplicate, disconnected 'test' relation.
+    views = [
+        ("pet_store.test", "SELECT u.name AS name FROM users u"),
+        ("pet_store.fun", 'SELECT substring(t.name, 2) AS first_two FROM "pet_store"."test" t'),
+    ]
+    m = build_federation_graph(views)
+    relations = {n.relation for n in m.graph.nodes.values() if n.relation}
+    assert "test" not in relations  # no bare-name duplicate
+    edges = {(e.source, e.target) for e in m.graph.edges}
+    assert ("pet_store.test.name", "pet_store.fun.first_two") in edges
+
+
 def test_federation_cycle_across_views_is_characterized():
     # a → b (materialized) → a: legal feedback because the loop crosses a materialized boundary
     views = [

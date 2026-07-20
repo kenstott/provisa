@@ -21,6 +21,7 @@ import { EditorView } from "@codemirror/view";
 import { LineageDag } from "../components/lineage/LineageDag";
 import { fetchLineageGraph, fetchFederationGraph } from "../api/lineage";
 import type { LineageGraphData } from "../api/lineage";
+import { useDomainFilter } from "../context/DomainFilterContext";
 
 const LEGEND: { label: string; color: string }[] = [
   { label: "source column", color: "#2f9e44" },
@@ -55,6 +56,7 @@ export function LineagePage(): React.ReactElement {
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { checkedDomains } = useDomainFilter();
 
   // Persist query + graph on every change so a later remount restores exactly what was here.
   useEffect(() => {
@@ -130,7 +132,7 @@ export function LineagePage(): React.ReactElement {
         </Button>
         <Button
           variant="light"
-          onClick={() => run(() => fetchFederationGraph())}
+          onClick={() => run(() => fetchFederationGraph({ domains: Array.from(checkedDomains) }))}
           loading={loading}
           data-testid="lineage-federation"
         >

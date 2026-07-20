@@ -58,6 +58,7 @@ def lineage_graph_for(
     definition) pairs), that view's own definition is expanded and stitched in — so selecting from a
     view or MV shows its FULL lineage down to base sources, not the view as an opaque leaf. Raises
     ValueError on unparseable SQL (surfaced as 422 by the endpoint)."""
+    from provisa.lineage.graph import requalify_relations
     from provisa.lineage.merge import build_federation_graph, merge_graphs
 
     try:
@@ -71,7 +72,7 @@ def lineage_graph_for(
     # The statement graph names a ``schema.table`` reference by its bare table (sqlglot drops the
     # schema), so ``pet_store.test`` becomes ``test`` and would NOT match the view's qualified output
     # node. Requalify those refs to the full relation first, so the stitch lands.
-    _requalify_view_refs(stmt, {rel for rel, _ in referenced})
+    requalify_relations(stmt, {rel.split(".")[-1]: rel for rel, _ in referenced})
     # Expand each referenced view to its own lineage (down to base sources), then stitch the statement
     # on top: a view's output node ``<schema>.<table>.<col>`` shares the id the statement reads it by,
     # so merge_graphs connects them. A ``SELECT *`` (empty statement graph) simply yields the view's
@@ -80,28 +81,6 @@ def lineage_graph_for(
         referenced, commands=commands or {}, materialized_relations=materialized or set()
     )
     return merge_graphs([fed.graph, stmt]).to_dict()
-
-
-def _requalify_view_refs(graph, view_relations: set[str]) -> None:
-    """Rename statement source nodes that reference a view by its bare table name to the view's full
-    ``<schema>.<table>`` relation, so they share the id of the view's output node and stitch on merge.
-    Mutates ``graph`` in place (node ids, relations, edge endpoints, outputs)."""
-    bare_to_full = {rel.split(".")[-1]: rel for rel in view_relations}
-    rename: dict[str, str] = {}
-    for node in list(graph.nodes.values()):
-        full = bare_to_full.get(node.relation)
-        if full and node.relation != full:
-            new_id = f"{full}.{node.column}"
-            rename[node.id] = new_id
-            node.id = new_id
-            node.relation = full
-    if not rename:
-        return
-    graph.nodes = {n.id: n for n in graph.nodes.values()}
-    for e in graph.edges:
-        e.source = rename.get(e.source, e.source)
-        e.target = rename.get(e.target, e.target)
-    graph.outputs = [rename.get(o, o) for o in graph.outputs]
 
 
 @router.post("/admin/lineage/graph")
@@ -182,18 +161,26 @@ def _registry_views(view_rows: list[dict], mv_registry) -> tuple[list[tuple[str,
 
 @router.get("/admin/lineage/federation")
 async def federation_graph(
-    focus: str | None = None, direction: str = "both", depth: int | None = None
+    focus: str | None = None,
+    direction: str = "both",
+    depth: int | None = None,
+    domains: str | None = None,
 ) -> dict:
     """Return the federation-wide merged provenance graph over all MV/view definitions (REQ-1161).
 
     Cycles are characterized (feedback vs error). At federation scale pass ``focus`` (a node id) with
     ``direction`` (upstream|downstream|both) and optional ``depth`` to scope the returned sub-graph —
-    the graph is computed whole but rendered progressively."""
+    the graph is computed whole but rendered progressively. ``domains`` is a comma-separated list of
+    domain ids that restricts the graph to views in those domains (empty = every domain), matching the
+    NavBar domain filter the Views/Commands pages honour."""
     from provisa.api.app import state
     from provisa.lineage.merge import build_federation_graph, slice_graph
 
     commands = getattr(state, "tracked_functions", None) or {}
     view_rows = await _fetch_view_rows(state)
+    domain_filter = {d for d in (domains or "").split(",") if d}
+    if domain_filter:
+        view_rows = [r for r in view_rows if r["domain_id"] in domain_filter]
     views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
     merged = build_federation_graph(views, commands=commands, materialized_relations=mats)
     if focus is None:

@@ -28,7 +28,13 @@ from dataclasses import dataclass, field
 
 from sqlglot.errors import SqlglotError
 
-from provisa.lineage.graph import LineageGraph, Node, build_column_graph, qualify_outputs
+from provisa.lineage.graph import (
+    LineageGraph,
+    Node,
+    build_column_graph,
+    qualify_outputs,
+    requalify_relations,
+)
 
 
 @dataclass
@@ -217,12 +223,17 @@ def build_federation_graph(
     characterization sees the version boundaries. A view whose SQL will not parse is skipped (it cannot
     contribute lineage), not fatal to the whole federation graph."""
     mats = materialized_relations or set()
+    # A view that reads another view references it by bare table name (sqlglot drops the schema), so
+    # requalify those refs to the full relation before stitching — else the same view appears twice
+    # (once qualified as an output, once as a disconnected bare-name source).
+    bare_to_full = {relation.split(".")[-1]: relation for relation, _ in views}
     graphs: list[LineageGraph] = []
     for relation, sql in views:
         try:
             g = build_column_graph(sql, dialect=dialect, commands=commands or {})
         except SqlglotError:
             continue
+        requalify_relations(g, bare_to_full)
         qualify_outputs(g, relation)
         mark_materialized(g, mats)
         graphs.append(g)

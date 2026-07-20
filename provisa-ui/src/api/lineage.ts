@@ -64,11 +64,13 @@ export async function fetchFederationGraph(opts?: {
   focus?: string;
   direction?: "upstream" | "downstream" | "both";
   depth?: number;
+  domains?: string[]; // REQ-1161: restrict to these domain ids (empty/undefined = all)
 }): Promise<LineageGraphData> {
   const params = new URLSearchParams();
   if (opts?.focus) params.set("focus", opts.focus);
   if (opts?.direction) params.set("direction", opts.direction);
   if (opts?.depth != null) params.set("depth", String(opts.depth));
+  if (opts?.domains?.length) params.set("domains", opts.domains.join(","));
   const qs = params.toString();
   const resp = await fetch(`${API_BASE}/admin/lineage/federation${qs ? `?${qs}` : ""}`);
   if (!resp.ok) {

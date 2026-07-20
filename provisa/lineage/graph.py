@@ -299,6 +299,31 @@ def qualify_outputs(graph: LineageGraph, relation: str) -> None:
     graph.outputs = [rename.get(o, o) for o in graph.outputs]
 
 
+def requalify_relations(graph: LineageGraph, bare_to_full: dict[str, str]) -> None:
+    """Rename nodes whose bare relation matches a known full relation to that full relation (REQ-1161).
+
+    sqlglot drops the schema on a table reference (``pet_store.test`` → relation ``test``), so a
+    reference to a view — from a statement or from another view — is keyed by the bare table name and
+    would NOT match that view's qualified output node ``<schema>.<table>.<column>``. Requalifying the
+    reference to the full relation gives it the same id, so ``merge_graphs`` stitches the two instead
+    of leaving a duplicate, disconnected bare-name node. Mutates ``graph`` in place."""
+    rename: dict[str, str] = {}
+    for node in list(graph.nodes.values()):
+        full = bare_to_full.get(node.relation) if node.relation is not None else None
+        if full and node.relation != full:
+            new_id = f"{full}.{node.column}"
+            rename[node.id] = new_id
+            node.id = new_id
+            node.relation = full
+    if not rename:
+        return
+    graph.nodes = {n.id: n for n in graph.nodes.values()}
+    for e in graph.edges:
+        e.source = rename.get(e.source, e.source)
+        e.target = rename.get(e.target, e.target)
+    graph.outputs = [rename.get(o, o) for o in graph.outputs]
+
+
 def _walk(sqlglot_node, graph: LineageGraph, command_names: frozenset[str]) -> None:
     node = _node_for(sqlglot_node, command_names)
     graph.add_node(node)
