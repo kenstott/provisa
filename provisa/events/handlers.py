@@ -27,44 +27,54 @@ The engine is never the writer — landing always goes through ``store_writer``;
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from provisa.core.change_signal import APPEND, REPLACE
 from provisa.events.content_hash import content_hash
 from provisa.events.probes import WATERMARK, probe_shape
-from provisa.events.processor import NodeContext, PreprocessError
+from provisa.events.processor import NodeContext, PreflightQuarantine, PreprocessError
 from provisa.federation import store_writer
+from provisa.mv.preflight import run_preflight
 
 _SHAPE_TO_EVENT = {APPEND: "append"}  # replace is the fallback below; delta is the push/CDC path
 
 
-async def _apply_preprocess(
-    preprocess: Callable[..., Any] | None,
+async def _apply_preflight(
+    preflight: Callable[..., Any] | None,
     rows: list[dict],
     ctx: NodeContext | None,
     columns: list[tuple[str, str]],
-) -> list[dict]:
-    """REQ-957: run the node's ``preprocess(rows, ctx)`` hook between produce and land. None = identity.
-    The hook may be sync or async. It feeds the content hash (must be deterministic), so it runs before
-    the digest is computed. A raise is a FATAL data outcome → re-raised as PreprocessError (the loop
-    turns it into an error event + poison fan-out); it is NOT a silent swallow."""
-    if preprocess is None:
-        return rows
+) -> None:
+    """REQ-1165: run the node's ``preflight(rows, ctx)`` CHECK between produce and land. None = continue.
+
+    A preflight is a GATE, not a transform: it inspects ``rows`` and returns a verdict; the rows are
+    NEVER mutated, so this returns None and the caller lands the ORIGINAL rows. The check may be sync
+    or async. Verdict handling:
+
+    - CONTINUE → return (any reason becomes an advisory ``ctx.warn``).
+    - ABORT (or a hook ``raise``) → :class:`PreprocessError` → the loop emits an ``error`` event +
+      poisons the fan-out (the REQ-957 fatal-reject path, now a verdict).
+    - QUARANTINE → :class:`PreflightQuarantine` → the loop emits a non-fatal ``quarantine`` hold.
+    """
+    if preflight is None:
+        return
     if ctx is not None:
         ctx.columns = columns  # enrich the envelope with the landing schema the closure knows
     try:
-        out = preprocess(rows, ctx)
-        if inspect.isawaitable(out):
-            out = await out
-    except PreprocessError:
+        verdict = await run_preflight(preflight, rows, ctx)
+    except (PreprocessError, PreflightQuarantine):
         raise
     except Exception as exc:  # noqa: BLE001 — REQ-957: a user-hook raise is a fatal DATA outcome
         # (error event + poison fan-out), not an infra crash. Fail loud INTO the event vocabulary
         # via PreprocessError; the loop distinguishes it from a genuine crash (which must propagate).
         raise PreprocessError(str(exc)) from exc
-    return out
+    if verdict.is_abort:
+        raise PreprocessError(verdict.reason or "preflight abort")
+    if verdict.is_quarantine:
+        raise PreflightQuarantine(verdict.reason)
+    if verdict.reason and ctx is not None:
+        ctx.warn(verdict.reason)  # CONTINUE with a note → advisory warn, still lands
 
 
 def make_source_land(
@@ -102,10 +112,9 @@ def make_source_land(
         rows = await fetch(pending)
         if not rows:
             return None  # no delta to land → no downstream ripple
-        # REQ-957: preprocess after produce, before land. []→ row-level no-op (no land, no re-post).
-        rows = await _apply_preprocess(preprocess, rows, ctx, columns)
-        if not rows:
-            return None
+        # REQ-1165: preflight CHECK after produce, before land. Gates the land (ABORT/QUARANTINE
+        # raise); on CONTINUE the ORIGINAL rows land unchanged (a check never transforms).
+        await _apply_preflight(preprocess, rows, ctx, columns)
         # REQ-981 output gate: a replace whose content is byte-identical to the prior land neither
         # lands nor ripples. Append/CDC deltas are new rows by definition → no content hash. REQ-968:
         # a forced regen BYPASSES the gate — it re-lands and ripples regardless of an unchanged hash.
@@ -162,13 +171,10 @@ def make_mv_generate(
     ) -> tuple[str, dict, str | None] | None:
         del pending  # an MV refresh recomputes to current state; the claimed events are the trigger
         rows = await run_query()
-        # REQ-957: preprocess after the MV SQL, before land. []→ row-level no-op (no land, no
-        # re-post) — but ONLY when the hook returned it; an empty MV recompute with no hook still
-        # lands an empty replace (a legitimately-emptied MV clears its table).
-        if preprocess is not None:
-            rows = await _apply_preprocess(preprocess, rows, ctx, columns)
-            if not rows:
-                return None
+        # REQ-1165: preflight CHECK after the MV SQL, before land. Gates the land (ABORT/QUARANTINE
+        # raise); CONTINUE lands the recomputed rows unchanged. An empty recompute still lands an
+        # empty replace (a legitimately-emptied MV clears its table) — the check never mutates rows.
+        await _apply_preflight(preprocess, rows, ctx, columns)
         digest = content_hash(rows, pk_columns)  # PK-keyed hash when the derived table has identity
         # REQ-968: a forced regen recomputes + re-lands regardless of an unchanged hash (gate bypass).
         if not forced and digest == prior_hash:

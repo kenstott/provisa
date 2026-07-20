@@ -228,6 +228,53 @@ async def _probe_source_count(engine, mv: MVDefinition) -> int:  # REQ-235
     return res.rows[0][0]
 
 
+async def _select_arrow_batches(engine, select_sql: str):
+    """The MV's SELECT as Arrow ``RecordBatch`` es for the non-SQL preflight (REQ-1165).
+
+    Prefers the lazily-streamed reader (``execute_engine_stream``, ARROW_STREAM capability) so a
+    short-circuiting check never materializes the whole result; falls back to a materialized Arrow
+    table (``execute_engine_arrow``, ARROW capability). The synchronous engine transport is acquired
+    off the event loop (``asyncio.to_thread``)."""
+    from provisa.federation.runtime import EngineCapability  # noqa: PLC0415
+
+    if engine.supports(EngineCapability.ARROW_STREAM):
+        _schema, batches = await asyncio.to_thread(engine.execute_engine_stream, select_sql)
+        del _schema  # the reader carries its own schema; we only stream batches
+        return batches
+    table = await asyncio.to_thread(engine.execute_engine_arrow, select_sql)
+    return table.to_batches()
+
+
+async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
+    """Evaluate the MV's preflight check before materializing (REQ-1165). Returns a
+    :class:`~provisa.mv.preflight.Verdict`, or ``None`` when the MV declares no check.
+
+    SQL-expressible checks are PUSHED DOWN as an engine-side count probe over ``select_sql`` (no
+    rows enter Python — the billion-row path); everything else streams the SELECT as Arrow batches
+    through the compiled check, short-circuiting. The two strategies must reach the same verdict for
+    a given dataset (REQ-964)."""
+    source = getattr(mv, "preprocess", None)
+    if source is None or not source.strip():
+        return None
+
+    from provisa.mv.preflight_sql import translate  # noqa: PLC0415
+
+    sqlpf = translate(source)
+    if sqlpf is not None:
+        res = await engine.execute_engine(sqlpf.count_sql(select_sql))
+        return sqlpf.verdict_for(res.rows[0][0])
+
+    # Non-SQL check: columnar streaming short-circuit through the compiled predicate.
+    from provisa.events.processor import NodeContext  # noqa: PLC0415
+    from provisa.mv.preprocess import compile_preprocess  # noqa: PLC0415
+    from provisa.processors.arrow import stream_preflight  # noqa: PLC0415
+
+    fn = compile_preprocess(source)
+    ctx = NodeContext(node=mv.id, kind="mv", claimed=[], prior_hash=None)
+    batches = await _select_arrow_batches(engine, select_sql)
+    return await stream_preflight(fn, batches, ctx)
+
+
 async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
     engine,
     mv: MVDefinition,
@@ -326,6 +373,29 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
 
         select_sql = await _build_refresh_sql(mv, engine)
         _emit_column_lineage_span(mv, select_sql, str(start), input_signals)  # REQ-862
+
+        # REQ-1165: preflight CHECK — gate the materialization before any write. A SQL-expressible
+        # check pushes down as a count probe over the SELECT (engine-side, no rows to Python); a
+        # non-SQL check streams the SELECT as Arrow batches and short-circuits. Anything but CONTINUE
+        # skips the rebuild: ABORT is a fatal reject (STALE + error), QUARANTINE a non-fatal hold —
+        # neither writes the target, mirroring the size-guard skip above.
+        verdict = await _evaluate_preflight(engine, mv, select_sql)
+        if verdict is not None and not verdict.is_continue:
+            if coordinated:
+                assert store is not None and writer is not None
+                from provisa.mv.coordination import release_refresh  # noqa: PLC0415
+
+                await release_refresh(store, mv.id, writer, verdict.reason)
+            detail = f"preflight {verdict.decision.value}" + (
+                f": {verdict.reason}" if verdict.reason else ""
+            )
+            if verdict.is_abort:
+                registry.mark_refresh_failed(mv.id, detail)  # STALE + last_error (fatal reject)
+            else:
+                mv.status = MVStatus.SKIPPED_PREFLIGHT  # non-fatal hold
+                mv.last_error = detail
+            log.warning("MV %s: %s — materialization skipped", mv.id, detail)
+            return
 
         # Ensure the target schema exists before the CTAS. The store's MV-cache schema is created on
         # demand (it need not pre-exist — e.g. a fresh deployment where no source has landed yet). The

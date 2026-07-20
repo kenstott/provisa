@@ -153,7 +153,7 @@ export interface RegisteredTable {
   mvDebounceQuiet: number; // REQ-963: seconds of quiet before firing; 0 = real-time
   mvDebounceMaxDelay: number; // REQ-963: staleness cap under continuous churn
   mvConsistency: string; // REQ-879: "shared" (fleet-coordinated) | "distributed" (per-instance)
-  mvPreprocess: string | null; // REQ-957: inline preprocess(rows, ctx) hook source; null = identity
+  mvPreprocess: string | null; // REQ-1165: inline preflight(rows, ctx) check source; null = no check
   mvBitemporalMode: string | null; // REQ-1162: null | "snapshot" | "delta" (append-only time travel)
   mvBitemporalKey: string[]; // REQ-1162: business key a version belongs to (required for delta)
   mvPersist: string; // REQ-965: replace | append | upsert

@@ -8,22 +8,23 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""User preprocess-hook validation + compilation (REQ-957, REQ-964).
+"""User preflight-check validation + compilation (REQ-957, REQ-964, REQ-1165).
 
-REQ-957 collapses a node's processing envelope to ONE optional user hook —
-``preprocess(rows, ctx) -> rows`` — run after produce and before land. Authors
-express custom prep, enrichment, validation, quarantine, and rejection here.
+REQ-1165 rescopes the REQ-957 hook from a row transform to a PREFLIGHT CHECK —
+``preflight(rows, ctx) -> verdict`` — run after produce and before land. Authors express
+custom prechecks, validation, and rejection here; the hook returns a verdict (continue /
+abort / quarantine, see :mod:`provisa.mv.preflight`) and NEVER a mutated dataset. Transforms
+belong in SQL (engine pushdown) or an external processor (REQ-940).
 
-REQ-964 (proof obligation 1) requires that hook to be DETERMINISTIC: its output
-feeds the content hash that gates the re-post, so non-determinism ripples forever.
-This module enforces that at REGISTRATION with a static AST purity check, then
-compiles the source into a callable that executes in a restricted namespace with
-no dangerous builtins — mirroring the SQL determinism gate in
-:mod:`provisa.mv.determinism`.
+The hook must be DETERMINISTIC: a SQL-expressible check is translated to an engine-side probe
+(:mod:`provisa.mv.preflight_sql`) and its Python fallback must agree, and a replayed refresh
+must reach the same verdict (REQ-964). This module enforces that at REGISTRATION with a static
+AST purity check, then compiles the source into a callable that executes in a restricted
+namespace with no dangerous builtins.
 
-The check is fail-closed: source that cannot be parsed, that imports anything, that
-reaches wall-clock / randomness / process identity, or that touches dunder-escape
-attributes is rejected. There is no partial trust — a rejected script never runs.
+The check is fail-closed: source that cannot be parsed, that imports anything, that reaches
+wall-clock / randomness / process identity, or that touches dunder-escape attributes is
+rejected. There is no partial trust — a rejected script never runs.
 """
 
 from __future__ import annotations
@@ -69,11 +70,11 @@ _FORBIDDEN_NAMES = frozenset(
     }
 )
 
-REQUIRED_FUNC = "preprocess"
+REQUIRED_FUNC = "preflight"
 
 
 class PreprocessValidationError(ValueError):
-    """REQ-964: a preprocess script failed the purity gate — rejected at registration."""
+    """REQ-964: a preflight script failed the purity gate — rejected at registration."""
 
 
 class _PurityVisitor(ast.NodeVisitor):
@@ -106,7 +107,7 @@ class _PurityVisitor(ast.NodeVisitor):
 def check_preprocess_purity(source: str) -> tuple[bool, str]:
     """Return (pure, reason). ``reason`` is empty when the hook is safe + deterministic.
 
-    Fail-closed: unparseable source, a missing ``preprocess(rows, ctx)`` definition,
+    Fail-closed: unparseable source, a missing ``preflight(rows, ctx)`` definition,
     any import, any forbidden name, or any dunder attribute access is rejected.
     """
     try:
@@ -114,7 +115,7 @@ def check_preprocess_purity(source: str) -> tuple[bool, str]:
     except SyntaxError as exc:
         return False, f"cannot be parsed: {exc}"
 
-    # The module must DEFINE preprocess(rows, ctx). Enrichment helpers (other defs,
+    # The module must DEFINE preflight(rows, ctx). Predicate helpers (other defs,
     # constant assignments) are allowed alongside it; top-level side effects are not.
     func: ast.FunctionDef | ast.AsyncFunctionDef | None = None
     for stmt in tree.body:
@@ -143,11 +144,11 @@ def check_preprocess_purity(source: str) -> tuple[bool, str]:
 
 
 def validate_preprocess(source: str | None) -> None:
-    """Enforce the preprocess purity gate at registration (REQ-957 / REQ-964).
+    """Enforce the preflight purity gate at registration (REQ-957 / REQ-964 / REQ-1165).
 
-    None / blank → no hook (identity), nothing to check. A non-empty script that
-    fails the purity check raises :class:`PreprocessValidationError` so it is
-    rejected loudly — a non-deterministic hook would ripple forever (REQ-964).
+    None / blank → no hook (always-continue), nothing to check. A non-empty script that
+    fails the purity check raises :class:`PreprocessValidationError` so it is rejected
+    loudly — a non-deterministic gate would reach different verdicts on replay (REQ-964).
     """
     if source is None or not source.strip():
         return
@@ -157,11 +158,12 @@ def validate_preprocess(source: str | None) -> None:
 
 
 def compile_preprocess(source: str | None) -> Callable[..., Any] | None:
-    """Validate then compile a preprocess script into a ``preprocess(rows, ctx)`` callable.
+    """Validate then compile a preflight script into a ``preflight(rows, ctx)`` callable.
 
-    Returns None for a blank/absent script (identity — no hook). The compiled callable
-    executes in a namespace whose ``__builtins__`` is the curated :data:`_SAFE_BUILTINS`
-    only, so even a construct the static check missed has no dangerous builtin to reach.
+    Returns None for a blank/absent script (no hook — always continue). The compiled callable
+    returns a verdict (normalized by :func:`provisa.mv.preflight.to_verdict`), never rows. It
+    executes in a namespace whose ``__builtins__`` is the curated :data:`_SAFE_BUILTINS` only,
+    so even a construct the static check missed has no dangerous builtin to reach.
     """
     if source is None or not source.strip():
         return None

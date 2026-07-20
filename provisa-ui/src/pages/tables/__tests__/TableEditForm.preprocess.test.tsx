@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-957: the preprocess-hook editor renders for a materialized view and stages
+// REQ-1165: the preflight-check editor renders for a materialized view and stages
 // its Python source through the shared setEditingTable save path.
 
 import { describe, it, expect, vi } from "vitest";
@@ -90,9 +90,9 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
   return setEditingTable;
 }
 
-describe("TableEditForm — MV preprocess hook (REQ-957)", () => {
-  it("renders the editor with the current hook source for a materialized view", () => {
-    const src = "def preprocess(rows, ctx):\n    return rows";
+describe("TableEditForm — MV preflight check (REQ-1165)", () => {
+  it("renders the editor with the current check source for a materialized view", () => {
+    const src = "def preflight(rows, ctx):\n    return ctx.ok()";
     renderForm(makeTable({ mvPreprocess: src }));
     const box = screen.getByRole("textbox", {
       name: t("tableEditForm.preprocessAria"),
