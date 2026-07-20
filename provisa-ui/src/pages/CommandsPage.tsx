@@ -50,7 +50,7 @@ import { fetchOrgRoles } from "../api/admin";
 import type { Role } from "../types/auth";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { ActionType, FormState } from "./commands/types";
-import { EMPTY_FORM } from "./commands/types";
+import { EMPTY_FORM, deriveReturnSchema, columnsFromReturnSchema } from "./commands/types";
 import { CommandFormFields } from "./commands/CommandFormFields";
 
 export function CommandsPage() {
@@ -126,7 +126,9 @@ export function CommandsPage() {
     if (actionType === "function") {
       const fn = functions.find((f) => f.name === name);
       if (!fn) return;
-      const hasCustomSchema = !!fn.returnSchema && !fn.returns;
+      // REQ-1159: output is a dataset. A registered table → "table" mode; anything else is an
+      // IR-typed column list. Legacy commands carry only return_schema → reverse-project it.
+      const outputColumns = fn.outputColumns ?? columnsFromReturnSchema(fn.returnSchema);
       setForm({
         actionType: "function",
         name: fn.name,
@@ -144,13 +146,11 @@ export function CommandsPage() {
         timeoutMs: 5000,
         inlineReturnType: [],
         kind: fn.kind ?? "mutation",
-        returnSchemaMode: hasCustomSchema ? "custom" : "table",
-        sampleJson: "",
-        returnSchemaStr: hasCustomSchema ? JSON.stringify(fn.returnSchema, null, 2) : "",
+        returnSchemaMode: fn.returns ? "table" : "dataset",
         implKind: fn.implKind ?? "source_procedure",
         binding: fn.binding ?? {},
         materialize: fn.materialize ?? false,
-        outputColumns: fn.outputColumns ?? [], // REQ-1159
+        outputColumns, // REQ-1159
       });
       setExpandedFn(name);
     } else {
@@ -174,8 +174,6 @@ export function CommandsPage() {
         inlineReturnType: wh.inlineReturnType.length > 0 ? wh.inlineReturnType : [],
         kind: wh.kind ?? "mutation",
         returnSchemaMode: "table",
-        sampleJson: "",
-        returnSchemaStr: "",
         implKind: "source_procedure",
         binding: {},
         materialize: false,
@@ -202,28 +200,24 @@ export function CommandsPage() {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
-        let returnSchema: Record<string, unknown> | null = null;
-        if (form.returnSchemaMode === "custom" && form.returnSchemaStr) {
-          try {
-            returnSchema = JSON.parse(form.returnSchemaStr);
-          } catch {
-            /* leave null */
-          }
-        }
+        // REQ-1159: output is a dataset. In "dataset" mode the IR-typed columns are the sole
+        // contract; return_schema (the GraphQL projection) is DERIVED, never authored.
+        const outputColumns = form.outputColumns.filter((c) => c.name.trim() !== "");
+        const isDataset = form.returnSchemaMode === "dataset";
         await saveFunction({
           name: form.name,
           sourceId: form.sourceId,
           schemaName: form.schemaName,
           functionName: form.functionName,
-          returns: form.returnSchemaMode === "custom" ? "" : form.returns,
+          returns: isDataset ? "" : form.returns,
           arguments: form.arguments,
           visibleTo,
           writableBy,
           domainId: form.domainId,
           description: form.description || undefined,
           kind: form.kind,
-          returnSchema,
-          outputColumns: form.outputColumns.filter((c) => c.name.trim() !== ""), // REQ-1159
+          returnSchema: isDataset ? deriveReturnSchema(outputColumns) : null,
+          outputColumns, // REQ-1159
           implKind: form.implKind,
           binding: form.binding,
           materialize: form.materialize,

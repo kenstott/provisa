@@ -34,9 +34,10 @@ export interface FormState {
   timeoutMs: number;
   inlineReturnType: InlineField[];
   kind: string;
-  returnSchemaMode: "table" | "custom";
-  sampleJson: string;
-  returnSchemaStr: string;
+  // REQ-1159: output is ALWAYS a dataset — either a registered table ("table") or an
+  // authored IR-typed column list ("dataset"). The free-form JSON return schema is gone;
+  // return_schema is derived from outputColumns (see deriveReturnSchema), never authored.
+  returnSchemaMode: "table" | "dataset";
   // REQ-885: implementation kind + swappable binding (JSON keys per kind) + identity model.
   implKind: string;
   binding: Record<string, unknown>;
@@ -101,44 +102,70 @@ export const EMPTY_FORM: FormState = {
   inlineReturnType: [],
   kind: "mutation",
   returnSchemaMode: "table",
-  sampleJson: "",
-  returnSchemaStr: "",
   implKind: "source_procedure",
   binding: {},
   materialize: false,
   outputColumns: [],
 };
 
-export function inferJsonSchema(jsonStr: string): string {
-  try {
-    const obj = JSON.parse(jsonStr);
-    const sample = Array.isArray(obj) ? obj[0] : obj;
-    if (!sample || typeof sample !== "object") return "";
-    const props: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(sample)) {
-      const t = typeof v;
-      props[k] = {
-        type:
-          t === "number"
-            ? Number.isInteger(v as number)
-              ? "integer"
-              : "number"
-            : t === "boolean"
-              ? "boolean"
-              : "string",
-      };
-    }
-    return JSON.stringify(
-      {
-        type: Array.isArray(obj) ? "array" : "object",
-        ...(Array.isArray(obj)
-          ? { items: { type: "object", properties: props } }
-          : { properties: props }),
-      },
-      null,
-      2,
-    );
-  } catch {
-    return "";
+// REQ-1159: IR type → JSON-schema scalar. return_schema is the GraphQL projection of the
+// output dataset; it is DERIVED here, never authored. Mirrors the backend IR type vocabulary.
+function irToJsonSchemaType(irType: string): string {
+  switch (irType) {
+    case "smallint":
+    case "integer":
+      return "integer";
+    case "float":
+    case "double":
+    case "numeric":
+      return "number";
+    case "boolean":
+      return "boolean";
+    // bigint/text/date/timestamp/time/uuid/bytea/json all project to GraphQL String.
+    default:
+      return "string";
   }
+}
+
+// JSON-schema scalar → IR type. Only used to reverse-project a legacy command that carries a
+// hand-authored return_schema but no output_columns, so editing it surfaces an IR-typed dataset.
+function jsonSchemaTypeToIr(jsType: string): string {
+  switch (jsType) {
+    case "integer":
+      return "integer";
+    case "number":
+      return "double";
+    case "boolean":
+      return "boolean";
+    default:
+      return "text";
+  }
+}
+
+// REQ-1159: derive the GraphQL projection (return_schema) from the canonical output dataset.
+export function deriveReturnSchema(
+  outputColumns: DatasetColumn[],
+): Record<string, unknown> | null {
+  const cols = outputColumns.filter((c) => c.name.trim() !== "");
+  if (cols.length === 0) return null;
+  const properties: Record<string, unknown> = {};
+  for (const c of cols) properties[c.name] = { type: irToJsonSchemaType(c.type) };
+  return { type: "array", items: { type: "object", properties } };
+}
+
+// Reverse-project a legacy return_schema into IR-typed dataset columns (edit-time only).
+export function columnsFromReturnSchema(
+  schema: Record<string, unknown> | null | undefined,
+): DatasetColumn[] {
+  if (!schema) return [];
+  const top = (schema as { type?: string }).type ?? "object";
+  const props =
+    top === "array"
+      ? ((schema as { items?: { properties?: Record<string, { type?: string }> } }).items
+          ?.properties ?? {})
+      : ((schema as { properties?: Record<string, { type?: string }> }).properties ?? {});
+  return Object.entries(props).map(([name, v]) => ({
+    name,
+    type: jsonSchemaTypeToIr(v?.type ?? "string"),
+  }));
 }

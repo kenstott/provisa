@@ -854,6 +854,41 @@ functions:
         region: {type: string}
         amount: {type: number}
         active: {type: boolean}
+- name: enrich_grpc_set
+  description: Demo gRPC command that ENRICHES an input relation — materializes the referenced result_set, sends its rows to the service, returns each row plus a deterministic embedding + geo marker (REQ-885)
+  domain_id: pet-store
+  kind: query
+  impl_kind: grpc
+  source_id: ""
+  function_name: enrich_grpc_set
+  returns: ""
+  binding:
+    target: ${env:DEMO_GRPC_TARGET:-localhost:50071}
+    method: /provisa.demo.Enrich/EnrichRows
+  arguments:
+  # REQ-1159: narrow input dataset contract, IR-typed. Validated on the way in (fail-loud).
+  - name: input
+    type: String
+    arg_kind: result_set
+    columns:
+    - {name: id, type: integer}
+    - {name: region, type: text}
+  visible_to:
+  - admin
+  # REQ-1159: canonical IR-typed output dataset contract; validated on the way out.
+  output_columns:
+  - {name: id, type: integer}
+  - {name: embedding, type: text}
+  - {name: geo, type: text}
+  # return_schema is the GraphQL projection of output_columns (String is the IR text projection).
+  return_schema:
+    type: array
+    items:
+      type: object
+      properties:
+        id: {type: integer}
+        embedding: {type: string}
+        geo: {type: string}
 webhooks:
 - arguments:
   - name: name

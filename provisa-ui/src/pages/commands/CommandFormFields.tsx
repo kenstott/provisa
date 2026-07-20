@@ -17,7 +17,6 @@ import {
   NumberInput,
   Select,
   Switch,
-  Textarea,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -34,7 +33,6 @@ import {
   EMPTY_ARG,
   EMPTY_INLINE,
   EMPTY_DATASET_COLUMN,
-  inferJsonSchema,
 } from "./types";
 import type { FormState } from "./types";
 
@@ -274,22 +272,20 @@ export function CommandFormFields({
             label={t("commandFormFields.returnType")}
             data={[
               { value: "table", label: t("commandFormFields.registeredTable") },
-              { value: "custom", label: t("commandFormFields.customSchema") },
+              { value: "dataset", label: t("commandFormFields.datasetColumns") },
             ]}
             value={form.returnSchemaMode}
             onChange={(val) =>
               setForm({
                 ...form,
-                returnSchemaMode: (val ?? "table") as "table" | "custom",
+                returnSchemaMode: (val ?? "table") as "table" | "dataset",
                 returns: "",
-                returnSchemaStr: "",
-                sampleJson: "",
               })
             }
             allowDeselect={false}
             data-testid="command-return-type-select"
           />
-          {form.returnSchemaMode === "table" ? (
+          {form.returnSchemaMode === "table" && (
             <Select
               label={t("commandFormFields.returnsTable")}
               placeholder={t("commandFormFields.selectTable")}
@@ -298,32 +294,6 @@ export function CommandFormFields({
               onChange={(val) => setForm({ ...form, returns: val ?? "" })}
               data-testid="command-returns-table-select"
             />
-          ) : (
-            <div style={{ gridColumn: "1 / -1" }}>
-              <Textarea
-                label={t("commandFormFields.sampleJsonLabel")}
-                rows={4}
-                value={form.sampleJson}
-                onChange={(e) => {
-                  const inferred = inferJsonSchema(e.currentTarget.value);
-                  setForm({
-                    ...form,
-                    sampleJson: e.currentTarget.value,
-                    returnSchemaStr: inferred || form.returnSchemaStr,
-                  });
-                }}
-                placeholder={t("commandFormFields.sampleJsonPlaceholder")}
-                styles={{ input: { fontFamily: "monospace", fontSize: "0.85rem", resize: "vertical" } }}
-              />
-              <Textarea
-                label={t("commandFormFields.jsonSchemaLabel")}
-                rows={8}
-                value={form.returnSchemaStr}
-                onChange={(e) => setForm({ ...form, returnSchemaStr: e.currentTarget.value })}
-                placeholder={t("commandFormFields.jsonSchemaPlaceholder")}
-                styles={{ input: { fontFamily: "monospace", fontSize: "0.85rem", resize: "vertical" } }}
-              />
-            </div>
           )}
           <TextInput
             label={t("commandFormFields.visibleTo")}
@@ -481,7 +451,7 @@ export function CommandFormFields({
               DATASET_ARG_KINDS.has(arg.argKind ?? "column_value") && (
                 <div style={{ marginLeft: 24, marginBottom: 12 }} data-testid={`dataset-columns-${i}`}>
                   <Title order={6} c="dimmed" mb={4}>
-                    input dataset columns (IR types)
+                    input dataset columns
                   </Title>
                   {(arg.columns ?? []).map((col, ci) => (
                     <Group key={ci} gap="xs" mb={4} align="center" wrap="nowrap">
@@ -522,10 +492,12 @@ export function CommandFormFields({
         </Button>
       </div>
       {/* REQ-1159: canonical IR-typed output dataset contract (returnSchema is its GraphQL projection). */}
-      {form.actionType === "function" && form.implKind !== "source_procedure" && (
+      {form.actionType === "function" &&
+        form.implKind !== "source_procedure" &&
+        form.returnSchemaMode === "dataset" && (
         <div style={{ gridColumn: "1 / -1" }} data-testid="output-columns">
           <Title order={5} mb="xs">
-            output dataset columns (IR types)
+            output dataset columns
           </Title>
           {form.outputColumns.map((col, ci) => (
             <Group key={ci} gap="xs" mb="xs" align="center" wrap="nowrap">

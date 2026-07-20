@@ -31,7 +31,7 @@
     "colTimeout": "Timeout",
     "noFunctions": "No functions registered",
     "noWebhooks": "No webhooks registered",
-    "customSchema": "custom schema",
+    "customSchema": "dataset",
     "dash": "—",
     "all": "all",
     "none": "none",

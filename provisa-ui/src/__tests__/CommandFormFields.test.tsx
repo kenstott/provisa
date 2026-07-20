@@ -112,8 +112,21 @@ describe("CommandFormFields — REQ-885 implementation kinds", () => {
     expect(screen.queryByTestId("dataset-columns-0")).not.toBeInTheDocument();
   });
 
-  it("shows the output-columns editor for a hosted command", () => {
-    render(<Harness initial={{ actionType: "function", implKind: "grpc" }} />);
+  it("shows the output-columns editor for a hosted command in dataset mode", () => {
+    render(
+      <Harness
+        initial={{ actionType: "function", implKind: "grpc", returnSchemaMode: "dataset" }}
+      />,
+    );
     expect(screen.getByTestId("output-columns")).toBeInTheDocument();
+  });
+
+  it("hides the output-columns editor when the output is a registered table", () => {
+    render(
+      <Harness
+        initial={{ actionType: "function", implKind: "grpc", returnSchemaMode: "table" }}
+      />,
+    );
+    expect(screen.queryByTestId("output-columns")).not.toBeInTheDocument();
   });
 });
