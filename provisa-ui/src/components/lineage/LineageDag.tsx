@@ -43,11 +43,22 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
     }
     const outputs = new Set(graph.outputs);
 
+    // Group columns under a parent box per relation (dataset), so columns read as members of a
+    // table/view/dataset rather than free-standing nodes. Nodes without a relation stay top-level.
+    const relations = Array.from(
+      new Set(graph.nodes.map((n) => n.relation).filter((r): r is string => !!r)),
+    );
+    const parentId = (relation: string) => `rel:${relation}`;
+
     const elements = [
+      ...relations.map((relation) => ({
+        data: { id: parentId(relation), label: relation, isParent: "yes" },
+      })),
       ...graph.nodes.map((n) => ({
         data: {
           id: n.id,
-          label: n.relation ? `${n.relation}\n${n.column}` : n.column,
+          parent: n.relation ? parentId(n.relation) : undefined,
+          label: n.column,
           kind: n.kind,
           materialized: n.materialized ? "yes" : "no",
           cycle: cycleClass[n.id] ?? "no",
@@ -59,7 +70,13 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
           id: `e${i}`,
           source: e.source,
           target: e.target,
-          label: (e.ops ?? []).map((o) => o.name).join(" ") || e.transform,
+          // A pure passthrough (identity/constant) has no transform to name — leave the edge
+          // unlabelled rather than repeating the column name. Only real ops (functions, operators,
+          // commands) get labelled.
+          label: (e.ops ?? [])
+            .filter((o) => o.kind !== "identity" && o.kind !== "constant")
+            .map((o) => o.name)
+            .join(" "),
           command: (e.ops ?? []).some((o) => o.kind === "command") ? "yes" : "no",
         },
       })),
@@ -122,12 +139,33 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
           selector: 'edge[command = "yes"]',
           style: { "line-color": "#9c36b5", "target-arrow-color": "#9c36b5", width: 2, "line-style": "dashed" },
         },
+        {
+          // The dataset container: a labelled box wrapping its columns.
+          selector: 'node[isParent = "yes"]',
+          style: {
+            label: "data(label)",
+            "background-color": "#f1f3f5",
+            "background-opacity": 0.6,
+            "border-width": 1,
+            "border-color": "#ced4da",
+            shape: "round-rectangle",
+            "text-valign": "top",
+            "text-halign": "center",
+            "font-size": 10,
+            "font-weight": "bold",
+            color: "#495057",
+            padding: 12,
+          },
+        },
       ],
       layout: { name: "breadthfirst", directed: true, spacingFactor: 1.3, padding: 20 },
       wheelSensitivity: 0.2,
     });
 
-    cy.on("tap", "node", (evt) => clickRef.current?.(evt.target.id()));
+    // Column clicks drive federation focus; ignore taps on the dataset container itself.
+    cy.on("tap", "node", (evt) => {
+      if (evt.target.data("isParent") !== "yes") clickRef.current?.(evt.target.id());
+    });
 
     return () => cy.destroy();
   }, [graph]);

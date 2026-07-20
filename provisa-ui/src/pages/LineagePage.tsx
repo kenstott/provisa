@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1160/REQ-1161: column-level lineage explorer. Enter a SQL statement to see its full DAG
+// REQ-1160/REQ-1161: data lineage explorer (column-level under the hood). Enter a SQL statement to see its full DAG
 // (command boundaries spliced continuous to source columns, transforms named), or load the
 // federation-wide provenance graph over every view/MV with cycles characterized.
 
@@ -26,15 +26,41 @@ const LEGEND: { label: string; color: string }[] = [
   { label: "output (orange ring)", color: "#f08c00" },
 ];
 
+const DEFAULT_SQL =
+  "SELECT o.id, e.embedding, upper(e.geo) AS geo_u\nFROM orders o JOIN enrich_grpc_set('main.public.orders') e ON o.id = e.id";
+// Persist the last query + rendered graph so leaving and returning to the page restores the view.
+const SQL_KEY = "provisa.lineage.sql";
+const GRAPH_KEY = "provisa.lineage.graph";
+
+function loadStoredGraph(): LineageGraphData | null {
+  try {
+    const raw = sessionStorage.getItem(GRAPH_KEY);
+    return raw ? (JSON.parse(raw) as LineageGraphData) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function LineagePage(): React.ReactElement {
   const [params] = useSearchParams();
   const [sql, setSql] = useState(
-    params.get("sql") ||
-      "SELECT o.id, e.embedding, upper(e.geo) AS geo_u\nFROM orders o JOIN enrich_grpc_set('main.public.orders') e ON o.id = e.id",
+    params.get("sql") || sessionStorage.getItem(SQL_KEY) || DEFAULT_SQL,
   );
-  const [graph, setGraph] = useState<LineageGraphData | null>(null);
+  // Restore the previously rendered graph unless a deep-link is driving a fresh build.
+  const [graph, setGraph] = useState<LineageGraphData | null>(() =>
+    params.get("sql") || params.get("focus") ? null : loadStoredGraph(),
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Persist query + graph on every change so a later remount restores exactly what was here.
+  useEffect(() => {
+    sessionStorage.setItem(SQL_KEY, sql);
+  }, [sql]);
+  useEffect(() => {
+    if (graph) sessionStorage.setItem(GRAPH_KEY, JSON.stringify(graph));
+    else sessionStorage.removeItem(GRAPH_KEY);
+  }, [graph]);
 
   const run = async (fn: () => Promise<LineageGraphData>) => {
     setLoading(true);
@@ -66,10 +92,16 @@ export function LineagePage(): React.ReactElement {
 
   return (
     <Stack p="md" gap="md">
-      <Title order={3}>Column-Level Lineage</Title>
+      <Title order={3}>Data Lineage</Title>
+      <Text c="dimmed" size="sm">
+        Trace where data comes from. Paste a query below and Provisa maps each result column back
+        through its transforms and command calls to the original source columns — so you can answer
+        "what feeds this column?" before you publish a view or command. Or choose{" "}
+        <b>Complete Lineage</b> to see provenance across every registered view and dataset at once.
+      </Text>
       <Textarea
-        label="SQL statement"
-        description="Commands compose inline; their contracts splice the DAG continuous to source columns."
+        label="Query to analyze"
+        description="Any SELECT that reads your registered tables, views, or commands. This query is only analyzed, never run — nothing is executed and no data is read."
         value={sql}
         onChange={(e) => setSql(e.currentTarget.value)}
         autosize
@@ -78,7 +110,7 @@ export function LineagePage(): React.ReactElement {
       />
       <Group>
         <Button onClick={() => run(() => fetchLineageGraph(sql))} loading={loading} data-testid="lineage-build">
-          Build statement graph
+          Statement Lineage
         </Button>
         <Button
           variant="light"
@@ -86,7 +118,7 @@ export function LineagePage(): React.ReactElement {
           loading={loading}
           data-testid="lineage-federation"
         >
-          Federation graph
+          Complete Lineage
         </Button>
       </Group>
 
@@ -114,7 +146,15 @@ export function LineagePage(): React.ReactElement {
         </Alert>
       )}
 
-      {graph && (
+      {graph && graph.nodes.length === 0 && (
+        <Alert color="gray" title="Nothing to show" data-testid="lineage-empty">
+          No lineage was found. Complete Lineage spans your registered views — none are defined yet,
+          so there is nothing to trace. Register a view (Model → Views), or analyze a query above to
+          see its lineage directly.
+        </Alert>
+      )}
+
+      {graph && graph.nodes.length > 0 && (
         <Paper withBorder p="xs">
           <Group gap="md" mb="xs">
             {LEGEND.map((l) => (

@@ -143,25 +143,31 @@ def test_router_core_splices_commands():
     assert kinds.get("main.public.orders.region") == "source"
 
 
-def test_registry_views_extracts_materialized_views():
+def test_registry_views_uses_user_facing_names_marking_materialized():
+    # REQ-1161: the graph spans EVERY registered view, named by its USER-FACING relation
+    # <domain>.<table> (semantic SQL) — never the physical materialized target. The MV registry only
+    # marks which of those relations are materialization boundaries.
     from types import SimpleNamespace
 
     from provisa.api.admin.lineage_router import _registry_views
 
-    mvs = [
-        SimpleNamespace(sql="SELECT o.a AS a FROM orders o", target_table="mv_x", id="x"),
-        SimpleNamespace(sql=None, target_table="mv_empty", id="e"),  # no sql → skipped
+    view_rows = [
+        {"domain_id": "pet-store", "table_name": "test", "view_sql": "SELECT o.a AS a FROM orders o"},
+        {"domain_id": "pet-store", "table_name": "orders_v", "view_sql": "SELECT o.b AS b FROM orders o"},
+        {"domain_id": "pet-store", "table_name": "empty", "view_sql": None},  # no sql → skipped
     ]
-    state = SimpleNamespace(mv_registry=SimpleNamespace(all=lambda: mvs))
-    views, mats = _registry_views(state)
-    assert views == [("mv_x", "SELECT o.a AS a FROM orders o")]
-    assert mats == {"mv_x"}
+    # "test" is materialized (MV id "view-test"); "orders_v" is a plain view.
+    mvs = [SimpleNamespace(id="view-test", target_table="mv_test", sql="SELECT o.a AS a FROM orders o")]
+    views, mats = _registry_views(view_rows, SimpleNamespace(all=lambda: mvs))
+    assert set(views) == {
+        ("pet_store.test", "SELECT o.a AS a FROM orders o"),
+        ("pet_store.orders_v", "SELECT o.b AS b FROM orders o"),
+    }
+    assert mats == {"pet_store.test"}
 
 
 def test_registry_views_no_registry_is_empty():
-    from types import SimpleNamespace
-
     from provisa.api.admin.lineage_router import _registry_views
 
-    views, mats = _registry_views(SimpleNamespace())
+    views, mats = _registry_views([], None)
     assert views == [] and mats == set()

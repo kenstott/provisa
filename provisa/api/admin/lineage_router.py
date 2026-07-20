@@ -31,15 +31,51 @@ class LineageGraphRequest(BaseModel):
     dialect: str = "postgres"
 
 
-def lineage_graph_for(sql: str, commands: dict[str, dict] | None, dialect: str = "postgres") -> dict:
-    """Build the render-ready lineage graph JSON for ``sql`` (REQ-1160). Pure core, testable without
-    the app: ``commands`` maps command name → its registry dict so inline command nodes splice their
-    declared taint-closure. Raises ValueError on unparseable SQL (surfaced as 422 by the endpoint)."""
+def _referenced_relations(sql: str, dialect: str) -> set[str]:
+    """The relation names a statement reads, as ``<schema>.<table>`` (or bare) — used to detect when a
+    statement references a registered view so that view's lineage can be spliced in."""
+    import sqlglot
+    from sqlglot import exp
+
     try:
-        graph = build_column_graph(sql, dialect=dialect, commands=commands or {})
+        tree = sqlglot.parse_one(sql, read=dialect)
+    except SqlglotError:
+        return set()
+    return {f"{t.db}.{t.name}" if t.db else t.name for t in tree.find_all(exp.Table)}
+
+
+def lineage_graph_for(
+    sql: str,
+    commands: dict[str, dict] | None,
+    dialect: str = "postgres",
+    *,
+    views: list[tuple[str, str]] | None = None,
+    materialized: set[str] | None = None,
+) -> dict:
+    """Build the render-ready lineage graph JSON for ``sql`` (REQ-1160/REQ-1161). Pure core, testable
+    without the app: ``commands`` maps command name → its registry dict so inline command nodes splice
+    their declared taint-closure. When ``sql`` references a registered view (``views`` = (relation,
+    definition) pairs), that view's own definition is expanded and stitched in — so selecting from a
+    view or MV shows its FULL lineage down to base sources, not the view as an opaque leaf. Raises
+    ValueError on unparseable SQL (surfaced as 422 by the endpoint)."""
+    from provisa.lineage.merge import build_federation_graph, merge_graphs
+
+    try:
+        stmt = build_column_graph(sql, dialect=dialect, commands=commands or {})
     except SqlglotError as exc:
         raise ValueError(f"could not parse SQL for lineage: {exc}") from exc
-    return graph.to_dict()
+    view_map = dict(views or [])
+    referenced = [(rel, view_map[rel]) for rel in _referenced_relations(sql, dialect) if rel in view_map]
+    if not referenced:
+        return stmt.to_dict()
+    # Expand each referenced view to its own lineage (down to base sources), then stitch the statement
+    # on top: a view's output node ``<schema>.<table>.<col>`` shares the id the statement reads it by,
+    # so merge_graphs connects them. A ``SELECT *`` (empty statement graph) simply yields the view's
+    # lineage — exactly "the lineage of the columns in this view".
+    fed = build_federation_graph(
+        referenced, commands=commands or {}, materialized_relations=materialized or set()
+    )
+    return merge_graphs([fed.graph, stmt]).to_dict()
 
 
 @router.post("/admin/lineage/graph")
@@ -48,25 +84,73 @@ async def lineage_graph(body: LineageGraphRequest) -> dict:
     from provisa.api.app import state
 
     commands = getattr(state, "tracked_functions", None) or {}
+    view_rows = await _fetch_view_rows(state)
+    views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
     try:
-        return lineage_graph_for(body.sql, commands, body.dialect)
+        return lineage_graph_for(body.sql, commands, body.dialect, views=views, materialized=mats)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-def _registry_views(state) -> tuple[list[tuple[str, str]], set[str]]:
-    """(views as (relation, sql), materialized relation names) from the MV registry (REQ-1161).
+async def _fetch_view_rows(state) -> list[dict]:
+    """Semantic view definitions from ``registered_tables`` — the AUTHORED SQL and USER-FACING names.
 
-    Every MV is a materialized version boundary; its ``target_table`` (or id) is the relation name
-    downstream statements reference, so it is both a view input and a materialized node."""
+    Deliberately NOT ``state.view_sql_map``: that map is rewritten to a physical plan at startup
+    (materialized targets like ``mv_test``, rewritten source refs), which is exactly what must not
+    surface in lineage. The registry rows carry the semantic SQL plus the view's domain, so the graph
+    speaks the names the user defined (``<domain>.<table>``, e.g. ``pet_store.test``)."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables
+
+    if getattr(state, "tenant_db", None) is None:
+        return []
+    async with state.tenant_db.acquire() as conn:
+        res = await conn.execute_core(
+            select(
+                registered_tables.c.domain_id,
+                registered_tables.c.table_name,
+                registered_tables.c.view_sql,
+            ).where(
+                registered_tables.c.source_id == "__provisa__",
+                registered_tables.c.view_sql.is_not(None),
+            )
+        )
+        return [dict(r._mapping) for r in res.fetchall()]
+
+
+def _view_relation(row: dict) -> str:
+    """A view's SQL-addressable relation ``<domain>.<table>`` — exactly how a query references it
+    (the domain is exposed as a SQL schema via ``domain_to_sql_name``, e.g. ``pet-store`` →
+    ``pet_store``), so a statement's reference to the view stitches to this same node id."""
+    from provisa.compiler.naming import domain_to_sql_name
+
+    return f"{domain_to_sql_name(row['domain_id'])}.{row['table_name']}"
+
+
+def _registry_views(view_rows: list[dict], mv_registry) -> tuple[list[tuple[str, str]], set[str]]:
+    """(views as (relation, sql), materialized relation names) over EVERY registered view (REQ-1161).
+
+    ``view_rows`` are the semantic definitions (schema_name, table_name, view_sql). The relation is
+    the SQL-addressable user-facing name ``<schema>.<table>`` — never the physical materialized
+    target. The MV registry contributes nothing new to the node set; it only marks which of those
+    relations are materialization boundaries, so cycle characterization sees the version cuts. A
+    deployment with no MVs still yields a full graph as long as views exist."""
     views: list[tuple[str, str]] = []
+    name_to_relation: dict[str, str] = {}
+    for r in view_rows:
+        if not r.get("view_sql"):
+            continue
+        relation = _view_relation(r)
+        name_to_relation[r["table_name"]] = relation
+        views.append((relation, r["view_sql"]))
     mats: set[str] = set()
-    registry = getattr(state, "mv_registry", None)
-    for mv in registry.all() if registry is not None else []:
-        if mv.sql:
-            relation = mv.target_table or mv.id
-            views.append((relation, mv.sql))
-            mats.add(relation)
+    for mv in mv_registry.all() if mv_registry is not None else []:
+        # MV id is "view-<table>"; the materialization boundary is that view's user-facing relation.
+        if mv.id.startswith("view-"):
+            bare = mv.id[len("view-") :]
+            if bare in name_to_relation:
+                mats.add(name_to_relation[bare])
     return views, mats
 
 
@@ -83,7 +167,8 @@ async def federation_graph(
     from provisa.lineage.merge import build_federation_graph, slice_graph
 
     commands = getattr(state, "tracked_functions", None) or {}
-    views, mats = _registry_views(state)
+    view_rows = await _fetch_view_rows(state)
+    views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
     merged = build_federation_graph(views, commands=commands, materialized_relations=mats)
     if focus is None:
         return merged.to_dict()
