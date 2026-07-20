@@ -162,6 +162,9 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                 )
                 _mv_ref = f'"{_tgt_cat}"."{_tgt_schema}"."mv_{_vr["table_name"]}"'
                 state.view_sql_map[_vr["table_name"]] = view_read_sql(_mv_ref, _bt_spec)
+                # REQ-1163: remember (target, spec) so a request-level as-of can overlay an as-of
+                # reconstruction over this view's append log at query time.
+                state.bitemporal_view_reads[_vr["table_name"]] = (_mv_ref, _bt_spec)
             else:
                 state.view_sql_map[_vr["table_name"]] = _semantic_sql
             if _vr.get("materialize"):

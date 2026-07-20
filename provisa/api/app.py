@@ -160,6 +160,9 @@ class AppState:
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
     kafka_table_configs: dict[str, KafkaTableConfig] = {}  # table_name → KafkaTableConfig
     view_sql_map: dict[str, str] = {}  # view_table_name → SQL (for inline expansion)
+    # REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a request-level
+    # as-of (X-Provisa-As-Of) can overlay an as-of reconstruction over each one's append log.
+    bitemporal_view_reads: dict = {}  # view_table_name → (mv_ref, BitemporalSpec)
     source_cache: dict[str, dict] = {}  # source_id → {cache_enabled, cache_ttl}
     table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
     auth_config: dict | None = None  # auth section from provisa.yaml

@@ -42,6 +42,7 @@ The append-only path here is the portable floor that is correct on every engine.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 # The two write choices (REQ-1162).
 MODE_SNAPSHOT = "snapshot"
@@ -242,6 +243,31 @@ def view_read_sql(mv_ref: str, spec: BitemporalSpec, ts_sql: str | None = None) 
         f"FROM {mv_ref}{upto}"
     )
     return f"SELECT * FROM ({ranked}) _bt WHERE _bt._bt_rn = 1 AND _bt.{op} <> '{_OP_DELETE}'"
+
+
+def parse_as_of(value: str) -> str:
+    """Validate a request-level as-of value (ISO 8601) and return a SAFE SQL TIMESTAMP literal.
+
+    The value is spliced into SQL, so it is never trusted raw: it is parsed to a datetime (raising on
+    anything malformed) and re-emitted in a fixed format — no injection surface (REQ-1163)."""
+    dt = datetime.fromisoformat(value.strip())  # raises ValueError on bad input
+    return f"TIMESTAMP '{dt.strftime('%Y-%m-%d %H:%M:%S.%f')}'"
+
+
+def as_of_view_map(
+    view_sql_map: dict[str, str],
+    bitemporal_reads: dict[str, tuple[str, BitemporalSpec]],
+    as_of_ts: str,
+) -> dict[str, str]:
+    """Overlay a request-level as-of onto the inline-expansion map (REQ-1163): each bitemporal view's
+    entry is replaced with an as-of reconstruction over its append log, so the whole query reads as of
+    ``as_of_ts``. Non-bitemporal views are untouched. Returns a new map (input not mutated)."""
+    if not bitemporal_reads:
+        return view_sql_map
+    out = dict(view_sql_map)
+    for name, (mv_ref, spec) in bitemporal_reads.items():
+        out[name] = view_read_sql(mv_ref, spec, as_of_ts)
+    return out
 
 
 def as_of_valid_predicate(spec: BitemporalSpec, ts_sql: str, alias: str | None = None) -> str:

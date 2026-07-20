@@ -211,6 +211,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     x_provisa_redirect_format: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
     x_provisa_normalized: str | None = Header(None),
+    x_provisa_as_of: str | None = Header(None),  # REQ-1163: read bitemporal MVs as of this time
 ):
     """Execute a GraphQL query or mutation. Content negotiation via Accept header.
 
@@ -316,6 +317,16 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         x_provisa_redirect, x_provisa_redirect_threshold, x_provisa_redirect_format, directives
     )
 
+    # REQ-1163: a request-level as-of validated to a safe SQL timestamp literal (400 on malformed).
+    _as_of = None
+    if x_provisa_as_of:
+        from provisa.mv.bitemporal import parse_as_of
+
+        try:
+            _as_of = parse_as_of(x_provisa_as_of)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"invalid X-Provisa-As-Of: {exc}")
+
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
         _qs_mod.begin()
@@ -350,6 +361,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             force_redirect=force_redirect,
             redirect_threshold=effective_threshold,
             redirect_format=redirect_format,
+            as_of=_as_of,  # REQ-1163
             steward_hint=steward_hint,
             query_session_props=directives.to_session_props(),
             cache_ttl=directives.cache_ttl,
@@ -378,15 +390,24 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 
 
 async def _prepare_compiled(
-    compiled, ctx, rls, state, role_id, role, fresh_mvs
-):  # REQ-002, REQ-038, REQ-040, REQ-203, REQ-204, REQ-262, REQ-263
-    """Apply governance, MV rewrite, Kafka filters, and sampling to a compiled query."""
+    compiled, ctx, rls, state, role_id, role, fresh_mvs, as_of=None
+):  # REQ-002, REQ-038, REQ-040, REQ-203, REQ-204, REQ-262, REQ-263, REQ-1163
+    """Apply governance, MV rewrite, Kafka filters, and sampling to a compiled query.
+
+    ``as_of`` (REQ-1163): a validated SQL timestamp literal. When set, bitemporal materialized views
+    in the query are read AS OF that system time — their inline-expansion entries are overlaid with an
+    as-of reconstruction over each one's append log (default, without it, reads current state)."""
     from provisa.compiler.stage2 import apply_governance, build_governance_context
 
     if state.view_sql_map:
         from provisa.compiler.view_expand import expand_views
 
-        compiled = expand_views(compiled, state.view_sql_map)
+        _vmap = state.view_sql_map
+        if as_of and getattr(state, "bitemporal_view_reads", None):
+            from provisa.mv.bitemporal import as_of_view_map
+
+            _vmap = as_of_view_map(state.view_sql_map, state.bitemporal_view_reads, as_of)
+        compiled = expand_views(compiled, _vmap)
 
     original_sources = set(compiled.sources)
     compiled = rewrite_if_mv_match(compiled, fresh_mvs)
@@ -731,6 +752,7 @@ async def _handle_query(
     force_redirect=False,
     redirect_threshold=None,
     redirect_format=None,
+    as_of: str | None = None,  # REQ-1163: validated as-of SQL timestamp literal (or None)
     steward_hint: str | None = None,
     query_session_props: dict | None = None,
     cache_ttl: int | None = None,
@@ -766,7 +788,9 @@ async def _handle_query(
     # Prepare all compiled queries (RLS, masking, MV rewrite, sampling)
     prepared = []
     for cq in compiled_queries:
-        prepped, _ = await _prepare_compiled(cq, ctx, rls, state, role_id, role, fresh_mvs)
+        prepped, _ = await _prepare_compiled(
+            cq, ctx, rls, state, role_id, role, fresh_mvs, as_of=as_of
+        )
         prepared.append(prepped)
 
     # Determine redirect config

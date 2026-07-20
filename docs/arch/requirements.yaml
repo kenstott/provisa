@@ -32971,33 +32971,48 @@
   - REQ-844
   - REQ-874
 - id: REQ-1163
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
+  since: "2026-07"
   description: >-
-    A bitemporal materialized view (REQ-1162) must be READABLE through the query languages so
-    consumers get current state by default and can travel in time. Part (1) — current-by-default — is
-    DONE: a bitemporal materialized view's inline-expansion entry (state.view_sql_map, app_rebuild.py)
-    is pointed at a reconstruction over the physical append log (bitemporal.py: view_read_sql), so a
-    plain read returns the CURRENT reconstructed state (latest batch for snapshot; latest-version-
-    per-business-key window dropping tombstones for delta) instead of the raw log. Part (2) — REMAINING
-    — an optional `as_of` argument on the query (timestamp) reconstructs state as of that system time
-    via the same view_read_sql(ts) path, giving identical consumer-facing semantics across substrates;
-    this needs a declared `as_of` GraphQL/SQL argument (not declared today) threaded into the view-
-    substitution step, plus freshness-gating so a stale/unmaterialized MV is handled explicitly (not a
-    silent fallback). Analogous to REQ-372 (`as_of` for Iceberg/Delta SOURCES).
+    A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers get
+    current state by default and can travel in time. (1) Current-by-default — a bitemporal materialized
+    view's inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction
+    over the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT
+    reconstructed state (latest batch for snapshot; latest-version-per-business-key window dropping
+    tombstones for delta), never the raw log. (2) Time travel — a request-level `X-Provisa-As-Of`
+    header (validated to a safe SQL timestamp literal by parse_as_of; malformed → HTTP 400) applies to
+    the whole query: _prepare_compiled overlays each bitemporal view's expansion entry with an as-of
+    reconstruction over its append log (as_of_view_map + view_read_sql(ts)), giving identical
+    consumer-facing as-of semantics across every substrate. A whole-query as-of context (like a
+    bitemporal system time) rather than a per-field arg keeps it out of the GraphQL schema. Analogous
+    to REQ-372 (`as_of` for Iceberg/Delta SOURCES).
   use_case: >-
     Without routing reads through reconstruction a bitemporal MV read would surface all historical
-    versions instead of current state. Current-by-default (done) makes bitemporal MVs usable; the
-    `as_of` argument (remaining) adds opt-in time travel.
+    versions instead of current state. Current-by-default makes bitemporal MVs usable; the
+    X-Provisa-As-Of header adds opt-in, whole-query time travel.
   code:
   - provisa/api/app_rebuild.py
+  - provisa/api/app.py
+  - provisa/api/data/endpoint.py
   - provisa/mv/bitemporal.py
   tests:
   - tests/unit/test_bitemporal_exec.py
+  integration_test: required
+  integration_test_reason: End-to-end read of a materialized bitemporal view (current + X-Provisa-As-Of)
+    through the GraphQL/SQL endpoint needs a running app + control-plane DB + federation engine; unit
+    tests cover the reconstruction SQL, header validation, and the overlay, not the live query.
+  scenario: 'Given a materialized bitemporal view that has been refreshed across several changes
+
+    When it is queried with no header, then with X-Provisa-As-Of set to a past time
+
+    Then the plain read returns current reconstructed state and the as-of read returns the state that
+    was effective at that time; a malformed header is rejected with HTTP 400
+
+    '
   related_reqs:
   - REQ-1162
   - REQ-372
