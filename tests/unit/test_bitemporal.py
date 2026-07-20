@@ -1,9 +1,10 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: e20a688d-ab8c-4afe-a27d-5f9d9edb76c6
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1159: append-only, engine-computed bitemporal materialization SQL."""
+"""REQ-1162: append-only, engine-computed bitemporal materialization SQL."""
 
 from __future__ import annotations
 

@@ -41,7 +41,7 @@
     "consistencyShared": "shared (fleet-coordinated)",
     "consistencyDistributed": "distributed (per-instance)",
     "bitemporalLabel": "Time Travel (History)",
-    "bitemporalHelp": "REQ-1159 append-only bitemporal history. off = ordinary materialization (each refresh replaces the data; no history). snapshot = each refresh appends the whole fresh dataset stamped with its system time; simplest and works on any engine, but storage grows by full size per refresh. delta = each refresh appends only the rows the engine computes as changed, plus tombstones for removed keys; smaller, and needs a business key. Either way no row is ever updated to retire it — 'as of' history is derived at read time from the immutable append log. Efficiency varies by engine.",
+    "bitemporalHelp": "REQ-1162 append-only bitemporal history. off = ordinary materialization (each refresh replaces the data; no history). snapshot = each refresh appends the whole fresh dataset stamped with its system time; simplest and works on any engine, but storage grows by full size per refresh. delta = each refresh appends only the rows the engine computes as changed, plus tombstones for removed keys; smaller, and needs a business key. Either way no row is ever updated to retire it — 'as of' history is derived at read time from the immutable append log. Efficiency varies by engine.",
     "bitemporalAria": "MV bitemporal history mode",
     "bitemporalNone": "off (no history)",
     "bitemporalSnapshot": "snapshot (append full dataset)",

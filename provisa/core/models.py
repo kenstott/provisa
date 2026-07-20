@@ -529,7 +529,7 @@ class Table(
     # land. None = identity. MUST be deterministic (REQ-964): purity-checked at registration
     # (provisa.mv.preprocess) and executed in a restricted namespace with no dangerous builtins.
     mv_preprocess: str | None = None
-    # REQ-1159: append-only bitemporal materialization. None = ordinary MV; "snapshot" appends the
+    # REQ-1162: append-only bitemporal materialization. None = ordinary MV; "snapshot" appends the
     # whole fresh dataset each refresh; "delta" appends only engine-computed changes. mv_bitemporal_key
     # is the business identity a version belongs to (required for delta). Time travel ("as of") is then
     # derived at read time from the immutable append log — no UPDATE ever retires a row.

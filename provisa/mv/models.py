@@ -119,7 +119,7 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # recompute). Default False = recompute-to-current (the REQ-966 NRT baseline).
     incremental: bool = False
 
-    # REQ-1159: append-only bitemporal materialization. When set, each refresh APPENDS (never
+    # REQ-1162: append-only bitemporal materialization. When set, each refresh APPENDS (never
     # UPDATEs) either the whole fresh dataset (snapshot mode) or engine-computed changes (delta
     # mode); "as-of" history is derived at read time from the immutable append log. Supersedes the
     # persist axis for this MV (replace/append/upsert do not apply). None = ordinary materialization.

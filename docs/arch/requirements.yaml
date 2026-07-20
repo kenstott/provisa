@@ -32913,28 +32913,81 @@
     Then it is caught and silently logged
     And the URL is printed as a fallback
     And the servers keep running
-- id: REQ-1159
-  status: proposed
+- id: REQ-1162
+  status: complete
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
   type: behavioral
   description: >-
-    A materialized view's time-travel capability is a property of its definition, guaranteed
-    regardless of the storage substrate (Iceberg, PostgreSQL, DuckDB, etc.). Consumer-facing
-    `as_of` semantics must be identical across substrates; the compiler realizes them in
-    two ways: (1) engine-native Iceberg substrate uses native snapshots, refresh via overwrite
-    semantics, and `as_of` maps to Trino `FOR TIMESTAMP AS OF` / `FOR VERSION AS OF`; (2)
-    relational/non-snapshot substrates use emulated snapshots via SCD Type 2 / Data-Vault-satellite
-    layout with version/snapshot id and validity timestamps, and `as_of` compiles to a
-    predicate on the version stamp.
+    A materialized view's time-travel capability is a property of its DEFINITION, guaranteed on any
+    materializing substrate (Iceberg, PostgreSQL, DuckDB, ...). Maintenance is APPEND-ONLY — a version,
+    once written, is never updated or deleted (no valid_to write-back), so it works on engines that
+    cannot cheaply UPDATE a federated store. Each refresh appends one of two ways: `snapshot` appends
+    the whole fresh dataset stamped with system time; `delta` appends only the rows the ENGINE computes
+    as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys — never folded
+    row-by-row in Provisa. "As of" history is DERIVED at read time from the immutable append log (latest
+    batch for snapshot; a ROW_NUMBER window per business key for delta), so consumer-facing `as_of`
+    semantics are identical across every substrate. On Iceberg each append is exactly one snapshot
+    (REQ-844). Declared end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table
+    -> MVDefinition.bitemporal -> refresh_mv) with a UI control in TableEditForm. NOTE: exposing `as_of`
+    as a query-language argument that routes bitemporal-MV reads through reconstruction is tracked as
+    REQ-1163 (the consumer query surface, analogous to REQ-372 for sources).
   use_case: >-
-    Today, MV time-travel exists only on Iceberg; when Iceberg is unreachable the substrate
-    degrades to replace/append/upsert only, losing the capability. This requirement ensures
-    time-travel is available on any substrate, closing the gap between Iceberg-backed and
-    relational-backed MVs.
-  target: 2026-Q4
+    Time-travel previously existed only on Iceberg; when Iceberg was unreachable the substrate degraded
+    to replace/append/upsert, losing history. Append-only bitemporal materialization makes time-travel
+    available on any substrate — the same definition retargets across engines without remodeling.
+  code:
+  - provisa/mv/bitemporal.py
+  - provisa/mv/refresh.py
+  - provisa/mv/models.py
+  - provisa/api/admin/schema_common.py
+  tests:
+  - tests/unit/test_bitemporal.py
+  - tests/unit/test_bitemporal_exec.py
+  - tests/unit/test_bitemporal_pg.py
+  - tests/unit/test_bitemporal_iceberg.py
+  - tests/unit/test_bitemporal_refresh_e2e.py
+  since: "2026-07"
+  scenario: 'Given a materialized view declared bitemporal (snapshot or delta) on a business key
+
+    When it is refreshed repeatedly as rows are inserted, updated, and deleted
+
+    Then each refresh only APPENDS (no UPDATE/DELETE), reconstruction returns the correct state at any
+    past point, snapshot and delta modes agree, and on Iceberg each refresh is exactly one snapshot
+
+    '
   related_reqs:
   - REQ-372
   - REQ-844
   - REQ-874
+- id: REQ-1163
+  status: proposed
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    A bitemporal materialized view (REQ-1162) must be READABLE through the query languages so
+    consumers get current state by default and can travel in time. Two parts: (1) a raw read of a
+    bitemporal MV must return the CURRENT reconstructed state, never the full append log — the MV
+    read/rewrite path routes reads through the reconstruction SELECT (latest batch for snapshot mode;
+    latest-version-per-business-key window dropping tombstones for delta mode) instead of a plain scan
+    of the target table; (2) an optional `as_of` argument on the query (timestamp) reconstructs state
+    as of that system time via the same reconstruction, giving identical consumer-facing semantics
+    across substrates. This is the query-language surface analogous to REQ-372 (`as_of` for
+    Iceberg/Delta SOURCES). REQ-1162 already delivers the append-only materialization and the
+    reconstruction SQL (provisa/mv/bitemporal.py: reconstruct_as_of_sql / current_state_sql), so this
+    requirement is only the compiler/rewriter wiring plus the `as_of` argument declaration.
+  use_case: >-
+    Without wiring reconstruction into the read path (provisa/mv/rewriter.py), a bitemporal MV read
+    would surface all historical versions instead of current state. This closes the read surface so
+    bitemporal MVs are usable from GraphQL/SQL with current-by-default and opt-in time travel.
+  code:
+  - provisa/mv/rewriter.py
+  - provisa/mv/bitemporal.py
+  related_reqs:
+  - REQ-1162
+  - REQ-372
+  - REQ-844

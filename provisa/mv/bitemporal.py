@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Engine-agnostic, APPEND-ONLY bitemporal materialization for MVs (REQ-1159).
+"""Engine-agnostic, APPEND-ONLY bitemporal materialization for MVs (REQ-1162).
 
 Time travel is a simple idea — keep every version of a row instead of overwriting it — but
 engines realize it with very different efficiency. This module expresses the idea ONCE, as
@@ -43,7 +43,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# The two write choices (REQ-1159).
+# The two write choices (REQ-1162).
 MODE_SNAPSHOT = "snapshot"
 MODE_DELTA = "delta"
 MODES = frozenset({MODE_SNAPSHOT, MODE_DELTA})

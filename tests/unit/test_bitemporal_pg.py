@@ -1,9 +1,10 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 6d2f2e8e-cad0-4080-b1e6-dd6c4d807584
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1159: cross-engine behavioral validation on POSTGRES.
+"""REQ-1162: cross-engine behavioral validation on POSTGRES.
 
 The DuckDB exec suite proves the approach on one engine; this runs the SAME generated SQL against
 PostgreSQL to catch dialect drift (Postgres is strict where DuckDB is lenient — e.g. it refused a

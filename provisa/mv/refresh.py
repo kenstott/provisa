@@ -37,7 +37,7 @@ _tracer = _get_tracer(__name__)
 def _now_ts_literal() -> str:
     """One system-time stamp for a refresh, as an engine-agnostic SQL literal. Refreshes are
     serialized per MV and spaced by refresh_interval, so successive stamps strictly increase —
-    which is what the append-only reconstruction relies on to order versions (REQ-1159)."""
+    which is what the append-only reconstruction relies on to order versions (REQ-1162)."""
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
     return f"TIMESTAMP '{ts}'"
 
@@ -50,7 +50,7 @@ async def _refresh_bitemporal(
     table_exists: bool,
     existing_cols: list[str],
 ) -> None:
-    """Advance a bitemporal MV by APPENDING this refresh (REQ-1159): first materialization creates
+    """Advance a bitemporal MV by APPENDING this refresh (REQ-1162): first materialization creates
     the log; subsequent refreshes append a full snapshot or an engine-computed delta. No UPDATE/
     DELETE of history ever runs. A view-definition column change is the one exception — the append
     log's business shape no longer matches, so the log is rebuilt (history reset) and surfaced."""
@@ -351,7 +351,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
         prev_rows = await _snapshot_prev_rows(engine, mv, store, target, table_exists=table_exists)
 
         if mv.bitemporal is not None:
-            # REQ-1159: append-only bitemporal maintenance — never DELETE/UPDATE the history.
+            # REQ-1162: append-only bitemporal maintenance — never DELETE/UPDATE the history.
             await _refresh_bitemporal(engine, mv, target, select_sql, table_exists, existing_cols)
         else:
             # DELETE+INSERT only reconciles rows, not shape. If the view SQL was edited so its

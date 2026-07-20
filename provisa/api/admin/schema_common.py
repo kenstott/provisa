@@ -300,8 +300,8 @@ def _sync_view_mv(
     debounce_max_delay: float | None = None,
     consistency: str = "shared",  # REQ-879
     preprocess: str | None = None,  # REQ-957
-    bitemporal_mode: str | None = None,  # REQ-1159: None | "snapshot" | "delta"
-    bitemporal_key: list[str] | None = None,  # REQ-1159: business key (required for delta)
+    bitemporal_mode: str | None = None,  # REQ-1162: None | "snapshot" | "delta"
+    bitemporal_key: list[str] | None = None,  # REQ-1162: business key (required for delta)
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view."""
     # REQ-879: consistency tier is a closed set — reject anything else loudly (no silent default).
@@ -310,13 +310,13 @@ def _sync_view_mv(
             f"invalid MV consistency {consistency!r}: expected 'shared' or 'distributed'"
         )
     from provisa.api.app import state
-    from provisa.mv.bitemporal import BitemporalSpec  # REQ-1159
+    from provisa.mv.bitemporal import BitemporalSpec  # REQ-1162
     from provisa.mv.models import MVDefinition, MVStatus
     from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
     from provisa.mv.determinism import check_view_determinism  # REQ-964
     from provisa.mv.preprocess import validate_preprocess  # REQ-957
 
-    # REQ-1159: build the bitemporal spec from the declared mode/key (None = ordinary MV). Spec
+    # REQ-1162: build the bitemporal spec from the declared mode/key (None = ordinary MV). Spec
     # construction validates the mode and that delta has a key — a bad declaration fails loud here.
     bitemporal = (
         BitemporalSpec(key=tuple(bitemporal_key or []), mode=bitemporal_mode)
@@ -361,7 +361,7 @@ def _sync_view_mv(
         debounce_max_delay=debounce_max_delay,  # REQ-963
         consistency=consistency,  # REQ-879
         preprocess=preprocess,  # REQ-957
-        bitemporal=bitemporal,  # REQ-1159
+        bitemporal=bitemporal,  # REQ-1162
     )
     state.mv_registry.register(mv)
 

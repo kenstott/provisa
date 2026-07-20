@@ -1,9 +1,10 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: d64047e2-4089-4835-b1c0-e1d27a2567c9
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1159 + REQ-844: bitemporal materialization with ICEBERG output.
+"""REQ-1162 + REQ-844: bitemporal materialization with ICEBERG output.
 
 Iceberg is the substrate where time travel matters most, and our approach is designed for it: the
 maintenance is APPEND-ONLY, and an Iceberg append is exactly one new snapshot. This test writes each

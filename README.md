@@ -39,7 +39,7 @@ Data Vault fits the same way, one layer earlier. Its hubs are deduplicated busin
 
 ### Time travel
 
-Time travel is a simple idea — keep every version of a row instead of overwriting it, so you can ask what the data *was* at any past moment. What differs is how efficiently each engine can do it, which is exactly why Provisa makes it a property of the materialized-view **definition** rather than of the storage engine (REQ-1159). Declare it once; it works on any materializing backend.
+Time travel is a simple idea — keep every version of a row instead of overwriting it, so you can ask what the data *was* at any past moment. What differs is how efficiently each engine can do it, which is exactly why Provisa makes it a property of the materialized-view **definition** rather than of the storage engine (REQ-1162). Declare it once; it works on any materializing backend.
 
 The rule that keeps it portable is **append-only**: a version, once written, is never updated or deleted. Retiring a row by writing back a "valid-to" date — the usual bitemporal trick — needs an UPDATE, which many engines can't do cheaply (or at all) over a federated store, so Provisa doesn't. Instead every refresh **appends**, and "which version was in effect at time T" is derived at read time from the immutable log. There are exactly two ways to append:
 

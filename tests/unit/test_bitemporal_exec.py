@@ -1,9 +1,10 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 72574bc6-495b-42b1-99c5-79bacd2455cc
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1159: BEHAVIORAL validation — execute the generated bitemporal SQL against a real engine
+"""REQ-1162: BEHAVIORAL validation — execute the generated bitemporal SQL against a real engine
 (DuckDB) across the full scenario matrix and assert the reconstructed state is correct.
 
 test_bitemporal.py checks the SQL *shape*; this file proves the SQL actually *works*: a sequence of

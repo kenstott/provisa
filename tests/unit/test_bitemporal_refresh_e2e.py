@@ -1,9 +1,10 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: f1e716cd-4c95-434b-bac0-67f27597a59b
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1159: END-TO-END through refresh_mv against a real (DuckDB-executing) engine.
+"""REQ-1162: END-TO-END through refresh_mv against a real (DuckDB-executing) engine.
 
 The other suites test the SQL generator directly; this drives the actual production code path —
 refresh_mv → _refresh_bitemporal → create/append — proving the wiring (first-refresh create, later
