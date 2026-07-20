@@ -34,6 +34,7 @@ import {
   useDeleteSource,
   useUpdateSourceCache,
   useUpdateSourcePreferMaterialized,
+  useUpdateSourceLoadProtection,
   useUpdateSourceNaming,
   useUpdateSourceAllowedDomains,
   useDomains,
@@ -75,6 +76,7 @@ export function SourcesPage() {
   const { deleteSource } = useDeleteSource();
   const { updateSourceCache } = useUpdateSourceCache();
   const { updateSourcePreferMaterialized } = useUpdateSourcePreferMaterialized();
+  const { updateSourceLoadProtection } = useUpdateSourceLoadProtection();
   const { updateSourceNaming } = useUpdateSourceNaming();
   const { updateSourceAllowedDomains } = useUpdateSourceAllowedDomains();
   const [settingsLoading, setSettingsLoading] = useState(true);
@@ -97,6 +99,9 @@ export function SourcesPage() {
     cacheTtl: "",
     cacheEnabled: true,
     preferMaterialized: false,
+    loadProtected: false,
+    offPeakWindow: "",
+    offPeakTz: "UTC",
     changeSignal: "ttl",
     path: "" as string,
     allowedDomains: "" as string,
@@ -282,6 +287,9 @@ export function SourcesPage() {
       cacheTtl: s.cacheTtl != null ? String(s.cacheTtl) : "",
       cacheEnabled: s.cacheEnabled,
       preferMaterialized: s.preferMaterialized ?? false,
+      loadProtected: s.loadProtected ?? false,
+      offPeakWindow: s.offPeakWindow ?? "",
+      offPeakTz: s.offPeakTz ?? "UTC",
       changeSignal: s.changeSignal || "ttl",
       path: s.type === "files" ? parseFilesPath(s.path ?? "").path : (s.path ?? ""),
       allowedDomains: (s.allowedDomains ?? []).join(", "),
@@ -377,6 +385,9 @@ export function SourcesPage() {
       cacheTtl: "",
       cacheEnabled: true,
       preferMaterialized: false,
+      loadProtected: false,
+      offPeakWindow: "",
+      offPeakTz: "UTC",
       changeSignal: "ttl",
       path: "",
       allowedDomains: "",
@@ -481,6 +492,13 @@ export function SourcesPage() {
           form.preferMaterialized,
         );
         if (!preferResult.success) throw new Error(preferResult.message);
+        const loadProtResult = await updateSourceLoadProtection(
+          effectiveId,
+          form.loadProtected,
+          form.offPeakWindow.trim() || null,
+          form.offPeakTz.trim() || "UTC",
+        );
+        if (!loadProtResult.success) throw new Error(loadProtResult.message);
         const namingResult = await updateSourceNaming(
           effectiveId,
           form.gqlNamingConvention === "" ? null : form.gqlNamingConvention,
@@ -501,6 +519,15 @@ export function SourcesPage() {
           createPayload as Parameters<typeof createSource>[0],
         );
         if (!createResult.success) throw new Error(createResult.message);
+        if (form.loadProtected) {
+          const lp = await updateSourceLoadProtection(
+            form.id,
+            true,
+            form.offPeakWindow.trim() || null,
+            form.offPeakTz.trim() || "UTC",
+          );
+          if (!lp.success) throw new Error(lp.message);
+        }
         const parsedDomainsCreate = form.allowedDomains
           .split(",")
           .map((d) => d.trim())

@@ -831,6 +831,35 @@ export function SourceFormFieldsExtended({
               data-testid="change-signal-select"
             />
           </Tooltip>
+          {/* REQ-1141: source-level load protection (scheduled-refresh-only, off-peak window). */}
+          <Group gap="lg" style={{ gridColumn: "1 / -1" }} wrap="wrap" align="flex-end">
+            <Tooltip label={t("sourceFormFieldsExtended.loadProtectedTooltip")} multiline w={280}>
+              <Checkbox
+                label={t("sourceFormFieldsExtended.loadProtected")}
+                checked={form.loadProtected}
+                onChange={(e) => setForm({ ...form, loadProtected: e.currentTarget.checked })}
+                data-testid="load-protected-checkbox"
+              />
+            </Tooltip>
+            {form.loadProtected && (
+              <>
+                <TextInput
+                  label={t("sourceFormFieldsExtended.offPeakWindow")}
+                  value={form.offPeakWindow}
+                  onChange={(e) => setForm({ ...form, offPeakWindow: e.currentTarget.value })}
+                  placeholder="01:00-05:00"
+                  data-testid="off-peak-window-input"
+                />
+                <TextInput
+                  label={t("sourceFormFieldsExtended.offPeakTz")}
+                  value={form.offPeakTz}
+                  onChange={(e) => setForm({ ...form, offPeakTz: e.currentTarget.value })}
+                  placeholder="UTC"
+                  data-testid="off-peak-tz-input"
+                />
+              </>
+            )}
+          </Group>
           {domainsEnabled && (
             <Stack gap={4} style={{ gridColumn: "1 / -1" }}>
               <MultiSelect
