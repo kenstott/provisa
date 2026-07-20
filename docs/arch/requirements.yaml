@@ -18350,41 +18350,6 @@
   competitive_position:
     status: neutral
     rationale: ''
-- id: REQ-672
-  status: proposed
-  group: 15. Proposed Features
-  category: Graph Model
-  priority: SHOULD
-  type: structural
-  description: 'M:N relationship support via explicit join tables: a RelationshipMapping may declare a
-    join_table (schema + table name, source FK column, target FK column) to represent a many-to-many association.
-    The join table''s extra columns are projected as relationship properties into the Cypher rel JSON
-    object. Two Cypher relationship type names (one per direction) and two GraphQL field names (one per
-    side) are declared from the same join table definition. Relationship properties are accessible as
-    r.prop in Cypher queries via JSON_EXTRACT_SCALAR on the rel object''s properties bag. Users who prefer
-    simplicity may instead expose the join table as a node label with its own identity.'
-  use_case: Many-to-many relationships with attributes on the association (e.g. WORKS_AT with start_date
-    and salary) cannot be modeled today without exposing the join table as a node. A native M:N join table
-    mapping lets the graph model reflect the true cardinality without forcing an artificial entity.
-  tests:
-  - tests/unit/test_cypher_graph_fns.py
-  - tests/unit/test_cypher_label_map.py
-  - tests/unit/test_mn_relationship_requirements.py
-  target: 2026-Q3
-  integration_test: required
-  integration_test_reason: 'M:N relationship correctness requires end-to-end verification: Cypher compilation,
-    GraphQL schema generation, and data flow from source through join table to result.'
-  e2e: true
-  e2e_reason: M:N relationship correctness must be verified end-to-end through Cypher queries over a live
-    graph stack, as unit tests cannot confirm correct JOIN generation and result projection across the
-    pgwire or REST transport.
-  stakeholders:
-  - app-developer
-  - data-engineer
-  competitive_position:
-    status: parity
-    rationale: M:N relationship support via explicit join tables is available in Hasura (array relationships
-      with join tables) and standard in Dremio and Denodo.
 - id: REQ-684
   status: complete
   since: 2026-07
@@ -29789,7 +29754,7 @@
   - REQ-1014
 - id: REQ-1017
   status: proposed
-  group: 2. Authentication & Identity
+  group: 11. Platform, Infrastructure & Delivery
   category: Self-Service Provisioning
   priority: MUST
   type: behavioral
@@ -30376,12 +30341,18 @@
   - REQ-1047
   - REQ-1048
 - id: REQ-1050
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Marketing & Presence
   priority: SHOULD
   type: structural
+  unit_test: false
+  unit_test_reason: Static marketing site (framework-free HTML/CSS deployed to Cloudflare
+    Pages) — no in-process interface to unit test. Verified by code review.
   target: 2026-Q3
+  code:
+  - site/
   description: 'Marketing website surface: a static marketing site (landing, features, pricing) hosted
     on Cloudflare Pages. Zero marginal cost at any traffic level; deployed independently of the app so
     it cannot affect app availability. Colocated with the Cloudflare R2 object storage vendor.'
@@ -32594,7 +32565,8 @@
     - REQ-855
     - REQ-1141
 - id: REQ-1150
-  status: proposed
+  status: complete
+  since: 2026-07
   group: "8. Client Access & Protocols"
   category: Protocol Support
   priority: SHOULD
@@ -32649,6 +32621,13 @@
     - provisa/grpc/server.py
     - provisa/cypher/parser.py
     - provisa/bolt/session.py
+    - provisa/api/rest/registered_call.py
+  tests:
+    - tests/unit/test_command_surface_discovery.py
+    - tests/unit/test_grpc_command_endpoint.py
+    - tests/unit/test_bolt_command_call.py
+    - tests/unit/test_proto_gen.py
+    - tests/unit/test_tracked_function_invocation.py
   target: 2026-Q4
   scenario: >-
     Given a command `active_users` registered as a set-returning query-kind
@@ -32751,11 +32730,15 @@
     - REQ-1142
     - REQ-898
 - id: REQ-1153
-  status: proposed
+  status: accepted
   group: "9. Installation & Deployment"
   category: Package Distribution
   priority: MUST
   type: infrastructure
+  unit_test: false
+  unit_test_reason: Build/packaging infrastructure — the wheel-build + PyPI-publish path
+    is exercised only by the release CI workflow on a v* tag; there is no in-process
+    interface to unit test. Verified by code review, accepted manually.
   description: >-
     A universal py3-none-any wheel package `provisa-pgwire-bundles` carrying the
     pinned Calcite pgwire connector bundles (pgwire-file, pgwire-sharepoint,

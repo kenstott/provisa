@@ -504,10 +504,14 @@ def _system_query(
         _dbg.warning("[BOLT] _system_query: intercepted SHOW ALIASES")
         return ["name", "database", "location", "url", "user"], []
 
-    # SHOW PROCEDURES / SHOW FUNCTIONS
+    # SHOW PROCEDURES / SHOW FUNCTIONS — list registered commands so a Bolt client (Neo4j
+    # Browser/Bloom) discovers what `CALL <command>(...)` can invoke, not just run it blind (REQ-1150).
     if q_upper.startswith("SHOW PROCEDURES") or q_upper.startswith("SHOW FUNCTIONS"):
         _dbg.warning("[BOLT] _system_query: intercepted SHOW PROCEDURES/FUNCTIONS")
-        return ["name", "description", "signature"], []
+        return ["name", "description", "signature"], [
+            [c["name"], c["description"], _command_signature(c)]
+            for c in _list_commands(app_state, role_id)
+        ]
 
     # SHOW TRANSACTIONS / SHOW SETTINGS / SHOW INDEXES / SHOW CONSTRAINTS
     if (
@@ -717,6 +721,20 @@ def _parse_call_arg(tok: str) -> Any:
             return float(tok)
         except ValueError:
             return tok
+
+
+def _list_commands(app_state, role_id: str | None) -> list[dict]:
+    """Commands visible to *role_id*, for SHOW PROCEDURES discovery (REQ-1150)."""
+    from provisa.api.data.action_exec import list_visible_commands
+
+    return list_visible_commands(app_state, role_id)
+
+
+def _command_signature(cmd: dict) -> str:
+    """A Neo4j-style procedure signature for a command: ``name(arg :: TYPE) :: (ROWS)`` (REQ-1150)."""
+    args = ", ".join(f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"])
+    ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
+    return f"{cmd['name']}({args}) :: ({ret})"
 
 
 async def _maybe_invoke_command_call(

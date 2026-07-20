@@ -35,6 +35,18 @@ _PROC_RE = _re.compile(
     r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE
 )
 
+# REQ-1150: a command-listing procedure so an HTTP Cypher client discovers registered commands
+# (name/signature) — parity with the Bolt SHOW PROCEDURES surface. dbms.procedures is the Neo4j name.
+_COMMANDS_PROC_RE = _re.compile(
+    r"^\s*CALL\s+(?:dbms\.procedures|provisa\.commands)\s*\(\s*\)\s*(?:YIELD\b.*)?$", _re.IGNORECASE
+)
+
+
+def _command_signature(cmd: dict) -> str:
+    args = ", ".join(f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"])
+    ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
+    return f"{cmd['name']}({args}) :: ({ret})"
+
 
 def _detect_procedure(query: str) -> str | None:
     m = _PROC_RE.match(query.strip())
@@ -148,6 +160,15 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
 
     Returns a response when the query is one of these, else None (fall through to compile).
     """
+    if _COMMANDS_PROC_RE.match(body.query.strip()):
+        from provisa.api.data.action_exec import list_visible_commands
+
+        cmds = list_visible_commands(state, role_id)
+        rows = [
+            {"name": c["name"], "description": c["description"], "signature": _command_signature(c)}
+            for c in cmds
+        ]
+        return JSONResponse(content={"columns": ["name", "description", "signature"], "rows": rows})
     proc = _detect_procedure(body.query)
     if proc is not None:
         return _handle_procedure(proc, label_map)

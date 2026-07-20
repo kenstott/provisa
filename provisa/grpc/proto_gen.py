@@ -91,6 +91,43 @@ def _to_proto_field_name(gql_name: str) -> str:
     return gql_name.replace("__", "_")
 
 
+# GraphQL scalar name (command argument type) → proto3 type. Mirrors the REST surface's
+# _arg_type_to_openapi mapping so a command's arg shape is identical across surfaces (REQ-1150).
+_ARG_PROTO_TYPE: dict[str, str] = {"int": "int64", "float": "double", "boolean": "bool"}
+
+
+def _arg_proto_type(arg_type: str) -> str:
+    return _ARG_PROTO_TYPE.get((arg_type or "").lower(), "string")
+
+
+def command_rpc_name(fn_name: str) -> str:
+    """The per-command RPC / request-message base name: ``active_users`` → ``ActiveUsers`` (REQ-1150).
+
+    The single naming authority both proto_gen and the server use, so ``Call{name}`` RPCs round-trip
+    back to the registered command name deterministically."""
+    return "".join(part.capitalize() for part in fn_name.replace("__", "_").split("_") if part)
+
+
+def _visible_commands(si: SchemaInput) -> list[dict]:
+    """Commands (tracked functions) visible to this role, deduped by name (REQ-1150).
+
+    ``visible_to`` empty = every role, matching the REST/MCP/Flight surfaces. Role id comes from
+    ``si.role``; a command with a non-empty ``visible_to`` that omits the role is not emitted."""
+    role_id = si.role.get("id")
+    out: list[dict] = []
+    seen: set[str] = set()
+    for fn in si.functions or []:
+        name = fn.get("name")
+        if not name or name in seen:
+            continue
+        visible_to = fn.get("visible_to") or []
+        if visible_to and role_id not in visible_to:
+            continue
+        seen.add(name)
+        out.append(fn)
+    return sorted(out, key=lambda f: f["name"])
+
+
 def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     """Generate a .proto file content string for a role's visible schema."""
     tables = _build_visible_tables(si)
@@ -243,9 +280,28 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     lines.append("}")
     lines.append("")
 
+    # --- Per-command request messages (REQ-1150) ---
+    # Beyond the generic CallCommand, every command visible to the role gets a typed request message
+    # + its own RPC, so a gRPC client discovers commands by name with typed arguments via reflection
+    # (not one opaque CallCommand). Query-kind -> unary CommandResponse (set returns carried as JSON
+    # rows, since a command's return shape is dynamic); mutation-kind -> unary MutationResponse. All
+    # route through the single invoke_tracked_function executor server-side.
+    commands = _visible_commands(si)
+    for fn in commands:
+        cmd = command_rpc_name(fn["name"])
+        lines.append(f"message {cmd}Request {{")
+        for i, arg in enumerate([a for a in (fn.get("arguments") or []) if a.get("name")], start=1):
+            lines.append(f"  {_arg_proto_type(arg.get('type', 'String'))} {arg['name']} = {i};")
+        lines.append("}")
+        lines.append("")
+
     # --- Service ---
     lines.append("service ProvisaService {")
     lines.append("  rpc CallCommand(CommandRequest) returns (CommandResponse);")
+    for fn in commands:
+        cmd = command_rpc_name(fn["name"])
+        resp = "MutationResponse" if fn.get("kind") == "mutation" else "CommandResponse"
+        lines.append(f"  rpc Call{cmd}({cmd}Request) returns ({resp});")
     for t in sorted(tables, key=lambda t: t.type_name):
         lines.append(
             f"  rpc Query{t.type_name}({t.type_name}Request) returns (stream {t.type_name});"

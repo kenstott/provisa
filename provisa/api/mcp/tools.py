@@ -248,6 +248,19 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
     }
 
 
+def list_commands(state: Any, role: str) -> list[dict]:
+    """Registered commands the role may invoke (REQ-1150).
+
+    Without this an agent can invoke a command via `SELECT fn(...)` only if it already knows the
+    name — the command is dark to discovery. Projects the shared command-listing (visible_to
+    filtered) so MCP lists commands alongside the run_sql invocation path.
+    """
+    from provisa.api.data.action_exec import list_visible_commands
+
+    require_role(role, state)
+    return list_visible_commands(state, role)
+
+
 async def run_sql(
     state: Any, role: str, sql: str, limit: int | None = None, offset: int = 0
 ) -> dict:

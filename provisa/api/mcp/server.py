@@ -113,6 +113,11 @@ def build_mcp_server(state: Any):
         return await tools.describe_table(state, _role(role), schema, table)
 
     @mcp.tool()
+    async def list_commands(role: str | None = None) -> list[dict]:
+        """List registered commands the role may invoke: name, domain, kind, arguments (REQ-1150)."""
+        return tools.list_commands(state, _role(role))
+
+    @mcp.tool()
     async def run_sql(
         sql: str,
         role: str | None = None,

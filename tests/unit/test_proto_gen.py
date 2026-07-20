@@ -133,6 +133,38 @@ class TestGenerateProto:
         assert "string rows_json = 1;" in proto
         assert "rpc CallCommand(CommandRequest) returns (CommandResponse);" in proto
 
+    def test_per_command_rpcs_generated(self):
+        # REQ-1150: beyond the generic CallCommand, each visible command gets a typed request
+        # message + its own RPC so a gRPC client discovers commands by name via reflection.
+        si = _make_si()
+        si.functions = [
+            {
+                "name": "active_users",
+                "kind": "query",
+                "returns": "pet-store.users",
+                "visible_to": [],
+                "arguments": [{"name": "since", "type": "Int"}],
+            },
+            {
+                "name": "reset_cache",
+                "kind": "mutation",
+                "visible_to": [],
+                "arguments": [],
+            },
+            {  # hidden from this role — must not appear
+                "name": "secret_cmd",
+                "kind": "mutation",
+                "visible_to": ["root"],
+                "arguments": [],
+            },
+        ]
+        proto = generate_proto(si)
+        assert "message ActiveUsersRequest {" in proto
+        assert "int64 since = 1;" in proto
+        assert "rpc CallActiveUsers(ActiveUsersRequest) returns (CommandResponse);" in proto
+        assert "rpc CallResetCache(ResetCacheRequest) returns (MutationResponse);" in proto
+        assert "SecretCmd" not in proto  # visible_to excludes this role
+
     def test_timestamp_import(self):
         si = _make_si()
         proto = generate_proto(si)

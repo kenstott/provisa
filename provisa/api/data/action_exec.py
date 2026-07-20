@@ -23,6 +23,48 @@ from provisa.executor.function_dispatch import dispatch_function
 from provisa.security.mutation_authz import require_mutation_write
 
 
+def list_visible_commands(state, role_id: str | None) -> list[dict]:
+    """Every registered command visible to ``role_id``, as ordered metadata dicts (REQ-1150).
+
+    The one discovery path every surface (MCP, Arrow Flight, gRPC, Cypher/Bolt) projects, so a
+    command registered once is listable on all of them — not only invocable. ``visible_to``
+    filtering matches the REST/OpenAPI surface exactly (openapi_spec.py): an empty ``visible_to``
+    means visible to every role. Each entry carries the two orthogonal dimensions the req names:
+    ``kind`` (query vs mutation) and ``set_returning`` (``return_schema`` or ``returns =
+    "schema.table"`` -> table-valued). Aliased duplicates (the domain-prefixed keys added in
+    app_loaders) collapse to one entry per command name.
+
+    ``role_id`` None means the broadest, role-agnostic catalog view (every command), matching the
+    Flight table catalog; a concrete role filters by ``visible_to`` (empty ``visible_to`` = every
+    role), matching the REST/OpenAPI surface.
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+    for fn in (getattr(state, "tracked_functions", {}) or {}).values():
+        name = fn.get("name")
+        if not name or name in seen:
+            continue
+        visible_to = fn.get("visible_to") or []
+        if role_id is not None and visible_to and role_id not in visible_to:
+            continue
+        seen.add(name)
+        out.append(
+            {
+                "name": name,
+                "domain": fn.get("domain_id", "") or "",
+                "kind": fn.get("kind", "mutation"),
+                "set_returning": bool(fn.get("return_schema") or fn.get("returns")),
+                "arguments": [
+                    {"name": a.get("name"), "type": a.get("type", "String")}
+                    for a in (fn.get("arguments") or [])
+                    if a.get("name")
+                ],
+                "description": fn.get("description", "") or "",
+            }
+        )
+    return sorted(out, key=lambda c: (c["domain"], c["name"]))
+
+
 async def invoke_tracked_function(name: str, args: dict, state, role_id: str | None) -> list[dict]:
     """The one path every surface routes through to invoke a registered function.
 

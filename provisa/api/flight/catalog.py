@@ -221,6 +221,41 @@ def build_catalog_tables_from_context(state) -> list[CatalogTable]:  # REQ-127, 
     return tables
 
 
+def command_to_flight_info(  # REQ-1150
+    command: dict,
+    location: flight.Location | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Build a FlightInfo descriptor for a registered command (REQ-1150).
+
+    Descriptor path is ``["commands", <domain>, <name>]`` so a Flight client discovers commands
+    alongside tables (path ``[<domain>, <table>]``) without colliding with them. The Arrow schema
+    carries one field per declared argument plus command metadata (kind, set_returning, description)
+    so the shape is self-describing; invocation stays on the governed SQL-ticket path (``SELECT
+    fn(...)``), the single executor every surface shares.
+    """
+    fields = [pa.field(a["name"], pa.utf8()) for a in command.get("arguments", []) if a.get("name")]
+    meta = {
+        b"kind": str(command.get("kind", "mutation")).encode("utf-8"),
+        b"set_returning": (b"true" if command.get("set_returning") else b"false"),
+        b"command": command["name"].encode("utf-8"),
+    }
+    if command.get("description"):
+        meta[b"description"] = command["description"].encode("utf-8")
+    schema = pa.schema(fields, metadata=meta)
+    descriptor = flight.FlightDescriptor.for_path(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        "commands",
+        command.get("domain", ""),
+        command["name"],
+    )
+    endpoints = []
+    if location:
+        ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            f'{{"command":"{command["name"]}"}}'.encode("utf-8"),
+        )
+        endpoints = [flight.FlightEndpoint(ticket, [location])]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+
 def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:  # REQ-143
     """Convert a CatalogTable to an Arrow schema with metadata."""
     fields = []

@@ -36,6 +36,7 @@ from provisa.api.flight.catalog import (
     build_catalog_tables,
     catalog_table_to_arrow_schema,
     catalog_table_to_flight_info,
+    command_to_flight_info,
 )
 from provisa.compiler.parser import parse_query
 from provisa.compiler.rls import RLSContext
@@ -154,10 +155,18 @@ class ProvisaFlightServer(
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         criteria: bytes,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportUnusedParameter]
     ) -> Iterator[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """List available flights (catalog tables)."""
+        """List available flights: catalog tables, then registered commands (REQ-1150).
+
+        Commands are listed alongside tables (descriptor path ``["commands", domain, name]``) so a
+        Flight client discovers a registered command instead of it being invocable-but-invisible;
+        the listing is role-agnostic, matching the table catalog's broadest view."""
+        from provisa.api.data.action_exec import list_visible_commands
+
         tables = build_catalog_tables(self._state)
         for table in tables:
             yield catalog_table_to_flight_info(table)
+        for command in list_visible_commands(self._state, None):
+            yield command_to_flight_info(command)
 
     # ------------------------------------------------------------------
     # get_flight_info — metadata for a specific flight
@@ -172,11 +181,20 @@ class ProvisaFlightServer(
 
         Descriptor path: [domain_id, table_name].
         """
-        path = list(descriptor.path)
+        path = [p.decode("utf-8") if isinstance(p, bytes) else p for p in descriptor.path]
+
+        # REQ-1150: a command descriptor is ["commands", domain, name] — resolve it to the command
+        # FlightInfo so a client can fetch a registered command's shape, not only a table's.
+        if len(path) == 3 and path[0] == "commands":
+            from provisa.api.data.action_exec import list_visible_commands
+
+            for cmd in list_visible_commands(self._state, None):
+                if cmd["domain"] == path[1] and cmd["name"] == path[2]:
+                    return command_to_flight_info(cmd)
+            raise flight.FlightServerError(f"Command not found: {path[1]}.{path[2]}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         if len(path) == 2:
-            domain_id = path[0].decode("utf-8") if isinstance(path[0], bytes) else path[0]
-            table_name = path[1].decode("utf-8") if isinstance(path[1], bytes) else path[1]
+            domain_id, table_name = path[0], path[1]
             tables = build_catalog_tables(self._state)
             for t in tables:
                 if t.domain_id == domain_id and t.table_name == table_name:
