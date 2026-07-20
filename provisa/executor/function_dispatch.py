@@ -176,9 +176,35 @@ def _arg_kinds(fn: dict) -> dict[str, str]:
     return {a["name"]: a.get("arg_kind", "column_value") for a in fn.get("arguments") or []}
 
 
+def _schema_from_columns(columns) -> "object | None":
+    """Build a processors.contract.Schema from a declared IR-typed column list, or None if absent.
+
+    ``columns`` is a list of {"name", "type"} dicts (REQ-1159 dataset contract); the type is an IR
+    name. None/empty ⇒ no declared contract ⇒ validation skipped for that dataset."""
+    if not columns:
+        return None
+    from provisa.processors.contract import Field, Schema
+
+    return Schema(tuple(Field(c["name"], c.get("type", "text")) for c in columns))
+
+
+def _validate_against(rows: list[dict], schema, *, where: str) -> list[dict]:
+    """Validate rows against a contract Schema, surfacing a violation as a fail-loud 422 (REQ-1159).
+
+    A contract violation is a DATA-contract error (the external service or the input relation does
+    not match the declared dataset contract), never a silent coerce/drop — so it fails loud."""
+    from provisa.processors.contract import SchemaViolation, validate_rows
+
+    try:
+        return list(validate_rows(rows, schema, where=where))
+    except SchemaViolation as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
     """Prepare a hosted-function payload by relation-argument kind; collect input refs."""
     kinds = _arg_kinds(fn)
+    columns_by_arg = {a["name"]: a.get("columns") for a in fn.get("arguments") or []}
     payload: dict = {}
     input_refs: list[str] = []
     for name, value in args.items():
@@ -186,10 +212,19 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
         if kind == "column_value":
             payload[name] = value
         elif kind == "table_ref":  # lazy: pass the reference, do not materialize
+            # REQ-1159: table_ref is not materialized here, so its rows cannot be validated at prepare
+            # time — the service fetches them. The declared columns still travel as the contract the
+            # service must honour; input-side enforcement happens only for the eager result_set kind.
             payload[name] = {"kind": "table_ref", "ref": value}
             input_refs.append(str(value))
         elif kind == "result_set":  # eager: materialize referenced relation to Arrow
-            payload[name] = await _materialize_relation(str(value), state)
+            materialized = await _materialize_relation(str(value), state)
+            schema = _schema_from_columns(columns_by_arg.get(name))
+            if schema is not None:  # REQ-1159: enforce the declared input dataset contract, fail-loud
+                materialized["rows"] = _validate_against(
+                    materialized["rows"], schema, where=f"command {fn.get('name')!r} input {name!r}"
+                )
+            payload[name] = materialized
             input_refs.append(str(value))
         else:
             raise HTTPException(status_code=400, detail=f"Unknown arg_kind {kind!r} for {name!r}")
@@ -427,6 +462,12 @@ async def dispatch_function(  # REQ-885, REQ-886
         sink=trace_sink or getattr(state, "udf_trace_sink", None),
     ) as trace:
         rows = await executor(fn, args, state, payload, session)
+        # REQ-1159: enforce the declared output dataset contract on the way out, fail-loud. An
+        # off-contract external service (extra/missing/wrong-typed column) is a data-integrity fault,
+        # caught here before its rows poison anything downstream (and before the content hash).
+        out_schema = _schema_from_columns(fn.get("output_columns"))
+        if out_schema is not None:
+            rows = _validate_against(rows, out_schema, where=f"command {fn.get('name')!r} output")
         _fill_trace_output(trace, rows)
         return rows
 

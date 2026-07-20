@@ -390,3 +390,102 @@ async def test_unknown_impl_kind_fails_loud():
         await dispatch_function(fn, {}, _state(), "ops")
     assert ei.value.status_code == 400
     assert "impl_kind" in ei.value.detail
+
+
+# ---- REQ-1159: IR-typed dataset contract, validated both ends --------------
+
+
+def _echo_http(rows):
+    """A fake _http_call that echoes a fixed row set back as the command output."""
+
+    async def _call(method, url, payload, timeout):
+        return rows
+
+    return _call
+
+
+@pytest.mark.asyncio
+async def test_result_set_input_contract_passes(monkeypatch):
+    # Fake relation yields {"id": 1, "name": "ada"}; declared IR contract matches → no violation.
+    monkeypatch.setattr(fd, "_http_call", _echo_http([{"ok": 1}]))
+    fn = _fn(
+        impl_kind="http",
+        kind="query",
+        binding={"url": "https://svc/fn"},
+        arguments=[
+            {
+                "name": "rs",
+                "type": "String",
+                "arg_kind": "result_set",
+                "columns": [{"name": "id", "type": "integer"}, {"name": "name", "type": "text"}],
+            }
+        ],
+    )
+    rows = await dispatch_function(fn, {"rs": "s3.public.items"}, _state(), "ops")
+    assert rows == [{"ok": 1}]
+
+
+@pytest.mark.asyncio
+async def test_result_set_input_contract_violation_fails_loud(monkeypatch):
+    # Relation column `id` is an int, but the contract declares it `text` → fail-loud 422.
+    monkeypatch.setattr(fd, "_http_call", _echo_http([{"ok": 1}]))
+    fn = _fn(
+        impl_kind="http",
+        kind="query",
+        binding={"url": "https://svc/fn"},
+        arguments=[
+            {
+                "name": "rs",
+                "type": "String",
+                "arg_kind": "result_set",
+                "columns": [{"name": "id", "type": "text"}, {"name": "name", "type": "text"}],
+            }
+        ],
+    )
+    with pytest.raises(HTTPException) as ei:
+        await dispatch_function(fn, {"rs": "s3.public.items"}, _state(), "ops")
+    assert ei.value.status_code == 422
+    assert "input 'rs'" in ei.value.detail and "expected text" in ei.value.detail
+
+
+@pytest.mark.asyncio
+async def test_output_contract_passes(monkeypatch):
+    monkeypatch.setattr(fd, "_http_call", _echo_http([{"score": 3}, {"score": 9}]))
+    fn = _fn(
+        impl_kind="http",
+        kind="query",
+        binding={"url": "https://svc/fn"},
+        output_columns=[{"name": "score", "type": "integer"}],
+    )
+    rows = await dispatch_function(fn, {}, _state(), "ops")
+    assert rows == [{"score": 3}, {"score": 9}]
+
+
+@pytest.mark.asyncio
+async def test_output_contract_violation_fails_loud(monkeypatch):
+    # Service returns an off-contract value (string where integer declared) → fail-loud 422.
+    monkeypatch.setattr(fd, "_http_call", _echo_http([{"score": "high"}]))
+    fn = _fn(
+        impl_kind="http",
+        kind="query",
+        binding={"url": "https://svc/fn"},
+        output_columns=[{"name": "score", "type": "integer"}],
+    )
+    with pytest.raises(HTTPException) as ei:
+        await dispatch_function(fn, {}, _state(), "ops")
+    assert ei.value.status_code == 422
+    assert "output" in ei.value.detail and "expected integer" in ei.value.detail
+
+
+@pytest.mark.asyncio
+async def test_no_declared_contract_skips_validation(monkeypatch):
+    # No columns / output_columns → no contract → rows pass through untouched (off-type included).
+    monkeypatch.setattr(fd, "_http_call", _echo_http([{"anything": "goes", "n": 1}]))
+    fn = _fn(
+        impl_kind="http",
+        kind="query",
+        binding={"url": "https://svc/fn"},
+        arguments=[{"name": "rs", "type": "String", "arg_kind": "result_set"}],
+    )
+    rows = await dispatch_function(fn, {"rs": "s3.public.items"}, _state(), "ops")
+    assert rows == [{"anything": "goes", "n": 1}]

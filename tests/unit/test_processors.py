@@ -32,7 +32,7 @@ from provisa.processors import (
     validate_rows,
 )
 
-SCHEMA = Schema.of(("id", "Int"), ("name", "String"))
+SCHEMA = Schema.of(("id", "integer"), ("name", "text"))  # IR type names (REQ-846)
 
 
 # ------------------------------------------------------- framing
@@ -73,14 +73,50 @@ def test_validate_rejects_missing_field():
 
 
 def test_validate_rejects_wrong_type():
-    with pytest.raises(SchemaViolation, match="expected Int"):
+    with pytest.raises(SchemaViolation, match="expected integer"):
         list(validate_rows([{"id": "notint", "name": "a"}], SCHEMA, where="t"))
 
 
 def test_validate_rejects_bool_for_int():
     # bool is an int subclass — must not pass an Int column
-    with pytest.raises(SchemaViolation, match="expected Int"):
+    with pytest.raises(SchemaViolation, match="expected integer"):
         list(validate_rows([{"id": True, "name": "a"}], SCHEMA, where="t"))
+
+
+def test_validate_covers_ir_vocabulary():
+    # REQ-846/1159: the contract speaks the canonical IR vocabulary across all IR scalars.
+    import datetime as dt
+    from decimal import Decimal
+
+    schema = Schema.of(
+        ("a", "text"),
+        ("b", "integer"),
+        ("c", "bigint"),
+        ("d", "float"),
+        ("e", "double"),
+        ("f", "numeric"),
+        ("g", "boolean"),
+        ("h", "date"),
+        ("i", "timestamp"),
+        ("j", "time"),
+        ("k", "uuid"),
+        ("l", "bytea"),
+        ("m", "json"),
+    )
+    row = {
+        "a": "x", "b": 1, "c": 10**18, "d": 1.5, "e": 2.5, "f": Decimal("3.14"),
+        "g": True, "h": dt.date(2026, 7, 20), "i": "2026-07-20T00:00:00",
+        "j": dt.time(1, 2, 3), "k": "0b7f...", "l": b"\x00\x01", "m": {"any": [1, 2]},
+    }
+    assert list(validate_rows([row], schema, where="t")) == [row]
+
+
+def test_validate_normalizes_native_type_aliases():
+    # REQ-846: native/alias spellings resolve through to_ir (varchar→text, int4→integer, jsonb→json).
+    schema = Schema.of(("a", "varchar"), ("b", "int4"), ("c", "jsonb"))
+    assert list(validate_rows([{"a": "x", "b": 3, "c": {"k": 1}}], schema, where="t"))
+    with pytest.raises(SchemaViolation, match="expected varchar"):
+        list(validate_rows([{"a": 5, "b": 3, "c": {}}], schema, where="t"))
 
 
 # ------------------------------------------------------- shell adapter
