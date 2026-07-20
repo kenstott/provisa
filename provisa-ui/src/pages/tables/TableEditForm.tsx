@@ -534,6 +534,55 @@ export function TableEditForm({
               />
             )}
             {editingTable.materialize && (
+              <Select
+                label={
+                  <FieldLabel
+                    text={t("tableEditForm.bitemporalLabel")}
+                    help={t("tableEditForm.bitemporalHelp")}
+                  />
+                }
+                aria-label={t("tableEditForm.bitemporalAria")}
+                data-testid="mv-bitemporal-mode"
+                data={[
+                  { value: "", label: t("tableEditForm.bitemporalNone") },
+                  { value: "snapshot", label: t("tableEditForm.bitemporalSnapshot") },
+                  { value: "delta", label: t("tableEditForm.bitemporalDelta") },
+                ]}
+                value={editingTable.mvBitemporalMode ?? ""}
+                onChange={(v) =>
+                  setEditingTable({
+                    ...editingTable,
+                    mvBitemporalMode: v ? v : null,
+                  })
+                }
+                comboboxProps={{ withinPortal: true }}
+                allowDeselect={false}
+              />
+            )}
+            {editingTable.materialize && editingTable.mvBitemporalMode && (
+              <TextInput
+                label={
+                  <FieldLabel
+                    text={t("tableEditForm.bitemporalKeyLabel")}
+                    help={t("tableEditForm.bitemporalKeyHelp")}
+                  />
+                }
+                aria-label={t("tableEditForm.bitemporalKeyAria")}
+                data-testid="mv-bitemporal-key"
+                placeholder={t("tableEditForm.bitemporalKeyPlaceholder")}
+                value={editingTable.mvBitemporalKey.join(", ")}
+                onChange={(e) =>
+                  setEditingTable({
+                    ...editingTable,
+                    mvBitemporalKey: e.currentTarget.value
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  })
+                }
+              />
+            )}
+            {editingTable.materialize && (
               <Textarea
                 style={{ gridColumn: "1 / -1" }}
                 label={

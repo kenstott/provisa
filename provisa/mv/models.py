@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from provisa.mv.bitemporal import BitemporalSpec
+
 # Requirements: REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235
 
 
@@ -116,6 +118,12 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # with a PK (a declared-but-infeasible incremental MV is an explicit error, never a silent full
     # recompute). Default False = recompute-to-current (the REQ-966 NRT baseline).
     incremental: bool = False
+
+    # REQ-1159: append-only bitemporal materialization. When set, each refresh APPENDS (never
+    # UPDATEs) either the whole fresh dataset (snapshot mode) or engine-computed changes (delta
+    # mode); "as-of" history is derived at read time from the immutable append log. Supersedes the
+    # persist axis for this MV (replace/append/upsert do not apply). None = ordinary materialization.
+    bitemporal: BitemporalSpec | None = None
 
     # REQ-957: the optional user preprocess hook, as inline Python source defining
     # preprocess(rows, ctx) -> rows. Run after the MV SQL and before land. None = identity.

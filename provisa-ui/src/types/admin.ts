@@ -154,6 +154,8 @@ export interface RegisteredTable {
   mvDebounceMaxDelay: number; // REQ-963: staleness cap under continuous churn
   mvConsistency: string; // REQ-879: "shared" (fleet-coordinated) | "distributed" (per-instance)
   mvPreprocess: string | null; // REQ-957: inline preprocess(rows, ctx) hook source; null = identity
+  mvBitemporalMode: string | null; // REQ-1159: null | "snapshot" | "delta" (append-only time travel)
+  mvBitemporalKey: string[]; // REQ-1159: business key a version belongs to (required for delta)
   dataProduct: boolean;
   enableAggregates: boolean;
   enableGroupBy: boolean;

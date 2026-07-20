@@ -23,13 +23,64 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 
+from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
 from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
+
+
+def _now_ts_literal() -> str:
+    """One system-time stamp for a refresh, as an engine-agnostic SQL literal. Refreshes are
+    serialized per MV and spaced by refresh_interval, so successive stamps strictly increase —
+    which is what the append-only reconstruction relies on to order versions (REQ-1159)."""
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
+    return f"TIMESTAMP '{ts}'"
+
+
+async def _refresh_bitemporal(
+    engine,
+    mv: MVDefinition,
+    target: str,
+    select_sql: str,
+    table_exists: bool,
+    existing_cols: list[str],
+) -> None:
+    """Advance a bitemporal MV by APPENDING this refresh (REQ-1159): first materialization creates
+    the log; subsequent refreshes append a full snapshot or an engine-computed delta. No UPDATE/
+    DELETE of history ever runs. A view-definition column change is the one exception — the append
+    log's business shape no longer matches, so the log is rebuilt (history reset) and surfaced."""
+    spec = mv.bitemporal
+    assert spec is not None
+    now_ts = _now_ts_literal()
+    if not table_exists:
+        await engine.execute_engine(create_sql(target, select_sql, spec, now_ts))
+        return
+
+    sys_names = {c for c, _ in system_columns_ddl(spec)}
+    existing_business = [c for c in existing_cols if c not in sys_names]
+    new_cols = list(
+        (await engine.execute_engine(f"SELECT * FROM ({select_sql}) _shape LIMIT 0")).column_names
+    )
+    if new_cols != existing_business:
+        log.info(
+            "MV %s: bitemporal target %s business shape drifted (%d→%d cols) — rebuilding "
+            "(history reset)",
+            mv.id,
+            target,
+            len(existing_business),
+            len(new_cols),
+        )
+        await engine.execute_engine(f"DROP TABLE {target}")
+        await engine.execute_engine(create_sql(target, select_sql, spec, now_ts))
+        return
+
+    for stmt in append_sql(target, select_sql, spec, new_cols, now_ts, engine.dialect):
+        await engine.execute_engine(stmt)
 
 
 def _emit_column_lineage_span(
@@ -299,29 +350,33 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
         # the true previous state (empty unless this MV captures deltas and the target exists).
         prev_rows = await _snapshot_prev_rows(engine, mv, store, target, table_exists=table_exists)
 
-        # DELETE+INSERT only reconciles rows, not shape. If the view SQL was edited so its
-        # column set no longer matches the existing target (count or names), INSERT would
-        # mismatch — "table T has N columns but M values were supplied". Rebuild instead.
-        if table_exists:
-            new_cols = (
-                await engine.execute_engine(f"SELECT * FROM ({select_sql}) _shape LIMIT 0")
-            ).column_names
-            if new_cols != existing_cols:
-                log.info(
-                    "MV %s: target %s shape drifted (%d→%d cols) — rebuilding",
-                    mv.id,
-                    target,
-                    len(existing_cols),
-                    len(new_cols),
-                )
-                await engine.execute_engine(f"DROP TABLE {target}")
-                table_exists = False
-
-        if table_exists:
-            await engine.execute_engine(f"DELETE FROM {target}")
-            await engine.execute_engine(f"INSERT INTO {target} {select_sql}")
+        if mv.bitemporal is not None:
+            # REQ-1159: append-only bitemporal maintenance — never DELETE/UPDATE the history.
+            await _refresh_bitemporal(engine, mv, target, select_sql, table_exists, existing_cols)
         else:
-            await engine.execute_engine(f"CREATE TABLE {target} AS {select_sql}")
+            # DELETE+INSERT only reconciles rows, not shape. If the view SQL was edited so its
+            # column set no longer matches the existing target (count or names), INSERT would
+            # mismatch — "table T has N columns but M values were supplied". Rebuild instead.
+            if table_exists:
+                new_cols = (
+                    await engine.execute_engine(f"SELECT * FROM ({select_sql}) _shape LIMIT 0")
+                ).column_names
+                if new_cols != existing_cols:
+                    log.info(
+                        "MV %s: target %s shape drifted (%d→%d cols) — rebuilding",
+                        mv.id,
+                        target,
+                        len(existing_cols),
+                        len(new_cols),
+                    )
+                    await engine.execute_engine(f"DROP TABLE {target}")
+                    table_exists = False
+
+            if table_exists:
+                await engine.execute_engine(f"DELETE FROM {target}")
+                await engine.execute_engine(f"INSERT INTO {target} {select_sql}")
+            else:
+                await engine.execute_engine(f"CREATE TABLE {target} AS {select_sql}")
 
         # Get row count
         row_count = (await engine.execute_engine(f"SELECT COUNT(*) FROM {target}")).rows[0][0]

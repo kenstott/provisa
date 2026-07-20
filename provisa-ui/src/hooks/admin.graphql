@@ -113,6 +113,8 @@ query TablesQuery {
     mvDebounceMaxDelay
     mvConsistency
     mvPreprocess
+    mvBitemporalMode
+    mvBitemporalKey
     dataProduct
     enableAggregates
     enableGroupBy

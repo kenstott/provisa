@@ -37,7 +37,16 @@ Dimensional models are a direct application. A star schema's fact and dimension 
 
 Data Vault fits the same way, one layer earlier. Its hubs are deduplicated business-key datasets, its links are the registered relationships between them, and its satellites are insert-only, time-stamped attribute datasets — the historical record. A satellite is just a derived dataset on the change-signal freshness strategy: load-date plus hashdiff is CDC applied to descriptive attributes, and insert-only history is the pinned-snapshot strategy. Point-in-time and bridge tables are further derived datasets built for query performance. So a raw vault is a set of analytical datasets in the IR, and a star schema is a projection off it — both generated, both portable across engines. What the model does not do is decide the methodology: what becomes a hub, the grain of a satellite, the split strategy. Those stay modeling choices; once made, they live as portable IR rather than ETL welded to one warehouse.
 
-> **TBD — time travel (REQ-1159).** Historical/bitemporal querying (`as_of`) over analytical datasets is being generalized so it is a property of the materialized-view *definition*, not the storage engine: native Iceberg snapshots where available, emulated SCD Type 2 / satellite versioning on a relational substrate, with identical `as_of` semantics either way. This section will be expanded once the design is accepted.
+### Time travel
+
+Time travel is a simple idea — keep every version of a row instead of overwriting it, so you can ask what the data *was* at any past moment. What differs is how efficiently each engine can do it, which is exactly why Provisa makes it a property of the materialized-view **definition** rather than of the storage engine (REQ-1159). Declare it once; it works on any materializing backend.
+
+The rule that keeps it portable is **append-only**: a version, once written, is never updated or deleted. Retiring a row by writing back a "valid-to" date — the usual bitemporal trick — needs an UPDATE, which many engines can't do cheaply (or at all) over a federated store, so Provisa doesn't. Instead every refresh **appends**, and "which version was in effect at time T" is derived at read time from the immutable log. There are exactly two ways to append:
+
+- **Snapshot** — append the whole fresh dataset, stamped with this refresh's system time. No diffing; correct on every engine; storage grows by a full copy per refresh.
+- **Delta** — append only what changed, plus tombstones for removed keys. The delta is **computed by the engine** (anti-joins inside an `INSERT … SELECT`), never folded row-by-row in Provisa. Smaller, and it needs a business key.
+
+System time (when Provisa recorded a version) is managed this way; valid time (when a fact is true in the business) is supplied by the view's own SELECT and preserved. Engines that offer more — native Iceberg snapshots, a MERGE that maintains fewer rows — can be targeted for efficiency behind the same declaration; the append-only path is the floor that is correct everywhere.
 
 Reachability plus freshness is a general model for data federation: a definition that says what is live, what is materialized, and how fresh each copy stays — independent of any one engine's reach. The outcome is freedom from proprietary lock-in. The model is portable; the estate is not captive to whichever vendor's federation happens to reach the most sources today.
 
