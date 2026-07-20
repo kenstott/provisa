@@ -99,6 +99,56 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     return notes
 
 
+def _control_plane_drift(data_dir: Path) -> str | None:
+    """Return a ``file:table.column`` description of the FIRST schema drift in the embedded control-
+    plane DBs, else None.
+
+    V1 has no migrations (``create_all`` never ALTERs an existing table), so a native DB left by an
+    OLDER Provisa whose table is missing a column the current ORM writes crashes startup with e.g.
+    ``no such column: load_protected`` — and uvicorn swallows that inside its lifespan, so the app
+    just dies with no useful message. This detects it BEFORE serving so ``run`` can fail loud with a
+    ``--reset`` hint. Only MISSING columns are drift; extra DB columns (newer DB on older code) are
+    not this failure mode and are ignored."""
+    import sqlite3
+
+    from provisa.core import schema_admin, schema_org
+
+    for fname, meta in (("platform.db", schema_admin.metadata), ("tenant.db", schema_org.metadata)):
+        db = data_dir / fname
+        if not db.exists():
+            continue  # fresh install — create_all builds it current
+        con = sqlite3.connect(str(db))
+        try:
+            present = {
+                r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            for table in meta.tables.values():
+                if table.name not in present:
+                    continue  # a table the ORM will create on start — not drift
+                have = {r[1] for r in con.execute(f'PRAGMA table_info("{table.name}")')}
+                for col in table.columns:
+                    if col.name not in have:
+                        return f"{fname}:{table.name}.{col.name}"
+        finally:
+            con.close()
+    return None
+
+
+def _reset_control_plane(data_dir: Path) -> list[str]:
+    """Delete the embedded control-plane SQLite DBs (and their -wal/-shm sidecars) so the next start
+    rebuilds them at the current schema. The demo re-seeds from config; a non-demo install re-registers
+    from config/UI. Returns the removed file names."""
+    removed: list[str] = []
+    for base in ("platform.db", "tenant.db"):
+        for name in (base, f"{base}-wal", f"{base}-shm"):
+            p = data_dir / name
+            if p.exists():
+                p.unlink()
+                if name == base:
+                    removed.append(name)
+    return removed
+
+
 async def _announce_ready(
     host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool
 ) -> None:
@@ -202,6 +252,24 @@ def _cmd_license_status(args: argparse.Namespace) -> int:  # noqa: ARG001
 def _cmd_run(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir).expanduser()
     data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Control-plane schema currency (V1 has no migrations). --reset wipes the native DBs first;
+    # otherwise detect drift up front and fail loud with the fix, rather than dying inside uvicorn's
+    # swallowed lifespan ("no such column: ...").
+    if args.reset:
+        removed = _reset_control_plane(data_dir)
+        if removed:
+            print(f"  · reset control plane: removed {', '.join(removed)} (rebuilt on start)")
+    drift = _control_plane_drift(data_dir)
+    if drift:
+        print(
+            f"Control-plane store at {data_dir} is from an older Provisa (missing {drift}) and V1 "
+            f"has no migrations.\nRe-run with --reset to rebuild it:  provisa run"
+            f"{' --demo' if args.demo else ''} --reset",
+            file=sys.stderr,
+        )
+        return 1
+
     demo_cfg: Path | None = None
     if args.demo:
         try:
@@ -251,6 +319,12 @@ def main(argv: list[str] | None = None) -> int:
         "--no-browser",
         action="store_true",
         help="Do not open a browser when the UI is ready (still prints the URL)",
+    )
+    run.add_argument(
+        "--reset",
+        action="store_true",
+        help="Rebuild the embedded control-plane store before starting (discards local "
+        "control-plane state; use after a Provisa upgrade if startup reports a schema mismatch)",
     )
     run.add_argument(
         "--data-dir",

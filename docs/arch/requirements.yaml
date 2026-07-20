@@ -32846,3 +32846,50 @@
   related_reqs:
   - REQ-1142
   - REQ-898
+- id: REQ-1150
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Embedded CLI Startup
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The `provisa run` console command signals startup completion by polling the
+    API /ready endpoint (the warm gate, not /health), prints a "✓ Provisa is ready
+    — <url>" completion line, and opens the browser automatically with `?tour=1`
+    for a `--demo` run (so the guided tour auto-starts). A new `--no-browser` flag
+    opts out of the open while still printing the URL. Failures and 300s timeouts
+    are best-effort and non-fatal: the servers keep running, and the URL is printed
+    manually as a fallback.
+  use_case: >-
+    Previously `provisa run` printed URLs then served forever with no completion
+    signal and no browser open, so `--demo` appeared stuck even though the app was
+    up. Readiness polling, completion line, and browser auto-open provide
+    immediate visual feedback that the system is ready and reachable.
+  code:
+    - provisa/cli.py
+  since: "2026-07"
+  e2e: true
+  e2e_reason: >-
+    Browser auto-open and readiness-poll behavior across the /ready endpoint
+    contract require full live-stack verification; the interaction between HTTP
+    polling, exit conditions, and browser invocation is not reproducible in unit
+    tests. The /ready endpoint contract itself is verified by test_health_checks.py.
+  scenario: |
+    Given `provisa run` is launched with --demo
+    When the embedded API and UI servers start
+    Then _announce_ready polls /ready until 200 or 300s timeout
+    And once /ready returns 200, "✓ Provisa is ready — http://127.0.0.1:3000/?tour=1" is printed
+    And the browser opens to that URL automatically
+    And the guided tour starts (App.tsx reads ?tour=1)
+
+    Given `provisa run --no-browser` is launched
+    When the servers become ready
+    Then the completion line is still printed
+    And no browser opens
+    And the user can manually open the URL
+
+    Given a failure during readiness polling (network error, etc.)
+    When the failure occurs
+    Then it is caught and silently logged
+    And the URL is printed as a fallback
+    And the servers keep running
