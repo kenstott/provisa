@@ -37,6 +37,13 @@ Dimensional models are a direct application. A star schema's fact and dimension 
 
 Data Vault fits the same way, one layer earlier. Its hubs are deduplicated business-key datasets, its links are the registered relationships between them, and its satellites are insert-only, time-stamped attribute datasets — the historical record. A satellite is just a derived dataset on the change-signal freshness strategy: load-date plus hashdiff is CDC applied to descriptive attributes, and insert-only history is the pinned-snapshot strategy. Point-in-time and bridge tables are further derived datasets built for query performance. So a raw vault is a set of analytical datasets in the IR, and a star schema is a projection off it — both generated, both portable across engines. What the model does not do is decide the methodology: what becomes a hub, the grain of a satellite, the split strategy. Those stay modeling choices; once made, they live as portable IR rather than ETL welded to one warehouse.
 
+Both patterns are declared through **two first-class shortcuts** rather than hand-written views — the primitives every star schema and Data Vault are built from, kept methodology-neutral:
+
+- **`entity`** — a keyed, deduplicated, optionally-historized projection of a source. Declare a business key, the attributes, and a history mode; Provisa lowers it to a materialized view, and when history is requested to a **bitemporal MV** (`scd2` → delta, `snapshot` → snapshot). One construct serves a Kimball **dimension** (SCD1/SCD2) and a Data Vault **hub + satellite**.
+- **`fact`** — a join to entity keys, reduced to a declared grain, with aggregated measures. Provisa lowers it to an aggregate MV plus registered relationships to the entities. One construct serves a star **fact table** and a Data Vault **link** (a measureless fact is a pure key-set link).
+
+Because the lowering is pure — an `entity`/`fact` spec becomes exactly the MV, bitemporal, and relationship definitions a modeler would otherwise write by hand — the warehouse is IR all the way down and retargets across engines without remodeling. Declare a warehouse in the admin UI (a **Model** form for entities and facts) or over the admin API (`registerEntity` / `registerFact`); the model *generates* the Kimball star or the Data Vault, it does not impose one.
+
 ### Time travel
 
 Time travel is a simple idea — keep every version of a row instead of overwriting it, so you can ask what the data *was* at any past moment. What differs is how efficiently each engine can do it, which is exactly why Provisa makes it a property of the materialized-view **definition** rather than of the storage engine (REQ-1162). Declare it once; it works on any materializing backend.
@@ -47,6 +54,8 @@ The rule that keeps it portable is **append-only**: a version, once written, is 
 - **Delta** — append only what changed, plus tombstones for removed keys. The delta is **computed by the engine** (anti-joins inside an `INSERT … SELECT`), never folded row-by-row in Provisa. Smaller, and it needs a business key.
 
 System time (when Provisa recorded a version) is managed this way; valid time (when a fact is true in the business) is supplied by the view's own SELECT and preserved. Engines that offer more — native Iceberg snapshots, a MERGE that maintains fewer rows — can be targeted for efficiency behind the same declaration; the append-only path is the floor that is correct everywhere.
+
+Reading is transparent. A plain query against a bitemporal MV reconstructs the **current** state from the append log by default; to travel in time, send an `X-Provisa-As-Of: <timestamp>` header and the whole query is answered as the estate was at that moment — identical semantics on every substrate. Turn it on for any materialized view in the admin UI (a **Time Travel** control: off / snapshot / delta plus a business key) or over the admin API.
 
 Reachability plus freshness is a general model for data federation: a definition that says what is live, what is materialized, and how fresh each copy stays — independent of any one engine's reach. The outcome is freedom from proprietary lock-in. The model is portable; the estate is not captive to whichever vendor's federation happens to reach the most sources today.
 
