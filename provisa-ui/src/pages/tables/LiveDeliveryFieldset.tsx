@@ -263,6 +263,48 @@ export function LiveDeliveryFieldset({
                   : t("liveDeliveryFieldset.nativeNote")}
             </Text>
           )}
+          {/* REQ-813: inbound Kafka transport params, editable when the change signal is Kafka. */}
+          {effectiveSignal === "kafka" && (
+            <Stack gap="xs" pl="lg">
+              <Text size="xs" fw={600}>
+                {t("liveDeliveryFieldset.kafkaConsumeHeading")}
+              </Text>
+              <TextInput
+                label={t("liveDeliveryFieldset.kafkaConsumeTopicLabel")}
+                value={live.kafka?.topic ?? ""}
+                onChange={(e) =>
+                  setLive({ kafka: { ...(live.kafka ?? { topic: "" }), topic: e.currentTarget.value } })
+                }
+                placeholder="orders.cdc"
+                data-testid="live-kafka-topic"
+              />
+              <TextInput
+                label={t("liveDeliveryFieldset.kafkaConsumeFormatLabel")}
+                value={live.kafka?.format ?? ""}
+                onChange={(e) =>
+                  setLive({
+                    kafka: { ...(live.kafka ?? { topic: "" }), format: e.currentTarget.value || undefined },
+                  })
+                }
+                placeholder="json"
+                data-testid="live-kafka-format"
+              />
+              <TextInput
+                label={t("liveDeliveryFieldset.kafkaConsumeKeyColumnLabel")}
+                value={live.kafka?.keyColumn ?? ""}
+                onChange={(e) =>
+                  setLive({
+                    kafka: {
+                      ...(live.kafka ?? { topic: "" }),
+                      keyColumn: e.currentTarget.value || null,
+                    },
+                  })
+                }
+                placeholder="(optional)"
+                data-testid="live-kafka-key-column"
+              />
+            </Stack>
+          )}
           <div>
             <Text size="xs" fw={600} mb={4}>
               {t("liveDeliveryFieldset.outputsHeading")}
