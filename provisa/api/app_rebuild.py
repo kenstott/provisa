@@ -222,8 +222,13 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
     if state.contexts:
         ctx = next(iter(state.contexts.values()))
         if state.view_sql_map:
+            # REQ-1163: a bitemporal view's entry is already a PHYSICAL reconstruction over its append
+            # log (view_read_sql over the mv target) — do NOT re-qualify it, or the semantic→physical
+            # rewrite mangles the fully-qualified store ref (drops the schema). Only the ordinary
+            # semantic view SQL needs compiling.
+            _bt_views = getattr(state, "bitemporal_view_reads", {})
             state.view_sql_map = {
-                name: compile_view_sql_to_physical(sql, ctx)
+                name: (sql if name in _bt_views else compile_view_sql_to_physical(sql, ctx))
                 for name, sql in state.view_sql_map.items()
             }
         compile_registry_mvs_to_physical(state.mv_registry, ctx)
