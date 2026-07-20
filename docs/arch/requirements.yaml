@@ -32998,13 +32998,19 @@
   - provisa/api/app_rebuild.py
   - provisa/api/app.py
   - provisa/api/data/endpoint.py
+  - provisa/api/data/endpoint_dev.py
   - provisa/mv/bitemporal.py
   tests:
   - tests/unit/test_bitemporal_exec.py
+  - tests/unit/test_bitemporal_read_integration.py
+  - tests/integration/test_bitemporal_http_e2e.py
   integration_test: required
-  integration_test_reason: End-to-end read of a materialized bitemporal view (current + X-Provisa-As-Of)
-    through the GraphQL/SQL endpoint needs a running app + control-plane DB + federation engine; unit
-    tests cover the reconstruction SQL, header validation, and the overlay, not the live query.
+  integration_test_reason: Covered — test_bitemporal_read_integration drives the real refresh -> log
+    -> reconstruction -> expand_views -> engine chain (current + as-of, snapshot + delta), and
+    test_bitemporal_http_e2e verifies the live app's GraphQL persistence round-trip and X-Provisa-As-Of
+    validation at /data/sql. The one part NOT asserted through HTTP is a materialized read (the
+    in-process test app can't attach the materialize store — isolated Postgres runs on an ephemeral
+    port, not :5432); that read correctness is the read-integration test's job.
   scenario: 'Given a materialized bitemporal view that has been refreshed across several changes
 
     When it is queried with no header, then with X-Provisa-As-Of set to a past time
