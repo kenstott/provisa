@@ -12,6 +12,7 @@
     "groupAdmin": "Admin",
     "itemViews": "Views",
     "itemCommands": "Commands",
+    "itemLineage": "Lineage",
     "itemRoles": "Roles",
     "itemRlsRules": "RLS Rules",
     "itemSchema": "Schema",

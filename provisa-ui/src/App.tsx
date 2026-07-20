@@ -28,6 +28,7 @@ const SecurityRlsPage = lazy(() => import("./pages/SecurityPage").then((m) => ({
 const QueryPage = lazy(() => import("./pages/QueryPage").then((m) => ({ default: m.QueryPage })));
 const AdminPage = lazy(() => import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })));
 const CommandsPage = lazy(() => import("./pages/CommandsPage").then((m) => ({ default: m.CommandsPage })));
+const LineagePage = lazy(() => import("./pages/LineagePage").then((m) => ({ default: m.LineagePage }))); // REQ-1160/1161
 const ViewsPage = lazy(() => import("./pages/ViewsPage").then((m) => ({ default: m.ViewsPage })));
 const RequestsPage = lazy(() => import("./pages/RequestsPage").then((m) => ({ default: m.RequestsPage })));
 const DocsPage = lazy(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
@@ -314,6 +315,15 @@ function App() {
                     }
                   />
                   <Route path="/actions" element={<Navigate to="/commands" replace />} />
+                  <Route
+                    path="/lineage"
+                    element={
+                      <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                        <LineagePage />
+                      </CapabilityGate>
+                    }
+                  />
+
                   <Route
                     path="/admin/requests"
                     element={
