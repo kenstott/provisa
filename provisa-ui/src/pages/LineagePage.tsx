@@ -14,18 +14,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  Alert,
-  Badge,
-  Button,
-  Group,
-  Input,
-  MultiSelect,
-  Paper,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Alert, Badge, Button, Group, Input, Paper, Stack, Text, Title } from "@mantine/core";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql as sqlLang, PostgreSQL } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
@@ -68,7 +57,7 @@ export function LineagePage(): React.ReactElement {
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { checkedDomains, domains, toggleDomain, domainsEnabled } = useDomainFilter();
+  const { checkedDomains } = useDomainFilter();
 
   // Persist query + graph on every change so a later remount restores exactly what was here.
   useEffect(() => {
@@ -144,25 +133,7 @@ export function LineagePage(): React.ReactElement {
           Statement Lineage
         </Button>
       </Group>
-      <Group align="flex-end">
-        {domainsEnabled && domains.length > 0 && (
-          <MultiSelect
-            label="Domains"
-            description="Complete Lineage covers these domains (none selected = all)."
-            placeholder={checkedDomains.size === 0 ? "All domains" : undefined}
-            data={domains}
-            value={Array.from(checkedDomains)}
-            onChange={(next) => {
-              const nextSet = new Set(next);
-              domains.forEach((d) => {
-                if (checkedDomains.has(d) !== nextSet.has(d)) toggleDomain(d);
-              });
-            }}
-            clearable
-            style={{ minWidth: 280 }}
-            data-testid="lineage-domain-filter"
-          />
-        )}
+      <Group>
         <Button
           variant="light"
           onClick={() => run(() => fetchFederationGraph({ domains: Array.from(checkedDomains) }))}

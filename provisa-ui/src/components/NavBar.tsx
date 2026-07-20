@@ -196,6 +196,7 @@ export function NavBar() {
     location.pathname === "/tables" ||
     location.pathname === "/views" ||
     location.pathname === "/commands" ||
+    location.pathname === "/lineage" ||
     location.pathname === "/relationships" ||
     location.pathname.startsWith("/security") ||
     location.pathname === "/schema" ||
