@@ -69,7 +69,9 @@ def _references_view(sql: str, view_sql_map: dict[str, str]) -> bool:
     return any(t.name in view_sql_map for t in tree.find_all(exp.Table))
 
 
-async def _compile_govern_execute(sql: str, role_id: str, state, *, discovery_mode: bool = False):
+async def _compile_govern_execute(
+    sql: str, role_id: str, state, *, discovery_mode: bool = False, as_of: str | None = None
+):
     """Compile → govern → route → execute semantic SQL (REQ-264, REQ-266, REQ-267).
 
     Shared by the /data/sql endpoint and the table-profile endpoint (view sampling),
@@ -181,7 +183,8 @@ async def _compile_govern_execute(sql: str, role_id: str, state, *, discovery_mo
     # --- Step 7: Execute ---
     try:
         result = await _dispatch_sql_execution(
-            governed_physical, sources, default_source, decision, ctx, state, embedded_params
+            governed_physical, sources, default_source, decision, ctx, state, embedded_params,
+            as_of=as_of,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -340,6 +343,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     x_provisa_role: str | None = Header(None),
     accept: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
+    x_provisa_as_of: str | None = Header(None),  # REQ-1163: read bitemporal MVs as of this time
 ):
     """Execute raw SQL through Stage 2 governance (REQ-264, REQ-266, REQ-267).
 
@@ -356,6 +360,18 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
     output_format = _parse_accept(accept)
     stats_enabled = (x_provisa_stats or "").lower() == "true"
+
+    # REQ-1163: a request-level as-of validated to a safe SQL timestamp literal (400 on malformed).
+    _as_of = None
+    if x_provisa_as_of:
+        from provisa.mv.bitemporal import parse_as_of
+
+        try:
+            _as_of = parse_as_of(x_provisa_as_of)
+        except ValueError as exc:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=400, detail=f"invalid X-Provisa-As-Of: {exc}")
 
     import time as _time
     from provisa.executor import stats as _qs_mod
@@ -406,7 +422,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         return _finalize(cmd_result, source="command", strategy="command", physical_sql=request.sql)
 
     result, sources, _default_source, decision, governed_physical = await _compile_govern_execute(
-        request.sql, role_id, state, discovery_mode=request.discovery_mode
+        request.sql, role_id, state, discovery_mode=request.discovery_mode, as_of=_as_of
     )
     return _finalize(
         result,
@@ -461,6 +477,7 @@ async def _dispatch_sql_execution(
     ctx,
     state,
     embedded_params: list | None,
+    as_of: str | None = None,  # REQ-1163
 ) -> "QueryResult":
     _govdata_sid = next(
         (sid for sid in (sources or {default_source}) if state.source_types.get(sid) == "govdata"),
@@ -469,7 +486,9 @@ async def _dispatch_sql_execution(
     if _govdata_sid:
         return await _execute_govdata(_govdata_sid, governed_physical, state)
     if decision.route == Route.ENGINE:
-        return await _execute_engine_route(governed_physical, ctx, state, embedded_params)
+        return await _execute_engine_route(
+            governed_physical, ctx, state, embedded_params, as_of=as_of
+        )
     return await _execute_direct_route(
         governed_physical, decision, default_source, state.source_pools, embedded_params
     )
@@ -480,6 +499,7 @@ async def _execute_engine_route(
     ctx,
     state,
     embedded_params: list | None,
+    as_of: str | None = None,  # REQ-1163: validated as-of SQL timestamp literal (or None)
 ) -> "QueryResult":
     from provisa.api.data.materialization import _materialize_api_to_engine_cache
     from provisa.cache.hot_tables import build_values_cte_sql
@@ -489,7 +509,14 @@ async def _execute_engine_route(
     if state.view_sql_map:
         from provisa.compiler.view_expand import expand_view_refs
 
-        _qualified = expand_view_refs(_qualified, state.view_sql_map)
+        # REQ-1163: a request-level as-of overlays each bitemporal view's entry with an as-of
+        # reconstruction over its append log; without it, views read current state.
+        _vmap = state.view_sql_map
+        if as_of and getattr(state, "bitemporal_view_reads", None):
+            from provisa.mv.bitemporal import as_of_view_map
+
+            _vmap = as_of_view_map(state.view_sql_map, state.bitemporal_view_reads, as_of)
+        _qualified = expand_view_refs(_qualified, _vmap)
     _rewrites, _values_ctes, _ = await _materialize_api_to_engine_cache(_qualified, state)
     for _tn, _entry in _values_ctes.items():
         _qualified = build_values_cte_sql(_qualified, _tn, _entry)
