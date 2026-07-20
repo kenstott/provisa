@@ -5,6 +5,15 @@
   X-Frame-Options: DENY
   Permissions-Policy: geolocation=(), microphone=(), camera=()
 
+# The in-app Docs reader iframes the public docs (https://provisa.dev/docs/).
+# X-Frame-Options: DENY on /* would block that, and XFO can't allow-list
+# origins, so detach it for /docs/* and use CSP frame-ancestors instead. The
+# docs are public and the app is self-hosted (embedder origin varies), so any
+# ancestor is permitted. Marketing pages keep DENY.
+/docs/*
+  ! X-Frame-Options
+  Content-Security-Policy: frame-ancestors *
+
 # Content-hashed assets (images) can cache forever.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable

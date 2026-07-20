@@ -20,9 +20,31 @@ const monacoEditorPlugin: MonacoPluginFactory =
   (_monacoEditorPluginModule as { default?: MonacoPluginFactory }).default ??
   (_monacoEditorPluginModule as unknown as MonacoPluginFactory);
 
+// The in-app Docs reader iframes the bundled MkDocs site at /docs-site/ for its
+// offline mode. MkDocs uses directory URLs (/docs-site/, /docs-site/security/),
+// but the vite dev server has no directory-index resolution, so those requests
+// fall through to the SPA fallback and render index.html instead of the docs.
+// Rewrite trailing-slash /docs-site/ URLs to their index.html so vite's static
+// handler serves the real page — mirroring ui_server.py's production behaviour.
+function serveOfflineDocsSite(): Plugin {
+  return {
+    name: "serve-offline-docs-site",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        if (req.url?.startsWith("/docs-site/")) {
+          const [p, q] = req.url.split("?");
+          if (p.endsWith("/")) req.url = `${p}index.html${q ? `?${q}` : ""}`;
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig((config) => ({
   plugins: [
     react(),
+    serveOfflineDocsSite(),
     graphqlLoader(),
     monacoEditorPlugin({
       languageWorkers: ["editorWorkerService", "json"],
@@ -113,8 +135,6 @@ export default defineConfig((config) => ({
       "/health": "http://127.0.0.1:8000",
       "/setup": "http://127.0.0.1:8000",
       "/auth": "http://127.0.0.1:8000",
-      "/docs": "http://127.0.0.1:8000",
-      "/openapi.json": "http://127.0.0.1:8000",
     },
   },
 }));

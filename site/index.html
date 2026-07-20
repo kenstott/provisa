@@ -65,7 +65,7 @@
         </p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#download">Download</a>
-          <a class="btn btn-ghost" href="https://github.com/kenstott/provisa">View on GitHub</a>
+          <a class="btn btn-ghost" href="/docs">Read the docs</a>
         </div>
 
         <div class="hero-terminal" role="img" aria-label="Example: connect over the Postgres wire protocol and query federated data">
@@ -495,11 +495,6 @@
           </a>
         </div>
 
-        <p class="dl-fallback">
-          Looking for the demo build, JDBC driver, or a specific version?
-          <a href="https://github.com/kenstott/provisa/releases">Browse all releases →</a>
-        </p>
-
         <div class="pip">
           <div class="pip-copy">
             <h3>Or install from PyPI</h3>
@@ -563,8 +558,8 @@
         <h2>Describe your data and govern it in the same act.</h2>
         <p>One governed path for analytical, application, and human data movement.</p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="https://github.com/kenstott/provisa">Get Provisa</a>
-          <a class="btn btn-ghost" href="https://github.com/kenstott/provisa#documentation">Read the docs</a>
+          <a class="btn btn-primary" href="#download">Get Provisa</a>
+          <a class="btn btn-ghost" href="/docs">Read the docs</a>
         </div>
 
         <form id="signup" class="signup" novalidate>
@@ -599,7 +594,6 @@
       </div>
       <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
       <nav class="footer-links" aria-label="Footer">
-        <a href="https://github.com/kenstott/provisa">GitHub</a>
         <a href="#interfaces">Interfaces</a>
         <a href="#governance">Governance</a>
         <a href="#distribution">Distribution</a>
@@ -621,35 +615,6 @@
         : /Win/i.test(p) ? 'windows'
         : (/Linux/i.test(p) && !/Android/i.test(p)) ? 'linux' : null;
       if (os) document.getElementById('dl-' + os)?.classList.add('dl-primary');
-    })();
-
-    // Progressive enhancement: the card hrefs point at the /dl/<platform> redirect
-    // Function, which already resolves the newest release (pre-releases included) and
-    // works with no JS. This only fills in the version label and greys out a card whose
-    // asset isn't in the newest release yet. Uses the /releases LIST (not /latest, which
-    // 404s while every release is a pre-release) and takes the newest matching build.
-    (function () {
-      const match = {
-        macos:   n => /macOS\.dmg$/i.test(n) && !/(obs|demo|runtime|container)/i.test(n),
-        windows: n => /windows-x64\.exe$/i.test(n) && !/container/i.test(n),
-        linux:   n => /linux.*\.AppImage$/i.test(n),
-      };
-      fetch('https://api.github.com/repos/kenstott/provisa/releases?per_page=30', {
-        headers: { Accept: 'application/vnd.github+json' },
-      })
-        .then(r => (r.ok ? r.json() : Promise.reject()))
-        .then(releases => {
-          const rels = (releases || []).filter(r => !r.draft);
-          for (const [plat, test] of Object.entries(match)) {
-            const card = document.getElementById('dl-' + plat);
-            if (!card) continue;
-            const rel = rels.find(r => (r.assets || []).some(a => test(a.name)));
-            const ver = card.querySelector('.dl-ver');
-            if (rel && ver && rel.tag_name) ver.textContent = rel.tag_name;
-            else if (!rel) card.classList.add('dl-unavailable');
-          }
-        })
-        .catch(() => {});
     })();
 
     // Mailing-list signup → POST /api/subscribe (Pages Function → D1).

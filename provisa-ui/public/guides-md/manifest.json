@@ -65,11 +65,6 @@
     "repoPath": "docs/security.md"
   },
   {
-    "slug": "multitenant",
-    "title": "Multitenancy",
-    "repoPath": "docs/multitenant.md"
-  },
-  {
     "slug": "python-client",
     "title": "Python Client",
     "repoPath": "docs/python-client.md"
