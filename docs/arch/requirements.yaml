@@ -32963,9 +32963,10 @@
 
     '
   integration_test: required
-  integration_test_reason: End-to-end persistence + restart-reload + consumer read of a bitemporal MV
-    needs a running app + control-plane DB; unit tests cover the SQL, persistence dict, schema parity,
-    and MVDefinition.bitemporal reload but not the live create→restart→query path.
+  integration_test_reason: >-
+    Covered — tests/integration/test_bitemporal_http_e2e drives the live app; registerTable (create)
+    persists the config, rebuildSchemas reloads MVDefinition.bitemporal, refresh materializes the
+    append log into an embedded-DuckDB store, and /data/sql reads it back.
   related_reqs:
   - REQ-372
   - REQ-844
@@ -33005,12 +33006,12 @@
   - tests/unit/test_bitemporal_read_integration.py
   - tests/integration/test_bitemporal_http_e2e.py
   integration_test: required
-  integration_test_reason: Covered — test_bitemporal_read_integration drives the real refresh -> log
-    -> reconstruction -> expand_views -> engine chain (current + as-of, snapshot + delta), and
-    test_bitemporal_http_e2e verifies the live app's GraphQL persistence round-trip and X-Provisa-As-Of
-    validation at /data/sql. The one part NOT asserted through HTTP is a materialized read (the
-    in-process test app can't attach the materialize store — isolated Postgres runs on an ephemeral
-    port, not :5432); that read correctness is the read-integration test's job.
+  integration_test_reason: >-
+    Covered — test_bitemporal_read_integration drives the real refresh -> log -> reconstruction ->
+    expand_views -> engine chain (current + as-of, snapshot + delta), and test_bitemporal_http_e2e
+    drives the LIVE app end to end: it materializes a bitemporal view into an embedded-DuckDB store
+    and reads it through /data/sql current-by-default and via X-Provisa-As-Of (far-future -> current,
+    pre-refresh -> empty, malformed -> HTTP 400).
   scenario: 'Given a materialized bitemporal view that has been refreshed across several changes
 
     When it is queried with no header, then with X-Provisa-As-Of set to a past time
