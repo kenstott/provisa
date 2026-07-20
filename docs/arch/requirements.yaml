@@ -33024,3 +33024,36 @@
   - REQ-1162
   - REQ-372
   - REQ-844
+- id: REQ-1164
+  status: proposed
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Declarative `entity` and `fact` shortcuts that LOWER to the existing MV / bitemporal /
+    relationship primitives — the two constructs both a star schema and a Data Vault are built from,
+    kept methodology-neutral. (1) `entity` — a keyed, deduplicated, optionally-historized projection
+    of a source; lowers to a materialized view (view_sql projecting the key + attributes) with
+    materialize=true, and when history is requested a bitemporal MV (REQ-1162): history=scd2 →
+    mode=delta, history=snapshot → mode=snapshot, keyed on the business key. Serves a star DIMENSION
+    (SCD1/SCD2) and a Data Vault HUB+SATELLITE. (2) `fact` — join to entity keys, reduce to a declared
+    grain, aggregate measures; lowers to a materialized view (SELECT grain + dimension FK columns +
+    aggregated measures, GROUP BY grain+FKs) plus registered relationships to the entities. Serves a
+    star FACT and a DV LINK (a degenerate fact of keys). The lowering is pure (a spec → the same
+    registration a user would hand-write), so the whole warehouse retargets across engines as IR — the
+    model GENERATES the star/vault, it does not decide the methodology (grain, conformance, SCD choice
+    stay the modeler's).
+  use_case: >-
+    Star schemas and Data Vaults are compositions of a tiny primitive set (dimension/fact, hub/
+    satellite/link). First-class entity/fact sugar lets a modeler declare them once and have Provisa
+    generate the underlying portable MV definitions, instead of hand-writing each view_sql + flags.
+  code:
+  - provisa/mv/modeling.py
+  tests:
+  - tests/unit/test_modeling.py
+  related_reqs:
+  - REQ-1162
+  - REQ-1160
+  - REQ-844
