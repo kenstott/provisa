@@ -32436,10 +32436,6 @@
     rationale: Deriving a human-readable effective-policy summary from the real planner resolution (per
       source AND per engine), with author-time misconfiguration warnings, is not offered by Denodo, Dremio,
       or Hasura, which expose only raw cache configuration fields to the user.
-  e2e: true
-  e2e_reason: The summary is derived from real planner resolution and freshness logic that cannot be unit-tested
-    independently; end-to-end UI verification with actual (source, engine) pairs in a live table detail
-    view is required.
   related_reqs:
   - REQ-1141
   - REQ-826
@@ -32868,12 +32864,11 @@
   code:
     - provisa/cli.py
   since: "2026-07"
-  e2e: true
-  e2e_reason: >-
-    Browser auto-open and readiness-poll behavior across the /ready endpoint
-    contract require full live-stack verification; the interaction between HTTP
-    polling, exit conditions, and browser invocation is not reproducible in unit
-    tests. The /ready endpoint contract itself is verified by test_health_checks.py.
+  unit_test: false
+  unit_test_reason: >-
+    Browser auto-open and readiness-poll behavior span the `provisa run` process, a live
+    /ready endpoint, a 300s poll loop, and an OS browser invocation — no in-process seam to
+    unit-test. Verified manually on a live launch (`provisa run --demo` / `--no-browser`).
   scenario: |
     Given `provisa run` is launched with --demo
     When the embedded API and UI servers start
