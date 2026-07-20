@@ -12,8 +12,10 @@
 // derived / command boundary) with a materialized ring; edges carry the named transform; cycle
 // members are ringed by classification (feedback vs error). Left-to-right, source → output.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import cytoscape from "cytoscape";
+import { ActionIcon, Tooltip } from "@mantine/core";
+import { Maximize2, Download } from "lucide-react";
 import type { LineageGraphData } from "../../api/lineage";
 
 interface LineageDagProps {
@@ -33,6 +35,19 @@ const ROLE_COLOR: Record<string, string> = {
 
 export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const cyRef = useRef<cytoscape.Core | null>(null);
+  const [hovered, setHovered] = useState(false);
+
+  const fitToScreen = () => cyRef.current?.fit(undefined, 30);
+  const downloadPng = () => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const uri = cy.png({ full: true, scale: 2, bg: "#ffffff" });
+    const a = document.createElement("a");
+    a.href = uri;
+    a.download = "lineage.png";
+    a.click();
+  };
   const clickRef = useRef(onNodeClick);
   clickRef.current = onNodeClick;
 
@@ -181,8 +196,43 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
       if (evt.target.data("isParent") !== "yes") clickRef.current?.(evt.target.id());
     });
 
-    return () => cy.destroy();
+    cyRef.current = cy;
+    return () => {
+      cy.destroy();
+      cyRef.current = null;
+    };
   }, [graph]);
 
-  return <div ref={containerRef} style={{ width: "100%", height }} data-testid="lineage-dag" />;
+  return (
+    <div
+      style={{ position: "relative", width: "100%", height }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div ref={containerRef} style={{ width: "100%", height }} data-testid="lineage-dag" />
+      <div
+        style={{
+          position: "absolute",
+          top: 8,
+          right: 8,
+          display: "flex",
+          gap: 4,
+          opacity: hovered ? 1 : 0,
+          transition: "opacity 150ms ease",
+          pointerEvents: hovered ? "auto" : "none",
+        }}
+      >
+        <Tooltip label="Fit to screen">
+          <ActionIcon variant="default" onClick={fitToScreen} aria-label="Fit to screen" data-testid="lineage-fit">
+            <Maximize2 size={16} />
+          </ActionIcon>
+        </Tooltip>
+        <Tooltip label="Download PNG">
+          <ActionIcon variant="default" onClick={downloadPng} aria-label="Download PNG" data-testid="lineage-download">
+            <Download size={16} />
+          </ActionIcon>
+        </Tooltip>
+      </div>
+    </div>
+  );
 }

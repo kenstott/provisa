@@ -14,7 +14,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Alert, Badge, Button, Group, Input, Paper, Stack, Text, Title } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Input,
+  Paper,
+  Stack,
+  Text,
+  Title,
+  Tooltip,
+} from "@mantine/core";
+import { Copy, Check } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql as sqlLang, PostgreSQL } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
@@ -57,6 +70,8 @@ export function LineagePage(): React.ReactElement {
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sqlHovered, setSqlHovered] = useState(false);
+  const [sqlCopied, setSqlCopied] = useState(false);
   const { checkedDomains } = useDomainFilter();
 
   // Persist query + graph on every change so a later remount restores exactly what was here.
@@ -117,7 +132,14 @@ export function LineagePage(): React.ReactElement {
         >
           <div
             data-testid="lineage-sql"
-            style={{ border: "1px solid var(--mantine-color-default-border)", borderRadius: 4, marginTop: 4 }}
+            style={{
+              position: "relative",
+              border: "1px solid var(--mantine-color-default-border)",
+              borderRadius: 4,
+              marginTop: 4,
+            }}
+            onMouseEnter={() => setSqlHovered(true)}
+            onMouseLeave={() => setSqlHovered(false)}
           >
             <CodeMirror
               value={sql}
@@ -127,21 +149,45 @@ export function LineagePage(): React.ReactElement {
               basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
               style={{ fontSize: "0.85rem" }}
             />
+            <Tooltip label={sqlCopied ? "Copied" : "Copy query"}>
+              <ActionIcon
+                variant="default"
+                size="sm"
+                aria-label="Copy query"
+                data-testid="lineage-copy"
+                onClick={() => {
+                  navigator.clipboard.writeText(sql);
+                  setSqlCopied(true);
+                  window.setTimeout(() => setSqlCopied(false), 1500);
+                }}
+                style={{
+                  position: "absolute",
+                  top: 4,
+                  right: 4,
+                  zIndex: 1,
+                  opacity: sqlHovered ? 1 : 0,
+                  transition: "opacity 150ms ease",
+                  pointerEvents: sqlHovered ? "auto" : "none",
+                }}
+              >
+                {sqlCopied ? <Check size={14} /> : <Copy size={14} />}
+              </ActionIcon>
+            </Tooltip>
           </div>
         </Input.Wrapper>
-        <Button onClick={() => run(() => fetchLineageGraph(sql))} loading={loading} data-testid="lineage-build">
-          Statement Lineage
-        </Button>
-      </Group>
-      <Group>
-        <Button
-          variant="light"
-          onClick={() => run(() => fetchFederationGraph({ domains: Array.from(checkedDomains) }))}
-          loading={loading}
-          data-testid="lineage-federation"
-        >
-          Complete Lineage
-        </Button>
+        <Stack gap="xs">
+          <Button onClick={() => run(() => fetchLineageGraph(sql))} loading={loading} data-testid="lineage-build">
+            Statement Lineage
+          </Button>
+          <Button
+            variant="light"
+            onClick={() => run(() => fetchFederationGraph({ domains: Array.from(checkedDomains) }))}
+            loading={loading}
+            data-testid="lineage-federation"
+          >
+            Complete Lineage
+          </Button>
+        </Stack>
       </Group>
 
       {error && (
