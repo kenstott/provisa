@@ -114,6 +114,29 @@ function activeGroupId(pathname: string): string | null {
   return null;
 }
 
+// Remembers the last submenu item visited within each group so returning to a
+// group restores that item instead of always landing on the first one.
+const LAST_SUBNAV_KEY = "provisa_nav_last_item";
+
+function readLastSubnav(): Record<string, string> {
+  const raw = localStorage.getItem(LAST_SUBNAV_KEY);
+  if (!raw) return {};
+  const parsed: unknown = JSON.parse(raw);
+  return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+}
+
+function writeLastSubnav(groupId: string, to: string) {
+  localStorage.setItem(LAST_SUBNAV_KEY, JSON.stringify({ ...readLastSubnav(), [groupId]: to }));
+}
+
+// The submenu item within a group to navigate to on entry: the remembered one
+// (if still valid and available) or the first non-comingSoon item.
+function entryItem(group: NavGroup): DropdownItem | undefined {
+  const remembered = readLastSubnav()[group.id];
+  const match = group.items.find((i) => !i.comingSoon && i.to === remembered);
+  return match ?? group.items.find((i) => !i.comingSoon);
+}
+
 export function NavBar() {
   const { t } = useTranslation();
   const location = useLocation();
@@ -134,6 +157,17 @@ export function NavBar() {
        reset internal pin state in sync with an external system (router pathname) */
     setPinnedGroup(null);
   }, [location.pathname]);
+
+  // Remember the submenu item the route landed on, per group, for later restore
+  useEffect(() => {
+    const group = NAV_GROUPS.find((g) => g.id === routeGroup);
+    const item = group?.items.find(
+      (i) =>
+        !i.comingSoon &&
+        (location.pathname === i.to || location.pathname.startsWith(i.to + "/")),
+    );
+    if (group && item) writeLastSubnav(group.id, item.to);
+  }, [location.pathname, routeGroup]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -179,10 +213,10 @@ export function NavBar() {
       setPinnedGroup((prev) => (prev === id ? null : id));
       return;
     }
-    // Navigate to first non-comingSoon item in the group
+    // Navigate to the last-visited item in the group (or the first, if none)
     const group = NAV_GROUPS.find((g) => g.id === id);
-    const first = group?.items.find((i) => !i.comingSoon);
-    if (first) navigate(first.to);
+    const target = group ? entryItem(group) : undefined;
+    if (target) navigate(target.to);
     setPinnedGroup(null);
   }
 
