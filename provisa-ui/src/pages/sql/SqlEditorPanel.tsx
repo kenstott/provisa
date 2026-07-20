@@ -449,6 +449,42 @@ export function SqlEditorPanel({
         >
           {running ? t("sqlEditorPanel.running") : t("sqlEditorPanel.run")}
         </Button>
+        <Select
+          aria-label={t("sqlEditorPanel.sampleModeLabel")}
+          size="xs"
+          data={[
+            { value: "first", label: t("sqlEditorPanel.sampleModeFirst") },
+            { value: "last", label: t("sqlEditorPanel.sampleModeLast") },
+            { value: "random", label: t("sqlEditorPanel.sampleModeRandom") },
+          ]}
+          value={sampleMode}
+          onChange={(v) => setSampleMode((v as "first" | "last" | "random") ?? "first")}
+          allowDeselect={false}
+          data-testid="sql-sample-mode"
+          style={{ width: "110px" }}
+        />
+        <NumberInput
+          aria-label={t("sqlEditorPanel.rowCountLabel")}
+          title={t("sqlEditorPanel.rowCountLabel")}
+          value={sampleSize}
+          min={1}
+          max={10000}
+          onChange={(v) => setSampleSize(Math.max(1, typeof v === "number" ? v : parseInt(String(v)) || 100))}
+          size="xs"
+          data-testid="sql-sample-size"
+          style={{ width: "90px" }}
+        />
+        <Select
+          aria-label={t("sqlEditorPanel.roleLabel")}
+          size="xs"
+          data={roles}
+          value={role}
+          onChange={(v) => setRole(v ?? role)}
+          allowDeselect={false}
+          data-testid="sql-role"
+          style={{ width: "140px" }}
+        />
+        <div style={{ flex: 1 }} />
         {viewTable && (
           <Button
             size="xs"
@@ -494,42 +530,6 @@ export function SqlEditorPanel({
               : t("sqlEditorPanel.updateView", { tableName: viewTable.tableName })}
           </Button>
         )}
-        <Select
-          aria-label={t("sqlEditorPanel.sampleModeLabel")}
-          size="xs"
-          data={[
-            { value: "first", label: t("sqlEditorPanel.sampleModeFirst") },
-            { value: "last", label: t("sqlEditorPanel.sampleModeLast") },
-            { value: "random", label: t("sqlEditorPanel.sampleModeRandom") },
-          ]}
-          value={sampleMode}
-          onChange={(v) => setSampleMode((v as "first" | "last" | "random") ?? "first")}
-          allowDeselect={false}
-          data-testid="sql-sample-mode"
-          style={{ width: "110px" }}
-        />
-        <NumberInput
-          aria-label={t("sqlEditorPanel.rowCountLabel")}
-          title={t("sqlEditorPanel.rowCountLabel")}
-          value={sampleSize}
-          min={1}
-          max={10000}
-          onChange={(v) => setSampleSize(Math.max(1, typeof v === "number" ? v : parseInt(String(v)) || 100))}
-          size="xs"
-          data-testid="sql-sample-size"
-          style={{ width: "90px" }}
-        />
-        <Select
-          aria-label={t("sqlEditorPanel.roleLabel")}
-          size="xs"
-          data={roles}
-          value={role}
-          onChange={(v) => setRole(v ?? role)}
-          allowDeselect={false}
-          data-testid="sql-role"
-          style={{ width: "140px" }}
-        />
-        <div style={{ flex: 1 }} />
         {(canCreateView || canRequestView) && sqlText.trim() && (
           <Button
             size="xs"
