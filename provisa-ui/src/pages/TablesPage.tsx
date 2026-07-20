@@ -12,7 +12,7 @@ import { useState, useEffect, Fragment, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Network, ArrowUp, ArrowDown, ArrowUpDown, Layers, X } from "lucide-react";
-import { ActionIcon, Alert, Button, Group, Table, Text, Title } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Modal, Table, Text, Title } from "@mantine/core";
 import { ErdModal } from "../components/erd/ErdModal";
 import { fetchSettings, profileTable } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
@@ -44,6 +44,7 @@ import { useAuth } from "../context/AuthContext";
 import { NAMING_CONVENTIONS } from "./tables/constants";
 import { normalizeDomain } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
+import { ModelingForm } from "./tables/ModelingForm";
 import { TableReadView } from "./tables/TableReadView";
 import { TableEditForm } from "./tables/TableEditForm";
 
@@ -75,6 +76,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showModeling, setShowModeling] = useState(false); // REQ-1164: entity/fact modeling modal
   const [error, setError] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState(() => searchParams.get("source") ?? "");
   const [page, setPage] = useState(0);
@@ -420,6 +422,16 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           <Button variant="default" onClick={() => navigate("/sql")} title={translate("tablesPage.addViewTitle")}>
             {translate("tablesPage.addView")}
           </Button>
+          {!viewsOnly && (
+            <Button
+              variant="default"
+              data-testid="tables-model-toggle"
+              onClick={() => setShowModeling(true)}
+              title={translate("tablesPage.modelTitle")}
+            >
+              {translate("tablesPage.model")}
+            </Button>
+          )}
           <ActionIcon
             data-tour="tables-erd"
             variant="subtle"
@@ -927,6 +939,21 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           </Group>
         );
       })()}
+      <Modal
+        opened={showModeling}
+        onClose={() => setShowModeling(false)}
+        title={translate("tablesPage.modelTitle")}
+        size="lg"
+      >
+        <ModelingForm
+          domains={domains}
+          onSuccess={() => {
+            setShowModeling(false);
+            reload();
+          }}
+          onCancel={() => setShowModeling(false)}
+        />
+      </Modal>
       {showErd && (
         <ErdModal
           tables={tables}

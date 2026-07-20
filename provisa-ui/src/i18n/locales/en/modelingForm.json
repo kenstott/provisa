@@ -1,0 +1,21 @@
+{
+  "modelingForm": {
+    "entity": "Entity (dimension)",
+    "fact": "Fact",
+    "nameLabel": "Name",
+    "sourceLabel": "Source relation",
+    "domainLabel": "Domain",
+    "keyLabel": "Business key (comma-separated)",
+    "attributesLabel": "Attributes (comma-separated)",
+    "historyLabel": "History",
+    "historyNone": "none (current only)",
+    "historyScd2": "SCD2 (track changes — delta bitemporal)",
+    "historySnapshot": "snapshot (full history per refresh)",
+    "grainLabel": "Grain (comma-separated key columns)",
+    "measuresLabel": "Measures (col:agg, comma-separated)",
+    "dimensionsLabel": "Dimensions (Entity:fk_column, comma-separated)",
+    "errorRequired": "Name, source, and domain are required.",
+    "cancel": "Cancel",
+    "submit": "Create"
+  }
+}

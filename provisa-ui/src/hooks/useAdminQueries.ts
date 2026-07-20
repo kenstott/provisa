@@ -58,6 +58,8 @@ import {
   CreateDomain,
   DeleteDomain,
   RegisterTable,
+  RegisterEntity,
+  RegisterFact,
   UpdateTable,
   DeleteTable,
   DeployViewToDb,
@@ -236,6 +238,33 @@ export function useRegisterTable() {
     registerTable: async (input: Record<string, unknown>) => {
       const result = await registerTable({ variables: { input } });
       return (result.data?.registerTable ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useRegisterEntity() {
+  const [registerEntity, { loading }] = useMutation<{ registerEntity: MutationResult }>(
+    RegisterEntity,
+    { refetchQueries: [{ query: TABLES_QUERY }] },
+  );
+  return {
+    registerEntity: async (input: Record<string, unknown>) => {
+      const result = await registerEntity({ variables: { input } });
+      return (result.data?.registerEntity ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useRegisterFact() {
+  const [registerFact, { loading }] = useMutation<{ registerFact: MutationResult }>(RegisterFact, {
+    refetchQueries: [{ query: TABLES_QUERY }],
+  });
+  return {
+    registerFact: async (input: Record<string, unknown>) => {
+      const result = await registerFact({ variables: { input } });
+      return (result.data?.registerFact ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };

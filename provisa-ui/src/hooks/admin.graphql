@@ -421,6 +421,18 @@ mutation RegisterTable($input: TableInput!) {
   }
 }
 
+mutation RegisterEntity($input: EntityInput!) {
+  registerEntity(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation RegisterFact($input: FactInput!) {
+  registerFact(input: $input) {
+    ...MutationResult
+  }
+}
+
 mutation UpdateTable($input: TableInput!) {
   updateTable(input: $input) {
     ...MutationResult

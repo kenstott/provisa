@@ -9,6 +9,8 @@
     "closeForm": "Close form",
     "addView": "+ View",
     "addViewTitle": "Create a new view in the SQL Explorer",
+    "model": "+ Model",
+    "modelTitle": "Model an entity or fact (star schema / Data Vault)",
     "viewErd": "View ERD",
     "colSource": "Source",
     "colDomain": "Domain",
