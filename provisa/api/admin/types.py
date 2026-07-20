@@ -408,6 +408,40 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
 
 
 @strawberry.input
+class EntityInput:  # REQ-1164: dimension / hub+satellite sugar → lowers to a (bitemporal) MV
+    name: str
+    source: str  # source relation the projection reads from (e.g. "raw.customers")
+    domain_id: str
+    key: list[str]
+    attributes: list[str] = strawberry.field(default_factory=list)
+    history: str = "none"  # none | scd2 | snapshot
+    visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+
+
+@strawberry.input
+class MeasureInput:  # REQ-1164
+    column: str
+    agg: str = "sum"  # sum | avg | min | max | count
+
+
+@strawberry.input
+class DimRefInput:  # REQ-1164
+    entity: str  # referenced Entity name
+    via: str  # FK column on the fact source
+
+
+@strawberry.input
+class FactInput:  # REQ-1164: star fact / DV link sugar → lowers to an aggregate MV + relationships
+    name: str
+    source: str
+    domain_id: str
+    grain: list[str]
+    measures: list[MeasureInput] = strawberry.field(default_factory=list)
+    dimensions: list[DimRefInput] = strawberry.field(default_factory=list)
+    visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+
+
+@strawberry.input
 class RoleInput:  # REQ-042
     id: str
     capabilities: list[str]

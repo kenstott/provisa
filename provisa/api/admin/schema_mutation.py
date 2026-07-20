@@ -42,6 +42,8 @@ from provisa.api.admin.types import (
     CompileQueryResult,
     DomainInput,
     EnforcementType,
+    EntityInput,
+    FactInput,
     MutationResult,
     RelationshipInput,
     RLSRuleInput,
@@ -373,6 +375,31 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
         return await _ops.register_table(info, input)
+
+    @strawberry.mutation
+    async def register_entity(self, info: StrawberryInfo, input: "EntityInput") -> MutationResult:
+        """REQ-1164: entity sugar → lower to a (bitemporal, when historized) MV and register it."""
+        from provisa.api.admin.modeling_register import entity_table_input
+
+        return await _ops.register_table(info, entity_table_input(input))
+
+    @strawberry.mutation
+    async def register_fact(self, info: StrawberryInfo, input: "FactInput") -> MutationResult:
+        """REQ-1164: fact sugar → lower to an aggregate MV + dimension relationships and register."""
+        from provisa.api.admin.modeling_register import fact_table_input
+
+        ti, rels = fact_table_input(input)
+        res = await _ops.register_table(info, ti)
+        if not res.success:
+            return res
+        for rel in rels:
+            rr = await self.upsert_relationship(info, rel)
+            if not rr.success:
+                return rr
+        return MutationResult(
+            success=True,
+            message=f"Fact {input.name!r} registered with {len(rels)} dimension link(s)",
+        )
 
     @strawberry.mutation
     async def update_table(
