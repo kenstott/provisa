@@ -12,7 +12,8 @@
 // (command boundaries spliced continuous to source columns, transforms named), or load the
 // federation-wide provenance graph over every view/MV with cycles characterized.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Alert, Badge, Button, Group, Paper, Stack, Text, Textarea, Title } from "@mantine/core";
 import { LineageDag } from "../components/lineage/LineageDag";
 import { fetchLineageGraph, fetchFederationGraph } from "../api/lineage";
@@ -26,8 +27,10 @@ const LEGEND: { label: string; color: string }[] = [
 ];
 
 export function LineagePage(): React.ReactElement {
+  const [params] = useSearchParams();
   const [sql, setSql] = useState(
-    "SELECT o.id, e.embedding, upper(e.geo) AS geo_u\nFROM orders o JOIN enrich_grpc_set('main.public.orders') e ON o.id = e.id",
+    params.get("sql") ||
+      "SELECT o.id, e.embedding, upper(e.geo) AS geo_u\nFROM orders o JOIN enrich_grpc_set('main.public.orders') e ON o.id = e.id",
   );
   const [graph, setGraph] = useState<LineageGraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +48,19 @@ export function LineagePage(): React.ReactElement {
       setLoading(false);
     }
   };
+
+  // Deep-link: /lineage?sql=... auto-builds the statement graph; ?focus=<node> loads the federation
+  // graph scoped to that relation/column (the "show lineage" entry point from other pages).
+  useEffect(() => {
+    const focus = params.get("focus");
+    if (focus) {
+      run(() => fetchFederationGraph({ focus }));
+    } else if (params.get("sql")) {
+      run(() => fetchLineageGraph(params.get("sql") as string));
+    }
+    // run once on mount for the incoming deep-link params
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const cycles = graph?.cycles ?? [];
 
