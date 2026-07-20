@@ -72,7 +72,6 @@ nav:
       - Import (Hasura / DDN): import.md
   - Security & Governance:
       - Security Model: security.md
-      - Multitenancy: multitenant.md
   - Clients:
       - Python Client: python-client.md
   - Administration:
@@ -80,15 +79,24 @@ nav:
       - Releasing: releasing.md
   - Architecture:
       - Overview: architecture.md
-      - Requirements: arch/requirements.md
       - Graph Model: arch/graph.md
       - FDW Catalog: arch/fdw_catalog.md
       - Vectors: arch/vectors.md
       - Change Signal Unification: arch/change-signal-unification.md
+      - Requirements: arch/requirements.md
 
-not_in_nav: |
+# Internal docs — never published to the public site. GTM/pricing, competitor
+# comparisons, and the private multi-tenant/SaaS work must not appear in the
+# end-user docs. The requirements traceability *is* published (each REQ-NNN is
+# an anchored, searchable section); only the raw requirements.yaml source stays
+# repo-only.
+exclude_docs: |
   competitive_analysis.md
   marketing.md
+  arch/requirements.yaml
+  exports/
+
+not_in_nav: |
   testing-plan.md
   dataset-handling-standards.md
   domain-principles.md

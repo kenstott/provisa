@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -22,13 +23,38 @@ from provisa.tools.req_schema import RequirementsFile  # type: ignore[import]
 YAML_PATH = Path("docs/arch/requirements.yaml")
 MD_PATH = Path("docs/arch/requirements.md")
 
-STATUS_BADGE = {
-    "complete": "",
-    "in-progress": " ⚙",
-    "proposed": " 💡",
-    "accepted": " ✓",
-    "rejected": " ✗",
+STATUS_LABEL = {
+    "complete": "✅ complete",
+    "in-progress": "⚙ in-progress",
+    "proposed": "💡 proposed",
+    "accepted": "✓ accepted",
+    "rejected": "✗ rejected",
 }
+
+# Inline cross-references like "(REQ-266)" in prose. Each REQ renders as an
+# anchored section (`{#REQ-NNN}`), so a bare mention becomes a deep-link to that
+# section on the same page.
+_REQ_REF = re.compile(r"REQ-\d+")
+
+
+def _linkify(text: str, self_id: str, known: set[str]) -> str:
+    """Turn inline REQ-NNN mentions into anchor links.
+
+    Skips self-references and any id that has no requirement (so no dangling
+    anchors) — those are left as plain text.
+    """
+
+    def repl(m: re.Match[str]) -> str:
+        ref = m.group(0)
+        if ref == self_id or ref not in known:
+            return ref
+        return f"[{ref}](#{ref})"
+
+    return _REQ_REF.sub(repl, text)
+
+
+def _code_list(items: list[str] | None) -> str:
+    return ", ".join(f"`{i}`" for i in items) if items else "—"
 
 
 def generate(rf: RequirementsFile) -> str:
@@ -37,20 +63,40 @@ def generate(rf: RequirementsFile) -> str:
         "",
         "> Generated from `docs/arch/requirements.yaml`. Do not hand-edit.",
         "",
-        "| Group | # | Category | Description | Use Case | Code | Test |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "Each requirement is anchored — link to one directly with "
+        "`#REQ-NNN` (e.g. [REQ-001](#REQ-001)). Inline `REQ-NNN` mentions "
+        "deep-link to their section, and the docs search box indexes every "
+        "requirement by id, category, and description.",
     ]
 
+    known = {req.id for req in rf.requirements}
+    current_group: str | None = None
     for req in rf.requirements:
-        badge = STATUS_BADGE.get(req.status.value, "")
-        req_id = f"{req.id}{badge}"
-        desc = req.description.replace("\n", " ").strip()
-        use_case = (req.use_case or "").replace("\n", " ").strip()
-        code = ", ".join(req.code) if req.code else ""
-        tests = ", ".join(req.tests) if req.tests else ""
-        lines.append(
-            f"| {req.group} | {req_id} | {req.category} | {desc} | {use_case} | {code} | {tests} |"
-        )
+        if req.group != current_group:
+            current_group = req.group
+            lines += ["", f"## {req.group}"]
+
+        status = STATUS_LABEL.get(req.status.value, req.status.value)
+        desc = _linkify(req.description.replace("\n", " ").strip(), req.id, known)
+        use_case = _linkify((req.use_case or "").replace("\n", " ").strip(), req.id, known)
+
+        lines += [
+            "",
+            f"### {req.id} · {req.category} {{#{req.id}}}",
+            "",
+            f"**Status:** {status} · **Priority:** {req.priority.value} · "
+            f"**Type:** {req.type.value}",
+            "",
+            desc,
+        ]
+        if use_case:
+            lines += ["", f"**Use case:** {use_case}"]
+        lines += [
+            "",
+            f"**Code:** {_code_list(req.code)}",
+            "",
+            f"**Tests:** {_code_list(req.tests)}",
+        ]
 
     return "\n".join(lines) + "\n"
 
