@@ -244,6 +244,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   };
 
   const handleProfile = async (tableId: number) => {
+    const existing = tableProfiles[tableId];
+    if (existing !== undefined && existing !== "loading") {
+      setTableProfiles((prev) => {
+        const next = { ...prev };
+        delete next[tableId];
+        return next;
+      });
+      return;
+    }
     if (!activeRole) {
       setTableProfiles((prev) => ({ ...prev, [tableId]: "No active role" }));
       return;
