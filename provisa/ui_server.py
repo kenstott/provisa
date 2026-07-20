@@ -44,13 +44,13 @@ STATIC_DIR = _PACKAGED_UI if _PACKAGED_UI.is_dir() else _REPO_STATIC
 API_BASE_URL = os.environ.get("PROVISA_API_URL", "http://provisa:8000")
 
 # Paths that are always served from static files (never proxied).
-# /guides-md/ holds the bundled in-app documentation markdown (served same-origin so
-# the Docs reader works airgapped). The SPA route /docs is NOT here — it renders the
-# reader; the content lives under /guides-md/.
+# /docs-site/ holds the bundled MkDocs Material site (served same-origin so the
+# in-app Docs reader works airgapped when the hosted site is unreachable). The
+# SPA route /docs is NOT here — it renders the reader, which iframes /docs-site/.
 _STATIC_PREFIXES = (
     "/assets/",
     "/monacoeditorwork/",
-    "/guides-md/",
+    "/docs-site/",
     "/favicon",
     "/icon.svg",
     "/icon-192.png",
@@ -95,6 +95,10 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
         candidate = STATIC_DIR / full_path
         if candidate.is_file():
             return FileResponse(candidate)
+        # MkDocs uses directory URLs (/docs-site/security/ -> .../security/index.html);
+        # serve the directory index so the offline site navigates correctly.
+        if candidate.is_dir() and (candidate / "index.html").is_file():
+            return FileResponse(candidate / "index.html")
 
     # ── SPA root — serve index.html ───────────────────────────────────────────
     index = STATIC_DIR / "index.html"

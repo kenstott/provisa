@@ -704,6 +704,14 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Set up Python (offline docs site)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install MkDocs (offline docs site)
+        run: pip install mkdocs-material pymdown-extensions
+
       - name: Build provisa-ui
         run: |
           cd provisa-ui

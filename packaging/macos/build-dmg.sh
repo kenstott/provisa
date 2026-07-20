@@ -293,9 +293,15 @@ embed_compose() {
   cp "${REPO_ROOT}/main.py"        "$src_dst/"
   cp "${REPO_ROOT}/pyproject.toml" "$src_dst/"
   cp -r "${REPO_ROOT}/provisa"    "${src_dst}/provisa"
-  # Build React UI and embed static files so the provisa-ui container can serve them
+  # Build React UI and embed static files so the provisa-ui container can serve them.
+  # The UI prebuild builds the offline MkDocs docs site (public/docs-site/); point it
+  # at the build venv's mkdocs so no global install is required.
   info "Building React UI..."
-  (cd "${REPO_ROOT}/provisa-ui" && npm ci --silent && npm run build)
+  local venv="${SCRIPT_DIR}/.build-venv"
+  "${venv}/bin/pip" install mkdocs-material pymdown-extensions --quiet --upgrade
+  (cd "${REPO_ROOT}/provisa-ui" \
+    && MKDOCS_BIN="${venv}/bin/mkdocs" PYTHON_BIN="${venv}/bin/python3" \
+       npm ci --silent && MKDOCS_BIN="${venv}/bin/mkdocs" PYTHON_BIN="${venv}/bin/python3" npm run build)
   mkdir -p "${src_dst}/static"
   cp -r "${REPO_ROOT}/provisa-ui/dist/." "${src_dst}/static/"
   ok "React UI built and embedded."

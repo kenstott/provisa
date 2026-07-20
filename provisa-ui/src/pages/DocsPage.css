@@ -1,144 +1,30 @@
 /* Copyright (c) 2026 Kenneth Stott
  * Business Source License 1.1 — see LICENSE. */
 
+/* The Docs page embeds the full MkDocs Material site (online or the bundled
+ * offline copy) in an iframe. The page owns a thin source toolbar above a
+ * flush, full-bleed frame. */
 .docs-page {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 24px;
-  padding: 24px 32px;
-  max-width: 1100px;
-  margin: 0 auto;
-}
-
-.docs-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  position: sticky;
-  top: 24px;
-  align-self: start;
-  max-height: calc(100vh - 120px);
-  overflow-y: auto;
+  height: 100%;
+  min-height: 0;
 }
 
-.docs-nav-item {
-  text-align: left;
-  padding: 7px 12px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: 6px;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-.docs-nav-item:hover {
-  background: var(--surface);
-  color: var(--text);
-}
-.docs-nav-active,
-.docs-nav-active:hover {
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 600;
+.docs-page--center {
+  align-items: center;
+  justify-content: center;
 }
 
-.docs-content {
-  min-width: 0;
-  color: var(--text);
-  line-height: 1.65;
-}
-
-.docs-status {
-  color: var(--text-muted);
-  padding: 40px 0;
-  text-align: center;
-}
-.docs-error {
-  color: var(--destructive);
-}
-.docs-live-note {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  margin-bottom: 16px;
-}
-
-/* Markdown typography */
-.docs-content h1,
-.docs-content h2,
-.docs-content h3 {
-  color: var(--text);
-  line-height: 1.25;
-  margin: 1.4em 0 0.6em;
-}
-.docs-content h1 {
-  font-size: 1.8rem;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.3em;
-}
-.docs-content h2 {
-  font-size: 1.35rem;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.25em;
-}
-.docs-content h3 {
-  font-size: 1.1rem;
-}
-.docs-content p,
-.docs-content li {
-  color: var(--text);
-}
-/* An extra blank line's worth of space between paragraphs. */
-.docs-content p {
-  margin: 0 0 1.4em;
-}
-.docs-content li {
-  margin-bottom: 0.4em;
-}
-.docs-content a {
-  color: var(--primary);
-  text-decoration: none;
-}
-.docs-content a:hover {
-  text-decoration: underline;
-}
-.docs-content code {
-  background: var(--surface);
-  padding: 0.15em 0.4em;
-  border-radius: 4px;
-  font-size: 0.88em;
-}
-.docs-content pre {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px 16px;
-  overflow-x: auto;
-}
-.docs-content pre code {
-  background: transparent;
-  padding: 0;
-}
-.docs-content table {
-  border-collapse: collapse;
-  margin: 1em 0;
-  display: block;
-  overflow-x: auto;
-}
-.docs-content th,
-.docs-content td {
-  border: 1px solid var(--border);
+.docs-toolbar {
+  flex: 0 0 auto;
   padding: 6px 12px;
-  text-align: left;
+  border-bottom: 1px solid var(--mantine-color-default-border);
 }
-.docs-content blockquote {
-  border-left: 3px solid var(--border);
-  margin: 1em 0;
-  padding: 0.2em 1em;
-  color: var(--text-muted);
-}
-.docs-content img {
-  max-width: 100%;
+
+.docs-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
 }
