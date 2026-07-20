@@ -120,6 +120,8 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.mv_refresh_interval,
                         _registered_tables_t.c.change_signal,
                         _registered_tables_t.c.mv_preprocess,  # REQ-957
+                        _registered_tables_t.c.mv_bitemporal_mode,  # REQ-1162
+                        _registered_tables_t.c.mv_bitemporal_key,  # REQ-1162
                     ).where(
                         _registered_tables_t.c.source_id == "__provisa__",
                         _registered_tables_t.c.view_sql.is_not(None),
@@ -140,7 +142,28 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
             # is unqueryable: its raw source catalog (e.g. __provisa__) reaches the engine and fails
             # with "Catalog __provisa__ does not exist".
             _semantic_sql = _vr["view_sql"].rstrip().rstrip(";")
-            state.view_sql_map[_vr["table_name"]] = _semantic_sql
+            # REQ-1162: reconstruct the bitemporal spec from the persisted mode/key (None = ordinary).
+            _bt_spec = None
+            if _vr.get("mv_bitemporal_mode"):
+                from provisa.mv.bitemporal import BitemporalSpec
+
+                _bt_spec = BitemporalSpec(
+                    key=tuple(_vr.get("mv_bitemporal_key") or []),
+                    mode=_vr["mv_bitemporal_mode"],
+                )
+            if _bt_spec is not None and _vr.get("materialize"):
+                # REQ-1163: a bitemporal MV is served from its materialized append log — the read
+                # reconstructs CURRENT state (the live view SQL would carry no history). Point the
+                # inline-expansion entry at the reconstruction over the physical mv target.
+                from provisa.mv.bitemporal import view_read_sql
+
+                _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
+                    state.org_id
+                )
+                _mv_ref = f'"{_tgt_cat}"."{_tgt_schema}"."mv_{_vr["table_name"]}"'
+                state.view_sql_map[_vr["table_name"]] = view_read_sql(_mv_ref, _bt_spec)
+            else:
+                state.view_sql_map[_vr["table_name"]] = _semantic_sql
             if _vr.get("materialize"):
                 from provisa.mv.models import MVDefinition, MVStatus
                 from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
@@ -172,11 +195,13 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             status=MVStatus.STALE,
                             freshness_mode=_fresh,
                             preprocess=_vr.get("mv_preprocess"),  # REQ-957
+                            bitemporal=_bt_spec,  # REQ-1162: survive restart
                         )
                     )
                 else:
                     _existing.sql = _semantic_sql
                     _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
+                    _existing.bitemporal = _bt_spec  # REQ-1162
 
 
 async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:

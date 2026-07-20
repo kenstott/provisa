@@ -32942,6 +32942,11 @@
   - provisa/mv/refresh.py
   - provisa/mv/models.py
   - provisa/api/admin/schema_common.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  - provisa/core/repositories/table.py
+  - provisa/api/admin/schema_helpers.py
+  - provisa/api/app_rebuild.py
   tests:
   - tests/unit/test_bitemporal.py
   - tests/unit/test_bitemporal_exec.py
@@ -32957,6 +32962,10 @@
     past point, snapshot and delta modes agree, and on Iceberg each refresh is exactly one snapshot
 
     '
+  integration_test: required
+  integration_test_reason: End-to-end persistence + restart-reload + consumer read of a bitemporal MV
+    needs a running app + control-plane DB; unit tests cover the SQL, persistence dict, schema parity,
+    and MVDefinition.bitemporal reload but not the live create→restart→query path.
   related_reqs:
   - REQ-372
   - REQ-844
@@ -32970,23 +32979,25 @@
   target: 2026-Q4
   description: >-
     A bitemporal materialized view (REQ-1162) must be READABLE through the query languages so
-    consumers get current state by default and can travel in time. Two parts: (1) a raw read of a
-    bitemporal MV must return the CURRENT reconstructed state, never the full append log — the MV
-    read/rewrite path routes reads through the reconstruction SELECT (latest batch for snapshot mode;
-    latest-version-per-business-key window dropping tombstones for delta mode) instead of a plain scan
-    of the target table; (2) an optional `as_of` argument on the query (timestamp) reconstructs state
-    as of that system time via the same reconstruction, giving identical consumer-facing semantics
-    across substrates. This is the query-language surface analogous to REQ-372 (`as_of` for
-    Iceberg/Delta SOURCES). REQ-1162 already delivers the append-only materialization and the
-    reconstruction SQL (provisa/mv/bitemporal.py: reconstruct_as_of_sql / current_state_sql), so this
-    requirement is only the compiler/rewriter wiring plus the `as_of` argument declaration.
+    consumers get current state by default and can travel in time. Part (1) — current-by-default — is
+    DONE: a bitemporal materialized view's inline-expansion entry (state.view_sql_map, app_rebuild.py)
+    is pointed at a reconstruction over the physical append log (bitemporal.py: view_read_sql), so a
+    plain read returns the CURRENT reconstructed state (latest batch for snapshot; latest-version-
+    per-business-key window dropping tombstones for delta) instead of the raw log. Part (2) — REMAINING
+    — an optional `as_of` argument on the query (timestamp) reconstructs state as of that system time
+    via the same view_read_sql(ts) path, giving identical consumer-facing semantics across substrates;
+    this needs a declared `as_of` GraphQL/SQL argument (not declared today) threaded into the view-
+    substitution step, plus freshness-gating so a stale/unmaterialized MV is handled explicitly (not a
+    silent fallback). Analogous to REQ-372 (`as_of` for Iceberg/Delta SOURCES).
   use_case: >-
-    Without wiring reconstruction into the read path (provisa/mv/rewriter.py), a bitemporal MV read
-    would surface all historical versions instead of current state. This closes the read surface so
-    bitemporal MVs are usable from GraphQL/SQL with current-by-default and opt-in time travel.
+    Without routing reads through reconstruction a bitemporal MV read would surface all historical
+    versions instead of current state. Current-by-default (done) makes bitemporal MVs usable; the
+    `as_of` argument (remaining) adds opt-in time travel.
   code:
-  - provisa/mv/rewriter.py
+  - provisa/api/app_rebuild.py
   - provisa/mv/bitemporal.py
+  tests:
+  - tests/unit/test_bitemporal_exec.py
   related_reqs:
   - REQ-1162
   - REQ-372

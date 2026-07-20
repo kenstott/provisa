@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- MV NRT debounce max delay (s)
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
+    mv_bitemporal_mode TEXT,  -- REQ-1162: NULL | 'snapshot' | 'delta' (append-only time travel)
+    mv_bitemporal_key JSONB,  -- REQ-1162: business key columns (required for delta)
     unique_constraints JSONB NOT NULL DEFAULT '[]',  -- REQ-1093: table-level UNIQUE constraints
     UNIQUE (source_id, schema_name, table_name)
 );
@@ -143,6 +145,8 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_consistency TEXT NOT NULL DEFAULT 'shared';  -- REQ-879
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_preprocess TEXT;  -- REQ-957
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_mode TEXT;  -- REQ-1162
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_key JSONB;  -- REQ-1162
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_aggregates BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_group_by BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS live JSONB;

@@ -141,6 +141,10 @@ registered_tables = Table(
     Column("mv_consistency", Text, nullable=False, server_default="shared"),
     # REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity.
     Column("mv_preprocess", Text),
+    # REQ-1162: append-only bitemporal materialization. NULL = ordinary MV; "snapshot"|"delta".
+    # mv_bitemporal_key is the business-key column list a version belongs to (required for delta).
+    Column("mv_bitemporal_mode", Text),
+    Column("mv_bitemporal_key", JSON),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
     Column("live", JSON),

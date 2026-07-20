@@ -24,6 +24,7 @@ from provisa.mv.bitemporal import (
     append_sql,
     create_sql,
     reconstruct_as_of_sql,
+    view_read_sql,
 )
 
 COLS = ["id", "region", "amount"]
@@ -164,3 +165,28 @@ def test_composite_business_key():
 def test_before_first_refresh_is_empty(mode):
     d = _run_story(mode)
     assert d.state("2025-01-01 00:00:00") == set()
+
+
+# ── view_read_sql: the read-substitution form (SELECT *), used for inline expansion (REQ-1163) ──
+
+
+def _project(con, inner: str) -> set:
+    """Project the business columns out of a SELECT-* reconstruction, as an inline consumer would."""
+    return set(con.execute(f'SELECT "id", "region", "amount" FROM ({inner}) _v').fetchall())
+
+
+@pytest.mark.parametrize("mode", [MODE_SNAPSHOT, MODE_DELTA])
+def test_view_read_sql_current_matches_full_story(mode):
+    d = _run_story(mode)
+    assert _project(d.con, view_read_sql(TARGET, d.spec)) == {
+        (1, "west", 15),
+        (2, "east", 99),
+        (3, "north", 30),
+    }
+
+
+@pytest.mark.parametrize("mode", [MODE_SNAPSHOT, MODE_DELTA])
+def test_view_read_sql_as_of(mode):
+    d = _run_story(mode)
+    inner = view_read_sql(TARGET, d.spec, f"TIMESTAMP '{T2}'")
+    assert _project(d.con, inner) == {(1, "west", 15), (2, "east", 20), (3, "north", 30)}

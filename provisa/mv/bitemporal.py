@@ -224,6 +224,26 @@ def reconstruct_as_of_sql(
     return f"SELECT {cols} FROM ({ranked}) _v WHERE _v._rn = 1 AND _v.{op} <> '{_OP_DELETE}'"
 
 
+def view_read_sql(mv_ref: str, spec: BitemporalSpec, ts_sql: str | None = None) -> str:
+    """A SELECT over the append log that yields the effective rows (current when ``ts_sql`` is None)
+    for READ substitution — used where a bitemporal MV's read is expanded inline (REQ-1163).
+
+    Unlike reconstruct_as_of_sql this projects ``*`` (all columns, business + system), because the
+    caller inlines it as ``(<this>) alias`` and the outer consumer query selects the business columns
+    by name — the extra system columns are harmless and it avoids needing the column list here."""
+    sys = _q(spec.system_column)
+    upto = f" WHERE {sys} <= {ts_sql}" if ts_sql else ""
+    if not spec.is_delta:
+        return f"SELECT * FROM {mv_ref} WHERE {sys} = (SELECT MAX({sys}) FROM {mv_ref}{upto})"
+    op = _q(spec.op_column)
+    part = ", ".join(_q(c) for c in spec.key)
+    ranked = (
+        f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {part} ORDER BY {sys} DESC) AS _bt_rn "
+        f"FROM {mv_ref}{upto}"
+    )
+    return f"SELECT * FROM ({ranked}) _bt WHERE _bt._bt_rn = 1 AND _bt.{op} <> '{_OP_DELETE}'"
+
+
 def as_of_valid_predicate(spec: BitemporalSpec, ts_sql: str, alias: str | None = None) -> str:
     """Filter to rows valid (business time) at ``ts_sql``. Requires the view to supply valid-time
     columns; raises rather than silently ignoring the request."""
