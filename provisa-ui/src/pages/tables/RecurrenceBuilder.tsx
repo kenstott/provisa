@@ -141,6 +141,15 @@ export function RecurrenceBuilder({ value, onChange, placeholder, label, testId 
                 ]}
               />
             )}
+            {(freq === RRule.MONTHLY || freq === RRule.YEARLY) && (
+              <MonthlyPanel
+                mode={monthlyMode}
+                bymonthday={bymonthday}
+                byweekday={byweekday}
+                onDayChange={(n) => emit({ bymonthday: n, byweekday: undefined })}
+                onWeekdayChange={(n, wd) => emit({ byweekday: [wd.nth(n)], bymonthday: undefined })}
+              />
+            )}
           </Group>
 
           {freq === RRule.WEEKLY && (
@@ -157,16 +166,6 @@ export function RecurrenceBuilder({ value, onChange, placeholder, label, testId 
                 ))}
               </Group>
             </Chip.Group>
-          )}
-
-          {(freq === RRule.MONTHLY || freq === RRule.YEARLY) && (
-            <MonthlyPanel
-              mode={monthlyMode}
-              bymonthday={bymonthday}
-              byweekday={byweekday}
-              onDayChange={(n) => emit({ bymonthday: n, byweekday: undefined })}
-              onWeekdayChange={(n, wd) => emit({ byweekday: [wd.nth(n)], bymonthday: undefined })}
-            />
           )}
 
           {freq === RRule.YEARLY && (
