@@ -37,6 +37,7 @@ import { sourceProbeTypes } from "../../liveCapability";
 import { IANA_TIME_ZONES, NAMING_CONVENTIONS } from "./constants";
 import { DescriptionField } from "./DescriptionField";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
+import { CalendarCreateModal } from "./CalendarCreateModal";
 
 interface CacheTtlEdit {
   value: string;
@@ -113,10 +114,11 @@ export function TableEditForm({
   // side with the in-flight values, seeded from the persisted summary so it renders before the first
   // fetch resolves.
   const previewPolicy = useRefreshPolicyPreview();
-  const { calendars } = useCalendars(); // REQ-962: snapshot-schedule calendar picker source
+  const { calendars, refetch: refetchCalendars } = useCalendars(); // REQ-962: snapshot-schedule picker
   const [snapshotOpen, setSnapshotOpen] = useState(
     Boolean(editingTable.mvCalendar), // open the panel when a schedule is already configured
   );
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const [livePolicy, setLivePolicy] = useState<RefreshPolicySummary | null>(
     editingTable.refreshPolicySummary,
   );
@@ -596,30 +598,42 @@ export function TableEditForm({
                       paddingTop: "var(--mantine-spacing-xs)",
                     }}
                   >
-                    <Select
-                      label={
-                        <FieldLabel
-                          text="Calendar"
-                          help="The registered snapshot-boundary calendar. Declaring one makes this MV periodic (REQ-962); leave empty for the live/NRT default."
-                        />
-                      }
-                      data-testid="mv-calendar"
-                      placeholder={
-                        calendars.length
-                          ? "Select a calendar (or leave empty for live)"
-                          : "No calendars registered yet"
-                      }
-                      data={calendars.map((c) => ({
-                        value: c.name,
-                        label: `${c.name} (v${c.version}, ${c.baseSystem}, ${c.tz})`,
-                      }))}
-                      value={editingTable.mvCalendar}
-                      onChange={(v) =>
-                        setEditingTable({ ...editingTable, mvCalendar: v || null })
-                      }
-                      comboboxProps={{ withinPortal: true }}
-                      clearable
-                    />
+                    <Group gap="xs" align="flex-end" wrap="nowrap">
+                      <Select
+                        style={{ flex: 1 }}
+                        label={
+                          <FieldLabel
+                            text="Calendar"
+                            help="The registered snapshot-boundary calendar. Declaring one makes this MV periodic (REQ-962); leave empty for the live/NRT default."
+                          />
+                        }
+                        data-testid="mv-calendar"
+                        placeholder={
+                          calendars.length
+                            ? "Select a calendar (or leave empty for live)"
+                            : "No calendars registered yet"
+                        }
+                        data={calendars.map((c) => ({
+                          value: c.name,
+                          label: `${c.name} (v${c.version}, ${c.baseSystem}, ${c.tz})`,
+                        }))}
+                        value={editingTable.mvCalendar}
+                        onChange={(v) =>
+                          setEditingTable({ ...editingTable, mvCalendar: v || null })
+                        }
+                        comboboxProps={{ withinPortal: true }}
+                        clearable
+                      />
+                      <ActionIcon
+                        variant="light"
+                        size="lg"
+                        aria-label="New calendar"
+                        data-testid="mv-calendar-new"
+                        onClick={() => setCalendarModalOpen(true)}
+                      >
+                        +
+                      </ActionIcon>
+                    </Group>
                     {editingTable.mvCalendar && (
                       <Select
                         label={
@@ -681,6 +695,14 @@ export function TableEditForm({
                     )}
                   </div>
                 </Collapse>
+                <CalendarCreateModal
+                  opened={calendarModalOpen}
+                  onClose={() => setCalendarModalOpen(false)}
+                  onCreated={(nm) => {
+                    refetchCalendars();
+                    setEditingTable({ ...editingTable, mvCalendar: nm });
+                  }}
+                />
               </div>
             )}
             {editingTable.materialize && editingTable.mvBitemporalMode && (

@@ -122,4 +122,13 @@ describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
     renderForm(makeTable({ materialize: false }));
     expect(screen.queryByTestId("mv-snapshot-panel-toggle")).not.toBeInTheDocument();
   });
+
+  it("opens the new-calendar modal from the picker's + button", async () => {
+    renderForm(makeTable({ mvCalendar: "fiscal-us", mvGrain: "monthly" }));
+    expect(screen.queryByTestId("calendar-name")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("mv-calendar-new"));
+    // Mantine Modal renders through a portal with a transition — resolve asynchronously
+    expect(await screen.findByTestId("calendar-name")).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-base-system")).toBeInTheDocument();
+  });
 });
