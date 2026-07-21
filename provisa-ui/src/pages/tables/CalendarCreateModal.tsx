@@ -214,6 +214,7 @@ export function CalendarCreateModal({
               <FieldLabel
                 text={t("tableEditForm.calRetailAnchorLabel")}
                 help={t("tableEditForm.calRetailAnchorHelp")}
+                required
               />
             }
             data-testid="calendar-retail-anchor"
@@ -221,7 +222,6 @@ export function CalendarCreateModal({
             value={retailAnchor}
             onChange={setRetailAnchor}
             popoverProps={{ withinPortal: true }}
-            required
           />
         )}
         <Select
