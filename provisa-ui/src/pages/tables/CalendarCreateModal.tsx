@@ -13,18 +13,27 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal, TextInput, Select, Button, Group, Stack, Alert } from "@mantine/core";
+import { Modal, TextInput, Select, NumberInput, Button, Group, Stack, Alert } from "@mantine/core";
+import { DateInput } from "@mantine/dates";
 import { useCreateCalendar } from "../../hooks/useAdminQueries";
 import { IANA_TIME_ZONES } from "./constants";
+
+// Localized month names for the fiscal-anchor picker (value = 1..12), no per-month i18n keys needed.
+const MONTHS = Array.from({ length: 12 }, (_, i) => ({
+  value: String(i + 1),
+  label: new Intl.DateTimeFormat(undefined, { month: "long" }).format(new Date(2000, i, 1)),
+}));
 
 export function CalendarCreateModal({
   opened,
   onClose,
   onCreated,
+  initialBaseSystem = "gregorian",
 }: {
   opened: boolean;
   onClose: () => void;
   onCreated?: (name: string) => void;
+  initialBaseSystem?: string; // preselect gregorian | fiscal | retail_445
 }) {
   const { t } = useTranslation();
   const { createCalendar, loading } = useCreateCalendar();
@@ -39,16 +48,32 @@ export function CalendarCreateModal({
   ];
   const [name, setName] = useState("");
   const [version, setVersion] = useState("v1");
-  const [baseSystem, setBaseSystem] = useState("gregorian");
+  const [baseSystem, setBaseSystem] = useState(initialBaseSystem);
   const [tz, setTz] = useState("UTC");
   const [weekStart, setWeekStart] = useState("0");
+  const [fiscalAnchorMonth, setFiscalAnchorMonth] = useState("1");
+  const [fiscalAnchorDay, setFiscalAnchorDay] = useState<number>(1);
+  const [retailAnchor, setRetailAnchor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // A retail_445 calendar is unusable without a reference year start; block Create until it's set.
+  const retailAnchorMissing = baseSystem === "retail_445" && !retailAnchor;
 
   const submit = async () => {
     setError(null);
     const res = await createCalendar({
       variables: {
-        input: { name, version, baseSystem, tz, weekStart: parseInt(weekStart, 10) },
+        input: {
+          name,
+          version,
+          baseSystem,
+          tz,
+          weekStart: parseInt(weekStart, 10),
+          // REQ-962: fiscal → the year's anchor month/day; retail_445 → the reference-year start date.
+          fiscalAnchorMonth: parseInt(fiscalAnchorMonth, 10),
+          fiscalAnchorDay,
+          retailAnchor: baseSystem === "retail_445" ? retailAnchor : null,
+        },
       },
     });
     const result = (res.data as { createCalendar?: { success: boolean; message: string } } | null)
@@ -97,6 +122,40 @@ export function CalendarCreateModal({
           comboboxProps={{ withinPortal: true }}
           allowDeselect={false}
         />
+        {baseSystem === "fiscal" && (
+          <Group grow align="flex-start" gap="xs">
+            <Select
+              label={t("tableEditForm.calFiscalAnchorMonthLabel")}
+              data-testid="calendar-fiscal-month"
+              data={MONTHS}
+              value={fiscalAnchorMonth}
+              onChange={(v) => setFiscalAnchorMonth(v || "1")}
+              comboboxProps={{ withinPortal: true }}
+              allowDeselect={false}
+              description={t("tableEditForm.calFiscalAnchorHelp")}
+            />
+            <NumberInput
+              label={t("tableEditForm.calFiscalAnchorDayLabel")}
+              data-testid="calendar-fiscal-day"
+              min={1}
+              max={31}
+              value={fiscalAnchorDay}
+              onChange={(v) => setFiscalAnchorDay(typeof v === "number" ? v : 1)}
+            />
+          </Group>
+        )}
+        {baseSystem === "retail_445" && (
+          <DateInput
+            label={t("tableEditForm.calRetailAnchorLabel")}
+            description={t("tableEditForm.calRetailAnchorHelp")}
+            data-testid="calendar-retail-anchor"
+            valueFormat="YYYY-MM-DD"
+            value={retailAnchor}
+            onChange={setRetailAnchor}
+            popoverProps={{ withinPortal: true }}
+            required
+          />
+        )}
         <Select
           label={t("tableEditForm.calTzLabel")}
           searchable
@@ -122,7 +181,7 @@ export function CalendarCreateModal({
           <Button
             data-testid="calendar-create-submit"
             loading={loading}
-            disabled={!name || !version}
+            disabled={!name || !version || retailAnchorMissing}
             onClick={submit}
           >
             {t("tableEditForm.calCreate")}
