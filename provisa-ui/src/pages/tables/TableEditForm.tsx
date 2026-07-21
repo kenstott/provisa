@@ -543,7 +543,7 @@ export function TableEditForm({
             )}
             {editingTable.materialize && (
               <CollapsibleSection
-                title="Time Travel"
+                title={t("tableEditForm.timeTravelPanel")}
                 testId="mv-timetravel-panel"
                 defaultOpen={Boolean(editingTable.mvBitemporalMode)}
                 badge={editingTable.mvBitemporalMode || undefined}
@@ -589,7 +589,7 @@ export function TableEditForm({
                     {snapshotOpen ? "−" : "+"}
                   </ActionIcon>
                   <Text fw={600} size="sm">
-                    Snapshot Schedule
+                    {t("tableEditForm.snapshotPanel")}
                   </Text>
                   {editingTable.mvCalendar && (
                     <Badge size="xs" variant="light" color="grape">
@@ -611,15 +611,15 @@ export function TableEditForm({
                         style={{ flex: 1 }}
                         label={
                           <FieldLabel
-                            text="Calendar"
-                            help="The registered snapshot-boundary calendar. Declaring one makes this MV periodic (REQ-962); leave empty for the live/NRT default."
+                            text={t("tableEditForm.calendarLabel")}
+                            help={t("tableEditForm.calendarHelp")}
                           />
                         }
                         data-testid="mv-calendar"
                         placeholder={
                           calendars.length
-                            ? "Select a calendar (or leave empty for live)"
-                            : "No calendars registered yet"
+                            ? t("tableEditForm.calendarPlaceholder")
+                            : t("tableEditForm.calendarPlaceholderEmpty")
                         }
                         data={calendars.map((c) => ({
                           value: c.name,
@@ -635,7 +635,7 @@ export function TableEditForm({
                       <ActionIcon
                         variant="light"
                         size="lg"
-                        aria-label="New calendar"
+                        aria-label={t("tableEditForm.calendarNewAria")}
                         data-testid="mv-calendar-new"
                         onClick={() => setCalendarModalOpen(true)}
                       >
@@ -646,21 +646,21 @@ export function TableEditForm({
                       <Select
                         label={
                           <FieldLabel
-                            text="Grain"
-                            help="When a version is cut: a nesting grain, or an nth-weekday recurrence (REQ-962/1168)."
+                            text={t("tableEditForm.grainLabel")}
+                            help={t("tableEditForm.grainHelp")}
                           />
                         }
                         data-testid="mv-grain"
-                        placeholder="Select a grain"
+                        placeholder={t("tableEditForm.grainPlaceholder")}
                         data={[
-                          { value: "daily", label: "Daily (end of day)" },
-                          { value: "weekly", label: "Weekly (end of week)" },
-                          { value: "monthly", label: "Monthly (end of month)" },
-                          { value: "quarterly", label: "Quarterly (end of quarter)" },
-                          { value: "annual", label: "Annual (end of year)" },
-                          { value: "3WE", label: "3rd Wednesday of month" },
-                          { value: "1MO", label: "1st Monday of month" },
-                          { value: "LFR", label: "Last Friday of month" },
+                          { value: "daily", label: t("tableEditForm.grainDaily") },
+                          { value: "weekly", label: t("tableEditForm.grainWeekly") },
+                          { value: "monthly", label: t("tableEditForm.grainMonthly") },
+                          { value: "quarterly", label: t("tableEditForm.grainQuarterly") },
+                          { value: "annual", label: t("tableEditForm.grainAnnual") },
+                          { value: "3WE", label: t("tableEditForm.grain3we") },
+                          { value: "1MO", label: t("tableEditForm.grain1mo") },
+                          { value: "LFR", label: t("tableEditForm.grainLfr") },
                         ]}
                         value={editingTable.mvGrain}
                         onChange={(v) => setEditingTable({ ...editingTable, mvGrain: v || null })}
@@ -671,8 +671,8 @@ export function TableEditForm({
                       <NumberInput
                         label={
                           <FieldLabel
-                            text="Allowed lateness (seconds)"
-                            help="How long the seal waits past the boundary for inputs to be fresh-through the window (REQ-961)."
+                            text={t("tableEditForm.allowedLatenessLabel")}
+                            help={t("tableEditForm.allowedLatenessHelp")}
                           />
                         }
                         data-testid="mv-allowed-lateness"
@@ -698,7 +698,7 @@ export function TableEditForm({
                             mvBusinessDayGrain: e.currentTarget.checked,
                           })
                         }
-                        label="Business-day grain (no window on holidays/weekends)"
+                        label={t("tableEditForm.businessDayGrainLabel")}
                       />
                     )}
                   </div>
