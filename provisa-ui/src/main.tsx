@@ -11,6 +11,7 @@
 import { createRoot } from 'react-dom/client'
 // Mantine styles must load before app CSS so local overrides win the cascade.
 import '@mantine/core/styles.css'
+import '@mantine/dates/styles.css'
 import '@mantine/notifications/styles.css'
 import { MantineProvider, localStorageColorSchemeManager } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'

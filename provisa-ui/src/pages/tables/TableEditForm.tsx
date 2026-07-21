@@ -38,6 +38,7 @@ import { sourceProbeTypes } from "../../liveCapability";
 import { IANA_TIME_ZONES, NAMING_CONVENTIONS } from "./constants";
 import { DescriptionField } from "./DescriptionField";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
+import { TimeInput } from "@mantine/dates";
 import { CalendarCreateModal } from "./CalendarCreateModal";
 import { CollapsibleSection } from "./CollapsibleSection";
 
@@ -363,24 +364,44 @@ export function TableEditForm({
             testId="mv-protection-panel"
             defaultOpen
           >
-            <TextInput
-              // REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is open.
-              label={
-                <FieldLabel
-                  text={t("tableEditForm.offPeakWindowLabel")}
-                  help={t("tableEditForm.offPeakWindowHelp")}
+            {/* REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is
+                open. Two time widgets (opens/closes) compose the string; both blank = no window. */}
+            <div data-testid="off-peak-window">
+              <FieldLabel
+                text={t("tableEditForm.offPeakWindowLabel")}
+                help={t("tableEditForm.offPeakWindowHelp")}
+              />
+              <Group gap="xs" grow>
+                <TimeInput
+                  aria-label={t("tableEditForm.offPeakOpensAria")}
+                  data-testid="off-peak-opens"
+                  label={t("tableEditForm.offPeakOpens")}
+                  value={(editingTable.offPeakWindow ?? "").split("-")[0] ?? ""}
+                  onChange={(e) => {
+                    const end = (editingTable.offPeakWindow ?? "").split("-")[1] ?? "";
+                    const start = e.currentTarget.value;
+                    setEditingTable({
+                      ...editingTable,
+                      offPeakWindow: start || end ? `${start}-${end}` : null,
+                    });
+                  }}
                 />
-              }
-              data-testid="off-peak-window"
-              value={editingTable.offPeakWindow ?? ""}
-              onChange={(e) =>
-                setEditingTable({
-                  ...editingTable,
-                  offPeakWindow: e.target.value || null,
-                })
-              }
-              placeholder={t("tableEditForm.offPeakWindowPlaceholder")}
-            />
+                <TimeInput
+                  aria-label={t("tableEditForm.offPeakClosesAria")}
+                  data-testid="off-peak-closes"
+                  label={t("tableEditForm.offPeakCloses")}
+                  value={(editingTable.offPeakWindow ?? "").split("-")[1] ?? ""}
+                  onChange={(e) => {
+                    const start = (editingTable.offPeakWindow ?? "").split("-")[0] ?? "";
+                    const end = e.currentTarget.value;
+                    setEditingTable({
+                      ...editingTable,
+                      offPeakWindow: start || end ? `${start}-${end}` : null,
+                    });
+                  }}
+                />
+              </Group>
+            </div>
             <Select
               // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
               // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
