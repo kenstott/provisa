@@ -135,7 +135,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
         (the handler then aborts NOT_FOUND)."""
         from provisa.grpc.proto_gen import command_rpc_name
 
-        for fn_name in getattr(self._state, "tracked_functions", {}):
+        for fn_name in [
+            *getattr(self._state, "tracked_functions", {}),
+            *getattr(self._state, "tracked_webhooks", {}),
+        ]:
             if command_rpc_name(fn_name) == cmd_pascal:
                 return fn_name
         return None
@@ -156,7 +159,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
             return
         state = self._state
-        fn = getattr(state, "tracked_functions", {}).get(cmd_name) if cmd_name else None
+        fn = (
+            getattr(state, "tracked_functions", {}).get(cmd_name)
+            or getattr(state, "tracked_webhooks", {}).get(cmd_name)
+            if cmd_name
+            else None
+        )
         if fn is None or cmd_name is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {cmd_name!r}")
             return

@@ -293,7 +293,11 @@ def generate_rest_openapi_spec(
     # REQ-1155: registered commands are POST paths so they appear in the OpenAPI/Swagger surface
     # alongside tables. Invocation routes through the same governed executor as every other surface.
     _seen_cmd: set[str] = set()
-    for fn in (getattr(state, "tracked_functions", {}) or {}).values():
+    # Functions AND webhooks are governed commands (REQ-872 / REQ-1155): both appear as POST paths.
+    for fn in [
+        *(getattr(state, "tracked_functions", {}) or {}).values(),
+        *(getattr(state, "tracked_webhooks", {}) or {}).values(),
+    ]:
         cmd_name = fn.get("name")
         if not cmd_name or cmd_name in _seen_cmd:
             continue

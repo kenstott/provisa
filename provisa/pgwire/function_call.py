@@ -53,6 +53,9 @@ def detect_sql_function_call(sql: str, state) -> tuple[str, list] | None:
     fns = getattr(state, "tracked_functions", None)
     if not isinstance(fns, dict):
         return None
+    # Webhooks are governed commands too (REQ-872) and route through the same shared executor, so a
+    # webhook call is a standalone-function-call SELECT exactly like a function call.
+    callables = {**fns, **(getattr(state, "tracked_webhooks", None) or {})}
     import sqlglot
     import sqlglot.expressions as exp
     from sqlglot.errors import SqlglotError
@@ -61,14 +64,14 @@ def detect_sql_function_call(sql: str, state) -> tuple[str, list] | None:
         tree = sqlglot.parse_one(sql, dialect="postgres")
     except (SqlglotError, RecursionError):
         return None
-    cmd_nodes = [n for n in tree.find_all(exp.Anonymous) if n.name in fns]
+    cmd_nodes = [n for n in tree.find_all(exp.Anonymous) if n.name in callables]
     if len(cmd_nodes) != 1:
         return None  # zero commands, or several composed → not the standalone path
     if list(tree.find_all(exp.Join)):
         return None  # joined with another relation → composed → localization owns it
     for tbl in tree.find_all(exp.Table):
         inner = tbl.this
-        if not (isinstance(inner, exp.Anonymous) and inner.name in fns):
+        if not (isinstance(inner, exp.Anonymous) and inner.name in callables):
             return None  # a non-command table source is present → composed
     node = cmd_nodes[0]
     return node.name, [_literal_value(a) for a in node.expressions]

@@ -827,6 +827,7 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     # domain_gql_alias (e.g. pet-store -> "ps"), NOT domain_to_sql_name (-> "pet_store"). Otherwise
     # _split_action_fields can't find the domain-prefixed field and the command falls through to the
     # table compiler as an "Unknown root query field" (REQ-1156).
+    from provisa.compiler.naming import apply_convention as _apply_conv
     from provisa.compiler.naming import domain_gql_alias as _dgql
 
     _domains_cfg = (raw_config or {}).get("domains", []) or []
@@ -840,16 +841,29 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
         return _dgql(domain_id, _alias_stored.get(domain_id))
 
     _dp = raw_config.get("naming", {}).get("domain_prefix", False) if raw_config else False
+    # The GraphQL field name applies the active naming convention to the command name (add_pet ->
+    # addPet under apollo_graphql), matching the schema generator (actions_schema.apply_gql_name).
+    # Register under BOTH the raw registered name (the SQL/Cypher/gRPC/REST surfaces call it that)
+    # AND the convention-cased GraphQL field name, so every surface's lookup resolves (REQ-1156).
+    _conv = (raw_config or {}).get("naming", {}).get("convention", "apollo_graphql")
+
+    def _register(target: dict, item: dict) -> None:
+        target[item["name"]] = item  # raw registered name — non-GraphQL surfaces
+        gql = _apply_conv(item["name"], _conv)
+        key = (
+            f"{_domain_prefix(item['domain_id'])}__{gql}"
+            if _dp and item.get("domain_id")
+            else gql
+        )
+        if key != item["name"]:
+            target[key] = item  # GraphQL field name (convention-cased, maybe domain-prefixed)
+
     state.tracked_functions = {}
     for f in tracked_functions:
-        state.tracked_functions[f["name"]] = f
-        if _dp and f.get("domain_id"):
-            state.tracked_functions[f"{_domain_prefix(f['domain_id'])}__{f['name']}"] = f
+        _register(state.tracked_functions, f)
     state.tracked_webhooks = {}
     for w in tracked_webhooks:
-        state.tracked_webhooks[w["name"]] = w
-        if _dp and w.get("domain_id"):
-            state.tracked_webhooks[f"{_domain_prefix(w['domain_id'])}__{w['name']}"] = w
+        _register(state.tracked_webhooks, w)
 
     return tracked_functions, tracked_webhooks
 

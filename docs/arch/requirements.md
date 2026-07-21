@@ -11561,3 +11561,31 @@ Snapshot-schedule grains extend to support the full RFC 5545 RRULE recurrence mo
 **Code:** `provisa/events/calendars.py`, `provisa-ui/src/pages/tables/RecurrenceBuilder.tsx`
 
 **Tests:** —
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1172 · Compiler & Schema {#REQ-1172}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Registered callable field names (tracked functions and webhooks) in GraphQL schemas now apply the active naming convention (apollo_graphql camelCase, hasura_graphql snake_case) at the emit site, matching table field name behavior. Previously callable fields retained their raw registered names regardless of the configured convention.
+
+**Use case:** Consistent naming across table fields and callable fields improves developer experience and ensures the GraphQL surface respects the configured naming convention uniformly.
+
+**Code:** `provisa/compiler/actions_schema.py`, `provisa/api/app_loaders.py`
+
+**Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-1173 · Protocol Support {#REQ-1173}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Webhooks (tracked_webhooks from the remote schema registry) are now governed, discoverable commands routable across all protocol surfaces (pgwire, Bolt, Flight, REST, gRPC, MCP), extending [REQ-872](#REQ-872) from tracked_functions alone. A webhook: enforces writable_by authorization identically to tracked functions; appears in list_visible_commands discovery; is routed through the shared invoke_tracked_function executor (with a webhook-specific branch in invoke_tracked_webhook); and is invocable via SELECT webhook(...) on pgwire, CALL webhook(...) YIELD on Bolt, POST /{domain}/commands/{name} on REST, and as an MCP tool.
+
+**Use case:** Webhooks (scalar-argument HTTP POST mutations) were previously GraphQL-only and lacked governance. Making webhooks governed, discoverable, and multi-surface-routable unifies command access patterns across all query surfaces and enforces consistent authorization.
+
+**Code:** `provisa/api/data/action_exec.py`, `provisa/pgwire/function_call.py`, `provisa/bolt/session.py`, `provisa/api/rest/generator.py`, `provisa/api/rest/openapi_spec.py`, `provisa/grpc/proto_gen.py`, `provisa/grpc/server.py`
+
+**Tests:** `tests/unit/test_webhook_all_surfaces.py`

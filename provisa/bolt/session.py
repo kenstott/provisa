@@ -775,11 +775,13 @@ async def _maybe_invoke_command_call(
     fns = getattr(app_state, "tracked_functions", None)
     if not isinstance(fns, dict):
         return None
+    # Webhooks are governed commands too (REQ-872): CALL a webhook like any other command.
+    callables = {**fns, **(getattr(app_state, "tracked_webhooks", None) or {})}
     m = _CALL_CMD_RE.match(cypher.strip())
     if not m:
         return None
     name = m.group(1)
-    fn = fns.get(name)
+    fn = callables.get(name)
     if fn is None:
         return None
     raw = m.group(2).strip()

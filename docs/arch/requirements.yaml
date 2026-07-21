@@ -33453,3 +33453,76 @@
   e2e_reason: 'RRULE parsing and occurrence tiling behavior is only verifiable end-to-end: UI RecurrenceBuilder
     emits RRULE string → server parses and registers via parse_grain_spec → event loop tiles occurrences
     and triggers snapshots on the computed boundaries.'
+- id: REQ-1172
+  status: complete
+  since: 2026-07
+  group: 5. Query Languages, Compilation & Operations
+  category: Compiler & Schema
+  priority: SHOULD
+  type: behavioral
+  description: Registered callable field names (tracked functions and webhooks) in GraphQL schemas now
+    apply the active naming convention (apollo_graphql camelCase, hasura_graphql snake_case) at the emit
+    site, matching table field name behavior. Previously callable fields retained their raw registered
+    names regardless of the configured convention.
+  use_case: Consistent naming across table fields and callable fields improves developer experience
+    and ensures the GraphQL surface respects the configured naming convention uniformly.
+  code:
+  - provisa/compiler/actions_schema.py
+  - provisa/api/app_loaders.py
+  related_reqs:
+  - REQ-1156
+  - REQ-471
+  - REQ-411
+  - REQ-412
+  scenario: 'Given a Provisa deployment with apollo_graphql (camelCase) naming convention active
+
+    And a tracked function registered with name "add_pet"
+
+    When the GraphQL schema is generated
+
+    Then the callable field appears as "addPet" not "add_pet"
+
+    And the reverse-lookup alias key routes "addPet" back to the "add_pet" command
+
+    '
+- id: REQ-1173
+  status: complete
+  since: 2026-07
+  group: 8. Client Access & Protocols
+  category: Protocol Support
+  priority: SHOULD
+  type: behavioral
+  description: 'Webhooks (tracked_webhooks from the remote schema registry) are now governed, discoverable
+    commands routable across all protocol surfaces (pgwire, Bolt, Flight, REST, gRPC, MCP), extending
+    REQ-872 from tracked_functions alone. A webhook: enforces writable_by authorization identically
+    to tracked functions; appears in list_visible_commands discovery; is routed through the shared
+    invoke_tracked_function executor (with a webhook-specific branch in invoke_tracked_webhook); and
+    is invocable via SELECT webhook(...) on pgwire, CALL webhook(...) YIELD on Bolt, POST /{domain}/commands/{name}
+    on REST, and as an MCP tool.'
+  use_case: Webhooks (scalar-argument HTTP POST mutations) were previously GraphQL-only and lacked
+    governance. Making webhooks governed, discoverable, and multi-surface-routable unifies command access
+    patterns across all query surfaces and enforces consistent authorization.
+  code:
+  - provisa/api/data/action_exec.py
+  - provisa/pgwire/function_call.py
+  - provisa/bolt/session.py
+  - provisa/api/rest/generator.py
+  - provisa/api/rest/openapi_spec.py
+  - provisa/grpc/proto_gen.py
+  - provisa/grpc/server.py
+  tests:
+  - tests/unit/test_webhook_all_surfaces.py
+  related_reqs:
+  - REQ-872
+  - REQ-1156
+  scenario: 'Given a tracked webhook registered with name "notify_customer" in the schema registry
+
+    When a pgwire client executes SELECT notify_customer(customer_id)
+
+    Then the webhook routes through the shared invoke_tracked_function executor
+
+    And writable_by authorization is enforced (403 if denied)
+
+    And the HTTP POST fires to the registered URL with the arguments
+
+    '

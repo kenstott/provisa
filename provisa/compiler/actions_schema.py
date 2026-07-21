@@ -29,7 +29,7 @@ from graphql import (
     GraphQLString as _GraphQLString,
 )
 
-from provisa.compiler.naming import domain_to_sql_name, mutation_style
+from provisa.compiler.naming import apply_gql_name, domain_to_sql_name, mutation_style
 from provisa.compiler.type_map import JSONScalar
 from provisa.compiler.schema_types import SchemaInput, _TableInfo  # noqa: F401  (annotations)
 
@@ -174,7 +174,10 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(GraphQLString)))
 
             gql_field = GraphQLField(gql_return, args=args, description=item.get("description"))
-            field_key = item["name"]
+            # Apply the active GraphQL naming convention to the command name, exactly like table
+            # fields (apollo_graphql -> camelCase). The reverse lookup in app_loaders applies the
+            # SAME transform, so the emitted field name still routes back to the command (REQ-1156).
+            field_key = apply_gql_name(item["name"])
             if si.domain_prefix and domain_id:
                 alias = (domain_alias_map or {}).get(domain_id) or domain_to_sql_name(domain_id)
                 field_key = f"{alias}__{field_key}"

@@ -335,8 +335,11 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             raise HTTPException(status_code=401, detail="authenticated role required")
         role_id = auth_role
 
+        # Functions AND webhooks are governed commands (REQ-872) — both callable over REST, both
+        # routed through the one invoke_tracked_function executor below.
         fns = getattr(state, "tracked_functions", {}) or {}
-        fn = fns.get(command_name)
+        whs = getattr(state, "tracked_webhooks", {}) or {}
+        fn = fns.get(command_name) or whs.get(command_name)
         if fn is None or fn.get("domain_id") != domain_id:
             raise HTTPException(
                 status_code=404, detail=f"Command {domain_id!r}/{command_name!r} not found"

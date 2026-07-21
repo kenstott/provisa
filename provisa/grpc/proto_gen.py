@@ -116,7 +116,8 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
     role_id = si.role.get("id")
     out: list[dict] = []
     seen: set[str] = set()
-    for fn in si.functions or []:
+    # Functions AND webhooks are governed commands (REQ-872): both get a Call{Cmd} RPC.
+    for fn in [*(si.functions or []), *(si.webhooks or [])]:
         name = fn.get("name")
         if not name or name in seen:
             continue

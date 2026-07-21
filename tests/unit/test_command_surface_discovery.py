@@ -128,6 +128,7 @@ def _schema_input():
     return SimpleNamespace(
         role={"id": "admin", "domain_access": ["*"]},
         functions=fns,
+        webhooks=[],  # mirrors SchemaInput.webhooks (default []) — proto_gen reads both
     )
 
 
