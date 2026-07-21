@@ -125,6 +125,22 @@ export function RecurrenceBuilder({ value, onChange, placeholder, label, testId 
               value={opts?.interval ?? 1}
               onChange={(v) => emit({ interval: typeof v === "number" ? v : 1 })}
             />
+            {(freq === RRule.MONTHLY || freq === RRule.YEARLY) && (
+              <SegmentedControl
+                size="xs"
+                data-testid="recurrence-monthly-mode"
+                value={monthlyMode}
+                onChange={(m) =>
+                  m === "day"
+                    ? emit({ byweekday: undefined, bymonthday: 1 })
+                    : emit({ bymonthday: undefined, byweekday: [RRule.MO.nth(1)] })
+                }
+                data={[
+                  { value: "day", label: t("recurrence.onDay") },
+                  { value: "weekday", label: t("recurrence.onThe") },
+                ]}
+              />
+            )}
           </Group>
 
           {freq === RRule.WEEKLY && (
@@ -148,11 +164,6 @@ export function RecurrenceBuilder({ value, onChange, placeholder, label, testId 
               mode={monthlyMode}
               bymonthday={bymonthday}
               byweekday={byweekday}
-              onModeChange={(m) =>
-                m === "day"
-                  ? emit({ byweekday: undefined, bymonthday: 1 })
-                  : emit({ bymonthday: undefined, byweekday: [RRule.MO.nth(1)] })
-              }
               onDayChange={(n) => emit({ bymonthday: n, byweekday: undefined })}
               onWeekdayChange={(n, wd) => emit({ byweekday: [wd.nth(n)], bymonthday: undefined })}
             />
@@ -187,14 +198,12 @@ function MonthlyPanel({
   mode,
   bymonthday,
   byweekday,
-  onModeChange,
   onDayChange,
   onWeekdayChange,
 }: {
   mode: MonthlyMode;
   bymonthday: number | undefined;
   byweekday: Weekday[];
-  onModeChange: (m: MonthlyMode) => void;
   onDayChange: (n: number) => void;
   onWeekdayChange: (n: number, wd: Weekday) => void;
 }) {
@@ -202,19 +211,8 @@ function MonthlyPanel({
   const nth = byweekday[0]?.n ?? 1;
   const wd = byweekday[0] ?? RRule.MO;
 
-  return (
-    <Stack gap="xs">
-      <SegmentedControl
-        size="xs"
-        data-testid="recurrence-monthly-mode"
-        value={mode}
-        onChange={(v) => onModeChange(v as MonthlyMode)}
-        data={[
-          { value: "day", label: t("recurrence.onDay") },
-          { value: "weekday", label: t("recurrence.onThe") },
-        ]}
-      />
-      {mode === "day" ? (
+  // The day / nth-weekday inputs; the on-day vs on-the toggle lives up on the Frequency line.
+  return mode === "day" ? (
         <NumberInput
           label={t("recurrence.dayOfMonth")}
           data-testid="recurrence-monthday"
@@ -245,9 +243,7 @@ function MonthlyPanel({
             comboboxProps={{ withinPortal: true }}
           />
         </Group>
-      )}
-    </Stack>
-  );
+      );
 }
 
 function toArray<T>(v: T | T[] | null | undefined): T[] {
