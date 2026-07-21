@@ -149,6 +149,16 @@ registered_tables = Table(
     Column("mv_persist", Text, nullable=False, server_default="replace"),
     Column("mv_primary_key", JSON),
     Column("mv_incremental", Boolean, nullable=False, server_default=false()),
+    # REQ-961/962/1168: PERIODIC calendar trigger (snapshot schedule). mv_calendar names a registered
+    # calendar; mv_grain is a nesting grain ("daily".."annual") OR an nth-weekday recurrence
+    # ("3WE"/"LFR"). mv_allowed_lateness (s) extends the claim deadline; mv_expected_events is the
+    # preflight freshness contract (NULL = all SQL-lineage inputs); mv_business_day_grain gates window
+    # existence on business days. All NULL/false = not periodic (the NRT/live default).
+    Column("mv_calendar", Text),
+    Column("mv_grain", Text),
+    Column("mv_allowed_lateness", Float, nullable=False, server_default="0"),
+    Column("mv_expected_events", JSON),
+    Column("mv_business_day_grain", Boolean, nullable=False, server_default=false()),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
     Column("live", JSON),

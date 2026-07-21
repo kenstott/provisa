@@ -125,6 +125,11 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.mv_persist,  # REQ-965
                         _registered_tables_t.c.mv_primary_key,  # REQ-970
                         _registered_tables_t.c.mv_incremental,  # REQ-969
+                        _registered_tables_t.c.mv_calendar,  # REQ-962
+                        _registered_tables_t.c.mv_grain,  # REQ-962/1168
+                        _registered_tables_t.c.mv_allowed_lateness,  # REQ-961
+                        _registered_tables_t.c.mv_expected_events,  # REQ-961
+                        _registered_tables_t.c.mv_business_day_grain,  # REQ-962
                     ).where(
                         _registered_tables_t.c.source_id == "__provisa__",
                         _registered_tables_t.c.view_sql.is_not(None),
@@ -205,6 +210,11 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             persist=_vr.get("mv_persist") or "replace",  # REQ-965
                             primary_key=list(_vr.get("mv_primary_key") or []),  # REQ-970
                             incremental=bool(_vr.get("mv_incremental")),  # REQ-969
+                            calendar=_vr.get("mv_calendar"),  # REQ-962
+                            grain=_vr.get("mv_grain"),  # REQ-962/1168
+                            allowed_lateness=float(_vr.get("mv_allowed_lateness") or 0.0),  # REQ-961
+                            expected_events=_vr.get("mv_expected_events"),  # REQ-961
+                            business_day_grain=bool(_vr.get("mv_business_day_grain")),  # REQ-962
                         )
                     )
                 else:
@@ -214,6 +224,11 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                     _existing.persist = _vr.get("mv_persist") or "replace"  # REQ-965
                     _existing.primary_key = list(_vr.get("mv_primary_key") or [])  # REQ-970
                     _existing.incremental = bool(_vr.get("mv_incremental"))  # REQ-969
+                    _existing.calendar = _vr.get("mv_calendar")  # REQ-962
+                    _existing.grain = _vr.get("mv_grain")  # REQ-962/1168
+                    _existing.allowed_lateness = float(_vr.get("mv_allowed_lateness") or 0.0)  # REQ-961
+                    _existing.expected_events = _vr.get("mv_expected_events")  # REQ-961
+                    _existing.business_day_grain = bool(_vr.get("mv_business_day_grain"))  # REQ-962
 
 
 async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:

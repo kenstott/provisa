@@ -58,6 +58,11 @@ def test_table_model_from_input_maps_unique_constraints():
         mv_persist="replace",  # REQ-965
         mv_primary_key=[],  # REQ-970
         mv_incremental=False,  # REQ-969
+        mv_calendar=None,  # REQ-962
+        mv_grain=None,  # REQ-962/1168
+        mv_allowed_lateness=0.0,  # REQ-961
+        mv_expected_events=None,  # REQ-961
+        mv_business_day_grain=False,  # REQ-962
         data_product=False,
         enable_aggregates=False,
         enable_group_by=False,

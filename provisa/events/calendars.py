@@ -313,6 +313,23 @@ def _recurrence_window(cal: Calendar, rule: NthWeekday, d: date) -> Window:
     return _window(cal, start, end, f"{start.isoformat()}-{rule.label}")
 
 
+_WD_INDEX = {abbr: i for i, abbr in enumerate(_WD_ABBR)}
+
+
+def parse_grain_spec(spec: str | Grain | NthWeekday) -> Grain | NthWeekday:
+    """Parse a declared calendar grain into a nesting :class:`Grain` OR an anchored
+    :class:`NthWeekday` recurrence (REQ-962/1168). A recurrence is written ``<ordinal><weekday>`` —
+    ordinal 1–5 or ``L`` (last), weekday in MO/TU/WE/TH/FR/SA/SU (e.g. ``3WE`` = 3rd Wednesday,
+    ``LFR`` = last Friday). Anything else is tried as a nesting grain. Fails LOUD otherwise."""
+    if isinstance(spec, (Grain, NthWeekday)):
+        return spec
+    s = spec.strip()
+    ordinal, wd = s[:-2].upper(), s[-2:].upper()
+    if wd in _WD_INDEX and (ordinal == "L" or (ordinal.isdigit() and 1 <= int(ordinal) <= 5)):
+        return NthWeekday(weekday=_WD_INDEX[wd], n=_LAST if ordinal == "L" else int(ordinal))
+    return parse_grain(s)  # a nesting grain, or fail loud on an unknown value
+
+
 def window_for(
     cal: Calendar,
     grain: str | Grain | NthWeekday,

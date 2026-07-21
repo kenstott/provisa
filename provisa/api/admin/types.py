@@ -18,6 +18,34 @@ import strawberry
 
 
 @strawberry.type
+class CalendarType:  # REQ-962: a named, versioned snapshot-boundary calendar
+    name: str
+    version: str
+    base_system: str = "gregorian"  # gregorian | fiscal | retail_445
+    tz: str = "UTC"
+    fiscal_anchor_month: int = 1
+    fiscal_anchor_day: int = 1
+    retail_anchor: str | None = None  # ISO date; retail_445 reference year start
+    week_start: int = 0  # 0 = Monday
+    holidays: list[str] = strawberry.field(default_factory=list)  # ISO dates, immutable per version
+    weekend: list[int] = strawberry.field(default_factory=lambda: [5, 6])  # weekday ints (Sat, Sun)
+
+
+@strawberry.input
+class CalendarInput:  # REQ-962
+    name: str
+    version: str
+    base_system: str = "gregorian"
+    tz: str = "UTC"
+    fiscal_anchor_month: int = 1
+    fiscal_anchor_day: int = 1
+    retail_anchor: str | None = None
+    week_start: int = 0
+    holidays: list[str] = strawberry.field(default_factory=list)
+    weekend: list[int] = strawberry.field(default_factory=lambda: [5, 6])
+
+
+@strawberry.type
 class SourceCdcConfigType:  # REQ-824
     bootstrap_servers: str
     topic_prefix: str
@@ -148,6 +176,11 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
+    mv_calendar: str | None = None  # REQ-962: periodic-snapshot calendar (None = not periodic)
+    mv_grain: str | None = None  # REQ-962/1168: nesting grain ("daily".."annual") or "3WE"/"LFR"
+    mv_allowed_lateness: float = 0.0  # REQ-961: seal-deadline slack (s)
+    mv_expected_events: list[str] | None = None  # REQ-961: preflight freshness contract
+    mv_business_day_grain: bool = False  # REQ-962: gate windows to business days
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False
@@ -382,6 +415,11 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
+    mv_calendar: str | None = None  # REQ-962: periodic-snapshot calendar (None = not periodic)
+    mv_grain: str | None = None  # REQ-962/1168: nesting grain ("daily".."annual") or "3WE"/"LFR"
+    mv_allowed_lateness: float = 0.0  # REQ-961: seal-deadline slack (s)
+    mv_expected_events: list[str] | None = None  # REQ-961: preflight freshness contract
+    mv_business_day_grain: bool = False  # REQ-962: gate windows to business days
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False

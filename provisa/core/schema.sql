@@ -78,6 +78,11 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     mv_persist TEXT NOT NULL DEFAULT 'replace',  -- REQ-965: replace | append | upsert
     mv_primary_key JSONB,  -- REQ-970: row identity (required for upsert / incremental)
     mv_incremental BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-969: incremental maintenance
+    mv_calendar TEXT,  -- REQ-962: periodic-snapshot calendar name (NULL = not periodic)
+    mv_grain TEXT,  -- REQ-962/1168: nesting grain ('daily'..'annual') or nth-weekday ('3WE'/'LFR')
+    mv_allowed_lateness DOUBLE PRECISION NOT NULL DEFAULT 0,  -- REQ-961: seal-deadline slack (s)
+    mv_expected_events JSONB,  -- REQ-961: preflight freshness contract (NULL = all lineage inputs)
+    mv_business_day_grain BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-962: gate windows to business days
     unique_constraints JSONB NOT NULL DEFAULT '[]',  -- REQ-1093: table-level UNIQUE constraints
     UNIQUE (source_id, schema_name, table_name)
 );
@@ -153,6 +158,11 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_persist TEXT NOT NULL DEFAULT 'replace';  -- REQ-965
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_primary_key JSONB;  -- REQ-970
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_incremental BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-969
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_calendar TEXT;  -- REQ-962
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_grain TEXT;  -- REQ-962/1168
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_allowed_lateness DOUBLE PRECISION NOT NULL DEFAULT 0;  -- REQ-961
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_expected_events JSONB;  -- REQ-961
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_business_day_grain BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-962
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_aggregates BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_group_by BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS live JSONB;

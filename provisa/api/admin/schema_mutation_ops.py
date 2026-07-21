@@ -286,6 +286,11 @@ async def register_table(
             persist=input.mv_persist,  # REQ-965
             primary_key=list(input.mv_primary_key),  # REQ-970
             incremental=input.mv_incremental,  # REQ-969
+            calendar=input.mv_calendar,  # REQ-962
+            grain=input.mv_grain,  # REQ-962/1168
+            allowed_lateness=input.mv_allowed_lateness,  # REQ-961
+            expected_events=input.mv_expected_events,  # REQ-961
+            business_day_grain=input.mv_business_day_grain,  # REQ-962
         )
 
     await _rebuild_schemas()

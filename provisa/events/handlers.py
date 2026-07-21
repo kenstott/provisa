@@ -193,6 +193,39 @@ def make_mv_generate(
     return generate
 
 
+def make_mv_bitemporal_generate(
+    append: Callable[[str | None], Awaitable[Any]],
+) -> Callable[..., Awaitable[tuple[str, dict, str | None] | None]]:
+    """Build a bitemporal ``MVTableProcessor.generate`` (REQ-1162/1166/1167). Each fire APPENDS a new
+    version to the MV's append log via ``append(system_ts)``. When the fire carries a calendar window
+    (a periodic snapshot, REQ-961/962) the append is stamped by ``window.end`` — DETERMINISTIC and
+    addressable as-of that window; a live bitemporal MV stamps wall-clock (``system_ts=None``).
+
+    An append is always a NEW version, so this never hits the REQ-981 output gate (content_hash None)
+    — it re-posts a ``replace`` so dependents ripple. The read path reconstructs current/as-of state
+    from the log (REQ-1163), so a downstream consumer sees the freshly-sealed version."""
+
+    async def generate(
+        pending: list[dict],
+        *,
+        prior_hash: str | None = None,
+        ctx: Any | None = None,
+        preprocess: Callable[..., Any] | None = None,
+        forced: bool = False,
+    ) -> tuple[str, dict, str | None] | None:
+        del pending, prior_hash, preprocess, forced  # append recomputes to current; trigger is the cue
+        from provisa.mv.bitemporal import system_ts_literal
+
+        window = getattr(ctx, "window", None) if ctx is not None else None
+        window_id = getattr(ctx, "window_id", None) if ctx is not None else None
+        # REQ-1166/1167: a periodic snapshot seals at window.end (deterministic); a live MV → wall-clock.
+        system_ts = system_ts_literal(window[1]) if window is not None else None
+        await append(system_ts)
+        return "replace", {"window_id": window_id, "sealed": True}, None
+
+    return generate
+
+
 def _collect_delta_rows(pending: list[dict]) -> list[dict]:
     """REQ-969: the changed rows carried by the claimed delta/append events (``payload.delta`` — the
     demand-driven delta emission of REQ-965). Empty when no upstream carried a delta (e.g. a full

@@ -101,6 +101,20 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     debounce_quiet: float = 0.0
     debounce_max_delay: float | None = None
 
+    # REQ-961/962/1168: PERIODIC calendar trigger (the snapshot schedule). ``calendar`` names a
+    # registered calendar; ``grain`` is a nesting grain ("daily".."annual") OR an nth-weekday
+    # recurrence spec ("3WE" = 3rd Wednesday, "LFR" = last Friday). Declaring a calendar makes the MV
+    # periodic (calendar-boundary trigger) — mutually exclusive with live debounce. ``allowed_lateness``
+    # (seconds) extends the claim deadline past window.end; ``expected_events`` is the preflight
+    # freshness contract (inputs fresh-through window.end; None = all SQL-lineage inputs);
+    # ``business_day_grain`` gates window existence on the calendar's business days. All-None = not
+    # periodic (the NRT/live default).
+    calendar: str | None = None
+    grain: str | None = None
+    allowed_lateness: float = 0.0
+    expected_events: list[str] | None = None
+    business_day_grain: bool = False
+
     # REQ-965: the TWO independent operator-declared MV outcomes.
     #  - persist: how the recompute is applied to the MV's OWN store table (replace/append/upsert).
     #  - emit: the SET of downstream event shapes this MV may emit (subset of replace/append/delta);

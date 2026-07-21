@@ -271,6 +271,17 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
             return _run
 
+        # REQ-1162/1166/1167: the append entry a bitemporal MV's event-loop generate calls per fire.
+        # ``engine`` is the FederationEngine (execute_engine + dialect), the same handle refresh_mv
+        # uses; ``system_ts`` (from the calendar window.end) makes a periodic seal deterministic.
+        def mv_bitemporal_append(mv: Any) -> Any:
+            async def _append(system_ts: str | None) -> None:
+                from provisa.mv.refresh import apply_bitemporal_append
+
+                await apply_bitemporal_append(engine, mv, system_ts=system_ts)
+
+            return _append
+
         # Drive the loop off the design-time REGISTERED tables (semantic sql names + resolved types),
         # not the raw YAML — the landed replica name must match what the schema-currency reconcile
         # created, and the types the YAML omits are resolved in the control plane at registration.
@@ -341,6 +352,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             subscribers_of=subscribers_of,  # REQ-965 demand routing
             calendar_registry=calendar_registry,  # REQ-962 periodic boundary source
             freshness_of=freshness_of,  # REQ-961 per-input freshness contract reader
+            mv_bitemporal_append=mv_bitemporal_append,  # REQ-1162/1166/1167 append entry
         )
         processors = build_processors(specs, db=db, dependents_of=dependents_of)
         # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create
