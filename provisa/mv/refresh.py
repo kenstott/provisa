@@ -256,51 +256,26 @@ async def _probe_source_count(engine, mv: MVDefinition) -> int:  # REQ-235
     return res.rows[0][0]
 
 
-async def _select_arrow_batches(engine, select_sql: str):
-    """The MV's SELECT as Arrow ``RecordBatch`` es for the non-SQL preflight (REQ-1165).
-
-    Prefers the lazily-streamed reader (``execute_engine_stream``, ARROW_STREAM capability) so a
-    short-circuiting check never materializes the whole result; falls back to a materialized Arrow
-    table (``execute_engine_arrow``, ARROW capability). The synchronous engine transport is acquired
-    off the event loop (``asyncio.to_thread``)."""
-    from provisa.federation.runtime import EngineCapability  # noqa: PLC0415
-
-    if engine.supports(EngineCapability.ARROW_STREAM):
-        _schema, batches = await asyncio.to_thread(engine.execute_engine_stream, select_sql)
-        del _schema  # the reader carries its own schema; we only stream batches
-        return batches
-    table = await asyncio.to_thread(engine.execute_engine_arrow, select_sql)
-    return table.to_batches()
-
-
 async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
     """Evaluate the MV's preflight check before materializing (REQ-1165). Returns a
     :class:`~provisa.mv.preflight.Verdict`, or ``None`` when the MV declares no check.
 
-    SQL-expressible checks are PUSHED DOWN as an engine-side count probe over ``select_sql`` (no
-    rows enter Python — the billion-row path); everything else streams the SELECT as Arrow batches
-    through the compiled check, short-circuiting. The two strategies must reach the same verdict for
-    a given dataset (REQ-964)."""
+    The gate's subject is the MV's INPUTS, streamed per input node (never the materialized output):
+    a SQL-expressible check pushes down as an engine-side count probe over the named input node; a
+    non-SQL check opens one lazy Arrow stream per input and short-circuits through the compiled
+    hook. The two strategies must reach the same verdict for a dataset (REQ-964). The input nodes
+    are the SQL-lineage inputs of ``select_sql`` (the MV's resolved SELECT)."""
     source = getattr(mv, "preprocess", None)
     if source is None or not source.strip():
         return None
 
-    from provisa.mv.preflight_sql import translate  # noqa: PLC0415
-
-    sqlpf = translate(source)
-    if sqlpf is not None:
-        res = await engine.execute_engine(sqlpf.count_sql(select_sql))
-        return sqlpf.verdict_for(res.rows[0][0])
-
-    # Non-SQL check: columnar streaming short-circuit through the compiled predicate.
+    from provisa.events.lineage import extract_inputs  # noqa: PLC0415
     from provisa.events.processor import NodeContext  # noqa: PLC0415
-    from provisa.mv.preprocess import compile_preprocess  # noqa: PLC0415
-    from provisa.processors.arrow import stream_preflight  # noqa: PLC0415
+    from provisa.mv.preflight_eval import evaluate_streams  # noqa: PLC0415
 
-    fn = compile_preprocess(source)
     ctx = NodeContext(node=mv.id, kind="mv", claimed=[], prior_hash=None)
-    batches = await _select_arrow_batches(engine, select_sql)
-    return await stream_preflight(fn, batches, ctx)
+    inputs = sorted(extract_inputs(select_sql, "postgres"))
+    return await evaluate_streams(engine, source, inputs, ctx)
 
 
 async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879

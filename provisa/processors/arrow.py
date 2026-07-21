@@ -18,10 +18,10 @@ non-SQL preflight consumes the produced dataset batch-by-batch and SHORT-CIRCUIT
 buffering it whole.
 
 The streaming value for a preflight GATE is on the read side: :func:`rows_of` decodes batches
-lazily and :func:`stream_preflight` feeds that lazy row stream to the compiled check, so a hook
-whose body is ``any(P for r in rows)`` stops at the first violating row and memory stays bounded
-to one batch. :func:`arrow_encode` / :func:`arrow_decode` are the wire framing (standard Arrow
-IPC stream) parallel to ``ndjson_encode`` / ``ndjson_decode``.
+lazily and :func:`stream_preflight` feeds a lazy row stream PER INPUT NODE to the compiled check,
+so a hook whose body is ``any(P for r in streams["node"])`` stops at the first violating row and
+memory stays bounded to one batch. :func:`arrow_encode` / :func:`arrow_decode` are the wire framing
+(standard Arrow IPC stream) parallel to ``ndjson_encode`` / ``ndjson_decode``.
 """
 
 from __future__ import annotations
@@ -102,12 +102,14 @@ def arrow_decode(data: bytes) -> Iterator[dict]:
 
 async def stream_preflight(
     fn: Callable[..., Any] | None,
-    batches: Iterable[pa.RecordBatch],
+    streams: dict[str, Iterable[pa.RecordBatch]],
     ctx: Any,
 ) -> Verdict:
-    """Evaluate a compiled preflight check over a stream of Arrow batches (REQ-1165).
+    """Evaluate a compiled preflight check over per-input Arrow batch streams (REQ-1165).
 
-    The batches are decoded lazily (:func:`rows_of`) and handed to the check as its ``rows``
-    argument, so a quantified predicate (``any``/``all`` over ``rows``) short-circuits on the first
-    decisive row and the full dataset is never materialized. ``fn`` None → continue."""
-    return await run_preflight(fn, rows_of(batches), ctx)
+    ``streams`` maps each INPUT NODE to its lazy batch stream. Each is decoded lazily
+    (:func:`rows_of`) into a row iterator and the ``{node: rows}`` dict is handed to the check as
+    its ``streams`` argument, so a quantified predicate (``any``/``all`` over one input) short-circuits
+    on the first decisive row and no input is materialized whole. ``fn`` None → continue."""
+    rows_by_node = {node: rows_of(batches) for node, batches in streams.items()}
+    return await run_preflight(fn, rows_by_node, ctx)

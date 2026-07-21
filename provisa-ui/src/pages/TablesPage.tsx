@@ -319,7 +319,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         mvBitemporalMode: editingTable.mvBitemporalMode || null, // REQ-1162
         mvBitemporalKey: editingTable.mvBitemporalKey, // REQ-1162
         mvPersist: editingTable.mvPersist, // REQ-965
-        mvPrimaryKey: editingTable.mvPrimaryKey, // REQ-970
+        // REQ-970: the MV row-identity key IS the table Primary Key — derive it from the per-column
+        // PK checkboxes (single source of truth), not a separate field.
+        mvPrimaryKey: editingTable.columns.filter((c) => c.isPrimaryKey).map((c) => c.columnName),
         mvIncremental: editingTable.mvIncremental, // REQ-969
         mvCalendar: editingTable.mvCalendar || null, // REQ-962
         mvGrain: editingTable.mvGrain || null, // REQ-962/1168

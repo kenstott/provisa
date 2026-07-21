@@ -35,6 +35,8 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from zoneinfo import ZoneInfo
 
+from dateutil.rrule import rrule, rrulestr, rruleset
+
 _QUARTER_MONTHS = 3
 _YEAR_MONTHS = 12
 _RETAIL_QUARTER_WEEKS = 13  # 4-4-5 = 13 weeks per quarter
@@ -316,14 +318,102 @@ def _recurrence_window(cal: Calendar, rule: NthWeekday, d: date) -> Window:
 _WD_INDEX = {abbr: i for i, abbr in enumerate(_WD_ABBR)}
 
 
-def parse_grain_spec(spec: str | Grain | NthWeekday) -> Grain | NthWeekday:
-    """Parse a declared calendar grain into a nesting :class:`Grain` OR an anchored
-    :class:`NthWeekday` recurrence (REQ-962/1168). A recurrence is written ``<ordinal><weekday>`` —
-    ordinal 1–5 or ``L`` (last), weekday in MO/TU/WE/TH/FR/SA/SU (e.g. ``3WE`` = 3rd Wednesday,
-    ``LFR`` = last Friday). Anything else is tried as a nesting grain. Fails LOUD otherwise."""
-    if isinstance(spec, (Grain, NthWeekday)):
+# -- RFC 5545 RRULE recurrence (REQ-1169) --------------------------------------
+# The Outlook / iCalendar recurrence model, modeled on the ``rrule`` builder the UI exposes: an
+# arbitrary ``FREQ``/``INTERVAL``/``BYDAY``/``BYMONTHDAY``/``BYSETPOS``/``BYMONTH`` rule. The fixed
+# NESTING grains and the ``NthWeekday`` shorthand cover the common cases; an RRULE covers everything
+# Outlook can express (every-N-weeks, last weekday of a quarter, a specific month-day, …). Like
+# ``NthWeekday`` it TILES the timeline — consecutive occurrences yield the same calendar-addressable
+# ``[start, end)`` tiling, so it drops into ``window_for``/``next_boundary`` unchanged.
+#
+# INTERVAL phase (e.g. "every 2 weeks") is anchored to a FIXED civil epoch so the tiling is
+# deterministic and independent of when a query is made — RFC 5545 anchors recurrence phase to
+# DTSTART, and a grain has no DTSTART of its own.
+_RRULE_EPOCH = datetime(2000, 1, 1)  # phase anchor for INTERVAL; precedes any real snapshot data
+_RRULE_FREQ_CODE = {"YEARLY": "Y", "MONTHLY": "M", "WEEKLY": "W", "DAILY": "D"}
+
+
+@dataclass(frozen=True)
+class RRuleRecurrence:
+    """An RFC 5545 recurrence grain (REQ-1169): the general Outlook/iCalendar recurrence form. Holds
+    the NORMALIZED rule string (no ``RRULE:`` prefix, no ``COUNT``/``UNTIL`` — a grain tiles forever).
+    Validated at construction; fails LOUD on an unparseable or bounded rule."""
+
+    rule: str
+
+    def __post_init__(self) -> None:
+        try:
+            self._rrule()  # parse eagerly so an invalid rule fails at declaration, not at boundary time
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"invalid RRULE grain {self.rule!r}: {exc}") from exc
+
+    def _rrule(self) -> rrule | rruleset:
+        return rrulestr(self.rule, dtstart=_RRULE_EPOCH)
+
+    @property
+    def label(self) -> str:
+        """A short, stable token for the ``window_id`` suffix, derived from the rule (e.g. a monthly
+        3rd-Wednesday rule → ``M3WE``; every-2-weeks-on-Mon → ``W2MO``)."""
+        parts = dict(kv.split("=", 1) for kv in self.rule.split(";"))
+        tok = _RRULE_FREQ_CODE.get(parts.get("FREQ", ""), "?")
+        interval = parts.get("INTERVAL")
+        if interval and interval != "1":
+            tok += interval
+        for key, prefix in (("BYMONTH", "MO"), ("BYMONTHDAY", "D"), ("BYDAY", ""), ("BYSETPOS", "P")):
+            val = parts.get(key)
+            if val:
+                tok += prefix + val.replace(",", "").replace("-", "L")
+        return tok
+
+
+def _normalize_rrule(s: str) -> str:
+    """Strip an optional ``RRULE:`` prefix and uppercase keys; fail LOUD on a bounded rule (a grain
+    tiles forever, so ``COUNT``/``UNTIL`` are rejected rather than silently dropped)."""
+    body = s.strip()
+    if body.upper().startswith("RRULE:"):
+        body = body[len("RRULE:") :]
+    pairs = [kv.strip() for kv in body.split(";") if kv.strip()]
+    upper = {kv.split("=", 1)[0].upper() for kv in pairs}
+    if upper & {"COUNT", "UNTIL"}:
+        raise ValueError(f"RRULE grain {s!r} must be unbounded (remove COUNT/UNTIL) — a grain tiles forever")
+    return ";".join(f"{kv.split('=', 1)[0].upper()}={kv.split('=', 1)[1]}" for kv in pairs)
+
+
+def _rrule_occurrence_on_or_before(rec: RRuleRecurrence, d: date) -> date:
+    occ = rec._rrule().before(datetime(d.year, d.month, d.day), inc=True)
+    if occ is None:
+        raise ValueError(f"RRULE grain {rec.rule!r}: no occurrence on/before {d} (after epoch {_RRULE_EPOCH:%Y-%m-%d})")
+    return occ.date()
+
+
+def _rrule_occurrence_after(rec: RRuleRecurrence, d: date) -> date:
+    occ = rec._rrule().after(datetime(d.year, d.month, d.day), inc=False)
+    if occ is None:
+        raise ValueError(f"RRULE grain {rec.rule!r}: no occurrence after {d}")
+    return occ.date()
+
+
+def _rrule_window(cal: Calendar, rec: RRuleRecurrence, d: date) -> Window:
+    """The half-open ``[occurrence, next_occurrence)`` tile containing local date ``d`` (REQ-1169),
+    addressed by its opening occurrence (``window_id`` = ``2026-03-18-M3WE``)."""
+    start = _rrule_occurrence_on_or_before(rec, d)
+    end = _rrule_occurrence_after(rec, start)
+    return _window(cal, start, end, f"{start.isoformat()}-{rec.label}")
+
+
+def parse_grain_spec(spec: str | Grain | NthWeekday | RRuleRecurrence) -> Grain | NthWeekday | RRuleRecurrence:
+    """Parse a declared calendar grain into a nesting :class:`Grain`, an anchored :class:`NthWeekday`
+    shorthand, or a full :class:`RRuleRecurrence` (REQ-962/1168/1169). Resolution order:
+
+    - a full RFC 5545 rule (``RRULE:FREQ=…`` or a bare ``FREQ=…``) → :class:`RRuleRecurrence`;
+    - the ``<ordinal><weekday>`` shorthand — ordinal 1–5 or ``L`` (last), weekday MO/TU/…/SU (e.g.
+      ``3WE`` = 3rd Wednesday, ``LFR`` = last Friday) → :class:`NthWeekday`;
+    - anything else → a nesting grain, or fail LOUD on an unknown value."""
+    if isinstance(spec, (Grain, NthWeekday, RRuleRecurrence)):
         return spec
     s = spec.strip()
+    if s.upper().startswith("RRULE:") or s.upper().startswith("FREQ="):
+        return RRuleRecurrence(_normalize_rrule(s))
     ordinal, wd = s[:-2].upper(), s[-2:].upper()
     if wd in _WD_INDEX and (ordinal == "L" or (ordinal.isdigit() and 1 <= int(ordinal) <= 5)):
         return NthWeekday(weekday=_WD_INDEX[wd], n=_LAST if ordinal == "L" else int(ordinal))
@@ -332,7 +422,7 @@ def parse_grain_spec(spec: str | Grain | NthWeekday) -> Grain | NthWeekday:
 
 def window_for(
     cal: Calendar,
-    grain: str | Grain | NthWeekday,
+    grain: str | Grain | NthWeekday | RRuleRecurrence,
     instant: datetime,
     *,
     business_day: bool = False,
@@ -341,15 +431,18 @@ def window_for(
     ``None`` when the calendar gates the window out of existence (a business-day grain on a
     holiday/weekend). Fails LOUD on an unknown grain (REQ-962).
 
-    ``grain`` is a nesting :class:`Grain` OR an anchored :class:`NthWeekday` recurrence (REQ-1168) —
-    the recurrence yields the same ``[start, end)`` tiling, addressed by its opening occurrence.
-    ``business_day`` picks the existence rule: True = business-day grain (no window on a non-business
-    day); False = calendar-day grain (always a window). ``instant`` is resolved to the calendar's
-    LOCAL date before boundary derivation, so DST and zone offset are honored."""
+    ``grain`` is a nesting :class:`Grain`, an anchored :class:`NthWeekday` shorthand (REQ-1168), or a
+    full :class:`RRuleRecurrence` (REQ-1169) — each recurrence yields the same ``[start, end)`` tiling,
+    addressed by its opening occurrence. ``business_day`` picks the existence rule: True = business-day
+    grain (no window on a non-business day); False = calendar-day grain (always a window). ``instant``
+    is resolved to the calendar's LOCAL date before boundary derivation, so DST and zone offset are
+    honored."""
     d = _local_date(cal, instant)
-    spec = parse_grain_spec(grain)  # resolves a nesting grain OR an nth-weekday recurrence string
+    spec = parse_grain_spec(grain)  # a nesting grain, an nth-weekday shorthand, or a full RRULE
     if isinstance(spec, NthWeekday):
         return _recurrence_window(cal, spec, d)  # an occurrence is a specific day; no grain gating
+    if isinstance(spec, RRuleRecurrence):
+        return _rrule_window(cal, spec, d)  # a recurrence occurrence is a specific day; no gating
     if cal.base_system is BaseSystem.RETAIL_445:
         return _retail_window(cal, spec, d)
     if spec is Grain.DAILY:
@@ -359,7 +452,7 @@ def window_for(
 
 def next_boundary(
     cal: Calendar,
-    grain: str | Grain | NthWeekday,
+    grain: str | Grain | NthWeekday | RRuleRecurrence,
     instant: datetime,
     *,
     business_day: bool = False,
@@ -400,7 +493,7 @@ class CalendarRegistry:
     def window_for(
         self,
         name: str,
-        grain: str | Grain | NthWeekday,
+        grain: str | Grain | NthWeekday | RRuleRecurrence,
         instant: datetime,
         *,
         business_day: bool = False,

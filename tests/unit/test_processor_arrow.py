@@ -71,17 +71,17 @@ async def test_stream_preflight_short_circuits() -> None:
             decoded_batches["n"] += 1
             yield from record_batches(chunk, batch_size=1)
 
-    def hook(rows, ctx):
-        if any(r["v"] < 0 for r in rows):
+    def hook(streams, ctx):
+        if any(r["v"] < 0 for r in streams["sales.orders"]):
             return ctx.abort("neg")
         return ctx.ok()
 
-    v = await stream_preflight(hook, counting_batches(), _Ctx())
+    v = await stream_preflight(hook, {"sales.orders": counting_batches()}, _Ctx())
     assert v.decision is Decision.ABORT
     assert decoded_batches["n"] == 2  # third batch never produced
 
 
 @pytest.mark.asyncio
 async def test_stream_preflight_none_is_continue() -> None:
-    v = await stream_preflight(None, record_batches([{"v": 1}]), _Ctx())
+    v = await stream_preflight(None, {"sales.orders": record_batches([{"v": 1}])}, _Ctx())
     assert v.is_continue

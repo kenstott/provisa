@@ -13,10 +13,14 @@
 // members are ringed by classification (feedback vs error). Left-to-right, source → output.
 
 import { useEffect, useRef, useState } from "react";
-import cytoscape from "cytoscape";
+import cytoscape, { type NodeSingular } from "cytoscape";
 import { ActionIcon, Tooltip } from "@mantine/core";
 import { Maximize2, Download } from "lucide-react";
 import type { LineageGraphData } from "../../api/lineage";
+
+// The named `Core` export resolves to the package's own bundler-broken type (no fit/png);
+// the factory return carries the ambient shim's full instance API, so derive it from there.
+type CyCore = ReturnType<typeof cytoscape>;
 
 interface LineageDagProps {
   graph: LineageGraphData;
@@ -35,7 +39,7 @@ const ROLE_COLOR: Record<string, string> = {
 
 export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const cyRef = useRef<cytoscape.Core | null>(null);
+  const cyRef = useRef<CyCore | null>(null);
   const [hovered, setHovered] = useState(false);
 
   const fitToScreen = () => cyRef.current?.fit(undefined, 30);
@@ -118,7 +122,7 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
         {
           selector: "node",
           style: {
-            "background-color": (el: cytoscape.NodeSingular) => ROLE_COLOR[el.data("role")] ?? "#868e96",
+            "background-color": (el: NodeSingular) => ROLE_COLOR[el.data("role") as string] ?? "#868e96",
             label: "data(label)",
             "text-wrap": "wrap",
             "text-valign": "center",

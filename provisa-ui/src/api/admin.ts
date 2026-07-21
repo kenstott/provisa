@@ -866,6 +866,7 @@ export interface MaterializeStoreInfo {
   engineName: string;
   storeRef: string | null; // null when no materialization store is configured yet
   mvCount: number;
+  instanceLocalStore: boolean; // resolved store is a local file (per-instance copy) vs shared
 }
 
 export interface ProtocolHealth {

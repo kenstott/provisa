@@ -333,6 +333,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: provisa-ui/package-lock.json
 
+      # build-wheel.sh runs `npm run build`, whose prebuild hook renders the offline
+      # MkDocs site into provisa/_ui; without mkdocs on PATH it fails with ENOENT.
+      - name: Install docs-site build deps (mkdocs)
+        run: pip install mkdocs-material pymdown-extensions
+
       - name: Stamp version and build wheel (bundles UI + config + buenavista)
         run: |
           sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' pyproject.toml

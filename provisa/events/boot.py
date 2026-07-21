@@ -208,9 +208,10 @@ def specs_from_config(
             if is_poll(args.change_signal)
             else None
         )
-        # REQ-957: a landed source may also declare a preprocess(rows, ctx) hook (run after fetch,
-        # before land) — same purity-checked compile path as the MV branch. None = identity.
-        from provisa.mv.preprocess import compile_preprocess
+        # REQ-957/1165: a landed source may also declare a preflight(streams, ctx) CHECK (run after
+        # fetch, before land). A source's own fetched rows ARE its single input — the gate runs the
+        # hook over ``{node: rows}`` (no engine streaming; the adapter already materialized to land).
+        from provisa.mv.preflight_eval import make_rows_evaluator
 
         specs.append(
             NodeSpec(
@@ -224,7 +225,7 @@ def specs_from_config(
                 # push sources are driven by their listener. Boot lands the first copy either way.
                 probe_factory=factory,
                 probe_type=args.probe_type,
-                preprocess=compile_preprocess(getattr(tbl, "mv_preprocess", None)),  # REQ-957
+                preprocess=make_rows_evaluator(getattr(tbl, "mv_preprocess", None), node),  # REQ-1165
             )
         )
 
@@ -294,11 +295,16 @@ def specs_from_config(
         deadline_source, expected, fresh_reader, quiet, max_delay = _resolve_mv_deadline(
             mv, calendar_registry, freshness_of, engine.dialect
         )
-        # REQ-957/964: compile the MV's preprocess hook (purity-checked) to a callable. A bad hook
-        # raises here — boot fails loud rather than wiring a node that would ripple non-determinism.
-        from provisa.mv.preprocess import compile_preprocess
+        # REQ-957/964/1165: bind the MV's preflight gate. A bad hook raises here (purity gate), and a
+        # streaming check on a non-ARROW_STREAM engine ALSO fails loud here — boot rejects it rather
+        # than wiring a node that would ripple non-determinism or a runtime capability error. The gate
+        # streams the MV's SQL-lineage INPUTS (extract_inputs) per input node; it never materializes
+        # the produced output to gate it (REQ-1165).
+        from provisa.events.lineage import extract_inputs
+        from provisa.mv.preflight_eval import make_streams_evaluator
 
-        preprocess = compile_preprocess(getattr(mv, "preprocess", None))
+        preflight_inputs = sorted(extract_inputs(mv.sql, "postgres")) if getattr(mv, "sql", None) else []
+        preprocess = make_streams_evaluator(engine, getattr(mv, "preprocess", None), preflight_inputs)
         specs.append(
             NodeSpec(
                 node=node,

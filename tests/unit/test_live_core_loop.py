@@ -290,6 +290,20 @@ async def test_req959_superseded_owner_late_commit_fails_cas_applies_nothing(tmp
 # ============================ REQ-957: preprocess hook ============================
 
 
+def _bound_gate(fn, node):
+    """Wrap a raw ``(streams, ctx) -> verdict`` hook into the bound evaluator the processor now
+    receives (REQ-1165), mirroring ``make_rows_evaluator``: the source's fetched rows are the single
+    ``{node: rows}`` input. ``None`` fn → no gate."""
+    if fn is None:
+        return None
+    from provisa.mv.preflight import run_preflight
+
+    async def _eval(rows, ctx, _fn=fn, _node=node):
+        return await run_preflight(_fn, {_node: rows}, ctx)
+
+    return _eval
+
+
 def _src_proc(db, dsn, *, preprocess, node="s.orders", deps=None):
     land = make_source_land(
         dsn,
@@ -309,7 +323,7 @@ def _src_proc(db, dsn, *, preprocess, node="s.orders", deps=None):
         db=db,
         name="box-1",
         land=land,
-        preprocess=preprocess,
+        preprocess=_bound_gate(preprocess, node),
     )
 
 

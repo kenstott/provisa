@@ -16,14 +16,11 @@ import {
   Alert,
   Badge,
   Checkbox,
-  Collapse,
   Group,
   NumberInput,
   Select,
   Table,
-  TagsInput,
   Text,
-  Textarea,
   TextInput,
   Tooltip,
 } from "@mantine/core";
@@ -31,15 +28,16 @@ import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import type { RefreshPolicySummary, RegisteredTable, Source } from "../../types/admin";
-import { useCalendars, useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
+import { useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
 import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
 import { sourceProbeTypes } from "../../liveCapability";
 import { IANA_TIME_ZONES, NAMING_CONVENTIONS } from "./constants";
 import { DescriptionField } from "./DescriptionField";
+import { FieldLabel } from "./FieldLabel";
+import { MaterializedViewPanels } from "./MaterializedViewPanels";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
 import { TimeInput } from "@mantine/dates";
-import { CalendarCreateModal } from "./CalendarCreateModal";
 import { CollapsibleSection } from "./CollapsibleSection";
 
 interface CacheTtlEdit {
@@ -69,25 +67,6 @@ interface TableEditFormProps {
   updateEditCol: (i: number, key: string, value: string | string[] | boolean) => void;
 }
 
-function FieldLabel({ text, help }: { text: string; help: string }) {
-  return (
-    <Group gap={4} wrap="nowrap">
-      <Text component="span" size="sm">
-        {text}
-      </Text>
-      <Tooltip label={help} multiline w={320}>
-        <Text
-          component="span"
-          size="xs"
-          c="dimmed"
-          style={{ cursor: "help", lineHeight: 1 }}
-        >
-          ⓘ
-        </Text>
-      </Tooltip>
-    </Group>
-  );
-}
 
 export function TableEditForm({
   editingTable,
@@ -117,11 +96,6 @@ export function TableEditForm({
   // side with the in-flight values, seeded from the persisted summary so it renders before the first
   // fetch resolves.
   const previewPolicy = useRefreshPolicyPreview();
-  const { calendars, refetch: refetchCalendars } = useCalendars(); // REQ-962: snapshot-schedule picker
-  const [snapshotOpen, setSnapshotOpen] = useState(
-    Boolean(editingTable.mvCalendar), // open the panel when a schedule is already configured
-  );
-  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const [livePolicy, setLivePolicy] = useState<RefreshPolicySummary | null>(
     editingTable.refreshPolicySummary,
   );
@@ -146,8 +120,12 @@ export function TableEditForm({
     changeSignal,
     refreshPolicySummary,
   } = editingTable;
+  // Keep the latest preview callback in a ref (written in an effect, never during render) so the
+  // debounce effect below can call it without listing it as a dependency.
   const previewRef = useRef(previewPolicy);
-  previewRef.current = previewPolicy;
+  useEffect(() => {
+    previewRef.current = previewPolicy;
+  });
   useEffect(() => {
     let cancelled = false;
     const handle = setTimeout(() => {
@@ -483,413 +461,9 @@ export function TableEditForm({
               </Tooltip>
             </Group>
             {editingTable.materialize && (
-              <CollapsibleSection
-                title={t("tableEditForm.refreshPanel")}
-                testId="mv-refresh-panel"
-                defaultOpen
-              >
-                <NumberInput
-                  label={
-                    <FieldLabel
-                      text={t("tableEditForm.refreshIntervalLabel")}
-                      help={t("tableEditForm.refreshIntervalHelp")}
-                    />
-                  }
-                  min={30}
-                  value={editingTable.mvRefreshInterval}
-                  onChange={(v) =>
-                    setEditingTable({
-                      ...editingTable,
-                      mvRefreshInterval:
-                        typeof v === "number" ? v : parseInt(String(v), 10) || 300,
-                    })
-                  }
-                />
-                <div title={t("tableEditForm.nrtDebounceTitle")}>
-                  <Text size="sm" c="dimmed" mb={4}>
-                    {t("tableEditForm.nrtDebounceLabel")}
-                  </Text>
-                  <Group gap="xs">
-                    <NumberInput
-                      min={0}
-                      step={0.5}
-                      placeholder={t("tableEditForm.nrtQuietPlaceholder")}
-                      aria-label={t("tableEditForm.nrtQuietAria")}
-                      data-testid="mv-debounce-quiet"
-                      value={editingTable.mvDebounceQuiet}
-                      onChange={(v) =>
-                        setEditingTable({
-                          ...editingTable,
-                          mvDebounceQuiet:
-                            typeof v === "number" ? v : parseFloat(String(v)) || 0,
-                        })
-                      }
-                    />
-                    <NumberInput
-                      min={0}
-                      step={0.5}
-                      placeholder={t("tableEditForm.nrtMaxDelayPlaceholder")}
-                      aria-label={t("tableEditForm.nrtMaxDelayAria")}
-                      data-testid="mv-debounce-max-delay"
-                      value={editingTable.mvDebounceMaxDelay}
-                      onChange={(v) =>
-                        setEditingTable({
-                          ...editingTable,
-                          mvDebounceMaxDelay:
-                            typeof v === "number" ? v : parseFloat(String(v)) || 0,
-                        })
-                      }
-                    />
-                  </Group>
-                </div>
-              </CollapsibleSection>
-            )}
-            {editingTable.materialize && (
-              <Select
-                label={
-                  <FieldLabel
-                    text={t("tableEditForm.consistencyLabel")}
-                    help={t("tableEditForm.consistencyHelp")}
-                  />
-                }
-                aria-label={t("tableEditForm.mvConsistencyAria")}
-                data-testid="mv-consistency"
-                data={[
-                  { value: "shared", label: t("tableEditForm.consistencyShared") },
-                  {
-                    value: "distributed",
-                    label: t("tableEditForm.consistencyDistributed"),
-                  },
-                ]}
-                value={editingTable.mvConsistency}
-                onChange={(v) =>
-                  setEditingTable({
-                    ...editingTable,
-                    mvConsistency: v ?? editingTable.mvConsistency,
-                  })
-                }
-                comboboxProps={{ withinPortal: true }}
-                allowDeselect={false}
-              />
-            )}
-            {editingTable.materialize && (
-              <CollapsibleSection
-                title={t("tableEditForm.timeTravelPanel")}
-                testId="mv-timetravel-panel"
-                defaultOpen={Boolean(editingTable.mvBitemporalMode)}
-                badge={editingTable.mvBitemporalMode || undefined}
-              >
-                <Select
-                  label={
-                    <FieldLabel
-                      text={t("tableEditForm.bitemporalLabel")}
-                      help={t("tableEditForm.bitemporalHelp")}
-                    />
-                  }
-                  aria-label={t("tableEditForm.bitemporalAria")}
-                  data-testid="mv-bitemporal-mode"
-                  data={[
-                    { value: "", label: t("tableEditForm.bitemporalNone") },
-                    { value: "snapshot", label: t("tableEditForm.bitemporalSnapshot") },
-                    { value: "delta", label: t("tableEditForm.bitemporalDelta") },
-                  ]}
-                  value={editingTable.mvBitemporalMode ?? ""}
-                  onChange={(v) =>
-                    setEditingTable({
-                      ...editingTable,
-                      mvBitemporalMode: v ? v : null,
-                    })
-                  }
-                  comboboxProps={{ withinPortal: true }}
-                  allowDeselect={false}
-                />
-              </CollapsibleSection>
-            )}
-            {editingTable.materialize && (
-              <div style={{ gridColumn: "1 / -1" }}>
-                <Group
-                  gap="xs"
-                  wrap="nowrap"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => setSnapshotOpen((o) => !o)}
-                  data-testid="mv-snapshot-panel-toggle"
-                  role="button"
-                  aria-expanded={snapshotOpen}
-                >
-                  <ActionIcon variant="subtle" size="sm" aria-hidden>
-                    {snapshotOpen ? "−" : "+"}
-                  </ActionIcon>
-                  <Text fw={600} size="sm">
-                    {t("tableEditForm.snapshotPanel")}
-                  </Text>
-                  {editingTable.mvCalendar && (
-                    <Badge size="xs" variant="light" color="grape">
-                      {editingTable.mvCalendar}
-                      {editingTable.mvGrain ? ` · ${editingTable.mvGrain}` : ""}
-                    </Badge>
-                  )}
-                </Group>
-                <Collapse in={snapshotOpen}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: "var(--mantine-spacing-sm)",
-                      paddingTop: "var(--mantine-spacing-xs)",
-                    }}
-                  >
-                    <Group gap="xs" align="flex-end" wrap="nowrap">
-                      <Select
-                        style={{ flex: 1 }}
-                        label={
-                          <FieldLabel
-                            text={t("tableEditForm.calendarLabel")}
-                            help={t("tableEditForm.calendarHelp")}
-                          />
-                        }
-                        data-testid="mv-calendar"
-                        placeholder={
-                          calendars.length
-                            ? t("tableEditForm.calendarPlaceholder")
-                            : t("tableEditForm.calendarPlaceholderEmpty")
-                        }
-                        data={calendars.map((c) => ({
-                          value: c.name,
-                          label: `${c.name} (v${c.version}, ${c.baseSystem}, ${c.tz})`,
-                        }))}
-                        value={editingTable.mvCalendar}
-                        onChange={(v) =>
-                          setEditingTable({ ...editingTable, mvCalendar: v || null })
-                        }
-                        comboboxProps={{ withinPortal: true }}
-                        clearable
-                      />
-                      <ActionIcon
-                        variant="light"
-                        size="lg"
-                        aria-label={t("tableEditForm.calendarNewAria")}
-                        data-testid="mv-calendar-new"
-                        onClick={() => setCalendarModalOpen(true)}
-                      >
-                        +
-                      </ActionIcon>
-                    </Group>
-                    {editingTable.mvCalendar && (
-                      <Select
-                        label={
-                          <FieldLabel
-                            text={t("tableEditForm.grainLabel")}
-                            help={t("tableEditForm.grainHelp")}
-                          />
-                        }
-                        data-testid="mv-grain"
-                        placeholder={t("tableEditForm.grainPlaceholder")}
-                        data={[
-                          { value: "daily", label: t("tableEditForm.grainDaily") },
-                          { value: "weekly", label: t("tableEditForm.grainWeekly") },
-                          { value: "monthly", label: t("tableEditForm.grainMonthly") },
-                          { value: "quarterly", label: t("tableEditForm.grainQuarterly") },
-                          { value: "annual", label: t("tableEditForm.grainAnnual") },
-                          { value: "3WE", label: t("tableEditForm.grain3we") },
-                          { value: "1MO", label: t("tableEditForm.grain1mo") },
-                          { value: "LFR", label: t("tableEditForm.grainLfr") },
-                        ]}
-                        value={editingTable.mvGrain}
-                        onChange={(v) => setEditingTable({ ...editingTable, mvGrain: v || null })}
-                        comboboxProps={{ withinPortal: true }}
-                      />
-                    )}
-                    {editingTable.mvCalendar && (
-                      <NumberInput
-                        label={
-                          <FieldLabel
-                            text={t("tableEditForm.allowedLatenessLabel")}
-                            help={t("tableEditForm.allowedLatenessHelp")}
-                          />
-                        }
-                        data-testid="mv-allowed-lateness"
-                        min={0}
-                        step={60}
-                        value={editingTable.mvAllowedLateness}
-                        onChange={(v) =>
-                          setEditingTable({
-                            ...editingTable,
-                            mvAllowedLateness:
-                              typeof v === "number" ? v : parseFloat(String(v)) || 0,
-                          })
-                        }
-                      />
-                    )}
-                    {editingTable.mvCalendar && (
-                      <Checkbox
-                        data-testid="mv-business-day-grain"
-                        checked={editingTable.mvBusinessDayGrain}
-                        onChange={(e) =>
-                          setEditingTable({
-                            ...editingTable,
-                            mvBusinessDayGrain: e.currentTarget.checked,
-                          })
-                        }
-                        label={t("tableEditForm.businessDayGrainLabel")}
-                      />
-                    )}
-                    {editingTable.mvCalendar && (
-                      <Checkbox
-                        data-testid="mv-expected-all"
-                        checked={editingTable.mvExpectedEvents === null}
-                        onChange={(e) =>
-                          setEditingTable({
-                            ...editingTable,
-                            // null = verify every lineage input (default); [] = a custom set (verify
-                            // nothing until inputs are named) — REQ-961 preflight contract.
-                            mvExpectedEvents: e.currentTarget.checked ? null : [],
-                          })
-                        }
-                        label={
-                          <FieldLabel
-                            text={t("tableEditForm.expectedAllLabel")}
-                            help={t("tableEditForm.expectedAllHelp")}
-                          />
-                        }
-                      />
-                    )}
-                    {editingTable.mvCalendar && editingTable.mvExpectedEvents !== null && (
-                      <TagsInput
-                        label={t("tableEditForm.expectedEventsLabel")}
-                        data-testid="mv-expected-events"
-                        placeholder={t("tableEditForm.expectedEventsPlaceholder")}
-                        value={editingTable.mvExpectedEvents ?? []}
-                        onChange={(v) =>
-                          setEditingTable({ ...editingTable, mvExpectedEvents: v })
-                        }
-                        comboboxProps={{ withinPortal: true }}
-                        clearable
-                      />
-                    )}
-                  </div>
-                </Collapse>
-                <CalendarCreateModal
-                  opened={calendarModalOpen}
-                  onClose={() => setCalendarModalOpen(false)}
-                  onCreated={(nm) => {
-                    refetchCalendars();
-                    setEditingTable({ ...editingTable, mvCalendar: nm });
-                  }}
-                />
-              </div>
-            )}
-            {editingTable.materialize && editingTable.mvBitemporalMode && (
-              <TextInput
-                label={
-                  <FieldLabel
-                    text={t("tableEditForm.bitemporalKeyLabel")}
-                    help={t("tableEditForm.bitemporalKeyHelp")}
-                  />
-                }
-                aria-label={t("tableEditForm.bitemporalKeyAria")}
-                data-testid="mv-bitemporal-key"
-                placeholder={t("tableEditForm.bitemporalKeyPlaceholder")}
-                value={editingTable.mvBitemporalKey.join(", ")}
-                onChange={(e) =>
-                  setEditingTable({
-                    ...editingTable,
-                    mvBitemporalKey: e.currentTarget.value
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  })
-                }
-              />
-            )}
-            {/* REQ-965/969/970: MV persistence outcome + incremental. Not shown for bitemporal
-                views, whose append-only strategy supersedes the persist axis. */}
-            {editingTable.materialize && !editingTable.mvBitemporalMode && (
-              <Select
-                label={
-                  <FieldLabel
-                    text={t("tableEditForm.persistLabel")}
-                    help={t("tableEditForm.persistHelp")}
-                  />
-                }
-                aria-label={t("tableEditForm.persistAria")}
-                data-testid="mv-persist"
-                data={[
-                  { value: "replace", label: t("tableEditForm.persistReplace") },
-                  { value: "append", label: t("tableEditForm.persistAppend") },
-                  { value: "upsert", label: t("tableEditForm.persistUpsert") },
-                ]}
-                value={editingTable.mvPersist || "replace"}
-                onChange={(v) => setEditingTable({ ...editingTable, mvPersist: v || "replace" })}
-                comboboxProps={{ withinPortal: true }}
-                allowDeselect={false}
-              />
-            )}
-            {editingTable.materialize && !editingTable.mvBitemporalMode && (
-              <Checkbox
-                mt="1.75rem"
-                data-testid="mv-incremental"
-                checked={editingTable.mvIncremental}
-                label={
-                  <FieldLabel
-                    text={t("tableEditForm.incrementalLabel")}
-                    help={t("tableEditForm.incrementalHelp")}
-                  />
-                }
-                onChange={(e) =>
-                  setEditingTable({ ...editingTable, mvIncremental: e.currentTarget.checked })
-                }
-              />
-            )}
-            {editingTable.materialize &&
-              !editingTable.mvBitemporalMode &&
-              (editingTable.mvPersist === "upsert" || editingTable.mvIncremental) && (
-                <TextInput
-                  label={
-                    <FieldLabel
-                      text={t("tableEditForm.mvPrimaryKeyLabel")}
-                      help={t("tableEditForm.mvPrimaryKeyHelp")}
-                    />
-                  }
-                  aria-label={t("tableEditForm.mvPrimaryKeyAria")}
-                  data-testid="mv-primary-key"
-                  placeholder="id"
-                  value={editingTable.mvPrimaryKey.join(", ")}
-                  onChange={(e) =>
-                    setEditingTable({
-                      ...editingTable,
-                      mvPrimaryKey: e.currentTarget.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                />
-              )}
-            {editingTable.materialize && (
-              <Textarea
-                style={{ gridColumn: "1 / -1" }}
-                label={
-                  <FieldLabel
-                    text={t("tableEditForm.preprocessLabel")}
-                    help={t("tableEditForm.preprocessHelp")}
-                  />
-                }
-                aria-label={t("tableEditForm.preprocessAria")}
-                data-testid="mv-preprocess"
-                placeholder={t("tableEditForm.preprocessPlaceholder")}
-                autosize
-                minRows={4}
-                maxRows={16}
-                spellCheck={false}
-                styles={{
-                  input: { fontFamily: "var(--mantine-font-family-monospace)" },
-                }}
-                value={editingTable.mvPreprocess ?? ""}
-                onChange={(e) =>
-                  setEditingTable({
-                    ...editingTable,
-                    mvPreprocess: e.currentTarget.value || null,
-                  })
-                }
+              <MaterializedViewPanels
+                editingTable={editingTable}
+                setEditingTable={setEditingTable}
               />
             )}
           </>

@@ -14,9 +14,6 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "baseUrl": ".",
-    "paths": {
-      "cytoscape": ["src/types/cytoscape-shim.d.ts"]
-    },
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",

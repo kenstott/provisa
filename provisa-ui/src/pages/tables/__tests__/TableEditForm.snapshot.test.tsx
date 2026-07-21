@@ -147,21 +147,20 @@ describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
     expect(screen.queryByTestId("mv-snapshot-panel-toggle")).not.toBeInTheDocument();
   });
 
-  it("wraps time-travel storage in its own collapsible panel", () => {
-    // collapsed by default when no bitemporal mode is set
-    renderForm(makeTable());
-    const toggle = screen.getByTestId("mv-timetravel-panel-toggle");
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  it("time-travel toggle switches Store As into history (delta) mode", () => {
+    // off by default → turning it on defaults the store mode to delta (append revisions)
+    const setEditingTable = vi.fn();
+    renderForm(makeTable(), setEditingTable);
+    fireEvent.click(screen.getByRole("checkbox", { name: /time travel/i }));
+    expect(setEditingTable).toHaveBeenCalledWith(
+      expect.objectContaining({ mvBitemporalMode: "delta" }),
+    );
   });
 
-  it("auto-opens the time-travel panel when a bitemporal mode is set", () => {
+  it("reflects a set bitemporal mode as time-travel on, with a history key field", () => {
     renderForm(makeTable({ mvBitemporalMode: "snapshot" }));
-    expect(screen.getByTestId("mv-timetravel-panel-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(screen.getByRole("checkbox", { name: /time travel/i })).toBeChecked();
+    expect(screen.getByTestId("mv-bitemporal-key")).toBeInTheDocument();
   });
 
   it("opens the new-calendar modal from the picker's + button", async () => {
@@ -177,7 +176,6 @@ describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
     renderForm(makeTable());
     expect(screen.getByTestId("mv-refresh-panel-toggle")).toBeInTheDocument();
     expect(screen.getByTestId("mv-snapshot-panel-toggle")).toBeInTheDocument();
-    expect(screen.getByTestId("mv-timetravel-panel-toggle")).toBeInTheDocument();
     const refresh = screen.getByTestId("mv-refresh-panel-toggle");
     expect(refresh).toHaveAttribute("aria-expanded", "true"); // defaults open
     fireEvent.click(refresh);

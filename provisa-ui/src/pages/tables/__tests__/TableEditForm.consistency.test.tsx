@@ -8,16 +8,21 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-879: the MV consistency selector renders for a materialized view and
-// stages the chosen tier through the shared setEditingTable save path.
+// REQ-879: consistency is NOT a per-MV choice — it follows the deployment's materialization store.
+// The form no longer renders a selector; instead it warns only when the resolved store is
+// instance-local (a per-instance copy that diverges across instances behind a load balancer).
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "../../../test-utils/render";
+import { render as rtlRender } from "@testing-library/react";
+import { MockedProvider } from "@apollo/client/testing/react";
+import { MantineProvider } from "@mantine/core";
+import { I18nextProvider } from "react-i18next";
+import { render, screen } from "../../../test-utils/render";
 import { TableEditForm } from "../TableEditForm";
 import type { RegisteredTable } from "../../../types/admin";
 import i18n from "../../../i18n";
-
-const t = i18n.getFixedT("en");
+import { theme } from "../../../theme/theme";
+import { MaterializeStoreInfo as STORE_INFO_QUERY } from "../../../hooks/admin.graphql";
 
 function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   return {
@@ -69,11 +74,11 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   };
 }
 
-function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
-  render(
+function formEl(table: RegisteredTable) {
+  return (
     <TableEditForm
       editingTable={table}
-      setEditingTable={setEditingTable}
+      setEditingTable={vi.fn()}
       editingColumnTypes={{}}
       cacheTtlEdits={{}}
       setCacheTtlEdits={vi.fn()}
@@ -90,39 +95,61 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       cancelEditing={vi.fn()}
       handleSaveEdit={vi.fn()}
       updateEditCol={vi.fn()}
-    />,
+    />
   );
-  return setEditingTable;
 }
 
-describe("TableEditForm — MV consistency (REQ-879)", () => {
-  it("renders the selector with the current tier for a materialized view", () => {
-    renderForm(makeTable({ mvConsistency: "distributed" }));
-    const sel = screen.getByRole("textbox", {
-      name: t("tableEditForm.mvConsistencyAria"),
-    }) as HTMLInputElement;
-    expect(sel).toBeTruthy();
-    expect(sel.value).toBe(t("tableEditForm.consistencyDistributed"));
+// Local render that mocks the materialize-store-info query (the shared render util's MockedProvider
+// is empty, so the store-info query never resolves there — fine for the "no warning" default).
+function renderWithStore(table: RegisteredTable, instanceLocalStore: boolean) {
+  const mocks = [
+    {
+      request: { query: STORE_INFO_QUERY },
+      result: {
+        data: {
+          materializeStoreInfo: {
+            engineName: "duckdb",
+            storeRef: instanceLocalStore ? "duckdb:///x.duckdb" : "postgresql://h/db",
+            mvCount: 0,
+            instanceLocalStore,
+          },
+        },
+      },
+    },
+  ];
+  return rtlRender(
+    <MockedProvider mocks={mocks}>
+      <MantineProvider theme={theme} defaultColorScheme="dark">
+        <I18nextProvider i18n={i18n}>{formEl(table)}</I18nextProvider>
+      </MantineProvider>
+    </MockedProvider>,
+  );
+}
+
+describe("TableEditForm — MV store consistency (REQ-879)", () => {
+  it("no longer renders a consistency selector", () => {
+    render(formEl(makeTable()));
+    expect(screen.queryByTestId("mv-consistency")).toBeNull();
   });
 
-  it("stages the chosen tier through setEditingTable", async () => {
-    const setEditingTable = renderForm(makeTable());
-    fireEvent.click(
-      screen.getByRole("textbox", { name: t("tableEditForm.mvConsistencyAria") }),
-    );
-    const listbox = await screen.findByRole("listbox");
-    fireEvent.click(
-      within(listbox).getByText(t("tableEditForm.consistencyDistributed")),
-    );
-    expect(setEditingTable).toHaveBeenCalledWith(
-      expect.objectContaining({ mvConsistency: "distributed" }),
-    );
+  it("shows no local-store warning when store info is unresolved/shared", () => {
+    render(formEl(makeTable())); // shared render → store-info query unmocked → no warning
+    expect(screen.queryByTestId("mv-local-store-warning")).toBeNull();
   });
 
-  it("hides the selector when the table is not materialized", () => {
-    renderForm(makeTable({ materialize: false }));
-    expect(
-      screen.queryByRole("textbox", { name: t("tableEditForm.mvConsistencyAria") }),
-    ).toBeNull();
+  it("warns when the resolved materialization store is instance-local", async () => {
+    renderWithStore(makeTable(), true);
+    expect(await screen.findByTestId("mv-local-store-warning")).toBeInTheDocument();
+  });
+
+  it("does not warn when the resolved store is shared", async () => {
+    renderWithStore(makeTable(), false);
+    await new Promise((r) => setTimeout(r, 0)); // let the query resolve
+    expect(screen.queryByTestId("mv-local-store-warning")).toBeNull();
+  });
+
+  it("hides MV controls entirely when the table is not materialized", () => {
+    render(formEl(makeTable({ materialize: false })));
+    expect(screen.queryByTestId("mv-persist")).toBeNull();
   });
 });

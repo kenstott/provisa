@@ -35,7 +35,6 @@ from provisa.events.content_hash import content_hash
 from provisa.events.probes import WATERMARK, probe_shape
 from provisa.events.processor import NodeContext, PreflightQuarantine, PreprocessError
 from provisa.federation import store_writer
-from provisa.mv.preflight import run_preflight
 
 _SHAPE_TO_EVENT = {APPEND: "append"}  # replace is the fallback below; delta is the push/CDC path
 
@@ -46,13 +45,16 @@ async def _apply_preflight(
     ctx: NodeContext | None,
     columns: list[tuple[str, str]],
 ) -> None:
-    """REQ-1165: run the node's ``preflight(rows, ctx)`` CHECK between produce and land. None = continue.
+    """REQ-1165: run the node's ``preflight(streams, ctx)`` CHECK between produce and land.
 
-    A preflight is a GATE, not a transform: it inspects ``rows`` and returns a verdict; the rows are
-    NEVER mutated, so this returns None and the caller lands the ORIGINAL rows. The check may be sync
-    or async. Verdict handling:
+    ``preflight`` is a BOUND evaluator ``(rows, ctx) -> Verdict | None`` (built at wiring, see
+    :mod:`provisa.mv.preflight_eval`): an MV evaluator STREAMS the SQL-lineage inputs per node and
+    ignores ``rows``; a source evaluator runs the hook over its own fetched ``rows``. None = no check.
 
-    - CONTINUE → return (any reason becomes an advisory ``ctx.warn``).
+    A preflight is a GATE, not a transform: it returns a verdict and the caller lands the ORIGINAL
+    rows unchanged. Verdict handling:
+
+    - CONTINUE (or None) → return (any reason becomes an advisory ``ctx.warn``).
     - ABORT (or a hook ``raise``) → :class:`PreprocessError` → the loop emits an ``error`` event +
       poisons the fan-out (the REQ-957 fatal-reject path, now a verdict).
     - QUARANTINE → :class:`PreflightQuarantine` → the loop emits a non-fatal ``quarantine`` hold.
@@ -62,13 +64,15 @@ async def _apply_preflight(
     if ctx is not None:
         ctx.columns = columns  # enrich the envelope with the landing schema the closure knows
     try:
-        verdict = await run_preflight(preflight, rows, ctx)
+        verdict = await preflight(rows, ctx)
     except (PreprocessError, PreflightQuarantine):
         raise
     except Exception as exc:  # noqa: BLE001 — REQ-957: a user-hook raise is a fatal DATA outcome
         # (error event + poison fan-out), not an infra crash. Fail loud INTO the event vocabulary
         # via PreprocessError; the loop distinguishes it from a genuine crash (which must propagate).
         raise PreprocessError(str(exc)) from exc
+    if verdict is None:
+        return  # a no-op check (evaluator returned no verdict) → continue
     if verdict.is_abort:
         raise PreprocessError(verdict.reason or "preflight abort")
     if verdict.is_quarantine:

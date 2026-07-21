@@ -11,15 +11,17 @@
 """Preflight-check verdict vocabulary + runtime (REQ-1165).
 
 REQ-1165 rescopes the REQ-957 hook from a row transform (``rows -> rows``) to a PREFLIGHT
-CHECK: ``preflight(rows, ctx)`` inspects the produced rows and returns a VERDICT — one of
-continue / abort / quarantine — and NEVER a mutated dataset. The verdict gates landing and
-re-posting; the rows themselves pass through untouched (transforms belong in SQL or an
+CHECK: ``preflight(streams, ctx)`` inspects its INPUT streams and returns a VERDICT — one of
+continue / abort / quarantine — and NEVER a mutated dataset. ``streams`` is a
+``dict[str, Iterable[dict]]`` keyed by input node (one lazy Arrow stream per input); the verdict
+gates landing and re-posting; the data passes through untouched (transforms belong in SQL or an
 external processor, REQ-940).
 
-Because a gate does not mutate the landed set it does not feed the content hash (REQ-964) —
-which removes the reason the old contract had to fully materialize its output. This module
+Because a gate does not mutate the landed set it does not feed the content hash (REQ-964) — and
+because it streams per input it never materializes a billion-row input to gate it. This module
 is the verdict vocabulary shared by both evaluation strategies (SQL pushdown in
-:mod:`provisa.mv.preflight_sql`, Python+Arrow streaming in :mod:`provisa.processors.arrow`).
+:mod:`provisa.mv.preflight_sql`, per-input Python+Arrow streaming in
+:mod:`provisa.mv.preflight_eval`).
 """
 
 from __future__ import annotations
@@ -103,16 +105,17 @@ def to_verdict(result: Any) -> Verdict:
 
 
 async def run_preflight(
-    fn: Callable[..., Any] | None, rows: Any, ctx: Any
+    fn: Callable[..., Any] | None, streams: Any, ctx: Any
 ) -> Verdict:
     """Invoke a compiled preflight hook and return its normalized verdict (REQ-1165).
 
-    ``fn`` None → no hook → :data:`CONTINUE`. The hook may be sync or async. Its raw return is
-    coerced via :func:`to_verdict`; a hook that ``raise``s is handled by the caller (an
+    ``streams`` is the check's first argument — a ``dict[str, Iterable[dict]]`` keyed by input node
+    (REQ-1165). ``fn`` None → no hook → :data:`CONTINUE`. The hook may be sync or async. Its raw
+    return is coerced via :func:`to_verdict`; a hook that ``raise``s is handled by the caller (an
     uncaught raise is the fatal-abort path — see :mod:`provisa.events.handlers`)."""
     if fn is None:
         return CONTINUE
-    out = fn(rows, ctx)
+    out = fn(streams, ctx)
     if inspect.isawaitable(out):
         out = await out
     return to_verdict(out)

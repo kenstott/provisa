@@ -25,15 +25,19 @@ from provisa.mv.preflight_sql import translate
 
 
 def _check(pred_body: str) -> str:
-    return f"def preflight(rows, ctx):\n{pred_body}"
+    return f"def preflight(streams, ctx):\n{pred_body}"
 
 
 def test_translates_any_abort() -> None:
     sp = translate(
-        _check("    if any(r['qty'] < 0 for r in rows):\n        return ctx.abort('neg')\n    return ctx.ok()")
+        _check(
+            "    if any(r['qty'] < 0 for r in streams['sales.orders']):\n"
+            "        return ctx.abort('neg')\n    return ctx.ok()"
+        )
     )
     assert sp is not None
     assert sp.quantifier == "any"
+    assert sp.input_node == "sales.orders"
     assert sp.predicate_sql == '("qty" < 0)'
     assert sp.violation.decision is Decision.ABORT and sp.violation.reason == "neg"
     assert sp.passing.decision is Decision.CONTINUE
@@ -44,12 +48,13 @@ def test_translates_any_abort() -> None:
 def test_translates_all_quarantine() -> None:
     sp = translate(
         _check(
-            "    if all(r['ok'] == True for r in rows):\n"
+            "    if all(r['ok'] == True for r in streams['sales.orders']):\n"
             "        return ctx.quarantine('all flagged')\n    return ctx.ok()"
         )
     )
     assert sp is not None
     assert sp.quantifier == "all"
+    assert sp.input_node == "sales.orders"
     # all() fires when NO row violates → count of violators == 0
     assert sp.verdict_for(0).decision is Decision.QUARANTINE
     assert sp.verdict_for(2).decision is Decision.CONTINUE
@@ -58,7 +63,7 @@ def test_translates_all_quarantine() -> None:
 def test_translates_boolean_arithmetic_and_null() -> None:
     sp = translate(
         _check(
-            "    if any((r['a'] + 1) > r['b'] and r['c'] != None for r in rows):\n"
+            "    if any((r['a'] + 1) > r['b'] and r['c'] != None for r in streams['sales.orders']):\n"
             "        return ctx.abort('x')\n    return ctx.ok()"
         )
     )
@@ -70,13 +75,15 @@ def test_translates_boolean_arithmetic_and_null() -> None:
     "body",
     [
         # cross-row state (len) — not a single quantified assertion
-        "    if len(rows) > 5:\n        return ctx.abort('big')\n    return ctx.ok()",
+        "    if len(streams['s.o']) > 5:\n        return ctx.abort('big')\n    return ctx.ok()",
         # helper call inside the predicate — not translatable
-        "    if any(bad(r) for r in rows):\n        return ctx.abort('x')\n    return ctx.ok()",
+        "    if any(bad(r) for r in streams['s.o']):\n        return ctx.abort('x')\n    return ctx.ok()",
         # extra sibling statement — not the canonical two-statement shape
-        "    n = 1\n    if any(r['q'] < n for r in rows):\n        return ctx.abort('x')\n    return ctx.ok()",
-        # iterates something other than rows
+        "    n = 1\n    if any(r['q'] < n for r in streams['s.o']):\n        return ctx.abort('x')\n    return ctx.ok()",
+        # iterates something other than a streams[...] input (a literal list)
         "    if any(r < 0 for r in [1, 2]):\n        return ctx.abort('x')\n    return ctx.ok()",
+        # computed stream key — no static input node to probe
+        "    if any(r['q'] < 0 for r in streams[ctx.node]):\n        return ctx.abort('x')\n    return ctx.ok()",
     ],
 )
 def test_untranslatable_returns_none(body: str) -> None:
@@ -84,19 +91,23 @@ def test_untranslatable_returns_none(body: str) -> None:
 
 
 def test_sql_matches_python_on_a_real_engine() -> None:
-    # REQ-964: the pushed-down predicate must agree with the Python check for the same dataset.
+    # REQ-964: the pushed-down predicate must agree with the Python check for the same dataset —
+    # now probed over the named INPUT NODE (streams["t"]) rather than the MV's output SELECT.
     con = duckdb.connect()
     con.execute("CREATE TABLE t AS SELECT * FROM (VALUES (1,10),(2,-3),(3,7)) AS v(id, qty)")
-    select_sql = "SELECT id, qty FROM t"
     sp = translate(
-        _check("    if any(r['qty'] < 0 for r in rows):\n        return ctx.abort('neg')\n    return ctx.ok()")
+        _check(
+            "    if any(r['qty'] < 0 for r in streams['t']):\n"
+            "        return ctx.abort('neg')\n    return ctx.ok()"
+        )
     )
     assert sp is not None
-    count = con.execute(sp.count_sql(select_sql)).fetchone()[0]
+    assert sp.input_node == "t"
+    count = con.execute(sp.count_sql()).fetchone()[0]
     assert count == 1  # one negative row
     assert sp.verdict_for(count).decision is Decision.ABORT
 
-    # Python evaluation over the same rows reaches the same verdict.
-    rows = [{"id": r[0], "qty": r[1]} for r in con.execute(select_sql).fetchall()]
+    # Python evaluation over the same input rows reaches the same verdict.
+    rows = [{"id": r[0], "qty": r[1]} for r in con.execute("SELECT id, qty FROM t").fetchall()]
     py_fires = any(r["qty"] < 0 for r in rows)
     assert py_fires is (sp.verdict_for(count).decision is Decision.ABORT)

@@ -370,6 +370,7 @@ query MaterializeStoreInfo {
     engineName
     storeRef
     mvCount
+    instanceLocalStore
   }
 }
 

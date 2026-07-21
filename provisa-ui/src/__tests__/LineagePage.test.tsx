@@ -25,8 +25,8 @@ const graph: LineageGraphData = {
   cycles: [{ nodes: ["x.c", "y.c"], has_materialization_boundary: false, classification: "error" }],
 };
 
-const fetchLineageGraph = vi.fn(async () => graph);
-const fetchFederationGraph = vi.fn(async () => graph);
+const fetchLineageGraph = vi.fn(async (..._a: unknown[]) => graph);
+const fetchFederationGraph = vi.fn(async (..._a: unknown[]) => graph);
 
 vi.mock("../api/lineage", () => ({
   fetchLineageGraph: (...a: unknown[]) => fetchLineageGraph(...a),

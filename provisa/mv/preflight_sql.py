@@ -10,17 +10,17 @@
 
 """Push a SQL-expressible preflight check down to the engine (REQ-1165).
 
-A preflight check whose body is a single quantified row assertion —
+A preflight check whose body is a single quantified row assertion over ONE input stream —
 
-    def preflight(rows, ctx):
-        if any(r["qty"] < 0 for r in rows):
+    def preflight(streams, ctx):
+        if any(r["qty"] < 0 for r in streams["sales.orders"]):
             return ctx.abort("negative quantity")
         return ctx.ok()
 
-— carries no cross-row state and reduces to one boolean predicate over a row. Such a check is
-translated here to a governed-PostgreSQL WHERE fragment and evaluated ENGINE-SIDE as a
-``SELECT count(*)`` probe over the MV's SELECT (the REQ-1165 pushdown path, mirroring
-``_probe_source_count`` in :mod:`provisa.mv.refresh`), so a billion-row source is never pulled
+— carries no cross-row state and reduces to one boolean predicate over a row of the named input.
+Such a check is translated here to a governed-PostgreSQL WHERE fragment and evaluated ENGINE-SIDE
+as a ``SELECT count(*)`` probe over THAT INPUT NODE (the REQ-1165 pushdown path, mirroring
+``_probe_source_count`` in :mod:`provisa.mv.refresh`), so a billion-row input is never pulled
 into Python to be gated.
 
 :func:`translate` returns a :class:`SqlPreflight` for the supported shape and ``None`` for
@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+from typing import Any
 
 from provisa.mv.preflight import CONTINUE, Decision, Verdict
 from provisa.mv.preprocess import REQUIRED_FUNC
@@ -60,28 +61,36 @@ class _Untranslatable(Exception):
     """An AST node outside the SQL-expressible subset — the check falls back to streaming."""
 
 
+def _quoted_from(node: str) -> str:
+    """Quote a dotted input-node name (``schema.table``) as a SQL FROM target."""
+    return ".".join(f'"{part.replace(chr(34), chr(34) * 2)}"' for part in node.split("."))
+
+
 @dataclass(frozen=True)
 class SqlPreflight:  # REQ-1165
-    """A preflight check reduced to an engine-side count probe.
+    """A preflight check reduced to an engine-side count probe over ONE input node.
 
-    ``quantifier`` is ``"any"`` or ``"all"``; ``predicate_sql`` is the WHERE fragment for the
-    per-row predicate P (governed PostgreSQL dialect); ``violation`` is the verdict returned when
-    the quantifier fires and ``passing`` when it does not.
+    ``input_node`` is the ``streams[...]`` key the quantifier iterates — the probe runs over THAT
+    node's table, never a materialized row set. ``quantifier`` is ``"any"`` or ``"all"``;
+    ``predicate_sql`` is the WHERE fragment for the per-row predicate P (governed PostgreSQL
+    dialect); ``violation`` is the verdict returned when the quantifier fires and ``passing`` when
+    it does not.
     """
 
     quantifier: str
+    input_node: str
     predicate_sql: str
     violation: Verdict
     passing: Verdict
 
-    def count_sql(self, select_sql: str) -> str:
-        """The probe query whose scalar count decides the verdict (see :func:`evaluate`).
+    def count_sql(self) -> str:
+        """The probe query whose scalar count decides the verdict (see :func:`verdict_for`).
 
-        ``any``: count rows matching P (violation iff > 0). ``all``: count rows VIOLATING P, i.e.
-        matching ``NOT P`` (the ``all`` fires iff that count is 0 — vacuously true on an empty set,
-        matching Python's ``all([])``)."""
+        ``any``: count input rows matching P (violation iff > 0). ``all``: count input rows
+        VIOLATING P, i.e. matching ``NOT P`` (the ``all`` fires iff that count is 0 — vacuously true
+        on an empty input, matching Python's ``all([])``)."""
         where = self.predicate_sql if self.quantifier == "any" else f"NOT ({self.predicate_sql})"
-        return f"SELECT count(*) FROM ({select_sql}) AS _preflight WHERE {where}"
+        return f"SELECT count(*) FROM {_quoted_from(self.input_node)} AS _preflight WHERE {where}"
 
     def verdict_for(self, count: int) -> Verdict:
         """Map the probe's scalar count to the verdict."""
@@ -100,7 +109,7 @@ def _col_ref(node: ast.Subscript) -> str:
     return f'"{col}"'
 
 
-def _literal(value: object) -> str:
+def _literal(value: Any) -> str:  # ast.Constant.value — union incl. bytes/complex/Ellipsis
     """Translate a Python constant to a SQL literal."""
     if value is None:
         return "NULL"
@@ -203,8 +212,25 @@ def _verdict_from_return(node: ast.expr | None) -> Verdict:
     raise _Untranslatable("unsupported return expression")
 
 
-def _quantified(test: ast.expr, row_var_out: list[str]) -> tuple[str, ast.expr] | None:
-    """If ``test`` is ``any(P for r in rows)`` / ``all(...)``, return (quantifier, P); else None."""
+def _stream_key(iter_node: ast.expr, streams_var: str) -> str | None:
+    """If ``iter_node`` is ``streams["schema.table"]`` over the hook's first param, return the
+    string key (the input node); else None. Only a literal-string subscript is translatable — a
+    computed key has no static input node to probe."""
+    if not (isinstance(iter_node, ast.Subscript) and isinstance(iter_node.value, ast.Name)):
+        return None
+    if iter_node.value.id != streams_var:
+        return None
+    key = iter_node.slice
+    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+        return key.value
+    return None
+
+
+def _quantified(
+    test: ast.expr, streams_var: str, row_var_out: list[str]
+) -> tuple[str, str, ast.expr] | None:
+    """If ``test`` is ``any(P for r in streams["node"])`` / ``all(...)``, return
+    (quantifier, input_node, P); else None."""
     if not (isinstance(test, ast.Call) and isinstance(test.func, ast.Name)):
         return None
     if test.func.id not in ("any", "all") or len(test.args) != 1:
@@ -215,20 +241,22 @@ def _quantified(test: ast.expr, row_var_out: list[str]) -> tuple[str, ast.expr] 
     comp = gen.generators[0]
     if comp.ifs or comp.is_async:
         return None
-    if not (isinstance(comp.target, ast.Name) and isinstance(comp.iter, ast.Name)):
+    if not isinstance(comp.target, ast.Name):
         return None
-    if comp.iter.id != "rows":
+    node = _stream_key(comp.iter, streams_var)
+    if node is None:
         return None
     row_var_out.append(comp.target.id)
-    return test.func.id, gen.elt
+    return test.func.id, node, gen.elt
 
 
 def translate(source: str) -> SqlPreflight | None:
     """Translate a preflight check to a :class:`SqlPreflight`, or ``None`` if not SQL-expressible.
 
-    Recognizes exactly the single-assertion shape ``if any/all(P for r in rows): return <verdict>``
-    followed by a trailing ``return <verdict>``. Any other structure — cross-row state, helper
-    calls, multiple branches, an untranslatable predicate — returns ``None`` so the caller uses the
+    Recognizes exactly the single-assertion shape
+    ``if any/all(P for r in streams["node"]): return <verdict>`` followed by a trailing
+    ``return <verdict>``. Any other structure — cross-row state, helper calls, multiple branches,
+    a computed stream key, an untranslatable predicate — returns ``None`` so the caller uses the
     Python+Arrow streaming path. Never guesses: an ambiguous construct is a None, not a wrong SQL.
     """
     try:
@@ -247,20 +275,25 @@ def translate(source: str) -> SqlPreflight | None:
     # no sibling defs/consts (those signal a helper-driven check → streaming path).
     if func is None or len(tree.body) != 1 or len(func.body) != 2:
         return None
+    # The hook's first parameter is the ``streams`` dict — the name the subscript must match.
+    params = func.args.posonlyargs + func.args.args
+    if not params:
+        return None
+    streams_var = params[0].arg
     guard, tail = func.body
     if not (isinstance(guard, ast.If) and isinstance(tail, ast.Return)):
         return None
     if guard.orelse or len(guard.body) != 1 or not isinstance(guard.body[0], ast.Return):
         return None
     row_var: list[str] = []
-    quant = _quantified(guard.test, row_var)
+    quant = _quantified(guard.test, streams_var, row_var)
     if quant is None:
         return None
-    quantifier, predicate = quant
+    quantifier, input_node, predicate = quant
     try:
         predicate_sql = _PredicateTranslator(row_var[0]).visit(predicate)
         violation = _verdict_from_return(guard.body[0].value)
         passing = _verdict_from_return(tail.value)
     except (_Untranslatable, ValueError):
         return None
-    return SqlPreflight(quantifier, predicate_sql, violation, passing)
+    return SqlPreflight(quantifier, input_node, predicate_sql, violation, passing)

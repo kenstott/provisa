@@ -97,7 +97,7 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
 
 describe("TableEditForm — MV preflight check (REQ-1165)", () => {
   it("renders the editor with the current check source for a materialized view", () => {
-    const src = "def preflight(rows, ctx):\n    return ctx.ok()";
+    const src = "def preflight(streams, ctx):\n    return ctx.ok()";
     renderForm(makeTable({ mvPreprocess: src }));
     const box = screen.getByRole("textbox", {
       name: t("tableEditForm.preprocessAria"),

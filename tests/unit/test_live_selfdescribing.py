@@ -180,11 +180,21 @@ async def test_dq_scorecard_is_an_mv_over_warn_error_emissions(tmp_path):
     async def run_ok():
         return [{"id": 1, "status": "a"}]
 
-    def warn_hook(rows, ctx):
+    from provisa.mv.preflight import run_preflight
+
+    def _gate(fn):
+        # REQ-1165: the processor receives a BOUND evaluator; these hooks ignore inputs (they only
+        # warn / raise), so an empty streams dict suffices to exercise the verdict + event path.
+        async def _eval(rows, ctx):
+            return await run_preflight(fn, {}, ctx)
+
+        return _eval
+
+    def warn_hook(streams, ctx):
         ctx.warn("late arrival on order 1")  # REQ-957 advisory → a warn event about the node
         return ctx.ok()  # REQ-1165: a check returns a verdict, not rows
 
-    def error_hook(rows, ctx):
+    def error_hook(streams, ctx):
         raise ValueError("schema drift")  # REQ-957 fatal → an error event about the node
 
     warn_gen = make_mv_generate(dsn, schema="", table="ok1", columns=_COLS, run_query=run_ok)
@@ -198,7 +208,7 @@ async def test_dq_scorecard_is_an_mv_over_warn_error_emissions(tmp_path):
             db=db,
             name="w",
             generate=warn_gen,
-            preprocess=warn_hook,
+            preprocess=_gate(warn_hook),
         )
         err_mv = MVTableProcessor(
             "dq.err",
@@ -208,7 +218,7 @@ async def test_dq_scorecard_is_an_mv_over_warn_error_emissions(tmp_path):
             db=db,
             name="e",
             generate=err_gen,
-            preprocess=error_hook,
+            preprocess=_gate(error_hook),
         )
         async with db.acquire() as conn:
             for node in ("dq.warn", "dq.err"):

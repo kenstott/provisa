@@ -11478,13 +11478,13 @@ Declarative `entity` and `fact` shortcuts that LOWER to the existing MV / bitemp
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
 
-The inline MV preprocess hook ([REQ-957](#REQ-957)) is RESCOPED from a row transform (rows → rows) to a PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a mutated dataset. Row transforms are explicitly out of scope — they belong in SQL (engine pushdown) or external processors ([REQ-940](#REQ-940)). Rationale: a gate does not mutate the landed set, so it does not feed the content hash ([REQ-964](#REQ-964)), eliminating the justification for full in-memory materialization and the max_rows cap (SKIPPED_SIZE) that prevents scaling to large sources. Accepted preflight transports are SQL pushdown (for SQL-expressible checks, evaluated engine-side as probe queries) and Python+Arrow (for non-SQL checks, evaluated in-process with columnar batches). gRPC is out of scope — it only serves out-of-process/remote validators, which introduces unnecessary overhead (separate process, wire framing) disproportionate to a preflight gate's simplicity and scale requirements.
+The inline MV preprocess hook ([REQ-957](#REQ-957)) is RESCOPED from a row transform (rows → rows) to a PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a mutated dataset. Row transforms are explicitly out of scope — they belong in SQL (engine pushdown) or external processors ([REQ-940](#REQ-940)). Rationale: a gate does not mutate the landed set, so it does not feed the content hash ([REQ-964](#REQ-964)), eliminating the justification for full in-memory materialization and the max_rows cap (SKIPPED_SIZE) that prevents scaling to large sources. Accepted preflight transports are SQL pushdown (for SQL-expressible checks, evaluated engine-side as probe queries) and Python+Arrow (for non-SQL checks, evaluated in-process with columnar batches). gRPC is out of scope — it only serves out-of-process/remote validators, which introduces unnecessary overhead (separate process, wire framing) disproportionate to a preflight gate's simplicity and scale requirements. The Python preflight hook input contract is dict[str, pyarrow.RecordBatchReader], keyed by INPUT NODE NAME, providing lazy Arrow streams via FederationEngine.execute_engine_stream. This avoids full materialization of large inputs; the hook consumes batches lazily and short-circuits early. If an engine lacks EngineCapability.ARROW_STREAM and a preflight is declared, the system fails loud at wiring/boot time (no silent skip, no materialize fallback). The land/generate path remains unchanged, using independent streamed reads.
 
-**Use case:** Rescoping from stateful row transform to stateless verdict gate simplifies the contract, improves memory efficiency, and allows evaluation to scale via engine pushdown (SQL assertions) or streaming short-circuit (non-SQL predicates) rather than buffering the entire dataset in memory before applying the gate.
+**Use case:** Rescoping from stateful row transform to stateless verdict gate simplifies the contract, improves memory efficiency, and allows evaluation to scale via engine pushdown (SQL assertions) or streaming short-circuit (non-SQL predicates) rather than buffering the entire dataset in memory before applying the gate. Providing lazy Arrow streams as input ensures the hook can evaluate large datasets without materializing them into Python dicts.
 
-**Code:** `provisa/mv/preprocess.py`, `provisa/mv/refresh.py`, `provisa/events/processor.py`
+**Code:** `provisa/mv/preprocess.py`, `provisa/mv/preflight.py`, `provisa/mv/preflight_sql.py`, `provisa/mv/preflight_eval.py`, `provisa/mv/refresh.py`, `provisa/processors/arrow.py`, `provisa/events/handlers.py`, `provisa/events/boot.py`, `provisa/events/processor.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_preflight_sql.py`, `tests/unit/test_preflight_verdict.py`, `tests/unit/test_preflight_refresh.py`, `tests/unit/test_processor_arrow.py`, `tests/unit/test_live_core_loop.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`, `tests/features/REQ-1165-preflight-streaming.feature`, `tests/steps/steps_preflight_streaming.py`
 
 ### REQ-1166 · Materialization Store {#REQ-1166}
 
@@ -11547,5 +11547,17 @@ Load protection ([REQ-1141](#REQ-1141) off-peak window) and snapshotting on the 
 **Use case:** If a snapshot boundary coincides with a peak-hours-only window, the snapshot cannot fire. This warning surfaces the timing conflict so the user can adjust the protection window or snapshot schedule.
 
 **Code:** `provisa/api/admin/schema_mutation.py`
+
+**Tests:** —
+
+### REQ-1171 · Calendar Boundary {#REQ-1171}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+Snapshot-schedule grains extend to support the full RFC 5545 RRULE recurrence model (Outlook/iCalendar). RRuleRecurrence (a frozen dataclass with normalized RRULE string) is validated via python-dateutil. parse_grain_spec recognizes "RRULE:FREQ=..." or bare "FREQ=..." specs; window_for/next_boundary dispatch to dateutil.rrule-backed occurrence tiling yielding half-open [start,end) windows addressed by opening occurrence (e.g., "2026-02-18-M3WE"). INTERVAL phase anchors to civil epoch 2000-01-01 for query-independent tiling. Bounded rules (COUNT/UNTIL) are rejected; nesting grains and 4-4-5 fiscal calendars unchanged.
+
+**Use case:** Beyond nesting grains (daily..annual) and nth-weekday shorthand, users need full recurrence expressivity for complex business schedules (e.g., "every 3 weeks on Monday, until year-end"). RRULE standardizes this across Outlook, Google Calendar, and iCalendar ecosystems.
+
+**Code:** `provisa/events/calendars.py`, `provisa-ui/src/pages/tables/RecurrenceBuilder.tsx`
 
 **Tests:** —

@@ -545,6 +545,11 @@ class MaterializeStoreInfoType:
     # engine + MV count; the UI renders storeRef only when present.
     store_ref: str | None
     mv_count: int
+    # True when the resolved materialization store is INSTANCE-LOCAL (a local file store, e.g. the
+    # embedded DuckDB/SQLite default) rather than a shared store. Behind a load balancer / multiple
+    # instances, a local store means each instance keeps its own copy (eventual divergence). Derived
+    # from the resolved store DSN, so it reflects the Settings override too, not just the engine.
+    instance_local_store: bool
 
 
 @strawberry.type

@@ -95,6 +95,24 @@ def _safe_store_ref(engine: Any) -> str | None:
         return None
 
 
+# Local-file store schemes: each running instance writes its OWN copy (no cross-instance coordination).
+# Everything else (remote Postgres, object-store/warehouse) is a shared store. Driver suffixes
+# (``sqlite+aiosqlite``) are stripped before the check.
+_INSTANCE_LOCAL_STORE_SCHEMES = frozenset({"sqlite", "duckdb"})
+
+
+def _is_instance_local_store(store_ref: str | None) -> bool:
+    """Classify a resolved materialization-store DSN as instance-local (a local file store) vs shared.
+
+    Instance-local means a per-instance copy: behind a load balancer / multiple instances the copies
+    diverge (eventual consistency). Keyed on the DSN scheme, so it reflects a Settings ``store_url``
+    override as well as the engine default (e.g. the embedded DuckDB/SQLite zero-config store)."""
+    if not store_ref:
+        return False
+    scheme = store_ref.split("://", 1)[0].split("+", 1)[0].strip().lower()
+    return scheme in _INSTANCE_LOCAL_STORE_SCHEMES
+
+
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
@@ -728,10 +746,12 @@ class Query:  # REQ-021, REQ-042
         from provisa.api.app import state
 
         engine = state.federation_engine
+        store_ref = _safe_store_ref(engine)
         return MaterializeStoreInfoType(
             engine_name=engine.name,
-            store_ref=_safe_store_ref(engine),
+            store_ref=store_ref,
             mv_count=len(state.mv_registry._mvs),
+            instance_local_store=_is_instance_local_store(store_ref),
         )
 
     # ── Admin: System Health ──

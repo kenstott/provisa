@@ -11,7 +11,8 @@
 """User preflight-check validation + compilation (REQ-957, REQ-964, REQ-1165).
 
 REQ-1165 rescopes the REQ-957 hook from a row transform to a PREFLIGHT CHECK —
-``preflight(rows, ctx) -> verdict`` — run after produce and before land. Authors express
+``preflight(streams, ctx) -> verdict`` — run after produce and before land, where ``streams`` is a
+``dict[str, Iterable[dict]]`` keyed by input node (one lazy Arrow stream per input). Authors express
 custom prechecks, validation, and rejection here; the hook returns a verdict (continue /
 abort / quarantine, see :mod:`provisa.mv.preflight`) and NEVER a mutated dataset. Transforms
 belong in SQL (engine pushdown) or an external processor (REQ-940).
@@ -107,7 +108,7 @@ class _PurityVisitor(ast.NodeVisitor):
 def check_preprocess_purity(source: str) -> tuple[bool, str]:
     """Return (pure, reason). ``reason`` is empty when the hook is safe + deterministic.
 
-    Fail-closed: unparseable source, a missing ``preflight(rows, ctx)`` definition,
+    Fail-closed: unparseable source, a missing ``preflight(streams, ctx)`` definition,
     any import, any forbidden name, or any dunder attribute access is rejected.
     """
     try:
@@ -115,7 +116,7 @@ def check_preprocess_purity(source: str) -> tuple[bool, str]:
     except SyntaxError as exc:
         return False, f"cannot be parsed: {exc}"
 
-    # The module must DEFINE preflight(rows, ctx). Predicate helpers (other defs,
+    # The module must DEFINE preflight(streams, ctx). Predicate helpers (other defs,
     # constant assignments) are allowed alongside it; top-level side effects are not.
     func: ast.FunctionDef | ast.AsyncFunctionDef | None = None
     for stmt in tree.body:
@@ -131,10 +132,10 @@ def check_preprocess_purity(source: str) -> tuple[bool, str]:
             )
 
     if func is None:
-        return False, f"must define a {REQUIRED_FUNC}(rows, ctx) function"
+        return False, f"must define a {REQUIRED_FUNC}(streams, ctx) function"
     positional = func.args.posonlyargs + func.args.args
     if len(positional) != 2:
-        return False, f"{REQUIRED_FUNC} must take exactly two parameters (rows, ctx)"
+        return False, f"{REQUIRED_FUNC} must take exactly two parameters (streams, ctx)"
 
     visitor = _PurityVisitor()
     visitor.visit(tree)
@@ -158,7 +159,7 @@ def validate_preprocess(source: str | None) -> None:
 
 
 def compile_preprocess(source: str | None) -> Callable[..., Any] | None:
-    """Validate then compile a preflight script into a ``preflight(rows, ctx)`` callable.
+    """Validate then compile a preflight script into a ``preflight(streams, ctx)`` callable.
 
     Returns None for a blank/absent script (no hook — always continue). The compiled callable
     returns a verdict (normalized by :func:`provisa.mv.preflight.to_verdict`), never rows. It

@@ -18570,10 +18570,10 @@
   priority: MAY
   type: structural
   unit_test: false
-  unit_test_reason: The feature lives entirely in the Java JDBC driver (a separate Maven module);
-    its unit tests are JUnit tests under jdbc-driver/src/test/java/ (AwsKmsProviderTest,
-    AzureKmsProviderTest, GcpKmsProviderTest, KmsProvidersTest, EnvelopeDecryptorTest), not the
-    Python tests/unit/ tree. No Python-mockable interface exists.
+  unit_test_reason: The feature lives entirely in the Java JDBC driver (a separate Maven module); its
+    unit tests are JUnit tests under jdbc-driver/src/test/java/ (AwsKmsProviderTest, AzureKmsProviderTest,
+    GcpKmsProviderTest, KmsProvidersTest, EnvelopeDecryptorTest), not the Python tests/unit/ tree. No
+    Python-mockable interface exists.
   description: Client-side decryption in the JDBC driver. Provisa backend passes encrypted blobs through
     without decrypting. Driver decrypts result columns flagged as encrypted via column metadata using
     EncryptionService (Java) configured via connection URL params (kms_provider, kms_key_arn). DEK cached
@@ -26931,10 +26931,10 @@
     HTTP (streamed request/response), gRPC (bidi-stream) — all conforming to ONE streaming input→output
     contract: a stream of schema-declared rows in, a stream of schema-declared rows out; pure; no side
     effects; schema-validated both ends. NDJSON default framing (Arrow-stream for throughput is a future
-    framing under the same contract). The toolkit owns framing, streaming, and fail-loud schema
-    validation; the author implements only the transform. Extends the in-process REQ-957 preprocess hook
-    to external processors reachable over any transport. A declarative spec (transport + address)
-    selects the adapter via provisa.processors.build_adapter.'
+    framing under the same contract). The toolkit owns framing, streaming, and fail-loud schema validation;
+    the author implements only the transform. Extends the in-process REQ-957 preprocess hook to external
+    processors reachable over any transport. A declarative spec (transport + address) selects the adapter
+    via provisa.processors.build_adapter.'
   use_case: Pluggable transport adapters allow external processors to be invoked over any mechanism (shell,
     HTTP, gRPC) while maintaining a single streaming contract and declarative schema validation.
   code:
@@ -32651,12 +32651,18 @@
   category: Freshness / Change Detection
   priority: SHOULD
   type: behavioral
-  scenario: |
-    Given a source with sentinel_path pointing at a zero-byte marker and change_signal=probe, probe_type=hash
-    When the poll node evaluates and the marker's mtime/size (or ETag/Last-Modified) is unchanged
+  scenario: 'Given a source with sentinel_path pointing at a zero-byte marker and change_signal=probe,
+    probe_type=hash
+
+    When the poll node evaluates and the marker''s mtime/size (or ETag/Last-Modified) is unchanged
+
     Then the freshness token equals the stored baseline and no data is pulled
+
     And when the producer touches the marker the token changes, so the node re-pulls from the source
+
     And a missing/unreachable marker yields a None token, degrading the node to its TTL cadence
+
+    '
   description: 'A new freshness PROBE transport whose opaque token comes from a zero-byte SENTINEL marker
     rather than from scanning the data. Reuses the REQ-855 gate unchanged: freshness_token() -> str |
     None (provisa/events/probes.py:126) compared by equality; a new sentinel drop changes the token ->
@@ -32694,13 +32700,19 @@
   category: Freshness / Change Detection
   priority: SHOULD
   type: behavioral
-  scenario: |
-    Given a source with change_signal=signal, load-protected under REQ-1141
+  scenario: 'Given a source with change_signal=signal, load-protected under REQ-1141
+
     When a data-less trigger arrives (a Kafka control message or an HTTP webhook), carrying no rows
+
     Then the change-trigger token for that source bumps, marking its snapshot stale
+
     And the load-protected scheduler treats the bumped token as a changed probe and re-pulls the
+
     rows from the source of truth on its own schedule (deferred to the off-peak window)
+
     And with no trigger the token is unchanged, so the scheduler pulls nothing
+
+    '
   description: 'A new change_signal PUSH variant, `signal`, for a DATA-LESS external trigger (a Kafka
     control message on a topic, or an HTTP webhook) that says "the source changed / refresh now" WITHOUT
     carrying the rows. Distinct from the existing CDC push signals (kafka/debezium/native, provisa/core/change_signal.py:29)
@@ -32869,85 +32881,90 @@
   - REQ-898
 - id: REQ-1150
   status: complete
-  group: "11. Platform, Infrastructure & Delivery"
+  group: 11. Platform, Infrastructure & Delivery
   category: Embedded CLI Startup
   priority: SHOULD
   type: behavioral
-  description: >-
-    The `provisa run` console command signals startup completion by polling the
-    API /ready endpoint (the warm gate, not /health), prints a "✓ Provisa is ready
-    — <url>" completion line, and opens the browser automatically with `?tour=1`
-    for a `--demo` run (so the guided tour auto-starts). A new `--no-browser` flag
-    opts out of the open while still printing the URL. Failures and 300s timeouts
-    are best-effort and non-fatal: the servers keep running, and the URL is printed
-    manually as a fallback.
-  use_case: >-
-    Previously `provisa run` printed URLs then served forever with no completion
-    signal and no browser open, so `--demo` appeared stuck even though the app was
-    up. Readiness polling, completion line, and browser auto-open provide
-    immediate visual feedback that the system is ready and reachable.
+  description: 'The `provisa run` console command signals startup completion by polling the API /ready
+    endpoint (the warm gate, not /health), prints a "✓ Provisa is ready — <url>" completion line, and
+    opens the browser automatically with `?tour=1` for a `--demo` run (so the guided tour auto-starts).
+    A new `--no-browser` flag opts out of the open while still printing the URL. Failures and 300s timeouts
+    are best-effort and non-fatal: the servers keep running, and the URL is printed manually as a fallback.'
+  use_case: Previously `provisa run` printed URLs then served forever with no completion signal and no
+    browser open, so `--demo` appeared stuck even though the app was up. Readiness polling, completion
+    line, and browser auto-open provide immediate visual feedback that the system is ready and reachable.
   code:
-    - provisa/cli.py
-  since: "2026-07"
+  - provisa/cli.py
+  since: 2026-07
   unit_test: false
-  unit_test_reason: >-
-    Browser auto-open and readiness-poll behavior span the `provisa run` process, a live
-    /ready endpoint, a 300s poll loop, and an OS browser invocation — no in-process seam to
-    unit-test. Verified manually on a live launch (`provisa run --demo` / `--no-browser`).
-  scenario: |
-    Given `provisa run` is launched with --demo
+  unit_test_reason: Browser auto-open and readiness-poll behavior span the `provisa run` process, a live
+    /ready endpoint, a 300s poll loop, and an OS browser invocation — no in-process seam to unit-test.
+    Verified manually on a live launch (`provisa run --demo` / `--no-browser`).
+  scenario: 'Given `provisa run` is launched with --demo
+
     When the embedded API and UI servers start
+
     Then _announce_ready polls /ready until 200 or 300s timeout
+
     And once /ready returns 200, "✓ Provisa is ready — http://127.0.0.1:3000/?tour=1" is printed
+
     And the browser opens to that URL automatically
+
     And the guided tour starts (App.tsx reads ?tour=1)
 
+
     Given `provisa run --no-browser` is launched
+
     When the servers become ready
+
     Then the completion line is still printed
+
     And no browser opens
+
     And the user can manually open the URL
 
+
     Given a failure during readiness polling (network error, etc.)
+
     When the failure occurs
+
     Then it is caught and silently logged
+
     And the URL is printed as a fallback
+
     And the servers keep running
+
+    '
 - id: REQ-1159
   status: proposed
-  group: "5. Query Languages, Compilation & Operations"
+  group: 5. Query Languages, Compilation & Operations
   category: Extensible Functions
   priority: MUST
   type: behavioral
-  description: >-
-    Registered commands (tracked functions) MUST be composable INLINE within a larger
-    SQL statement — e.g. `SELECT o.id, e.embedding FROM orders o JOIN enrich_cmd('main.public.orders')
-    e ON o.id = e.id` — not only as a standalone top-level `SELECT * FROM fn(args)` /
-    `SELECT fn(args)`, and this MUST work across ALL client-facing surfaces (GraphQL, pgwire
-    SQL, REST, MCP run_sql, Arrow Flight, Provisa gRPC, Bolt/Cypher), routed through the one
-    shared invoke_tracked_function executor and the shared _govern_and_route /
-    _govern_and_route_compiled pipeline. Current gap: provisa/pgwire/function_call.py
-    detect_sql_function_call returns the FIRST Anonymous node match and
-    maybe_invoke_registered_function runs only that command, returning its rows as the whole
-    result, so a command embedded in a join/CTE within a larger statement misfires. Target:
-    a command-localization rewrite pass inside the shared pipeline that (a) detects every
-    command call in the parsed tree, (b) executes each to a local relation typed by the
-    command's declared output dataset contract, substituting the call site via a size-adaptive
-    mechanism (VALUES CTE below a row threshold, registered Arrow table above), (c) forces
-    local federation execution (Route.ENGINE — a command cannot be pushed to a remote source),
-    (d) applies governance at the correct DEFINER/INVOKER identity for the command's input
-    plus the caller's governance for the outer SQL, and (e) validates rows in/out against the
-    command's declared input/output dataset schema (fail-loud). Prerequisite: a canonical
-    per-dataset contract — one or more scalar (column_value) args plus one or more TYPED input
-    datasets (result_set/table_ref args, each carrying an ordered relational field-list) and
-    exactly one TYPED output dataset; canonical field-list is the source of truth (single
-    GraphQL-scalar vocabulary), with JSON Schema and GraphQL SDL as edge projections (seed-in /
-    render-out), not stored truth.
-  use_case: >-
-    A steward composes a governed external transform directly in ordinary SQL joined against
-    federated tables, on any surface, and — because the command declares and validates its
-    input/output dataset columns — column-level lineage can close across the opaque RPC
-    boundary via taint-closure splicing at the function node.
+  description: 'Registered commands (tracked functions) MUST be composable INLINE within a larger SQL
+    statement — e.g. `SELECT o.id, e.embedding FROM orders o JOIN enrich_cmd(''main.public.orders'') e
+    ON o.id = e.id` — not only as a standalone top-level `SELECT * FROM fn(args)` / `SELECT fn(args)`,
+    and this MUST work across ALL client-facing surfaces (GraphQL, pgwire SQL, REST, MCP run_sql, Arrow
+    Flight, Provisa gRPC, Bolt/Cypher), routed through the one shared invoke_tracked_function executor
+    and the shared _govern_and_route / _govern_and_route_compiled pipeline. Current gap: provisa/pgwire/function_call.py
+    detect_sql_function_call returns the FIRST Anonymous node match and maybe_invoke_registered_function
+    runs only that command, returning its rows as the whole result, so a command embedded in a join/CTE
+    within a larger statement misfires. Target: a command-localization rewrite pass inside the shared
+    pipeline that (a) detects every command call in the parsed tree, (b) executes each to a local relation
+    typed by the command''s declared output dataset contract, substituting the call site via a size-adaptive
+    mechanism (VALUES CTE below a row threshold, registered Arrow table above), (c) forces local federation
+    execution (Route.ENGINE — a command cannot be pushed to a remote source), (d) applies governance at
+    the correct DEFINER/INVOKER identity for the command''s input plus the caller''s governance for the
+    outer SQL, and (e) validates rows in/out against the command''s declared input/output dataset schema
+    (fail-loud). Prerequisite: a canonical per-dataset contract — one or more scalar (column_value) args
+    plus one or more TYPED input datasets (result_set/table_ref args, each carrying an ordered relational
+    field-list) and exactly one TYPED output dataset; canonical field-list is the source of truth (single
+    GraphQL-scalar vocabulary), with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out),
+    not stored truth.'
+  use_case: A steward composes a governed external transform directly in ordinary SQL joined against federated
+    tables, on any surface, and — because the command declares and validates its input/output dataset
+    columns — column-level lineage can close across the opaque RPC boundary via taint-closure splicing
+    at the function node.
   code:
   - provisa/pgwire/_pipeline.py
   - provisa/pgwire/function_call.py
@@ -32965,43 +32982,37 @@
   - REQ-940
 - id: REQ-1160
   status: proposed
-  group: "6. Data Lineage & Provenance"
+  group: 6. Data Lineage & Provenance
   category: Column-Level Lineage Graph
   priority: MUST
   type: behavioral
-  description: >-
-    From a SINGLE SQL statement — including one or more inline-composed commands (REQ-1159) —
-    the platform MUST be able to produce a complete column-level lineage DAG for the entire
-    view, from source inputs to final output columns, with command nodes as first-class,
-    contract-validated (non-opaque) nodes in the graph. Computable STATICALLY from the view
-    definition plus each command's declared input/output dataset contract (no execution
-    required); optionally reconciled with runtime refresh-version records (REQ-862 spans /
-    input versions) to stamp which version flowed. Requires extending the lineage resolver
-    from the current leaf-collapsed output-column -> source-column list
-    (provisa/lineage/columns.py resolve_column_lineage returns flat ColumnDerivation leaves,
-    discarding intermediate nodes) to a full node+edge graph that preserves intermediate
-    relations (CTEs, subqueries, joins). Each inline command, once localized into a typed
-    CTE/Arrow relation, contributes real edges: taint-closure by default (each declared
-    output column derives from ALL declared input columns) or precise per-column edges when
-    declared; command nodes are visually distinct opaque-transform boundaries tagged with the
-    command name and its contract. Two grains from one graph: relation-level zoom-out and
-    column-level drill-in. New surfaces (none exist today — column lineage is currently only
-    OTel span attributes emitted at MV refresh): an API that takes a view/statement and
-    returns graph JSON (nodes + edges), and a UI DAG visualization. Each transform (edge) MUST
-    be NAMED and/or DEFINED, not left as an opaque SQL-expression string: the resolver decomposes
-    each projection expression and matches every operation against the union vocabulary of SQL
-    operators/standard functions (SQLGlot expression nodes), engine built-in scalar functions,
-    and registered commands (projected into pg_proc/routines, each carrying its declared
-    contract) — so e.g. lat,lng <- city, state is labeled as the chain "concat/+ (SQL op) ->
-    geocode (command, contract as its def)". This is a sub-DAG inside the edge: the column-level
-    graph states the derivation, and zooming into an edge reveals the named operation chain
-    (expression-level command nodes reuse the same contract / taint-closure machinery). A
-    transform matching no known op is itself a signal worth flagging.
-  use_case: >-
-    A steward inspects the end-to-end derivation of any view's output columns — across SQL and
-    opaque command boundaries alike — as a rendered DAG; the visualization doubles as a
-    discipline mirror, since an over-declared "frankenstein" command renders as a wide fan-in
-    node, making sloppy contracts visible.
+  description: 'From a SINGLE SQL statement — including one or more inline-composed commands (REQ-1159)
+    — the platform MUST be able to produce a complete column-level lineage DAG for the entire view, from
+    source inputs to final output columns, with command nodes as first-class, contract-validated (non-opaque)
+    nodes in the graph. Computable STATICALLY from the view definition plus each command''s declared input/output
+    dataset contract (no execution required); optionally reconciled with runtime refresh-version records
+    (REQ-862 spans / input versions) to stamp which version flowed. Requires extending the lineage resolver
+    from the current leaf-collapsed output-column -> source-column list (provisa/lineage/columns.py resolve_column_lineage
+    returns flat ColumnDerivation leaves, discarding intermediate nodes) to a full node+edge graph that
+    preserves intermediate relations (CTEs, subqueries, joins). Each inline command, once localized into
+    a typed CTE/Arrow relation, contributes real edges: taint-closure by default (each declared output
+    column derives from ALL declared input columns) or precise per-column edges when declared; command
+    nodes are visually distinct opaque-transform boundaries tagged with the command name and its contract.
+    Two grains from one graph: relation-level zoom-out and column-level drill-in. New surfaces (none exist
+    today — column lineage is currently only OTel span attributes emitted at MV refresh): an API that
+    takes a view/statement and returns graph JSON (nodes + edges), and a UI DAG visualization. Each transform
+    (edge) MUST be NAMED and/or DEFINED, not left as an opaque SQL-expression string: the resolver decomposes
+    each projection expression and matches every operation against the union vocabulary of SQL operators/standard
+    functions (SQLGlot expression nodes), engine built-in scalar functions, and registered commands (projected
+    into pg_proc/routines, each carrying its declared contract) — so e.g. lat,lng <- city, state is labeled
+    as the chain "concat/+ (SQL op) -> geocode (command, contract as its def)". This is a sub-DAG inside
+    the edge: the column-level graph states the derivation, and zooming into an edge reveals the named
+    operation chain (expression-level command nodes reuse the same contract / taint-closure machinery).
+    A transform matching no known op is itself a signal worth flagging.'
+  use_case: A steward inspects the end-to-end derivation of any view's output columns — across SQL and
+    opaque command boundaries alike — as a rendered DAG; the visualization doubles as a discipline mirror,
+    since an over-declared "frankenstein" command renders as a wide fan-in node, making sloppy contracts
+    visible.
   code:
   - provisa/lineage/columns.py
   - provisa/lineage/versions.py
@@ -33011,43 +33022,38 @@
   target: 2026-Q4
   competitive_position:
     status: ahead
-    rationale: Column-level, definitional (config-derived, not crawler-based), transparent
-      through opaque inline transforms — versus peers offering table-level or externally
-      batch-crawled lineage only.
+    rationale: Column-level, definitional (config-derived, not crawler-based), transparent through opaque
+      inline transforms — versus peers offering table-level or externally batch-crawled lineage only.
   related_reqs:
   - REQ-1159
   - REQ-862
 - id: REQ-1161
   status: proposed
-  group: "6. Data Lineage & Provenance"
+  group: 6. Data Lineage & Provenance
   category: Federation-Wide Provenance Graph
   priority: MUST
   type: behavioral
-  description: >-
-    The platform MUST be able to merge every per-view / per-statement column-level lineage DAG
-    (REQ-1160) into ONE federation-wide provenance graph — spanning all registered views, MVs,
-    and inline-composed commands across all sources — by unioning nodes on canonical resolved
-    dataset identity + column name. Base source columns -> every derived column everywhere,
-    with command boundaries transparent via their declared contracts. Node key = resolved
-    dataset identity (physical/semantic, via the centralized dataset identity service, never
-    ad-hoc string comparison — docs/dataset-handling-standards.md "Dataset Identity"): if two
-    references to the same dataset do not resolve to one node, the merged graph fragments
-    silently, which MUST NOT happen. Computed whole but RENDERED progressively: relation-level
-    is the default view, column-level on drill-in, with focus/scoping tools required
-    (ego-graph around a node, upstream-only / downstream-only slice, domain filter) — a literal
-    full-graph render is unusable at federation scale. Built INCREMENTALLY: recompute a view's
-    sub-DAG on its definition change and union incrementally; never rebuild the entire graph.
-    CYCLE handling is detect + CHARACTERIZE + surface, NOT auto-reject: a cycle that crosses a
-    materialization boundary (an MV reading a prior snapshot of a downstream MV) is a LEGAL
-    time-lagged feedback loop — the snapshot is the version boundary that makes it well-defined;
-    a cycle with NO materialization boundary on it is the likely design error (no evaluation
-    order, no stable value). The platform describes the distinction and surfaces it (in the
-    graph and as a diagnostic) for operator judgment; it does not unilaterally reject.
-  use_case: >-
-    An operator runs impact analysis (change a source column, see everything affected across
-    every domain), traces any derived column back to its sources across the whole federation,
-    and inspects circular definitions with enough context to judge whether a cycle is an
-    intended time-lagged feedback loop or a design error.
+  description: 'The platform MUST be able to merge every per-view / per-statement column-level lineage
+    DAG (REQ-1160) into ONE federation-wide provenance graph — spanning all registered views, MVs, and
+    inline-composed commands across all sources — by unioning nodes on canonical resolved dataset identity
+    + column name. Base source columns -> every derived column everywhere, with command boundaries transparent
+    via their declared contracts. Node key = resolved dataset identity (physical/semantic, via the centralized
+    dataset identity service, never ad-hoc string comparison — docs/dataset-handling-standards.md "Dataset
+    Identity"): if two references to the same dataset do not resolve to one node, the merged graph fragments
+    silently, which MUST NOT happen. Computed whole but RENDERED progressively: relation-level is the
+    default view, column-level on drill-in, with focus/scoping tools required (ego-graph around a node,
+    upstream-only / downstream-only slice, domain filter) — a literal full-graph render is unusable at
+    federation scale. Built INCREMENTALLY: recompute a view''s sub-DAG on its definition change and union
+    incrementally; never rebuild the entire graph. CYCLE handling is detect + CHARACTERIZE + surface,
+    NOT auto-reject: a cycle that crosses a materialization boundary (an MV reading a prior snapshot of
+    a downstream MV) is a LEGAL time-lagged feedback loop — the snapshot is the version boundary that
+    makes it well-defined; a cycle with NO materialization boundary on it is the likely design error (no
+    evaluation order, no stable value). The platform describes the distinction and surfaces it (in the
+    graph and as a diagnostic) for operator judgment; it does not unilaterally reject.'
+  use_case: An operator runs impact analysis (change a source column, see everything affected across every
+    domain), traces any derived column back to its sources across the whole federation, and inspects circular
+    definitions with enough context to judge whether a cycle is an intended time-lagged feedback loop
+    or a design error.
   code:
   - provisa/lineage/
   - provisa/api/
@@ -33055,8 +33061,8 @@
   target: 2027-Q1
   competitive_position:
     status: ahead
-    rationale: A live, column-level, cross-source, command-transparent provenance map of the
-      entire federation — versus catalogs offering only table-level or batch-crawled lineage.
+    rationale: A live, column-level, cross-source, command-transparent provenance map of the entire federation
+      — versus catalogs offering only table-level or batch-crawled lineage.
   related_reqs:
   - REQ-1160
   - REQ-640
@@ -33067,23 +33073,21 @@
   category: Materialization Store
   priority: SHOULD
   type: behavioral
-  description: >-
-    A materialized view's time-travel capability is a property of its DEFINITION, guaranteed on any
-    materializing substrate (Iceberg, PostgreSQL, DuckDB, ...). Maintenance is APPEND-ONLY — a version,
-    once written, is never updated or deleted (no valid_to write-back), so it works on engines that
-    cannot cheaply UPDATE a federated store. Each refresh appends one of two ways: `snapshot` appends
+  description: 'A materialized view''s time-travel capability is a property of its DEFINITION, guaranteed
+    on any materializing substrate (Iceberg, PostgreSQL, DuckDB, ...). Maintenance is APPEND-ONLY — a
+    version, once written, is never updated or deleted (no valid_to write-back), so it works on engines
+    that cannot cheaply UPDATE a federated store. Each refresh appends one of two ways: `snapshot` appends
     the whole fresh dataset stamped with system time; `delta` appends only the rows the ENGINE computes
-    as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys — never folded
-    row-by-row in Provisa. "As of" history is DERIVED at read time from the immutable append log (latest
-    batch for snapshot; a ROW_NUMBER window per business key for delta), so consumer-facing `as_of`
-    semantics are identical across every substrate. On Iceberg each append is exactly one snapshot
-    (REQ-844). Declared end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table
-    -> MVDefinition.bitemporal -> refresh_mv) with a UI control in TableEditForm. NOTE: exposing `as_of`
-    as a query-language argument that routes bitemporal-MV reads through reconstruction is tracked as
-    REQ-1163 (the consumer query surface, analogous to REQ-372 for sources).
-  use_case: >-
-    Time-travel previously existed only on Iceberg; when Iceberg was unreachable the substrate degraded
-    to replace/append/upsert, losing history. Append-only bitemporal materialization makes time-travel
+    as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys — never folded row-by-row
+    in Provisa. "As of" history is DERIVED at read time from the immutable append log (latest batch for
+    snapshot; a ROW_NUMBER window per business key for delta), so consumer-facing `as_of` semantics are
+    identical across every substrate. On Iceberg each append is exactly one snapshot (REQ-844). Declared
+    end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table -> MVDefinition.bitemporal
+    -> refresh_mv) with a UI control in TableEditForm. NOTE: exposing `as_of` as a query-language argument
+    that routes bitemporal-MV reads through reconstruction is tracked as REQ-1163 (the consumer query
+    surface, analogous to REQ-372 for sources).'
+  use_case: Time-travel previously existed only on Iceberg; when Iceberg was unreachable the substrate
+    degraded to replace/append/upsert, losing history. Append-only bitemporal materialization makes time-travel
     available on any substrate — the same definition retargets across engines without remodeling.
   code:
   - provisa/mv/bitemporal.py
@@ -33101,7 +33105,7 @@
   - tests/unit/test_bitemporal_pg.py
   - tests/unit/test_bitemporal_iceberg.py
   - tests/unit/test_bitemporal_refresh_e2e.py
-  since: "2026-07"
+  since: 2026-07
   scenario: 'Given a materialized view declared bitemporal (snapshot or delta) on a business key
 
     When it is refreshed repeatedly as rows are inserted, updated, and deleted
@@ -33111,10 +33115,9 @@
 
     '
   integration_test: required
-  integration_test_reason: >-
-    Covered — tests/integration/test_bitemporal_http_e2e drives the live app; registerTable (create)
-    persists the config, rebuildSchemas reloads MVDefinition.bitemporal, refresh materializes the
-    append log into an embedded-DuckDB store, and /data/sql reads it back.
+  integration_test_reason: Covered — tests/integration/test_bitemporal_http_e2e drives the live app; registerTable
+    (create) persists the config, rebuildSchemas reloads MVDefinition.bitemporal, refresh materializes
+    the append log into an embedded-DuckDB store, and /data/sql reads it back.
   related_reqs:
   - REQ-372
   - REQ-844
@@ -33125,24 +33128,21 @@
   category: Materialization Store
   priority: SHOULD
   type: behavioral
-  since: "2026-07"
-  description: >-
-    A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers get
-    current state by default and can travel in time. (1) Current-by-default — a bitemporal materialized
-    view's inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction
-    over the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT
-    reconstructed state (latest batch for snapshot; latest-version-per-business-key window dropping
-    tombstones for delta), never the raw log. (2) Time travel — a request-level `X-Provisa-As-Of`
-    header (validated to a safe SQL timestamp literal by parse_as_of; malformed → HTTP 400) applies to
-    the whole query: _prepare_compiled overlays each bitemporal view's expansion entry with an as-of
-    reconstruction over its append log (as_of_view_map + view_read_sql(ts)), giving identical
-    consumer-facing as-of semantics across every substrate. A whole-query as-of context (like a
-    bitemporal system time) rather than a per-field arg keeps it out of the GraphQL schema. Analogous
-    to REQ-372 (`as_of` for Iceberg/Delta SOURCES).
-  use_case: >-
-    Without routing reads through reconstruction a bitemporal MV read would surface all historical
-    versions instead of current state. Current-by-default makes bitemporal MVs usable; the
-    X-Provisa-As-Of header adds opt-in, whole-query time travel.
+  since: 2026-07
+  description: 'A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers
+    get current state by default and can travel in time. (1) Current-by-default — a bitemporal materialized
+    view''s inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction
+    over the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed
+    state (latest batch for snapshot; latest-version-per-business-key window dropping tombstones for delta),
+    never the raw log. (2) Time travel — a request-level `X-Provisa-As-Of` header (validated to a safe
+    SQL timestamp literal by parse_as_of; malformed → HTTP 400) applies to the whole query: _prepare_compiled
+    overlays each bitemporal view''s expansion entry with an as-of reconstruction over its append log
+    (as_of_view_map + view_read_sql(ts)), giving identical consumer-facing as-of semantics across every
+    substrate. A whole-query as-of context (like a bitemporal system time) rather than a per-field arg
+    keeps it out of the GraphQL schema. Analogous to REQ-372 (`as_of` for Iceberg/Delta SOURCES).'
+  use_case: Without routing reads through reconstruction a bitemporal MV read would surface all historical
+    versions instead of current state. Current-by-default makes bitemporal MVs usable; the X-Provisa-As-Of
+    header adds opt-in, whole-query time travel.
   code:
   - provisa/api/app_rebuild.py
   - provisa/api/app.py
@@ -33154,12 +33154,11 @@
   - tests/unit/test_bitemporal_read_integration.py
   - tests/integration/test_bitemporal_http_e2e.py
   integration_test: required
-  integration_test_reason: >-
-    Covered — test_bitemporal_read_integration drives the real refresh -> log -> reconstruction ->
-    expand_views -> engine chain (current + as-of, snapshot + delta), and test_bitemporal_http_e2e
-    drives the LIVE app end to end: it materializes a bitemporal view into an embedded-DuckDB store
-    and reads it through /data/sql current-by-default and via X-Provisa-As-Of (far-future -> current,
-    pre-refresh -> empty, malformed -> HTTP 400).
+  integration_test_reason: 'Covered — test_bitemporal_read_integration drives the real refresh -> log
+    -> reconstruction -> expand_views -> engine chain (current + as-of, snapshot + delta), and test_bitemporal_http_e2e
+    drives the LIVE app end to end: it materializes a bitemporal view into an embedded-DuckDB store and
+    reads it through /data/sql current-by-default and via X-Provisa-As-Of (far-future -> current, pre-refresh
+    -> empty, malformed -> HTTP 400).'
   scenario: 'Given a materialized bitemporal view that has been refreshed across several changes
 
     When it is queried with no header, then with X-Provisa-As-Of set to a past time
@@ -33179,24 +33178,21 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Declarative `entity` and `fact` shortcuts that LOWER to the existing MV / bitemporal /
-    relationship primitives — the two constructs both a star schema and a Data Vault are built from,
-    kept methodology-neutral. (1) `entity` — a keyed, deduplicated, optionally-historized projection
-    of a source; lowers to a materialized view (view_sql projecting the key + attributes) with
-    materialize=true, and when history is requested a bitemporal MV (REQ-1162): history=scd2 →
-    mode=delta, history=snapshot → mode=snapshot, keyed on the business key. Serves a star DIMENSION
-    (SCD1/SCD2) and a Data Vault HUB+SATELLITE. (2) `fact` — join to entity keys, reduce to a declared
-    grain, aggregate measures; lowers to a materialized view (SELECT grain + dimension FK columns +
-    aggregated measures, GROUP BY grain+FKs) plus registered relationships to the entities. Serves a
-    star FACT and a DV LINK (a degenerate fact of keys). The lowering is pure (a spec → the same
-    registration a user would hand-write), so the whole warehouse retargets across engines as IR — the
-    model GENERATES the star/vault, it does not decide the methodology (grain, conformance, SCD choice
-    stay the modeler's).
-  use_case: >-
-    Star schemas and Data Vaults are compositions of a tiny primitive set (dimension/fact, hub/
-    satellite/link). First-class entity/fact sugar lets a modeler declare them once and have Provisa
-    generate the underlying portable MV definitions, instead of hand-writing each view_sql + flags.
+  description: 'Declarative `entity` and `fact` shortcuts that LOWER to the existing MV / bitemporal /
+    relationship primitives — the two constructs both a star schema and a Data Vault are built from, kept
+    methodology-neutral. (1) `entity` — a keyed, deduplicated, optionally-historized projection of a source;
+    lowers to a materialized view (view_sql projecting the key + attributes) with materialize=true, and
+    when history is requested a bitemporal MV (REQ-1162): history=scd2 → mode=delta, history=snapshot
+    → mode=snapshot, keyed on the business key. Serves a star DIMENSION (SCD1/SCD2) and a Data Vault HUB+SATELLITE.
+    (2) `fact` — join to entity keys, reduce to a declared grain, aggregate measures; lowers to a materialized
+    view (SELECT grain + dimension FK columns + aggregated measures, GROUP BY grain+FKs) plus registered
+    relationships to the entities. Serves a star FACT and a DV LINK (a degenerate fact of keys). The lowering
+    is pure (a spec → the same registration a user would hand-write), so the whole warehouse retargets
+    across engines as IR — the model GENERATES the star/vault, it does not decide the methodology (grain,
+    conformance, SCD choice stay the modeler''s).'
+  use_case: Star schemas and Data Vaults are compositions of a tiny primitive set (dimension/fact, hub/
+    satellite/link). First-class entity/fact sugar lets a modeler declare them once and have Provisa generate
+    the underlying portable MV definitions, instead of hand-writing each view_sql + flags.
   code:
   - provisa/mv/modeling.py
   tests:
@@ -33212,67 +33208,99 @@
   priority: MUST
   type: constraint
   target: 2026-Q3
-  description: >-
-    The inline MV preprocess hook (REQ-957) is RESCOPED from a row transform (rows → rows)
-    to a PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a
-    mutated dataset. Row transforms are explicitly out of scope — they belong in SQL (engine
-    pushdown) or external processors (REQ-940). Rationale: a gate does not mutate the landed
-    set, so it does not feed the content hash (REQ-964), eliminating the justification for
-    full in-memory materialization and the max_rows cap (SKIPPED_SIZE) that prevents scaling
-    to large sources. Accepted preflight transports are SQL pushdown (for SQL-expressible
-    checks, evaluated engine-side as probe queries) and Python+Arrow (for non-SQL checks,
-    evaluated in-process with columnar batches). gRPC is out of scope — it only serves
-    out-of-process/remote validators, which introduces unnecessary overhead (separate process,
-    wire framing) disproportionate to a preflight gate's simplicity and scale requirements.
-  use_case: >-
-    Rescoping from stateful row transform to stateless verdict gate simplifies the contract,
-    improves memory efficiency, and allows evaluation to scale via engine pushdown (SQL
-    assertions) or streaming short-circuit (non-SQL predicates) rather than buffering the
-    entire dataset in memory before applying the gate.
-  scenario: |
-    Given an MV node with a preprocess hook, SQL-expressible or not
+  description: 'The inline MV preprocess hook (REQ-957) is RESCOPED from a row transform (rows → rows)
+    to a PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a mutated dataset.
+    Row transforms are explicitly out of scope — they belong in SQL (engine pushdown) or external processors
+    (REQ-940). Rationale: a gate does not mutate the landed set, so it does not feed the content hash
+    (REQ-964), eliminating the justification for full in-memory materialization and the max_rows cap (SKIPPED_SIZE)
+    that prevents scaling to large sources. Accepted preflight transports are SQL pushdown (for SQL-expressible
+    checks, evaluated engine-side as probe queries) and Python+Arrow (for non-SQL checks, evaluated in-process
+    with columnar batches). gRPC is out of scope — it only serves out-of-process/remote validators, which
+    introduces unnecessary overhead (separate process, wire framing) disproportionate to a preflight gate''s
+    simplicity and scale requirements. The Python preflight hook input contract is dict[str, pyarrow.RecordBatchReader],
+    keyed by INPUT NODE NAME, providing lazy Arrow streams via FederationEngine.execute_engine_stream.
+    This avoids full materialization of large inputs; the hook consumes batches lazily and short-circuits
+    early. If an engine lacks EngineCapability.ARROW_STREAM and a preflight is declared, the system fails
+    loud at wiring/boot time (no silent skip, no materialize fallback). The land/generate path remains
+    unchanged, using independent streamed reads.'
+  use_case: Rescoping from stateful row transform to stateless verdict gate simplifies the contract, improves
+    memory efficiency, and allows evaluation to scale via engine pushdown (SQL assertions) or streaming
+    short-circuit (non-SQL predicates) rather than buffering the entire dataset in memory before applying
+    the gate. Providing lazy Arrow streams as input ensures the hook can evaluate large datasets without
+    materializing them into Python dicts.
+  scenario: 'Given an MV node with a Python preflight hook and an engine supporting ARROW_STREAM
+
     When the node is claimed and produce yields rows
+
     Then preflight evaluation occurs BEFORE landing: (1) if SQL-expressible,
+
     it is pushed down as a probe query (existing _probe_source_count pattern in
+
     provisa/mv/refresh.py) and evaluated engine-side without materializing to Python;
-    (2) if not SQL-expressible, it is evaluated as a streaming predicate over the REQ-940
-    Iterable→Iterator processor contract, short-circuiting early and emitting a verdict
-    without buffering; the verdict gates landing and re-posting, without transforming rows
+
+    (2) if not SQL-expressible, the hook receives dict[str, pyarrow.RecordBatchReader] keyed
+
+    by MV input node names, evaluates batches lazily via FederationEngine.execute_engine_stream,
+
+    short-circuits early, and emits a verdict without buffering; the verdict gates landing
+
+    and re-posting. If ARROW_STREAM is unavailable and preflight is declared, boot fails.
+
+    '
   code:
   - provisa/mv/preprocess.py
+  - provisa/mv/preflight.py
+  - provisa/mv/preflight_sql.py
+  - provisa/mv/preflight_eval.py
   - provisa/mv/refresh.py
+  - provisa/processors/arrow.py
+  - provisa/events/handlers.py
+  - provisa/events/boot.py
   - provisa/events/processor.py
   related_reqs:
   - REQ-957
   - REQ-964
   - REQ-940
   - REQ-939
+  tests:
+  - tests/unit/test_preflight_sql.py
+  - tests/unit/test_preflight_verdict.py
+  - tests/unit/test_preflight_refresh.py
+  - tests/unit/test_processor_arrow.py
+  - tests/unit/test_live_core_loop.py
+  - tests/integration/test_preflight_streaming.py
+  - tests/e2e/test_preflight_streaming_e2e.py
+  - tests/features/REQ-1165-preflight-streaming.feature
+  - tests/steps/steps_preflight_streaming.py
 - id: REQ-1166
   status: complete
-  since: "2026-07"
+  since: 2026-07
   group: 9. Live Data & Events
   category: Materialization Store
   priority: SHOULD
   type: behavioral
-  description: >-
-    A materialized view can have a REPEATING CALENDAR TRIGGER attached that cuts a calendar-addressable
-    version at each boundary (end-of-day, end-of-week, end-of-month, end-of-quarter, end-of-year, or
-    custom nth-weekday recurrences). Each boundary is named with a stable window_id (e.g., 2026-Q1,
-    2026-W03). The calendar is a TRIGGER/ADDRESSING axis (when a version is cut + its stable
-    identifier), orthogonal to the storage strategy used to preserve history. Full-snapshot-per-boundary
-    is one option (expensive); delta append is preferred for most cases. Composes the calendar boundary
-    trigger (REQ-961/962) and freshness-gated firing (per-input freshness contract).
-  use_case: >-
-    Time-series analytics and auditing require data captured at calendar milestones (e.g., end-of-month
-    snapshots of customer state or materialized reports keyed by fiscal quarter). Calendar-addressed
-    versions enable users to query "what was the state as-of the end of Q1 2026?" independent of the
-    underlying storage mechanism.
-  scenario: |
-    Given a materialized view with a repeating calendar trigger on a named boundary
+  description: A materialized view can have a REPEATING CALENDAR TRIGGER attached that cuts a calendar-addressable
+    version at each boundary (end-of-day, end-of-week, end-of-month, end-of-quarter, end-of-year, or custom
+    nth-weekday recurrences). Each boundary is named with a stable window_id (e.g., 2026-Q1, 2026-W03).
+    The calendar is a TRIGGER/ADDRESSING axis (when a version is cut + its stable identifier), orthogonal
+    to the storage strategy used to preserve history. Full-snapshot-per-boundary is one option (expensive);
+    delta append is preferred for most cases. Composes the calendar boundary trigger (REQ-961/962) and
+    freshness-gated firing (per-input freshness contract).
+  use_case: Time-series analytics and auditing require data captured at calendar milestones (e.g., end-of-month
+    snapshots of customer state or materialized reports keyed by fiscal quarter). Calendar-addressed versions
+    enable users to query "what was the state as-of the end of Q1 2026?" independent of the underlying
+    storage mechanism.
+  scenario: 'Given a materialized view with a repeating calendar trigger on a named boundary
+
     When each calendar boundary is reached and input freshness gates are satisfied
+
     Then a version is cut at that boundary with a stable window_id, and the version is addressable
+
     via that window_id in time-travel reads, regardless of whether the underlying storage is full
+
     snapshot or delta append
+
+    '
   related_reqs:
   - REQ-961
   - REQ-962
@@ -33292,25 +33320,23 @@
   - tests/steps/steps_periodic_snapshot.py
 - id: REQ-1167
   status: complete
-  since: "2026-07"
+  since: 2026-07
   group: 4. Source Connectors
   category: Materialization Store
   priority: MUST
   type: constraint
-  description: >-
-    A calendar-addressed TIME-TRAVEL materialized view MUST use one of the append-only or
-    reconstructible storage strategies (bitemporal snapshot mode, bitemporal delta mode, row-level
-    delta ledger with reconstruct_forward/reverse, or reconstructible PIT with accumulating append).
-    A replace/overwrite MV cannot answer calendar-addressed as-of reads: each refresh overwrites the
-    prior version, so only the current state exists. Snapshot (full dataset per boundary) vs delta
-    (changes only) vs ledger vs reconstructible-PIT is a COST choice, not a capability choice: all
-    four strategies enable time-travel reads, but differ in storage footprint and reconstruction
-    latency. Note: snapshot ⟹ time-travel, but time-travel ⇏ snapshot. Preserved snapshots (REQ-983)
-    are a distinct single-instant frozen form and are NOT a time-travel series.
-  use_case: >-
-    Append-only and reconstructible-storage designs enable calendar-addressed versions to be queried
-    across time. Replace MVs lose all previous versions on refresh, making time-travel impossible.
-    The codebase supports four such strategies; the cost/latency tradeoff is a deployment choice.
+  description: 'A calendar-addressed TIME-TRAVEL materialized view MUST use one of the append-only or
+    reconstructible storage strategies (bitemporal snapshot mode, bitemporal delta mode, row-level delta
+    ledger with reconstruct_forward/reverse, or reconstructible PIT with accumulating append). A replace/overwrite
+    MV cannot answer calendar-addressed as-of reads: each refresh overwrites the prior version, so only
+    the current state exists. Snapshot (full dataset per boundary) vs delta (changes only) vs ledger vs
+    reconstructible-PIT is a COST choice, not a capability choice: all four strategies enable time-travel
+    reads, but differ in storage footprint and reconstruction latency. Note: snapshot ⟹ time-travel, but
+    time-travel ⇏ snapshot. Preserved snapshots (REQ-983) are a distinct single-instant frozen form and
+    are NOT a time-travel series.'
+  use_case: Append-only and reconstructible-storage designs enable calendar-addressed versions to be queried
+    across time. Replace MVs lose all previous versions on refresh, making time-travel impossible. The
+    codebase supports four such strategies; the cost/latency tradeoff is a deployment choice.
   related_reqs:
   - REQ-1162
   - REQ-877
@@ -33327,20 +33353,18 @@
   - tests/integration/test_periodic_snapshot_pipeline.py
 - id: REQ-1168
   status: complete
-  since: "2026-07"
+  since: 2026-07
   group: 9. Live Data & Events
   category: Calendar Boundary
   priority: SHOULD
   type: structural
-  description: >-
-    The Grain enum in provisa/events/calendars.py (daily/weekly/monthly/quarterly/annual) cannot
-    express nth-weekday-of-period recurrences (e.g. "3rd Wednesday of each month"). An NthWeekday
-    recurrence rule (weekday + ordinal 1..5 or -1/last) with occurrence math and a tiling window
-    extends the grain vocabulary; parse_grain_spec resolves a nesting grain OR a recurrence spec
-    ("3WE"/"LFR"), and window_for/next_boundary/PeriodicCalendar accept both.
-  use_case: >-
-    Business snapshots often occur on variable dates within a period (e.g., last business day of
-    month, 3rd Friday for option expiry). The current fixed-grain enum is insufficient.
+  description: The Grain enum in provisa/events/calendars.py (daily/weekly/monthly/quarterly/annual) cannot
+    express nth-weekday-of-period recurrences (e.g. "3rd Wednesday of each month"). An NthWeekday recurrence
+    rule (weekday + ordinal 1..5 or -1/last) with occurrence math and a tiling window extends the grain
+    vocabulary; parse_grain_spec resolves a nesting grain OR a recurrence spec ("3WE"/"LFR"), and window_for/next_boundary/PeriodicCalendar
+    accept both.
+  use_case: Business snapshots often occur on variable dates within a period (e.g., last business day
+    of month, 3rd Friday for option expiry). The current fixed-grain enum is insufficient.
   code:
   - provisa/events/calendars.py
   tests:
@@ -33349,20 +33373,18 @@
   - tests/unit/test_bitemporal_calendar.py
 - id: REQ-1169
   status: complete
-  since: "2026-07"
+  since: 2026-07
   group: 9. Live Data & Events
   category: Calendar Management
   priority: SHOULD
   type: structural
-  description: >-
-    Calendars are declarable through the admin surface and the calendar→MV binding is plumbed end to
-    end. A calendar repository + createCalendar mutation + calendars query define named versioned
-    calendars; the MV snapshot-schedule fields (mv_calendar/mv_grain/mv_allowed_lateness/
-    mv_expected_events/mv_business_day_grain) flow model→registry→event loop; and a collapsible
-    Snapshot Schedule UI panel binds a calendar + grain (nesting or nth-weekday) to a materialized
-    view, making the periodic-snapshot feature reachable without code changes.
-  use_case: >-
-    Without config-level calendar definition and UI binding, repeating snapshots cannot be declared
+  description: Calendars are declarable through the admin surface and the calendar→MV binding is plumbed
+    end to end. A calendar repository + createCalendar mutation + calendars query define named versioned
+    calendars; the MV snapshot-schedule fields (mv_calendar/mv_grain/mv_allowed_lateness/ mv_expected_events/mv_business_day_grain)
+    flow model→registry→event loop; and a collapsible Snapshot Schedule UI panel binds a calendar + grain
+    (nesting or nth-weekday) to a materialized view, making the periodic-snapshot feature reachable without
+    code changes.
+  use_case: Without config-level calendar definition and UI binding, repeating snapshots cannot be declared
     by users without code changes. A user-facing config surface is essential for adoption.
   code:
   - provisa/core/repositories/calendar.py
@@ -33377,21 +33399,57 @@
   category: Table Load Protection
   priority: SHOULD
   type: constraint
-  since: "2026-07"
-  description: >-
-    Load protection (REQ-1141 off-peak window) and snapshotting on the same table can conflict on
-    timing: a snapshot boundary may fall outside the off-peak refresh window. The system emits a
-    WARNING when both load protection and periodic snapshot(s) are configured on one table, alerting
-    the user to potential misalignment between the protection window and snapshot schedule.
-  use_case: >-
-    If a snapshot boundary coincides with a peak-hours-only window, the snapshot cannot fire. This
-    warning surfaces the timing conflict so the user can adjust the protection window or snapshot
+  since: 2026-07
+  description: 'Load protection (REQ-1141 off-peak window) and snapshotting on the same table can conflict
+    on timing: a snapshot boundary may fall outside the off-peak refresh window. The system emits a WARNING
+    when both load protection and periodic snapshot(s) are configured on one table, alerting the user
+    to potential misalignment between the protection window and snapshot schedule.'
+  use_case: If a snapshot boundary coincides with a peak-hours-only window, the snapshot cannot fire.
+    This warning surfaces the timing conflict so the user can adjust the protection window or snapshot
     schedule.
   code:
   - provisa/api/admin/schema_mutation.py
-  scenario: |
-    Given a table with both off-peak load protection AND a periodic snapshot
+  scenario: 'Given a table with both off-peak load protection AND a periodic snapshot
+
     When the configuration is validated (e.g., during MV update)
+
     Then a warning is emitted if the snapshot boundary is incompatible with the off-peak window
+
+    '
   related_reqs:
   - REQ-1141
+- id: REQ-1171
+  status: complete
+  since: 2026-07
+  group: 9. Live Data & Events
+  category: Calendar Boundary
+  priority: SHOULD
+  type: structural
+  description: Snapshot-schedule grains extend to support the full RFC 5545 RRULE recurrence model (Outlook/iCalendar).
+    RRuleRecurrence (a frozen dataclass with normalized RRULE string) is validated via python-dateutil.
+    parse_grain_spec recognizes "RRULE:FREQ=..." or bare "FREQ=..." specs; window_for/next_boundary dispatch
+    to dateutil.rrule-backed occurrence tiling yielding half-open [start,end) windows addressed by opening
+    occurrence (e.g., "2026-02-18-M3WE"). INTERVAL phase anchors to civil epoch 2000-01-01 for query-independent
+    tiling. Bounded rules (COUNT/UNTIL) are rejected; nesting grains and 4-4-5 fiscal calendars unchanged.
+  use_case: Beyond nesting grains (daily..annual) and nth-weekday shorthand, users need full recurrence
+    expressivity for complex business schedules (e.g., "every 3 weeks on Monday, until year-end"). RRULE
+    standardizes this across Outlook, Google Calendar, and iCalendar ecosystems.
+  code:
+  - provisa/events/calendars.py
+  - provisa-ui/src/pages/tables/RecurrenceBuilder.tsx
+  scenario: 'Given a user configures a snapshot schedule with an RRULE grain (e.g., "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR")
+
+    When the MV refresh cycle executes
+
+    Then snapshot boundaries are calculated per the RRULE spec, yielding half-open windows tiled consistently
+
+    And the system rejects RRULE specs with COUNT or UNTIL (unbounded requirement)
+
+    '
+  related_reqs:
+  - REQ-1168
+  - REQ-1169
+  e2e: true
+  e2e_reason: 'RRULE parsing and occurrence tiling behavior is only verifiable end-to-end: UI RecurrenceBuilder
+    emits RRULE string → server parses and registers via parse_grain_spec → event loop tiles occurrences
+    and triggers snapshots on the computed boundaries.'
