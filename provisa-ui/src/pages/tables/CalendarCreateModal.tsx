@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: ea2b813e-2e99-45f8-b5eb-f0b953e3cb1f
 // Canary: placeholder
 //
 // This source code is licensed under the Business Source License 1.1
@@ -30,6 +31,7 @@ import { DateInput, DatePickerInput } from "@mantine/dates";
 import { useCreateCalendar, useDeleteCalendar } from "../../hooks/useAdminQueries";
 import type { CalendarSummary } from "../../hooks/useAdminQueries";
 import { IANA_TIME_ZONES } from "./constants";
+import { presetHolidays, type HolidayPreset } from "./holidayPresets";
 
 // Localized month names for the fiscal-anchor picker (value = 1..12), no per-month i18n keys needed.
 const MONTHS = Array.from({ length: 12 }, (_, i) => ({
@@ -77,6 +79,15 @@ export function CalendarCreateModal({
   const [holidays, setHolidays] = useState<string[]>(ec?.holidays ?? []);
   const [weekend, setWeekend] = useState<string[]>((ec?.weekend ?? [5, 6]).map(String));
   const [error, setError] = useState<string | null>(null);
+  const thisYear = new Date().getFullYear();
+  const [preset, setPreset] = useState<HolidayPreset>("us_federal");
+  const [presetFrom, setPresetFrom] = useState<number>(thisYear);
+  const [presetTo, setPresetTo] = useState<number>(thisYear + 5);
+
+  const addPreset = () => {
+    const dates = presetHolidays(preset, presetFrom, presetTo);
+    setHolidays((prev) => [...new Set([...prev, ...dates])].sort());
+  };
 
   // A retail_445 calendar is unusable without a reference year start; block save until it's set.
   const retailAnchorMissing = baseSystem === "retail_445" && !retailAnchor;
@@ -129,6 +140,7 @@ export function CalendarCreateModal({
       onClose={onClose}
       title={isEdit ? t("tableEditForm.calEditTitle") : t("tableEditForm.calModalTitle")}
       centered
+      size="calc(var(--modal-size-md) + 100px)"
     >
       <Stack gap="sm">
         {error && (
@@ -238,6 +250,38 @@ export function CalendarCreateModal({
           popoverProps={{ withinPortal: true }}
           clearable
         />
+        <Group align="flex-end" gap="xs">
+          <Select
+            label={t("tableEditForm.calHolidayPresetLabel")}
+            data-testid="calendar-holiday-preset"
+            data={[
+              { value: "us_federal", label: t("tableEditForm.calHolidayPresetFederal") },
+              { value: "us_nyse", label: t("tableEditForm.calHolidayPresetNyse") },
+            ]}
+            value={preset}
+            onChange={(v) => setPreset((v as HolidayPreset) || "us_federal")}
+            comboboxProps={{ withinPortal: true }}
+            allowDeselect={false}
+            style={{ flex: 1 }}
+          />
+          <NumberInput
+            label={t("tableEditForm.calHolidayPresetFrom")}
+            data-testid="calendar-holiday-from"
+            w={92}
+            value={presetFrom}
+            onChange={(v) => setPresetFrom(typeof v === "number" ? v : thisYear)}
+          />
+          <NumberInput
+            label={t("tableEditForm.calHolidayPresetTo")}
+            data-testid="calendar-holiday-to"
+            w={92}
+            value={presetTo}
+            onChange={(v) => setPresetTo(typeof v === "number" ? v : thisYear)}
+          />
+          <Button variant="light" data-testid="calendar-holiday-add" onClick={addPreset}>
+            {t("tableEditForm.calHolidayPresetAdd")}
+          </Button>
+        </Group>
         <Group justify="space-between">
           {isEdit ? (
             <Button

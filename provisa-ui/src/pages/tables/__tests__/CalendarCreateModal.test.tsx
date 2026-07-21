@@ -57,10 +57,15 @@ describe("CalendarCreateModal — base-system anchors (REQ-962)", () => {
     expect(screen.getByTestId("calendar-create-submit")).toBeDisabled();
   });
 
-  it("exposes holiday + weekend editors", async () => {
+  it("exposes holiday + weekend editors and the preset loader", async () => {
     renderModal("gregorian");
     expect(await screen.findByTestId("calendar-holidays")).toBeInTheDocument();
     expect(screen.getByTestId("calendar-weekend")).toBeInTheDocument();
+    // the public-holiday preset controls (US Federal / NYSE) with a year range + Add
+    expect(screen.getByTestId("calendar-holiday-preset")).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-holiday-from")).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-holiday-add")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("calendar-holiday-add")); // populates holidays, no crash
   });
 
   it("has no delete button in create mode", async () => {
