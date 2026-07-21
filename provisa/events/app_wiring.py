@@ -334,9 +334,26 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # REQ-962: the shared calendar registry (periodic MV boundary source). REQ-961: the real
         # per-input freshness reader the periodic contract PULLs at fire time (persisted refresh state).
         from provisa.events.freshness_reader import make_db_freshness_of
+        from provisa.federation.engine import UnreachableSource
+        from provisa.federation.strategy import Strategy, federate
 
         calendar_registry = await _load_calendar_registry(db)
-        freshness_of = make_db_freshness_of(db)
+        # REQ-961: a LIVE/scan input federates in place (served at query time), so it is current as of
+        # now and fresh-through any snapshot boundary — it never lands, so its missing refresh stamp is
+        # expected, not an outage. Collect those nodes so the freshness reader treats them as fresh;
+        # a MATERIALIZED input with no stamp still fails loud (it was supposed to refresh).
+        _src_by_id = {s.id: s for s in config.sources}
+        always_current: set[str] = set()
+        for _tbl in registered_tables:
+            _src = _src_by_id.get(_tbl.source_id)
+            if _src is None:
+                continue
+            try:
+                if federate(_src, engine.engine) is not Strategy.MATERIALIZED:
+                    always_current.add(f"{_tbl.schema_name}.{_tbl.table_name}")
+            except UnreachableSource:
+                pass  # unreachable → a frozen one-shot snapshot, not always-current
+        freshness_of = make_db_freshness_of(db, always_current)
 
         specs = specs_from_config(
             sources=config.sources,

@@ -16,29 +16,44 @@ StateSubject`` — from the persisted ``node_freshness_state`` (stamped on every
 the processor). It is the collaborator the event loop injects into each periodic MV processor; the
 same one the boot wiring passes through ``specs_from_config``.
 
-An input with NO known refresh state (never landed) is itself an outage — the returned subject is
-NOT fresh (``refreshed_at=None, ok=False``), never assumed fresh (REQ-961).
+Two "no persisted state" cases are DELIBERATELY split (REQ-961):
+
+- An ALWAYS-CURRENT input (a live / query-time source served in place, not landed on a cadence) is
+  current as of NOW by construction, so it is fresh-through ANY past boundary. Absence of a refresh
+  stamp is EXPECTED there — it never lands — so it is treated as fresh, not an outage. The caller
+  supplies the set of such nodes (derived from the federate strategy at wiring).
+- A SCHEDULED/materialized input with no stamp genuinely could-not-be-verified (it was supposed to
+  refresh and has not) → NOT fresh (``refreshed_at=None, ok=False``) → an outage. Never assumed
+  fresh — that would silently close a period on missing data.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import math
+from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
 from provisa.events import queue
 from provisa.freshness.adapters import StateSubject
 
 
-def make_db_freshness_of(db: Any) -> Callable[[str], Awaitable[StateSubject]]:
+def make_db_freshness_of(
+    db: Any, always_current: Iterable[str] = ()
+) -> Callable[[str], Awaitable[StateSubject]]:
     """Build the async ``freshness_of(node) -> StateSubject`` reader over ``db`` (REQ-961/859).
 
-    Each call reads ``node``'s observed refresh state from ``node_freshness_state`` and wraps it as a
-    :class:`StateSubject` (``refreshed_at`` = last_refresh_at, ``ok`` = last_refresh_ok). A node that
-    never refreshed (no row, or a NULL ``last_refresh_at``) yields a NOT-fresh subject so the contract
-    treats it as an outage — never a silent assume-fresh. The reader acquires its own short-lived
-    connection; the contract PULL runs before the seal transaction, so this never nests a write txn."""
+    ``always_current`` is the set of live / query-time input nodes that are current as of read time
+    and therefore fresh-through any boundary (never landed, so they carry no refresh stamp — absence
+    is expected, not an outage). Every other node is read from ``node_freshness_state``: a persisted
+    stamp maps to its ``StateSubject``; a MISSING stamp on such a node is NOT fresh (an outage), never
+    a silent assume-fresh. The reader acquires its own short-lived connection; the contract PULL runs
+    before the seal transaction, so this never nests a write txn."""
+    live = frozenset(always_current)
 
     async def freshness_of(node: str) -> StateSubject:
+        if node in live:
+            # live/query-time source → current as of now → fresh-through any past boundary.
+            return StateSubject(refreshed_at=math.inf, ok=True)
         async with db.acquire() as conn:
             state = await queue.get_node_state(conn, node)
         if state is None or state["last_refresh_at"] is None:
