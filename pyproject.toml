@@ -45,6 +45,8 @@ dependencies = [
     # container tier provides full ClickHouse compute on Windows.
     "chdb; sys_platform != 'win32'",
     "snowflake-connector-python[pandas]",  # REQ-988: Snowflake federation engine (Arrow-native)
+    "adbc-driver-snowflake",  # REQ-988: Arrow-native ADBC transport for the Snowflake direct driver
+    "snowflake-sqlalchemy",  # REQ-988: SQLAlchemy dialect for the Snowflake SQLAlchemy fallback path
     "databricks-sql-connector",  # REQ-987: Databricks federation engine (Arrow-native Cloud Fetch)
     "google-cloud-bigquery",  # BigQuery federation engine
     "google-cloud-bigquery-storage",  # BigQuery Arrow-native reads (Storage Read API)
