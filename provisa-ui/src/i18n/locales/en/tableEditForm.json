@@ -66,7 +66,7 @@
     "grainLabel": "Recurrence",
     "grainHelp": "When a version is cut: a nesting period (daily…annual), or a custom Outlook/iCalendar recurrence (REQ-962/1168/1169).",
     "grainPlaceholder": "Select a recurrence",
-    "allowedLatenessLabel": "Allowed lateness (seconds)",
+    "allowedLatenessLabel": "Close Grace Period (seconds)",
     "allowedLatenessHelp": "How long to wait past the boundary for inputs to be fresh-through the window before closing the period (REQ-961).",
     "businessDayGrainLabel": "Business-day grain (no window on holidays/weekends)",
     "expectedAllLabel": "Verify all lineage inputs (default)",
