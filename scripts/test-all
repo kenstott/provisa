@@ -48,6 +48,23 @@ _have_warehouse_creds() {
   grep -qE '^[[:space:]]*(SNOWFLAKE_|DATABRICKS_|GOOGLE_|BIGQUERY_|FABRIC_|SYNAPSE_|CLICKHOUSE_)[A-Z0-9_]*=[^[:space:]]' .env
 }
 
+# Load the LLM api keys from .env for the e2e lane's non-deterministic LLM-eval tests, OVERRIDING any
+# value already in the environment — a stale/rotated shell var must not shadow the authoritative .env
+# key (the eval tests hit the live model; a 401 would fail them, and a skip is a defect). Scoped to a
+# subshell at the e2e lane so it never leaks into unit/integration lanes that assert on config defaults.
+_load_llm_creds() {
+  [[ -f .env ]] || return 0
+  local line key
+  set -a
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    key="${line%%=*}"
+    [[ "$key" =~ ^(ANTHROPIC_API_KEY|OPENAI_API_KEY)$ ]] || continue
+    eval "export $line"
+  done < .env
+  set +a
+}
+
 COV_ARGS=(--cov=provisa --cov-report= -p no:cacheprovider)
 rm -f .coverage .coverage.*
 
@@ -114,7 +131,9 @@ echo "== lane: e2e (isolated stack) =="
 # Exclude cluster: test_helm_minikube is marked [e2e, cluster] and would otherwise
 # block for minutes on `minikube start`/kubectl subprocess timeouts against a
 # non-existent cluster. Cluster tests run only in their own lane (TEST_ALL_CLUSTER=1).
-COVERAGE_FILE=.coverage.e2e pytest tests/e2e -o addopts="" -m "e2e and not cluster" "${COV_ARGS[@]}" "$@" || rc=1
+# Subshell so the .env LLM keys (for the non-deterministic LLM-eval tests) stay scoped to this lane.
+( _load_llm_creds
+  COVERAGE_FILE=.coverage.e2e pytest tests/e2e -o addopts="" -m "e2e and not cluster" "${COV_ARGS[@]}" "$@" ) || rc=1
 
 echo "== lane: isolated (own process — shared-state / JVM tests) =="
 # These modules share the app's module-singleton state or a non-restartable JVM,
