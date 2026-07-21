@@ -148,22 +148,26 @@ export function CalendarCreateModal({
             {error}
           </Alert>
         )}
-        <TextInput
-          label={t("tableEditForm.calNameLabel")}
-          required
-          data-testid="calendar-name"
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="fiscal-us"
-          readOnly={isEdit} // the name is the identity; edit revises the definition in place
-        />
-        <TextInput
-          label={t("tableEditForm.calVersionLabel")}
-          required
-          data-testid="calendar-version"
-          value={version}
-          onChange={(e) => setVersion(e.currentTarget.value)}
-        />
+        <Group gap="xs" align="flex-start" wrap="nowrap">
+          <TextInput
+            style={{ flex: 3 }}
+            label={t("tableEditForm.calNameLabel")}
+            required
+            data-testid="calendar-name"
+            value={name}
+            onChange={(e) => setName(e.currentTarget.value)}
+            placeholder="fiscal-us"
+            readOnly={isEdit} // the name is the identity; edit revises the definition in place
+          />
+          <TextInput
+            style={{ flex: 1 }}
+            label={t("tableEditForm.calVersionLabel")}
+            required
+            data-testid="calendar-version"
+            value={version}
+            onChange={(e) => setVersion(e.currentTarget.value)}
+          />
+        </Group>
         <Select
           label={t("tableEditForm.calBaseSystemLabel")}
           data-testid="calendar-base-system"
