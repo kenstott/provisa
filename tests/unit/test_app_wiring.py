@@ -46,6 +46,11 @@ class _Conn:
     async def __aexit__(self, *a):
         return False
 
+    async def execute_core(self, stmt):
+        # REQ-962: wire_event_loop loads the calendar registry from the `calendars` table; these
+        # tests declare no calendars, so the query returns an empty set (an empty registry).
+        return SimpleNamespace(fetchall=lambda: [])
+
 
 def _fake_db(registered):
     return SimpleNamespace(acquire=lambda: _Conn(registered))

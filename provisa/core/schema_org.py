@@ -711,6 +711,12 @@ node_freshness_state = Table(
     Column("node", Text, primary_key=True),  # the source-table / MV node key
     Column("content_hash", Text),  # REQ-981: hash of the last landed replace-shaped content
     Column("probe_token", Text),  # REQ-982: last probe token (watermark/hash/count baseline)
+    # REQ-961: the observed per-node refresh state the freshness CONTRACT pulls at fire time. A
+    # periodic MV's expected input is "fresh-through window.end" iff its last refresh SUCCEEDED
+    # (last_refresh_ok) AND covered the boundary (last_refresh_at >= window.end). NULL last_refresh_at
+    # = the node never refreshed → itself an outage (never assume fresh).
+    Column("last_refresh_at", DateTime(timezone=True)),
+    Column("last_refresh_ok", Boolean),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

@@ -33247,3 +33247,124 @@
   - REQ-964
   - REQ-940
   - REQ-939
+- id: REQ-1166
+  status: proposed
+  group: 9. Live Data & Events
+  category: Materialization Store
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    A materialized view can have a REPEATING CALENDAR TRIGGER attached that cuts a calendar-addressable
+    version at each boundary (end-of-day, end-of-week, end-of-month, end-of-quarter, end-of-year, or
+    custom nth-weekday recurrences). Each boundary is named with a stable window_id (e.g., 2026-Q1,
+    2026-W03). The calendar is a TRIGGER/ADDRESSING axis (when a version is cut + its stable
+    identifier), orthogonal to the storage strategy used to preserve history. Full-snapshot-per-boundary
+    is one option (expensive); delta append is preferred for most cases. Composes the calendar boundary
+    trigger (REQ-961/962) and freshness-gated firing (per-input freshness contract).
+  use_case: >-
+    Time-series analytics and auditing require data captured at calendar milestones (e.g., end-of-month
+    snapshots of customer state or materialized reports keyed by fiscal quarter). Calendar-addressed
+    versions enable users to query "what was the state as-of the end of Q1 2026?" independent of the
+    underlying storage mechanism.
+  scenario: |
+    Given a materialized view with a repeating calendar trigger on a named boundary
+    When each calendar boundary is reached and input freshness gates are satisfied
+    Then a version is cut at that boundary with a stable window_id, and the version is addressable
+    via that window_id in time-travel reads, regardless of whether the underlying storage is full
+    snapshot or delta append
+  related_reqs:
+  - REQ-961
+  - REQ-962
+  - REQ-1162
+  - REQ-877
+  - REQ-878
+  - REQ-958
+  - REQ-965
+  - REQ-967
+- id: REQ-1167
+  status: accepted
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: MUST
+  type: constraint
+  description: >-
+    A calendar-addressed TIME-TRAVEL materialized view MUST use one of the append-only or
+    reconstructible storage strategies (bitemporal snapshot mode, bitemporal delta mode, row-level
+    delta ledger with reconstruct_forward/reverse, or reconstructible PIT with accumulating append).
+    A replace/overwrite MV cannot answer calendar-addressed as-of reads: each refresh overwrites the
+    prior version, so only the current state exists. Snapshot (full dataset per boundary) vs delta
+    (changes only) vs ledger vs reconstructible-PIT is a COST choice, not a capability choice: all
+    four strategies enable time-travel reads, but differ in storage footprint and reconstruction
+    latency. Note: snapshot ⟹ time-travel, but time-travel ⇏ snapshot. Preserved snapshots (REQ-983)
+    are a distinct single-instant frozen form and are NOT a time-travel series.
+  use_case: >-
+    Append-only and reconstructible-storage designs enable calendar-addressed versions to be queried
+    across time. Replace MVs lose all previous versions on refresh, making time-travel impossible.
+    The codebase supports four such strategies; the cost/latency tradeoff is a deployment choice.
+  related_reqs:
+  - REQ-1162
+  - REQ-877
+  - REQ-878
+  - REQ-958
+  - REQ-965
+  - REQ-967
+  - REQ-983
+- id: REQ-1168
+  status: proposed
+  group: 9. Live Data & Events
+  category: Calendar Boundary
+  priority: SHOULD
+  type: structural
+  target: 2026-Q4
+  description: >-
+    The Grain enum in provisa/events/calendars.py (daily/weekly/monthly/quarterly/annual) cannot
+    express nth-weekday-of-period recurrences (e.g. "3rd Wednesday of each month"). A recurrence-rule
+    extension — either an nth_weekday boundary generator or RRULE-style specification — is needed
+    to support complex calendar patterns for snapshot boundaries.
+  use_case: >-
+    Business snapshots often occur on variable dates within a period (e.g., last business day of
+    month, 3rd Friday for option expiry). The current fixed-grain enum is insufficient.
+  code:
+  - provisa/events/calendars.py
+- id: REQ-1169
+  status: proposed
+  group: 9. Live Data & Events
+  category: Calendar Management
+  priority: SHOULD
+  type: structural
+  target: 2026-Q4
+  description: >-
+    Calendars are not yet declarable from configuration and the calendar→MV binding is not plumbed
+    end to end. A config/admin surface is needed to define named versioned calendars and attach
+    (calendar, grain) pairs to materialized views, making the periodic-snapshot feature reachable
+    from the admin interface.
+  use_case: >-
+    Without config-level calendar definition and UI binding, repeating snapshots cannot be declared
+    by users without code changes. A user-facing config surface is essential for adoption.
+  code:
+  - provisa/api/admin/schema_mutation.py
+- id: REQ-1170
+  status: complete
+  group: 9. Live Data & Events
+  category: Table Load Protection
+  priority: SHOULD
+  type: constraint
+  since: "2026-07"
+  description: >-
+    Load protection (REQ-1141 off-peak window) and snapshotting on the same table can conflict on
+    timing: a snapshot boundary may fall outside the off-peak refresh window. The system emits a
+    WARNING when both load protection and periodic snapshot(s) are configured on one table, alerting
+    the user to potential misalignment between the protection window and snapshot schedule.
+  use_case: >-
+    If a snapshot boundary coincides with a peak-hours-only window, the snapshot cannot fire. This
+    warning surfaces the timing conflict so the user can adjust the protection window or snapshot
+    schedule.
+  code:
+  - provisa/api/admin/schema_mutation.py
+  scenario: |
+    Given a table with both off-peak load protection AND a periodic snapshot
+    When the configuration is validated (e.g., during MV update)
+    Then a warning is emitted if the snapshot boundary is incompatible with the off-peak window
+  related_reqs:
+  - REQ-1141

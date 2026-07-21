@@ -35,6 +35,41 @@ from provisa.events import supervisor
 from provisa.events.boot import build_processors, register_runtime, specs_from_config
 
 
+async def _load_calendar_registry(db: Any) -> Any:
+    """REQ-962: build the shared :class:`CalendarRegistry` from the persisted ``calendars`` table so a
+    periodic MV declaring ``(calendar, grain)`` resolves its boundary source at boot. Each row →
+    a versioned :class:`Calendar` (the immutable holiday/business-day set). An empty table yields an
+    empty registry; an MV that then declares an unknown calendar fails loud at wiring (never a silent
+    default calendar)."""
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import calendars
+    from provisa.events.calendars import BaseSystem, Calendar, CalendarRegistry
+
+    registry = CalendarRegistry()
+    async with db.acquire() as conn:
+        rows = (await conn.execute_core(select(calendars))).fetchall()
+    for r in rows:
+        m = r._mapping
+        anchor = m["retail_anchor"]
+        registry.register(
+            Calendar(
+                name=m["name"],
+                version=m["version"],
+                base_system=BaseSystem(m["base_system"]),
+                tz=m["tz"],
+                fiscal_anchor=(m["fiscal_anchor_month"], m["fiscal_anchor_day"]),
+                retail_anchor=(anchor if isinstance(anchor, date) else None),
+                week_start=m["week_start"],
+                holidays=frozenset(date.fromisoformat(d) for d in (m["holidays"] or [])),
+                weekend=frozenset(m["weekend"] or [5, 6]),
+            )
+        )
+    return registry
+
+
 def _mv_pk(mv: Any) -> list[str]:
     """REQ-970: the derived table's PK — operator-declared ``primary_key`` or inferred from an
     unambiguous GROUP BY (``[]`` when neither)."""
@@ -285,6 +320,13 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
             return _scalar
 
+        # REQ-962: the shared calendar registry (periodic MV boundary source). REQ-961: the real
+        # per-input freshness reader the periodic contract PULLs at fire time (persisted refresh state).
+        from provisa.events.freshness_reader import make_db_freshness_of
+
+        calendar_registry = await _load_calendar_registry(db)
+        freshness_of = make_db_freshness_of(db)
+
         specs = specs_from_config(
             sources=config.sources,
             tables=registered_tables,
@@ -297,6 +339,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             store_schema=store_schema,
             probe_scalar=probe_scalar,
             subscribers_of=subscribers_of,  # REQ-965 demand routing
+            calendar_registry=calendar_registry,  # REQ-962 periodic boundary source
+            freshness_of=freshness_of,  # REQ-961 per-input freshness contract reader
         )
         processors = build_processors(specs, db=db, dependents_of=dependents_of)
         # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create

@@ -603,14 +603,17 @@ CREATE TABLE IF NOT EXISTS rel_ids (
     properties   JSONB NOT NULL DEFAULT '{}'
 );
 
--- Per-node freshness state (REQ-981/982): content hash of the last land (output gate)
--- and the last probe token (input probe baseline). One row per node; upserted on each
--- successful land. Mirrors provisa.core.schema_org.node_freshness_state.
+-- Per-node freshness state (REQ-981/982/961): content hash of the last land (output gate),
+-- the last probe token (input probe baseline), and the last-refresh timestamp/outcome the
+-- periodic freshness contract PULLs (REQ-961). One row per node; upserted on each successful
+-- land. Mirrors provisa.core.schema_org.node_freshness_state.
 CREATE TABLE IF NOT EXISTS node_freshness_state (
-    node         TEXT PRIMARY KEY,       -- the source-table / MV node key
-    content_hash TEXT,                   -- REQ-981: hash of the last landed replace-shaped content
-    probe_token  TEXT,                   -- REQ-982: last probe token (watermark/hash/count baseline)
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    node            TEXT PRIMARY KEY,    -- the source-table / MV node key
+    content_hash    TEXT,                -- REQ-981: hash of the last landed replace-shaped content
+    probe_token     TEXT,                -- REQ-982: last probe token (watermark/hash/count baseline)
+    last_refresh_at TIMESTAMPTZ,         -- REQ-961: instant of the last completed refresh (NULL = never)
+    last_refresh_ok BOOLEAN,             -- REQ-961: outcome of that refresh (freshness-contract input)
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Preserved snapshots (REQ-983): a point-in-time dataset MATERIALIZED-AND-SEALED because it is NOT

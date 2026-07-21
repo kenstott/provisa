@@ -877,11 +877,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     registered_tables.c.cache_ttl,
                     registered_tables.c.change_signal,
                     registered_tables.c.off_peak_window,
+                    registered_tables.c.mv_bitemporal_mode,
                 ).where(registered_tables.c.id == table_id)
             )
             row = _res.fetchone()
             if row is None:
                 return MutationResult(success=False, message=f"Table {table_id} not found")
+            # REQ-1141/1162: load protection (WHEN a source may be hit) and snapshotting (WHAT
+            # point-in-time the data represents) are different axes, but on ONE table their timing can
+            # fight — a snapshot boundary can fall outside the off-peak window, so the snapshot never
+            # captures the intended instant. Warn (not block): they compose only when the snapshot
+            # deadline can wait for the off-peak refresh (allowed_lateness).
+            if (load_protected or off_peak_window) and row.mv_bitemporal_mode:
+                logging.getLogger(__name__).warning(
+                    "table %s: load protection (off-peak window) AND %r snapshotting are both set — "
+                    "verify the snapshot boundary falls inside the off-peak refresh window (or that "
+                    "allowed_lateness covers the lag), else snapshots may miss their intended instant "
+                    "(REQ-1141/1162)",
+                    table_id,
+                    row.mv_bitemporal_mode,
+                )
             _sres = await conn.execute_core(
                 select(
                     sources.c.load_protected,

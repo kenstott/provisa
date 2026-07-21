@@ -23,8 +23,9 @@ the base. The variants supply only ``handle``:
 
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -149,7 +150,7 @@ class TableProcessor(ABC):
         debounce_max_delay: float | None = None,
         deadline_source: DeadlineSource | None = None,
         expected_events: list[str] | None = None,
-        freshness_of: Callable[[str], FreshnessSubject] | None = None,
+        freshness_of: Callable[[str], FreshnessSubject | Awaitable[FreshnessSubject]] | None = None,
         preprocess: Callable[..., Any] | None = None,
         emit_outcomes: frozenset[str] | None = None,
         subscribers_of: Callable[[str, str], list[str]] | None = None,
@@ -356,13 +357,18 @@ class TableProcessor(ABC):
             async with conn.transaction():
                 if result is None:
                     # Gate hit / preprocess []-no-op (content unchanged / nothing landed): no ripple,
-                    # but advisory warns still emit and the claimed events are completed.
+                    # but advisory warns still emit and the claimed events are completed. A clean
+                    # no-change refresh IS fresh (REQ-961) — stamp the observed refresh state so a
+                    # downstream periodic MV's contract sees this input fresh-through its boundary.
+                    await queue.record_refresh(conn, self.node, at=now, ok=True)
                     await self._emit_warns(conn, ctx, now)
                     await self._complete_all(conn, claimed, now)
                     return None
                 event_type, payload, new_hash = result
                 if new_hash is not None:
                     await queue.set_node_state(conn, self.node, content_hash=new_hash)
+                # REQ-961: a successful land is fresh-through now — record it for the freshness contract.
+                await queue.record_refresh(conn, self.node, at=now, ok=True)
                 my_event = await self._post_and_route(conn, event_type, payload)
                 await self._emit_warns(conn, ctx, now)
                 await self._complete_all(conn, claimed, now)
@@ -414,6 +420,9 @@ class TableProcessor(ABC):
                     conn, source_table=self.node, event_type="error", payload=payload
                 )
                 await queue.fan_out(conn, event_id, self._dependents_of(self.node))
+                # REQ-961: a failed produce is NOT fresh — record ok=False so a downstream periodic
+                # MV's contract treats this input as an outage, never assuming stale-but-fresh.
+                await queue.record_refresh(conn, self.node, at=now, ok=False)
                 await self._complete_all(conn, claimed, now)
         except OwnershipLost:
             return None
@@ -499,8 +508,17 @@ class TableProcessor(ABC):
             raise ValueError(
                 f"{self.node}: an expected-events freshness contract requires a freshness_of reader"
             )
+        # Resolve each input's freshness subject up front so ``evaluate_contract`` stays a PURE
+        # decision (no I/O). The reader may be sync (a test double) or async (the real DB reader that
+        # PULLs per-node refresh state) — await the latter. This read is OUTSIDE the seal transaction.
+        states: dict[str, FreshnessSubject] = {}
+        for inp in self._expected_events:
+            subject = self._freshness_of(inp)
+            if inspect.isawaitable(subject):
+                subject = await subject
+            states[inp] = subject
         result = evaluate_contract(
-            self._expected_events, self._freshness_of, window.end.timestamp()
+            self._expected_events, lambda i: states[i], window.end.timestamp()
         )
         if result.trusted:
             return False

@@ -23,6 +23,7 @@ from provisa.events.calendars import (
     Calendar,
     CalendarRegistry,
     Grain,
+    NthWeekday,
     next_boundary,
     parse_grain,
     window_for,
@@ -177,6 +178,93 @@ def test_retail_without_anchor_fails_loud():
     cal = Calendar(name="r", version="v1", base_system=BaseSystem.RETAIL_445)
     with pytest.raises(ValueError, match="retail_anchor"):
         window_for(cal, "weekly", datetime(2026, 2, 1, tzinfo=UTC))
+
+
+# ============== REQ-1168: nth-weekday-of-month recurrence ==============
+
+
+def test_nth_weekday_third_wednesday_tile_and_id():
+    cal = _greg()
+    rule = NthWeekday(weekday=2, n=3)  # 3rd Wednesday
+    # 3rd Wed of Mar 2026 = 2026-03-18; next is 3rd Wed of Apr = 2026-04-15.
+    w = window_for(cal, rule, datetime(2026, 3, 20, 12, tzinfo=UTC))
+    assert w is not None
+    assert w.start == datetime(2026, 3, 18, tzinfo=UTC)
+    assert w.end == datetime(2026, 4, 15, tzinfo=UTC)
+    assert w.window_id == "2026-03-18-3WE"
+
+
+def test_nth_weekday_last_friday():
+    cal = _greg()
+    rule = NthWeekday(weekday=4, n=-1)  # last Friday
+    # last Fri of Feb 2026 = 2026-02-27; next last Fri = 2026-03-27.
+    w = window_for(cal, rule, datetime(2026, 2, 28, tzinfo=UTC))
+    assert w is not None
+    assert w.start == datetime(2026, 2, 27, tzinfo=UTC)
+    assert w.end == datetime(2026, 3, 27, tzinfo=UTC)
+    assert w.window_id == "2026-02-27-LFR"
+
+
+def test_nth_weekday_fifth_monday_skips_months_without_one():
+    """A month lacking the 5th weekday has NO occurrence — the tile spans to the next month that
+    does, so consecutive occurrences still tile the timeline with no gap (REQ-1168)."""
+    cal = _greg()
+    rule = NthWeekday(weekday=0, n=5)  # 5th Monday
+    # 5th Mon of Dec 2025 = 2025-12-29; Jan & Feb 2026 have no 5th Monday → next is 2026-03-30.
+    w = window_for(cal, rule, datetime(2026, 1, 15, tzinfo=UTC))
+    assert w is not None
+    assert w.start == datetime(2025, 12, 29, tzinfo=UTC)
+    assert w.end == datetime(2026, 3, 30, tzinfo=UTC)
+
+
+def test_nth_weekday_tiles_are_contiguous():
+    """Consecutive tiles share the boundary: one tile's end IS the next tile's start (REQ-1168)."""
+    cal = _greg()
+    rule = NthWeekday(weekday=2, n=3)
+    w1 = window_for(cal, rule, datetime(2026, 3, 20, tzinfo=UTC))
+    w2 = window_for(cal, rule, datetime(2026, 4, 20, tzinfo=UTC))
+    assert w1 is not None and w2 is not None
+    assert w1.end == w2.start  # no gap, no overlap
+
+
+def test_nth_weekday_next_boundary_is_tile_end():
+    cal = _greg()
+    rule = NthWeekday(weekday=2, n=3)
+    nb = next_boundary(cal, rule, datetime(2026, 3, 20, tzinfo=UTC))
+    assert nb == datetime(2026, 4, 15, tzinfo=UTC)  # the next 3rd-Wednesday boundary
+
+
+def test_nth_weekday_periodic_seals_just_closed_window():
+    """PeriodicCalendar over a recurrence seals the window that most recently CLOSED at the last
+    occurrence, pegged to that window (REQ-1168 composes with REQ-961)."""
+    cal = _greg()
+    rule = NthWeekday(weekday=2, n=3)
+    pc = PeriodicCalendar(cal, rule, allowed_lateness=0.0)
+    # at 2026-03-20 the 3rd Wed (Mar 18) has just passed → the just-closed window is [Feb 18, Mar 18).
+    win = pc.window(datetime(2026, 3, 20, tzinfo=UTC))
+    assert win is not None
+    assert win.start == datetime(2026, 2, 18, tzinfo=UTC)
+    assert win.end == datetime(2026, 3, 18, tzinfo=UTC)
+    assert win.window_id == "2026-02-18-3WE"
+
+
+def test_nth_weekday_dst_boundary_is_civil_midnight():
+    """Occurrence boundaries are the calendar's LOCAL civil midnight → UTC, DST-aware (REQ-1168)."""
+    cal = _greg(tz="America/New_York")
+    rule = NthWeekday(weekday=2, n=3)
+    w = window_for(cal, rule, datetime(2026, 3, 20, 12, tzinfo=UTC))
+    assert w is not None
+    # 2026-03-18 00:00 New_York (EDT, UTC-4 — DST already began Mar 8) = 04:00 UTC.
+    assert w.start == datetime(2026, 3, 18, 4, tzinfo=UTC)
+
+
+def test_nth_weekday_validation_fails_loud():
+    with pytest.raises(ValueError, match="weekday out of range"):
+        NthWeekday(weekday=7, n=1)
+    with pytest.raises(ValueError, match="must be 1..5 or -1"):
+        NthWeekday(weekday=2, n=0)
+    with pytest.raises(ValueError, match="must be 1..5 or -1"):
+        NthWeekday(weekday=2, n=6)
 
 
 # ==================== REQ-963: live debounce deadline ====================

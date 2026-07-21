@@ -24,7 +24,7 @@ work is serialized — no concurrent write to one landed table, ordering preserv
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import and_, insert, or_, select, update
@@ -222,31 +222,59 @@ async def get_events(conn: Any, event_ids: list[int]) -> list[dict]:
 
 
 async def get_node_state(conn: Any, node: str) -> dict | None:
-    """The persisted freshness state for ``node`` — ``{content_hash, probe_token}`` — or None when the
-    node has never landed. ``content_hash`` is the REQ-981 output-gate baseline; ``probe_token`` is the
-    REQ-982 input-probe baseline. Both nullable independently (a node may have one and not the other)."""
+    """The persisted freshness state for ``node`` — ``{content_hash, probe_token, last_refresh_at,
+    last_refresh_ok}`` — or None when the node has never landed. ``content_hash`` is the REQ-981
+    output-gate baseline; ``probe_token`` is the REQ-982 input-probe baseline; ``last_refresh_at``/
+    ``last_refresh_ok`` are the REQ-961 freshness-contract state. All nullable independently (a node
+    may have one and not the others). ``last_refresh_at`` is returned as a unix timestamp (float) so
+    it feeds :class:`StateSubject.refreshed_at` directly; None when the node never refreshed."""
     result = await conn.execute_core(
-        select(node_freshness_state.c.content_hash, node_freshness_state.c.probe_token).where(
-            node_freshness_state.c.node == node
-        )
+        select(
+            node_freshness_state.c.content_hash,
+            node_freshness_state.c.probe_token,
+            node_freshness_state.c.last_refresh_at,
+            node_freshness_state.c.last_refresh_ok,
+        ).where(node_freshness_state.c.node == node)
     )
     row = result.fetchone()
     if row is None:
         return None
-    return {"content_hash": row[0], "probe_token": row[1]}
+    at = row[2]
+    # A schema-less backend (sqlite) drops tzinfo on a DateTime(timezone=True) round-trip, returning a
+    # NAIVE datetime; ``.timestamp()`` would then read it as LOCAL time and skew the fresh-through
+    # comparison. Every stamp is written in UTC (record_refresh), so coerce naive → UTC here.
+    if at is not None and at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return {
+        "content_hash": row[0],
+        "probe_token": row[1],
+        "last_refresh_at": at.timestamp() if at is not None else None,
+        "last_refresh_ok": row[3],
+    }
 
 
 async def set_node_state(
-    conn: Any, node: str, *, content_hash: str | None = None, probe_token: str | None = None
+    conn: Any,
+    node: str,
+    *,
+    content_hash: str | None = None,
+    probe_token: str | None = None,
+    last_refresh_at: Any | None = None,
+    last_refresh_ok: bool | None = None,
 ) -> None:
     """Upsert the freshness state for ``node``. Only the passed fields are written — an omitted
-    (None-defaulted) field is left untouched on an existing row, so the content-hash gate (REQ-981) and
-    the probe baseline (REQ-982) update independently without clobbering each other."""
-    set_cols = {}
+    (None-defaulted) field is left untouched on an existing row, so the content-hash gate (REQ-981),
+    the probe baseline (REQ-982), and the REQ-961 refresh state update independently without clobbering
+    each other. ``last_refresh_at`` is a timezone-aware datetime."""
+    set_cols: dict[str, Any] = {}
     if content_hash is not None:
         set_cols["content_hash"] = content_hash
     if probe_token is not None:
         set_cols["probe_token"] = probe_token
+    if last_refresh_at is not None:
+        set_cols["last_refresh_at"] = last_refresh_at
+    if last_refresh_ok is not None:
+        set_cols["last_refresh_ok"] = last_refresh_ok
     if not set_cols:
         return
     await conn.upsert(
@@ -255,6 +283,14 @@ async def set_node_state(
         index_elements=["node"],
         update_columns=list(set_cols),
     )
+
+
+async def record_refresh(conn: Any, node: str, *, at: Any, ok: bool) -> None:
+    """REQ-961: stamp ``node``'s observed refresh state (the freshness-contract source). Called on
+    every completed handle — success (``ok=True``) or failure (``ok=False``) — so a downstream periodic
+    MV can PULL whether this input is fresh-through its window boundary. ``at`` is a timezone-aware
+    datetime (the completion instant)."""
+    await set_node_state(conn, node, last_refresh_at=at, last_refresh_ok=ok)
 
 
 async def read_since(conn: Any, *, cursor: int, limit: int = 100) -> list[dict]:
