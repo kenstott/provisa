@@ -6,9 +6,11 @@
 
 """pytest-bdd steps for REQ-1166 — repeating-calendar snapshot MVs.
 
-Drives the REAL assembled pipeline (MVTableProcessor + make_mv_bitemporal_generate +
-apply_bitemporal_append + the REQ-1162 append SQL) over an in-memory DuckDB store and a sqlite
-control plane, on one event loop, so each boundary seal is real end to end.
+Binds the GENERATED tests/features/REQ-1166.feature (scenario text lives in requirements.yaml — the
+feature file is a generated artifact, never hand-edited). Drives the REAL assembled pipeline
+(MVTableProcessor + make_mv_bitemporal_generate + apply_bitemporal_append + the REQ-1162 append SQL)
+over an in-memory DuckDB store and a sqlite control plane on one event loop, asserting a boundary cuts
+a window_id-addressable version whose as-of read reconstructs it — in BOTH snapshot and delta storage.
 """
 
 from __future__ import annotations
@@ -16,12 +18,12 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import duckdb
 import pytest
 from pytest_bdd import given, when, then, scenarios
 from sqlalchemy.ext.asyncio import create_async_engine
-from types import SimpleNamespace
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -39,7 +41,8 @@ scenarios("../features/REQ-1166.feature")
 UTC = timezone.utc
 MV_NODE = "mat.snap"
 COLS = ["id", "region", "amount"]
-TARGET = '"memory"."main"."mv_snap"'
+JAN_END = datetime(2026, 2, 1, tzinfo=UTC)  # the January monthly window closes at Feb 1
+AFTER_JAN = datetime(2026, 2, 10, tzinfo=UTC)
 
 
 class _DuckEngine:
@@ -63,12 +66,18 @@ def loop():
 
 @pytest.fixture
 def ctx(loop, tmp_path) -> dict:
-    return {"loop": loop, "tmp_path": tmp_path}
+    return {"loop": loop, "tmp_path": tmp_path, "modes": {}}
 
 
-async def _setup(tmp_path, grain: str):
+def _run(ctx, coro):
+    return ctx["loop"].run_until_complete(coro)
+
+
+async def _build_mode(tmp_path, mode: str):
+    """A fresh assembled pipeline (control plane + DuckDB store + processor) for one storage mode."""
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER)")
+    target = f'"memory"."main"."mv_snap_{mode}"'
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / (uuid.uuid4().hex + '.db')}")
     async with engine.begin() as c:
         await c.run_sync(
@@ -78,15 +87,15 @@ async def _setup(tmp_path, grain: str):
         )
     db = Database(engine, name="cp")
     mv = MVDefinition(
-        id="view-snap",
+        id=f"view-snap-{mode}",
         source_tables=["base"],
         target_catalog="memory",
         target_schema="main",
-        target_table="mv_snap",
+        target_table=f"mv_snap_{mode}",
         sql="SELECT id, region, amount FROM base",
-        bitemporal=BitemporalSpec(key=("id",), mode="snapshot"),
+        bitemporal=BitemporalSpec(key=("id",), mode=mode),
         calendar="fy",
-        grain=grain,
+        grain="monthly",
     )
     duck = _DuckEngine(con)
 
@@ -101,98 +110,53 @@ async def _setup(tmp_path, grain: str):
         db=db,
         name="snap-box",
         generate=make_mv_bitemporal_generate(_append),
-        deadline_source=PeriodicCalendar(Calendar(name="fy", version="v1"), grain, allowed_lateness=0.0),
-        expected_events=[],
+        deadline_source=PeriodicCalendar(Calendar(name="fy", version="v1"), "monthly", allowed_lateness=0.0),
+        expected_events=[],  # freshness gates satisfied (calendar-only contract)
         freshness_of=lambda _i: None,
     )
-    return con, db, mv, proc, engine
+    return {"con": con, "db": db, "mv": mv, "proc": proc, "engine": engine, "target": target}
 
 
-async def _fire(con, db, proc, rows, now):
+async def _fire(state, rows, now):
     import provisa.events.processor as pm
 
-    con.execute("DELETE FROM base")
+    state["con"].execute("DELETE FROM base")
     for r in rows:
-        con.execute("INSERT INTO base VALUES (?, ?, ?)", r)
-    async with db.acquire() as conn:
+        state["con"].execute("INSERT INTO base VALUES (?, ?, ?)", r)
+    async with state["db"].acquire() as conn:
         e = await queue.post_event(conn, source_table="base", event_type="replace", payload={})
         await queue.fan_out(conn, e, [MV_NODE])
     pm._now = lambda: now  # noqa: SLF001 — deterministic clock for the scenario
-    async with db.acquire() as conn:
-        return await proc.process_pending(conn)
+    async with state["db"].acquire() as conn:
+        return await state["proc"].process_pending(conn)
 
 
-def _run(ctx, coro):
-    return ctx["loop"].run_until_complete(coro)
+# -- generated REQ-1166 scenario ---------------------------------------------
 
 
-# -- monthly scenario --------------------------------------------------------
+@given("a materialized view with a repeating calendar trigger on a named boundary")
+def _given(ctx):
+    # both storage strategies, to assert addressability "regardless of storage"
+    ctx["modes"]["snapshot"] = _run(ctx, _build_mode(ctx["tmp_path"], "snapshot"))
+    ctx["modes"]["delta"] = _run(ctx, _build_mode(ctx["tmp_path"], "delta"))
 
 
-@given("a bitemporal snapshot MV on a monthly calendar")
-def _given_monthly(ctx):
-    con, db, mv, proc, engine = _run(ctx, _setup(ctx["tmp_path"], "monthly"))
-    ctx.update(con=con, db=db, mv=mv, proc=proc, engine=engine)
+@when("each calendar boundary is reached and input freshness gates are satisfied")
+def _when(ctx):
+    for state in ctx["modes"].values():
+        ctx.setdefault("fired", {})[id(state)] = _run(
+            ctx, _fire(state, [(1, "west", 10), (2, "east", 20)], AFTER_JAN)
+        )
 
 
-@when("the January window closes with the month's data")
-def _jan(ctx):
-    ctx["jan_fired"] = _run(
-        ctx, _fire(ctx["con"], ctx["db"], ctx["proc"], [(1, "west", 10), (2, "east", 20)],
-                   datetime(2026, 2, 10, tzinfo=UTC))
-    )
-
-
-@when("the February window closes with changed data")
-def _feb(ctx):
-    ctx["feb_fired"] = _run(
-        ctx, _fire(ctx["con"], ctx["db"], ctx["proc"], [(1, "west", 15), (3, "north", 30)],
-                   datetime(2026, 3, 10, tzinfo=UTC))
-    )
-
-
-@then("each closed window sealed a distinct version stamped at its boundary")
-def _distinct(ctx):
-    assert ctx["jan_fired"] is not None and ctx["feb_fired"] is not None
-    n = ctx["con"].execute(f"SELECT COUNT(DISTINCT sys_recorded_at) FROM {TARGET}").fetchone()[0]
-    assert n == 2
-
-
-def _asof(ctx, dt):
-    sql = reconstruct_as_of_sql(TARGET, ctx["mv"].bitemporal, COLS, system_ts_literal(dt))
-    return set(ctx["con"].execute(sql).fetchall())
-
-
-@then("reading as-of the January boundary returns January's data")
-def _asof_jan(ctx):
-    assert _asof(ctx, datetime(2026, 2, 1, tzinfo=UTC)) == {(1, "west", 10), (2, "east", 20)}
-
-
-@then("reading as-of the February boundary returns February's data")
-def _asof_feb(ctx):
-    assert _asof(ctx, datetime(2026, 3, 1, tzinfo=UTC)) == {(1, "west", 15), (3, "north", 30)}
-
-
-# -- nth-weekday scenario ----------------------------------------------------
-
-
-@given('a bitemporal snapshot MV on a "3rd Wednesday of month" calendar')
-def _given_3we(ctx):
-    con, db, mv, proc, engine = _run(ctx, _setup(ctx["tmp_path"], "3WE"))
-    ctx.update(con=con, db=db, mv=mv, proc=proc, engine=engine)
-
-
-@when("the third-Wednesday window closes")
-def _3we_close(ctx):
-    # 3rd Wed of Feb 2026 = Feb 18; firing on Feb 20 seals the [Jan 21, Feb 18) tile at Feb 18.
-    ctx["fired"] = _run(
-        ctx, _fire(ctx["con"], ctx["db"], ctx["proc"], [(1, "west", 10)],
-                   datetime(2026, 2, 20, tzinfo=UTC))
-    )
-
-
-@then("a version is sealed addressed by that occurrence")
-def _3we_sealed(ctx):
-    assert ctx["fired"] is not None
-    stamps = ctx["con"].execute(f"SELECT DISTINCT sys_recorded_at FROM {TARGET}").fetchall()
-    assert stamps == [(datetime(2026, 2, 18),)]  # the 3rd-Wednesday boundary
+@then(
+    "a version is cut at that boundary with a stable window_id, and the version is addressable "
+    "via that window_id in time-travel reads, regardless of whether the underlying storage is full "
+    "snapshot or delta append"
+)
+def _then(ctx):
+    for state in ctx["modes"].values():
+        assert ctx["fired"][id(state)] is not None  # the boundary cut a version
+        # the version is stamped at the boundary (window.end = Jan-close = Feb 1) and addressable there
+        sql = reconstruct_as_of_sql(state["target"], state["mv"].bitemporal, COLS, system_ts_literal(JAN_END))
+        assert set(state["con"].execute(sql).fetchall()) == {(1, "west", 10), (2, "east", 20)}

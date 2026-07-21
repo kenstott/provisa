@@ -1,17 +1,8 @@
-Feature: REQ-1166 — Repeating-calendar snapshot MV
-  # A materialized view can carry a repeating calendar trigger that cuts a calendar-addressable
-  # version at each boundary onto the append-only bitemporal log, so history is preserved and every
-  # sealed period is readable as-of its boundary (calendar-addressed time travel).
+# Generated from docs/arch/requirements.yaml. Do not hand-edit.
+Feature: REQ-1166 — Materialization Store
+  # A materialized view can have a REPEATING CALENDAR TRIGGER attached that cuts a calendar-addressable version at each boun…
 
-  Scenario: A monthly snapshot seals an addressable version at each boundary
-    Given a bitemporal snapshot MV on a monthly calendar
-    When the January window closes with the month's data
-    And the February window closes with changed data
-    Then each closed window sealed a distinct version stamped at its boundary
-    And reading as-of the January boundary returns January's data
-    And reading as-of the February boundary returns February's data
-
-  Scenario: An nth-weekday recurrence drives the snapshot boundary
-    Given a bitemporal snapshot MV on a "3rd Wednesday of month" calendar
-    When the third-Wednesday window closes
-    Then a version is sealed addressed by that occurrence
+  Scenario: REQ-1166 default behaviour
+    Given a materialized view with a repeating calendar trigger on a named boundary
+    When each calendar boundary is reached and input freshness gates are satisfied
+    Then a version is cut at that boundary with a stable window_id, and the version is addressable via that window_id in time-travel reads, regardless of whether the underlying storage is full snapshot or delta append
