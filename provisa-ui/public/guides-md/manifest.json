@@ -60,6 +60,11 @@
     "repoPath": "docs/import.md"
   },
   {
+    "slug": "modeling",
+    "title": "Data Modeling (Entities & Facts)",
+    "repoPath": "docs/modeling.md"
+  },
+  {
     "slug": "security",
     "title": "Security Model",
     "repoPath": "docs/security.md"

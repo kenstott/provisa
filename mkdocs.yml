@@ -74,7 +74,8 @@ nav:
       - Sources: sources.md
       - Remote Schemas: remote-schemas.md
       - Import (Hasura / DDN): import.md
-  - Commands & Lineage:
+  - Modeling, Commands & Lineage:
+      - Data Modeling (Entities & Facts): modeling.md
       - Commands: commands.md
       - Column-Level Lineage: lineage.md
   - Security & Governance:
