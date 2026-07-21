@@ -213,14 +213,19 @@ function MonthlyPanel({
 
   // The day / nth-weekday inputs; the on-day vs on-the toggle lives up on the Frequency line.
   return mode === "day" ? (
-        <NumberInput
+        <Select
           label={t("recurrence.dayOfMonth")}
           data-testid="recurrence-monthday"
           w={140}
-          min={-1}
-          max={31}
-          value={bymonthday ?? 1}
-          onChange={(v) => onDayChange(typeof v === "number" ? v : 1)}
+          // 1..31, plus "Last day" (-1). No 0 — there is no 0th day of a month.
+          data={[
+            ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
+            { value: "-1", label: t("recurrence.lastDay") },
+          ]}
+          value={String(bymonthday ?? 1)}
+          onChange={(v) => v && onDayChange(Number(v))}
+          comboboxProps={{ withinPortal: true }}
+          allowDeselect={false}
         />
       ) : (
         <Group gap="xs" align="flex-end">
