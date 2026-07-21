@@ -38,12 +38,36 @@ from provisa.import_shared.warnings import WarningCollector
 # Requirements: REQ-041, REQ-019, REQ-205, REQ-209, REQ-417
 
 
+class _HasuraLoader(yaml.SafeLoader):
+    """SafeLoader that tolerates Hasura's ``!include <file>`` tag. Real ``hasura metadata export``
+    breaks tables/functions into per-object files and references them from an index as ``!include``
+    — either the bare YAML tag or a quoted string. We normalize both to the string ``!include <file>``
+    and resolve them against the index's directory in :func:`_resolve_include` (safe_load alone would
+    crash on the unknown tag, and treats the quoted form as an opaque string)."""
+
+
+def _include_ctor(loader: Any, node: Any) -> str:
+    return f"!include {loader.construct_scalar(node)}"
+
+
+_HasuraLoader.add_constructor("!include", _include_ctor)
+
+
 def _load_yaml(path: Path) -> Any:
-    """Load a YAML file, returning None if it doesn't exist."""
+    """Load a YAML file, returning None if it doesn't exist. Tolerates the Hasura ``!include`` tag."""
     if not path.exists():
         return None
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return yaml.load(f, Loader=_HasuraLoader)  # noqa: S506 — _HasuraLoader is SafeLoader-derived
+
+
+def _resolve_include(entry: Any, base_dir: Path) -> Any:
+    """If ``entry`` is a Hasura ``!include <file>`` reference (string), load and return that file's
+    content (relative to ``base_dir``); otherwise return ``entry`` unchanged. This is how real Hasura
+    exports point an index (tables.yaml / functions.yaml) at per-object files."""
+    if isinstance(entry, str) and entry.startswith("!include "):
+        return _load_yaml(base_dir / entry[len("!include ") :].strip())
+    return entry
 
 
 def _parse_table(raw: dict[str, Any]) -> HasuraTable:  # REQ-041, REQ-019, REQ-155, REQ-205
@@ -343,7 +367,10 @@ def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSour
             data = _load_yaml(tables_index)
             if isinstance(data, list):
                 for raw_tbl in data:
-                    source.tables.append(_parse_table(raw_tbl))
+                    # Real Hasura exports list per-table files as `!include public_x.yaml`.
+                    resolved = _resolve_include(raw_tbl, tables_dir)
+                    if isinstance(resolved, dict):
+                        source.tables.append(_parse_table(resolved))
         else:
             # Individual table files
             for tbl_file in sorted(tables_dir.glob("*.yaml")):
@@ -378,6 +405,8 @@ def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSour
         data = _load_yaml(functions_yaml)
         if isinstance(data, list):
             for raw_fn in data:
-                source.functions.append(_parse_function(raw_fn))
+                resolved = _resolve_include(raw_fn, db_dir)
+                if isinstance(resolved, dict):
+                    source.functions.append(_parse_function(resolved))
 
     return source
