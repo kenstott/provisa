@@ -609,8 +609,11 @@ class MVTableProcessor(TableProcessor):
         preprocess hook is set it is threaded into the generate closure (REQ-957: after the MV SQL,
         before land)."""
         forced = ctx.forced if ctx is not None else False  # REQ-968: bypass the output gate
+        # Always thread ctx so a generate that needs the window peg (REQ-1166/1167: a periodic
+        # bitemporal seal stamps by ctx.window.end) sees it; make_mv_generate ignores it when no
+        # preprocess hook is set, so this is backward-compatible.
         if self._preprocess is None:
-            return await self._generate(pending, prior_hash=prior_hash, forced=forced)
+            return await self._generate(pending, prior_hash=prior_hash, ctx=ctx, forced=forced)
         return await self._generate(
             pending, prior_hash=prior_hash, ctx=ctx, preprocess=self._preprocess, forced=forced
         )

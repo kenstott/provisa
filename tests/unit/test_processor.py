@@ -147,7 +147,7 @@ async def test_variants_delegate_handle(tmp_path):
         async def land(pending, *, prior_hash, forced=False):
             return ("append", {"n": len(pending)}, None)
 
-        async def generate(pending, *, prior_hash, forced=False):
+        async def generate(pending, *, prior_hash, ctx=None, forced=False):
             return ("replace", {"g": 1}, "mvhash")
 
         src = SourceTableProcessor(

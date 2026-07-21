@@ -347,14 +347,14 @@ def window_for(
     day); False = calendar-day grain (always a window). ``instant`` is resolved to the calendar's
     LOCAL date before boundary derivation, so DST and zone offset are honored."""
     d = _local_date(cal, instant)
-    if isinstance(grain, NthWeekday):
-        return _recurrence_window(cal, grain, d)  # an occurrence is a specific day; no grain gating
-    g = parse_grain(grain)
+    spec = parse_grain_spec(grain)  # resolves a nesting grain OR an nth-weekday recurrence string
+    if isinstance(spec, NthWeekday):
+        return _recurrence_window(cal, spec, d)  # an occurrence is a specific day; no grain gating
     if cal.base_system is BaseSystem.RETAIL_445:
-        return _retail_window(cal, g, d)
-    if g is Grain.DAILY:
+        return _retail_window(cal, spec, d)
+    if spec is Grain.DAILY:
         return _daily(cal, d, business_day=business_day)
-    return _GREGORIAN_GRAIN[g](cal, d)
+    return _GREGORIAN_GRAIN[spec](cal, d)
 
 
 def next_boundary(
@@ -367,18 +367,13 @@ def next_boundary(
     """The next boundary at/after ``instant`` — the scheduler wake and the close of the current
     window. When the current instant's window is gated out (holiday), advance day-by-day to the next
     existing window's end (a business-day grain skips non-business days). Fails loud on unknown grain."""
-    g: str | Grain | NthWeekday
-    if isinstance(grain, NthWeekday):
-        g = grain
-    else:
-        g = parse_grain(grain)
-    win = window_for(cal, g, instant, business_day=business_day)
+    win = window_for(cal, grain, instant, business_day=business_day)  # window_for parses the grain
     if win is not None:
         return win.end
     probe = instant
     for _ in range(_YEAR_MONTHS * 31):  # bounded scan; a year of days is an ample backstop
         probe = probe + timedelta(days=1)
-        win = window_for(cal, g, probe, business_day=business_day)
+        win = window_for(cal, grain, probe, business_day=business_day)
         if win is not None:
             return win.end
     raise ValueError(f"calendar {cal.name!r}: no window found within a year of {instant}")

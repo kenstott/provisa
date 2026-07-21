@@ -83,7 +83,7 @@ async def _fan_in(db, node, source, n=1):
 def _mv(db, *, expected, generate, lateness=0.0, business_day=False, holidays=frozenset()):
     cal = Calendar(name="g", version="v1", holidays=holidays)
 
-    async def _generate(pending, *, prior_hash, forced):
+    async def _generate(pending, *, prior_hash, ctx=None, forced=False):
         return generate
 
     return MVTableProcessor(

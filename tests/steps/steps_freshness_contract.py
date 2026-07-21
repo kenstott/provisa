@@ -77,7 +77,7 @@ async def _run_case(tmp_path, monkeypatch, *, input_state, generate, holidays=fr
                 at, ok = input_state
                 await queue.record_refresh(conn, INPUT, at=at, ok=ok)
 
-        async def _generate(pending, *, prior_hash, forced):
+        async def _generate(pending, *, prior_hash, ctx=None, forced=False):
             return generate
 
         proc = MVTableProcessor(
