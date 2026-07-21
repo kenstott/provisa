@@ -12,19 +12,10 @@
 // snapshot schedule. Validation is server-side (base_system / tz / anchors); this stages the fields.
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal, TextInput, Select, Button, Group, Stack, Alert } from "@mantine/core";
 import { useCreateCalendar } from "../../hooks/useAdminQueries";
 import { IANA_TIME_ZONES } from "./constants";
-
-const WEEKDAYS = [
-  { value: "0", label: "Monday" },
-  { value: "1", label: "Tuesday" },
-  { value: "2", label: "Wednesday" },
-  { value: "3", label: "Thursday" },
-  { value: "4", label: "Friday" },
-  { value: "5", label: "Saturday" },
-  { value: "6", label: "Sunday" },
-];
 
 export function CalendarCreateModal({
   opened,
@@ -35,7 +26,17 @@ export function CalendarCreateModal({
   onClose: () => void;
   onCreated?: (name: string) => void;
 }) {
+  const { t } = useTranslation();
   const { createCalendar, loading } = useCreateCalendar();
+  const WEEKDAYS = [
+    { value: "0", label: t("tableEditForm.calMon") },
+    { value: "1", label: t("tableEditForm.calTue") },
+    { value: "2", label: t("tableEditForm.calWed") },
+    { value: "3", label: t("tableEditForm.calThu") },
+    { value: "4", label: t("tableEditForm.calFri") },
+    { value: "5", label: t("tableEditForm.calSat") },
+    { value: "6", label: t("tableEditForm.calSun") },
+  ];
   const [name, setName] = useState("");
   const [version, setVersion] = useState("v1");
   const [baseSystem, setBaseSystem] = useState("gregorian");
@@ -61,7 +62,7 @@ export function CalendarCreateModal({
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="New snapshot calendar" centered>
+    <Modal opened={opened} onClose={onClose} title={t("tableEditForm.calModalTitle")} centered>
       <Stack gap="sm">
         {error && (
           <Alert color="red" data-testid="calendar-create-error">
@@ -69,7 +70,7 @@ export function CalendarCreateModal({
           </Alert>
         )}
         <TextInput
-          label="Name"
+          label={t("tableEditForm.calNameLabel")}
           required
           data-testid="calendar-name"
           value={name}
@@ -77,19 +78,19 @@ export function CalendarCreateModal({
           placeholder="fiscal-us"
         />
         <TextInput
-          label="Version"
+          label={t("tableEditForm.calVersionLabel")}
           required
           data-testid="calendar-version"
           value={version}
           onChange={(e) => setVersion(e.currentTarget.value)}
         />
         <Select
-          label="Base system"
+          label={t("tableEditForm.calBaseSystemLabel")}
           data-testid="calendar-base-system"
           data={[
-            { value: "gregorian", label: "Gregorian" },
-            { value: "fiscal", label: "Fiscal (anchored month)" },
-            { value: "retail_445", label: "Retail 4-4-5" },
+            { value: "gregorian", label: t("tableEditForm.calBaseGregorian") },
+            { value: "fiscal", label: t("tableEditForm.calBaseFiscal") },
+            { value: "retail_445", label: t("tableEditForm.calBaseRetail") },
           ]}
           value={baseSystem}
           onChange={(v) => setBaseSystem(v || "gregorian")}
@@ -97,7 +98,7 @@ export function CalendarCreateModal({
           allowDeselect={false}
         />
         <Select
-          label="Time zone"
+          label={t("tableEditForm.calTzLabel")}
           searchable
           data-testid="calendar-tz"
           data={IANA_TIME_ZONES}
@@ -106,7 +107,7 @@ export function CalendarCreateModal({
           comboboxProps={{ withinPortal: true }}
         />
         <Select
-          label="Week start"
+          label={t("tableEditForm.calWeekStartLabel")}
           data-testid="calendar-week-start"
           data={WEEKDAYS}
           value={weekStart}
@@ -116,7 +117,7 @@ export function CalendarCreateModal({
         />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
-            Cancel
+            {t("tableEditForm.calCancel")}
           </Button>
           <Button
             data-testid="calendar-create-submit"
@@ -124,7 +125,7 @@ export function CalendarCreateModal({
             disabled={!name || !version}
             onClick={submit}
           >
-            Create
+            {t("tableEditForm.calCreate")}
           </Button>
         </Group>
       </Stack>
