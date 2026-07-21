@@ -54,6 +54,11 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvCalendar: null,
+    mvGrain: null,
+    mvAllowedLateness: 0,
+    mvExpectedEvents: null,
+    mvBusinessDayGrain: false,
     dataProduct: false,
     enableAggregates: false,
     enableGroupBy: false,
@@ -129,13 +134,16 @@ describe("TableEditForm — load protection + refresh-policy summary (REQ-1141/1
     expect(within(banner).getByText(/has no effect on this engine/)).toBeTruthy();
   });
 
-  it("stages an off-peak window edit through setEditingTable", () => {
-    // REQ-1141: off-peak fields render only when load protection is on.
-    const setEditingTable = renderForm(makeTable({ loadProtected: true }));
-    const input = screen.getByPlaceholderText(t("tableEditForm.offPeakWindowPlaceholder"));
-    fireEvent.change(input, { target: { value: "01:00-03:00" } });
+  it("stages an off-peak window edit through the time widgets", () => {
+    // REQ-1141: two TimeInputs (opens/closes) compose the "HH:MM-HH:MM" window string.
+    const setEditingTable = renderForm(makeTable({ loadProtected: true, offPeakWindow: "00:00-03:00" }));
+    fireEvent.change(screen.getByTestId("off-peak-opens"), { target: { value: "01:00" } });
     expect(setEditingTable).toHaveBeenCalledWith(
       expect.objectContaining({ offPeakWindow: "01:00-03:00" }),
+    );
+    fireEvent.change(screen.getByTestId("off-peak-closes"), { target: { value: "05:00" } });
+    expect(setEditingTable).toHaveBeenCalledWith(
+      expect.objectContaining({ offPeakWindow: "00:00-05:00" }),
     );
   });
 
@@ -143,9 +151,7 @@ describe("TableEditForm — load protection + refresh-policy summary (REQ-1141/1
     // REQ-1141: the off-peak gates only apply to the load-protected scheduled snapshot; with load
     // protection off they have no effect and must not render.
     renderForm(makeTable({ loadProtected: false }));
-    expect(
-      screen.queryByPlaceholderText(t("tableEditForm.offPeakWindowPlaceholder")),
-    ).toBeNull();
+    expect(screen.queryByTestId("off-peak-window")).toBeNull();
     expect(screen.queryByText(t("tableEditForm.offPeakTzLabel"))).toBeNull();
   });
 
@@ -154,8 +160,7 @@ describe("TableEditForm — load protection + refresh-policy summary (REQ-1141/1
     renderForm(makeTable({ loadProtected: null }), vi.fn(), [
       { id: "src", loadProtected: true } as never,
     ]);
-    expect(
-      screen.getByPlaceholderText(t("tableEditForm.offPeakWindowPlaceholder")),
-    ).toBeTruthy();
+    expect(screen.getByTestId("off-peak-window")).toBeTruthy();
+    expect(screen.getByTestId("off-peak-opens")).toBeTruthy();
   });
 });

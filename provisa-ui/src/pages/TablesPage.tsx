@@ -321,6 +321,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         mvPersist: editingTable.mvPersist, // REQ-965
         mvPrimaryKey: editingTable.mvPrimaryKey, // REQ-970
         mvIncremental: editingTable.mvIncremental, // REQ-969
+        mvCalendar: editingTable.mvCalendar || null, // REQ-962
+        mvGrain: editingTable.mvGrain || null, // REQ-962/1168
+        mvAllowedLateness: editingTable.mvAllowedLateness, // REQ-961
+        mvExpectedEvents: editingTable.mvExpectedEvents, // REQ-961
+        mvBusinessDayGrain: editingTable.mvBusinessDayGrain, // REQ-962
         dataProduct: editingTable.dataProduct,
         enableAggregates: editingTable.enableAggregates,
         enableGroupBy: editingTable.enableGroupBy,

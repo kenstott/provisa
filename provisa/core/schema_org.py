@@ -149,6 +149,16 @@ registered_tables = Table(
     Column("mv_persist", Text, nullable=False, server_default="replace"),
     Column("mv_primary_key", JSON),
     Column("mv_incremental", Boolean, nullable=False, server_default=false()),
+    # REQ-961/962/1168: PERIODIC calendar trigger (snapshot schedule). mv_calendar names a registered
+    # calendar; mv_grain is a nesting grain ("daily".."annual") OR an nth-weekday recurrence
+    # ("3WE"/"LFR"). mv_allowed_lateness (s) extends the claim deadline; mv_expected_events is the
+    # preflight freshness contract (NULL = all SQL-lineage inputs); mv_business_day_grain gates window
+    # existence on business days. All NULL/false = not periodic (the NRT/live default).
+    Column("mv_calendar", Text),
+    Column("mv_grain", Text),
+    Column("mv_allowed_lateness", Float, nullable=False, server_default="0"),
+    Column("mv_expected_events", JSON),
+    Column("mv_business_day_grain", Boolean, nullable=False, server_default=false()),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
     Column("live", JSON),
@@ -711,6 +721,12 @@ node_freshness_state = Table(
     Column("node", Text, primary_key=True),  # the source-table / MV node key
     Column("content_hash", Text),  # REQ-981: hash of the last landed replace-shaped content
     Column("probe_token", Text),  # REQ-982: last probe token (watermark/hash/count baseline)
+    # REQ-961: the observed per-node refresh state the freshness CONTRACT pulls at fire time. A
+    # periodic MV's expected input is "fresh-through window.end" iff its last refresh SUCCEEDED
+    # (last_refresh_ok) AND covered the boundary (last_refresh_at >= window.end). NULL last_refresh_at
+    # = the node never refreshed → itself an outage (never assume fresh).
+    Column("last_refresh_at", DateTime(timezone=True)),
+    Column("last_refresh_ok", Boolean),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

@@ -83,6 +83,11 @@ async def upsert(
         "mv_persist": getattr(table, "mv_persist", "replace"),  # REQ-965
         "mv_primary_key": getattr(table, "mv_primary_key", []),  # REQ-970
         "mv_incremental": getattr(table, "mv_incremental", False),  # REQ-969
+        "mv_calendar": getattr(table, "mv_calendar", None),  # REQ-962
+        "mv_grain": getattr(table, "mv_grain", None),  # REQ-962/1168
+        "mv_allowed_lateness": getattr(table, "mv_allowed_lateness", 0.0),  # REQ-961
+        "mv_expected_events": getattr(table, "mv_expected_events", None),  # REQ-961
+        "mv_business_day_grain": getattr(table, "mv_business_day_grain", False),  # REQ-962
         "enable_aggregates": getattr(table, "enable_aggregates", False),
         "enable_group_by": getattr(table, "enable_group_by", False),
         "live": table.live.model_dump() if table.live else None,
@@ -113,6 +118,11 @@ async def upsert(
         "mv_persist",  # REQ-965
         "mv_primary_key",  # REQ-970
         "mv_incremental",  # REQ-969
+        "mv_calendar",  # REQ-962
+        "mv_grain",  # REQ-962/1168
+        "mv_allowed_lateness",  # REQ-961
+        "mv_expected_events",  # REQ-961
+        "mv_business_day_grain",  # REQ-962
         "enable_aggregates",
         "enable_group_by",
         "live",

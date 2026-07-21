@@ -11471,3 +11471,81 @@ Declarative `entity` and `fact` shortcuts that LOWER to the existing MV / bitemp
 **Code:** `provisa/mv/modeling.py`
 
 **Tests:** `tests/unit/test_modeling.py`
+
+## 9. Live Data & Events
+
+### REQ-1165 · Table Processor (Shared) {#REQ-1165}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+
+The inline MV preprocess hook ([REQ-957](#REQ-957)) is RESCOPED from a row transform (rows → rows) to a PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a mutated dataset. Row transforms are explicitly out of scope — they belong in SQL (engine pushdown) or external processors ([REQ-940](#REQ-940)). Rationale: a gate does not mutate the landed set, so it does not feed the content hash ([REQ-964](#REQ-964)), eliminating the justification for full in-memory materialization and the max_rows cap (SKIPPED_SIZE) that prevents scaling to large sources. Accepted preflight transports are SQL pushdown (for SQL-expressible checks, evaluated engine-side as probe queries) and Python+Arrow (for non-SQL checks, evaluated in-process with columnar batches). gRPC is out of scope — it only serves out-of-process/remote validators, which introduces unnecessary overhead (separate process, wire framing) disproportionate to a preflight gate's simplicity and scale requirements.
+
+**Use case:** Rescoping from stateful row transform to stateless verdict gate simplifies the contract, improves memory efficiency, and allows evaluation to scale via engine pushdown (SQL assertions) or streaming short-circuit (non-SQL predicates) rather than buffering the entire dataset in memory before applying the gate.
+
+**Code:** `provisa/mv/preprocess.py`, `provisa/mv/refresh.py`, `provisa/events/processor.py`
+
+**Tests:** —
+
+### REQ-1166 · Materialization Store {#REQ-1166}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A materialized view can have a REPEATING CALENDAR TRIGGER attached that cuts a calendar-addressable version at each boundary (end-of-day, end-of-week, end-of-month, end-of-quarter, end-of-year, or custom nth-weekday recurrences). Each boundary is named with a stable window_id (e.g., 2026-Q1, 2026-W03). The calendar is a TRIGGER/ADDRESSING axis (when a version is cut + its stable identifier), orthogonal to the storage strategy used to preserve history. Full-snapshot-per-boundary is one option (expensive); delta append is preferred for most cases. Composes the calendar boundary trigger ([REQ-961](#REQ-961)/962) and freshness-gated firing (per-input freshness contract).
+
+**Use case:** Time-series analytics and auditing require data captured at calendar milestones (e.g., end-of-month snapshots of customer state or materialized reports keyed by fiscal quarter). Calendar-addressed versions enable users to query "what was the state as-of the end of Q1 2026?" independent of the underlying storage mechanism.
+
+**Code:** `provisa/events/handlers.py`, `provisa/events/boot.py`, `provisa/mv/refresh.py`
+
+**Tests:** `tests/unit/test_periodic_snapshot_generate.py`, `tests/integration/test_periodic_snapshot_pipeline.py`, `tests/steps/steps_periodic_snapshot.py`
+
+## 4. Source Connectors
+
+### REQ-1167 · Materialization Store {#REQ-1167}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+A calendar-addressed TIME-TRAVEL materialized view MUST use one of the append-only or reconstructible storage strategies (bitemporal snapshot mode, bitemporal delta mode, row-level delta ledger with reconstruct_forward/reverse, or reconstructible PIT with accumulating append). A replace/overwrite MV cannot answer calendar-addressed as-of reads: each refresh overwrites the prior version, so only the current state exists. Snapshot (full dataset per boundary) vs delta (changes only) vs ledger vs reconstructible-PIT is a COST choice, not a capability choice: all four strategies enable time-travel reads, but differ in storage footprint and reconstruction latency. Note: snapshot ⟹ time-travel, but time-travel ⇏ snapshot. Preserved snapshots ([REQ-983](#REQ-983)) are a distinct single-instant frozen form and are NOT a time-travel series.
+
+**Use case:** Append-only and reconstructible-storage designs enable calendar-addressed versions to be queried across time. Replace MVs lose all previous versions on refresh, making time-travel impossible. The codebase supports four such strategies; the cost/latency tradeoff is a deployment choice.
+
+**Code:** `provisa/mv/bitemporal.py`, `provisa/events/handlers.py`
+
+**Tests:** `tests/unit/test_bitemporal_calendar.py`, `tests/integration/test_periodic_snapshot_pipeline.py`
+
+## 9. Live Data & Events
+
+### REQ-1168 · Calendar Boundary {#REQ-1168}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+The Grain enum in provisa/events/calendars.py (daily/weekly/monthly/quarterly/annual) cannot express nth-weekday-of-period recurrences (e.g. "3rd Wednesday of each month"). An NthWeekday recurrence rule (weekday + ordinal 1..5 or -1/last) with occurrence math and a tiling window extends the grain vocabulary; parse_grain_spec resolves a nesting grain OR a recurrence spec ("3WE"/"LFR"), and window_for/next_boundary/PeriodicCalendar accept both.
+
+**Use case:** Business snapshots often occur on variable dates within a period (e.g., last business day of month, 3rd Friday for option expiry). The current fixed-grain enum is insufficient.
+
+**Code:** `provisa/events/calendars.py`
+
+**Tests:** `tests/unit/test_live_temporal.py`, `tests/unit/test_periodic_snapshot_generate.py`, `tests/unit/test_bitemporal_calendar.py`
+
+### REQ-1169 · Calendar Management {#REQ-1169}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+Calendars are declarable through the admin surface and the calendar→MV binding is plumbed end to end. A calendar repository + createCalendar mutation + calendars query define named versioned calendars; the MV snapshot-schedule fields (mv_calendar/mv_grain/mv_allowed_lateness/ mv_expected_events/mv_business_day_grain) flow model→registry→event loop; and a collapsible Snapshot Schedule UI panel binds a calendar + grain (nesting or nth-weekday) to a materialized view, making the periodic-snapshot feature reachable without code changes.
+
+**Use case:** Without config-level calendar definition and UI binding, repeating snapshots cannot be declared by users without code changes. A user-facing config surface is essential for adoption.
+
+**Code:** `provisa/core/repositories/calendar.py`, `provisa/api/admin/schema_query.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/pages/tables/TableEditForm.tsx`
+
+**Tests:** `tests/integration/test_periodic_snapshot_graphql_e2e.py`
+
+### REQ-1170 · Table Load Protection {#REQ-1170}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** constraint
+
+Load protection ([REQ-1141](#REQ-1141) off-peak window) and snapshotting on the same table can conflict on timing: a snapshot boundary may fall outside the off-peak refresh window. The system emits a WARNING when both load protection and periodic snapshot(s) are configured on one table, alerting the user to potential misalignment between the protection window and snapshot schedule.
+
+**Use case:** If a snapshot boundary coincides with a peak-hours-only window, the snapshot cannot fire. This warning surfaces the timing conflict so the user can adjust the protection window or snapshot schedule.
+
+**Code:** `provisa/api/admin/schema_mutation.py`
+
+**Tests:** —

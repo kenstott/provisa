@@ -237,39 +237,143 @@ _GREGORIAN_GRAIN = {
 }
 
 
+# -- nth-weekday-of-month recurrence (REQ-1168) --------------------------------
+# The fixed NESTING grains (day⊂week⊂month⊂…) cannot express "the 3rd Wednesday of each month" or
+# "the last Friday": those are ANCHORED recurrences, not a period roll-up. A recurrence yields the
+# same calendar-addressable ``[start, end)`` tiling as a grain — consecutive occurrences tile the
+# timeline — so it drops into ``window_for``/``next_boundary``/``PeriodicCalendar`` unchanged.
+_LAST = -1  # sentinel n: the LAST matching weekday of the month
+_SCAN_MONTHS = 24  # bound the occurrence scan (a rule always recurs within ~2 months; guards runaway)
+_WD_ABBR = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")  # date.weekday() index → label
+
+
+@dataclass(frozen=True)
+class NthWeekday:
+    """An anchored monthly recurrence (REQ-1168): the ``n``-th ``weekday`` of each month.
+
+    ``weekday`` is the ``date.weekday()`` index (0=Mon … 6=Sun). ``n`` is 1–5 (the n-th occurrence)
+    or ``-1`` (the LAST occurrence). A month lacking the n-th occurrence (e.g. a 5th Wednesday) has
+    NO occurrence — consecutive occurrences still tile the timeline, so such a tile simply spans more
+    than one month. Fails LOUD on an out-of-range weekday/n."""
+
+    weekday: int
+    n: int = 1
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.weekday <= 6:
+            raise ValueError(f"NthWeekday.weekday out of range [0,6]: {self.weekday}")
+        if not (1 <= self.n <= 5 or self.n == _LAST):
+            raise ValueError(f"NthWeekday.n must be 1..5 or -1 (last): {self.n}")
+
+    @property
+    def label(self) -> str:
+        ord_ = "L" if self.n == _LAST else str(self.n)
+        return f"{ord_}{_WD_ABBR[self.weekday]}"
+
+
+def _occurrence_in_month(rule: NthWeekday, year: int, month: int) -> date | None:
+    """The date of ``rule`` in ``(year, month)``, or None when that month has no such occurrence
+    (e.g. a 5th weekday that does not exist). ``n == -1`` is the last matching weekday."""
+    first = date(year, month, 1)
+    first_offset = (rule.weekday - first.weekday()) % _DAYS_PER_WEEK
+    if rule.n == _LAST:
+        last_day = _add_months(first, 1) - timedelta(days=1)
+        last_offset = (last_day.weekday() - rule.weekday) % _DAYS_PER_WEEK
+        return last_day - timedelta(days=last_offset)
+    day = 1 + first_offset + (rule.n - 1) * _DAYS_PER_WEEK
+    candidate = first + timedelta(days=day - 1)
+    return candidate if candidate.month == month else None  # e.g. no 5th weekday this month
+
+
+def _occurrence_on_or_before(rule: NthWeekday, d: date) -> date:
+    probe = date(d.year, d.month, 1)
+    for _ in range(_SCAN_MONTHS):
+        occ = _occurrence_in_month(rule, probe.year, probe.month)
+        if occ is not None and occ <= d:
+            return occ
+        probe = _add_months(probe, -1)
+    raise ValueError(f"no {rule.label} occurrence within {_SCAN_MONTHS} months on/before {d}")
+
+
+def _occurrence_strictly_after(rule: NthWeekday, d: date) -> date:
+    probe = date(d.year, d.month, 1)
+    for _ in range(_SCAN_MONTHS):
+        occ = _occurrence_in_month(rule, probe.year, probe.month)
+        if occ is not None and occ > d:
+            return occ
+        probe = _add_months(probe, 1)
+    raise ValueError(f"no {rule.label} occurrence within {_SCAN_MONTHS} months after {d}")
+
+
+def _recurrence_window(cal: Calendar, rule: NthWeekday, d: date) -> Window:
+    """The half-open ``[occurrence, next_occurrence)`` tile containing local date ``d`` (REQ-1168),
+    addressed by its opening occurrence (``window_id`` = ``2026-03-18-3WE``)."""
+    start = _occurrence_on_or_before(rule, d)
+    end = _occurrence_strictly_after(rule, start)
+    return _window(cal, start, end, f"{start.isoformat()}-{rule.label}")
+
+
+_WD_INDEX = {abbr: i for i, abbr in enumerate(_WD_ABBR)}
+
+
+def parse_grain_spec(spec: str | Grain | NthWeekday) -> Grain | NthWeekday:
+    """Parse a declared calendar grain into a nesting :class:`Grain` OR an anchored
+    :class:`NthWeekday` recurrence (REQ-962/1168). A recurrence is written ``<ordinal><weekday>`` —
+    ordinal 1–5 or ``L`` (last), weekday in MO/TU/WE/TH/FR/SA/SU (e.g. ``3WE`` = 3rd Wednesday,
+    ``LFR`` = last Friday). Anything else is tried as a nesting grain. Fails LOUD otherwise."""
+    if isinstance(spec, (Grain, NthWeekday)):
+        return spec
+    s = spec.strip()
+    ordinal, wd = s[:-2].upper(), s[-2:].upper()
+    if wd in _WD_INDEX and (ordinal == "L" or (ordinal.isdigit() and 1 <= int(ordinal) <= 5)):
+        return NthWeekday(weekday=_WD_INDEX[wd], n=_LAST if ordinal == "L" else int(ordinal))
+    return parse_grain(s)  # a nesting grain, or fail loud on an unknown value
+
+
 def window_for(
-    cal: Calendar, grain: str | Grain, instant: datetime, *, business_day: bool = False
+    cal: Calendar,
+    grain: str | Grain | NthWeekday,
+    instant: datetime,
+    *,
+    business_day: bool = False,
 ) -> Window | None:
     """The ``[start, end)`` window (+ ``window_id``) covering ``instant`` for ``(cal, grain)``, or
     ``None`` when the calendar gates the window out of existence (a business-day grain on a
     holiday/weekend). Fails LOUD on an unknown grain (REQ-962).
 
+    ``grain`` is a nesting :class:`Grain` OR an anchored :class:`NthWeekday` recurrence (REQ-1168) —
+    the recurrence yields the same ``[start, end)`` tiling, addressed by its opening occurrence.
     ``business_day`` picks the existence rule: True = business-day grain (no window on a non-business
     day); False = calendar-day grain (always a window). ``instant`` is resolved to the calendar's
     LOCAL date before boundary derivation, so DST and zone offset are honored."""
-    g = parse_grain(grain)
     d = _local_date(cal, instant)
+    spec = parse_grain_spec(grain)  # resolves a nesting grain OR an nth-weekday recurrence string
+    if isinstance(spec, NthWeekday):
+        return _recurrence_window(cal, spec, d)  # an occurrence is a specific day; no grain gating
     if cal.base_system is BaseSystem.RETAIL_445:
-        return _retail_window(cal, g, d)
-    if g is Grain.DAILY:
+        return _retail_window(cal, spec, d)
+    if spec is Grain.DAILY:
         return _daily(cal, d, business_day=business_day)
-    return _GREGORIAN_GRAIN[g](cal, d)
+    return _GREGORIAN_GRAIN[spec](cal, d)
 
 
 def next_boundary(
-    cal: Calendar, grain: str | Grain, instant: datetime, *, business_day: bool = False
+    cal: Calendar,
+    grain: str | Grain | NthWeekday,
+    instant: datetime,
+    *,
+    business_day: bool = False,
 ) -> datetime:
     """The next boundary at/after ``instant`` — the scheduler wake and the close of the current
     window. When the current instant's window is gated out (holiday), advance day-by-day to the next
     existing window's end (a business-day grain skips non-business days). Fails loud on unknown grain."""
-    g = parse_grain(grain)
-    win = window_for(cal, g, instant, business_day=business_day)
+    win = window_for(cal, grain, instant, business_day=business_day)  # window_for parses the grain
     if win is not None:
         return win.end
     probe = instant
     for _ in range(_YEAR_MONTHS * 31):  # bounded scan; a year of days is an ample backstop
         probe = probe + timedelta(days=1)
-        win = window_for(cal, g, probe, business_day=business_day)
+        win = window_for(cal, grain, probe, business_day=business_day)
         if win is not None:
             return win.end
     raise ValueError(f"calendar {cal.name!r}: no window found within a year of {instant}")
@@ -294,6 +398,11 @@ class CalendarRegistry:
             ) from exc
 
     def window_for(
-        self, name: str, grain: str | Grain, instant: datetime, *, business_day: bool = False
+        self,
+        name: str,
+        grain: str | Grain | NthWeekday,
+        instant: datetime,
+        *,
+        business_day: bool = False,
     ) -> Window | None:
         return window_for(self.get(name), grain, instant, business_day=business_day)

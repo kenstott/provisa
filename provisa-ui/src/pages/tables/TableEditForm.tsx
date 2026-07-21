@@ -16,10 +16,12 @@ import {
   Alert,
   Badge,
   Checkbox,
+  Collapse,
   Group,
   NumberInput,
   Select,
   Table,
+  TagsInput,
   Text,
   Textarea,
   TextInput,
@@ -29,13 +31,16 @@ import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import type { RefreshPolicySummary, RegisteredTable, Source } from "../../types/admin";
-import { useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
+import { useCalendars, useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
 import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
 import { sourceProbeTypes } from "../../liveCapability";
 import { IANA_TIME_ZONES, NAMING_CONVENTIONS } from "./constants";
 import { DescriptionField } from "./DescriptionField";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
+import { TimeInput } from "@mantine/dates";
+import { CalendarCreateModal } from "./CalendarCreateModal";
+import { CollapsibleSection } from "./CollapsibleSection";
 
 interface CacheTtlEdit {
   value: string;
@@ -112,6 +117,11 @@ export function TableEditForm({
   // side with the in-flight values, seeded from the persisted summary so it renders before the first
   // fetch resolves.
   const previewPolicy = useRefreshPolicyPreview();
+  const { calendars, refetch: refetchCalendars } = useCalendars(); // REQ-962: snapshot-schedule picker
+  const [snapshotOpen, setSnapshotOpen] = useState(
+    Boolean(editingTable.mvCalendar), // open the panel when a schedule is already configured
+  );
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const [livePolicy, setLivePolicy] = useState<RefreshPolicySummary | null>(
     editingTable.refreshPolicySummary,
   );
@@ -349,48 +359,73 @@ export function TableEditForm({
           />
         )}
         {!isView && effLoadProtected && (
-          <TextInput
-            // REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is open.
-            label={
+          <CollapsibleSection
+            title={t("tableEditForm.sourceProtectionPanel")}
+            testId="mv-protection-panel"
+            defaultOpen
+          >
+            {/* REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is
+                open. Two time widgets (opens/closes) compose the string; both blank = no window. */}
+            <div data-testid="off-peak-window">
               <FieldLabel
                 text={t("tableEditForm.offPeakWindowLabel")}
                 help={t("tableEditForm.offPeakWindowHelp")}
               />
-            }
-            value={editingTable.offPeakWindow ?? ""}
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                offPeakWindow: e.target.value || null,
-              })
-            }
-            placeholder={t("tableEditForm.offPeakWindowPlaceholder")}
-          />
-        )}
-        {!isView && effLoadProtected && (
-        <Select
-          // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
-          // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
-          // window can never be saved against an unparseable zone.
-          label={
-            <FieldLabel
-              text={t("tableEditForm.offPeakTzLabel")}
-              help={t("tableEditForm.offPeakTzHelp")}
+              <Group gap="xs" grow>
+                <TimeInput
+                  aria-label={t("tableEditForm.offPeakOpensAria")}
+                  data-testid="off-peak-opens"
+                  label={t("tableEditForm.offPeakOpens")}
+                  value={(editingTable.offPeakWindow ?? "").split("-")[0] ?? ""}
+                  onChange={(e) => {
+                    const end = (editingTable.offPeakWindow ?? "").split("-")[1] ?? "";
+                    const start = e.currentTarget.value;
+                    setEditingTable({
+                      ...editingTable,
+                      offPeakWindow: start || end ? `${start}-${end}` : null,
+                    });
+                  }}
+                />
+                <TimeInput
+                  aria-label={t("tableEditForm.offPeakClosesAria")}
+                  data-testid="off-peak-closes"
+                  label={t("tableEditForm.offPeakCloses")}
+                  value={(editingTable.offPeakWindow ?? "").split("-")[1] ?? ""}
+                  onChange={(e) => {
+                    const start = (editingTable.offPeakWindow ?? "").split("-")[0] ?? "";
+                    const end = e.currentTarget.value;
+                    setEditingTable({
+                      ...editingTable,
+                      offPeakWindow: start || end ? `${start}-${end}` : null,
+                    });
+                  }}
+                />
+              </Group>
+            </div>
+            <Select
+              // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
+              // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
+              // window can never be saved against an unparseable zone.
+              label={
+                <FieldLabel
+                  text={t("tableEditForm.offPeakTzLabel")}
+                  help={t("tableEditForm.offPeakTzHelp")}
+                />
+              }
+              data={IANA_TIME_ZONES}
+              value={editingTable.offPeakTz ?? ""}
+              onChange={(v) =>
+                setEditingTable({
+                  ...editingTable,
+                  offPeakTz: v || null,
+                })
+              }
+              searchable
+              clearable
+              placeholder="UTC"
+              comboboxProps={{ withinPortal: true }}
             />
-          }
-          data={IANA_TIME_ZONES}
-          value={editingTable.offPeakTz ?? ""}
-          onChange={(v) =>
-            setEditingTable({
-              ...editingTable,
-              offPeakTz: v || null,
-            })
-          }
-          searchable
-          clearable
-          placeholder="UTC"
-          comboboxProps={{ withinPortal: true }}
-        />
+          </CollapsibleSection>
         )}
         <div style={{ gridColumn: "1 / -1" }}>
           <FieldLabel
@@ -448,62 +483,66 @@ export function TableEditForm({
               </Tooltip>
             </Group>
             {editingTable.materialize && (
-              <NumberInput
-                label={
-                  <FieldLabel
-                    text={t("tableEditForm.refreshIntervalLabel")}
-                    help={t("tableEditForm.refreshIntervalHelp")}
-                  />
-                }
-                min={30}
-                value={editingTable.mvRefreshInterval}
-                onChange={(v) =>
-                  setEditingTable({
-                    ...editingTable,
-                    mvRefreshInterval:
-                      typeof v === "number" ? v : parseInt(String(v), 10) || 300,
-                  })
-                }
-              />
-            )}
-            {editingTable.materialize && (
-              <div title={t("tableEditForm.nrtDebounceTitle")}>
-                <Text size="sm" c="dimmed" mb={4}>
-                  {t("tableEditForm.nrtDebounceLabel")}
-                </Text>
-                <Group gap="xs">
-                  <NumberInput
-                    min={0}
-                    step={0.5}
-                    placeholder={t("tableEditForm.nrtQuietPlaceholder")}
-                    aria-label={t("tableEditForm.nrtQuietAria")}
-                    data-testid="mv-debounce-quiet"
-                    value={editingTable.mvDebounceQuiet}
-                    onChange={(v) =>
-                      setEditingTable({
-                        ...editingTable,
-                        mvDebounceQuiet:
-                          typeof v === "number" ? v : parseFloat(String(v)) || 0,
-                      })
-                    }
-                  />
-                  <NumberInput
-                    min={0}
-                    step={0.5}
-                    placeholder={t("tableEditForm.nrtMaxDelayPlaceholder")}
-                    aria-label={t("tableEditForm.nrtMaxDelayAria")}
-                    data-testid="mv-debounce-max-delay"
-                    value={editingTable.mvDebounceMaxDelay}
-                    onChange={(v) =>
-                      setEditingTable({
-                        ...editingTable,
-                        mvDebounceMaxDelay:
-                          typeof v === "number" ? v : parseFloat(String(v)) || 0,
-                      })
-                    }
-                  />
-                </Group>
-              </div>
+              <CollapsibleSection
+                title={t("tableEditForm.refreshPanel")}
+                testId="mv-refresh-panel"
+                defaultOpen
+              >
+                <NumberInput
+                  label={
+                    <FieldLabel
+                      text={t("tableEditForm.refreshIntervalLabel")}
+                      help={t("tableEditForm.refreshIntervalHelp")}
+                    />
+                  }
+                  min={30}
+                  value={editingTable.mvRefreshInterval}
+                  onChange={(v) =>
+                    setEditingTable({
+                      ...editingTable,
+                      mvRefreshInterval:
+                        typeof v === "number" ? v : parseInt(String(v), 10) || 300,
+                    })
+                  }
+                />
+                <div title={t("tableEditForm.nrtDebounceTitle")}>
+                  <Text size="sm" c="dimmed" mb={4}>
+                    {t("tableEditForm.nrtDebounceLabel")}
+                  </Text>
+                  <Group gap="xs">
+                    <NumberInput
+                      min={0}
+                      step={0.5}
+                      placeholder={t("tableEditForm.nrtQuietPlaceholder")}
+                      aria-label={t("tableEditForm.nrtQuietAria")}
+                      data-testid="mv-debounce-quiet"
+                      value={editingTable.mvDebounceQuiet}
+                      onChange={(v) =>
+                        setEditingTable({
+                          ...editingTable,
+                          mvDebounceQuiet:
+                            typeof v === "number" ? v : parseFloat(String(v)) || 0,
+                        })
+                      }
+                    />
+                    <NumberInput
+                      min={0}
+                      step={0.5}
+                      placeholder={t("tableEditForm.nrtMaxDelayPlaceholder")}
+                      aria-label={t("tableEditForm.nrtMaxDelayAria")}
+                      data-testid="mv-debounce-max-delay"
+                      value={editingTable.mvDebounceMaxDelay}
+                      onChange={(v) =>
+                        setEditingTable({
+                          ...editingTable,
+                          mvDebounceMaxDelay:
+                            typeof v === "number" ? v : parseFloat(String(v)) || 0,
+                        })
+                      }
+                    />
+                  </Group>
+                </div>
+              </CollapsibleSection>
             )}
             {editingTable.materialize && (
               <Select
@@ -534,30 +573,209 @@ export function TableEditForm({
               />
             )}
             {editingTable.materialize && (
-              <Select
-                label={
-                  <FieldLabel
-                    text={t("tableEditForm.bitemporalLabel")}
-                    help={t("tableEditForm.bitemporalHelp")}
-                  />
-                }
-                aria-label={t("tableEditForm.bitemporalAria")}
-                data-testid="mv-bitemporal-mode"
-                data={[
-                  { value: "", label: t("tableEditForm.bitemporalNone") },
-                  { value: "snapshot", label: t("tableEditForm.bitemporalSnapshot") },
-                  { value: "delta", label: t("tableEditForm.bitemporalDelta") },
-                ]}
-                value={editingTable.mvBitemporalMode ?? ""}
-                onChange={(v) =>
-                  setEditingTable({
-                    ...editingTable,
-                    mvBitemporalMode: v ? v : null,
-                  })
-                }
-                comboboxProps={{ withinPortal: true }}
-                allowDeselect={false}
-              />
+              <CollapsibleSection
+                title={t("tableEditForm.timeTravelPanel")}
+                testId="mv-timetravel-panel"
+                defaultOpen={Boolean(editingTable.mvBitemporalMode)}
+                badge={editingTable.mvBitemporalMode || undefined}
+              >
+                <Select
+                  label={
+                    <FieldLabel
+                      text={t("tableEditForm.bitemporalLabel")}
+                      help={t("tableEditForm.bitemporalHelp")}
+                    />
+                  }
+                  aria-label={t("tableEditForm.bitemporalAria")}
+                  data-testid="mv-bitemporal-mode"
+                  data={[
+                    { value: "", label: t("tableEditForm.bitemporalNone") },
+                    { value: "snapshot", label: t("tableEditForm.bitemporalSnapshot") },
+                    { value: "delta", label: t("tableEditForm.bitemporalDelta") },
+                  ]}
+                  value={editingTable.mvBitemporalMode ?? ""}
+                  onChange={(v) =>
+                    setEditingTable({
+                      ...editingTable,
+                      mvBitemporalMode: v ? v : null,
+                    })
+                  }
+                  comboboxProps={{ withinPortal: true }}
+                  allowDeselect={false}
+                />
+              </CollapsibleSection>
+            )}
+            {editingTable.materialize && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <Group
+                  gap="xs"
+                  wrap="nowrap"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setSnapshotOpen((o) => !o)}
+                  data-testid="mv-snapshot-panel-toggle"
+                  role="button"
+                  aria-expanded={snapshotOpen}
+                >
+                  <ActionIcon variant="subtle" size="sm" aria-hidden>
+                    {snapshotOpen ? "−" : "+"}
+                  </ActionIcon>
+                  <Text fw={600} size="sm">
+                    {t("tableEditForm.snapshotPanel")}
+                  </Text>
+                  {editingTable.mvCalendar && (
+                    <Badge size="xs" variant="light" color="grape">
+                      {editingTable.mvCalendar}
+                      {editingTable.mvGrain ? ` · ${editingTable.mvGrain}` : ""}
+                    </Badge>
+                  )}
+                </Group>
+                <Collapse in={snapshotOpen}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: "var(--mantine-spacing-sm)",
+                      paddingTop: "var(--mantine-spacing-xs)",
+                    }}
+                  >
+                    <Group gap="xs" align="flex-end" wrap="nowrap">
+                      <Select
+                        style={{ flex: 1 }}
+                        label={
+                          <FieldLabel
+                            text={t("tableEditForm.calendarLabel")}
+                            help={t("tableEditForm.calendarHelp")}
+                          />
+                        }
+                        data-testid="mv-calendar"
+                        placeholder={
+                          calendars.length
+                            ? t("tableEditForm.calendarPlaceholder")
+                            : t("tableEditForm.calendarPlaceholderEmpty")
+                        }
+                        data={calendars.map((c) => ({
+                          value: c.name,
+                          label: `${c.name} (v${c.version}, ${c.baseSystem}, ${c.tz})`,
+                        }))}
+                        value={editingTable.mvCalendar}
+                        onChange={(v) =>
+                          setEditingTable({ ...editingTable, mvCalendar: v || null })
+                        }
+                        comboboxProps={{ withinPortal: true }}
+                        clearable
+                      />
+                      <ActionIcon
+                        variant="light"
+                        size="lg"
+                        aria-label={t("tableEditForm.calendarNewAria")}
+                        data-testid="mv-calendar-new"
+                        onClick={() => setCalendarModalOpen(true)}
+                      >
+                        +
+                      </ActionIcon>
+                    </Group>
+                    {editingTable.mvCalendar && (
+                      <Select
+                        label={
+                          <FieldLabel
+                            text={t("tableEditForm.grainLabel")}
+                            help={t("tableEditForm.grainHelp")}
+                          />
+                        }
+                        data-testid="mv-grain"
+                        placeholder={t("tableEditForm.grainPlaceholder")}
+                        data={[
+                          { value: "daily", label: t("tableEditForm.grainDaily") },
+                          { value: "weekly", label: t("tableEditForm.grainWeekly") },
+                          { value: "monthly", label: t("tableEditForm.grainMonthly") },
+                          { value: "quarterly", label: t("tableEditForm.grainQuarterly") },
+                          { value: "annual", label: t("tableEditForm.grainAnnual") },
+                          { value: "3WE", label: t("tableEditForm.grain3we") },
+                          { value: "1MO", label: t("tableEditForm.grain1mo") },
+                          { value: "LFR", label: t("tableEditForm.grainLfr") },
+                        ]}
+                        value={editingTable.mvGrain}
+                        onChange={(v) => setEditingTable({ ...editingTable, mvGrain: v || null })}
+                        comboboxProps={{ withinPortal: true }}
+                      />
+                    )}
+                    {editingTable.mvCalendar && (
+                      <NumberInput
+                        label={
+                          <FieldLabel
+                            text={t("tableEditForm.allowedLatenessLabel")}
+                            help={t("tableEditForm.allowedLatenessHelp")}
+                          />
+                        }
+                        data-testid="mv-allowed-lateness"
+                        min={0}
+                        step={60}
+                        value={editingTable.mvAllowedLateness}
+                        onChange={(v) =>
+                          setEditingTable({
+                            ...editingTable,
+                            mvAllowedLateness:
+                              typeof v === "number" ? v : parseFloat(String(v)) || 0,
+                          })
+                        }
+                      />
+                    )}
+                    {editingTable.mvCalendar && (
+                      <Checkbox
+                        data-testid="mv-business-day-grain"
+                        checked={editingTable.mvBusinessDayGrain}
+                        onChange={(e) =>
+                          setEditingTable({
+                            ...editingTable,
+                            mvBusinessDayGrain: e.currentTarget.checked,
+                          })
+                        }
+                        label={t("tableEditForm.businessDayGrainLabel")}
+                      />
+                    )}
+                    {editingTable.mvCalendar && (
+                      <Checkbox
+                        data-testid="mv-expected-all"
+                        checked={editingTable.mvExpectedEvents === null}
+                        onChange={(e) =>
+                          setEditingTable({
+                            ...editingTable,
+                            // null = verify every lineage input (default); [] = a custom set (verify
+                            // nothing until inputs are named) — REQ-961 preflight contract.
+                            mvExpectedEvents: e.currentTarget.checked ? null : [],
+                          })
+                        }
+                        label={
+                          <FieldLabel
+                            text={t("tableEditForm.expectedAllLabel")}
+                            help={t("tableEditForm.expectedAllHelp")}
+                          />
+                        }
+                      />
+                    )}
+                    {editingTable.mvCalendar && editingTable.mvExpectedEvents !== null && (
+                      <TagsInput
+                        label={t("tableEditForm.expectedEventsLabel")}
+                        data-testid="mv-expected-events"
+                        placeholder={t("tableEditForm.expectedEventsPlaceholder")}
+                        value={editingTable.mvExpectedEvents ?? []}
+                        onChange={(v) =>
+                          setEditingTable({ ...editingTable, mvExpectedEvents: v })
+                        }
+                        comboboxProps={{ withinPortal: true }}
+                        clearable
+                      />
+                    )}
+                  </div>
+                </Collapse>
+                <CalendarCreateModal
+                  opened={calendarModalOpen}
+                  onClose={() => setCalendarModalOpen(false)}
+                  onCreated={(nm) => {
+                    refetchCalendars();
+                    setEditingTable({ ...editingTable, mvCalendar: nm });
+                  }}
+                />
+              </div>
             )}
             {editingTable.materialize && editingTable.mvBitemporalMode && (
               <TextInput

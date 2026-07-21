@@ -49,14 +49,19 @@ async def _refresh_bitemporal(
     select_sql: str,
     table_exists: bool,
     existing_cols: list[str],
+    system_ts: str | None = None,
 ) -> None:
     """Advance a bitemporal MV by APPENDING this refresh (REQ-1162): first materialization creates
     the log; subsequent refreshes append a full snapshot or an engine-computed delta. No UPDATE/
     DELETE of history ever runs. A view-definition column change is the one exception — the append
-    log's business shape no longer matches, so the log is rebuilt (history reset) and surfaced."""
+    log's business shape no longer matches, so the log is rebuilt (history reset) and surfaced.
+
+    ``system_ts`` is the append stamp as a SQL literal. None = wall-clock (a live refresh). A CALENDAR
+    boundary (``window.end`` via ``system_ts_literal``) makes the seal DETERMINISTIC and addressable
+    as-of that window — the periodic-snapshot binding (REQ-1166/1167)."""
     spec = mv.bitemporal
     assert spec is not None
-    now_ts = _now_ts_literal()
+    now_ts = system_ts or _now_ts_literal()
     if not table_exists:
         await engine.execute_engine(create_sql(target, select_sql, spec, now_ts))
         return
@@ -81,6 +86,29 @@ async def _refresh_bitemporal(
 
     for stmt in append_sql(target, select_sql, spec, new_cols, now_ts, engine.dialect):
         await engine.execute_engine(stmt)
+
+
+async def apply_bitemporal_append(engine, mv: MVDefinition, *, system_ts: str | None = None) -> str:
+    """Append one bitemporal refresh for ``mv`` and return the target ref (REQ-1162). The reusable
+    entry point for BOTH refresh paths: the scheduled materializer (wall-clock stamp) and the
+    event-loop periodic-snapshot generate (calendar ``window.end`` stamp via ``system_ts``). Ensures
+    the target schema, probes the existing shape, and delegates to :func:`_refresh_bitemporal`."""
+    target = _target_ref(mv)
+    select_sql = await _build_refresh_sql(mv, engine)
+    await engine.execute_engine(
+        f'CREATE SCHEMA IF NOT EXISTS "{mv.target_catalog}"."{mv.target_schema}"'
+    )
+    try:
+        existing_cols = (
+            await engine.execute_engine(f"SELECT * FROM {target} LIMIT 0")
+        ).column_names
+        table_exists = True
+    except Exception:
+        existing_cols, table_exists = [], False
+    await _refresh_bitemporal(
+        engine, mv, target, select_sql, table_exists, existing_cols, system_ts=system_ts
+    )
+    return target
 
 
 def _emit_column_lineage_span(

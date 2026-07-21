@@ -41,6 +41,7 @@ from provisa.api.admin.types import (
     AvailableTableType,
     CacheStatsType,
     CacheTableStatType,
+    CalendarType,
     DomainType,
     HotTableStatType,
     MaterializeStoreInfoType,
@@ -96,6 +97,31 @@ def _safe_store_ref(engine: Any) -> str | None:
 
 @strawberry.type
 class Query:  # REQ-021, REQ-042
+    @strawberry.field
+    async def calendars(self, info: StrawberryInfo) -> list["CalendarType"]:  # REQ-962  # pyright: ignore[reportUnusedParameter]
+        """Every registered snapshot-boundary calendar version (REQ-962) — feeds the snapshot-schedule
+        config (a calendar picker) and confirms which calendars a periodic MV may reference."""
+        from provisa.core.repositories import calendar as calendar_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await calendar_repo.list_all(cast("Connection", conn))
+        return [
+            CalendarType(
+                name=r["name"],
+                version=r["version"],
+                base_system=r["base_system"],
+                tz=r["tz"],
+                fiscal_anchor_month=r["fiscal_anchor_month"],
+                fiscal_anchor_day=r["fiscal_anchor_day"],
+                retail_anchor=r["retail_anchor"].isoformat() if r["retail_anchor"] else None,
+                week_start=r["week_start"],
+                holidays=list(r["holidays"] or []),
+                weekend=list(r["weekend"] or [5, 6]),
+            )
+            for r in rows
+        ]
+
     @strawberry.field
     async def creation_requests(
         self, info: StrawberryInfo

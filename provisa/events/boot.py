@@ -103,7 +103,7 @@ def _resolve_mv_deadline(
     calendar = getattr(mv, "calendar", None)
     if calendar is None:
         return None, None, None, mv.debounce_quiet, mv.debounce_max_delay
-    from provisa.events.calendars import parse_grain
+    from provisa.events.calendars import parse_grain_spec
     from provisa.events.deadlines import PeriodicCalendar
     from provisa.events.lineage import extract_inputs
 
@@ -112,9 +112,11 @@ def _resolve_mv_deadline(
     grain = getattr(mv, "grain", None)
     if grain is None:
         raise ValueError(f"MV {mv.target_table!r}: calendar declared without a grain (REQ-962)")
+    # REQ-962/1168: grain is a nesting grain ("daily".."annual") OR an nth-weekday recurrence
+    # ("3WE"/"LFR"); parse_grain_spec resolves either. PeriodicCalendar accepts both forms.
     source = PeriodicCalendar(
         calendar=calendar_registry.get(calendar),
-        grain=parse_grain(grain).value,
+        grain=parse_grain_spec(grain),
         allowed_lateness=float(getattr(mv, "allowed_lateness", 0.0)),
         business_day=bool(getattr(mv, "business_day_grain", False)),
     )
@@ -138,6 +140,7 @@ def specs_from_config(
     subscribers_of: Callable[[str, str], list[str]] | None = None,
     calendar_registry: Any | None = None,
     freshness_of: Callable[[str], Any] | None = None,
+    mv_bitemporal_append: Callable[[Any], Callable[[str | None], Any]] | None = None,
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
@@ -245,7 +248,13 @@ def specs_from_config(
         # REQ-969 (MAY): a declared incremental MV applies upstream deltas (feasibility checked in
         # make_mv_incremental — PK + incrementalizable SQL, else an explicit error). Otherwise the
         # REQ-966 recompute-to-current baseline (make_mv_generate).
-        if getattr(mv, "incremental", False):
+        if getattr(mv, "bitemporal", None) is not None and mv_bitemporal_append is not None:
+            # REQ-1162/1166/1167: an append-only bitemporal MV keeps history — each fire APPENDS a
+            # version (stamped by the calendar window.end when periodic). Supersedes the persist axis.
+            from provisa.events.handlers import make_mv_bitemporal_generate
+
+            handle = make_mv_bitemporal_generate(mv_bitemporal_append(mv))
+        elif getattr(mv, "incremental", False):
             from provisa.events.handlers import make_mv_incremental
 
             handle = make_mv_incremental(

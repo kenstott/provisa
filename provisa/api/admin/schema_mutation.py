@@ -37,6 +37,7 @@ from provisa.core.repositories import rls as rls_repo
 from provisa.federation.strategy import engine_attaches
 from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin.types import (
+    CalendarInput,
     ColumnAliasType,
     CompileQueryInput,
     CompileQueryResult,
@@ -133,6 +134,53 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Rebuild in-memory schema from DB state. Useful after external DB changes."""
         await _rebuild_schemas()
         return MutationResult(success=True, message="Schemas rebuilt")
+
+    @strawberry.mutation
+    async def create_calendar(self, input: "CalendarInput") -> MutationResult:  # REQ-962
+        """Create/replace a versioned snapshot-boundary calendar (REQ-962). Validated by constructing
+        the in-memory Calendar (fails loud on a bad base_system/tz/anchor) before it is persisted; a
+        rebuild reloads the registry so a periodic MV can resolve it."""
+        from datetime import date
+
+        from provisa.core.repositories import calendar as calendar_repo
+        from provisa.events.calendars import BaseSystem, Calendar
+
+        try:
+            Calendar(  # validation only — raises on an unknown base_system / bad tz
+                name=input.name,
+                version=input.version,
+                base_system=BaseSystem(input.base_system),
+                tz=input.tz,
+                fiscal_anchor=(input.fiscal_anchor_month, input.fiscal_anchor_day),
+                retail_anchor=date.fromisoformat(input.retail_anchor) if input.retail_anchor else None,
+                week_start=input.week_start,
+                holidays=frozenset(date.fromisoformat(d) for d in input.holidays),
+                weekend=frozenset(input.weekend),
+            )
+        except (ValueError, KeyError) as e:
+            return MutationResult(success=False, message=f"invalid calendar: {e}")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            await calendar_repo.upsert(
+                cast("Connection", conn),
+                {
+                    "name": input.name,
+                    "version": input.version,
+                    "base_system": input.base_system,
+                    "tz": input.tz,
+                    "fiscal_anchor_month": input.fiscal_anchor_month,
+                    "fiscal_anchor_day": input.fiscal_anchor_day,
+                    "retail_anchor": date.fromisoformat(input.retail_anchor)
+                    if input.retail_anchor
+                    else None,
+                    "week_start": input.week_start,
+                    "holidays": input.holidays,
+                    "weekend": input.weekend,
+                },
+            )
+        return MutationResult(
+            success=True, message=f"calendar {input.name!r} v{input.version} saved"
+        )
 
     @strawberry.mutation
     async def create_source(
@@ -492,6 +540,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     persist=input.mv_persist,  # REQ-965
                     primary_key=list(input.mv_primary_key),  # REQ-970
                     incremental=input.mv_incremental,  # REQ-969
+                    calendar=input.mv_calendar,  # REQ-962
+                    grain=input.mv_grain,  # REQ-962/1168
+                    allowed_lateness=input.mv_allowed_lateness,  # REQ-961
+                    expected_events=input.mv_expected_events,  # REQ-961
+                    business_day_grain=input.mv_business_day_grain,  # REQ-962
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
                 return MutationResult(success=False, message=str(_det_err))
@@ -877,11 +930,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     registered_tables.c.cache_ttl,
                     registered_tables.c.change_signal,
                     registered_tables.c.off_peak_window,
+                    registered_tables.c.mv_bitemporal_mode,
                 ).where(registered_tables.c.id == table_id)
             )
             row = _res.fetchone()
             if row is None:
                 return MutationResult(success=False, message=f"Table {table_id} not found")
+            # REQ-1141/1162: load protection (WHEN a source may be hit) and snapshotting (WHAT
+            # point-in-time the data represents) are different axes, but on ONE table their timing can
+            # fight — a snapshot boundary can fall outside the off-peak window, so the snapshot never
+            # captures the intended instant. Warn (not block): they compose only when the snapshot
+            # deadline can wait for the off-peak refresh (allowed_lateness).
+            if (load_protected or off_peak_window) and row.mv_bitemporal_mode:
+                logging.getLogger(__name__).warning(
+                    "table %s: load protection (off-peak window) AND %r snapshotting are both set — "
+                    "verify the snapshot boundary falls inside the off-peak refresh window (or that "
+                    "allowed_lateness covers the lag), else snapshots may miss their intended instant "
+                    "(REQ-1141/1162)",
+                    table_id,
+                    row.mv_bitemporal_mode,
+                )
             _sres = await conn.execute_core(
                 select(
                     sources.c.load_protected,

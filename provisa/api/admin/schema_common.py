@@ -305,6 +305,11 @@ def _sync_view_mv(
     persist: str = "replace",  # REQ-965: replace | append | upsert
     primary_key: list[str] | None = None,  # REQ-970: row identity
     incremental: bool = False,  # REQ-969: incremental maintenance
+    calendar: str | None = None,  # REQ-962: periodic-snapshot calendar (None = not periodic)
+    grain: str | None = None,  # REQ-962/1168: nesting grain or nth-weekday spec
+    allowed_lateness: float = 0.0,  # REQ-961: seal-deadline slack (s)
+    expected_events: list[str] | None = None,  # REQ-961: preflight freshness contract
+    business_day_grain: bool = False,  # REQ-962: gate windows to business days
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view."""
     # REQ-879: consistency tier is a closed set — reject anything else loudly (no silent default).
@@ -368,6 +373,11 @@ def _sync_view_mv(
         persist=persist,  # REQ-965
         primary_key=list(primary_key or []),  # REQ-970
         incremental=incremental,  # REQ-969
+        calendar=calendar,  # REQ-962
+        grain=grain,  # REQ-962/1168
+        allowed_lateness=allowed_lateness,  # REQ-961
+        expected_events=expected_events,  # REQ-961
+        business_day_grain=business_day_grain,  # REQ-962
     )
     state.mv_registry.register(mv)
 
