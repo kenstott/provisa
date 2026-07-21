@@ -604,11 +604,22 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
 
 
 class RoleRateLimit(BaseModel):
-    """Per-role rate limits (REQ-369). None = unlimited for that dimension."""
+    """Per-role rate limits (REQ-369) + query-complexity limits (REQ-1174, Hasura api_limits parity).
+    None = unlimited for that dimension.
+
+    ``requests_per_second`` throttles REQUEST VOLUME; the complexity limits below cap a SINGLE
+    query's cost — a guard rate limiting cannot provide (one deeply-nested / huge query is far more
+    damaging than volume). ``max_query_depth`` (AST selection nesting) and ``max_query_nodes``
+    (selected field count) are checked at the GraphQL→IR compile boundary; ``max_query_time_ms`` caps
+    execution wall-time per request for the role."""
 
     requests_per_second: int | None = None
     max_sse_subscriptions: int | None = None
     max_flight_streams: int | None = None
+    # REQ-1174: per-role query-complexity limits (Hasura api_limits: depth_limit / node_limit / time).
+    max_query_depth: int | None = None
+    max_query_nodes: int | None = None
+    max_query_time_ms: int | None = None
 
 
 class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369

@@ -137,3 +137,6 @@ class HasuraMetadata:  # REQ-417
     inherited_roles: list[HasuraInheritedRole] = field(default_factory=list)
     remote_schemas: list[HasuraRemoteSchema] = field(default_factory=list)
     graphql_engine: dict = field(default_factory=dict)  # e.g. {"enable_relay": true}
+    # REQ-1174: api_limits.yaml (rate_limit / depth_limit / node_limit / time_limit, each with
+    # `global` + `per_role`) — mapped to per-role rate + query-complexity limits by the mapper.
+    api_limits: dict = field(default_factory=dict)

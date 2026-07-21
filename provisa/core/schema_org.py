@@ -245,6 +245,9 @@ roles = Table(
     Column("id", Text, primary_key=True),
     Column("capabilities", JSON, nullable=False, default=list, server_default="[]"),
     Column("domain_access", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-1174: per-role rate + query-complexity limits {requests_per_second, max_query_depth,
+    # max_query_nodes, max_query_time_ms, ...}. None/absent = unlimited.
+    Column("rate_limit", JSON),
     Column("parent_role_id", Text, ForeignKey("roles.id")),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),

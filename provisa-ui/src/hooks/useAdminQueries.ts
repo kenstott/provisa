@@ -827,7 +827,17 @@ export function useUpsertRole() {
     refetchQueries: [{ query: ROLES_QUERY }],
   });
   return {
-    upsertRole: async (input: { id: string; capabilities: string[]; domainAccess: string[] }) => {
+    upsertRole: async (input: {
+      id: string;
+      capabilities: string[];
+      domainAccess: string[];
+      rateLimit?: {
+        requestsPerSecond: number | null;
+        maxQueryDepth: number | null;
+        maxQueryNodes: number | null;
+        maxQueryTimeMs: number | null;
+      } | null;
+    }) => {
       const result = await createRole({ variables: { input } });
       return (result.data?.createRole ?? { success: false, message: "" }) as MutationResult;
     },

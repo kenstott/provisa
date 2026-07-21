@@ -23,16 +23,18 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-async def upsert(conn: "Connection", role: Role) -> None:  # REQ-042, REQ-059, REQ-060
+async def upsert(conn: "Connection", role: Role) -> None:  # REQ-042, REQ-059, REQ-060, REQ-1174
     await conn.upsert(
         roles,
         {
             "id": role.id,
             "capabilities": role.capabilities,  # JSON column — list passes through
             "domain_access": role.domain_access,
+            # REQ-1174: per-role rate + query-complexity limits; None = unlimited (column NULL).
+            "rate_limit": role.rate_limit.model_dump() if role.rate_limit is not None else None,
         },
         index_elements=["id"],
-        update_columns=["capabilities", "domain_access"],
+        update_columns=["capabilities", "domain_access", "rate_limit"],
     )
 
 

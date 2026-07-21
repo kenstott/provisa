@@ -18,6 +18,7 @@ from provisa.api.admin.types import (
     DomainType,
     RelationshipType,
     RLSRuleType,
+    RoleRateLimitType,
     RoleType,
     SourceCdcConfigType,
     SourceInput,
@@ -104,10 +105,21 @@ def _domain_from_row(row) -> DomainType:
 
 
 def _role_from_row(row) -> RoleType:
+    # REQ-1174: surface the per-role rate + query-complexity limits (JSON column) to the admin API.
+    rl = row.get("rate_limit")
+    rate_limit = None
+    if isinstance(rl, dict):
+        rate_limit = RoleRateLimitType(
+            requests_per_second=rl.get("requests_per_second"),
+            max_query_depth=rl.get("max_query_depth"),
+            max_query_nodes=rl.get("max_query_nodes"),
+            max_query_time_ms=rl.get("max_query_time_ms"),
+        )
     return RoleType(
         id=row["id"],
         capabilities=list(row["capabilities"]),
         domain_access=list(row["domain_access"]),
+        rate_limit=rate_limit,
     )
 
 

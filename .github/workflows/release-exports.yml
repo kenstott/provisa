@@ -37,6 +37,9 @@ jobs:
       - name: Generate roadmap
         run: uv run python scripts/gen_roadmap.py
 
+      - name: Ensure release exists
+        uses: ./.github/actions/ensure-release
+
       - name: Upload feature_matrix.csv
         uses: softprops/action-gh-release@v2
         with:

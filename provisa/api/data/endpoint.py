@@ -287,6 +287,19 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         )
         return JSONResponse({"data": result.data})
 
+    # REQ-1174: per-role query-complexity guard at the IR-compile boundary. Introspection above is
+    # exempt (schema meta — depth-limiting it breaks GraphQL tooling). Depth is measured on the AST
+    # (the normalized IR flattens nesting into joins, so it is not recoverable there); a query over a
+    # role's depth/node limit is rejected BEFORE any SQL is planned or run. 413 = "query too large".
+    from provisa.compiler.limits import QueryLimitError, enforce_limits, role_query_limits
+
+    _max_depth, _max_nodes, _ = role_query_limits(role)
+    try:
+        enforce_limits(document, max_depth=_max_depth, max_nodes=_max_nodes)
+    except QueryLimitError as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    # (the role's max_query_time_ms is applied where execution is wrapped — _handle_query.)
+
     from graphql.language.ast import OperationDefinitionNode as _ODN
 
     is_mut = any(
@@ -766,6 +779,13 @@ async def _handle_query(
       → cache check → route → transpile → execute → cache store → serialize.
     Multiple root fields are executed independently and merged.
     """
+    # REQ-1174: cap execution wall-time at the tighter of the global request timeout and the role's
+    # max_query_time_ms (None → global only). Applied to every wait_for below.
+    from provisa.compiler.limits import role_query_limits as _rql
+
+    _rt_ms = _rql(role)[2]
+    _role_timeout = _request_timeout() if _rt_ms is None else min(_request_timeout(), _rt_ms / 1000.0)
+
     action_sels, regular_names = _split_action_fields(document, state)
 
     if action_sels and not regular_names:
@@ -837,11 +857,11 @@ async def _handle_query(
                     query_text=query_text,
                     org_id=org_id,
                 ),
-                timeout=_request_timeout(),
+                timeout=_role_timeout,
             )
         except asyncio.TimeoutError:
             raise HTTPException(
-                status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s"
+                status_code=504, detail=f"Query timed out after {_role_timeout:.0f}s"
             )
         if cached_entry is not None:
             headers = build_cache_headers(cached_entry)
@@ -889,11 +909,11 @@ async def _handle_query(
                     for compiled in prepared
                 ]
             ),
-            timeout=_request_timeout(),
+            timeout=_role_timeout,
         )
     except asyncio.TimeoutError:
         raise HTTPException(
-            status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s"
+            status_code=504, detail=f"Query timed out after {_role_timeout:.0f}s"
         )
 
     for root_field, field_rows, redirect_info, _, cached_entry in results:

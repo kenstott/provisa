@@ -262,10 +262,21 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
 
 
 @strawberry.type
+class RoleRateLimitType:  # REQ-1174
+    """Per-role rate + query-complexity limits (None = unlimited on that dimension)."""
+
+    requests_per_second: int | None = None
+    max_query_depth: int | None = None
+    max_query_nodes: int | None = None
+    max_query_time_ms: int | None = None
+
+
+@strawberry.type
 class RoleType:  # REQ-042
     id: str
     capabilities: list[str]
     domain_access: list[str]
+    rate_limit: RoleRateLimitType | None = None  # REQ-1174
 
 
 @strawberry.type
@@ -480,10 +491,19 @@ class FactInput:  # REQ-1164: star fact / DV link sugar → lowers to an aggrega
 
 
 @strawberry.input
+class RoleRateLimitInput:  # REQ-1174
+    requests_per_second: int | None = None
+    max_query_depth: int | None = None
+    max_query_nodes: int | None = None
+    max_query_time_ms: int | None = None
+
+
+@strawberry.input
 class RoleInput:  # REQ-042
     id: str
     capabilities: list[str]
     domain_access: list[str]
+    rate_limit: RoleRateLimitInput | None = None  # REQ-1174
 
 
 @strawberry.input

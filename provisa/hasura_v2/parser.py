@@ -351,6 +351,11 @@ def parse_metadata_dir(
             )
             # REQ-417: remote schemas are mapped to graphql_remote sources by the mapper.
 
+    # REQ-1174: api_limits.yaml → per-role rate + query-complexity limits (mapped by the mapper).
+    api_limits = _load_yaml(md / "api_limits.yaml")
+    if isinstance(api_limits, dict):
+        metadata.api_limits = api_limits
+
     return metadata
 
 

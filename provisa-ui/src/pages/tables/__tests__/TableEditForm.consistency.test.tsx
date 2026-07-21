@@ -13,16 +13,26 @@
 // instance-local (a per-instance copy that diverges across instances behind a load balancer).
 
 import { describe, it, expect, vi } from "vitest";
-import { render as rtlRender } from "@testing-library/react";
-import { MockedProvider } from "@apollo/client/testing/react";
-import { MantineProvider } from "@mantine/core";
-import { I18nextProvider } from "react-i18next";
 import { render, screen } from "../../../test-utils/render";
 import { TableEditForm } from "../TableEditForm";
 import type { RegisteredTable } from "../../../types/admin";
-import i18n from "../../../i18n";
-import { theme } from "../../../theme/theme";
-import { MaterializeStoreInfo as STORE_INFO_QUERY } from "../../../hooks/admin.graphql";
+
+// Control useMaterializeStoreInfo directly via a hoisted holder (importOriginal keeps every other
+// hook real). This is leak-immune under vmThreads — a store-info mock leaking in from another test
+// file cannot flip this test's value, and this file's mock re-applies when it runs.
+const storeHolder = vi.hoisted(() => ({ info: null as unknown }));
+vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../hooks/useAdminQueries")>();
+  return {
+    ...actual,
+    useMaterializeStoreInfo: () => ({
+      materializeStoreInfo: storeHolder.info,
+      loading: false,
+      error: undefined,
+      refetch: vi.fn(),
+    }),
+  };
+});
 
 function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   return {
@@ -99,52 +109,40 @@ function formEl(table: RegisteredTable) {
   );
 }
 
-// Local render that mocks the materialize-store-info query (the shared render util's MockedProvider
-// is empty, so the store-info query never resolves there — fine for the "no warning" default).
-function renderWithStore(table: RegisteredTable, instanceLocalStore: boolean) {
-  const mocks = [
-    {
-      request: { query: STORE_INFO_QUERY },
-      result: {
-        data: {
-          materializeStoreInfo: {
-            engineName: "duckdb",
-            storeRef: instanceLocalStore ? "duckdb:///x.duckdb" : "postgresql://h/db",
-            mvCount: 0,
-            instanceLocalStore,
-          },
-        },
-      },
-    },
-  ];
-  return rtlRender(
-    <MockedProvider mocks={mocks}>
-      <MantineProvider theme={theme} defaultColorScheme="dark">
-        <I18nextProvider i18n={i18n}>{formEl(table)}</I18nextProvider>
-      </MantineProvider>
-    </MockedProvider>,
-  );
+function setStore(instanceLocalStore: boolean | null) {
+  storeHolder.info =
+    instanceLocalStore === null
+      ? null
+      : {
+          engineName: "duckdb",
+          storeRef: instanceLocalStore ? "duckdb:///x.duckdb" : "postgresql://h/db",
+          mvCount: 0,
+          instanceLocalStore,
+        };
 }
 
 describe("TableEditForm — MV store consistency (REQ-879)", () => {
   it("no longer renders a consistency selector", () => {
+    setStore(null);
     render(formEl(makeTable()));
     expect(screen.queryByTestId("mv-consistency")).toBeNull();
   });
 
-  it("shows no local-store warning when store info is unresolved/shared", () => {
-    render(formEl(makeTable())); // shared render → store-info query unmocked → no warning
+  it("shows no local-store warning when store info is unresolved", () => {
+    setStore(null);
+    render(formEl(makeTable()));
     expect(screen.queryByTestId("mv-local-store-warning")).toBeNull();
   });
 
-  it("warns when the resolved materialization store is instance-local", async () => {
-    renderWithStore(makeTable(), true);
-    expect(await screen.findByTestId("mv-local-store-warning")).toBeInTheDocument();
+  it("warns when the resolved materialization store is instance-local", () => {
+    setStore(true);
+    render(formEl(makeTable()));
+    expect(screen.getByTestId("mv-local-store-warning")).toBeInTheDocument();
   });
 
-  it("does not warn when the resolved store is shared", async () => {
-    renderWithStore(makeTable(), false);
-    await new Promise((r) => setTimeout(r, 0)); // let the query resolve
+  it("does not warn when the resolved store is shared", () => {
+    setStore(false);
+    render(formEl(makeTable()));
     expect(screen.queryByTestId("mv-local-store-warning")).toBeNull();
   });
 

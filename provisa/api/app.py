@@ -571,7 +571,14 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             dict(r._mapping)
             for r in (
                 await conn.execute_core(
-                    select(_roles_t.c.id, _roles_t.c.capabilities, _roles_t.c.domain_access)
+                    # REQ-1174: include rate_limit so state.roles carries the per-role rate +
+                    # query-complexity limits the data endpoint enforces.
+                    select(
+                        _roles_t.c.id,
+                        _roles_t.c.capabilities,
+                        _roles_t.c.domain_access,
+                        _roles_t.c.rate_limit,
+                    )
                 )
             ).fetchall()
         ]

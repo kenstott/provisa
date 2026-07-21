@@ -28,6 +28,7 @@ from provisa.core.models import (
     Relationship,
     RLSRule,
     Role,
+    RoleRateLimit,
     ScheduledTrigger,
     Source,
     SourceType,
@@ -214,7 +215,51 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                 if p.role in roles and "write" not in roles[p.role].capabilities:
                     roles[p.role].capabilities.append("write")
 
+    # REQ-1174: apply api_limits.yaml (rate + query-complexity) to each collected role.
+    for role_id, role in roles.items():
+        limits = _role_api_limits(metadata.api_limits, role_id)
+        if limits is not None:
+            role.rate_limit = limits
+
     return roles
+
+
+def _api_limit_dim(api_limits: dict, name: str, role_id: str) -> object | None:
+    """A Hasura api_limits dimension is ``{global: X, per_role: {role: Y}}``; the per-role value wins,
+    else the global. Missing → None."""
+    dim = api_limits.get(name) or {}
+    if not isinstance(dim, dict):
+        return None
+    per_role = dim.get("per_role") or {}
+    if role_id in per_role and per_role[role_id] is not None:
+        return per_role[role_id]
+    return dim.get("global")
+
+
+def _role_api_limits(api_limits: dict, role_id: str) -> RoleRateLimit | None:
+    """Map Hasura ``api_limits`` for ``role_id`` to a :class:`RoleRateLimit` (REQ-1174). Returns None
+    when the role has no limits. Hasura's rate is per-MINUTE; Provisa's requests_per_second is
+    per-SECOND, so convert (floor at 1). depth/node map directly; time_limit (seconds) → ms."""
+    if not api_limits:
+        return None
+    rate = _api_limit_dim(api_limits, "rate_limit", role_id)
+    rps = None
+    if isinstance(rate, dict) and isinstance(rate.get("max_reqs_per_min"), int):
+        rps = max(1, round(rate["max_reqs_per_min"] / 60))
+    depth = _api_limit_dim(api_limits, "depth_limit", role_id)
+    nodes = _api_limit_dim(api_limits, "node_limit", role_id)
+    time_s = _api_limit_dim(api_limits, "time_limit", role_id)
+    depth = depth if isinstance(depth, int) else None
+    nodes = nodes if isinstance(nodes, int) else None
+    time_ms = time_s * 1000 if isinstance(time_s, int) else None
+    if rps is None and depth is None and nodes is None and time_ms is None:
+        return None
+    return RoleRateLimit(
+        requests_per_second=rps,
+        max_query_depth=depth,
+        max_query_nodes=nodes,
+        max_query_time_ms=time_ms,
+    )
 
 
 def _table_id(source_name: str, schema: str, table_name: str) -> str:

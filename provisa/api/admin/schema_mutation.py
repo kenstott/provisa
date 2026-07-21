@@ -428,13 +428,27 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, input: RoleInput
     ) -> MutationResult:  # REQ-042, REQ-059, REQ-060, REQ-215
         from provisa.core.models import Role as RoleModel
+        from provisa.core.models import RoleRateLimit
         from provisa.core.repositories import role as role_repo
 
         pool = await _get_pool()
+        # REQ-1174: carry the per-role rate + query-complexity limits through to the model/DB.
+        rl = input.rate_limit
+        rate_limit = (
+            RoleRateLimit(
+                requests_per_second=rl.requests_per_second,
+                max_query_depth=rl.max_query_depth,
+                max_query_nodes=rl.max_query_nodes,
+                max_query_time_ms=rl.max_query_time_ms,
+            )
+            if rl is not None
+            else None
+        )
         model = RoleModel(
             id=input.id,
             capabilities=input.capabilities,
             domain_access=input.domain_access,
+            rate_limit=rate_limit,
         )
         async with pool.acquire() as conn:
             await role_repo.upsert(cast("Connection", conn), model)

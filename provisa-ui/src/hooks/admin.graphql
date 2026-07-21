@@ -41,6 +41,12 @@ query RolesQuery {
     id
     capabilities
     domainAccess
+    rateLimit {
+      requestsPerSecond
+      maxQueryDepth
+      maxQueryNodes
+      maxQueryTimeMs
+    }
   }
 }
 

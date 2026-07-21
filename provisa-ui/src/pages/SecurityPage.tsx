@@ -18,6 +18,7 @@ import {
   Checkbox,
   Group,
   ActionIcon,
+  NumberInput,
   Select,
   Stack,
   Table,
@@ -61,7 +62,16 @@ const ALL_CAPABILITIES: Capability[] = [
   "superadmin",
 ];
 
-const EMPTY_ROLE = { id: "", capabilities: [] as Capability[], domainAccess: [] as string[] };
+const EMPTY_ROLE = {
+  id: "",
+  capabilities: [] as Capability[],
+  domainAccess: [] as string[],
+  // REQ-1174: per-role rate + query-complexity limits ("" = unlimited on that dimension).
+  reqPerSec: "" as number | "",
+  maxDepth: "" as number | "",
+  maxNodes: "" as number | "",
+  maxTimeMs: "" as number | "",
+};
 const EMPTY_RULE = {
   tableId: "",
   domainId: "",
@@ -137,7 +147,21 @@ export function SecurityRolesPage() {
     setSaving(true);
     setError("");
     try {
-      const res = await upsertRole(roleForm);
+      // REQ-1174: assemble the rate_limit input from the form; omit ("" → null) unset dimensions.
+      const _n = (v: number | "") => (v === "" ? null : Number(v));
+      const rateLimit = {
+        requestsPerSecond: _n(roleForm.reqPerSec),
+        maxQueryDepth: _n(roleForm.maxDepth),
+        maxQueryNodes: _n(roleForm.maxNodes),
+        maxQueryTimeMs: _n(roleForm.maxTimeMs),
+      };
+      const hasLimit = Object.values(rateLimit).some((v) => v !== null);
+      const res = await upsertRole({
+        id: roleForm.id,
+        capabilities: roleForm.capabilities,
+        domainAccess: roleForm.domainAccess,
+        rateLimit: hasLimit ? rateLimit : null,
+      });
       if (!res.success) {
         setError(res.message);
         return;
@@ -172,6 +196,10 @@ export function SecurityRolesPage() {
       id: role.id,
       capabilities: [...role.capabilities],
       domainAccess: [...role.domain_access],
+      reqPerSec: role.rateLimit?.requestsPerSecond ?? "",
+      maxDepth: role.rateLimit?.maxQueryDepth ?? "",
+      maxNodes: role.rateLimit?.maxQueryNodes ?? "",
+      maxTimeMs: role.rateLimit?.maxQueryTimeMs ?? "",
     });
     setEditingRoleInRow(role.id);
     setError("");
@@ -243,6 +271,54 @@ export function SecurityRolesPage() {
             value={roleForm.domainAccess}
             onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
           />
+          {/* REQ-1174: per-role rate + query-complexity limits. Blank = unlimited on that dimension. */}
+          <Text size="sm" fw={600}>
+            {t("securityPage.limitsHeading", "Rate & query-complexity limits")}
+          </Text>
+          <Group grow>
+            <NumberInput
+              label={t("securityPage.rateReqPerSec", "Requests / sec")}
+              placeholder={t("securityPage.unlimited", "unlimited")}
+              min={1}
+              data-testid="role-req-per-sec"
+              value={roleForm.reqPerSec}
+              onChange={(v) =>
+                setRoleForm({ ...roleForm, reqPerSec: typeof v === "number" ? v : "" })
+              }
+            />
+            <NumberInput
+              label={t("securityPage.maxQueryDepth", "Max query depth")}
+              placeholder={t("securityPage.unlimited", "unlimited")}
+              min={1}
+              data-testid="role-max-depth"
+              value={roleForm.maxDepth}
+              onChange={(v) =>
+                setRoleForm({ ...roleForm, maxDepth: typeof v === "number" ? v : "" })
+              }
+            />
+          </Group>
+          <Group grow>
+            <NumberInput
+              label={t("securityPage.maxQueryNodes", "Max query nodes")}
+              placeholder={t("securityPage.unlimited", "unlimited")}
+              min={1}
+              data-testid="role-max-nodes"
+              value={roleForm.maxNodes}
+              onChange={(v) =>
+                setRoleForm({ ...roleForm, maxNodes: typeof v === "number" ? v : "" })
+              }
+            />
+            <NumberInput
+              label={t("securityPage.maxQueryTimeMs", "Max query time (ms)")}
+              placeholder={t("securityPage.unlimited", "unlimited")}
+              min={1}
+              data-testid="role-max-time-ms"
+              value={roleForm.maxTimeMs}
+              onChange={(v) =>
+                setRoleForm({ ...roleForm, maxTimeMs: typeof v === "number" ? v : "" })
+              }
+            />
+          </Group>
           <Group justify="flex-end">
             <ActionIcon
               variant="filled"

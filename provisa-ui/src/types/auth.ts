@@ -27,10 +27,18 @@ export type Capability =
   | 'masking_config'
   | 'superadmin';
 
+export interface RoleRateLimit {
+  requestsPerSecond: number | null;
+  maxQueryDepth: number | null;
+  maxQueryNodes: number | null;
+  maxQueryTimeMs: number | null;
+}
+
 export interface Role {
   id: string;
   capabilities: Capability[];
   domain_access: string[];
+  rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
 }
 
 /** A single role:domain pair from a user's identity claims or DB assignments. */

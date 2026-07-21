@@ -963,10 +963,28 @@ jobs:
           name: plugins-tarball
           path: release-assets/
 
-      - name: Delete existing release if present
-        run: gh release delete "${{ github.ref_name }}" --yes || true
+      # Idempotent, non-destructive create. Deleting+recreating the release (the
+      # previous behaviour) wiped assets that the parallel duckdb/pg/exports
+      # workflows had already attached. Here softprops below only updates.
+      - name: Ensure release exists
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists."
+            exit 0
+          fi
+          case "$TAG" in
+            *-alpha*|*-beta*|*-rc*) pre=--prerelease ;;
+            *) pre= ;;
+          esac
+          # Concurrent creators: the loser's 422 "already_exists" is tolerated
+          # ONLY when the release genuinely exists afterward; any other failure
+          # leaves no release and fails loudly.
+          gh release create "$TAG" --title "$TAG" --generate-notes --latest=false $pre \
+            || gh release view "$TAG" >/dev/null 2>&1
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
