@@ -40,6 +40,14 @@ _load_warehouse_creds() {
   set +a
 }
 
+# Auto-enable the warehouse lane whenever .env carries provider creds, so cloud-DW testing ALWAYS
+# happens where it can — no one has to remember TEST_ALL_WAREHOUSE=1. Opt out with =0; force with =1.
+# Each cloud e2e is still skipif-gated on its own provider env, so absent providers skip cleanly.
+_have_warehouse_creds() {
+  [[ -f .env ]] || return 1
+  grep -qE '^[[:space:]]*(SNOWFLAKE_|DATABRICKS_|GOOGLE_|BIGQUERY_|FABRIC_|SYNAPSE_|CLICKHOUSE_)[A-Z0-9_]*=[^[:space:]]' .env
+}
+
 COV_ARGS=(--cov=provisa --cov-report= -p no:cacheprovider)
 rm -f .coverage .coverage.*
 
@@ -125,7 +133,14 @@ if [[ "${TEST_ALL_PACKAGING:-}" == "1" ]]; then
   COVERAGE_FILE=.coverage.packaging pytest -o addopts="" -m packaging "${COV_ARGS[@]}" "$@" || rc=1
 fi
 
-if [[ "${TEST_ALL_WAREHOUSE:-}" == "1" ]]; then
+# auto: run the warehouse lane when .env has creds; 1 forces it on; 0 forces it off.
+_run_warehouse=0
+case "${TEST_ALL_WAREHOUSE:-auto}" in
+  1) _run_warehouse=1 ;;
+  0) _run_warehouse=0 ;;
+  *) _have_warehouse_creds && _run_warehouse=1 || true ;;
+esac
+if [[ "$_run_warehouse" == "1" ]]; then
   echo "== lane: warehouse (cloud DW creds from .env) =="
   # Own process so the warehouse creds live ONLY here — every cloud-DW e2e is skipif-gated on its
   # provider env, so it skips cleanly when a cred is absent. Snowflake/ClickHouse have no creds in
