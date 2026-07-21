@@ -257,8 +257,13 @@ async def test_debounced_intermediate_defers_then_ripples_once(tmp_path, monkeyp
         async with cp.acquire() as conn:
             assert len(await queue.peek_pending(conn, dependent_table="mv.a")) == 2
 
-        # advance past the deadline → mv.a fires once (coalesced), ripples once to mv.b
-        fire_at = processor_mod._now() + __import__("datetime").timedelta(seconds=400)
+        # advance past the deadline → mv.a fires once (coalesced), ripples once to mv.b.
+        # Base fire_at on the REAL wall clock (created_at is stamped by the SQL clock), not
+        # processor._now — a leaked _now monkeypatch from an earlier test would otherwise compute a
+        # past fire_at and keep the fire gated.
+        import datetime as _dt
+
+        fire_at = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=400)
         monkeypatch.setattr(processor_mod, "_now", lambda: fire_at)
         await supervisor.drain(cp, [mv_a, mv_b])
         assert calls == {"a": 1, "b": 1}

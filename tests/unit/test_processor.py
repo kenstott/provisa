@@ -330,7 +330,7 @@ def test_debounce_deadline_math():
 async def test_debounce_collapses_burst_into_one_recompute(tmp_path, monkeypatch):
     """A burst of fan-ins is deferred until the debounce deadline, then fires ONCE coalescing all of
     them into a single recompute (REQ-963)."""
-    from datetime import timedelta
+    from datetime import datetime, timedelta, timezone
 
     import provisa.events.processor as processor_mod
 
@@ -353,7 +353,10 @@ async def test_debounce_collapses_burst_into_one_recompute(tmp_path, monkeypatch
             assert len(await queue.peek_pending(conn, dependent_table="mv.live")) == 3
 
         # 2) Advance the clock past the deadline → fire ONCE, coalescing all three events.
-        fire_at = processor_mod._now() + timedelta(seconds=400)
+        # Base fire_at on the REAL wall clock (events' created_at is stamped by the SQL clock), not
+        # processor._now — otherwise a leaked _now monkeypatch from an earlier test in the same
+        # process would compute a past fire_at and the fire would (wrongly) stay gated.
+        fire_at = datetime.now(timezone.utc) + timedelta(seconds=400)
         monkeypatch.setattr(processor_mod, "_now", lambda: fire_at)
         async with db.acquire() as conn:
             my_event = await proc.process_pending(conn)

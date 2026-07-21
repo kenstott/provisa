@@ -49,12 +49,14 @@ CREATE TABLE IF NOT EXISTS {_SCHEMA}.tracked_functions (
     writable_by JSONB NOT NULL DEFAULT '[]',
     domain_id TEXT,
     description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     kind TEXT,
     return_schema JSONB,
+    output_columns JSONB,
     impl_kind TEXT NOT NULL DEFAULT 'source_procedure',
     binding JSONB NOT NULL DEFAULT '{{}}',
-    materialize BOOLEAN NOT NULL DEFAULT false,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    materialize BOOLEAN NOT NULL DEFAULT false
 );
 """
 
