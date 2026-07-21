@@ -38,6 +38,7 @@ import { IANA_TIME_ZONES, NAMING_CONVENTIONS } from "./constants";
 import { DescriptionField } from "./DescriptionField";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
 import { CalendarCreateModal } from "./CalendarCreateModal";
+import { CollapsibleSection } from "./CollapsibleSection";
 
 interface CacheTtlEdit {
   value: string;
@@ -541,30 +542,37 @@ export function TableEditForm({
               />
             )}
             {editingTable.materialize && (
-              <Select
-                label={
-                  <FieldLabel
-                    text={t("tableEditForm.bitemporalLabel")}
-                    help={t("tableEditForm.bitemporalHelp")}
-                  />
-                }
-                aria-label={t("tableEditForm.bitemporalAria")}
-                data-testid="mv-bitemporal-mode"
-                data={[
-                  { value: "", label: t("tableEditForm.bitemporalNone") },
-                  { value: "snapshot", label: t("tableEditForm.bitemporalSnapshot") },
-                  { value: "delta", label: t("tableEditForm.bitemporalDelta") },
-                ]}
-                value={editingTable.mvBitemporalMode ?? ""}
-                onChange={(v) =>
-                  setEditingTable({
-                    ...editingTable,
-                    mvBitemporalMode: v ? v : null,
-                  })
-                }
-                comboboxProps={{ withinPortal: true }}
-                allowDeselect={false}
-              />
+              <CollapsibleSection
+                title="Time Travel"
+                testId="mv-timetravel-panel"
+                defaultOpen={Boolean(editingTable.mvBitemporalMode)}
+                badge={editingTable.mvBitemporalMode || undefined}
+              >
+                <Select
+                  label={
+                    <FieldLabel
+                      text={t("tableEditForm.bitemporalLabel")}
+                      help={t("tableEditForm.bitemporalHelp")}
+                    />
+                  }
+                  aria-label={t("tableEditForm.bitemporalAria")}
+                  data-testid="mv-bitemporal-mode"
+                  data={[
+                    { value: "", label: t("tableEditForm.bitemporalNone") },
+                    { value: "snapshot", label: t("tableEditForm.bitemporalSnapshot") },
+                    { value: "delta", label: t("tableEditForm.bitemporalDelta") },
+                  ]}
+                  value={editingTable.mvBitemporalMode ?? ""}
+                  onChange={(v) =>
+                    setEditingTable({
+                      ...editingTable,
+                      mvBitemporalMode: v ? v : null,
+                    })
+                  }
+                  comboboxProps={{ withinPortal: true }}
+                  allowDeselect={false}
+                />
+              </CollapsibleSection>
             )}
             {editingTable.materialize && (
               <div style={{ gridColumn: "1 / -1" }}>

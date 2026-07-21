@@ -123,6 +123,23 @@ describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
     expect(screen.queryByTestId("mv-snapshot-panel-toggle")).not.toBeInTheDocument();
   });
 
+  it("wraps time-travel storage in its own collapsible panel", () => {
+    // collapsed by default when no bitemporal mode is set
+    renderForm(makeTable());
+    const toggle = screen.getByTestId("mv-timetravel-panel-toggle");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("auto-opens the time-travel panel when a bitemporal mode is set", () => {
+    renderForm(makeTable({ mvBitemporalMode: "snapshot" }));
+    expect(screen.getByTestId("mv-timetravel-panel-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
   it("opens the new-calendar modal from the picker's + button", async () => {
     renderForm(makeTable({ mvCalendar: "fiscal-us", mvGrain: "monthly" }));
     expect(screen.queryByTestId("calendar-name")).not.toBeInTheDocument();
