@@ -33526,3 +33526,34 @@
     And the HTTP POST fires to the registered URL with the arguments
 
     '
+- id: REQ-1174
+  status: complete
+  group: 1. Access Governance & Security
+  category: Query Complexity Limits
+  priority: MUST
+  type: constraint
+  description: >-
+    Per-role query complexity limits (max_query_depth, max_query_nodes, max_query_time_ms) complement per-role request-rate limits (REQ-369). Enforced at the GraphQL→IR compile boundary; over-limit requests return HTTP 413. Limits persist on the roles table and are configurable via admin API.
+  use_case: >-
+    Query complexity limits prevent resource exhaustion from complex or malicious queries, complementing request-rate limiting. Provides Hasura api_limits parity.
+  code:
+    - provisa/compiler/limits.py
+    - provisa/api/models/role.py
+    - provisa/admin/admin_api.py
+  tests:
+    - tests/unit/test_query_limits.py
+    - tests/unit/test_hasura_api_limits.py
+    - provisa-ui/e2e/security-query-limits.spec.ts
+  since: "2026-07"
+  scenario: |
+    Given a role with max_query_depth=3, max_query_nodes=100, max_query_time_ms=5000
+    When a GraphQL query is submitted that exceeds any limit
+    Then the request is rejected with HTTP 413 at the GraphQL→IR compile boundary
+  competitive_position:
+    status: parity
+    rationale: >-
+      Hasura provides api_limits (depth_limit, node_limit, time_limit) per role via api_limits.yaml.
+      Provisa implements equivalent functionality in the admin GraphQL API, matching Hasura's governance model.
+  e2e: true
+  e2e_reason: >-
+    Verification requires end-to-end validation: configuring limits via admin API (REST/GraphQL), then executing queries through the data endpoint to confirm 413 rejection when limits are exceeded.
