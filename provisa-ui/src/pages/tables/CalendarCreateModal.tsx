@@ -31,6 +31,7 @@ import { DateInput, DatePickerInput } from "@mantine/dates";
 import { useCreateCalendar, useDeleteCalendar } from "../../hooks/useAdminQueries";
 import type { CalendarSummary } from "../../hooks/useAdminQueries";
 import { IANA_TIME_ZONES } from "./constants";
+import { FieldLabel } from "./FieldLabel";
 import { presetHolidays, type HolidayPreset } from "./holidayPresets";
 
 // Localized month names for the fiscal-anchor picker (value = 1..12), no per-month i18n keys needed.
@@ -184,14 +185,18 @@ export function CalendarCreateModal({
         {baseSystem === "fiscal" && (
           <Group grow align="flex-start" gap="xs">
             <Select
-              label={t("tableEditForm.calFiscalAnchorMonthLabel")}
+              label={
+                <FieldLabel
+                  text={t("tableEditForm.calFiscalAnchorMonthLabel")}
+                  help={t("tableEditForm.calFiscalAnchorHelp")}
+                />
+              }
               data-testid="calendar-fiscal-month"
               data={MONTHS}
               value={fiscalAnchorMonth}
               onChange={(v) => setFiscalAnchorMonth(v || "1")}
               comboboxProps={{ withinPortal: true }}
               allowDeselect={false}
-              description={t("tableEditForm.calFiscalAnchorHelp")}
             />
             <NumberInput
               label={t("tableEditForm.calFiscalAnchorDayLabel")}
@@ -205,8 +210,12 @@ export function CalendarCreateModal({
         )}
         {baseSystem === "retail_445" && (
           <DateInput
-            label={t("tableEditForm.calRetailAnchorLabel")}
-            description={t("tableEditForm.calRetailAnchorHelp")}
+            label={
+              <FieldLabel
+                text={t("tableEditForm.calRetailAnchorLabel")}
+                help={t("tableEditForm.calRetailAnchorHelp")}
+              />
+            }
             data-testid="calendar-retail-anchor"
             valueFormat="YYYY-MM-DD"
             value={retailAnchor}
@@ -234,8 +243,12 @@ export function CalendarCreateModal({
           allowDeselect={false}
         />
         <MultiSelect
-          label={t("tableEditForm.calWeekendLabel")}
-          description={t("tableEditForm.calWeekendHelp")}
+          label={
+            <FieldLabel
+              text={t("tableEditForm.calWeekendLabel")}
+              help={t("tableEditForm.calWeekendHelp")}
+            />
+          }
           data-testid="calendar-weekend"
           data={WEEKDAYS}
           value={weekend}
@@ -245,8 +258,12 @@ export function CalendarCreateModal({
         />
         <DatePickerInput
           type="multiple"
-          label={t("tableEditForm.calHolidaysLabel")}
-          description={t("tableEditForm.calHolidaysHelp")}
+          label={
+            <FieldLabel
+              text={t("tableEditForm.calHolidaysLabel")}
+              help={t("tableEditForm.calHolidaysHelp")}
+            />
+          }
           data-testid="calendar-holidays"
           valueFormat="YYYY-MM-DD"
           value={holidays}
