@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 6d2a8f14-90c7-4e35-b1a8-3f5c7e9d0a42
+// Canary: 7d4b2f81-6a39-4c58-9e12-0f3c8d5b7a46
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -8,16 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1165: the preflight-check editor renders for a materialized view and stages
-// its Python source through the shared setEditingTable save path.
+// REQ-962/1168: the collapsible Snapshot Schedule panel — a calendar picker, grain (nesting or
+// nth-weekday), allowed-lateness, and business-day gate — staged through the shared save path.
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "../../../test-utils/render";
 import { TableEditForm } from "../TableEditForm";
 import type { RegisteredTable } from "../../../types/admin";
-import i18n from "../../../i18n";
-
-const t = i18n.getFixedT("en");
 
 function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   return {
@@ -95,49 +92,34 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
   return setEditingTable;
 }
 
-describe("TableEditForm — MV preflight check (REQ-1165)", () => {
-  it("renders the editor with the current check source for a materialized view", () => {
-    const src = "def preflight(rows, ctx):\n    return ctx.ok()";
-    renderForm(makeTable({ mvPreprocess: src }));
-    const box = screen.getByRole("textbox", {
-      name: t("tableEditForm.preprocessAria"),
-    }) as HTMLTextAreaElement;
-    expect(box).toBeTruthy();
-    expect(box.value).toBe(src);
+describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
+  it("is collapsed by default and expands on toggle", () => {
+    renderForm(makeTable());
+    const toggle = screen.getByTestId("mv-snapshot-panel-toggle");
+    expect(toggle).toHaveAttribute("aria-expanded", "false"); // collapsed when no schedule set
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("mv-calendar")).toBeInTheDocument();
   });
 
-  it("stages the edited hook source through setEditingTable", () => {
-    const setEditingTable = renderForm(makeTable());
-    const box = screen.getByRole("textbox", {
-      name: t("tableEditForm.preprocessAria"),
-    });
-    fireEvent.change(box, {
-      target: { value: "def preprocess(rows, ctx):\n    return []" },
-    });
+  it("auto-opens and shows grain/lateness/business-day when a calendar is configured", () => {
+    renderForm(makeTable({ mvCalendar: "fiscal-us", mvGrain: "monthly", mvAllowedLateness: 3600 }));
+    expect(screen.getByTestId("mv-calendar")).toBeInTheDocument();
+    expect(screen.getByTestId("mv-grain")).toBeInTheDocument();
+    expect(screen.getByTestId("mv-allowed-lateness")).toBeInTheDocument();
+    expect(screen.getByTestId("mv-business-day-grain")).toBeInTheDocument();
+  });
+
+  it("staging a business-day gate flows through setEditingTable", () => {
+    const setEditingTable = renderForm(makeTable({ mvCalendar: "fiscal-us", mvGrain: "monthly" }));
+    fireEvent.click(screen.getByTestId("mv-business-day-grain"));
     expect(setEditingTable).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mvPreprocess: "def preprocess(rows, ctx):\n    return []",
-      }),
+      expect.objectContaining({ mvBusinessDayGrain: true }),
     );
   });
 
-  it("clears the hook to null when emptied", () => {
-    const setEditingTable = renderForm(
-      makeTable({ mvPreprocess: "def preprocess(rows, ctx):\n    return rows" }),
-    );
-    const box = screen.getByRole("textbox", {
-      name: t("tableEditForm.preprocessAria"),
-    });
-    fireEvent.change(box, { target: { value: "" } });
-    expect(setEditingTable).toHaveBeenCalledWith(
-      expect.objectContaining({ mvPreprocess: null }),
-    );
-  });
-
-  it("hides the editor when the table is not materialized", () => {
+  it("is hidden entirely for a non-materialized table", () => {
     renderForm(makeTable({ materialize: false }));
-    expect(
-      screen.queryByRole("textbox", { name: t("tableEditForm.preprocessAria") }),
-    ).toBeNull();
+    expect(screen.queryByTestId("mv-snapshot-panel-toggle")).not.toBeInTheDocument();
   });
 });

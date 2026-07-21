@@ -16,6 +16,7 @@ import {
   Alert,
   Badge,
   Checkbox,
+  Collapse,
   Group,
   NumberInput,
   Select,
@@ -29,7 +30,7 @@ import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import type { RefreshPolicySummary, RegisteredTable, Source } from "../../types/admin";
-import { useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
+import { useCalendars, useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
 import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
 import { sourceProbeTypes } from "../../liveCapability";
@@ -112,6 +113,10 @@ export function TableEditForm({
   // side with the in-flight values, seeded from the persisted summary so it renders before the first
   // fetch resolves.
   const previewPolicy = useRefreshPolicyPreview();
+  const { calendars } = useCalendars(); // REQ-962: snapshot-schedule calendar picker source
+  const [snapshotOpen, setSnapshotOpen] = useState(
+    Boolean(editingTable.mvCalendar), // open the panel when a schedule is already configured
+  );
   const [livePolicy, setLivePolicy] = useState<RefreshPolicySummary | null>(
     editingTable.refreshPolicySummary,
   );
@@ -558,6 +563,125 @@ export function TableEditForm({
                 comboboxProps={{ withinPortal: true }}
                 allowDeselect={false}
               />
+            )}
+            {editingTable.materialize && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <Group
+                  gap="xs"
+                  wrap="nowrap"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setSnapshotOpen((o) => !o)}
+                  data-testid="mv-snapshot-panel-toggle"
+                  role="button"
+                  aria-expanded={snapshotOpen}
+                >
+                  <ActionIcon variant="subtle" size="sm" aria-hidden>
+                    {snapshotOpen ? "−" : "+"}
+                  </ActionIcon>
+                  <Text fw={600} size="sm">
+                    Snapshot Schedule
+                  </Text>
+                  {editingTable.mvCalendar && (
+                    <Badge size="xs" variant="light" color="grape">
+                      {editingTable.mvCalendar}
+                      {editingTable.mvGrain ? ` · ${editingTable.mvGrain}` : ""}
+                    </Badge>
+                  )}
+                </Group>
+                <Collapse in={snapshotOpen}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: "var(--mantine-spacing-sm)",
+                      paddingTop: "var(--mantine-spacing-xs)",
+                    }}
+                  >
+                    <Select
+                      label={
+                        <FieldLabel
+                          text="Calendar"
+                          help="The registered snapshot-boundary calendar. Declaring one makes this MV periodic (REQ-962); leave empty for the live/NRT default."
+                        />
+                      }
+                      data-testid="mv-calendar"
+                      placeholder={
+                        calendars.length
+                          ? "Select a calendar (or leave empty for live)"
+                          : "No calendars registered yet"
+                      }
+                      data={calendars.map((c) => ({
+                        value: c.name,
+                        label: `${c.name} (v${c.version}, ${c.baseSystem}, ${c.tz})`,
+                      }))}
+                      value={editingTable.mvCalendar}
+                      onChange={(v) =>
+                        setEditingTable({ ...editingTable, mvCalendar: v || null })
+                      }
+                      comboboxProps={{ withinPortal: true }}
+                      clearable
+                    />
+                    {editingTable.mvCalendar && (
+                      <Select
+                        label={
+                          <FieldLabel
+                            text="Grain"
+                            help="When a version is cut: a nesting grain, or an nth-weekday recurrence (REQ-962/1168)."
+                          />
+                        }
+                        data-testid="mv-grain"
+                        placeholder="Select a grain"
+                        data={[
+                          { value: "daily", label: "Daily (end of day)" },
+                          { value: "weekly", label: "Weekly (end of week)" },
+                          { value: "monthly", label: "Monthly (end of month)" },
+                          { value: "quarterly", label: "Quarterly (end of quarter)" },
+                          { value: "annual", label: "Annual (end of year)" },
+                          { value: "3WE", label: "3rd Wednesday of month" },
+                          { value: "1MO", label: "1st Monday of month" },
+                          { value: "LFR", label: "Last Friday of month" },
+                        ]}
+                        value={editingTable.mvGrain}
+                        onChange={(v) => setEditingTable({ ...editingTable, mvGrain: v || null })}
+                        comboboxProps={{ withinPortal: true }}
+                      />
+                    )}
+                    {editingTable.mvCalendar && (
+                      <NumberInput
+                        label={
+                          <FieldLabel
+                            text="Allowed lateness (seconds)"
+                            help="How long the seal waits past the boundary for inputs to be fresh-through the window (REQ-961)."
+                          />
+                        }
+                        data-testid="mv-allowed-lateness"
+                        min={0}
+                        step={60}
+                        value={editingTable.mvAllowedLateness}
+                        onChange={(v) =>
+                          setEditingTable({
+                            ...editingTable,
+                            mvAllowedLateness:
+                              typeof v === "number" ? v : parseFloat(String(v)) || 0,
+                          })
+                        }
+                      />
+                    )}
+                    {editingTable.mvCalendar && (
+                      <Checkbox
+                        data-testid="mv-business-day-grain"
+                        checked={editingTable.mvBusinessDayGrain}
+                        onChange={(e) =>
+                          setEditingTable({
+                            ...editingTable,
+                            mvBusinessDayGrain: e.currentTarget.checked,
+                          })
+                        }
+                        label="Business-day grain (no window on holidays/weekends)"
+                      />
+                    )}
+                  </div>
+                </Collapse>
+              </div>
             )}
             {editingTable.materialize && editingTable.mvBitemporalMode && (
               <TextInput

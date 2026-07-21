@@ -37,6 +37,8 @@ import {
   SourcesQuery as SOURCES_QUERY,
   DomainsQuery as DOMAINS_QUERY,
   TablesQuery as TABLES_QUERY,
+  Calendars as CALENDARS_QUERY,
+  CreateCalendar as CREATE_CALENDAR_MUTATION,
   RefreshPolicyPreview as REFRESH_POLICY_PREVIEW_QUERY,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
@@ -133,6 +135,33 @@ export function useTables() {
     error,
     refetch,
   };
+}
+
+// REQ-962: the registered snapshot-boundary calendars — the picker source for an MV snapshot schedule.
+export interface CalendarSummary {
+  name: string;
+  version: string;
+  baseSystem: string;
+  tz: string;
+  weekStart: number;
+  holidays: string[];
+  weekend: number[];
+}
+const NO_CALENDARS: CalendarSummary[] = [];
+
+export function useCalendars() {
+  const { data, loading, error, refetch } = useQuery<{ calendars: CalendarSummary[] }>(
+    CALENDARS_QUERY,
+    { fetchPolicy: "cache-and-network" },
+  );
+  return { calendars: data?.calendars ?? NO_CALENDARS, loading, error, refetch };
+}
+
+export function useCreateCalendar() {
+  const [mutate, { loading, error }] = useMutation(CREATE_CALENDAR_MUTATION, {
+    refetchQueries: [{ query: CALENDARS_QUERY }],
+  });
+  return { createCalendar: mutate, loading, error };
 }
 
 // REQ-1143: preview the effective refresh/serving summary for draft editor knobs, server-derived

@@ -159,6 +159,11 @@ export interface RegisteredTable {
   mvPersist: string; // REQ-965: replace | append | upsert
   mvPrimaryKey: string[]; // REQ-970: row identity (required for upsert / incremental)
   mvIncremental: boolean; // REQ-969: incremental maintenance
+  mvCalendar: string | null; // REQ-962: snapshot-schedule calendar name (null = not periodic)
+  mvGrain: string | null; // REQ-962/1168: nesting grain ("daily".."annual") or nth-weekday ("3WE"/"LFR")
+  mvAllowedLateness: number; // REQ-961: seal-deadline slack in seconds
+  mvExpectedEvents: string[] | null; // REQ-961: preflight freshness inputs (null = all lineage inputs)
+  mvBusinessDayGrain: boolean; // REQ-962: gate snapshot windows to business days
   dataProduct: boolean;
   enableAggregates: boolean;
   enableGroupBy: boolean;

@@ -118,6 +118,11 @@ query TablesQuery {
     mvPersist
     mvPrimaryKey
     mvIncremental
+    mvCalendar
+    mvGrain
+    mvAllowedLateness
+    mvExpectedEvents
+    mvBusinessDayGrain
     dataProduct
     enableAggregates
     enableGroupBy
@@ -441,6 +446,25 @@ mutation UpdateTable($input: TableInput!) {
 
 mutation DeleteTable($id: Int!) {
   deleteTable(id: $id) {
+    ...MutationResult
+  }
+}
+
+# REQ-962: snapshot-boundary calendars — the picker source + create form for the MV snapshot schedule.
+query Calendars {
+  calendars {
+    name
+    version
+    baseSystem
+    tz
+    weekStart
+    holidays
+    weekend
+  }
+}
+
+mutation CreateCalendar($input: CalendarInput!) {
+  createCalendar(input: $input) {
     ...MutationResult
   }
 }
