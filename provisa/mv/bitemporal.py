@@ -245,13 +245,27 @@ def view_read_sql(mv_ref: str, spec: BitemporalSpec, ts_sql: str | None = None) 
     return f"SELECT * FROM ({ranked}) _bt WHERE _bt._bt_rn = 1 AND _bt.{op} <> '{_OP_DELETE}'"
 
 
+_TS_FMT = "%Y-%m-%d %H:%M:%S.%f"
+
+
+def system_ts_literal(instant: datetime) -> str:
+    """A SAFE SQL TIMESTAMP literal for a Provisa-managed append stamp (REQ-1162), fixed-format so
+    there is no injection surface.
+
+    When the stamp is a CALENDAR BOUNDARY (``window.end``) rather than wall-clock, the appended
+    snapshot is DETERMINISTIC and addressable AS-OF that window — the basis for calendar-addressed
+    time travel (REQ-1166/1167): a period sealed at its boundary is reproducible and a read as-of the
+    boundary returns exactly that period's dataset."""
+    return f"TIMESTAMP '{instant.strftime(_TS_FMT)}'"
+
+
 def parse_as_of(value: str) -> str:
     """Validate a request-level as-of value (ISO 8601) and return a SAFE SQL TIMESTAMP literal.
 
     The value is spliced into SQL, so it is never trusted raw: it is parsed to a datetime (raising on
     anything malformed) and re-emitted in a fixed format — no injection surface (REQ-1163)."""
     dt = datetime.fromisoformat(value.strip())  # raises ValueError on bad input
-    return f"TIMESTAMP '{dt.strftime('%Y-%m-%d %H:%M:%S.%f')}'"
+    return system_ts_literal(dt)
 
 
 def as_of_view_map(
