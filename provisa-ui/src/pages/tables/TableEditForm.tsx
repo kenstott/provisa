@@ -21,6 +21,7 @@ import {
   NumberInput,
   Select,
   Table,
+  TagsInput,
   Text,
   Textarea,
   TextInput,
@@ -699,6 +700,39 @@ export function TableEditForm({
                           })
                         }
                         label={t("tableEditForm.businessDayGrainLabel")}
+                      />
+                    )}
+                    {editingTable.mvCalendar && (
+                      <Checkbox
+                        data-testid="mv-expected-all"
+                        checked={editingTable.mvExpectedEvents === null}
+                        onChange={(e) =>
+                          setEditingTable({
+                            ...editingTable,
+                            // null = verify every lineage input (default); [] = a custom set (verify
+                            // nothing until inputs are named) — REQ-961 preflight contract.
+                            mvExpectedEvents: e.currentTarget.checked ? null : [],
+                          })
+                        }
+                        label={
+                          <FieldLabel
+                            text={t("tableEditForm.expectedAllLabel")}
+                            help={t("tableEditForm.expectedAllHelp")}
+                          />
+                        }
+                      />
+                    )}
+                    {editingTable.mvCalendar && editingTable.mvExpectedEvents !== null && (
+                      <TagsInput
+                        label={t("tableEditForm.expectedEventsLabel")}
+                        data-testid="mv-expected-events"
+                        placeholder={t("tableEditForm.expectedEventsPlaceholder")}
+                        value={editingTable.mvExpectedEvents ?? []}
+                        onChange={(v) =>
+                          setEditingTable({ ...editingTable, mvExpectedEvents: v })
+                        }
+                        comboboxProps={{ withinPortal: true }}
+                        clearable
                       />
                     )}
                   </div>

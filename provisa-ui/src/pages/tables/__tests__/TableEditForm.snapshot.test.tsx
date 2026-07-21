@@ -118,6 +118,30 @@ describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
     );
   });
 
+  it("defaults the preflight gate to 'verify all inputs' and hides the custom list", () => {
+    renderForm(makeTable({ mvCalendar: "fiscal-us", mvGrain: "monthly", mvExpectedEvents: null }));
+    expect(screen.getByTestId("mv-expected-all")).toBeChecked();
+    expect(screen.queryByTestId("mv-expected-events")).not.toBeInTheDocument();
+  });
+
+  it("switches to a custom required-inputs list when 'verify all' is unchecked", () => {
+    const setEditingTable = renderForm(
+      makeTable({ mvCalendar: "fiscal-us", mvGrain: "monthly", mvExpectedEvents: null }),
+    );
+    fireEvent.click(screen.getByTestId("mv-expected-all"));
+    expect(setEditingTable).toHaveBeenCalledWith(
+      expect.objectContaining({ mvExpectedEvents: [] }),
+    );
+  });
+
+  it("shows the tags input when a custom required-inputs list is set", () => {
+    renderForm(
+      makeTable({ mvCalendar: "fiscal-us", mvGrain: "monthly", mvExpectedEvents: ["raw.orders"] }),
+    );
+    expect(screen.getByTestId("mv-expected-all")).not.toBeChecked();
+    expect(screen.getByTestId("mv-expected-events")).toBeInTheDocument();
+  });
+
   it("is hidden entirely for a non-materialized table", () => {
     renderForm(makeTable({ materialize: false }));
     expect(screen.queryByTestId("mv-snapshot-panel-toggle")).not.toBeInTheDocument();
