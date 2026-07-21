@@ -52,6 +52,8 @@
     "bitemporalKeyPlaceholder": "id, region",
     "timeTravelPanel": "Time Travel",
     "snapshotPanel": "Snapshot Schedule",
+    "refreshPanel": "Refresh & Debounce",
+    "sourceProtectionPanel": "Source Protection",
     "calendarLabel": "Calendar",
     "calendarHelp": "The registered snapshot-boundary calendar. Declaring one makes this MV periodic (REQ-962); leave empty for the live/NRT default.",
     "calendarPlaceholder": "Select a calendar (or leave empty for live)",

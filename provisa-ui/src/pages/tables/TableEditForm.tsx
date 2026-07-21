@@ -358,48 +358,53 @@ export function TableEditForm({
           />
         )}
         {!isView && effLoadProtected && (
-          <TextInput
-            // REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is open.
-            label={
-              <FieldLabel
-                text={t("tableEditForm.offPeakWindowLabel")}
-                help={t("tableEditForm.offPeakWindowHelp")}
-              />
-            }
-            value={editingTable.offPeakWindow ?? ""}
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                offPeakWindow: e.target.value || null,
-              })
-            }
-            placeholder={t("tableEditForm.offPeakWindowPlaceholder")}
-          />
-        )}
-        {!isView && effLoadProtected && (
-        <Select
-          // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
-          // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
-          // window can never be saved against an unparseable zone.
-          label={
-            <FieldLabel
-              text={t("tableEditForm.offPeakTzLabel")}
-              help={t("tableEditForm.offPeakTzHelp")}
+          <CollapsibleSection
+            title={t("tableEditForm.sourceProtectionPanel")}
+            testId="mv-protection-panel"
+            defaultOpen
+          >
+            <TextInput
+              // REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is open.
+              label={
+                <FieldLabel
+                  text={t("tableEditForm.offPeakWindowLabel")}
+                  help={t("tableEditForm.offPeakWindowHelp")}
+                />
+              }
+              data-testid="off-peak-window"
+              value={editingTable.offPeakWindow ?? ""}
+              onChange={(e) =>
+                setEditingTable({
+                  ...editingTable,
+                  offPeakWindow: e.target.value || null,
+                })
+              }
+              placeholder={t("tableEditForm.offPeakWindowPlaceholder")}
             />
-          }
-          data={IANA_TIME_ZONES}
-          value={editingTable.offPeakTz ?? ""}
-          onChange={(v) =>
-            setEditingTable({
-              ...editingTable,
-              offPeakTz: v || null,
-            })
-          }
-          searchable
-          clearable
-          placeholder="UTC"
-          comboboxProps={{ withinPortal: true }}
-        />
+            <Select
+              // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
+              // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
+              // window can never be saved against an unparseable zone.
+              label={
+                <FieldLabel
+                  text={t("tableEditForm.offPeakTzLabel")}
+                  help={t("tableEditForm.offPeakTzHelp")}
+                />
+              }
+              data={IANA_TIME_ZONES}
+              value={editingTable.offPeakTz ?? ""}
+              onChange={(v) =>
+                setEditingTable({
+                  ...editingTable,
+                  offPeakTz: v || null,
+                })
+              }
+              searchable
+              clearable
+              placeholder="UTC"
+              comboboxProps={{ withinPortal: true }}
+            />
+          </CollapsibleSection>
         )}
         <div style={{ gridColumn: "1 / -1" }}>
           <FieldLabel
@@ -457,62 +462,66 @@ export function TableEditForm({
               </Tooltip>
             </Group>
             {editingTable.materialize && (
-              <NumberInput
-                label={
-                  <FieldLabel
-                    text={t("tableEditForm.refreshIntervalLabel")}
-                    help={t("tableEditForm.refreshIntervalHelp")}
-                  />
-                }
-                min={30}
-                value={editingTable.mvRefreshInterval}
-                onChange={(v) =>
-                  setEditingTable({
-                    ...editingTable,
-                    mvRefreshInterval:
-                      typeof v === "number" ? v : parseInt(String(v), 10) || 300,
-                  })
-                }
-              />
-            )}
-            {editingTable.materialize && (
-              <div title={t("tableEditForm.nrtDebounceTitle")}>
-                <Text size="sm" c="dimmed" mb={4}>
-                  {t("tableEditForm.nrtDebounceLabel")}
-                </Text>
-                <Group gap="xs">
-                  <NumberInput
-                    min={0}
-                    step={0.5}
-                    placeholder={t("tableEditForm.nrtQuietPlaceholder")}
-                    aria-label={t("tableEditForm.nrtQuietAria")}
-                    data-testid="mv-debounce-quiet"
-                    value={editingTable.mvDebounceQuiet}
-                    onChange={(v) =>
-                      setEditingTable({
-                        ...editingTable,
-                        mvDebounceQuiet:
-                          typeof v === "number" ? v : parseFloat(String(v)) || 0,
-                      })
-                    }
-                  />
-                  <NumberInput
-                    min={0}
-                    step={0.5}
-                    placeholder={t("tableEditForm.nrtMaxDelayPlaceholder")}
-                    aria-label={t("tableEditForm.nrtMaxDelayAria")}
-                    data-testid="mv-debounce-max-delay"
-                    value={editingTable.mvDebounceMaxDelay}
-                    onChange={(v) =>
-                      setEditingTable({
-                        ...editingTable,
-                        mvDebounceMaxDelay:
-                          typeof v === "number" ? v : parseFloat(String(v)) || 0,
-                      })
-                    }
-                  />
-                </Group>
-              </div>
+              <CollapsibleSection
+                title={t("tableEditForm.refreshPanel")}
+                testId="mv-refresh-panel"
+                defaultOpen
+              >
+                <NumberInput
+                  label={
+                    <FieldLabel
+                      text={t("tableEditForm.refreshIntervalLabel")}
+                      help={t("tableEditForm.refreshIntervalHelp")}
+                    />
+                  }
+                  min={30}
+                  value={editingTable.mvRefreshInterval}
+                  onChange={(v) =>
+                    setEditingTable({
+                      ...editingTable,
+                      mvRefreshInterval:
+                        typeof v === "number" ? v : parseInt(String(v), 10) || 300,
+                    })
+                  }
+                />
+                <div title={t("tableEditForm.nrtDebounceTitle")}>
+                  <Text size="sm" c="dimmed" mb={4}>
+                    {t("tableEditForm.nrtDebounceLabel")}
+                  </Text>
+                  <Group gap="xs">
+                    <NumberInput
+                      min={0}
+                      step={0.5}
+                      placeholder={t("tableEditForm.nrtQuietPlaceholder")}
+                      aria-label={t("tableEditForm.nrtQuietAria")}
+                      data-testid="mv-debounce-quiet"
+                      value={editingTable.mvDebounceQuiet}
+                      onChange={(v) =>
+                        setEditingTable({
+                          ...editingTable,
+                          mvDebounceQuiet:
+                            typeof v === "number" ? v : parseFloat(String(v)) || 0,
+                        })
+                      }
+                    />
+                    <NumberInput
+                      min={0}
+                      step={0.5}
+                      placeholder={t("tableEditForm.nrtMaxDelayPlaceholder")}
+                      aria-label={t("tableEditForm.nrtMaxDelayAria")}
+                      data-testid="mv-debounce-max-delay"
+                      value={editingTable.mvDebounceMaxDelay}
+                      onChange={(v) =>
+                        setEditingTable({
+                          ...editingTable,
+                          mvDebounceMaxDelay:
+                            typeof v === "number" ? v : parseFloat(String(v)) || 0,
+                        })
+                      }
+                    />
+                  </Group>
+                </div>
+              </CollapsibleSection>
             )}
             {editingTable.materialize && (
               <Select

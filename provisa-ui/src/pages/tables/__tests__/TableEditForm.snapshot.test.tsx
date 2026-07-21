@@ -172,4 +172,15 @@ describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
     expect(await screen.findByTestId("calendar-name")).toBeInTheDocument();
     expect(screen.getByTestId("calendar-base-system")).toBeInTheDocument();
   });
+
+  it("renders the MV config as collapsible panels", () => {
+    renderForm(makeTable());
+    expect(screen.getByTestId("mv-refresh-panel-toggle")).toBeInTheDocument();
+    expect(screen.getByTestId("mv-snapshot-panel-toggle")).toBeInTheDocument();
+    expect(screen.getByTestId("mv-timetravel-panel-toggle")).toBeInTheDocument();
+    const refresh = screen.getByTestId("mv-refresh-panel-toggle");
+    expect(refresh).toHaveAttribute("aria-expanded", "true"); // defaults open
+    fireEvent.click(refresh);
+    expect(refresh).toHaveAttribute("aria-expanded", "false"); // collapses
+  });
 });
