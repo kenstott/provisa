@@ -24,3 +24,23 @@ Feature: REQ-1165 — Per-input streaming preflight check
     And a non-SQL preflight check over the input
     When the preflight gate evaluates before landing
     Then the gate raises an unsupported-capability error
+
+  Scenario: A clean input continues (pushed down, no stream)
+    Given a real engine with an input node "orders" holding only non-negative quantities
+    And a preflight check that aborts when any orders row has a negative quantity
+    When the preflight gate evaluates before landing
+    Then the verdict is continue
+    And no Arrow stream was opened for the input
+
+  Scenario: An all-quantifier check pushes down
+    Given a real engine with an input node "orders" holding only non-negative quantities
+    And a preflight check that quarantines when all orders rows are non-negative
+    When the preflight gate evaluates before landing
+    Then the verdict is quarantine
+    And no Arrow stream was opened for the input
+
+  Scenario: A no-op check returns no verdict
+    Given a real engine with an input node "orders" holding a negative quantity
+    And no preflight check is declared
+    When the preflight gate evaluates before landing
+    Then the verdict is none (continue)

@@ -26,6 +26,14 @@ vi.mock("../hooks/useAdminQueries", () => ({
   useToggleScheduledTask: () => ({ toggleScheduledTask: toggleSpy }),
   useCreateScheduledTask: () => ({ createScheduledTask: createSpy }),
   useDeleteScheduledTask: () => ({ deleteScheduledTask: deleteSpy }),
+  // Keep the module mock complete so it can't leak an undefined hook into form-rendering tests
+  // (vmThreads + fileParallelism:false share one module context).
+  useMaterializeStoreInfo: () => ({
+    materializeStoreInfo: null,
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
 }));
 
 vi.mock("../api/actions", () => ({

@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 76f06c3c-901e-45f8-92db-075bd29b1cb3
 # Canary: placeholder
 #
 # This source code is licensed under the Business Source License 1.1
@@ -174,3 +175,38 @@ def _then_streamed(ctx_bag):
 @then("the gate raises an unsupported-capability error")
 def _then_fails_loud(ctx_bag):
     assert isinstance(ctx_bag["error"], UnsupportedCapabilityError)
+
+
+@given('a real engine with an input node "orders" holding only non-negative quantities')
+def _engine_clean(ctx_bag):
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,3),(3,7)) AS v(id, qty)")
+    ctx_bag["engine"] = _DuckEngine(con)
+    ctx_bag["inputs"] = ["orders"]
+
+
+@given("a preflight check that quarantines when all orders rows are non-negative")
+def _check_all(ctx_bag):
+    ctx_bag["source"] = (
+        "def preflight(streams, ctx):\n"
+        "    if all(r['qty'] >= 0 for r in streams['orders']):\n"
+        "        return ctx.quarantine('all non-negative')\n"
+        "    return ctx.ok()"
+    )
+
+
+@given("no preflight check is declared")
+def _no_check(ctx_bag):
+    ctx_bag["source"] = None
+
+
+@then("the verdict is continue")
+def _then_continue(ctx_bag):
+    assert ctx_bag["error"] is None
+    assert ctx_bag["verdict"].decision is Decision.CONTINUE
+
+
+@then("the verdict is none (continue)")
+def _then_none(ctx_bag):
+    assert ctx_bag["error"] is None
+    assert ctx_bag["verdict"] is None

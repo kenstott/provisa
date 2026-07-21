@@ -68,6 +68,14 @@ vi.mock("../../hooks/useAdminQueries", () => ({
   useRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
   useRegisterTable: () => ({ registerTable: vi.fn(), loading: false }),
   useUpdateTable: () => ({ updateTable: vi.fn(), loading: false }),
+  // Keep the module mock complete so it can't leak an undefined hook into form-rendering tests
+  // (vmThreads + fileParallelism:false share one module context).
+  useMaterializeStoreInfo: () => ({
+    materializeStoreInfo: null,
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
 }));
 
 import { SqlPage } from "../SqlPage";

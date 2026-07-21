@@ -154,9 +154,15 @@ vi.mock("../../hooks/useAdminQueries", () => ({
   useUpdateTableNaming: () => ({ updateTableNaming, loading: false }),
   useCalendars: () => ({ calendars: [], loading: false, error: undefined, refetch: vi.fn() }),
   useCreateCalendar: () => ({ createCalendar: vi.fn(), loading: false, error: undefined }),
-  // TableEditForm (rendered on edit) uses this; include it so the module mock is complete and a
+  // TableEditForm (rendered on edit) uses these; include them so the module mock is complete and a
   // vmThreads cross-file leak (fileParallelism:false shares one context) can't break later tests.
   useRefreshPolicyPreview: () => async () => null,
+  useMaterializeStoreInfo: () => ({
+    materializeStoreInfo: null,
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
   usePurgeCacheByTable: () => ({ purgeCacheByTable, loading: false }),
   useInvalidateFileSource: () => ({ invalidateFileSource, loading: false }),
   useDeployViewToDb: () => ({ deployViewToDb, loading: false }),

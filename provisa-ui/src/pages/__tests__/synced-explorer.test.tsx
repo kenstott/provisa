@@ -73,6 +73,14 @@ vi.mock("graphiql-explorer", () => ({
 vi.mock("../../hooks/useAdminQueries", () => ({
   useDomains: () => ({ domains: [], loading: false, refetch: vi.fn() }),
   useCompileQuery: () => ({ compileQuery: vi.fn().mockResolvedValue({ queries: [] }), loading: false }),
+  // Keep the module mock complete so it can't leak an undefined hook into form-rendering tests
+  // (vmThreads + fileParallelism:false share one module context).
+  useMaterializeStoreInfo: () => ({
+    materializeStoreInfo: null,
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────────

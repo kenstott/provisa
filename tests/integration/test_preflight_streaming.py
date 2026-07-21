@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: d3d89488-0305-4b2a-86ad-34fc63092a1c
 # Canary: placeholder
 #
 # This source code is licensed under the Business Source License 1.1
@@ -29,7 +30,7 @@ import pytest
 from provisa.executor.result import QueryResult
 from provisa.federation.runtime import EngineCapability, UnsupportedCapabilityError
 from provisa.mv.preflight import Decision
-from provisa.mv.preflight_eval import evaluate_streams
+from provisa.mv.preflight_eval import evaluate_streams, make_rows_evaluator, make_streams_evaluator
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -162,3 +163,160 @@ async def test_real_arrow_reader_is_lazy(con):
     assert isinstance(reader, pa.RecordBatchReader)
     first = reader.read_next_batch()
     assert first.num_rows == 1  # one row at a time, streamed
+
+
+# ── extended scenarios ──────────────────────────────────────────────────────
+
+
+async def test_sql_pushdown_continue_when_no_row_matches(con):
+    # any(qty < 0) over 'clean' (all non-negative) → count 0 → CONTINUE, still pushed down.
+    eng = _DuckEngine(con)
+    check = _ANY_NEG.replace("streams['orders']", "streams['clean']")
+    verdict = await evaluate_streams(eng, check, ["clean"], _Ctx())
+    assert verdict.decision is Decision.CONTINUE
+    assert eng.stream_calls == []
+
+
+async def test_all_quantifier_pushdown_fires_on_vacuous_empty(con):
+    # all(P for r in empty) is vacuously TRUE → the 'all' branch fires. Real engine, empty input.
+    con.execute("CREATE TABLE empty_t AS SELECT * FROM (VALUES (1,1)) AS v(id, qty) WHERE 1=0")
+    eng = _DuckEngine(con)
+    check = (
+        "def preflight(streams, ctx):\n"
+        "    if all(r['qty'] > 0 for r in streams['empty_t']):\n"
+        "        return ctx.quarantine('all positive (vacuous)')\n"
+        "    return ctx.ok()"
+    )
+    verdict = await evaluate_streams(eng, check, ["empty_t"], _Ctx())
+    assert verdict.decision is Decision.QUARANTINE  # count of violators == 0 → all() fires
+
+
+async def test_all_quantifier_pushdown_continue_when_a_row_violates(con):
+    # all(qty > 0) over orders (has -3) → a violator exists → 'all' does NOT fire → CONTINUE.
+    eng = _DuckEngine(con)
+    check = (
+        "def preflight(streams, ctx):\n"
+        "    if all(r['qty'] > 0 for r in streams['orders']):\n"
+        "        return ctx.quarantine('all positive')\n"
+        "    return ctx.ok()"
+    )
+    verdict = await evaluate_streams(eng, check, ["orders"], _Ctx())
+    assert verdict.decision is Decision.CONTINUE
+
+
+async def test_sql_pushdown_quarantine_verdict(con):
+    # A pushdown check can return quarantine (not only abort) — the verdict vocabulary is complete.
+    eng = _DuckEngine(con)
+    check = (
+        "def preflight(streams, ctx):\n"
+        "    if any(r['qty'] < 0 for r in streams['orders']):\n"
+        "        return ctx.quarantine('some negative')\n"
+        "    return ctx.ok()"
+    )
+    verdict = await evaluate_streams(eng, check, ["orders"], _Ctx())
+    assert verdict.decision is Decision.QUARANTINE and verdict.reason == "some negative"
+
+
+async def test_boolean_arithmetic_null_predicate_parity_on_real_engine(con):
+    # REQ-964: a compound boolean/arith/NULL predicate pushes down and matches the engine's own count.
+    con.execute(
+        "CREATE TABLE t2 AS SELECT * FROM (VALUES (1,10,5,'x'),(2,1,9,NULL)) AS v(id,a,b,c)"
+    )
+    eng = _DuckEngine(con)
+    check = (
+        "def preflight(streams, ctx):\n"
+        "    if any((r['a'] + 1) > r['b'] and r['c'] != None for r in streams['t2']):\n"
+        "        return ctx.abort('x')\n"
+        "    return ctx.ok()"
+    )
+    verdict = await evaluate_streams(eng, check, ["t2"], _Ctx())
+    # row1: (10+1)>5 and 'x' is not null → True → abort fires
+    assert verdict.decision is Decision.ABORT
+    assert eng.stream_calls == []  # pushed down
+
+
+async def test_non_sql_continue_when_predicate_not_met(con):
+    # A cross-row (streaming) check whose condition is not met → CONTINUE, having streamed the input.
+    eng = _DuckEngine(con)
+    check = (
+        "def preflight(streams, ctx):\n"
+        "    total = 0\n"
+        "    for r in streams['orders']:\n"
+        "        total = total + r['qty']\n"
+        "    if total > 100:\n"
+        "        return ctx.abort('too big')\n"
+        "    return ctx.ok()"
+    )
+    verdict = await evaluate_streams(eng, check, ["orders"], _Ctx())
+    assert verdict.decision is Decision.CONTINUE  # sum 14 < 100
+    assert eng.stream_calls  # it did stream
+
+
+async def test_multi_input_streaming_check_reads_both(con):
+    # A non-SQL check over TWO inputs streams each and combines them.
+    eng = _DuckEngine(con)
+    check = (
+        "def preflight(streams, ctx):\n"
+        "    a = sum(r['qty'] for r in streams['orders'])\n"  # 14
+        "    b = sum(r['qty'] for r in streams['clean'])\n"  # 11
+        "    if a + b > 100:\n"
+        "        return ctx.abort('combined too big')\n"
+        "    return ctx.ok()"
+    )
+    verdict = await evaluate_streams(eng, check, ["orders", "clean"], _Ctx())
+    assert verdict.decision is Decision.CONTINUE
+    assert any("orders" in s for s in eng.stream_calls)
+    assert any("clean" in s for s in eng.stream_calls)
+
+
+async def test_no_check_returns_none(con):
+    eng = _DuckEngine(con)
+    assert await evaluate_streams(eng, None, ["orders"], _Ctx()) is None
+    assert await evaluate_streams(eng, "   ", ["orders"], _Ctx()) is None
+
+
+async def test_wiring_allows_sql_check_on_non_streaming_engine(con):
+    # A SQL-expressible check needs only ROWS — make_streams_evaluator must NOT reject it at wiring
+    # even when the engine lacks ARROW_STREAM (only non-SQL checks require streaming).
+    eng = _DuckEngine(con, caps=frozenset())  # no ARROW_STREAM
+    evaluator = make_streams_evaluator(eng, _ANY_NEG, ["orders"])
+    assert evaluator is not None
+    verdict = await evaluator(["ignored", "output", "rows"], _Ctx())  # rows arg ignored
+    assert verdict.decision is Decision.ABORT
+
+
+async def test_wiring_rejects_streaming_check_on_non_streaming_engine(con):
+    # A non-SQL (streaming) check on a non-ARROW_STREAM engine fails LOUD at wiring, not first fire.
+    eng = _DuckEngine(con, caps=frozenset())
+    with pytest.raises(ValueError, match="ARROW_STREAM"):
+        make_streams_evaluator(eng, _NON_SQL_QUARANTINE, ["orders"])
+
+
+async def test_source_rows_evaluator_gates_in_memory(con):
+    # The LANDED-SOURCE evaluator runs the hook over its own fetched rows ({node: rows}) — no engine.
+    evaluator = make_rows_evaluator(_NON_SQL_QUARANTINE.replace("streams['orders']", "streams['s.o']"), "s.o")
+    assert evaluator is not None
+    rows = [{"id": 1, "qty": 5}, {"id": 2, "qty": 6}]  # sum 11 < 20 → quarantine
+    verdict = await evaluator(rows, _Ctx())
+    assert verdict.decision is Decision.QUARANTINE
+
+
+async def test_source_rows_evaluator_none_when_no_source():
+    assert make_rows_evaluator(None, "s.o") is None
+    assert make_rows_evaluator("  ", "s.o") is None
+
+
+async def test_per_input_stream_is_single_pass(con):
+    # A streamed input is a ONE-SHOT iterator (it must be, to stream): a hook that consumes it in a
+    # first loop sees it EMPTY on a second pass. This is the contract — authors iterate each input once.
+    eng = _DuckEngine(con)
+    check = (
+        "def preflight(streams, ctx):\n"
+        "    first = sum(1 for _ in streams['orders'])\n"  # consumes the stream (3 rows)
+        "    second = sum(1 for _ in streams['orders'])\n"  # same exhausted iterator → 0
+        "    if first == 3 and second == 0:\n"
+        "        return ctx.abort('single-pass confirmed')\n"
+        "    return ctx.ok()"
+    )
+    verdict = await evaluate_streams(eng, check, ["orders"], _Ctx())
+    assert verdict.decision is Decision.ABORT and verdict.reason == "single-pass confirmed"

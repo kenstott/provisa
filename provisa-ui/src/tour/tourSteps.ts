@@ -201,19 +201,36 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/views",
-    element: '[data-tour="nav-model"]',
+    element: '.subnav a[href="/views"]',
     title: "Build your delivery pipeline",
     description:
-      "Two ways to revise the model:" +
+      "🔧 Compose your whole delivery pipeline right here — no separate ETL tool:" +
       "<ul>" +
-      "<li>👁️ <strong>Views</strong> — define them over any table, ephemeral or materialized, and views over views.</li>" +
+      "<li>👁️ <strong>Views</strong> — over any table, ephemeral or materialized, and views over views.</li>" +
       "<li>⚡ <strong>Commands</strong> — parameterized, reusable operations that reshape and extend the model, exposed on every surface.</li>" +
-      "</ul>" +
+      "<li>⭐ <strong>Entities &amp; facts</strong> — declare a dimension or fact once and Provisa generates the warehouse, methodology-neutral: 3NF (Inmon), star schema (Kimball), or Data Vault.</li>" +
+      "</ul>",
+  },
+  {
+    route: "/views",
+    element: '.subnav a[href="/views"]',
+    title: "Materialize into a live warehouse",
+    description:
+      "🏗️ Materialize a view and you get a full ETL engine, declared not scripted:" +
       "<ul>" +
-      "<li>⚡ <strong>Liveness</strong> lives on tables and views, so each view republishes as its inputs' freshness changes.</li>" +
-      "<li>🔧 Compose your whole delivery pipeline from views and commands — no separate ETL tool.</li>" +
-      "<li>🧬 <strong>Lineage isn't opaque</strong> — commands are declaratively defined, so every step is captured, and materialized views retain full lineage by definition.</li>" +
-      "</ul>" +
+      "<li>📅 <strong>Scheduled snapshots</strong> on real <strong>business calendars</strong> — recurrence rules, holidays, business-day gating, and a close grace period, so it fires on <em>your</em> reporting calendar, not just a clock.</li>" +
+      "<li>🗄️ <strong>Store As…</strong> — <strong>replace</strong>, <strong>upsert</strong>, or keep history with <strong>snapshot</strong> / <strong>delta</strong>, plus incremental compute.</li>" +
+      "<li>🕰️ <strong>Time travel</strong> — bitemporal history; query the model as of any point in time.</li>" +
+      "<li>⚡ <strong>Near-real-time</strong> refresh with debounce, or freshness-driven republish as inputs change.</li>" +
+      "</ul>",
+  },
+  {
+    route: "/lineage",
+    element: '.subnav a[href="/lineage"]',
+    title: "Lineage, end to end",
+    description:
+      "🧬 <strong>Lineage isn't opaque.</strong> Commands are declaratively defined, so every step is captured — and materialized views retain full lineage by definition." +
+      "<p>Trace any column back to its sources across the whole pipeline.</p>" +
       "<p>Now let's query it. →</p>",
   },
   {
