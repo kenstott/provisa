@@ -68,7 +68,7 @@
     "grainPlaceholder": "Select a recurrence",
     "allowedLatenessLabel": "Close Grace Period (seconds)",
     "allowedLatenessHelp": "How long to wait past the boundary for inputs to be fresh-through the window before closing the period (REQ-961).",
-    "businessDayGrainLabel": "Business-day grain (no window on holidays/weekends)",
+    "businessDayGrainLabel": "On Business Days",
     "expectedAllLabel": "Verify all lineage inputs (default)",
     "expectedAllHelp": "The preflight gate (REQ-961): the period is closed only once its inputs are fresh-through the window boundary. Default = every SQL-lineage input. Uncheck to name a custom set (or none = calendar-only, verify nothing).",
     "expectedEventsLabel": "Required fresh inputs",
