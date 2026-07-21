@@ -110,7 +110,7 @@
     "calSun": "Sunday",
     "calCancel": "Cancel",
     "calCreate": "Create",
-    "persistLabel": "Persistence",
+    "persistLabel": "Store Snapshot As...",
     "persistHelp": "REQ-965 how each recompute is applied to the MV's own store. replace = delete + reinsert the full current state (default). append = accumulate the batch (upsert by key when a key is set). upsert = maintain rows by primary key. Superseded by Time Travel when a bitemporal mode is chosen.",
     "persistAria": "MV persistence outcome",
     "persistReplace": "replace (full refresh)",
