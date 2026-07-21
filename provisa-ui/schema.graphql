@@ -263,6 +263,7 @@ input MeasureInput {
 type Mutation {
   rebuildSchemas: MutationResult!
   createCalendar(input: CalendarInput!): MutationResult!
+  deleteCalendar(name: String!): MutationResult!
   createSource(input: SourceInput!): MutationResult!
   updateSource(input: SourceInput!): MutationResult!
   renameSource(oldId: String!, newId: String!): MutationResult!

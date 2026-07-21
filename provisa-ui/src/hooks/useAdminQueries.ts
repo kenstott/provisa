@@ -39,6 +39,7 @@ import {
   TablesQuery as TABLES_QUERY,
   Calendars as CALENDARS_QUERY,
   CreateCalendar as CREATE_CALENDAR_MUTATION,
+  DeleteCalendar as DELETE_CALENDAR_MUTATION,
   RefreshPolicyPreview as REFRESH_POLICY_PREVIEW_QUERY,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
@@ -143,6 +144,9 @@ export interface CalendarSummary {
   version: string;
   baseSystem: string;
   tz: string;
+  fiscalAnchorMonth: number;
+  fiscalAnchorDay: number;
+  retailAnchor: string | null;
   weekStart: number;
   holidays: string[];
   weekend: number[];
@@ -162,6 +166,13 @@ export function useCreateCalendar() {
     refetchQueries: [{ query: CALENDARS_QUERY }],
   });
   return { createCalendar: mutate, loading, error };
+}
+
+export function useDeleteCalendar() {
+  const [mutate, { loading, error }] = useMutation(DELETE_CALENDAR_MUTATION, {
+    refetchQueries: [{ query: CALENDARS_QUERY }],
+  });
+  return { deleteCalendar: mutate, loading, error };
 }
 
 // REQ-1143: preview the effective refresh/serving summary for draft editor knobs, server-derived

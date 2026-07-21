@@ -183,6 +183,28 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def delete_calendar(self, name: str) -> MutationResult:  # REQ-962
+        """Delete a snapshot-boundary calendar (all versions) — ONLY when no MV references it. A
+        calendar in use MUST NOT be removed (its snapshots would lose their boundary source), so this
+        fails loud with the usage count rather than orphaning a periodic MV."""
+        from provisa.core.repositories import calendar as calendar_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _conn = cast("Connection", conn)
+            used_by = await calendar_repo.usage_count(_conn, name)
+            if used_by > 0:
+                return MutationResult(
+                    success=False,
+                    message=f"calendar {name!r} is in use by {used_by} materialized view(s) — "
+                    "clear their snapshot schedule before deleting",
+                )
+            removed = await calendar_repo.delete(_conn, name)
+        if removed == 0:
+            return MutationResult(success=False, message=f"calendar {name!r} not found")
+        return MutationResult(success=True, message=f"calendar {name!r} deleted")
+
+    @strawberry.mutation
     async def create_source(
         self, info: StrawberryInfo, input: SourceInput
     ) -> MutationResult:  # REQ-012, REQ-013

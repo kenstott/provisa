@@ -20,9 +20,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, func, select
 
-from provisa.core.schema_org import calendars
+from provisa.core.schema_org import calendars, registered_tables
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -77,3 +77,23 @@ async def get_latest(conn: "Connection", name: str) -> dict | None:
     )
     row = result.fetchone()
     return dict(row._mapping) if row is not None else None
+
+
+async def usage_count(conn: "Connection", name: str) -> int:
+    """How many registered tables/MVs reference calendar ``name`` as their snapshot schedule
+    (REQ-962). A calendar with usage MUST NOT be deleted — its snapshots would lose their boundary
+    source. Counts across all versions (the binding is by name)."""
+    result = await conn.execute_core(
+        select(func.count())
+        .select_from(registered_tables)
+        .where(registered_tables.c.mv_calendar == name)
+    )
+    return int(result.fetchone()[0])
+
+
+async def delete(conn: "Connection", name: str) -> int:
+    """Delete EVERY version of calendar ``name`` and return the row count removed (REQ-962). The
+    caller MUST verify :func:`usage_count` is zero first — this does not check (the mutation enforces
+    the no-usage guard, and this stays a pure delete)."""
+    result = await conn.execute_core(sa_delete(calendars).where(calendars.c.name == name))
+    return int(result.rowcount or 0)

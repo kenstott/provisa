@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 749d45e7-3c6f-4e22-93b2-c23b1c4b4f9d
 // Canary: placeholder
 //
 // This source code is licensed under the Business Source License 1.1
@@ -54,5 +55,44 @@ describe("CalendarCreateModal — base-system anchors (REQ-962)", () => {
     expect(screen.queryByTestId("calendar-fiscal-month")).not.toBeInTheDocument();
     // no anchor yet → Create is blocked (a retail calendar is unusable without it)
     expect(screen.getByTestId("calendar-create-submit")).toBeDisabled();
+  });
+
+  it("exposes holiday + weekend editors", async () => {
+    renderModal("gregorian");
+    expect(await screen.findByTestId("calendar-holidays")).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-weekend")).toBeInTheDocument();
+  });
+
+  it("has no delete button in create mode", async () => {
+    renderModal("gregorian");
+    await screen.findByTestId("calendar-base-system");
+    expect(screen.queryByTestId("calendar-delete")).not.toBeInTheDocument();
+  });
+
+  it("edit mode pre-fills, locks the name, and offers delete", async () => {
+    render(
+      <CalendarCreateModal
+        opened
+        onClose={vi.fn()}
+        editCalendar={{
+          name: "fiscal-us",
+          version: "v2",
+          baseSystem: "fiscal",
+          tz: "America/New_York",
+          fiscalAnchorMonth: 10,
+          fiscalAnchorDay: 1,
+          retailAnchor: null,
+          weekStart: 0,
+          holidays: ["2026-07-03"],
+          weekend: [5, 6],
+        }}
+      />,
+    );
+    const nameInput = (await screen.findByTestId("calendar-name")) as HTMLInputElement;
+    expect(nameInput.value).toBe("fiscal-us");
+    expect(nameInput).toHaveAttribute("readonly"); // name is the identity in edit mode
+    expect(screen.getByTestId("calendar-delete")).toBeInTheDocument();
+    // the fiscal anchor was pre-selected from the edited calendar
+    expect(screen.getByTestId("calendar-fiscal-month")).toBeInTheDocument();
   });
 });

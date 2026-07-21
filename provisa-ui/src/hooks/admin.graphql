@@ -457,6 +457,9 @@ query Calendars {
     version
     baseSystem
     tz
+    fiscalAnchorMonth
+    fiscalAnchorDay
+    retailAnchor
     weekStart
     holidays
     weekend
@@ -465,6 +468,12 @@ query Calendars {
 
 mutation CreateCalendar($input: CalendarInput!) {
   createCalendar(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteCalendar($name: String!) {
+  deleteCalendar(name: $name) {
     ...MutationResult
   }
 }
