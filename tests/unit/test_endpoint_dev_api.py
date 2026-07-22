@@ -245,12 +245,19 @@ class TestSqlEndpointStatsAndFormat:
 
 class TestSqlEndpointRoleResolution:
     async def test_x_provisa_role_header_overrides_body_role(self, sql_client):
-        # Body role "ghost" doesn't exist; header "admin" does — header should win.
-        resp = await sql_client.post(
-            "/data/sql",
-            json={"sql": "SELECT 1", "role": "ghost"},
-            headers={"x-provisa-role": "admin"},
-        )
+        # Body role "ghost" doesn't exist; header "admin" does — header should win. Mock execution
+        # (the engine terminal) so the query resolves for admin instead of hitting the fake pool — the
+        # point is role RESOLUTION, not the engine result.
+        result = _make_query_result(rows=[(1,)], column_names=["id"])
+        with (
+            patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=result)),
+            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=result)),
+        ):
+            resp = await sql_client.post(
+                "/data/sql",
+                json={"sql": "SELECT id FROM orders", "role": "ghost"},
+                headers={"x-provisa-role": "admin"},
+            )
         # Not the 400 "No schema for role 'ghost'" — proves header took precedence.
         assert resp.status_code != 400 or "ghost" not in resp.text
 
@@ -401,82 +408,6 @@ class TestCheckSqlCapabilities:
         _check_sql_capabilities({"capabilities": ["admin"]}, discovery_mode=False)  # no raise
 
 
-class TestResolveDefaultSource:
-    def test_prefers_relational_source_type(self):
-        from provisa.api.data.endpoint_dev import _resolve_default_source
-
-        state = SimpleNamespace(
-            source_types={"api1": "openapi", "pg1": "postgresql"},
-            source_pools=SimpleNamespace(source_ids=["api1", "pg1"]),
-        )
-        assert _resolve_default_source(state) == "pg1"
-
-    def test_falls_back_to_first_pool_source(self):
-        from provisa.api.data.endpoint_dev import _resolve_default_source
-
-        state = SimpleNamespace(
-            source_types={"api1": "openapi"},
-            source_pools=SimpleNamespace(source_ids=["api1"]),
-        )
-        assert _resolve_default_source(state) == "api1"
-
-    def test_falls_back_to_pg_literal(self):
-        from provisa.api.data.endpoint_dev import _resolve_default_source
-
-        state = SimpleNamespace(
-            source_types={},
-            source_pools=SimpleNamespace(source_ids=[]),
-        )
-        assert _resolve_default_source(state) == "pg"
-
-
-class TestNormalizeSqlTree:
-    def test_normalizes_and_parses(self):
-        from provisa.api.data.endpoint_dev import _normalize_sql_tree
-
-        ctx = _make_ctx("orders", table_id=1)
-        normalized_sql, tree = _normalize_sql_tree("SELECT id FROM orders", ctx)
-        assert "orders" in normalized_sql.lower()
-        assert tree is not None
-
-
-class TestAugmentDiscoveryTableMap:
-    def test_adds_tables_from_all_contexts(self):
-        from provisa.api.data.endpoint_dev import _augment_discovery_table_map
-        from provisa.compiler.stage2 import GovernanceContext
-
-        ctx1 = _make_ctx("orders", table_id=1)
-        ctx2 = _make_ctx("pets", table_id=2)
-        state = SimpleNamespace(contexts={"admin": ctx1, "other": ctx2})
-        gov_ctx = GovernanceContext(rls_rules={}, table_map={})
-        _augment_discovery_table_map(gov_ctx, state)
-        assert "orders" in gov_ctx.table_map
-        assert "pets" in gov_ctx.table_map
-        assert "public.orders" in gov_ctx.table_map
-
-
-class TestCollectTableAccessViolations:
-    def test_unknown_table_flagged(self):
-        from provisa.api.data.endpoint_dev import _collect_table_access_violations
-        from provisa.compiler.stage2 import GovernanceContext
-
-        tree = sqlglot.parse_one("SELECT id FROM secret_table", read="postgres")
-        gov_ctx = GovernanceContext(rls_rules={}, table_map={"orders": 1})
-        violations = _collect_table_access_violations(tree, gov_ctx, "admin")
-        assert len(violations) == 1
-        assert violations[0].code == "V000"
-        assert "secret_table" in violations[0].message
-
-    def test_known_table_not_flagged(self):
-        from provisa.api.data.endpoint_dev import _collect_table_access_violations
-        from provisa.compiler.stage2 import GovernanceContext
-
-        tree = sqlglot.parse_one("SELECT id FROM orders", read="postgres")
-        gov_ctx = GovernanceContext(rls_rules={}, table_map={"orders": 1})
-        violations = _collect_table_access_violations(tree, gov_ctx, "admin")
-        assert violations == []
-
-
 class TestCheckQualifierBinding:
     def test_valid_binding_returns_none(self):
         from provisa.api.data.endpoint_dev import _check_qualifier_binding
@@ -506,145 +437,6 @@ class TestCheckQualifierBinding:
 # ---------------------------------------------------------------------------
 # _dispatch_sql_execution / _execute_engine_route / _execute_direct_route
 # ---------------------------------------------------------------------------
-
-
-class TestDispatchSqlExecution:
-    async def test_govdata_source_routes_to_execute_govdata(self):
-        from provisa.api.data.endpoint_dev import _dispatch_sql_execution
-        from provisa.transpiler.router import Route
-
-        state = SimpleNamespace(source_types={"gd1": "govdata"})
-        decision = SimpleNamespace(route=Route.DIRECT, dialect="postgres", source_id="gd1")
-        fake_result = _make_query_result()
-        with patch(
-            "provisa.api.data.endpoint_dev._execute_govdata",
-            new=AsyncMock(return_value=fake_result),
-        ) as mock_gd:
-            result = await _dispatch_sql_execution(
-                "SELECT 1", {"gd1"}, "gd1", decision, MagicMock(), state, None
-            )
-        assert result is fake_result
-        mock_gd.assert_called_once()
-
-    async def test_engine_route_dispatches_to_execute_engine_route(self):
-        from provisa.api.data.endpoint_dev import _dispatch_sql_execution
-        from provisa.transpiler.router import Route
-
-        state = SimpleNamespace(source_types={"pg": "postgresql"})
-        decision = SimpleNamespace(route=Route.ENGINE, dialect="postgres", source_id="pg")
-        fake_result = _make_query_result()
-        with patch(
-            "provisa.api.data.endpoint_dev._execute_engine_route",
-            new=AsyncMock(return_value=fake_result),
-        ) as mock_engine:
-            result = await _dispatch_sql_execution(
-                "SELECT 1", {"pg"}, "pg", decision, MagicMock(), state, None
-            )
-        assert result is fake_result
-        mock_engine.assert_called_once()
-
-    async def test_direct_route_dispatches_to_execute_direct_route(self):
-        from provisa.api.data.endpoint_dev import _dispatch_sql_execution
-        from provisa.transpiler.router import Route
-
-        state = SimpleNamespace(source_types={"pg": "postgresql"}, source_pools=MagicMock())
-        decision = SimpleNamespace(route=Route.DIRECT, dialect="postgres", source_id="pg")
-        fake_result = _make_query_result()
-        with patch(
-            "provisa.api.data.endpoint_dev._execute_direct_route",
-            new=AsyncMock(return_value=fake_result),
-        ) as mock_direct:
-            result = await _dispatch_sql_execution(
-                "SELECT 1", {"pg"}, "pg", decision, MagicMock(), state, None
-            )
-        assert result is fake_result
-        mock_direct.assert_called_once()
-
-
-class TestExecuteEngineRoute:
-    async def test_engine_not_connected_raises_503(self):
-        from fastapi import HTTPException
-
-        from provisa.api.data.endpoint_dev import _execute_engine_route
-
-        ctx = _make_ctx("orders", table_id=1)
-        state = SimpleNamespace(
-            view_sql_map={},
-            federation_engine=SimpleNamespace(
-                is_connected=lambda: False,
-                transpile_physical=lambda s: s,
-            ),
-        )
-        with patch(
-            "provisa.api.data.materialization._materialize_api_to_engine_cache",
-            new=AsyncMock(return_value=({}, {}, [])),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await _execute_engine_route("SELECT id FROM orders", ctx, state, None)
-        assert exc_info.value.status_code == 503
-
-    async def test_engine_connected_executes(self):
-        from provisa.api.data.endpoint_dev import _execute_engine_route
-
-        ctx = _make_ctx("orders", table_id=1)
-        fake_result = _make_query_result()
-        state = SimpleNamespace(
-            view_sql_map={},
-            federation_engine=SimpleNamespace(
-                is_connected=lambda: True,
-                transpile_physical=lambda s: s,
-                execute_engine=AsyncMock(return_value=fake_result),
-            ),
-        )
-        with patch(
-            "provisa.api.data.materialization._materialize_api_to_engine_cache",
-            new=AsyncMock(return_value=({}, {}, [])),
-        ):
-            result = await _execute_engine_route("SELECT id FROM orders", ctx, state, [1, 2])
-        assert result is fake_result
-
-    async def test_view_sql_map_expands_view_refs(self):
-        from provisa.api.data.endpoint_dev import _execute_engine_route
-
-        ctx = _make_ctx("orders", table_id=1)
-        fake_result = _make_query_result()
-        state = SimpleNamespace(
-            view_sql_map={"some_view": "SELECT 1"},
-            federation_engine=SimpleNamespace(
-                is_connected=lambda: True,
-                transpile_physical=lambda s: s,
-                execute_engine=AsyncMock(return_value=fake_result),
-            ),
-        )
-        with (
-            patch(
-                "provisa.api.data.materialization._materialize_api_to_engine_cache",
-                new=AsyncMock(return_value=({}, {}, [])),
-            ),
-            patch(
-                "provisa.compiler.view_expand.expand_view_refs",
-                return_value="SELECT id FROM orders",
-            ) as mock_expand,
-        ):
-            result = await _execute_engine_route("SELECT id FROM orders", ctx, state, None)
-        assert result is fake_result
-        mock_expand.assert_called_once()
-
-
-class TestExecuteDirectRoute:
-    async def test_executes_native(self):
-        from provisa.api.data.endpoint_dev import _execute_direct_route
-
-        fake_result = _make_query_result()
-        decision = SimpleNamespace(dialect="postgres", source_id="pg")
-        fake_state = SimpleNamespace(
-            federation_engine=SimpleNamespace(execute_native=AsyncMock(return_value=fake_result))
-        )
-        with patch("provisa.api.app.state", fake_state):
-            result = await _execute_direct_route(
-                "SELECT id FROM orders", decision, "pg", MagicMock(), None
-            )
-        assert result is fake_result
 
 
 class _FakeAcquireCtx:

@@ -486,41 +486,31 @@ class TestReq580MultiStatement:
     """REQ-580: Semicolon-separated statements executed sequentially."""
 
     def test_semicolon_split_produces_multiple_statements(self):
-        # REQ-580: handle_query in server.py splits on semicolons before dispatching.
-        import inspect
-        from provisa.pgwire.server import ProvisaHandler
+        # REQ-580: handle_query splits a batch into statements before dispatching. The split is
+        # statement-aware (sqlglot tokenizer), NOT a naive str.split(';') — a ';' inside a string
+        # literal / comment / dollar-quote must not mis-split (parser differential).
+        from provisa.compiler.sql_rewrite import split_sql_statements
 
-        src = inspect.getsource(ProvisaHandler.handle_query)
-        # The source must contain the exact splitting expression used in production.
-        assert 'split(";")' in src, (
-            "handle_query must split the decoded query on ';' to support multi-statement queries"
-        )
-        assert "if s.strip()" in src or "s.strip()" in src, (
-            "handle_query must filter empty parts after splitting on ';'"
-        )
-
-        # Validate the logic matches what the source does.
-        decoded = "SELECT 1; SELECT 2; SELECT 3"
-        stmts = [s.strip() for s in decoded.split(";") if s.strip()]
-        assert len(stmts) == 3
-        assert stmts[0] == "SELECT 1"
-        assert stmts[1] == "SELECT 2"
-        assert stmts[2] == "SELECT 3"
+        assert split_sql_statements("SELECT 1; SELECT 2; SELECT 3") == [
+            "SELECT 1",
+            "SELECT 2",
+            "SELECT 3",
+        ]
+        # A ';' inside a literal is NOT a boundary (naive split would produce 4 fragments here).
+        assert split_sql_statements("SELECT 'a;b'; SELECT 2") == ["SELECT 'a;b'", "SELECT 2"]
 
     def test_empty_parts_after_semicolon_skipped(self):
-        # REQ-580: Trailing semicolon must not produce empty statement.
-        # Confirm handle_query filters empty strings produced by trailing semicolons.
+        # REQ-580: a trailing semicolon must not produce an empty statement.
         import inspect
         from provisa.pgwire.server import ProvisaHandler
+        from provisa.compiler.sql_rewrite import split_sql_statements
 
         src = inspect.getsource(ProvisaHandler.handle_query)
         assert "EMPTY_QUERY_RESPONSE" in src, (
             "handle_query must send EMPTY_QUERY_RESPONSE when no statements remain after filtering"
         )
-
-        decoded = "SELECT 1;"
-        stmts = [s.strip() for s in decoded.split(";") if s.strip()]
-        assert stmts == ["SELECT 1"]
+        assert split_sql_statements("SELECT 1;") == ["SELECT 1"]
+        assert split_sql_statements("   ") == []
 
 
 # ---------------------------------------------------------------------------

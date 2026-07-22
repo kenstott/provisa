@@ -230,8 +230,6 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         try:
             _as_of = parse_as_of(x_provisa_as_of)
         except ValueError as exc:
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=400, detail=f"invalid X-Provisa-As-Of: {exc}")
 
     import time as _time
@@ -278,13 +276,24 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # tail is never silently dropped, and a per-statement registered command still routes through the
     # shared function hook. Surface-specific request auth (capability gate) is a pre-check here; as_of
     # (REQ-1163) + discovery_mode are query-shaping params threaded in.
+    if role_id not in state.schemas:
+        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
     role = state.roles.get(role_id)
     _check_sql_capabilities(role, request.discovery_mode)
     from provisa.pgwire._pipeline import execute_sql_batch
 
-    result = await execute_sql_batch(
-        request.sql, role_id, state, discovery_mode=request.discovery_mode, as_of=_as_of
-    )
+    # Translate the pipeline's governance outcomes to HTTP: a governance denial (RLS/masking/visibility/
+    # relationship guard) raises PermissionError → 403; a malformed/invalid statement raises ValueError
+    # → 400. Previously _compile_govern_execute raised HTTPException directly; the one pipeline raises
+    # typed errors, so the surface maps them (else they surface as 500).
+    try:
+        result = await execute_sql_batch(
+            request.sql, role_id, state, discovery_mode=request.discovery_mode, as_of=_as_of
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return _finalize(result, source="engine", strategy="batch", physical_sql=request.sql)
 
 
