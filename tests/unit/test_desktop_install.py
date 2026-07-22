@@ -39,11 +39,16 @@ class TestREQ976DockerOnlyWhenNeeded:
         assert 'DEMO_MODE" = "docker" ]; } && NEEDS_DOCKER=true' in content
 
     def test_macos_native_path_selects_native_runtime(self):
-        # REQ-976 — when NEEDS_DOCKER is false the runtime is native (no Lima VM).
+        # REQ-976 — NEEDS_DOCKER false -> runtime "native" (Python venv, no Docker);
+        # true -> runtime "docker" (user's own Docker). No Lima/VM tier exists.
         content = (PKG / "macos" / "first-launch.sh").read_text()
         assert 'if [ "${NEEDS_DOCKER:-false}" = false ]; then' in content
         assert 'runtime="native"' in content
-        assert 'runtime="lima"' in content
+        assert 'runtime="docker"' in content
+        assert 'runtime="lima"' not in content, "no Lima VM runtime tier"
+        assert "limactl" not in content, "macOS first-launch must not drive Lima (limactl)"
+        assert "runtime: ${runtime}" in content
+        assert "image_source: ${IMAGE_SOURCE:-build}" in content
 
 
 # ---------------------------------------------------------------------------

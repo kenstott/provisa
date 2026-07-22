@@ -20,8 +20,7 @@ const REPO = "kenstott/provisa";
 // name matchers per platform — match both versioned assets (Provisa-v0.1.0-alpha.1-macOS.dmg)
 // and the version-less stable aliases (Provisa-macOS.dmg) the release workflow uploads.
 const MATCHERS = {
-  macos: (n) => /macOS\.dmg$/i.test(n) && !/(obs|demo|runtime|container)/i.test(n),
-  "macos-runtime": (n) => /Runtime.*macOS\.dmg$/i.test(n),
+  macos: (n) => /macOS\.dmg$/i.test(n) && !/(obs|demo|container)/i.test(n),
   "macos-obs": (n) => /Obs.*macOS\.dmg$/i.test(n),
   "macos-demo": (n) => /Demo.*macOS\.dmg$/i.test(n),
   linux: (n) => /linux.*\.AppImage$/i.test(n),

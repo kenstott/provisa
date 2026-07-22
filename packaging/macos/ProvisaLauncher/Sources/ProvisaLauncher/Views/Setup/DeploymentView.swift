@@ -37,7 +37,7 @@ struct DeploymentView: View {
                         .wizardField()
                 }
                 if config.needsDocker {
-                    Label("This choice runs on Docker — the installer provisions a lightweight VM.",
+                    Label("Runs on your Docker (Docker Desktop or colima) — make sure Docker is installed and running.",
                           systemImage: "shippingbox")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.55))

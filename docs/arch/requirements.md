@@ -5622,7 +5622,7 @@ Linux AppImage bundles both core and observability (obs) images directly — the
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
 
-macOS and Windows use an extension model: the container/compute tier is the only tier that creates the container runtime (Lima + containerd on macOS; WSL2 + containerd on Windows — never VirtualBox). Obs and Demo are extension packages that load images into the existing runtime and write a compose file into `~/.provisa/extensions/<name>/`. The launcher enumerates `extensions/*/docker-compose.*.yml` at startup and appends each found file to the compose file list, composing the service set dynamically. `PROVISA_REDIRECT_ENABLED`, MinIO, and OTel env vars are set only when the obs extension is present. The native base tier ([REQ-979](#REQ-979)) has no runtime VM at all.
+macOS and Windows use an extension model: the container/compute tier is the only tier that requires an external container runtime. On macOS, it uses the user's Docker (Docker Desktop or colima); on Windows, it provisions WSL2 + containerd — never VirtualBox. App images (provisa, provisa-ui, zaychik) are built at DMG-build time, shipped in core-images.tar, docker load-ed at first launch, and resolved via docker-compose.airgap.yml. Obs and Demo are extension packages that load images into the existing runtime and write a compose file into `~/.provisa/extensions/<name>/`. The launcher enumerates `extensions/*/docker-compose.*.yml` at startup and appends each found file to the compose file list, composing the service set dynamically. `PROVISA_REDIRECT_ENABLED`, MinIO, and OTel env vars are set only when the obs extension is present. The native base tier ([REQ-979](#REQ-979)) has no runtime VM at all.
 
 **Use case:** Extension model lets users install observability and demo services incrementally without reinstalling Core, and lets the launcher automatically discover installed extensions without hard-coded feature flags.
 
@@ -9484,7 +9484,7 @@ Installing the demo is optional and OFF by default. When installed, the launcher
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
 
-The native tier bundles a standalone Python runtime (python-build-standalone + provisa wheel + duckdb/pg_duckdb extensions + aiosqlite) so the base installer runs the app with no Docker or container dependencies. The base installer ships no container images.
+The native tier builds a Python VENV at first launch from PyPI (pinned to release). The DMG/EXE bundles a bare python-build-standalone interpreter + a wheelhouse. First-launch creates ~/.provisa/venv and installs provisa[embedded] online from PyPI, or offline via pip --no-index --find-links from the bundled wheelhouse. The native tier runs with no Docker or container dependencies.
 
 **Use case:** Ensures the entire native-tier stack is self-contained and runs on any OS (macOS, Windows, Linux) without requiring external Python environments or container runtimes.
 

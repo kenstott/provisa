@@ -17081,12 +17081,15 @@
   priority: SHOULD
   type: infrastructure
   description: 'macOS and Windows use an extension model: the container/compute tier is the only tier
-    that creates the container runtime (Lima + containerd on macOS; WSL2 + containerd on Windows — never
-    VirtualBox). Obs and Demo are extension packages that load images into the existing runtime and write
-    a compose file into `~/.provisa/extensions/<name>/`. The launcher enumerates `extensions/*/docker-compose.*.yml`
-    at startup and appends each found file to the compose file list, composing the service set dynamically.
-    `PROVISA_REDIRECT_ENABLED`, MinIO, and OTel env vars are set only when the obs extension is present.
-    The native base tier (REQ-979) has no runtime VM at all.'
+    that requires an external container runtime. On macOS, it uses the user''s Docker (Docker Desktop
+    or colima); on Windows, it provisions WSL2 + containerd — never VirtualBox. App images (provisa,
+    provisa-ui, zaychik) are built at DMG-build time, shipped in core-images.tar, docker load-ed at
+    first launch, and resolved via docker-compose.airgap.yml. Obs and Demo are extension packages that
+    load images into the existing runtime and write a compose file into `~/.provisa/extensions/<name>/`.
+    The launcher enumerates `extensions/*/docker-compose.*.yml` at startup and appends each found file
+    to the compose file list, composing the service set dynamically. `PROVISA_REDIRECT_ENABLED`, MinIO,
+    and OTel env vars are set only when the obs extension is present. The native base tier (REQ-979)
+    has no runtime VM at all.'
   use_case: Extension model lets users install observability and demo services incrementally without reinstalling
     Core, and lets the launcher automatically discover installed extensions without hard-coded feature
     flags.
@@ -17101,11 +17104,12 @@
   - packaging/windows/wsl/start-containerd.sh
   - packaging/windows/build-installer-obs.ps1
   notes: Windows container tier (build-container.ps1) is a separate on-demand download that provisions
-    a WSL2 distro named `provisa` with containerd + nerdctl-full (version-matched to the macOS Lima tier),
-    loads the bundled core image tarballs, copies the compose tree to /opt/provisa/compose inside the
-    distro, and runs `nerdctl compose` there (provisa-container.ps1). No VirtualBox. install-container.ps1
-    stops the native tier before starting the stack; the tier is reversible by switching back to provisa-native.ps1.
-    uninstall.ps1 unregisters the WSL distro.
+    a WSL2 distro named `provisa` with containerd + nerdctl-full, loads the bundled core image tarballs,
+    copies the compose tree to /opt/provisa/compose inside the distro, and runs `nerdctl compose` there
+    (provisa-container.ps1). macOS container tier bundles core-images.tar built at DMG-build time, docker
+    load-s images at first launch, and uses docker-compose.airgap.yml. No VirtualBox or embedded VM.
+    install-container.ps1 stops the native tier before starting the stack; the tier is reversible by
+    switching back to provisa-native.ps1. uninstall.ps1 unregisters the WSL distro.
   tests:
   - tests/e2e/test_installer.py
   - tests/unit/test_infra_requirements.py
@@ -28448,9 +28452,10 @@
   category: Desktop Installation
   priority: MUST
   type: infrastructure
-  description: The native tier bundles a standalone Python runtime (python-build-standalone + provisa
-    wheel + duckdb/pg_duckdb extensions + aiosqlite) so the base installer runs the app with no Docker
-    or container dependencies. The base installer ships no container images.
+  description: The native tier builds a Python VENV at first launch from PyPI (pinned to release).
+    The DMG/EXE bundles a bare python-build-standalone interpreter + a wheelhouse. First-launch creates
+    ~/.provisa/venv and installs provisa[embedded] online from PyPI, or offline via pip --no-index
+    --find-links from the bundled wheelhouse. The native tier runs with no Docker or container dependencies.
   use_case: Ensures the entire native-tier stack is self-contained and runs on any OS (macOS, Windows,
     Linux) without requiring external Python environments or container runtimes.
   target: 2026-Q3
@@ -28463,11 +28468,11 @@
   - tests/unit/test_desktop_install.py
   - tests/unit/test_infra_requirements.py
   notes: Windows native builder (build-sfx.ps1) downloads python-build-standalone for x86_64-pc-windows-msvc,
-    pip-installs provisa + uvicorn into it, and stages the built UI at <site-packages>/static — parity
-    with macOS bundle_native_runtime. first-launch-native.ps1 stages the runtime to %USERPROFILE%\.provisa\runtime
-    and provisa-native.ps1 runs the two uvicorn processes (API factory + ui_server). The Windows base
-    installer ships NO VirtualBox, OVA, or Trino; the container/compute tier (WSL2 + containerd, Trino
-    image) is a separate on-demand download per REQ-889 (additive, reversible tier toggle).
+    bundles it with a wheelhouse, and stages the built UI at a static path. first-launch-native.ps1
+    creates the VENV at %USERPROFILE%\.provisa\venv, installs from wheelhouse or PyPI, and provisa-native.ps1
+    runs the two uvicorn processes (API factory + ui_server). The Windows base installer ships NO VirtualBox,
+    OVA, or Trino; the container/compute tier (WSL2 + containerd, Trino image) is a separate on-demand
+    download per REQ-889 (additive, reversible tier toggle).
 - id: REQ-980
   status: complete
   since: 2026-07

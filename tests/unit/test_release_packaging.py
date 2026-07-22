@@ -10,7 +10,7 @@
 
 """REQ-854: release artifact packaging boundaries.
 
-The core runtime image set (docker-compose.core.yml + OVA/Lima bundles) must:
+The core runtime image set (docker-compose.core.yml + core-images tarball) must:
 - include busybox as a core dependency;
 - bundle NO third-party billing mock service in ANY compose (REQ-1015: Lemon Squeezy is
   Merchant-of-Record over the public REST API; tests stub it via HTTP fixtures);

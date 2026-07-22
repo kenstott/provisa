@@ -37,18 +37,12 @@ struct SetupWizardView: View {
                 case 3:
                     InstallLocationView(config: config,
                                         onBack: { step = 2 },
-                                        onNext: { step = config.needsDocker ? 4 : 5 })
+                                        onNext: { step = 4 })
                 case 4:
-                    // Resource budget only matters for the Docker/Lima tier; the native
-                    // tier runs in-process, so skip straight to Network.
-                    ResourceBudgetView(config: config,
-                                       onBack: { step = 3 },
-                                       onNext: { step = 5 })
-                case 5:
                     NetworkView(config: config,
-                                onBack: { step = config.needsDocker ? 4 : 3 },
+                                onBack: { step = 3 },
                                 onNext: { beginInstall() })
-                case 6:
+                case 5:
                     InstallProgressView(state: installState,
                                         onCancel: { runner.cancel() })
                 default:
@@ -77,7 +71,7 @@ struct SetupWizardView: View {
                     UserDefaults.standard.set(config.installDir.path, forKey: "provisaInstallDir")
                     startProvisa()
                 }
-                step = installState.hasFailed ? 6 : 7
+                step = installState.hasFailed ? 5 : 6
             }
         }
     }
@@ -93,9 +87,9 @@ struct SetupWizardView: View {
     }
 
     private func beginInstall() {
-        step = 6
+        step = 5
         Task { @MainActor in
-            // Show the step list for the chosen tier (native has no VM/image/build steps).
+            // Show the step list for the chosen tier (native has no image/build steps).
             installState.configure(needsDocker: config.needsDocker)
             runner.run(config: config, state: installState)
         }

@@ -10,12 +10,12 @@
 
 """Tests for the Provisa installer CLI and packaging (REQ-223–228, REQ-294).
 
-The CLI script at scripts/provisa delegates to Docker Compose. These tests
-verify command routing, config parsing, and correct subprocess invocations
-by mocking the shell execution layer.
-
-REQ-294 (airgapped native bundle) is not yet implemented — those tests are
-marked xfail and document the expected future behaviour.
+The CLI script at scripts/provisa runs the native tier (uvicorn against the
+~/.provisa/venv Python) when config.yaml has `runtime: native`, and delegates
+to the user's own Docker Compose otherwise (the default when `runtime` is
+absent). These tests exercise the Docker-tier path — command routing, config
+parsing, and correct subprocess invocations — by mocking the shell execution
+layer.
 """
 
 from __future__ import annotations

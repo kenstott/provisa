@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Phase AF2a — First-launch setup: start Lima VM, import images.
+# First-launch setup. Native tier: build a Python venv from the bundled interpreter
+# + wheelhouse (online: PyPI; airgapped: bundled wheels). Docker tier: bring up the
+# stack on the user's own Docker (Docker Desktop / colima) — no VM.
 # Called by provisa-launcher on first run only.
 set -euo pipefail
 
@@ -9,8 +11,6 @@ RESOURCES="${BUNDLE_DIR}/Resources"
 IMAGES_DIR="${RESOURCES}/images"
 PROVISA_HOME="${PROVISA_INSTALL_DIR:-${HOME}/.provisa}"
 SENTINEL="${PROVISA_HOME}/.first-launch-complete"
-LIMA_VM_NAME="provisa"
-LIMA_YAML="${PROVISA_HOME}/provisa-lima.yaml"
 
 ARCH="$(uname -m)"
 case "$ARCH" in
@@ -22,11 +22,9 @@ case "$ARCH" in
     ;;
 esac
 
-# Real limactl inside the signed bundle
-LIMACTL_REAL="${BUNDLE_DIR}/MacOS/bin/${BIN_ARCH}/limactl"
-# Symlink at ~/.provisa/bin/limactl — Lima's SelfDirs() uses os.Args[0] (symlink-aware)
-# so Lima resolves share/lima/ relative to ~/.provisa/bin/, not inside the bundle.
-LIMACTL="${PROVISA_HOME}/bin/limactl"
+# Release version baked into the bundle (Resources/VERSION), used to pin the online
+# native pip install to the matching release.
+PROVISA_VERSION="${PROVISA_VERSION:-$(cat "${RESOURCES}/VERSION" 2>/dev/null || true)}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 info() { printf "${CYAN}[provisa]${NC} %s\n" "$*"; }
@@ -35,308 +33,6 @@ err()  { printf "${RED}[provisa]${NC} %s\n" "$*" >&2; }
 # macOS ships /bin/bash 3.2 (ScriptRunner invokes /bin/bash), which lacks the
 # ${var,,} lowercase expansion — use this helper instead.
 _lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
-
-# ── Derive suggested federation worker count from RAM budget ─────────────────
-_suggested_workers() {
-  local gb="$1"
-  if   [ "$gb" -ge 96 ]; then echo 4
-  elif [ "$gb" -ge 48 ]; then echo 2
-  elif [ "$gb" -ge 24 ]; then echo 1
-  else echo 0
-  fi
-}
-
-# ── Ask RAM, CPU, and federation worker budgets at first launch ──────────────
-# Sets globals: BUDGET_GB, FED_WORKERS, LIMA_MEMORY, LIMA_CPUS
-ask_ram_budget() {
-  # Non-interactive mode: read from env vars (set by SwiftUI wizard)
-  if [[ -n "${PROVISA_NONINTERACTIVE:-}" ]]; then
-    BUDGET_GB="${PROVISA_RAM_GB:-8}"
-    LIMA_CPUS="${PROVISA_CPU_COUNT:-4}"
-    FED_WORKERS="${PROVISA_WORKERS:-0}"
-    LIMA_MEMORY="${BUDGET_GB}GiB"
-    ok "RAM: ${BUDGET_GB}GB | CPUs: ${LIMA_CPUS} | Federation workers: ${FED_WORKERS}"
-    return
-  fi
-
-  local total_gb total_cores
-  total_gb="$(sysctl -n hw.memsize | awk '{printf "%d", $1/1024/1024/1024}')"
-  total_cores="$(sysctl -n hw.logicalcpu)"
-
-  # ── RAM ──
-  printf "\n${BOLD}RAM Budget${NC}\n"
-  printf "How much RAM should Provisa use? (host total: %dGB)\n\n" "$total_gb"
-
-  local ram_options=()
-  for size in 4 8 16 32 64 128; do
-    [ "$size" -le "$total_gb" ] && ram_options+=("${size}GB")
-  done
-  ram_options+=("All (${total_gb}GB)")
-
-  local i=1
-  for opt in "${ram_options[@]}"; do
-    printf "  [%d] %s\n" "$i" "$opt"
-    i=$((i + 1))
-  done
-  printf "\n"
-
-  local choice
-  while true; do
-    printf "Enter choice [1-%d]: " "${#ram_options[@]}"
-    read -r choice
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#ram_options[@]}" ]; then
-      break
-    fi
-    printf "Invalid choice. Try again.\n"
-  done
-
-  local selected="${ram_options[$((choice - 1))]}"
-  if [[ "$selected" == All* ]]; then
-    BUDGET_GB="$total_gb"
-  else
-    BUDGET_GB="${selected%GB}"
-  fi
-  LIMA_MEMORY="${BUDGET_GB}GiB"
-
-  # ── CPUs ──
-  printf "\n${BOLD}CPU Budget${NC}\n"
-  printf "How many CPU cores should Provisa use? (host total: %d)\n" "$total_cores"
-  printf "${DIM}The query engine uses 2 threads per vCPU. Leave cores for your other tools.${NC}\n\n"
-
-  local default_cpus=$(( total_cores / 2 ))
-  [ "$default_cpus" -lt 2 ] && default_cpus=2
-  [ "$default_cpus" -gt 12 ] && default_cpus=12
-
-  local cpu_options=()
-  for n in 2 4 6 8 10 12; do
-    [ "$n" -le "$total_cores" ] && cpu_options+=("$n")
-  done
-  cpu_options+=("All (${total_cores})")
-
-  i=1
-  local default_cpu_idx=1
-  for opt in "${cpu_options[@]}"; do
-    local marker=""
-    local opt_val="${opt%% *}"
-    [ "$opt_val" = "$default_cpus" ] && marker=" ${DIM}(recommended)${NC}"
-    printf "  [%d] %s cores%b\n" "$i" "$opt" "$marker"
-    [ "$opt_val" = "$default_cpus" ] && default_cpu_idx=$i
-    i=$((i + 1))
-  done
-  printf "\n"
-
-  while true; do
-    printf "Enter choice [1-%d] (default %d): " "${#cpu_options[@]}" "$default_cpu_idx"
-    read -r choice
-    [ -z "$choice" ] && choice="$default_cpu_idx"
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#cpu_options[@]}" ]; then
-      break
-    fi
-    printf "Invalid choice. Try again.\n"
-  done
-
-  local cpu_selected="${cpu_options[$((choice - 1))]}"
-  if [[ "$cpu_selected" == All* ]]; then
-    LIMA_CPUS="$total_cores"
-  else
-    LIMA_CPUS="${cpu_selected%% *}"
-  fi
-
-  # ── Federation Workers ──
-  local default_workers
-  default_workers="$(_suggested_workers "$BUDGET_GB")"
-
-  printf "\n${BOLD}Federation Workers${NC}\n"
-  printf "How many additional query workers should Provisa run?\n"
-  printf "${DIM}Workers parallelize queries across federated sources. Each needs ~4GB RAM.${NC}\n"
-  printf "${DIM}0 workers = coordinator-only mode (fine for most single-machine installs).${NC}\n\n"
-
-  local worker_options=(0 1 2 3 4)
-  i=1
-  local default_worker_idx=1
-  for opt in "${worker_options[@]}"; do
-    local marker=""
-    [ "$opt" = "$default_workers" ] && marker=" ${DIM}(recommended)${NC}"
-    printf "  [%d] %d%b\n" "$i" "$opt" "$marker"
-    [ "$opt" = "$default_workers" ] && default_worker_idx=$i
-    i=$((i + 1))
-  done
-  printf "\n"
-
-  while true; do
-    printf "Enter choice [1-%d] (default %d): " "${#worker_options[@]}" "$default_worker_idx"
-    read -r choice
-    [ -z "$choice" ] && choice="$default_worker_idx"
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#worker_options[@]}" ]; then
-      break
-    fi
-    printf "Invalid choice. Try again.\n"
-  done
-
-  FED_WORKERS="${worker_options[$((choice - 1))]}"
-
-  ok "RAM: ${BUDGET_GB}GB | CPUs: ${LIMA_CPUS} | Federation workers: ${FED_WORKERS}"
-}
-
-# ── Write Lima VM config if not present ──────────────────────────────────────
-write_lima_config() {
-  if [ -f "$LIMA_YAML" ]; then
-    return
-  fi
-  mkdir -p "$PROVISA_HOME"
-  if [ "$ARCH" != "arm64" ]; then
-    err "Provisa macOS requires Apple Silicon (arm64). Intel Macs are not supported."
-    exit 1
-  fi
-  local arm64_local="${PROVISA_HOME}/vm-image/provisa-vm.img"
-
-  local nerdctl_archive="${PROVISA_HOME}/nerdctl/nerdctl-full-2.2.2-linux-arm64.tar.gz"
-  local nerdctl_digest="sha256:55d68d2613b5f065021146bac21f620cde9e7fdd4bd3eff74cd324f5462e107a"
-
-  cat > "$LIMA_YAML" <<YAML
-# Provisa Lima VM — Apple Silicon (arm64) only
-vmType: vz
-os: Linux
-arch: "aarch64"
-cpus: ${LIMA_CPUS}
-memory: "${LIMA_MEMORY}"
-disk: "60GiB"
-images:
-  - location: "file://${arm64_local}"
-    arch: "aarch64"
-vmOpts:
-  vz: {}
-containerd:
-  system: true
-  user: false
-  archives:
-    - location: "${nerdctl_archive}"
-      arch: "aarch64"
-      digest: "${nerdctl_digest}"
-mounts:
-  - location: "${PROVISA_HOME}"
-    writable: true
-networks: []
-provision:
-  - mode: system
-    script: |
-      #!/bin/bash
-      # iptables is required by the CNI bridge plugin for container networking
-      apt-get update -qq && apt-get install -y --no-install-recommends iptables
-      systemctl enable --now containerd || true
-YAML
-}
-
-# ── Install guest agent and create limactl symlink ────────────────────────────
-# Lima 2.x (usrlocal.GuestAgentBinary) resolves the guest agent at:
-#   {limactl_binary_dir}/../share/lima/
-# SelfDirs() uses os.Args[0] (symlink-aware, NOT os.Executable()).
-# So invoking limactl via ~/.provisa/bin/limactl (symlink) makes Lima look in
-# ~/.provisa/share/lima/ — outside the codesign-protected bundle.
-install_guest_agent() {
-  local guest_agents_src="${RESOURCES}/lima-guest-agents"
-  local lima_share="${PROVISA_HOME}/share/lima"
-  local lima_bin="${PROVISA_HOME}/bin"
-
-  mkdir -p "$lima_share" "$lima_bin"
-
-  # Stage gz (Lima decompresses internally on first VM start)
-  local gz_name="lima-guestagent.Linux-aarch64.gz"
-  if [ ! -f "${lima_share}/${gz_name}" ]; then
-    if [ ! -f "${guest_agents_src}/${gz_name}" ]; then
-      err "Guest agent not found in bundle: ${guest_agents_src}/${gz_name}"
-      exit 1
-    fi
-    cp "${guest_agents_src}/${gz_name}" "${lima_share}/${gz_name}"
-    ok "Guest agent staged to ${lima_share}/${gz_name}"
-  fi
-
-  # Create symlink so Lima's SelfDirs() resolves to ~/.provisa/bin/
-  if [ ! -L "${lima_bin}/limactl" ]; then
-    ln -sf "$LIMACTL_REAL" "${lima_bin}/limactl"
-    ok "limactl symlink created at ${lima_bin}/limactl"
-  fi
-}
-
-# ── Start Lima VM ─────────────────────────────────────────────────────────────
-start_lima() {
-  info "Starting Provisa VM (first launch — this takes ~2 minutes)..."
-
-  if "$LIMACTL" list --format '{{.Name}}' 2>/dev/null | grep -q "^${LIMA_VM_NAME}$"; then
-    local state
-    state="$("$LIMACTL" list --format '{{.Status}}' "$LIMA_VM_NAME" 2>/dev/null || echo "unknown")"
-    if [ "$state" = "Running" ]; then
-      ok "VM already running."
-      return 0
-    fi
-    info "Resuming existing VM..."
-    "$LIMACTL" start --yes "$LIMA_VM_NAME"
-  else
-    write_lima_config
-    info "Creating VM from config..."
-    "$LIMACTL" start --yes --name="$LIMA_VM_NAME" "$LIMA_YAML"
-  fi
-  ok "VM started."
-}
-
-# ── Import bundled images ─────────────────────────────────────────────────────
-import_images() {
-  info "Importing bundled container images (no network required)..."
-  local count=0
-  for gz_file in "${PROVISA_HOME}/images"/*.tar.gz; do
-    [ -f "$gz_file" ] || continue
-    local name
-    name="$(basename "$gz_file")"
-    info "  Importing: ${name}"
-    # ctr images import handles gzip streams; pipe via gunzip for compatibility
-    gunzip -c "$gz_file" | \
-    "$LIMACTL" shell "$LIMA_VM_NAME" -- \
-      sudo ctr --namespace=default images import -
-    count=$((count + 1))
-  done
-  ok "Imported ${count} images."
-}
-
-# ── Stage base VM image from DMG to ~/.provisa/vm-image/ ─────────────────────
-stage_vm_image() {
-  local staged="${PROVISA_HOME}/vm-image"
-  if [ -f "${staged}/provisa-vm.img" ]; then
-    return 0
-  fi
-  mkdir -p "$staged"
-
-  local bundle_parent
-  bundle_parent="$(dirname "$BUNDLE_DIR")"
-  local src=""
-  for candidate in "${bundle_parent}/vm-image" "${bundle_parent}/.vm-image"; do
-    if [ -d "$candidate" ] && ls "$candidate"/*.img &>/dev/null 2>&1; then
-      src="$candidate"; break
-    fi
-  done
-
-  if [ -z "$src" ]; then
-    for vol_vm in /Volumes/*/vm-image /Volumes/*/.vm-image; do
-      if [ -d "$vol_vm" ] && ls "$vol_vm"/*.img &>/dev/null 2>&1; then
-        src="$vol_vm"; break
-      fi
-    done
-  fi
-
-  if [ -z "$src" ]; then
-    err "Base VM image not found. Please keep the Provisa DMG mounted and re-open Provisa.app."
-    exit 1
-  fi
-
-  info "Staging base VM image to ${staged}..."
-  local src_img
-  src_img=$(ls "$src"/*.img | head -1)
-  cp "$src_img" "${staged}/provisa-vm.img"
-  if [ ! -f "${staged}/provisa-vm.img" ]; then
-    err "VM image not found after staging: ${staged}/provisa-vm.img"
-    exit 1
-  fi
-}
-
 # ── Copy images into provisa home for VM access ───────────────────────────────
 stage_images() {
   local staged="${PROVISA_HOME}/images"
@@ -390,42 +86,6 @@ stage_images() {
   info "Staging images to ${staged}..."
   cp "$src"/*.tar.gz "$staged/"
 }
-
-# ── Stage nerdctl-full archive for airgapped containerd install ───────────────
-stage_nerdctl() {
-  local staged="${PROVISA_HOME}/nerdctl"
-  local archive="nerdctl-full-2.2.2-linux-arm64.tar.gz"
-  if [ -f "${staged}/${archive}" ]; then
-    return 0
-  fi
-  mkdir -p "$staged"
-
-  local bundle_parent
-  bundle_parent="$(dirname "$BUNDLE_DIR")"
-  local src=""
-  for candidate in "${bundle_parent}/nerdctl" "${bundle_parent}/.nerdctl"; do
-    if [ -d "$candidate" ] && [ -f "${candidate}/${archive}" ]; then
-      src="$candidate"; break
-    fi
-  done
-
-  if [ -z "$src" ]; then
-    for vol_nerdctl in /Volumes/*/nerdctl /Volumes/*/.nerdctl; do
-      if [ -d "$vol_nerdctl" ] && [ -f "${vol_nerdctl}/${archive}" ]; then
-        src="$vol_nerdctl"; break
-      fi
-    done
-  fi
-
-  if [ -z "$src" ]; then
-    err "nerdctl archive not found. Please keep the Provisa DMG mounted and re-open Provisa.app."
-    exit 1
-  fi
-
-  info "Staging nerdctl archive to ${staged}..."
-  cp "${src}/${archive}" "${staged}/"
-}
-
 # ── Stage Trino plugins to ~/.provisa/trino/plugins/ ────────────────────────
 # Plugins ship as a separate release asset (provisa-trino-plugins-*.tar.gz).
 # Extract it and place at ~/.provisa/trino/plugins/ to enable Trino connectors.
@@ -551,20 +211,9 @@ stage_provisa_source() {
   cp -r "$src"/. "$dest/"
   ok "Provisa source staged to ${dest}"
 }
-
-# ── Build provisa/provisa:local inside Lima from staged source ─────────────────
-build_provisa_image() {
-  info "Building provisa/provisa:local inside Lima VM..."
-  # --pull=false: use the bundled python:3.12-slim image, never pull from Docker Hub
-  "$LIMACTL" shell "$LIMA_VM_NAME" -- \
-    sudo nerdctl build --pull=false -t provisa/provisa:local "${PROVISA_HOME}/provisa-source"
-  ok "provisa/provisa:local built."
-}
-
-# ── Stage compose files into ~/.provisa/compose/ (VM-accessible) ─────────────
-# The Lima YAML mounts ~/.provisa writable. The app bundle's Resources dir is
-# NOT mounted, so compose files must live under ~/.provisa for nerdctl compose
-# to find them inside the VM.
+# ── Stage compose files into ~/.provisa/compose/ ─────────────────────────────
+# The Docker tier runs `docker compose -f ~/.provisa/compose/...` on the user's
+# own Docker; the compose files + observability/ config live here (project_dir).
 stage_compose() {
   local dest="${PROVISA_HOME}/compose"
   mkdir -p "$dest"
@@ -637,20 +286,22 @@ write_config() {
 
   info "Hostname: ${hostname}  |  UI: ${ui_port}  |  API: ${api_port}  |  Flight: ${flight_port}"
 
-  # Deployment fields (resolve_deployment ran first). Native tier runs the bundled
-  # runtime directly; the Docker tier drives the Lima VM. Defaults keep this safe
-  # under `set -u` on the native path, where the Lima globals are never set.
+  # Deployment fields (resolve_deployment ran first). Native tier runs the venv
+  # directly; the Docker tier runs docker compose on the user's own Docker.
+  # image_source records how the Docker tier's images were obtained: `build`
+  # (host `docker compose build`) or `tarball` (airgapped `docker load` — the CLI
+  # then adds docker-compose.airgap.yml so build: services resolve to loaded tags).
   local runtime demo_flag
   if [ "${NEEDS_DOCKER:-false}" = false ]; then
     runtime="native"
   else
-    runtime="lima"
+    runtime="docker"
   fi
   [ "${INSTALL_DEMO:-n}" = "y" ] || [ "${INSTALL_DEMO:-n}" = "Y" ] && demo_flag=true || demo_flag=false
 
   cat > "${PROVISA_HOME}/config.yaml" <<YAML
 # Provisa configuration — generated by installer
-# project_dir points to ~/.provisa/compose/ which is mounted into the Lima VM (docker tier)
+# project_dir holds the compose files for the Docker tier (docker compose -f ...).
 project_dir: "${PROVISA_HOME}/compose"
 hostname: ${hostname}
 ui_port: ${ui_port}
@@ -658,7 +309,7 @@ api_port: ${api_port}
 flight_port: ${flight_port}
 auto_open_browser: true
 runtime: ${runtime}
-lima_vm: ${LIMA_VM_NAME:-provisa}
+image_source: ${IMAGE_SOURCE:-build}
 federation_workers: ${FED_WORKERS:-0}
 # Deployment (REQ-972..979): the CLI starts the app with this engine env; when demo
 # is true it opens the UI at ?tour=1 to auto-start the guided tour.
@@ -786,58 +437,101 @@ install_addons() {
   fi
 }
 
-# ── Stage the bundled standalone Python runtime for the native (no-Docker) tier ─
-# The native tier runs provisa on a self-contained interpreter (python-build-standalone
-# + the provisa wheel + duckdb/pg_duckdb + aiosqlite). It ships as HIDDEN DMG payload
-# (like images/) — not inside the notarized .app — so we discover it next to the .app
-# or on a mounted volume, then de-quarantine + ad-hoc sign so Gatekeeper lets it run.
-stage_native_runtime() {
-  local dest="${PROVISA_HOME}/runtime"
-  if [ -d "$dest" ] && [ -x "${dest}/bin/python3" ]; then
+# ── Network check (online vs airgapped) ──────────────────────────────────────
+_online() { curl -fsI --max-time 8 https://pypi.org/simple/ >/dev/null 2>&1; }
+
+# ── Locate a bundled hidden-DMG payload dir by name (next to .app or on a volume) ─
+# The bare interpreter, wheelhouse, and UI ship as hidden DMG content (like images/):
+# discovered beside the .app (running from the mounted DMG) or on any mounted volume.
+_find_payload() {
+  local name="$1" test_glob="$2" bundle_parent cand
+  bundle_parent="$(dirname "$BUNDLE_DIR")"
+  for cand in "${bundle_parent}/${name}" "${bundle_parent}/.${name}" \
+              /Volumes/*/"${name}" /Volumes/*/".${name}"; do
+    if [ -d "$cand" ] && ( [ -z "$test_glob" ] || ls "$cand"/$test_glob >/dev/null 2>&1 ); then
+      printf '%s' "$cand"; return 0
+    fi
+  done
+  return 1
+}
+
+# ── Native tier: build a Python venv from the bundled interpreter + wheelhouse ─
+# Online → pip install provisa[embedded] from PyPI (pinned to the release). Airgapped →
+# --no-index --find-links against the bundled wheelhouse (always pre-staged on disk).
+# The bare interpreter (python-base/), wheelhouse (wheels/) and built UI (ui-dist/)
+# ship as hidden DMG payload; the standalone runtime DMG is gone.
+setup_native_venv() {
+  local venv="${PROVISA_HOME}/venv"
+  if [ -x "${venv}/bin/python3" ] && "${venv}/bin/python3" -c "import provisa" 2>/dev/null; then
     return 0
   fi
 
-  local bundle_parent src=""
-  bundle_parent="$(dirname "$BUNDLE_DIR")"
-  for cand in "${bundle_parent}/runtime" "${bundle_parent}/.runtime"; do
-    if [ -x "${cand}/bin/python3" ]; then src="$cand"; break; fi
-  done
-  if [ -z "$src" ]; then
-    for cand in /Volumes/*/runtime /Volumes/*/.runtime; do
-      if [ -x "${cand}/bin/python3" ]; then src="$cand"; break; fi
-    done
+  local base_src
+  base_src="$(_find_payload python-base bin/python3)" || {
+    err "Bundled Python interpreter not found. Keep the Provisa DMG mounted and re-open Provisa.app."
+    exit 1
+  }
+
+  # Stage + de-quarantine + ad-hoc sign the interpreter so Gatekeeper lets it run.
+  local base="${PROVISA_HOME}/python-base"
+  if [ ! -x "${base}/bin/python3" ]; then
+    info "Staging Python interpreter..."
+    mkdir -p "$base"; cp -R "$base_src"/. "$base/"
+    xattr -dr com.apple.quarantine "$base" 2>/dev/null || true
+    codesign --force --deep --sign - "${base}/bin/python3" 2>/dev/null || true
   fi
-  # The runtime ships as a separate DMG (2 GB asset limit). If it is not already
-  # mounted, look for Provisa-Runtime*.dmg beside the app / core DMG / ~/Downloads
-  # and auto-mount it, then re-search the mounted volumes.
-  if [ -z "$src" ]; then
-    local rt_dmg=""
-    for dir in "$bundle_parent" "$(dirname "$bundle_parent")" "${HOME}/Downloads"; do
-      for cand in "${dir}"/Provisa-Runtime*.dmg; do
-        [ -f "$cand" ] && { rt_dmg="$cand"; break; }
-      done
-      [ -n "$rt_dmg" ] && break
-    done
-    if [ -n "$rt_dmg" ]; then
-      info "Mounting native runtime DMG: ${rt_dmg}"
-      hdiutil attach -nobrowse -quiet "$rt_dmg" || true
-      for cand in /Volumes/*/runtime /Volumes/*/.runtime; do
-        if [ -x "${cand}/bin/python3" ]; then src="$cand"; break; fi
-      done
-    fi
-  fi
-  if [ -z "$src" ]; then
-    err "Native runtime not found. Download and mount Provisa-Runtime-<version>-macOS.dmg (ships beside the core DMG), then re-run."
+
+  info "Creating Python environment..."
+  "${base}/bin/python3" -m venv "$venv"
+  local pip="${venv}/bin/pip"
+  "$pip" install --quiet --upgrade pip 2>/dev/null || true
+
+  local pin=""
+  [ -n "$PROVISA_VERSION" ] && pin="==${PROVISA_VERSION#v}"
+  local wheels; wheels="$(_find_payload wheels '*.whl' || true)"
+
+  if _online; then
+    info "Installing Provisa from PyPI..."
+    "$pip" install --quiet "provisa[embedded]${pin}" uvicorn mcp-proxy
+  elif [ -n "$wheels" ]; then
+    info "Installing Provisa from bundled wheels (offline)..."
+    "$pip" install --quiet --no-index --find-links "$wheels" "provisa[embedded]" uvicorn mcp-proxy
+  else
+    err "No network and no bundled wheels found. Keep the Provisa DMG mounted and re-open Provisa.app."
     exit 1
   fi
 
-  info "Staging native runtime to ${dest}..."
-  mkdir -p "$dest"
-  cp -R "$src"/. "$dest/"
-  # Downloaded DMG content is quarantined; an unsigned interpreter would be blocked.
-  xattr -dr com.apple.quarantine "$dest" 2>/dev/null || true
-  codesign --force --deep --sign - "${dest}/bin/python3" 2>/dev/null || true
-  ok "Native runtime staged."
+  # Place the built UI where ui_server resolves it (<site-packages>/static).
+  local ui_src; ui_src="$(_find_payload ui-dist '' || true)"
+  if [ -n "$ui_src" ]; then
+    local site; site="$("${venv}/bin/python3" -c 'import sysconfig;print(sysconfig.get_paths()["purelib"])')"
+    mkdir -p "${site}/static"; cp -R "$ui_src"/. "${site}/static/"
+  fi
+  ok "Native environment ready."
+}
+
+# ── Docker tier helpers (user's own Docker — no VM) ──────────────────────────
+require_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    err "Docker is required for this deployment (Trino engine and/or Docker observability)."
+    err "Install Docker Desktop or colima, start it, then re-open Provisa.app."
+    exit 1
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    err "Docker is installed but not running. Start Docker Desktop (or colima) and re-open Provisa.app."
+    exit 1
+  fi
+}
+
+# docker load every saved-image tarball in a dir (docker load handles gzip streams).
+load_images() {
+  local dir="$1" f
+  [ -d "$dir" ] || return 0
+  for f in "$dir"/*.tar.gz "$dir"/*.tar; do
+    [ -f "$f" ] || continue
+    info "  docker load $(basename "$f")"
+    docker load -i "$f" >/dev/null
+  done
 }
 
 # ── Install CLI symlink ───────────────────────────────────────────────────────
@@ -862,31 +556,26 @@ main() {
     # Already set up — update bundle, CLI, and compose YAMLs to latest version
     echo "PROGRESS:staging"
     install_to_applications
-    install_guest_agent
     stage_compose
     echo "PROGRESS:finalize"
     install_cli
     exit 0
   fi
 
-  # Globals set by ask_ram_budget
-  BUDGET_GB=8
-  FED_WORKERS=0
-  LIMA_MEMORY="8GiB"
-  LIMA_CPUS=4
+  FED_WORKERS="${PROVISA_WORKERS:-0}"
 
   printf "\n${BOLD}Provisa — First Launch Setup${NC}\n"
   printf "═══════════════════════════════════════════\n\n"
-  info "Setting up Provisa (no internet required)..."
 
   mkdir -p "$PROVISA_HOME"
   resolve_deployment      # sets DEPLOY_ENGINE OBS_MODE INSTALL_DEMO DEMO_MODE NEEDS_DOCKER
 
-  # ── Native tier (default): no Lima VM, no images, no build — just the bundled runtime ──
+  # ── Native tier (default): a Python venv, no Docker ──
   if [ "$NEEDS_DOCKER" = false ]; then
+    IMAGE_SOURCE=build
     write_config
     echo "PROGRESS:staging"
-    stage_native_runtime    # copies the standalone Python runtime from the bundle
+    setup_native_venv       # bundled interpreter + venv + pip (online: PyPI, offline: wheelhouse)
     install_to_applications # self-installs to /Applications if running from DMG
     echo "PROGRESS:extensions"
     install_addons          # native demo (host mock servers) needs no images; no-op unless selected
@@ -904,36 +593,31 @@ main() {
     return 0
   fi
 
-  # ── Docker tier: Trino engine and/or Docker obs/demo need the Lima VM + images ──
-  # Globals set by ask_ram_budget (only relevant when the VM runs)
-  BUDGET_GB=8
-  FED_WORKERS=0
-  LIMA_MEMORY="8GiB"
-  LIMA_CPUS=4
-  ask_ram_budget
+  # ── Docker tier: Trino engine and/or Docker obs/demo, on the user's own Docker ──
+  # The Provisa app images (provisa/provisa:local, provisa-ui, zaychik) are built from
+  # source at DMG-build time and shipped in the core-images tarball; we docker load them
+  # (image_source=tarball → the CLI adds docker-compose.airgap.yml so build: services
+  # resolve to the loaded tags). Registry images (postgres/trino/redis/minio) are loaded
+  # from the same tarball offline, or pulled by `docker compose up` online.
+  require_docker
+  IMAGE_SOURCE=tarball
   write_config
 
   echo "PROGRESS:staging"
-  stage_vm_image          # copies base VM image from DMG → ~/.provisa/vm-image
-  stage_images            # copies container images from DMG → ~/.provisa/images
-  stage_nerdctl           # copies nerdctl-full archive from DMG → ~/.provisa/nerdctl/
-  stage_trino_plugins     # copies Trino plugins from DMG hidden content → ~/.provisa/trino/plugins/
-  stage_provisa_source    # copies Dockerfile + source → ~/.provisa/provisa-source/ (VM-accessible)
-  stage_compose           # copies compose files from bundle → ~/.provisa/compose/ (VM-accessible)
+  stage_trino_plugins     # Trino connector plugins → ~/.provisa/trino/plugins/
+  stage_compose           # compose files + observability/ → ~/.provisa/compose/
   install_to_applications # self-installs to /Applications if running from DMG
-  install_guest_agent     # stages gz to ~/.provisa/share/lima/, creates limactl symlink
-
-  echo "PROGRESS:vm_start"
-  start_lima
-
-  echo "PROGRESS:images"
-  import_images
 
   echo "PROGRESS:build"
-  build_provisa_image     # builds provisa/provisa:local inside Lima from bundled source
+  stage_images            # acquire provisa-core-images tarball (local-first, else download)
+
+  echo "PROGRESS:images"
+  load_images "${PROVISA_HOME}/images"   # docker load app + core images from the tarball
 
   echo "PROGRESS:extensions"
-  install_addons          # only the add-on image sets the chosen deployment needs
+  install_addons          # acquire obs/demo image tarballs for the chosen deployment
+  [ "$OBS_MODE" = "docker" ] && load_images "${PROVISA_HOME}/obs-images"
+  { [ "$(_lc "$INSTALL_DEMO")" = "y" ] && [ "$DEMO_MODE" = "docker" ]; } && load_images "${PROVISA_HOME}/demo-images"
 
   echo "PROGRESS:finalize"
   install_cli

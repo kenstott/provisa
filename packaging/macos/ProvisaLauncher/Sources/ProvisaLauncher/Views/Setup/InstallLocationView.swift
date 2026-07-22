@@ -16,7 +16,7 @@ struct InstallLocationView: View {
                 Text("Install Location")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Provisa will store its VM disk and data here.")
+                Text("Provisa will store its data here.")
                     .font(.callout)
                     .foregroundStyle(.white.opacity(0.7))
             }
@@ -86,7 +86,7 @@ struct InstallLocationView: View {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Select"
-        panel.message = "Choose a folder where Provisa will store its data and VM disk."
+        panel.message = "Choose a folder where Provisa will store its data."
         panel.directoryURL = config.installDir.deletingLastPathComponent()
         if panel.runModal() == .OK, let url = panel.url {
             config.installDir = url.appendingPathComponent("provisa")

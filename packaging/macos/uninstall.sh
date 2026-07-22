@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Uninstall all Provisa DMG assets from this Mac.
-# Removes: Lima VM, /Applications/Provisa.app, ~/.provisa, /usr/local/bin/provisa
+# Removes: /Applications/Provisa.app, ~/.provisa, /usr/local/bin/provisa
+# (stops the Docker stack first if the Docker tier was in use).
 set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -8,10 +9,8 @@ info() { printf "${CYAN}[uninstall]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[uninstall]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[uninstall]${NC} %s\n" "$*" >&2; }
 
-LIMA_VM_NAME="provisa"
 APP_PATH="/Applications/Provisa.app"
 CLI_PATH="/usr/local/bin/provisa"
-LIMA_HOME="${HOME}/.lima/${LIMA_VM_NAME}"
 
 # Resolve actual install dir from UserDefaults or redirect file, fallback to default
 PROVISA_HOME_CUSTOM="$(defaults read com.provisa.app provisaInstallDir 2>/dev/null || true)"
@@ -20,20 +19,10 @@ if [ -z "$PROVISA_HOME_CUSTOM" ] && [ -f "${HOME}/.provisa_home" ]; then
 fi
 PROVISA_HOME="${PROVISA_HOME_CUSTOM:-${HOME}/.provisa}"
 
-ARCH="$(uname -m)"
-case "$ARCH" in
-  arm64)  BIN_ARCH="arm64" ;;
-  x86_64) BIN_ARCH="x86_64" ;;
-  *)      BIN_ARCH="arm64" ;;
-esac
-
-LIMACTL="${APP_PATH}/Contents/MacOS/bin/${BIN_ARCH}/limactl"
-
 # ── Confirm ───────────────────────────────────────────────────────────────────
 printf "\n${BOLD}Provisa Uninstaller${NC}\n"
 printf "═══════════════════════════════════════════\n\n"
 printf "This will remove:\n"
-printf "  • Lima VM '%s'\n" "$LIMA_VM_NAME"
 printf "  • %s\n" "$APP_PATH"
 printf "  • %s\n" "$PROVISA_HOME"
 printf "  • %s\n" "$CLI_PATH"
@@ -45,27 +34,10 @@ if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
   exit 0
 fi
 
-# ── Stop and delete Lima VM ───────────────────────────────────────────────────
-if [ -x "$LIMACTL" ]; then
-  if "$LIMACTL" list --format '{{.Name}}' 2>/dev/null | grep -q "^${LIMA_VM_NAME}$"; then
-    state="$("$LIMACTL" list --format '{{.Status}}' "$LIMA_VM_NAME" 2>/dev/null || echo "unknown")"
-    if [ "$state" = "Running" ]; then
-      info "Stopping Lima VM '${LIMA_VM_NAME}'..."
-      "$LIMACTL" stop "$LIMA_VM_NAME" || true
-    fi
-    info "Deleting Lima VM '${LIMA_VM_NAME}'..."
-    "$LIMACTL" delete "$LIMA_VM_NAME" || true
-    ok "Lima VM removed."
-  else
-    info "Lima VM '${LIMA_VM_NAME}' not found — skipping."
-  fi
-else
-  # App already removed or limactl not present — wipe lima data dir directly
-  if [ -d "$LIMA_HOME" ]; then
-    info "Removing Lima data at ${LIMA_HOME}..."
-    rm -rf "$LIMA_HOME"
-    ok "Lima data removed."
-  fi
+# ── Stop services (Docker tier) — best effort ─────────────────────────────────
+if [ -x "$CLI_PATH" ]; then
+  info "Stopping Provisa services..."
+  "$CLI_PATH" stop >/dev/null 2>&1 || true
 fi
 
 # ── Remove /Applications/Provisa.app ─────────────────────────────────────────
@@ -88,13 +60,6 @@ if [ -d "$PROVISA_HOME" ]; then
   ok "Removed ${PROVISA_HOME}"
 else
   info "${PROVISA_HOME} not found — skipping."
-fi
-
-# ── Remove Lima VM data dir (if limactl delete left it) ───────────────────────
-if [ -d "$LIMA_HOME" ]; then
-  info "Removing residual Lima data at ${LIMA_HOME}..."
-  rm -rf "$LIMA_HOME"
-  ok "Removed ${LIMA_HOME}"
 fi
 
 # ── Remove CLI ────────────────────────────────────────────────────────────────

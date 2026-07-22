@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Phase AF2a — Build airgapped macOS DMG with Lima + containerd.
+# Build the macOS DMG. Native tier ships a bare python-build-standalone interpreter
+# + a macOS arm64 wheelhouse (venv built at first-launch); Docker tier runs on the
+# user's own Docker (no Lima/VM).
 # Requires: docker (build host only), hdiutil, codesign, xcrun, python3
 set -euo pipefail
 
@@ -8,23 +10,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUT_DIR="${SCRIPT_DIR}/dist"
 APP_BUNDLE="${SCRIPT_DIR}/Provisa.app"
 IMAGES_DIR="${SCRIPT_DIR}/images"
-VM_IMAGES_DIR="${SCRIPT_DIR}/vm-images"
-NERDCTL_DIR="${SCRIPT_DIR}/nerdctl"
-BIN_DIR="${APP_BUNDLE}/Contents/MacOS/bin"
 DMG_NAME="Provisa.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
-# The native Python runtime ships in its own DMG so the core DMG stays under
-# GitHub's 2 GB release-asset limit. first-launch.sh finds it via /Volumes/*/runtime.
-RUNTIME_DMG_NAME="Provisa-Runtime.dmg"
-RUNTIME_DMG_PATH="${OUT_DIR}/${RUNTIME_DMG_NAME}"
-
-# Lima version
-LIMA_VERSION="2.1.1"
-# nerdctl-full version Lima 2.1.1 fetches (must match exactly)
-NERDCTL_VERSION="2.2.2"
-NERDCTL_ARCHIVE="nerdctl-full-${NERDCTL_VERSION}-linux-arm64.tar.gz"
-# sha256 of the official nerdctl-full-2.2.2-linux-arm64.tar.gz
-NERDCTL_DIGEST="sha256:55d68d2613b5f065021146bac21f620cde9e7fdd4bd3eff74cd324f5462e107a"
 
 # Core service images only — obs images ship in the separate Obs DMG
 IMAGES=(
@@ -32,7 +19,7 @@ IMAGES=(
   "postgres:16"
   "edoburu/pgbouncer:latest"
   "redis:7-alpine"
-  "trinodb/trino:480"
+  "trinodb/trino:481"
 )
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -91,93 +78,6 @@ generate_assets() {
   ok "Icon and background generated."
 }
 
-# ── Download Lima binaries (arm64 + x86_64) ──────────────────────────────────
-download_lima() {
-  info "Downloading Lima ${LIMA_VERSION}..."
-  local base_url="https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}"
-  local arm64_tar="lima-${LIMA_VERSION}-Darwin-arm64.tar.gz"
-  local x86_tar="lima-${LIMA_VERSION}-Darwin-x86_64.tar.gz"
-  local tmp="${SCRIPT_DIR}/tmp-lima"
-  mkdir -p "${tmp}/arm64" "${tmp}/x86_64" "${BIN_DIR}/arm64" "${BIN_DIR}/x86_64"
-
-  curl_retry "${base_url}/${arm64_tar}" "${tmp}/lima-arm64.tar.gz"
-  tar -xzf "${tmp}/lima-arm64.tar.gz" -C "${tmp}/arm64" --strip-components=1
-  curl_retry "${base_url}/${x86_tar}" "${tmp}/lima-x86_64.tar.gz"
-  tar -xzf "${tmp}/lima-x86_64.tar.gz" -C "${tmp}/x86_64" --strip-components=1
-
-  for arch in arm64 x86_64; do
-    cp "${tmp}/${arch}/bin/limactl" "${BIN_DIR}/${arch}/limactl"
-    chmod +x "${BIN_DIR}/${arch}/limactl"
-  done
-
-  # Bundle Linux-aarch64 guest agent in Resources/ (NOT Contents/MacOS/).
-  # Codesign rejects any file under Contents/MacOS/ as an unsigned code object.
-  # first-launch.sh stages the gz to ~/.provisa/share/lima/ and creates a
-  # symlink ~/.provisa/bin/limactl → real limactl so Lima's SelfDirs() resolves
-  # share/lima/ relative to ~/.provisa/bin/ — outside the signed bundle.
-  local guest_dir="${APP_BUNDLE}/Contents/Resources/lima-guest-agents"
-  mkdir -p "$guest_dir"
-  local guest_gz="${tmp}/arm64/share/lima/lima-guestagent.Linux-aarch64.gz"
-  if [ -f "$guest_gz" ]; then
-    cp "$guest_gz" "${guest_dir}/lima-guestagent.Linux-aarch64.gz"
-    ok "Lima guest agent bundled (compressed) in Resources/."
-  else
-    err "lima-guestagent.Linux-aarch64.gz not found in Lima tarball"
-    exit 1
-  fi
-
-  rm -rf "$tmp"
-  ok "Lima binaries downloaded."
-}
-
-# ── Download nerdctl-full archive (bundled for airgapped containerd install) ──
-# Lima uses nerdctl-full to provision containerd inside the VM. We pre-download
-# it so the install is fully airgapped — no network needed at first launch.
-# first-launch.sh stages the archive to ~/.provisa/nerdctl/ and the Lima YAML
-# points containerd.archives to that local file:// URL.
-download_nerdctl() {
-  mkdir -p "$NERDCTL_DIR"
-  if [ -f "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}" ]; then
-    info "nerdctl archive cached — skipping."
-    return
-  fi
-  info "Downloading nerdctl-full ${NERDCTL_VERSION} (arm64, ~245MB)..."
-  curl_retry \
-    "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/${NERDCTL_ARCHIVE}" \
-    "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}"
-  ok "nerdctl archive downloaded."
-}
-
-# ── containerd ────────────────────────────────────────────────────────────────
-# containerd is installed inside the VM by Lima via the nerdctl-full archive.
-# No macOS-side binary is needed.
-download_containerd() {
-  ok "containerd: installed in VM from bundled nerdctl-full archive."
-}
-
-# ── Download Lima base VM image (bundled for airgapped install) ───────────────
-# Lima 2.x requires a base OS disk image to boot the VM. We bundle the
-# Ubuntu 24.04 minimal arm64 image (~280MB) so Apple Silicon installs are
-# fully airgapped. The minimal variant is used to stay under GitHub
-# Releases' 2 GB per-asset limit.
-download_vm_images() {
-  mkdir -p "$VM_IMAGES_DIR"
-  local base_url="https://cloud-images.ubuntu.com/minimal/releases/noble/release"
-  local arm64_img="ubuntu-24.04-minimal-cloudimg-arm64.img"
-  # Store with a fixed name so first-launch.sh never needs updating when the
-  # upstream filename changes across releases.
-  local fixed_name="provisa-vm.img"
-
-  if [ -f "${VM_IMAGES_DIR}/${fixed_name}" ]; then
-    info "  Skipping (cached): ${fixed_name}"
-  else
-    info "  Downloading base VM image: ${arm64_img} (~200MB)..."
-    curl_retry "${base_url}/${arm64_img}" "${VM_IMAGES_DIR}/${fixed_name}"
-    ok "  Saved: ${VM_IMAGES_DIR}/${fixed_name}"
-  fi
-  ok "Base VM image ready."
-}
-
 # ── Download OTel Java agent for Trino (bundled for airgapped install) ───────
 # Downloaded at build time (network available on build host); bundled in Resources
 # so first-launch.sh can copy it into ~/.provisa/compose/observability/trino-otel/
@@ -231,17 +131,17 @@ build_provisa_wheels() {
 
 # ── Save service images as tarballs ──────────────────────────────────────────
 # Images are saved as .tar.gz (gzip -9) to fit under GitHub's 2 GB per-asset
-# limit while bundling the nerdctl archive. Trino:480 is ~1.5 GB uncompressed
-# but ~600 MB gzipped. ctr images import handles gzip streams transparently.
+# limit. Trino:481 is ~1.5 GB uncompressed but ~600 MB gzipped. `docker load`
+# handles gzip streams transparently.
 save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
   count=$(ls "${IMAGES_DIR}"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$count" -ge 6 ]; then
+  # Core: 5 registry images + zaychik + provisa + provisa-ui = 8 tarballs expected.
+  if [ "$count" -ge 8 ]; then
     info "Images pre-populated (${count} tarballs) — skipping docker pull."
     return
   fi
-  # Core: 5 images + zaychik = 6 tarballs expected
   if ! command -v docker &>/dev/null; then
     err "docker not found and images not pre-populated in ${IMAGES_DIR}"
     exit 1
@@ -267,7 +167,15 @@ save_images() {
   docker save provisa/zaychik:local | gzip -9 > "${IMAGES_DIR}/zaychik-local.tar.gz"
   ok "  Saved zaychik."
 
-  # provisa/provisa:local is built at first-launch from bundled source — not saved here.
+  # The airgapped Docker tier loads the app images via `docker load` on the host
+  # (no in-VM build). Build provisa/provisa:local from the repo Dockerfile and save
+  # it plus the provisa-ui image (same build, retagged) as tarballs.
+  info "  Building + saving provisa/provisa:local..."
+  docker build --platform linux/arm64 -t provisa/provisa:local "${REPO_ROOT}"
+  docker save provisa/provisa:local | gzip -9 > "${IMAGES_DIR}/provisa-local.tar.gz"
+  docker tag provisa/provisa:local provisa/provisa-ui:local
+  docker save provisa/provisa-ui:local | gzip -9 > "${IMAGES_DIR}/provisa-ui-local.tar.gz"
+  ok "  Saved provisa + provisa-ui."
 }
 
 # ── Embed compose files and config ───────────────────────────────────────────
@@ -286,7 +194,8 @@ embed_compose() {
   cp -r "${REPO_ROOT}/observability" "${res}/observability"
   cp "${REPO_ROOT}/scripts/provisa" "${res}/provisa-cli"
   chmod +x "${res}/provisa-cli"
-  # Bundle provisa source so first-launch can build provisa/provisa:local inside Lima
+  # Bundle provisa source (Dockerfile + wheels) — the build context for a host
+  # `docker compose build` when installing the Docker tier from source (install.sh).
   local src_dst="${res}/provisa-source"
   mkdir -p "$src_dst"
   cp "${REPO_ROOT}/Dockerfile"    "$src_dst/"
@@ -315,65 +224,73 @@ embed_compose() {
   ok "Compose files, config, and provisa source embedded."
 }
 
-# ── Bundle the standalone native Python runtime (REQ-979) ────────────────────
-# The native (no-Docker) tier runs provisa on a self-contained interpreter shipped
-# in the app bundle. We download python-build-standalone (a relocatable CPython for
-# macOS arm64), pip-install provisa + its deps INTO it (macOS wheels from PyPI — the
-# native runtime is macOS, so it cannot reuse the linux/arm64 wheels from
-# build_provisa_wheels), and drop the built UI where ui_server expects it
-# (STATIC_DIR = <site-packages>/static). first-launch.sh stages this to
-# ~/.provisa/runtime and scripts/provisa runs uvicorn against it.
+# ── Stage the native venv payload (REQ-979) ──────────────────────────────────
+# The native (no-Docker) tier builds its own Python venv at first launch from a
+# bundled bare interpreter + a macOS arm64 wheelhouse. We stage THREE dirs as
+# HIDDEN DMG content (create_dmg copies them to the DMG root); first-launch.sh
+# finds them at /Volumes/*/{python-base,wheels,ui-dist}:
+#   python-base/  bare python-build-standalone CPython (NOT pip-installed)
+#   wheels/       macOS arm64 wheelhouse (provisa[embedded] + uvicorn + mcp-proxy + deps)
+#   ui-dist/      built provisa-ui/dist (ui_server resolves STATIC_DIR from it)
 #
 # Pins are overridable so the builder can bump CPython without editing this file.
 PBS_RELEASE="${PBS_RELEASE:-20250612}"
 PBS_PYTHON="${PBS_PYTHON:-3.12.11}"
-RUNTIME_PAYLOAD_DIR="${SCRIPT_DIR}/runtime-payload"   # staged OUTSIDE the .app (hidden DMG content)
-bundle_native_runtime() {
-  # Ships as hidden DMG payload (not inside the notarized .app) — like images/ —
-  # so the .app stays small and notarizes fast. first-launch.sh stages it to
-  # ~/.provisa/runtime and ad-hoc signs + de-quarantines it so it runs.
-  local dest="${RUNTIME_PAYLOAD_DIR}/runtime"
-  if [ -x "${dest}/bin/python3" ] && [ -d "${dest}"/lib/python3.*/site-packages/provisa ]; then
-    info "Native runtime already bundled — skipping."
-    return
+NATIVE_PAYLOAD_DIR="${SCRIPT_DIR}/native-payload"   # staged OUTSIDE the .app (hidden DMG content)
+bundle_native_payload() {
+  local base="${NATIVE_PAYLOAD_DIR}/python-base"
+  local wheels="${NATIVE_PAYLOAD_DIR}/wheels"
+  local ui="${NATIVE_PAYLOAD_DIR}/ui-dist"
+
+  # ── 1. Bare python-build-standalone interpreter (no provisa install) ──
+  if [ -x "${base}/bin/python3" ]; then
+    info "python-base already staged — skipping download."
+  else
+    rm -rf "$base"; mkdir -p "$(dirname "$base")"
+    local tarball="cpython-${PBS_PYTHON}+${PBS_RELEASE}-aarch64-apple-darwin-install_only.tar.gz"
+    local url="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${tarball}"
+    local tmp="${SCRIPT_DIR}/tmp-pbs"
+    rm -rf "$tmp"; mkdir -p "$tmp"
+    info "Downloading python-build-standalone ${PBS_PYTHON} (macOS arm64)..."
+    curl_retry "$url" "${tmp}/${tarball}"
+    tar -xzf "${tmp}/${tarball}" -C "$tmp"        # extracts to ${tmp}/python/
+    if [ ! -x "${tmp}/python/bin/python3" ]; then
+      err "python-build-standalone extraction failed (no bin/python3)"
+      exit 1
+    fi
+    mv "${tmp}/python" "$base"
+    rm -rf "$tmp"
+    ok "python-base staged (bare interpreter, $(du -sh "$base" | cut -f1))."
   fi
-  rm -rf "$dest"
-  mkdir -p "$(dirname "$dest")"
 
-  local tarball="cpython-${PBS_PYTHON}+${PBS_RELEASE}-aarch64-apple-darwin-install_only.tar.gz"
-  local url="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${tarball}"
-  local tmp="${SCRIPT_DIR}/tmp-pbs"
-  rm -rf "$tmp"; mkdir -p "$tmp"
-
-  info "Downloading python-build-standalone ${PBS_PYTHON} (macOS arm64)..."
-  curl_retry "$url" "${tmp}/${tarball}"
-  tar -xzf "${tmp}/${tarball}" -C "$tmp"        # extracts to ${tmp}/python/
-  if [ ! -x "${tmp}/python/bin/python3" ]; then
-    err "python-build-standalone extraction failed (no bin/python3)"
+  # ── 2. macOS arm64 wheelhouse ──
+  info "Building the provisa wheel (macOS)..."
+  # embed_compose already built provisa-ui/dist; reuse it (no re-run of vite).
+  if [ -x "${REPO_ROOT}/scripts/build-wheel.sh" ]; then
+    PROVISA_SKIP_UI_BUILD=1 "${REPO_ROOT}/scripts/build-wheel.sh" --wheel
+  else
+    ( cd "$REPO_ROOT" && python3 -m build --wheel )
+  fi
+  local built_wheel
+  built_wheel="$(ls -t "${REPO_ROOT}/dist"/provisa-*.whl 2>/dev/null | head -1)"
+  if [ -z "$built_wheel" ] || [ ! -f "$built_wheel" ]; then
+    err "provisa wheel not found in ${REPO_ROOT}/dist after build."
     exit 1
   fi
-  mv "${tmp}/python" "$dest"
+  rm -rf "$wheels"; mkdir -p "$wheels"
+  info "Downloading macOS arm64 wheelhouse (provisa[embedded] + uvicorn + mcp-proxy + deps)..."
+  # mcp-proxy (REQ-1104): Node-free stdio<->Streamable-HTTP bridge for the Claude Desktop connector.
+  "${base}/bin/python3" -m pip download --dest "$wheels" "${built_wheel}[embedded]" uvicorn mcp-proxy
+  ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
 
-  info "Installing provisa + deps into the native runtime (macOS wheels from PyPI)..."
-  "${dest}/bin/python3" -m pip install --upgrade pip --quiet
-  # mcp-proxy (REQ-1104): Node-free stdio<->Streamable-HTTP bridge for the Claude Desktop connector,
-  # bundled so the runtime's own python is the config command (no npx, no user pip, airgapped).
-  "${dest}/bin/python3" -m pip install --quiet "${REPO_ROOT}" uvicorn mcp-proxy
-  "${dest}/bin/python3" -c "import mcp_proxy" || { err "mcp-proxy missing from the bundled native runtime"; exit 1; }
-
-  # Place the built UI where ui_server resolves it: <site-packages>/static.
-  # embed_compose builds provisa-ui/dist earlier in the pipeline.
-  local site
-  site="$("${dest}/bin/python3" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+  # ── 3. Built UI (embed_compose built provisa-ui/dist earlier in the pipeline) ──
   if [ ! -d "${REPO_ROOT}/provisa-ui/dist" ]; then
-    err "provisa-ui/dist not found — embed_compose must build the UI before bundle_native_runtime."
+    err "provisa-ui/dist not found — embed_compose must build the UI before bundle_native_payload."
     exit 1
   fi
-  mkdir -p "${site}/static"
-  cp -r "${REPO_ROOT}/provisa-ui/dist/." "${site}/static/"
-
-  rm -rf "$tmp"
-  ok "Native runtime bundled ($(du -sh "$dest" | cut -f1))."
+  rm -rf "$ui"; mkdir -p "$ui"
+  cp -r "${REPO_ROOT}/provisa-ui/dist/." "$ui/"
+  ok "ui-dist staged."
 }
 
 # ── Build SwiftUI launcher and embed binary ───────────────────────────────────
@@ -398,6 +315,16 @@ embed_scripts() {
   cp "${SCRIPT_DIR}/first-launch.sh" "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
   chmod +x "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
   ok "Scripts embedded."
+}
+
+# ── Bake the release version into the bundle ─────────────────────────────────
+# first-launch.sh reads Contents/Resources/VERSION to stamp the installed tier.
+# VERSION is the release tag (github.ref_name); falls back to 'dev' for local builds.
+bake_version() {
+  local res="${APP_BUNDLE}/Contents/Resources"
+  mkdir -p "$res"
+  printf '%s' "${VERSION:-dev}" > "${res}/VERSION"
+  ok "Version baked: ${VERSION:-dev}"
 }
 
 # ── Sign macOS native binaries embedded inside JARs ──────────────────────────
@@ -498,15 +425,6 @@ sign_app() {
   # every subcomponent to be signed before the file that contains/calls it.
   info "Signing bundled executables (inner → outer)..."
 
-  # limactl needs com.apple.security.virtualization to use Apple's VZ framework
-  local limactl_entitlements="${SCRIPT_DIR}/entitlements-limactl.plist"
-  for arch in arm64 x86_64; do
-    local lc="${APP_BUNDLE}/Contents/MacOS/bin/${arch}/limactl"
-    [ -f "$lc" ] || continue
-    codesign "${sign_flags[@]}" --entitlements "$limactl_entitlements" "$lc"
-    info "  Signed (with virtualization entitlement): bin/${arch}/limactl"
-  done
-
   local sign_targets=(
     "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
     "${APP_BUNDLE}/Contents/MacOS/ProvisaLauncher"
@@ -521,10 +439,6 @@ sign_app() {
   codesign "${sign_flags[@]}" --verbose \
     --entitlements "${SCRIPT_DIR}/entitlements.plist" \
     "${APP_BUNDLE}"
-
-  # Diagnostic: show what cert was actually used for limactl
-  info "Verifying limactl signature (certificate details):"
-  codesign -dvvv "${APP_BUNDLE}/Contents/MacOS/bin/arm64/limactl" 2>&1 | grep -E "Authority|TeamIdent|Signature" || true
 
   ok "App bundle signed."
 }
@@ -619,17 +533,16 @@ create_dmg() {
   # acquire_addon from the published provisa-core-images-<version>.tar.gz (or a copy
   # pre-staged beside the installer for airgapped installs).
 
-  mkdir -p "${tmp_dmg}/nerdctl"
-  cp "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}" "${tmp_dmg}/nerdctl/"
-  chflags hidden "${tmp_dmg}/nerdctl"
-
-  mkdir -p "${tmp_dmg}/vm-image"
-  cp "${VM_IMAGES_DIR}"/*.img "${tmp_dmg}/vm-image/"
-  chflags hidden "${tmp_dmg}/vm-image"
-
-  # The native Python runtime is NOT bundled here — it ships in a separate DMG
-  # (create_runtime_dmg) to keep this core DMG under GitHub's 2 GB asset limit.
-  # first-launch.sh stages it from the mounted runtime DMG (/Volumes/*/runtime).
+  # Native tier payload (hidden): first-launch.sh builds the venv from these.
+  # python-base = bare interpreter, wheels = macOS arm64 wheelhouse, ui-dist = built UI.
+  for d in python-base wheels ui-dist; do
+    if [ ! -d "${NATIVE_PAYLOAD_DIR}/${d}" ]; then
+      err "Native payload dir missing: ${NATIVE_PAYLOAD_DIR}/${d} — bundle_native_payload must run first."
+      exit 1
+    fi
+    cp -R "${NATIVE_PAYLOAD_DIR}/${d}" "${tmp_dmg}/${d}"
+    chflags hidden "${tmp_dmg}/${d}"
+  done
 
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"
@@ -651,56 +564,29 @@ create_dmg() {
   ok "DMG created: ${DMG_PATH}"
 }
 
-# ── Native runtime DMG (separate asset, <2 GB) ────────────────────────────────
-# Ships the standalone Python runtime for the no-Docker tier as its own DMG so the
-# core DMG stays under GitHub's 2 GB release-asset limit. first-launch.sh's
-# stage_native_runtime() already searches /Volumes/*/runtime, so mounting this DMG
-# (airgap: the user downloads both) is enough for it to be found.
-create_runtime_dmg() {
-  if [ ! -d "${RUNTIME_PAYLOAD_DIR}/runtime" ]; then
-    err "Native runtime payload missing — bundle_native_runtime must run first."
-    exit 1
-  fi
-  info "Creating native runtime DMG..."
-  local tmp_dmg="${OUT_DIR}/tmp-runtime"
-  rm -rf "$tmp_dmg"; mkdir -p "$tmp_dmg"
-  cp -R "${RUNTIME_PAYLOAD_DIR}/runtime" "${tmp_dmg}/runtime"
-  rm -f "${RUNTIME_DMG_PATH}"
-  hdiutil create -volname "Provisa Runtime" -srcfolder "${tmp_dmg}" \
-    -ov -format UDZO "${RUNTIME_DMG_PATH}"
-  rm -rf "$tmp_dmg"
-  ok "Runtime DMG created: ${RUNTIME_DMG_PATH}"
-}
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
-  printf "\n${BOLD}Provisa DMG Builder — Phase AF2a${NC}\n"
+  printf "\n${BOLD}Provisa DMG Builder${NC}\n"
   printf "═══════════════════════════════════════════\n\n"
 
   check_prereqs
-  mkdir -p "${BIN_DIR}/arm64" "${BIN_DIR}/x86_64"
 
   generate_assets
-  download_lima
-  download_nerdctl
-  download_containerd
-  download_vm_images
   save_images
   build_provisa_wheels
   embed_compose        # copies observability/ from repo; builds provisa-ui/dist; before download_otel_agent
   download_otel_agent  # adds opentelemetry-javaagent.jar into Resources/observability/trino-otel/
-  bundle_native_runtime # standalone Python for the native tier (uses provisa-ui/dist from embed_compose)
+  bundle_native_payload # bare interpreter + macOS wheelhouse + ui-dist (uses provisa-ui/dist from embed_compose)
   build_launcher       # compile SwiftUI launcher and embed binary
   embed_scripts
+  bake_version         # write Contents/Resources/VERSION before signing seals the bundle
   sign_jar_natives  # sign macOS natives inside Trino plugin JARs before outer bundle signing
   sign_app
   notarize_app   # notarize the small .app before images are added
-  create_dmg     # DMG bundles Provisa.app (notarized) + images/ alongside
-  create_runtime_dmg  # native Python runtime in its own DMG (2 GB asset limit)
+  create_dmg     # DMG bundles Provisa.app (notarized) + hidden native payload
 
   printf "\n${GREEN}${BOLD}Build complete.${NC}\n"
   printf "DMG: %s\n" "${DMG_PATH}"
-  printf "Runtime DMG: %s\n" "${RUNTIME_DMG_PATH}"
 }
 
 main "$@"

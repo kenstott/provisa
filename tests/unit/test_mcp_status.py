@@ -152,9 +152,9 @@ def test_bridge_command_none_unless_native_launcher_sets_it(monkeypatch):
 
 def test_bridge_command_is_the_bundled_interpreter_on_native(monkeypatch):
     monkeypatch.setenv("PROVISA_MCP_PORT", "8009")
-    monkeypatch.setenv("PROVISA_MCP_BRIDGE_COMMAND", "/home/u/.provisa/runtime/python")
+    monkeypatch.setenv("PROVISA_MCP_BRIDGE_COMMAND", "/home/u/.provisa/venv/bin/python3")
     s = mcp_status(_FakeRequest({"host": "localhost:3000"}))
-    assert s["bridge_command"] == "/home/u/.provisa/runtime/python"
+    assert s["bridge_command"] == "/home/u/.provisa/venv/bin/python3"
 
 
 # -- REQ-1106: TLS scheme + bridge --no-verify-ssl -----------------------------

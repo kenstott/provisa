@@ -22,7 +22,6 @@ jobs:
       dmg_name: ${{ steps.meta.outputs.dmg_name }}
       dmg_obs_name: ${{ steps.meta.outputs.dmg_obs_name }}
       dmg_demo_name: ${{ steps.meta.outputs.dmg_demo_name }}
-      dmg_runtime_name: ${{ steps.meta.outputs.dmg_runtime_name }}
       linux_name: ${{ steps.meta.outputs.linux_name }}
       windows_name: ${{ steps.meta.outputs.windows_name }}
       windows_container_name: ${{ steps.meta.outputs.windows_container_name }}
@@ -61,7 +60,6 @@ jobs:
           echo "dmg_name=Provisa-${TAG}-macOS.dmg"                        >> "$GITHUB_OUTPUT"
           echo "dmg_obs_name=Provisa-Obs-${TAG}-macOS.dmg"                >> "$GITHUB_OUTPUT"
           echo "dmg_demo_name=Provisa-Demo-${TAG}-macOS.dmg"              >> "$GITHUB_OUTPUT"
-          echo "dmg_runtime_name=Provisa-Runtime-${TAG}-macOS.dmg"        >> "$GITHUB_OUTPUT"
           echo "linux_name=Provisa-${TAG}-linux-x86_64.AppImage"          >> "$GITHUB_OUTPUT"
           echo "windows_name=Provisa-${TAG}-windows-x64.exe"              >> "$GITHUB_OUTPUT"
           echo "windows_container_name=Provisa-Container-${TAG}-windows-x64.exe" >> "$GITHUB_OUTPUT"
@@ -492,6 +490,7 @@ jobs:
 
       - name: Build DMG
         env:
+          VERSION: ${{ github.ref_name }}
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
           APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
           APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
@@ -500,25 +499,16 @@ jobs:
           chmod +x packaging/macos/build-dmg.sh
           packaging/macos/build-dmg.sh
 
-      - name: Rename DMGs with version + channel
+      - name: Rename DMG with version + channel
         run: |
           mv packaging/macos/dist/Provisa.dmg \
              "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
-          mv packaging/macos/dist/Provisa-Runtime.dmg \
-             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_runtime_name }}"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-core-dist
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
-          retention-days: 1
-
-      - name: Upload runtime DMG artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-runtime-dist
-          path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_runtime_name }}"
           retention-days: 1
 
   build-macos-obs:
@@ -992,7 +982,6 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release-assets/${{ needs.metadata.outputs.dmg_name }}
-            release-assets/${{ needs.metadata.outputs.dmg_runtime_name }}
             release-assets/${{ needs.metadata.outputs.dmg_obs_name }}
             release-assets/${{ needs.metadata.outputs.dmg_demo_name }}
             release-assets/${{ needs.metadata.outputs.linux_name }}
@@ -1010,8 +999,7 @@ jobs:
 
             | Asset | Platform / Use |
             |-------|----------------|
-            | `${{ needs.metadata.outputs.dmg_name }}` | macOS Core (Apple Silicon, airgapped) |
-            | `${{ needs.metadata.outputs.dmg_runtime_name }}` | macOS native Python runtime (mount alongside Core) |
+            | `${{ needs.metadata.outputs.dmg_name }}` | macOS Core (Apple Silicon) |
             | `${{ needs.metadata.outputs.dmg_obs_name }}` | macOS Observability extension |
             | `${{ needs.metadata.outputs.dmg_demo_name }}` | macOS Demo extension (requires Obs) |
             | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core, airgapped AppImage; obs ships separately) |
@@ -1026,9 +1014,9 @@ jobs:
             | `${{ needs.metadata.outputs.plugins_name }}` | Coordination Engine connectors (SharePoint, Splunk, File) |
 
             ### macOS Install
-            1. Download `${{ needs.metadata.outputs.dmg_name }}` **and** `${{ needs.metadata.outputs.dmg_runtime_name }}` (keep both in the same folder, e.g. ~/Downloads)
-            2. Open the Core DMG, drag **Provisa.app** to `/Applications`. Double-click the Runtime DMG once to mount it (first-launch also auto-mounts it if found).
-            3. Double-click **Provisa.app** — first-launch setup runs once (~2 min, no internet required)
+            1. Download `${{ needs.metadata.outputs.dmg_name }}`
+            2. Open the DMG, drag **Provisa.app** to `/Applications`
+            3. Double-click **Provisa.app** — first-launch setup runs once (native tier builds a Python venv; online pulls from PyPI, offline uses the bundled wheels)
             4. `provisa start && provisa open`
             5. **Optional**: Open `${{ needs.metadata.outputs.dmg_obs_name }}` and run `install-obs.sh` to add Observability Stack
             6. **Optional**: Open `${{ needs.metadata.outputs.dmg_demo_name }}` and run `install-demo.sh` to add Demo Data Pack (requires Observability Stack)
@@ -1074,7 +1062,6 @@ jobs:
           TAG: ${{ github.ref_name }}
           IS_PRERELEASE: ${{ needs.metadata.outputs.is_prerelease }}
           DMG_NAME: ${{ needs.metadata.outputs.dmg_name }}
-          DMG_RUNTIME_NAME: ${{ needs.metadata.outputs.dmg_runtime_name }}
           DMG_OBS_NAME: ${{ needs.metadata.outputs.dmg_obs_name }}
           DMG_DEMO_NAME: ${{ needs.metadata.outputs.dmg_demo_name }}
           LINUX_NAME: ${{ needs.metadata.outputs.linux_name }}
@@ -1086,7 +1073,7 @@ jobs:
 
           # Every installer/download-link asset that MUST exist before we publish.
           required=(
-            "$DMG_NAME" "$DMG_RUNTIME_NAME" "$DMG_OBS_NAME" "$DMG_DEMO_NAME"
+            "$DMG_NAME" "$DMG_OBS_NAME" "$DMG_DEMO_NAME"
             "$LINUX_NAME" "$WINDOWS_NAME" "$WINDOWS_CONTAINER_NAME" "$JDBC_NAME"
           )
 

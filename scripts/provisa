@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Provisa CLI wrapper — delegates to Docker Compose with branded output.
-# When runtime: lima (macOS DMG install), all compose commands are routed
-# through limactl shell <vm> -- nerdctl compose inside the Lima VM.
+# Provisa CLI wrapper. Native tier (runtime: native): runs uvicorn against the
+# ~/.provisa/venv Python. Docker tier: `docker compose` on the user's own Docker
+# (Docker Desktop / colima) — no VM. image_source: tarball adds the airgap overlay
+# so build: services resolve to the loaded provisa/*:local image tags.
 set -euo pipefail
 
 if [ -f "${HOME}/.provisa_home" ]; then
@@ -43,7 +44,9 @@ FLIGHT_PORT="$(read_config flight_port 8815)"
 AUTO_OPEN="$(read_config auto_open_browser true)"
 FED_WORKERS="$(read_config federation_workers 0)"
 RUNTIME="$(read_config runtime docker)"
-LIMA_VM="$(read_config lima_vm provisa)"
+# image_source: build (host `docker compose build`) or tarball (docker load — add the
+# airgap overlay so build: services resolve to the loaded provisa/*:local tags).
+IMAGE_SOURCE="$(read_config image_source build)"
 
 # ── Deployment fields (REQ-972..979) ────────────────────────────────────────
 # The native tier runs the bundled Python runtime directly (no Docker). These
@@ -57,7 +60,7 @@ OBS_MODE="$(read_config obs_mode none)"
 OTLP_ENDPOINT="$(read_config otlp_endpoint "")"
 DEMO="$(read_config demo false)"
 
-RUNTIME_DIR="${PROVISA_HOME}/runtime"       # bundled standalone Python (native tier)
+RUNTIME_DIR="${PROVISA_HOME}/venv"          # Python venv (native tier)
 NATIVE_PID_FILE="${PROVISA_HOME}/.native.pid"
 
 # ── Validation ──────────────────────────────────────────────────────────────
@@ -70,34 +73,14 @@ if [ "$RUNTIME" != "native" ]; then
     fi
 fi
 
-# ── Lima helpers ─────────────────────────────────────────────────────────────
-# limactl symlink created by first-launch.sh at ~/.provisa/bin/limactl
-LIMACTL="${PROVISA_HOME}/bin/limactl"
-
-ensure_lima_running() {
-    if [ ! -x "$LIMACTL" ]; then
-        err "Provisa environment not found. Re-run Provisa.app to complete setup."
-        exit 1
-    fi
-    local state
-    state="$("$LIMACTL" list --format '{{.Status}}' "$LIMA_VM" 2>/dev/null || echo "unknown")"
-    if [ "$state" != "Running" ]; then
-        info "Preparing Provisa environment..."
-        "$LIMACTL" start --yes "$LIMA_VM" >/dev/null 2>&1
-    fi
-}
-
-# ── Compose command detection ───────────────────────────────────────────────
+# ── Compose command detection (user's own Docker — no VM) ───────────────────
 compose_cmd() {
-    if [ "$RUNTIME" = "lima" ]; then
-        # Route all compose through nerdctl inside the Lima VM (system containerd = rootful)
-        echo "$LIMACTL shell $LIMA_VM -- sudo nerdctl compose"
-    elif docker compose version &>/dev/null 2>&1; then
+    if docker compose version &>/dev/null 2>&1; then
         echo "docker compose"
     elif command -v docker-compose &>/dev/null; then
         echo "docker-compose"
     else
-        printf "${RED}[provisa]${NC} Docker Compose not found.\n" >&2
+        printf "${RED}[provisa]${NC} Docker not found. Install Docker Desktop or colima, start it, and re-run.\n" >&2
         exit 1
     fi
 }
@@ -115,11 +98,13 @@ for _arg in "$@"; do
 done
 set -- "${_ARGS[@]+"${_ARGS[@]}"}"
 
-# Compose files: airgap overlay added when running in Lima to replace build: with image:
-# Extensions in ~/.provisa/extensions/*/docker-compose.*.yml are appended automatically.
+# Compose files: the airgap overlay replaces build: with the loaded provisa/*:local
+# image tags — added whenever the app images came from a tarball (image_source=tarball)
+# rather than a host build. Extensions in ~/.provisa/extensions/*/docker-compose.*.yml
+# are appended automatically.
 _build_compose_files() {
     local files="-f ${PROJECT_DIR}/docker-compose.core.yml -f ${PROJECT_DIR}/docker-compose.app.yml"
-    if { [ "$RUNTIME" = "lima" ] || [ "$RUNTIME" = "virtualbox" ] || [ "$RUNTIME" = "bundled" ]; } && [ -f "${PROJECT_DIR}/docker-compose.airgap.yml" ]; then
+    if { [ "$IMAGE_SOURCE" = "tarball" ] || [ "$RUNTIME" = "bundled" ]; } && [ -f "${PROJECT_DIR}/docker-compose.airgap.yml" ]; then
         files="${files} -f ${PROJECT_DIR}/docker-compose.airgap.yml"
     fi
     if [ "$OBSERVABILITY" = "true" ] && [ -f "${PROJECT_DIR}/docker-compose.dev.yml" ]; then
@@ -382,10 +367,6 @@ cmd_start() {
     printf "${CYAN}${BOLD}Starting Provisa...${NC}\n"
     mkdir -p "$LOG_DIR"
 
-    if [ "$RUNTIME" = "lima" ]; then
-        ensure_lima_running
-    fi
-
     local scale_arg=""
     if [ "${FED_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
         scale_arg="--scale trino-worker=${FED_WORKERS}"
@@ -536,12 +517,6 @@ cmd_uninstall() {
             info "Stopping services..."
             # shellcheck disable=SC2086
             $(get_compose) $COMPOSE_FILES down >/dev/null 2>&1 || true
-
-            if [ "$RUNTIME" = "lima" ] && [ -x "$LIMACTL" ]; then
-                info "Removing Provisa environment..."
-                "$LIMACTL" stop "$LIMA_VM" >/dev/null 2>&1 || true
-                "$LIMACTL" delete "$LIMA_VM" >/dev/null 2>&1 || true
-            fi
 
             info "Removing ${PROVISA_HOME}..."
             rm -rf "$PROVISA_HOME"

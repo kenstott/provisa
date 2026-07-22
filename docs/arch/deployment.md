@@ -20,9 +20,9 @@ The three packages map directly to the three docker-compose layers: (REQ-630)
 
 | Package | macOS | Windows | Linux |
 |---------|-------|---------|-------|
-| Core | DMG (Lima + nerdctl) | NSIS .exe (VirtualBox OVA) | AppImage (rootless Docker) |
-| Obs | DMG (image load into Lima) | NSIS .exe (image load into VirtualBox VM) | **bundled into Core AppImage** |
-| Demo | DMG (image load into Lima) | NSIS .exe (image load into VirtualBox VM) | **not included** |
+| Core | DMG (native venv, or user's own Docker) | NSIS .exe (native, or WSL2 + containerd) | AppImage (rootless Docker) |
+| Obs | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **bundled into Core AppImage** |
+| Demo | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **not included** |
 
 Linux rationale: Linux users are typically server/technical installs. (REQ-227) OTel
 observability is useful in production; petstore/graphql demo services are not.
@@ -32,9 +32,11 @@ One self-contained AppImage is simpler to distribute. (REQ-632)
 
 ## Extension Model (macOS + Windows)
 
-Core is the only installer that creates the VM runtime (Lima / VirtualBox). (REQ-633)
-Obs and Demo are **extension packages** — they load images into the existing VM
-and drop a compose file into a well-known extensions directory. (REQ-633) Core's launcher
+On macOS the Core DMG's Docker tier runs on the user's own Docker (Docker
+Desktop or colima); on Windows the Core installer's container tier provisions
+WSL2 + containerd. (REQ-633) Obs and Demo are **extension packages** — they load
+images into that runtime with `docker load` (or `nerdctl load` on Windows) and
+drop a compose file into a well-known extensions directory. (REQ-633) Core's launcher
 detects installed extensions at startup and composes the service set dynamically. (REQ-633)
 
 ### Extension directory
@@ -74,27 +76,40 @@ the expanded file list. (REQ-633) Trino picks up the OTel `JAVA_TOOL_OPTIONS` ov
 
 ### Core DMG (`Provisa-<version>.dmg`)
 
-`packaging/macos/build-dmg.sh` builds the Core DMG (Core package only).
+`packaging/macos/build-dmg.sh` builds the Core DMG (Core package only). There is
+no separate Runtime DMG — the interpreter and images ship inside this DMG.
 
 **Contents of DMG**:
 - `Provisa.app` — signed + notarized SwiftUI launcher (ProvisaLauncher) (REQ-227)
-- `images/` — core image tarballs (hidden from Finder):
-  - `python-3.12-slim.tar.gz`
+- `python-base/` — a bare python-build-standalone CPython (macOS arm64), NOT
+  pip-installed; first-launch builds `~/.provisa/venv` from it (native tier)
+- `wheels/` — macOS arm64 wheelhouse (`provisa[embedded]` + uvicorn + mcp-proxy +
+  deps) for the airgapped `pip install --no-index` path
+- `images/` — service image tarballs for the Docker tier (hidden from Finder),
+  `docker load`ed at first-launch:
   - `postgres-16.tar.gz`
   - `pgbouncer-latest.tar.gz`
   - `redis-7-alpine.tar.gz`
   - `minio-latest.tar.gz`
   - `trino-480.tar.gz`
   - `zaychik-local.tar.gz`
-- `nerdctl/` — `nerdctl-full-2.2.2-linux-arm64.tar.gz` (hidden) (REQ-228)
-- `vm-image/` — `provisa-vm.img` Ubuntu 24.04 arm64 (hidden) (REQ-228)
+  - `provisa-local.tar.gz`, `provisa-ui-local.tar.gz` (built from source at
+    DMG-build time)
 
 **`Provisa.app/Contents/Resources/` embeds**: (REQ-294)
 - `docker-compose.core.yml`, `docker-compose.app.yml`, `docker-compose.airgap.yml`
 - `config/`, `db/`, `trino/`, `observability/` (trino-otel dir + OTel Java agent jar)
 - `provisa-source/` (Dockerfile, main.py, pyproject.toml, provisa/, static UI, wheels)
 
-**`first-launch.sh`**:
+**`first-launch.sh`** picks the tier from the deployment choices (REQ-976):
+- **Native tier** (default, no Trino/Docker triggers): builds `~/.provisa/venv`
+  from `python-base`, then `pip install provisa[embedded]` — from PyPI when
+  online, or `--no-index --find-links` against the bundled `wheels/` when
+  airgapped. Writes `runtime: native` to `~/.provisa/config.yaml`. No Docker.
+- **Docker tier** (Trino engine, or obs/demo on Docker): `docker load`s the
+  bundled image tarballs into the user's own Docker, writes `runtime: docker`
+  and `image_source: tarball`, and runs `docker compose` (with the airgap
+  overlay) on that Docker.
 - Copies `observability/` configs but does not start obs services (no obs images yet)
 - Copies `demo/` source but does not start demo services
 
@@ -111,9 +126,9 @@ the expanded file list. (REQ-633) Trino picks up the OTel `JAVA_TOOL_OPTIONS` ov
   - `grafana-10.4.2.tar.gz`
 
 **`install-obs.sh` steps**:
-1. Check Lima VM `provisa` exists (core must be installed). (REQ-633)
-2. Start Lima VM if not running. (REQ-228)
-3. `limactl shell provisa sudo ctr images import` for each image tarball. (REQ-294)
+1. Check core is installed (`~/.provisa/config.yaml` with `runtime: docker`). (REQ-633)
+2. Check the user's Docker is running. (REQ-228)
+3. `docker load` each obs image tarball. (REQ-294)
 4. Write `~/.provisa/extensions/observability/docker-compose.observability.yml`. (REQ-633)
 5. Print: "Observability installed. Restart Provisa to activate."
 
@@ -134,8 +149,8 @@ Requires Obs to be installed. (REQ-631)
 
 **`install-demo.sh` steps**:
 1. Check `~/.provisa/extensions/observability/` exists (obs must be installed). (REQ-631)
-2. Start Lima VM if not running. (REQ-228)
-3. Import demo image tarballs into Lima. (REQ-294)
+2. Check the user's Docker is running. (REQ-228)
+3. `docker load` the demo image tarballs. (REQ-294)
 4. Write `~/.provisa/extensions/demo/docker-compose.demo.yml`. (REQ-633)
 5. Print: "Demo installed. Restart Provisa to activate."
 
@@ -165,18 +180,19 @@ no OVA, no Trino.
 
 `first-launch-native.ps1` stages the runtime to `%USERPROFILE%\.provisa\runtime`
 and writes config; `provisa-native.ps1` runs the two uvicorn processes (API
-factory + ui_server). Mirrors macOS `bundle_native_runtime`.
+factory + ui_server). The macOS native tier is the parallel path — its
+first-launch builds `~/.provisa/venv` via `setup_native_venv`.
 
 ### Container Tier — on-demand upgrade (`Provisa-Container-Setup-<version>.exe`) (REQ-889, REQ-633)
 
 `packaging/windows/build-container.ps1` builds a separate installer (Inno Setup)
 that adds the compute stack (Trino + services) via **WSL2 + containerd** — the
-Windows equivalent of the macOS Lima tier. VirtualBox is never used. It bundles:
+Windows equivalent of the macOS Docker tier. VirtualBox is never used. It bundles:
 
 - the compose tree (core/app/airgap/observability/demo, config, db, trino config
   minus plugins),
 - the core image tarballs (`docker-images-core-amd64` from CI),
-- `nerdctl-full-<ver>-linux-amd64.tar.gz` (version-matched to the macOS Lima tier),
+- `nerdctl-full-<ver>-linux-amd64.tar.gz`,
 - a WSL base rootfs (`rootfs.tar.gz`).
 
 `install-container.ps1` steps:
@@ -191,7 +207,7 @@ Windows equivalent of the macOS Lima tier. VirtualBox is never used. It bundles:
 
 `provisa-container.ps1` routes compose through
 `wsl -d provisa -u root sh -c 'cd /opt/provisa/compose && nerdctl compose -f ... <cmd>'`,
-mirroring the `RUNTIME=lima` routing in `scripts/provisa`. WSL2 forwards
+mirroring the `RUNTIME=docker` routing in `scripts/provisa`. WSL2 forwards
 `localhost` ports, so the UI/API are reachable at `http://localhost:3000`/`:8000`.
 The tier is additive and reversible: switch back to the native tier with
 `provisa-native.ps1`; `uninstall.ps1` unregisters the WSL distro.

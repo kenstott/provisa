@@ -958,11 +958,20 @@ class TestREQ633ExtensionModel:
         content = (REPO_ROOT / "packaging" / "macos" / "build-dmg-demo.sh").read_text()
         assert "extensions/demo" in content or "EXT_DIR" in content
 
-    def test_macos_core_creates_vm_runtime(self):
-        # REQ-633 — Core DMG must set up Lima (macOS VM runtime)
+    def test_macos_core_ships_native_venv_and_docker_images(self):
+        # Migrated macOS installer: the native tier ships a bare
+        # python-build-standalone interpreter + wheelhouse (venv built at
+        # first-launch); the Docker tier runs on the user's own Docker with
+        # images loaded from the core-images tarball. No Lima VM is created.
         content = (REPO_ROOT / "packaging" / "macos" / "build-dmg.sh").read_text()
-        assert "lima" in content.lower() or "Lima" in content, (
-            "Core DMG must create the Lima VM runtime"
+        assert "python-build-standalone" in content, (
+            "Core DMG must ship the bundled python-build-standalone interpreter"
+        )
+        assert "bundle_native_payload" in content, (
+            "Core DMG must stage the native payload (interpreter + wheelhouse)"
+        )
+        assert "docker save" in content and "docker-compose.airgap.yml" in content, (
+            "Core DMG must save service images for `docker load` on the user's own Docker"
         )
 
     def test_windows_obs_builder_writes_extension_files(self):
@@ -987,17 +996,15 @@ class TestREQ633ExtensionModel:
         for token in ("vboxmanage", "virtualbox-setup", ".ova", "unregistervm"):
             assert token not in combined, f"container tier must not use VirtualBox/OVA ({token})"
 
-    def test_windows_container_matches_lima_nerdctl_version(self):
-        # REQ-633 — nerdctl-full version pinned to match the macOS Lima tier.
-        mac = (REPO_ROOT / "packaging" / "macos" / "build-dmg.sh").read_text()
+    def test_windows_container_pins_nerdctl_version(self):
+        # REQ-633 — the Windows container tier pins a concrete nerdctl-full
+        # version. (The macOS tier no longer uses Lima/nerdctl — it runs on the
+        # user's own Docker — so this is self-contained to the Windows tier.)
         win = (REPO_ROOT / "packaging" / "windows" / "build-container.ps1").read_text()
         import re
 
-        m = re.search(r'NERDCTL_VERSION="([\d.]+)"', mac)
-        assert m, "macOS build-dmg.sh must pin NERDCTL_VERSION"
-        assert m.group(1) in win, (
-            f"Windows container tier must default to nerdctl {m.group(1)} to match the Lima tier"
-        )
+        m = re.search(r"NERDCTL_VERSION\b.*?'([\d.]+)'", win)
+        assert m, "Windows build-container.ps1 must pin a concrete nerdctl version"
 
     def test_windows_container_smoke_workflow_exercises_guest_scripts(self):
         # REQ-633 — the container tier's containerd-without-systemd path is smoke-tested.
