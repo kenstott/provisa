@@ -20,7 +20,7 @@ The three packages map directly to the three docker-compose layers: (REQ-630)
 
 | Package | macOS | Windows | Linux |
 |---------|-------|---------|-------|
-| Core | DMG (native venv, or user's own Docker) | NSIS .exe (native, or WSL2 + containerd) | AppImage (rootless Docker) |
+| Core | DMG (native venv, or user's own Docker) | NSIS .exe (native, or WSL2 + containerd) | AppImage (native venv, or bundled rootless Docker) |
 | Obs | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **bundled into Core AppImage** |
 | Demo | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **not included** |
 
@@ -240,11 +240,25 @@ append to the compose file list. (REQ-633)
 
 ## Linux AppImage
 
-`packaging/linux/build-appimage.sh` bundles core images (postgres, pgbouncer,
-minio, redis, trino, zaychik) plus obs images. MinIO is a core service
-(REQ-561) and is bundled with the core image set. No demo. (REQ-632)
+Two tiers, in parity with the macOS DMG (native venv default, Docker for Trino/obs):
 
-### `save_images()` target list
+- **Native tier** (default, `engine=duckdb`, no Docker obs/demo): `first-launch.sh`
+  `setup_native_venv` builds `~/.provisa/venv` from the bundled bare interpreter,
+  installing `provisa[embedded]` from PyPI online (pinned via `${APPDIR}/VERSION`)
+  or `--no-index --find-links ${APPDIR}/wheels` airgapped. Writes `runtime: native`.
+  Single-node; `--role secondary` is rejected. No Docker.
+- **Docker tier** (Trino engine and/or obs/demo on Docker): starts the **bundled
+  rootless dockerd** (`${APPDIR}/bin/dockerd-rootless.sh`), `docker load`s the
+  bundled image tarballs, and runs `docker compose`. Writes `runtime: bundled`,
+  `image_source: tarball`. This is the Linux analog of the container tier (no VM —
+  Linux runs containers natively).
+
+`packaging/linux/build-appimage.sh` bundles both payloads: the native
+`python-base/` + `wheels/` + `ui-dist/` (via `bundle_native_payload`), and the
+Docker tier's rootless-docker binaries + core/obs image tarballs. MinIO is a core
+service (REQ-561). No demo. (REQ-632)
+
+### `save_images()` target list (Docker tier)
 
 ```bash
 # Core
@@ -252,7 +266,7 @@ minio, redis, trino, zaychik) plus obs images. MinIO is a core service
 "edoburu/pgbouncer:latest"
 "redis:7-alpine"
 "minio/minio:latest"
-"trinodb/trino:480"
+"trinodb/trino:481"
 "provisa/zaychik:local"   # built from source
 
 # Obs (bundled directly — no separate download on Linux)
@@ -263,16 +277,17 @@ minio, redis, trino, zaychik) plus obs images. MinIO is a core service
 "grafana/grafana:10.4.2"
 ```
 
-### `build_appdir()`
+### `build_appdir()` + `bundle_native_payload()`
 
+- `bundle_native_payload` stages `python-base/` (bare python-build-standalone),
+  `wheels/` (Linux x86_64 wheelhouse), and `ui-dist/` into the AppDir; writes
+  `${APPDIR}/VERSION`.
 - Copies `docker-compose.core.yml` + `docker-compose.observability.yml` into
-  `${APPDIR}/compose/`
-- `AppRun` / `first-launch.sh` always starts core + obs (no flag needed) (REQ-632)
+  `${APPDIR}/compose/` for the Docker tier.
 - No demo compose file in the bundle (REQ-632)
 
-### `first-launch.sh` (Linux)
+### `first-launch.sh` (Linux) — Docker-tier start command
 
-Start command:
 ```bash
 docker compose \
   -f compose/docker-compose.core.yml \
