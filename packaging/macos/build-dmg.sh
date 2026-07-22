@@ -309,7 +309,9 @@ build_launcher() {
     err "ProvisaLauncher binary not found after build: ${binary}"
     exit 1
   fi
-  # Replace old shell launcher with native Swift binary
+  # Replace old shell launcher with native Swift binary. Ensure Contents/MacOS
+  # exists — it used to be created implicitly by the (now-removed) BIN_DIR mkdir.
+  mkdir -p "${APP_BUNDLE}/Contents/MacOS"
   rm -f "${APP_BUNDLE}/Contents/MacOS/provisa-launcher"
   cp "$binary" "${APP_BUNDLE}/Contents/MacOS/ProvisaLauncher"
   chmod +x "${APP_BUNDLE}/Contents/MacOS/ProvisaLauncher"

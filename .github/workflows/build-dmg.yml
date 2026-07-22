@@ -648,7 +648,7 @@ jobs:
   build-linux:
     name: Build Linux AppImage (core, ${{ needs.metadata.outputs.channel }})
     runs-on: ubuntu-latest
-    needs: [metadata, pull-images-core, pull-images-obs, download-plugins]
+    needs: [metadata, pull-images-core, pull-images-obs, download-plugins, build-ui-dist]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -658,6 +658,14 @@ jobs:
         with:
           name: docker-images-core
           path: packaging/linux/images/
+
+      # The native tier's wheel + ui-dist payload need a host-built UI (the Docker
+      # image builds the UI internally, but bundle_native_payload runs on the host).
+      - name: Download prebuilt provisa-ui dist
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-ui-dist
+          path: provisa-ui/dist/
 
       # Obs images are NOT bundled in the AppImage (2GB asset limit); they ship as the
       # provisa-obs-images-<version>.tar.gz add-on.
