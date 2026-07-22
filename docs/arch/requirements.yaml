@@ -32867,12 +32867,12 @@
   - REQ-879
   - REQ-032
 - id: REQ-1158
-  status: proposed
+  status: complete
   group: 9. Installation & Deployment
   category: Package Distribution
   priority: MUST
   type: infrastructure
-  target: 2026-Q3
+  since: '2026-07'
   description: 'A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned per-platform
     PostgreSQL extension and FDW binaries, published to PyPI so the embedded tier acquires them via
     PyPI/Artifactory instead of github.com/kenstott/provisa/releases (unreachable behind PyPI/Maven/npm-only
@@ -32891,14 +32891,18 @@
     the PyPI wheel — the offline analog of the DuckDB extension staging (REQ-1142). The FDW set IS the
     pgserver federation engine''s (PgFederationRuntime, provisa/federation/pg_runtime.py) REACHABILITY
     matrix: each FDW defines a reachable source type (postgres_fdw→postgres, sqlite_fdw→sqlite,
-    file_fdw→csv, mysql_fdw→mysql, pg_duckdb→parquet/csv/json/httpfs/iceberg). ACCEPTANCE: (a) the bundled
-    payload covers the full FDW suite we intend to support (reconciled with config/pg_extension_catalog.yaml);
-    (b) the embedded pgserver federation engine stages the bundled modules at provisioning
-    (stage_bundled_pg_extensions wired into the embedded-fed pgserver creation, not only the plumbing); and
-    (c) an integration suite exercises EVERY supported FDW end-to-end through PgFederationRuntime.attach_source
-    (attach + query a real source per type), proving reachability. Delivery, locator, staging, catalog, and
-    discovery are shipped and unit-tested (tests/unit/test_pg_ext_staging.py, test_pg_extension_catalog.py);
-    the per-FDW reachability integration suite and the embedded-fed staging wiring are the remaining bar.'
+    file_fdw→csv, mysql_fdw→mysql, pg_duckdb→parquet/csv/json/httpfs/iceberg). Runtime staging is WIRED:
+    provisa/core/control_plane_pg.py start() calls _stage_bundled_extensions() at embedded-pgserver boot,
+    staging the wheel''s modules into the shared pginstall so the pg fed engine can CREATE EXTENSION them
+    offline (best-effort: a BYO-Postgres tier without the wheel is a clean no-op — its FDWs come from the
+    system PG, discovered via the STANDARD pg_available_extensions catalog, connector_duckdb._probe_pg_extension).
+    Reachability is proven end-to-end per FDW through PgFederationRuntime.attach_source: file_fdw + postgres_fdw
+    (test_embedded_pg_fdw_engine_e2e), sqlite_fdw (test_embedded_pg_sqlite_fdw_e2e), pg_duckdb csv/parquet
+    (test_embedded_pg_duckdb_engine_e2e) and iceberg (test_embedded_pg_duckdb_iceberg_e2e), and the runtime
+    directly (test_pg_runtime_e2e); mysql_fdw is best-effort (client lib), matching the CI smoke gate
+    (scripts/ci/smoke_pg_extensions.py, wired in build-pg-extensions.yml, which CREATE EXTENSIONs each on a
+    fresh pgserver). Declarative BYO custom-connector description (adding a source_type→attach mapping for a
+    custom FDW / DuckDB ATTACH extension purely in config) is a SEPARATE requirement, not this packaging one.'
   use_case: Embedded tier (and enterprise deployments behind restricted proxies) can install PostgreSQL
     extensions offline via standard PyPI/Artifactory channels instead of fetching from unreachable GitHub
     releases.
@@ -32906,12 +32910,21 @@
   - packaging/pg-ext/
   - packaging/pg-ext/collect.py
   - scripts/ci/build_pg_extensions.sh
+  - scripts/ci/smoke_pg_extensions.py
   - .github/workflows/build-pg-extensions.yml
   - provisa/pg_extensions/staging.py
+  - provisa/pg_extensions/catalog.py
   - provisa/federation/fdw_artifact_catalog.py
+  - provisa/core/control_plane_pg.py
+  - provisa/federation/pg_runtime.py
   tests:
   - tests/unit/test_pg_ext_staging.py
   - tests/unit/test_pg_extension_catalog.py
+  - tests/unit/test_control_plane_pg_staging.py
+  - tests/integration/test_embedded_pg_fdw_engine_e2e.py
+  - tests/integration/test_embedded_pg_sqlite_fdw_e2e.py
+  - tests/integration/test_embedded_pg_duckdb_engine_e2e.py
+  - tests/integration/test_pg_runtime_e2e.py
   competitive_position:
     status: neutral
     rationale: PyPI-distributed extension binaries enable standard enterprise packaging; the competitive
@@ -33737,3 +33750,34 @@
     - REQ-1163
     - REQ-272
     - REQ-825
+- id: REQ-1177
+  status: proposed
+  group: "4. Source Connectors"
+  category: Connector Configuration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Operators may declare custom source connectors (proprietary FDWs or ATTACH extensions) in config
+    without code changes. A declarative descriptor per source_type specifies (a) required extension(s)
+    to load (FDW name for Postgres, DuckDB extension name for DuckDB), (b) attach/import template
+    (CREATE SERVER + IMPORT FOREIGN SCHEMA for Postgres; INSTALL/LOAD + ATTACH for DuckDB), and
+    (c) source_type mapping. Availability is verified at attach time against each engine's standard
+    extension catalog (pg_available_extensions for Postgres, duckdb_extensions() for DuckDB),
+    failing loud (never silent) when the declared extension is not installable.
+  use_case: >-
+    BYO PG-federated or DuckDB-federated deployments with custom/proprietary extensions can extend
+    reachability to new source types purely via config, without code changes or rebuilds. Extends
+    REQ-898 config/pg_extension_catalog.yaml from a packaged-inventory model to an operator-authored
+    connector descriptor.
+  code:
+    - provisa/federation/pg_runtime.py
+    - provisa/federation/duckdb_runtime.py
+    - provisa/federation/connector_duckdb.py
+    - provisa/pg_extensions/catalog.py
+    - config/pg_extension_catalog.yaml
+  target: "2026-Q3"
+  related_reqs:
+    - REQ-898
+    - REQ-1158
+    - REQ-1142
+    - REQ-904
