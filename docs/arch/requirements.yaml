@@ -32867,25 +32867,40 @@
   - REQ-879
   - REQ-032
 - id: REQ-1158
-  status: proposed
+  status: complete
   group: 9. Installation & Deployment
   category: Package Distribution
   priority: MUST
   type: infrastructure
-  description: A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned per-platform
-    PostgreSQL extension and FDW binaries (sqlite_fdw, parquet_fdw, parquet_s3_fdw, pg_lake, pg_duckdb,
-    pg_analytics — the REQ-898 set), published to PyPI so the embedded tier acquires them via PyPI/Artifactory
-    instead of github.com/kenstott/provisa/releases (unreachable behind PyPI/Maven/npm-only enterprise
-    proxies). Built by new `wheel` job in .github/workflows/build-pg-extensions.yml collecting per-platform
-    build tarballs. Package skeleton at packaging/pg-ext/ with provisa_pg_ext.ext_root() locator for runtime
-    discovery.
+  since: '2026-07'
+  description: 'A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned per-platform
+    PostgreSQL extension and FDW binaries, published to PyPI so the embedded tier acquires them via
+    PyPI/Artifactory instead of github.com/kenstott/provisa/releases (unreachable behind PyPI/Maven/npm-only
+    enterprise proxies). Payload (scripts/ci/build_pg_extensions.sh): core contrib file_fdw + postgres_fdw,
+    external sqlite_fdw + mysql_fdw, and pg_duckdb — where pg_duckdb (csv/parquet/json + httpfs + iceberg
+    via DuckDB) SUBSUMES the REQ-898 parquet_fdw / parquet_s3_fdw / pg_lake / pg_analytics functionality in
+    one maintained extension rather than four heterogeneous build systems. Built by the `wheel` job in
+    .github/workflows/build-pg-extensions.yml, which collects the per-platform build tarballs
+    (packaging/pg-ext/collect.py merges them under provisa_pg_ext/_ext), builds ONE universal wheel
+    (python -m build), and publishes to PyPI. Runtime discovery: packaging/pg-ext/provisa_pg_ext.ext_root()
+    locates the bundle; provisa/pg_extensions/staging.py stage_bundled_pg_extensions() copies the running
+    platform''s FDW modules into a pgserver pginstall and provisa/federation/fdw_artifact_catalog.py
+    registers what landed (fails loud if the wheel lacks this platform''s bundle — no github.com fallback).
+    The pgserver federation engine that calls staging at bootstrap is a separate future tier; the delivery,
+    locator, staging, and discovery plumbing are shipped and tested.'
   use_case: Embedded tier (and enterprise deployments behind restricted proxies) can install PostgreSQL
     extensions offline via standard PyPI/Artifactory channels instead of fetching from unreachable GitHub
     releases.
   code:
   - packaging/pg-ext/
+  - packaging/pg-ext/collect.py
+  - scripts/ci/build_pg_extensions.sh
   - .github/workflows/build-pg-extensions.yml
-  target: 2026-Q3
+  - provisa/pg_extensions/staging.py
+  - provisa/federation/fdw_artifact_catalog.py
+  tests:
+  - tests/unit/test_pg_ext_staging.py
+  - tests/unit/test_pg_extension_catalog.py
   competitive_position:
     status: neutral
     rationale: PyPI-distributed extension binaries enable standard enterprise packaging; the competitive
@@ -33293,12 +33308,12 @@
   - REQ-1160
   - REQ-844
 - id: REQ-1165
-  status: accepted
+  status: complete
   group: 9. Live Data & Events
   category: Table Processor (Shared)
   priority: MUST
   type: constraint
-  target: 2026-Q3
+  since: '2026-07'
   description: 'The inline MV preprocess hook (REQ-957) is RESCOPED from a row transform (rows → rows)
     to a PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a mutated dataset.
     Row transforms are explicitly out of scope — they belong in SQL (engine pushdown) or external processors

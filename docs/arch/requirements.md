@@ -11370,15 +11370,15 @@ A registered relation backed by `view_sql` (a Provisa-managed view or, with mate
 
 ### REQ-1158 · Package Distribution {#REQ-1158}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
 
-A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned per-platform PostgreSQL extension and FDW binaries (sqlite_fdw, parquet_fdw, parquet_s3_fdw, pg_lake, pg_duckdb, pg_analytics — the [REQ-898](#REQ-898) set), published to PyPI so the embedded tier acquires them via PyPI/Artifactory instead of github.com/kenstott/provisa/releases (unreachable behind PyPI/Maven/npm-only enterprise proxies). Built by new `wheel` job in .github/workflows/build-pg-extensions.yml collecting per-platform build tarballs. Package skeleton at packaging/pg-ext/ with provisa_pg_ext.ext_root() locator for runtime discovery.
+A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned per-platform PostgreSQL extension and FDW binaries, published to PyPI so the embedded tier acquires them via PyPI/Artifactory instead of github.com/kenstott/provisa/releases (unreachable behind PyPI/Maven/npm-only enterprise proxies). Payload (scripts/ci/build_pg_extensions.sh): core contrib file_fdw + postgres_fdw, external sqlite_fdw + mysql_fdw, and pg_duckdb — where pg_duckdb (csv/parquet/json + httpfs + iceberg via DuckDB) SUBSUMES the [REQ-898](#REQ-898) parquet_fdw / parquet_s3_fdw / pg_lake / pg_analytics functionality in one maintained extension rather than four heterogeneous build systems. Built by the `wheel` job in .github/workflows/build-pg-extensions.yml, which collects the per-platform build tarballs (packaging/pg-ext/collect.py merges them under provisa_pg_ext/_ext), builds ONE universal wheel (python -m build), and publishes to PyPI. Runtime discovery: packaging/pg-ext/provisa_pg_ext.ext_root() locates the bundle; provisa/pg_extensions/staging.py stage_bundled_pg_extensions() copies the running platform's FDW modules into a pgserver pginstall and provisa/federation/fdw_artifact_catalog.py registers what landed (fails loud if the wheel lacks this platform's bundle — no github.com fallback). The pgserver federation engine that calls staging at bootstrap is a separate future tier; the delivery, locator, staging, and discovery plumbing are shipped and tested.
 
 **Use case:** Embedded tier (and enterprise deployments behind restricted proxies) can install PostgreSQL extensions offline via standard PyPI/Artifactory channels instead of fetching from unreachable GitHub releases.
 
-**Code:** `packaging/pg-ext/`, `.github/workflows/build-pg-extensions.yml`
+**Code:** `packaging/pg-ext/`, `packaging/pg-ext/collect.py`, `scripts/ci/build_pg_extensions.sh`, `.github/workflows/build-pg-extensions.yml`, `provisa/pg_extensions/staging.py`, `provisa/federation/fdw_artifact_catalog.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_pg_ext_staging.py`, `tests/unit/test_pg_extension_catalog.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -11476,7 +11476,7 @@ Declarative `entity` and `fact` shortcuts that LOWER to the existing MV / bitemp
 
 ### REQ-1165 · Table Processor (Shared) {#REQ-1165}
 
-**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
 The inline MV preprocess hook ([REQ-957](#REQ-957)) is RESCOPED from a row transform (rows → rows) to a PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a mutated dataset. Row transforms are explicitly out of scope — they belong in SQL (engine pushdown) or external processors ([REQ-940](#REQ-940)). Rationale: a gate does not mutate the landed set, so it does not feed the content hash ([REQ-964](#REQ-964)), eliminating the justification for full in-memory materialization and the max_rows cap (SKIPPED_SIZE) that prevents scaling to large sources. Accepted preflight transports are SQL pushdown (for SQL-expressible checks, evaluated engine-side as probe queries) and Python+Arrow (for non-SQL checks, evaluated in-process with columnar batches). gRPC is out of scope — it only serves out-of-process/remote validators, which introduces unnecessary overhead (separate process, wire framing) disproportionate to a preflight gate's simplicity and scale requirements. The Python preflight hook input contract is dict[str, pyarrow.RecordBatchReader], keyed by INPUT NODE NAME, providing lazy Arrow streams via FederationEngine.execute_engine_stream. This avoids full materialization of large inputs; the hook consumes batches lazily and short-circuits early. If an engine lacks EngineCapability.ARROW_STREAM and a preflight is declared, the system fails loud at wiring/boot time (no silent skip, no materialize fallback). The land/generate path remains unchanged, using independent streamed reads.
 
