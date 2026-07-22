@@ -32867,12 +32867,12 @@
   - REQ-879
   - REQ-032
 - id: REQ-1158
-  status: complete
+  status: proposed
   group: 9. Installation & Deployment
   category: Package Distribution
   priority: MUST
   type: infrastructure
-  since: '2026-07'
+  target: 2026-Q3
   description: 'A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned per-platform
     PostgreSQL extension and FDW binaries, published to PyPI so the embedded tier acquires them via
     PyPI/Artifactory instead of github.com/kenstott/provisa/releases (unreachable behind PyPI/Maven/npm-only
@@ -32885,9 +32885,20 @@
     (python -m build), and publishes to PyPI. Runtime discovery: packaging/pg-ext/provisa_pg_ext.ext_root()
     locates the bundle; provisa/pg_extensions/staging.py stage_bundled_pg_extensions() copies the running
     platform''s FDW modules into a pgserver pginstall and provisa/federation/fdw_artifact_catalog.py
-    registers what landed (fails loud if the wheel lacks this platform''s bundle — no github.com fallback).
-    The pgserver federation engine that calls staging at bootstrap is a separate future tier; the delivery,
-    locator, staging, and discovery plumbing are shipped and tested.'
+    registers what landed (fails loud if the wheel lacks this platform''s bundle — no github.com fallback),
+    keyed by the REQ-898 config/pg_extension_catalog.yaml inventory (provisa/pg_extensions/catalog.py). A
+    pgserver configured with FDW sources thus loads the bundled modules via CREATE EXTENSION straight from
+    the PyPI wheel — the offline analog of the DuckDB extension staging (REQ-1142). The FDW set IS the
+    pgserver federation engine''s (PgFederationRuntime, provisa/federation/pg_runtime.py) REACHABILITY
+    matrix: each FDW defines a reachable source type (postgres_fdw→postgres, sqlite_fdw→sqlite,
+    file_fdw→csv, mysql_fdw→mysql, pg_duckdb→parquet/csv/json/httpfs/iceberg). ACCEPTANCE: (a) the bundled
+    payload covers the full FDW suite we intend to support (reconciled with config/pg_extension_catalog.yaml);
+    (b) the embedded pgserver federation engine stages the bundled modules at provisioning
+    (stage_bundled_pg_extensions wired into the embedded-fed pgserver creation, not only the plumbing); and
+    (c) an integration suite exercises EVERY supported FDW end-to-end through PgFederationRuntime.attach_source
+    (attach + query a real source per type), proving reachability. Delivery, locator, staging, catalog, and
+    discovery are shipped and unit-tested (tests/unit/test_pg_ext_staging.py, test_pg_extension_catalog.py);
+    the per-FDW reachability integration suite and the embedded-fed staging wiring are the remaining bar.'
   use_case: Embedded tier (and enterprise deployments behind restricted proxies) can install PostgreSQL
     extensions offline via standard PyPI/Artifactory channels instead of fetching from unreachable GitHub
     releases.
