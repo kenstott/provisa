@@ -173,7 +173,7 @@ save_images() {
 build_appdir() {
   info "Building AppDir..."
   rm -rf "$APPDIR"
-  mkdir -p "${APPDIR}/images" "${APPDIR}/compose" "${APPDIR}/bin"
+  mkdir -p "${APPDIR}/compose" "${APPDIR}/bin"
 
   # Bundled Docker runtime
   cp "${DOCKER_BIN_CACHE}"/dockerd \
@@ -189,10 +189,9 @@ build_appdir() {
      "${APPDIR}/bin/"
   chmod +x "${APPDIR}/bin/"*
 
-  # Copy all image tarballs including provisa-local.tar.gz (pre-built, no source shipped)
-  for f in "${IMAGES_DIR}"/*.tar.gz; do
-    cp "$f" "${APPDIR}/images/"
-  done
+  # Slim AppImage: images are NOT bundled (native payload + images would exceed the
+  # 2 GB asset limit). The Docker tier acquires provisa-core-images-amd64-<ver>.zip
+  # on demand at first launch (local-first beside the AppImage, else download).
 
   # Copy compose files and config (core only; obs images are not bundled, so the obs
   # overlay is intentionally omitted — the CLI won't auto-start obs without it. Demo
@@ -335,10 +334,8 @@ main() {
   info "Bundling Docker ${DOCKER_VERSION} runtime..."
 
   check_prereqs
-  bundle_docker
-  build_provisa_image
-  save_images
-  build_appdir
+  bundle_docker           # rootless docker binaries (Docker tier runtime)
+  build_appdir            # compose + CLI + first-launch (no bundled images — slim)
   bundle_native_payload   # bare interpreter + Linux wheelhouse + ui-dist → AppDir (native tier)
   create_appimage
 

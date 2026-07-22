@@ -248,15 +248,17 @@ Two tiers, in parity with the macOS DMG (native venv default, Docker for Trino/o
   or `--no-index --find-links ${APPDIR}/wheels` airgapped. Writes `runtime: native`.
   Single-node; `--role secondary` is rejected. No Docker.
 - **Docker tier** (Trino engine and/or obs/demo on Docker): starts the **bundled
-  rootless dockerd** (`${APPDIR}/bin/dockerd-rootless.sh`), `docker load`s the
-  bundled image tarballs, and runs `docker compose`. Writes `runtime: bundled`,
-  `image_source: tarball`. This is the Linux analog of the container tier (no VM —
-  Linux runs containers natively).
+  rootless dockerd** (`${APPDIR}/bin/dockerd-rootless.sh`), acquires
+  `provisa-core-images-amd64-<ver>.zip` **on demand** (local-first beside the
+  AppImage for airgap, else download), `docker load`s it, and runs `docker compose`.
+  Writes `runtime: bundled`, `image_source: tarball`. No VM — Linux runs containers
+  natively.
 
-`packaging/linux/build-appimage.sh` bundles both payloads: the native
-`python-base/` + `wheels/` + `ui-dist/` (via `bundle_native_payload`), and the
-Docker tier's rootless-docker binaries + core/obs image tarballs. MinIO is a core
-service (REQ-561). No demo. (REQ-632)
+`packaging/linux/build-appimage.sh` builds a **slim** AppImage: the native
+`python-base/` + `wheels/` + `ui-dist/` payload (`bundle_native_payload`) plus the
+rootless-docker binaries and compose files — but **not** the container images
+(native payload + images would exceed GitHub's 2 GB asset limit). The Docker tier
+pulls the amd64 image zip on demand. MinIO is a core service (REQ-561). No demo. (REQ-632)
 
 ### `save_images()` target list (Docker tier)
 

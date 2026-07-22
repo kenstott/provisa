@@ -153,6 +153,10 @@ jobs:
           done
           docker build --platform linux/arm64 -t provisa/zaychik:local ./zaychik
           docker save provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
+          # App image in the core-images tarball so the Docker tier can docker load it
+          # on demand (macOS/arm64) — no in-VM/host build needed.
+          docker build --platform linux/arm64 -t provisa/provisa:local .
+          docker save provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 
       - name: Build provisa wheels for linux/arm64
         run: |
@@ -648,16 +652,14 @@ jobs:
   build-linux:
     name: Build Linux AppImage (core, ${{ needs.metadata.outputs.channel }})
     runs-on: ubuntu-latest
-    needs: [metadata, pull-images-core, pull-images-obs, download-plugins, build-ui-dist]
+    needs: [metadata, download-plugins, build-ui-dist]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download core image tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-images-core
-          path: packaging/linux/images/
+      # Slim AppImage: images are NOT bundled (they'd push it over GitHub's 2 GB
+      # asset limit alongside the native venv payload). The Docker tier acquires
+      # provisa-core-images-amd64-<ver>.zip on demand at first launch.
 
       # The native tier's wheel + ui-dist payload need a host-built UI (the Docker
       # image builds the UI internally, but bundle_native_payload runs on the host).

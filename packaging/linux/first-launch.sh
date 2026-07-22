@@ -204,22 +204,49 @@ start_docker() {
   ok "Docker started."
 }
 
-# ── Load images ────────────────────────────────────────────────────────────────
+# ── Acquire + load images (slim AppImage ships none — get them on demand) ─────
+# Discovery: local-first (beside the AppImage / ~/Downloads / cwd) for airgap, else
+# download provisa-core-images-amd64-<version>.zip from the release. It contains the
+# gzipped `docker save` tarballs (registry images + zaychik + provisa app).
 load_images() {
-  # Secondary nodes skip database/store images — they don't run them
-  local skip_pattern=""
-  if [ "$ROLE" = "secondary" ]; then
-    skip_pattern="postgres|pgbouncer|minio|redis"
-    info "Secondary node: skipping database/store images..."
-  else
-    info "Loading bundled container images (no network required)..."
+  local staged="${PROVISA_HOME}/images"
+  mkdir -p "$staged"
+
+  if ! ls "${staged}"/*.tar.gz >/dev/null 2>&1; then
+    if ! command -v unzip >/dev/null 2>&1; then
+      err "unzip is required to extract the core images. Install it (e.g. apt-get install unzip) and re-run."
+      exit 1
+    fi
+    local zip="provisa-core-images-amd64-${PROVISA_VERSION}.zip"
+    local src="" cand appdir_parent
+    appdir_parent="$(dirname "$APPDIR")"
+    for cand in "${appdir_parent}/${zip}" "${HOME}/Downloads/${zip}" "${PWD}/${zip}"; do
+      [ -f "$cand" ] && { src="$cand"; break; }
+    done
+    if [ -z "$src" ] && [ -n "$PROVISA_VERSION" ]; then
+      info "Downloading core images (${zip})..."
+      if curl -fL --retry 3 --retry-delay 5 -o "${PROVISA_HOME}/${zip}" \
+           "https://github.com/kenstott/provisa/releases/download/${PROVISA_VERSION}/${zip}"; then
+        src="${PROVISA_HOME}/${zip}"
+      fi
+    fi
+    if [ -z "$src" ]; then
+      err "Core images not found. Place ${zip} beside the AppImage (airgap) or connect to the network, then re-run."
+      exit 1
+    fi
+    info "Extracting core images..."
+    ( cd "$staged" && unzip -o -q "$src" )
+    [ "$src" = "${PROVISA_HOME}/${zip}" ] && rm -f "$src"
   fi
 
+  # Secondary nodes skip database/store images — they don't run them.
+  local skip_pattern=""
+  [ "$ROLE" = "secondary" ] && skip_pattern="postgres|pgbouncer|minio|redis"
+
   local count=0
-  for tar_file in "${IMAGES_DIR}"/*.tar.gz; do
+  for tar_file in "${staged}"/*.tar.gz; do
     [ -f "$tar_file" ] || continue
-    local name
-    name="$(basename "$tar_file")"
+    local name; name="$(basename "$tar_file")"
     if [ -n "$skip_pattern" ] && echo "$name" | grep -qE "$skip_pattern"; then
       continue
     fi
