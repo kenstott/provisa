@@ -68,12 +68,14 @@ async def profile_table(
     # governed, and routed exactly like an interactive /data/sql query — handing it
     # raw to the federation engine fails to resolve domain refs (REQ-452).
     if source_id == "__provisa__" and view_sql:
-        from provisa.api.data.endpoint_dev import _compile_govern_execute
+        # ONE pipeline: sample the view through the single governed chokepoint, exactly like /data/sql.
+        from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
         if not x_provisa_role:
             raise HTTPException(400, "X-Provisa-Role header required to profile a view")
         sampled = f"SELECT * FROM ({view_sql.rstrip().rstrip(';')}) _pv LIMIT {_SAMPLE_LIMIT}"
-        res, *_ = await _compile_govern_execute(sampled, x_provisa_role, state)
+        _plan = await _govern_and_route(sampled, x_provisa_role)
+        res = await _execute_plan(_plan, state)
         rows = [dict(zip(res.column_names, r)) for r in res.rows]
         return {"columns": res.column_names, "rows": rows, "rowCount": len(rows)}
 

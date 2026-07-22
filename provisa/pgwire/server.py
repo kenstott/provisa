@@ -559,9 +559,14 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         super().handle_execute(ctx, payload)
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
+        from provisa.compiler.sql_rewrite import split_sql_statements
+
         decoded = payload.decode("utf-8").rstrip("\x00")
 
-        stmts = [s.strip() for s in decoded.split(";") if s.strip()]
+        # Statement-aware split: a ';' inside a string literal / comment / dollar-quote must NOT
+        # mis-split, so governance and execution see identical statement boundaries (no parser
+        # differential — replaces the old naive decoded.split(';')).
+        stmts = split_sql_statements(decoded)
         if not stmts:
             self.wfile.write(struct.pack("!ci", ServerResponse.EMPTY_QUERY_RESPONSE, 4))
             self.send_ready_for_query(ctx)

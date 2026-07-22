@@ -270,8 +270,7 @@ async def run_sql(
     MCP tool error) — it is never swallowed into an empty result. Rows are
     capped/paged so the full result never lands in an agent's context.
     """
-    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
-    from provisa.pgwire.function_call import maybe_invoke_registered_function
+    from provisa.pgwire._pipeline import execute_sql_batch
 
     require_role(role, state)
     if offset < 0:
@@ -281,13 +280,10 @@ async def run_sql(
     if page <= 0:
         raise ValueError("limit must be a positive integer")
 
-    # REQ-1156: a `SELECT fn(...)` naming a registered command must invoke it through the single
-    # governed executor here too, exactly as the pgwire path does — otherwise commands are dark on
-    # MCP (run_sql lowers via _govern_and_route/_execute_plan, which never sees the function hook).
-    result = await maybe_invoke_registered_function(sql, role, state)
-    if result is None:
-        plan = await _govern_and_route(sql, role)  # raises PermissionError / ValueError
-        result = await _execute_plan(plan, state)
+    # ONE pipeline: execute the (possibly multi-statement) batch statement-aware, governing+executing
+    # each statement (last result returned) — a registered command per statement still routes through
+    # the shared function hook (REQ-1156), and a multi-statement batch is never silently truncated.
+    result = await execute_sql_batch(sql, role, state)  # raises PermissionError / ValueError
 
     total = len(result.rows)
     window = result.rows[offset : offset + page]

@@ -61,6 +61,67 @@ class _Plan:
     physical_sql: str | None = field(default=None)
     # Per-query the engine session overrides (e.g. retry_policy=NONE to bypass FTE).
     session_hints: dict[str, str] | None = field(default=None)
+    # Governed-provenance stamp (see below). Minted ONLY at the top of the pipeline
+    # (_govern_and_route / _govern_and_route_compiled); _execute_plan refuses any plan lacking a
+    # valid one, so an un-governed / side-door plan can never be executed.
+    stamp: str | None = field(default=None)
+
+
+# --------------------------------------------------------------------------- #
+# Governed-provenance stamp (the single-chokepoint contract).
+#
+# The one pipeline is the only code that may execute governed SQL. To make that a
+# MECHANICAL invariant rather than a convention, the TOP of the pipeline mints an
+# unforgeable capability token for every plan it produces, and the bottom
+# (_execute_plan) refuses to run any plan whose token it did not itself issue.
+#
+#   * The key/nonce space is process-private (256-bit random) — no surface, test, or
+#     side-door can read it or guess an issued token.
+#   * Only the pipeline can VERIFY a stamp (membership in _ISSUED). "You can only ask
+#     the pipeline whether an output came from it" is literally the API: stamp_is_valid.
+#   * A resurrected second pipeline (a new _compile_govern_execute) cannot mint a valid
+#     stamp, so _execute_plan rejects its plans — the drift class of bug becomes a
+#     hard runtime failure, complementary to the static import-boundary guard test.
+# --------------------------------------------------------------------------- #
+import collections
+import secrets as _secrets
+
+# Bounded ring of issued stamps — recent-enough to verify in-flight/just-returned plans
+# without unbounded growth. A stamp is a 256-bit random hex token, so collisions/guesses
+# are infeasible.
+_ISSUED_STAMPS: collections.deque[str] = collections.deque(maxlen=8192)
+_ISSUED_SET: set[str] = set()
+
+
+def _mint_stamp() -> str:
+    """Issue a fresh governed-provenance stamp. Called ONLY from the top of the pipeline."""
+    token = _secrets.token_hex(32)
+    if len(_ISSUED_STAMPS) == _ISSUED_STAMPS.maxlen:
+        _ISSUED_SET.discard(_ISSUED_STAMPS[0])  # evict the oldest as the ring wraps
+    _ISSUED_STAMPS.append(token)
+    _ISSUED_SET.add(token)
+    return token
+
+
+def stamp_is_valid(stamp: str | None) -> bool:
+    """True iff ``stamp`` was minted by the top of THIS process's pipeline. The only way to
+    ask the pipeline whether an output/plan actually came from it — no other module can."""
+    return bool(stamp) and stamp in _ISSUED_SET
+
+
+def require_governed_plan(plan: "_Plan") -> None:
+    """Refuse to execute any plan the top of the pipeline did not mint (REQ-1176).
+
+    _execute_plan is NOT the only execution terminal — the Arrow/streaming sinks (Flight, airport,
+    COPY) and the Cypher/CTAS paths run ``plan.physical_sql`` / ``plan.sql`` on the engine directly.
+    EVERY such sink MUST call this first, so the single-chokepoint guarantee (no ungoverned egress)
+    holds universally, not only for the materialized _execute_plan path. A side-door or hand-built
+    plan has no valid stamp and is rejected here before a single row leaves the engine."""
+    if not stamp_is_valid(plan.stamp):
+        raise PermissionError(
+            "ungoverned plan rejected: missing/invalid pipeline stamp — every executed plan MUST be "
+            "produced by the one governed pipeline (_govern_and_route / _govern_and_route_compiled)"
+        )
 
 
 # Connector types that don't support the engine fault-tolerant execution (FTE): their
@@ -142,6 +203,33 @@ def _reject_physical_source_refs(parsed: Any, state: Any) -> None:
             )
 
 
+def _reject_view_writes(parsed: Any, state: Any) -> None:
+    """REQ-1157: a ``view_sql`` / MV-backed relation is DERIVED, not a base table, and is query-only.
+
+    Reject any INSERT / UPSERT (INSERT ... ON CONFLICT) / UPDATE / DELETE / MERGE whose TARGET is such
+    a relation, on every raw-SQL surface funnelled through this pipeline (pgwire, REST /data/sql, Flight
+    SQL, MCP, Bolt/Cypher, gRPC). A write to a view either fails at the source (non-updatable view) or
+    lands in the mv_cache snapshot the next REQ-879 refresh silently overwrites — data loss with no
+    error, violating the no-silent-failure rule. Only the write TARGET is checked; a view read in the
+    FROM/USING of a write is fine, and a base table (not in view_sql_map) is never affected.
+    """
+    import sqlglot.expressions as _exp
+
+    view_map = getattr(state, "view_sql_map", None)
+    if not view_map:
+        return
+    if not isinstance(parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge)):
+        return
+    target = parsed.this
+    tbl = target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
+    if tbl is not None and tbl.name in view_map:
+        op = type(parsed).__name__.upper()
+        raise PermissionError(
+            f"{op} into {tbl.name!r} is not allowed: it is a view/MV-backed relation and is query-only "
+            "(REQ-1157). A write would fail at the source or be lost on the next materialized-view refresh."
+        )
+
+
 async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     """REQ-1159: rewrite every inline command call in ``tree`` to a typed local relation, in place.
 
@@ -164,8 +252,13 @@ async def _localize_inline_commands(tree, role_id: str, state) -> bool:
 
 
 async def _govern_and_route(
-    sql: str, role_id: str, *, session_vars: dict[str, str] | None = None
-) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159
+    sql: str,
+    role_id: str,
+    *,
+    session_vars: dict[str, str] | None = None,
+    discovery_mode: bool = False,
+    as_of: str | None = None,
+) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     import sqlglot
     import sqlglot.expressions as exp
 
@@ -203,6 +296,7 @@ async def _govern_and_route(
         normalized_sql = _parsed_input.sql(dialect="postgres")
 
     _reject_physical_source_refs(_parsed_input, state)
+    _reject_view_writes(_parsed_input, state)  # REQ-1157: view/MV-backed relations are query-only
 
     gov_ctx = build_governance_context(
         role_id,
@@ -213,6 +307,16 @@ async def _govern_and_route(
         role=role,
         relationships=getattr(state, "relationships", None),
     )
+
+    # Discovery mode (SQL Explorer): the caller may reference any registered table across all
+    # contexts, so augment the role's table_map with every context's tables before validation.
+    if discovery_mode:
+        for _all_ctx in state.contexts.values():
+            for _meta in _all_ctx.tables.values():
+                gov_ctx.table_map.setdefault(_meta.table_name, _meta.table_id)
+                gov_ctx.table_map.setdefault(
+                    f"{_meta.schema_name}.{_meta.table_name}", _meta.table_id
+                )
 
     from provisa.security.rights import Capability, has_capability
 
@@ -226,12 +330,13 @@ async def _govern_and_route(
         gov_ctx,
         role or {},
         getattr(state, "tables", []),
+        discovery_mode=discovery_mode,
         bypass_relationship_guard=_bypass_guard,
         bypass_uncovered_relationships=True,
     )
 
     _role_domain_access = (role or {}).get("domain_access") or []
-    if "*" not in _role_domain_access:
+    if not discovery_mode and "*" not in _role_domain_access:
         try:
             parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
             for tbl in parsed_tree.find_all(exp.Table):
@@ -297,16 +402,49 @@ async def _govern_and_route(
 
     exec_params = embedded_params or None
 
+    # REQ-135/REQ-1163: a query referencing a __provisa__ view MUST route through the engine, where the
+    # view is inline-expanded. A view's virtual source has no native driver/catalog, so extract_sources
+    # cannot bind it and routing would otherwise pick DIRECT against a real source, handing the
+    # un-expanded view ref to a native pool. Force ENGINE so the ENGINE branch expands it.
+    _view_map = getattr(state, "view_sql_map", None)
+    if _view_map and decision.route != Route.ENGINE:
+        _refs_view = any(
+            t.name in _view_map
+            for t in sqlglot.parse_one(governed_semantic, read="postgres").find_all(exp.Table)
+        )
+        if _refs_view:
+            from provisa.transpiler.router import RouteDecision
+
+            decision = RouteDecision(
+                route=Route.ENGINE, source_id=None, dialect=None, reason="query references a view"
+            )
+
     # REQ-1159: a localized statement carries an inline local relation as a VALUES list, which rides
     # along on whichever route the router picks — DIRECT inlines the VALUES into the single source's
     # SQL (the source executes it), and a genuinely cross-source statement is detected and routed to
     # the engine by decide_route as usual. So the localizer does NOT force a route; it lets routing
     # decide, which keeps a single-source composed query on the source instead of the org store.
     if decision.route == Route.ENGINE:
+        # REQ-135/REQ-1163: inline-expand any __provisa__ view ref BEFORE the unknown-catalog check and
+        # transpile — a request-level as-of overlays each bitemporal view's entry with an as-of
+        # reconstruction over its append log (else views read current state). Same lowering the GQL/
+        # Cypher path uses (_govern_and_route_compiled). _qualified is catalog-physical; a view ref is
+        # source-less so it survives the rewrites unchanged and still matches a view_sql_map leaf key.
+        if _view_map:
+            from provisa.compiler.view_expand import expand_view_refs
+
+            _vmap = _view_map
+            if as_of and getattr(state, "bitemporal_view_reads", None):
+                from provisa.mv.bitemporal import as_of_view_map
+
+                _vmap = as_of_view_map(_view_map, state.bitemporal_view_reads, as_of)
+            _qualified = expand_view_refs(_qualified, _vmap)
+
         _known_cats_pgwire = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
             "otel",
             "results",
+            "mat_store",  # REQ-1163: the materialization store an expanded bitemporal view reconstructs over
         }
         from provisa.api.data.materialization import _lookup_gql_remote_table as _lookup_gql
         import sqlglot as _sg
@@ -337,6 +475,7 @@ async def _govern_and_route(
             dialect=state.federation_engine.dialect,
             exec_params=exec_params,
             physical_sql=physical_sql,
+            stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -359,10 +498,12 @@ async def _govern_and_route(
             source_id=decision.source_id or _default_source,
             dialect=dialect,
             exec_params=exec_params,
+            stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
 
 
 async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  # REQ-027, REQ-028
+    require_governed_plan(plan)  # SECURITY: refuse any plan the top of the pipeline did not mint
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     from provisa.transpiler.router import Route
@@ -375,6 +516,11 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
         result = await engine.execute_engine(
             plan.physical_sql, params=plan.exec_params, session_hints=plan.session_hints
         )
+    elif getattr(state, "source_types", {}).get(plan.source_id) == "govdata":
+        # GovData sources execute via the GovData/Calcite bridge, not a native pool or the engine.
+        from provisa.api.data.endpoint_dev import _execute_govdata
+
+        result = await _execute_govdata(plan.source_id, plan.sql, state)
     elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
         # Admin-owned tables (meta.*) live in the provisa tenant_db, not source_pools.
         tenant_db = state.tenant_db
@@ -403,6 +549,71 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     return result
 
 
+async def execute_sql_batch(
+    sql: str,
+    role_id: str,
+    state: Any | None = None,
+    *,
+    session_vars: dict[str, str] | None = None,
+    discovery_mode: bool = False,
+    as_of: str | None = None,
+) -> QueryResult:
+    """Govern + execute a (possibly multi-statement) SQL batch through the ONE pipeline, returning the
+    LAST statement's result (psql/JDBC batch semantics).
+
+    Every entry point can send multiple statements. Splitting is statement-aware (no parser
+    differential) and EACH statement is governed+routed+stamped and executed IN ORDER — so a batch is
+    never silently reduced to its first statement (the ``parse_one`` trap that dropped the tail on
+    every non-pgwire surface). A single statement behaves exactly like _govern_and_route + _execute_plan.
+    Per statement, a standalone registered-command call is invoked through the shared function hook,
+    matching the single-statement surface behaviour."""
+    from provisa.compiler.sql_rewrite import split_sql_statements
+    from provisa.pgwire.function_call import maybe_invoke_registered_function
+
+    if state is None:
+        from provisa.api.app import state  # type: ignore[assignment]
+    statements = split_sql_statements(sql)
+    if not statements:
+        return QueryResult(rows=[], column_names=[])
+    result: QueryResult | None = None
+    for stmt in statements:
+        cmd = await maybe_invoke_registered_function(stmt, role_id, state)
+        if cmd is not None:
+            result = cmd
+            continue
+        plan = await _govern_and_route(
+            stmt, role_id, session_vars=session_vars, discovery_mode=discovery_mode, as_of=as_of
+        )
+        result = await _execute_plan(plan, state)
+    assert result is not None
+    return result
+
+
+async def govern_batch_final_plan(
+    sql: str,
+    role_id: str,
+    state: Any | None = None,
+    *,
+    session_vars: dict[str, str] | None = None,
+) -> _Plan:
+    """Govern+execute all but the LAST statement of a batch, and return the governed+stamped plan for
+    the last statement — for Arrow/streaming surfaces (Flight SQL, airport) that render the final
+    statement's rows themselves. Guarantees a multi-statement batch's leading statements still run
+    (governed), rather than being silently dropped by ``parse_one``. A single statement runs nothing
+    extra and just returns its plan."""
+    from provisa.compiler.sql_rewrite import split_sql_statements
+
+    if state is None:
+        from provisa.api.app import state  # type: ignore[assignment]
+    statements = split_sql_statements(sql)
+    if not statements:
+        raise ValueError("empty SQL batch")
+    for stmt in statements[:-1]:
+        plan = await _govern_and_route(stmt, role_id, session_vars=session_vars)
+        await _execute_plan(plan, state)
+    return await _govern_and_route(statements[-1], role_id, session_vars=session_vars)
+
+
 async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # pyright: ignore[reportUnusedFunction]
     sql: str,
     role_id: str,
@@ -429,6 +640,10 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
 
     if role_id not in state.contexts:
         raise PermissionError(f"No schema for role {role_id!r}")
+
+    import sqlglot as _sg
+
+    _reject_view_writes(_sg.parse_one(sql, read="postgres"), state)  # REQ-1157: views are query-only
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
@@ -514,6 +729,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             exec_sql=_exec_sql,
             physical_sql=physical_sql,
             session_hints=_hints,
+            stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -534,6 +750,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             source_id=decision.source_id or _default_source,
             dialect=dialect,
             exec_params=exec_params,
+            stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
 
 

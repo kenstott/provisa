@@ -34,10 +34,8 @@ if TYPE_CHECKING:
 from provisa.api.admin._dev_shared import detect_target
 from provisa.core import domain_policy
 from provisa.compiler.rls import RLSContext
-from provisa.compiler.sql_rewrite import qualify_with_catalogs, rewrite_semantic_to_physical
+from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
-from provisa.transpiler.router import Route, decide_route
-from provisa.transpiler.transpile import transpile
 
 log = logging.getLogger(__name__)
 
@@ -53,143 +51,6 @@ class SQLRequest(BaseModel):
 def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_role: str) -> str:
     auth_role = getattr(raw_request.state, "role", None)
     return auth_role or x_provisa_role or request_role
-
-
-def _references_view(sql: str, view_sql_map: dict[str, str]) -> bool:
-    """True when any table ref in ``sql`` names a __provisa__ view (a view_sql_map key). Parses the
-    SQL so an alias/column that merely shares a view's name never triggers a false positive."""
-    import sqlglot
-    import sqlglot.expressions as exp
-    from sqlglot.errors import SqlglotError
-
-    try:
-        tree = sqlglot.parse_one(sql, read="postgres")
-    except SqlglotError:
-        return False
-    return any(t.name in view_sql_map for t in tree.find_all(exp.Table))
-
-
-async def _compile_govern_execute(
-    sql: str, role_id: str, state, *, discovery_mode: bool = False, as_of: str | None = None
-):
-    """Compile → govern → route → execute semantic SQL (REQ-264, REQ-266, REQ-267).
-
-    Shared by the /data/sql endpoint and the table-profile endpoint (view sampling),
-    so a __provisa__ view's semantic SQL is rewritten and routed the same way it is
-    when run interactively — never handed raw to the federation engine.
-
-    Returns (result, sources, default_source, decision, governed_physical).
-    """
-    import sqlglot
-    import sqlglot.errors
-
-    from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
-    from provisa.compiler.stage2 import (
-        apply_governance,
-        build_governance_context,
-        extract_sources,
-    )
-
-    if role_id not in state.schemas:
-        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
-
-    role = state.roles.get(role_id)
-    _check_sql_capabilities(role, discovery_mode)
-
-    ctx = state.contexts[role_id]
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
-
-    # --- Step 1: Parse semantic SQL via SQLGlot (REQ-266) ---
-    # Strip provisa-params comment before SQLGlot (it strips comments); carry params forward.
-    raw_sql, embedded_params = extract_params_comment(sql)
-    raw_sql, _sql_opts_out = extract_relationship_guard_comment(raw_sql)
-
-    # Clients write semantic SQL (domain.field_name refs). Physical translation
-    # happens after routing — governance runs on semantic refs.
-    try:
-        sqlglot.parse_one(raw_sql, read="postgres")
-    except sqlglot.errors.SqlglotError as exc:
-        raise HTTPException(status_code=400, detail=f"SQL parse error: {exc}")
-
-    # --- Step 1b: Normalize table refs — qualify unique unquoted names ---
-    normalized_sql, parsed_tree = _normalize_sql_tree(raw_sql, ctx)
-
-    # --- Step 2: Build GovernanceContext — table_map includes semantic refs ---
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role,
-        relationships=getattr(state, "relationships", None),
-    )
-
-    raw_tables = getattr(state, "tables", [])
-
-    # In discovery mode, augment table_map with all tables from all contexts
-    if discovery_mode:
-        _augment_discovery_table_map(gov_ctx, state)
-
-    # --- Step 3: Validate SQL against role-scoped GraphQL-equivalent rules ---
-    violations = _validate_sql_governance(
-        normalized_sql,
-        parsed_tree,
-        ctx,
-        gov_ctx,
-        role,
-        raw_tables,
-        discovery_mode,
-        _sql_opts_out,
-        role_id,
-    )
-
-    if violations:
-        msgs = [f"[{v.code}] {v.message}" for v in violations]
-        log.warning("[SQL] role=%s violations: %s", role_id, msgs)
-        raise HTTPException(
-            status_code=403,
-            detail={"violations": [{"code": v.code, "message": v.message} for v in violations]},
-        )
-
-    # --- Step 4: Governance on normalized SQL ---
-    governed_semantic = apply_governance(normalized_sql, gov_ctx)
-
-    # --- Step 5: Routing decision (on governed semantic SQL) ---
-    sources = extract_sources(governed_semantic, gov_ctx, ctx)
-    default_source = _resolve_default_source(state)
-    decision = decide_route(
-        sources=sources or {default_source},
-        source_types=state.source_types,
-        source_dialects=state.source_dialects,
-        has_json_extract="->>" in governed_semantic,
-        source_dsns=getattr(state, "source_dsns", None),
-    )
-
-    # REQ-135: a query referencing a __provisa__ view MUST route through the engine, where the view
-    # is inline-expanded (after catalog-qualification). The view's virtual source has no native
-    # driver/catalog, so extract_sources cannot bind it and routing would otherwise pick DIRECT
-    # against a real source, executing the un-expanded view ref → KeyError in the native pool.
-    if state.view_sql_map and _references_view(governed_semantic, state.view_sql_map):
-        from provisa.transpiler.router import RouteDecision
-
-        decision = RouteDecision(
-            route=Route.ENGINE, source_id=None, dialect=None, reason="query references a view"
-        )
-
-    # --- Step 6: governed_semantic is already physical after Step 1b normalization ---
-    governed_physical = governed_semantic
-
-    # --- Step 7: Execute ---
-    try:
-        result = await _dispatch_sql_execution(
-            governed_physical, sources, default_source, decision, ctx, state, embedded_params,
-            as_of=as_of,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    return result, sources, default_source, decision, governed_physical
 
 
 @router.get("/proto/{role_id}")
@@ -412,141 +273,19 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         ]
         return _format_response(result.rows, columns, "sql", output_format)
 
-    # REQ-1156 parity: a `SELECT fn(...)` naming a registered command routes through the single
-    # governed executor here too, matching pgwire/Flight SQL/MCP — otherwise commands are dark in
-    # the in-app SQL Explorer and fall through to the federation engine as an unknown table function.
-    from provisa.pgwire.function_call import maybe_invoke_registered_function
+    # ONE pipeline: /data/sql runs through the single governed chokepoint. execute_sql_batch splits a
+    # multi-statement batch statement-aware and governs+executes EACH (last result returned) — so the
+    # tail is never silently dropped, and a per-statement registered command still routes through the
+    # shared function hook. Surface-specific request auth (capability gate) is a pre-check here; as_of
+    # (REQ-1163) + discovery_mode are query-shaping params threaded in.
+    role = state.roles.get(role_id)
+    _check_sql_capabilities(role, request.discovery_mode)
+    from provisa.pgwire._pipeline import execute_sql_batch
 
-    cmd_result = await maybe_invoke_registered_function(request.sql, role_id, state)
-    if cmd_result is not None:
-        return _finalize(cmd_result, source="command", strategy="command", physical_sql=request.sql)
-
-    result, sources, _default_source, decision, governed_physical = await _compile_govern_execute(
+    result = await execute_sql_batch(
         request.sql, role_id, state, discovery_mode=request.discovery_mode, as_of=_as_of
     )
-    return _finalize(
-        result,
-        source=next(iter(sources), _default_source),
-        strategy=decision.route.value,
-        physical_sql=governed_physical,
-    )
-
-
-def _validate_sql_governance(
-    normalized_sql: str,
-    parsed_tree,
-    ctx,
-    gov_ctx,
-    role,
-    raw_tables: list,
-    discovery_mode: bool,
-    sql_opts_out: bool,
-    role_id: str,
-) -> list:
-    from provisa.compiler.sql_validator import validate_sql
-
-    from provisa.security.rights import Capability, has_capability
-
-    _role_guard = (role or {}).get("relationship_guard", True)
-    _bypass_guard = has_capability(role or {}, Capability.IGNORE_RELATIONSHIPS) or (
-        (not _role_guard) and sql_opts_out
-    )
-    violations = validate_sql(
-        normalized_sql,
-        ctx,
-        gov_ctx,
-        role or {},
-        raw_tables,
-        discovery_mode=discovery_mode,
-        bypass_relationship_guard=_bypass_guard,
-        bypass_uncovered_relationships=True,
-    )
-
-    _role_domain_access = (role or {}).get("domain_access") or []
-    if not discovery_mode and "*" not in _role_domain_access:
-        violations.extend(_collect_table_access_violations(parsed_tree, gov_ctx, role_id))
-
-    return violations
-
-
-async def _dispatch_sql_execution(
-    governed_physical: str,
-    sources,
-    default_source: str,
-    decision,
-    ctx,
-    state,
-    embedded_params: list | None,
-    as_of: str | None = None,  # REQ-1163
-) -> "QueryResult":
-    _govdata_sid = next(
-        (sid for sid in (sources or {default_source}) if state.source_types.get(sid) == "govdata"),
-        None,
-    )
-    if _govdata_sid:
-        return await _execute_govdata(_govdata_sid, governed_physical, state)
-    if decision.route == Route.ENGINE:
-        return await _execute_engine_route(
-            governed_physical, ctx, state, embedded_params, as_of=as_of
-        )
-    return await _execute_direct_route(
-        governed_physical, decision, default_source, state.source_pools, embedded_params
-    )
-
-
-async def _execute_engine_route(
-    governed_physical: str,
-    ctx,
-    state,
-    embedded_params: list | None,
-    as_of: str | None = None,  # REQ-1163: validated as-of SQL timestamp literal (or None)
-) -> "QueryResult":
-    from provisa.api.data.materialization import _materialize_api_to_engine_cache
-    from provisa.cache.hot_tables import build_values_cte_sql
-    from provisa.api_source.engine_cache import rewrite_all_from_cache
-
-    _qualified = qualify_with_catalogs(governed_physical, ctx)
-    if state.view_sql_map:
-        from provisa.compiler.view_expand import expand_view_refs
-
-        # REQ-1163: a request-level as-of overlays each bitemporal view's entry with an as-of
-        # reconstruction over its append log; without it, views read current state.
-        _vmap = state.view_sql_map
-        if as_of and getattr(state, "bitemporal_view_reads", None):
-            from provisa.mv.bitemporal import as_of_view_map
-
-            _vmap = as_of_view_map(state.view_sql_map, state.bitemporal_view_reads, as_of)
-        _qualified = expand_view_refs(_qualified, _vmap)
-    _rewrites, _values_ctes, _ = await _materialize_api_to_engine_cache(_qualified, state)
-    for _tn, _entry in _values_ctes.items():
-        _qualified = build_values_cte_sql(_qualified, _tn, _entry)
-    if _rewrites:
-        _qualified = rewrite_all_from_cache(_qualified, _rewrites)
-    sql_to_run = state.federation_engine.transpile_physical(_qualified)
-    if not state.federation_engine.is_connected():
-        raise HTTPException(status_code=503, detail="the engine connection not available")
-    exec_params = embedded_params or None
-    return await state.federation_engine.execute_engine(sql_to_run, params=exec_params)
-
-
-async def _execute_direct_route(
-    governed_physical: str,
-    decision,
-    default_source: str,
-    source_pools,
-    embedded_params: list | None,
-) -> "QueryResult":
-    from provisa.api.app import state as _state
-
-    dialect = decision.dialect or "postgres"
-    sql_to_run = transpile(governed_physical, dialect)
-    exec_params = embedded_params or None
-    return await _state.federation_engine.execute_native(
-        source_pools,
-        decision.source_id or default_source,
-        sql_to_run,
-        exec_params,
-    )
+    return _finalize(result, source="engine", strategy="batch", physical_sql=request.sql)
 
 
 def _check_sql_capabilities(role, discovery_mode: bool) -> None:
@@ -555,49 +294,6 @@ def _check_sql_capabilities(role, discovery_mode: bool) -> None:
             check_capability(role, Capability.QUERY_DEVELOPMENT)
         except InsufficientRightsError as e:
             raise HTTPException(status_code=403, detail=str(e))
-
-
-def _normalize_sql_tree(raw_sql: str, ctx) -> tuple[str, object]:
-    import sqlglot
-
-    normalized_sql = rewrite_semantic_to_physical(raw_sql, ctx)
-    # Returning un-rewritten raw_sql on parse failure bypasses physical rewrite — raise instead.
-    parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
-    return normalized_sql, parsed_tree
-
-
-def _augment_discovery_table_map(gov_ctx, state) -> None:
-    for all_ctx in state.contexts.values():
-        for meta in all_ctx.tables.values():
-            gov_ctx.table_map.setdefault(meta.table_name, meta.table_id)
-            gov_ctx.table_map.setdefault(f"{meta.schema_name}.{meta.table_name}", meta.table_id)
-
-
-def _collect_table_access_violations(parsed_tree, gov_ctx, role_id: str) -> list:
-    import sqlglot.expressions as exp
-    from provisa.compiler.sql_validator import ValidationViolation
-
-    violations = []
-    for tbl in parsed_tree.find_all(exp.Table):
-        tbl_name = tbl.name
-        tbl_db = tbl.db
-        full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
-        if full_key not in gov_ctx.table_map and tbl_name not in gov_ctx.table_map:
-            ref = full_key or tbl_name
-            violations.append(
-                ValidationViolation(
-                    "V000",
-                    f"Table {ref!r} is not accessible for role {role_id!r}",
-                )
-            )
-    return violations
-
-
-def _resolve_default_source(state) -> str:
-    return next(
-        (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
-        next(iter(state.source_pools.source_ids), "pg"),
-    )
 
 
 def _check_qualifier_binding(tree) -> str | None:

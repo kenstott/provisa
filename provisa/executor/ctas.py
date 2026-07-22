@@ -345,7 +345,10 @@ async def run_ctas(sql: str, role_id: str) -> str | None:
 
     async def _run_engine_ctas(ctas_select_sql: str) -> int:
         # Same-engine: govern the SELECT, then push a native CTAS around the physical SELECT.
+        from provisa.pgwire._pipeline import require_governed_plan
+
         plan = await _govern_and_route(stmt.select_sql, role_id)
+        require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
         physical_select = plan.physical_sql if plan.physical_sql is not None else plan.sql
         ddl = f"CREATE TABLE {resolved.schema}.{resolved.table} AS {physical_select}"
         if plan.physical_sql is not None:

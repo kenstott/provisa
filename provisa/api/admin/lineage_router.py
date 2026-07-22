@@ -197,7 +197,7 @@ async def federation_graph(
     domain ids that restricts the graph to views in those domains (empty = every domain), matching the
     NavBar domain filter the Views/Commands pages honour."""
     from provisa.api.app import state
-    from provisa.lineage.merge import build_federation_graph, slice_graph
+    from provisa.lineage.merge import build_federation_graph_incremental, slice_graph
 
     commands = getattr(state, "tracked_functions", None) or {}
     view_rows = await _fetch_view_rows(state)
@@ -205,7 +205,9 @@ async def federation_graph(
     if domain_filter:
         view_rows = [r for r in view_rows if r["domain_id"] in domain_filter]
     views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
-    merged = build_federation_graph(views, commands=commands, materialized_relations=mats)
+    # REQ-1161: incremental — only views whose SQL changed since the last request are re-parsed; the
+    # rest of the federation graph is unioned from cached per-view sub-DAGs (never a full rebuild).
+    merged = build_federation_graph_incremental(views, commands=commands, materialized_relations=mats)
     if focus is None:
         return merged.to_dict()
     try:
