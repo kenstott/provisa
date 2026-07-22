@@ -46,12 +46,22 @@ final class ScriptRunner {
         proc.standardOutput = pipe
         proc.standardError  = pipe
 
-        // Capture as a `let` constant so Swift 6 strict concurrency is satisfied.
+        // Persist the combined stdout/stderr to a log file so a failed install is
+        // diagnosable after the window closes (the in-memory state.log is otherwise lost).
+        let logURL = config.installDir
+            .appendingPathComponent(".logs")
+            .appendingPathComponent("first-launch.log")
+        let logHandle = Self.openLogFile(at: logURL)
+        state.logPath = logURL.path
+
+        // Capture as `let` constants so Swift 6 strict concurrency is satisfied.
         let capturedState = state
 
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            guard !data.isEmpty else { return }
+            logHandle?.write(data)
+            guard let text = String(data: data, encoding: .utf8) else { return }
             Task { @MainActor in
                 capturedState.appendLog(text)
                 capturedState.parseProgress(text)
@@ -59,8 +69,14 @@ final class ScriptRunner {
         }
 
         proc.terminationHandler = { p in
+            let ok = p.terminationStatus == 0
+            if let logHandle {
+                let footer = "\n[first-launch] exited with status \(p.terminationStatus)\n"
+                logHandle.write(Data(footer.utf8))
+                try? logHandle.close()
+            }
             Task { @MainActor in
-                capturedState.finish(success: p.terminationStatus == 0)
+                capturedState.finish(success: ok)
             }
         }
 
@@ -76,5 +92,14 @@ final class ScriptRunner {
 
     func cancel() {
         process?.terminate()
+    }
+
+    /// Create (truncating) the log file and return a write handle, or nil if the
+    /// directory can't be created — logging is best-effort and never blocks install.
+    private static func openLogFile(at url: URL) -> FileHandle? {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        fm.createFile(atPath: url.path, contents: nil)
+        return try? FileHandle(forWritingTo: url)
     }
 }

@@ -49,10 +49,18 @@ struct InstallProgressView: View {
 
             HStack {
                 if state.hasFailed {
-                    Label("Installation failed.",
-                          systemImage: "xmark.circle.fill")
-                        .foregroundStyle(.red)
-                        .font(.callout)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label("Installation failed.",
+                              systemImage: "xmark.circle.fill")
+                            .foregroundStyle(.red)
+                            .font(.callout)
+                        if let logPath = state.logPath {
+                            Text("Log: \(logPath)")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.5))
+                                .textSelection(.enabled)
+                        }
+                    }
                 }
                 Spacer()
                 if !state.isComplete {

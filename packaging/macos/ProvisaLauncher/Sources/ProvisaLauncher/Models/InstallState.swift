@@ -35,6 +35,7 @@ final class InstallState: ObservableObject {
     // chosen tier is known (the Docker tier adds the VM/image/build steps).
     @Published var steps: [InstallStep] = InstallState.stepIDs(needsDocker: false).map { InstallStep(id: $0) }
     @Published var log: String = ""
+    @Published var logPath: String?
     @Published var isComplete = false
     @Published var hasFailed = false
 
