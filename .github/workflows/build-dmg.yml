@@ -970,36 +970,26 @@ jobs:
           name: plugins-tarball
           path: release-assets/
 
-      # Idempotent, non-destructive create. Deleting+recreating the release (the
-      # previous behaviour) wiped assets that the parallel duckdb/pg/exports
-      # workflows had already attached. Here softprops below only updates.
-      - name: Ensure release exists
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists."
-            exit 0
-          fi
-          case "$TAG" in
-            *-alpha*|*-beta*|*-rc*) pre=--prerelease ;;
-            *) pre= ;;
-          esac
-          # Concurrent creators: the loser's 422 "already_exists" is tolerated
-          # ONLY when the release genuinely exists afterward; any other failure
-          # leaves no release and fails loudly.
-          gh release create "$TAG" --title "$TAG" --generate-notes --latest=false $pre \
-            || gh release view "$TAG" >/dev/null 2>&1
+      # Idempotently create the release as a DRAFT (shared with the parallel
+      # duckdb/pg/exports workflows). It stays a draft — unpublished, skipped by
+      # /dl — until the "Publish release" step below undrafts it. Because this job
+      # needs: every installer build, reaching that step means all installers
+      # exist, so a failed/partial run never publishes.
+      - name: Ensure draft release exists
+        uses: ./.github/actions/ensure-release
 
-      - name: Create GitHub Release
+      # Attach every installer to the DRAFT (draft: true keeps it unpublished).
+      # fail_on_unmatched_files: any missing installer fails the step here — the
+      # release is never undrafted, so a partial set can never be published.
+      - name: Attach installers to draft release
         uses: softprops/action-gh-release@v2
         with:
           name: "${{ github.ref_name }}"
+          draft: true
           prerelease: ${{ needs.metadata.outputs.is_prerelease != 'false' }}
           make_latest: "false"
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
             release-assets/${{ needs.metadata.outputs.dmg_name }}
             release-assets/${{ needs.metadata.outputs.dmg_runtime_name }}
@@ -1071,3 +1061,53 @@ jobs:
             Connection URL: `jdbc:provisa://localhost:8001`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Publish (the SOLE undraft) ──────────────────────────────────────────
+      # This is the only step in any workflow that publishes the release. It runs
+      # last, after every installer has been attached to the draft, and re-verifies
+      # the complete installer manifest is present on the release before undrafting.
+      # If anything is missing it fails WITHOUT publishing, so the release stays a
+      # draft (unpublished, skipped by /dl) — never a partial published release.
+      - name: Publish release (verify installers, then undraft)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          IS_PRERELEASE: ${{ needs.metadata.outputs.is_prerelease }}
+          DMG_NAME: ${{ needs.metadata.outputs.dmg_name }}
+          DMG_RUNTIME_NAME: ${{ needs.metadata.outputs.dmg_runtime_name }}
+          DMG_OBS_NAME: ${{ needs.metadata.outputs.dmg_obs_name }}
+          DMG_DEMO_NAME: ${{ needs.metadata.outputs.dmg_demo_name }}
+          LINUX_NAME: ${{ needs.metadata.outputs.linux_name }}
+          WINDOWS_NAME: ${{ needs.metadata.outputs.windows_name }}
+          WINDOWS_CONTAINER_NAME: ${{ needs.metadata.outputs.windows_container_name }}
+          JDBC_NAME: ${{ needs.metadata.outputs.jdbc_name }}
+        run: |
+          set -euo pipefail
+
+          # Every installer/download-link asset that MUST exist before we publish.
+          required=(
+            "$DMG_NAME" "$DMG_RUNTIME_NAME" "$DMG_OBS_NAME" "$DMG_DEMO_NAME"
+            "$LINUX_NAME" "$WINDOWS_NAME" "$WINDOWS_CONTAINER_NAME" "$JDBC_NAME"
+          )
+
+          # Assets actually attached to the release right now.
+          attached="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+
+          missing=()
+          for asset in "${required[@]}"; do
+            grep -Fxq "$asset" <<<"$attached" || missing+=("$asset")
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Refusing to publish $TAG — missing installer asset(s): ${missing[*]}"
+            echo "Release stays a DRAFT (unpublished). Fix the failed build and re-run." >&2
+            exit 1
+          fi
+
+          # Complete — publish. Alpha/beta/rc stay prereleases and never become 'latest'.
+          if [ "$IS_PRERELEASE" = "false" ]; then
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
+          else
+            gh release edit "$TAG" --draft=false --prerelease --latest=false
+          fi
+          echo "Published $TAG with all ${#required[@]} required installers."

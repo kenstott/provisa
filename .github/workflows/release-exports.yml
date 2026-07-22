@@ -40,26 +40,17 @@ jobs:
       - name: Ensure release exists
         uses: ./.github/actions/ensure-release
 
-      - name: Upload feature_matrix.csv
-        uses: softprops/action-gh-release@v2
-        with:
-          files: docs/exports/feature_matrix.csv
-          fail_on_unmatched_files: true
-          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          make_latest: "false"
-
-      - name: Upload traceability_matrix.csv
-        uses: softprops/action-gh-release@v2
-        with:
-          files: docs/exports/traceability_matrix.csv
-          fail_on_unmatched_files: true
-          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          make_latest: "false"
-
-      - name: Upload roadmap.md
-        uses: softprops/action-gh-release@v2
-        with:
-          files: docs/exports/roadmap.md
-          fail_on_unmatched_files: true
-          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          make_latest: "false"
+      # gh release upload only ADDS assets — it never flips draft/prerelease, so
+      # these secondary exports can never publish the draft ahead of the installer
+      # builds (softprops would default draft:false and publish it).
+      - name: Attach export assets to draft release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            docs/exports/feature_matrix.csv \
+            docs/exports/traceability_matrix.csv \
+            docs/exports/roadmap.md \
+            --clobber

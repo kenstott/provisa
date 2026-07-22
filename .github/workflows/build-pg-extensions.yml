@@ -97,13 +97,18 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: ./.github/actions/ensure-release
 
-      - name: Attach to release
+      # gh release upload only ADDS assets — never flips draft/prerelease.
+      - name: Attach to draft release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/provisa-pg-ext-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-            dist/provisa-pg-ext-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.sha256
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            "dist/provisa-pg-ext-${{ matrix.os }}-${{ matrix.arch }}.tar.gz" \
+            "dist/provisa-pg-ext-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.sha256" \
+            --clobber
 
   # ---- Windows: VIABLE (pgserver ships win_amd64), but a DIFFERENT toolchain — MSVC + .dll, no
   # PGXS/make. Core contrib + pg_duckdb build with MSVC + vcpkg (x64-windows triplet); sqlite_fdw/
@@ -180,8 +185,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: ./.github/actions/ensure-release
 
-      - name: Attach wheel to release
+      # gh release upload only ADDS assets — never flips draft/prerelease.
+      - name: Attach wheel to draft release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist-pg-ext/*
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" dist-pg-ext/* --clobber

@@ -1,14 +1,18 @@
 name: Ensure release exists
 description: >-
-  Idempotently create the GitHub release for the pushed tag so the several
-  tag-triggered workflows (and their parallel matrix jobs) never race on
-  creation. After this runs, every softprops/action-gh-release step only ever
-  performs an idempotent update, never a create POST that can return
-  "already_exists".
+  Idempotently create the GitHub release for the pushed tag as a DRAFT so the
+  several tag-triggered workflows (and their parallel matrix jobs) never race on
+  creation. After this runs, every attach step only ever performs an idempotent
+  asset upload, never a create POST that can return "already_exists".
+
+  The release stays a draft — invisible to the public and skipped by the /dl
+  redirector — until build-dmg.yml's publish-release job undrafts it, and only
+  after every installer build has succeeded. This is the guarantee that a failed
+  or partial run never publishes a release with a missing installer.
 runs:
   using: composite
   steps:
-    - name: Ensure release exists
+    - name: Ensure draft release exists
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
@@ -23,9 +27,11 @@ runs:
           *-alpha*|*-beta*|*-rc*) pre=--prerelease ;;
           *) pre= ;;
         esac
+        # Created as --draft: never published on creation. publish-release in
+        # build-dmg.yml undrafts it once every installer build has succeeded.
         # Concurrent creators: exactly one POST wins; the losers get 422
         # "already_exists". That is tolerated ONLY when the release genuinely
         # exists afterward (the `gh release view` below). Any other failure —
         # bad token, network, invalid tag — leaves no release and fails loudly.
-        gh release create "$TAG" --title "$TAG" --generate-notes --latest=false $pre \
+        gh release create "$TAG" --title "$TAG" --generate-notes --draft --latest=false $pre \
           || gh release view "$TAG" >/dev/null 2>&1

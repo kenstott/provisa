@@ -68,13 +68,18 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: ./.github/actions/ensure-release
 
-      - name: Attach to release
+      # gh release upload only ADDS assets — never flips draft/prerelease.
+      - name: Attach to draft release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/provisa-duckdb-ext-${{ matrix.label }}.tar.gz
-            dist/provisa-duckdb-ext-${{ matrix.label }}.tar.gz.sha256
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            "dist/provisa-duckdb-ext-${{ matrix.label }}.tar.gz" \
+            "dist/provisa-duckdb-ext-${{ matrix.label }}.tar.gz.sha256" \
+            --clobber
 
   # Collect every platform's mirrored blobs into ONE universal py3-none-any wheel (provisa-duckdb-ext)
   # and publish it to PyPI so `provisa[embedded]` gets the extensions through PyPI/Artifactory — never
@@ -120,8 +125,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: ./.github/actions/ensure-release
 
-      - name: Attach wheel to release
+      # gh release upload only ADDS assets — never flips draft/prerelease.
+      - name: Attach wheel to draft release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist-ext/*
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" dist-ext/* --clobber
