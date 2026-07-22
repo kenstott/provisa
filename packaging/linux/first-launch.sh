@@ -18,6 +18,10 @@ BUNDLED_SOCKET="${PROVISA_HOME}/run/docker.sock"
 BUNDLED_DATA="${PROVISA_HOME}/docker-data"
 BUNDLED_PID="${PROVISA_HOME}/run/dockerd.pid"
 
+# Release version baked into the AppDir (VERSION), used to pin the online native
+# pip install to the matching release (parity with macOS Resources/VERSION).
+PROVISA_VERSION="${PROVISA_VERSION:-$(cat "${APPDIR}/VERSION" 2>/dev/null || true)}"
+
 # Globals set during setup
 ROLE=""          # "primary" | "secondary"
 PRIMARY_IP=""    # set when ROLE=secondary
@@ -28,6 +32,7 @@ info()  { printf "${CYAN}[provisa]${NC} %s\n" "$*"; }
 ok()    { printf "${GREEN}[provisa]${NC} %s\n" "$*"; }
 warn()  { printf "${YELLOW}[provisa]${NC} %s\n" "$*"; }
 err()   { printf "${RED}[provisa]${NC} %s\n" "$*" >&2; }
+_lc()   { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 # Supports non-interactive invocation from Terraform / cloud-init:
@@ -292,7 +297,17 @@ UNIT
 # Non-interactive (Terraform / cloud-init exports the env) reads the wizard vars;
 # interactive prompts. Only the primary node carries these fields — secondaries
 # pull shared config from the primary DB at runtime.
-# Sets globals: DEPLOY_ENGINE ENGINE_URL MATERIALIZE_URL OBS_MODE OTLP_ENDPOINT INSTALL_DEMO
+# Sets globals: DEPLOY_ENGINE ENGINE_URL MATERIALIZE_URL OBS_MODE OTLP_ENDPOINT
+#               INSTALL_DEMO DEMO_MODE NEEDS_DOCKER
+# NEEDS_DOCKER is false (native tier) only for the self-contained DuckDB default:
+# engine=duckdb AND obs!=docker AND not (demo on docker); else the Docker tier.
+_compute_needs_docker() {
+  DEMO_MODE="${PROVISA_DEMO_MODE:-native}"
+  NEEDS_DOCKER=false
+  [ "$DEPLOY_ENGINE" != "duckdb" ] && NEEDS_DOCKER=true
+  [ "$OBS_MODE" = "docker" ] && NEEDS_DOCKER=true
+  { [ "$(_lc "$INSTALL_DEMO")" = "y" ] && [ "$DEMO_MODE" = "docker" ]; } && NEEDS_DOCKER=true
+}
 resolve_deployment() {
   if [ "$NON_INTERACTIVE" = true ]; then
     DEPLOY_ENGINE="${PROVISA_ENGINE:-duckdb}"
@@ -301,7 +316,8 @@ resolve_deployment() {
     OBS_MODE="${PROVISA_OBS_MODE:-none}"
     OTLP_ENDPOINT="${PROVISA_OTLP_ENDPOINT:-}"
     INSTALL_DEMO="${PROVISA_INSTALL_DEMO:-n}"
-    ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}"
+    _compute_needs_docker
+    ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}/${DEMO_MODE} docker=${NEEDS_DOCKER}"
     return
   fi
 
@@ -328,7 +344,75 @@ resolve_deployment() {
   printf "${CYAN}[provisa]${NC} To reconfigure with other options later, just run this setup again.\n"
   local dm; read -rp "$(printf "${CYAN}[provisa]${NC} Install the demo dataset with guided tour (y/N): ")" dm
   case "$dm" in [yY]|[yY][eE][sS]) INSTALL_DEMO="y" ;; *) INSTALL_DEMO="n" ;; esac
-  ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}"
+  _compute_needs_docker
+  ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}/${DEMO_MODE} docker=${NEEDS_DOCKER}"
+}
+
+# ── Network check (online vs airgapped) ──────────────────────────────────────
+_online() { curl -fsI --max-time 8 https://pypi.org/simple/ >/dev/null 2>&1; }
+
+# ── Locate a native-tier payload dir bundled inside the AppDir ────────────────
+# The bare interpreter (python-base/), wheelhouse (wheels/) and built UI
+# (ui-dist/) are staged into the AppDir at build time.
+_find_payload() {
+  local name="$1" test_glob="$2" cand="${APPDIR}/${name}"
+  if [ -d "$cand" ] && { [ -z "$test_glob" ] || ls "$cand"/$test_glob >/dev/null 2>&1; }; then
+    printf '%s' "$cand"; return 0
+  fi
+  return 1
+}
+
+# ── Native tier: build a Python venv from the bundled interpreter + wheelhouse ─
+# Online → pip install provisa[embedded] from PyPI (pinned to the release). Airgapped →
+# --no-index --find-links against the bundled wheelhouse (always staged in the AppDir).
+setup_native_venv() {
+  local venv="${PROVISA_HOME}/venv"
+  if [ -x "${venv}/bin/python3" ] && "${venv}/bin/python3" -c "import provisa" 2>/dev/null; then
+    return 0
+  fi
+
+  local base_src
+  base_src="$(_find_payload python-base bin/python3)" || {
+    err "Bundled Python interpreter not found in the AppImage — reinstall Provisa."
+    exit 1
+  }
+
+  # Stage the interpreter into ~/.provisa (no codesign/xattr — that's macOS-only).
+  local base="${PROVISA_HOME}/python-base"
+  if [ ! -x "${base}/bin/python3" ]; then
+    info "Staging Python interpreter..."
+    mkdir -p "$base"; cp -R "$base_src"/. "$base/"
+    chmod -R u+rwX "$base"
+    chmod +x "${base}/bin/"* 2>/dev/null || true
+  fi
+
+  info "Creating Python environment..."
+  "${base}/bin/python3" -m venv "$venv"
+  local pip="${venv}/bin/pip"
+  "$pip" install --quiet --upgrade pip 2>/dev/null || true
+
+  local pin=""
+  [ -n "$PROVISA_VERSION" ] && pin="==${PROVISA_VERSION#v}"
+  local wheels; wheels="$(_find_payload wheels '*.whl' || true)"
+
+  if _online; then
+    info "Installing Provisa from PyPI..."
+    "$pip" install --quiet "provisa[embedded]${pin}" uvicorn mcp-proxy
+  elif [ -n "$wheels" ]; then
+    info "Installing Provisa from bundled wheels (offline)..."
+    "$pip" install --quiet --no-index --find-links "$wheels" "provisa[embedded]" uvicorn mcp-proxy
+  else
+    err "No network and no bundled wheels found — reinstall Provisa."
+    exit 1
+  fi
+
+  # Place the built UI where ui_server resolves it (<site-packages>/static).
+  local ui_src; ui_src="$(_find_payload ui-dist '' || true)"
+  if [ -n "$ui_src" ]; then
+    local site; site="$("${venv}/bin/python3" -c 'import sysconfig;print(sysconfig.get_paths()["purelib"])')"
+    mkdir -p "${site}/static"; cp -R "$ui_src"/. "${site}/static/"
+  fi
+  ok "Native environment ready."
 }
 
 # ── Write config ───────────────────────────────────────────────────────────────
@@ -344,6 +428,17 @@ write_config() {
 
   local demo_flag
   case "${INSTALL_DEMO:-n}" in [yY]|[yY][eE][sS]) demo_flag=true ;; *) demo_flag=false ;; esac
+
+  # runtime: `native` (Python venv, no Docker) vs `bundled` (rootless dockerd).
+  # image_source: tarball on the Docker tier so the shared CLI adds the airgap
+  # overlay (docker-compose.airgap.yml) — belt-and-suspenders alongside runtime.
+  local runtime img_src_line=""
+  if [ "${NEEDS_DOCKER:-true}" = false ]; then
+    runtime="native"
+  else
+    runtime="bundled"
+    img_src_line="image_source: tarball"
+  fi
 
   if [ "$ROLE" = "primary" ]; then
     cat > "${PROVISA_HOME}/config.yaml" <<YAML
@@ -367,7 +462,8 @@ write_config() {
 role: primary
 hostname: ${hostname}
 api_port: ${api_port}
-runtime: bundled
+runtime: ${runtime}
+${img_src_line}
 docker_host: "unix://${BUNDLED_SOCKET}"
 project_dir: "${COMPOSE_DIR}"
 federation_workers: ${TRINO_WORKERS}
@@ -395,7 +491,8 @@ YAML
 role: secondary
 hostname: ${hostname}
 api_port: ${api_port}
-runtime: bundled
+runtime: ${runtime}
+${img_src_line}
 docker_host: "unix://${BUNDLED_SOCKET}"
 project_dir: "${COMPOSE_DIR}"
 federation_workers: ${TRINO_WORKERS}
@@ -483,6 +580,36 @@ NGINX
 main() {
   printf "\n${BOLD}Provisa — First Launch Setup${NC}\n"
   printf "═══════════════════════════════════════════\n\n"
+
+  mkdir -p "$PROVISA_HOME"
+  resolve_deployment   # sets DEPLOY_ENGINE OBS_MODE INSTALL_DEMO DEMO_MODE NEEDS_DOCKER
+
+  # ── Native tier (default): a Python venv, no Docker ──
+  # Single-node — no primary/secondary role prompt; the venv serves everything.
+  if [ "$NEEDS_DOCKER" = false ]; then
+    info "Setting up Provisa (native — no Docker)..."
+    ROLE=primary
+    setup_native_venv
+    write_config          # runtime=native
+    install_cli
+
+    if [ "$NON_INTERACTIVE" = true ]; then
+      install_systemd
+    fi
+
+    touch "$SENTINEL"
+    ok "First-launch setup complete (native — no Docker)."
+
+    if [ "$NON_INTERACTIVE" = true ]; then
+      ok "Node configured (native). systemd service installed — enable with: systemctl enable --now provisa"
+      return
+    fi
+    printf "\n${GREEN}${BOLD}Provisa is ready.${NC}\n"
+    printf "Run: ${BOLD}provisa start${NC}\n\n"
+    return
+  fi
+
+  # ── Docker tier: bundled rootless dockerd + airgap image tarballs ──
   info "Setting up Provisa (no internet required)..."
 
   start_docker
@@ -493,7 +620,6 @@ main() {
   fi
 
   ask_ram_budget
-  resolve_deployment
   load_images
   write_config
   install_cli
@@ -502,7 +628,6 @@ main() {
     install_systemd
   fi
 
-  mkdir -p "$PROVISA_HOME"
   touch "$SENTINEL"
   ok "First-launch setup complete."
 

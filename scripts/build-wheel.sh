@@ -44,7 +44,9 @@ cp "${REPO_ROOT}/demo/files/pet_store.sqlite" "${REPO_ROOT}/demo/files/inquiries
    "$CONFIG_DST/demo/files/"
 
 # ── 3. Build sdist + wheel ──────────────────────────────────────────────────
-echo "[build-wheel] python -m build"
-python -m build "$@"
+# PYTHON overridable so a caller can build with a specific interpreter (e.g. the
+# bundled python-build-standalone); defaults to `python` on PATH.
+echo "[build-wheel] ${PYTHON:-python} -m build"
+"${PYTHON:-python}" -m build "$@"
 
 echo "[build-wheel] Done. Artifacts in ${REPO_ROOT}/dist/"

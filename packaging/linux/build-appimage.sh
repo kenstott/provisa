@@ -17,10 +17,29 @@ DOCKER_VERSION="${DOCKER_VERSION:-27.5.1}"
 DOCKER_ARCH="x86_64"
 DOCKER_BASE_URL="https://download.docker.com/linux/static/stable/${DOCKER_ARCH}"
 
+# Native tier: bare python-build-standalone interpreter for Linux x86_64. Keep the
+# SAME pins as packaging/macos/build-dmg.sh (only the platform triple differs).
+PBS_RELEASE="${PBS_RELEASE:-20250612}"
+PBS_PYTHON="${PBS_PYTHON:-3.12.11}"
+NATIVE_PAYLOAD_DIR="${SCRIPT_DIR}/.native-payload-cache"
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 info() { printf "${CYAN}[build-appimage]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-appimage]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-appimage]${NC} %s\n" "$*" >&2; }
+
+curl_retry() {
+  local url="$1" out="$2"
+  for attempt in 1 2 3 4 5; do
+    if curl -fsSL --connect-timeout 30 --max-time 600 "$url" -o "$out"; then
+      return 0
+    fi
+    info "Download attempt $attempt failed for $(basename "$url"), retrying in 15s..."
+    sleep 15
+  done
+  err "Failed to download $url after 5 attempts"
+  exit 1
+}
 
 # ── Pre-build provisa image for linux/amd64 and save as tarball ───────────────
 # Source is never bundled into the AppImage — only the compiled image ships.
@@ -198,6 +217,10 @@ build_appdir() {
   chmod +x "${APPDIR}/AppRun"
   cp "${SCRIPT_DIR}/Provisa.desktop"        "${APPDIR}/Provisa.desktop"
 
+  # Bake the release version so first-launch.sh can pin the online native pip
+  # install to the matching release (parity with macOS Resources/VERSION).
+  printf '%s' "${VERSION:-dev}" > "${APPDIR}/VERSION"
+
   # Brand icon (graphite/emerald P mark).
   if [ -f "${SCRIPT_DIR}/Provisa.png" ]; then
     cp "${SCRIPT_DIR}/Provisa.png" "${APPDIR}/Provisa.png"
@@ -207,6 +230,87 @@ build_appdir() {
   fi
 
   ok "AppDir built at ${APPDIR}"
+}
+
+# ── Stage the native-tier payload into the AppDir (parity with macOS) ─────────
+# The native (no-Docker) tier builds its own Python venv at first launch from a
+# bundled bare interpreter + a Linux x86_64 wheelhouse. Three dirs are staged
+# inside the AppDir (no hidden DMG content on Linux — first-launch reads
+# ${APPDIR}/{python-base,wheels,ui-dist}):
+#   python-base/  bare python-build-standalone CPython (NOT pip-installed)
+#   wheels/       Linux x86_64 wheelhouse (provisa[embedded] + uvicorn + mcp-proxy + deps)
+#   ui-dist/      built provisa-ui/dist (ui_server resolves STATIC_DIR from it)
+# Downloads/builds are cached in NATIVE_PAYLOAD_DIR so re-runs skip network work,
+# then copied into the (freshly-wiped) AppDir. Must run AFTER build_appdir.
+bundle_native_payload() {
+  local base="${NATIVE_PAYLOAD_DIR}/python-base"
+  local wheels="${NATIVE_PAYLOAD_DIR}/wheels"
+  local ui="${NATIVE_PAYLOAD_DIR}/ui-dist"
+
+  # ── 1. Bare python-build-standalone interpreter (no provisa install) ──
+  if [ -x "${base}/bin/python3" ]; then
+    info "python-base already staged — skipping download."
+  else
+    rm -rf "$base"; mkdir -p "$(dirname "$base")"
+    local tarball="cpython-${PBS_PYTHON}+${PBS_RELEASE}-x86_64-unknown-linux-gnu-install_only.tar.gz"
+    local url="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${tarball}"
+    local tmp="${SCRIPT_DIR}/tmp-pbs"
+    rm -rf "$tmp"; mkdir -p "$tmp"
+    info "Downloading python-build-standalone ${PBS_PYTHON} (Linux x86_64)..."
+    curl_retry "$url" "${tmp}/${tarball}"
+    tar -xzf "${tmp}/${tarball}" -C "$tmp"        # extracts to ${tmp}/python/
+    if [ ! -x "${tmp}/python/bin/python3" ]; then
+      err "python-build-standalone extraction failed (no bin/python3)"
+      exit 1
+    fi
+    mv "${tmp}/python" "$base"
+    rm -rf "$tmp"
+    ok "python-base staged (bare interpreter, $(du -sh "$base" | cut -f1))."
+  fi
+
+  # ── 2. Linux x86_64 wheelhouse ──
+  info "Building the provisa wheel (Linux)..."
+  # Build with the bundled python-base (the runner's default python may lack `build`;
+  # the provisa wheel is pure-python so the interpreter version doesn't matter).
+  "${base}/bin/python3" -m pip install --quiet build
+  if [ -x "${REPO_ROOT}/scripts/build-wheel.sh" ]; then
+    PROVISA_SKIP_UI_BUILD=1 PYTHON="${base}/bin/python3" "${REPO_ROOT}/scripts/build-wheel.sh" --wheel
+  else
+    ( cd "$REPO_ROOT" && "${base}/bin/python3" -m build --wheel )
+  fi
+  local built_wheel
+  built_wheel="$(ls -t "${REPO_ROOT}/dist"/provisa-*.whl 2>/dev/null | head -1)"
+  if [ -z "$built_wheel" ] || [ ! -f "$built_wheel" ]; then
+    err "provisa wheel not found in ${REPO_ROOT}/dist after build."
+    exit 1
+  fi
+  rm -rf "$wheels"; mkdir -p "$wheels"
+  info "Downloading Linux x86_64 wheelhouse (provisa[embedded] + uvicorn + mcp-proxy + deps)..."
+  # mcp-proxy (REQ-1104): Node-free stdio<->Streamable-HTTP bridge for the Claude Desktop connector.
+  "${base}/bin/python3" -m pip download --dest "$wheels" "${built_wheel}[embedded]" uvicorn mcp-proxy
+  ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
+
+  # ── 3. Built UI (build provisa-ui/dist if not already present) ──
+  if [ ! -d "${REPO_ROOT}/provisa-ui/dist" ]; then
+    info "Building React UI..."
+    ( cd "${REPO_ROOT}/provisa-ui" && npm ci --silent && npm run build )
+  fi
+  if [ ! -d "${REPO_ROOT}/provisa-ui/dist" ]; then
+    err "provisa-ui/dist not found after build."
+    exit 1
+  fi
+  rm -rf "$ui"; mkdir -p "$ui"
+  cp -r "${REPO_ROOT}/provisa-ui/dist/." "$ui/"
+  ok "ui-dist staged."
+
+  # ── Copy the cached payload into the (freshly-built) AppDir ──
+  info "Copying native payload into AppDir..."
+  rm -rf "${APPDIR}/python-base" "${APPDIR}/wheels" "${APPDIR}/ui-dist"
+  cp -R "$base"   "${APPDIR}/python-base"
+  cp -R "$wheels" "${APPDIR}/wheels"
+  cp -R "$ui"     "${APPDIR}/ui-dist"
+  chmod -R u+rwX "${APPDIR}/python-base"
+  ok "Native payload bundled into AppDir."
 }
 
 # ── Create AppImage ────────────────────────────────────────────────────────────
@@ -235,6 +339,7 @@ main() {
   build_provisa_image
   save_images
   build_appdir
+  bundle_native_payload   # bare interpreter + Linux wheelhouse + ui-dist → AppDir (native tier)
   create_appimage
 
   printf "\n${GREEN}${BOLD}Build complete.${NC}\n"

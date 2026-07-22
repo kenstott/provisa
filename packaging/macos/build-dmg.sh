@@ -268,11 +268,14 @@ bundle_native_payload() {
 
   # ── 2. macOS arm64 wheelhouse ──
   info "Building the provisa wheel (macOS)..."
+  # Build with the bundled python-base (the runner's default python may lack `build`;
+  # the provisa wheel is pure-python so the interpreter version doesn't matter).
+  "${base}/bin/python3" -m pip install --quiet build
   # embed_compose already built provisa-ui/dist; reuse it (no re-run of vite).
   if [ -x "${REPO_ROOT}/scripts/build-wheel.sh" ]; then
-    PROVISA_SKIP_UI_BUILD=1 "${REPO_ROOT}/scripts/build-wheel.sh" --wheel
+    PROVISA_SKIP_UI_BUILD=1 PYTHON="${base}/bin/python3" "${REPO_ROOT}/scripts/build-wheel.sh" --wheel
   else
-    ( cd "$REPO_ROOT" && python3 -m build --wheel )
+    ( cd "$REPO_ROOT" && "${base}/bin/python3" -m build --wheel )
   fi
   local built_wheel
   built_wheel="$(ls -t "${REPO_ROOT}/dist"/provisa-*.whl 2>/dev/null | head -1)"
