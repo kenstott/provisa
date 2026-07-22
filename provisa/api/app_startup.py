@@ -70,9 +70,29 @@ async def _warmup_readiness(_log: logging.Logger) -> None:
             await state.federation_engine.execute_engine("SELECT 1")  # warm the engine terminal
     except Exception:
         _log.exception("readiness warmup probe failed; serving anyway")
-    finally:
-        state.is_warm = True
-        _log.warning("startup phase %-20s ready", "warmup")
+
+    # Prime the admin GraphQL landing queries the UI hits first (Tables, Relationships,
+    # Sources, Domains). Their resolvers open the control-plane pool and read per-table
+    # columns for every registered table — cold on the first request, which reads as
+    # "Loading tables…" hanging. Running them here (behind /ready) means the browser
+    # opens onto warm pages. context_value={} → anonymous identity (dev/demo allows all).
+    try:
+        from provisa.api.admin.schema import admin_schema
+
+        for _q in (
+            "{ tables { id } }",
+            "{ relationships { id } }",
+            "{ sources { id } }",
+            "{ domains { id } }",
+        ):
+            _res = await admin_schema.execute(_q, context_value={})
+            if _res.errors:
+                _log.warning("warmup admin query %s: %s", _q, _res.errors)
+    except Exception:
+        _log.exception("admin warmup queries failed; serving anyway")
+
+    state.is_warm = True
+    _log.warning("startup phase %-20s ready", "warmup")
 
 
 def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
