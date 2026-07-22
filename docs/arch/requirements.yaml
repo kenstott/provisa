@@ -33557,3 +33557,27 @@
   e2e: true
   e2e_reason: >-
     Verification requires end-to-end validation: configuring limits via admin API (REST/GraphQL), then executing queries through the data endpoint to confirm 413 rejection when limits are exceeded.
+- id: REQ-1175
+  status: complete
+  group: "9. Deployment & Release"
+  category: Release Integrity
+  priority: MUST
+  type: constraint
+  description: >-
+    A GitHub Release must never be published in a partial state (missing any installer/download-link asset). All four tag-triggered workflows (build-dmg, release-exports, build-pg-extensions, build-duckdb-extensions) create the release as a DRAFT via ensure-release; sibling workflows attach assets only with gh release upload --clobber (never flipping draft/prerelease). Only build-dmg's publish-release job undrafts the release after verifying the complete installer manifest (macOS core/runtime/obs/demo DMGs, Linux AppImage, Windows native + container installers, JDBC jar) is present via fail_on_unmatched_files; missing assets cause immediate failure leaving the release draft.
+  use_case: >-
+    Prevents /dl redirector from serving incomplete builds. In alpha.257/258, a partial release was published when build-dmg failed while sibling workflows succeeded, causing end users to download missing installers.
+  code:
+    - .github/workflows/build-dmg.yml
+    - .github/actions/ensure-release
+    - site/functions/dl/[platform].js
+  tests:
+    - tests/unit/test_release_integrity.py
+  since: "2026-07"
+  scenario: |
+    Given a tag is pushed triggering all four tag-triggered workflows
+    When any workflow completes before build-dmg's publish-release job
+    Then assets are uploaded to a DRAFT release (not visible to /dl)
+    And if build-dmg's manifest verification fails
+    Then the release remains DRAFT and is never published
+    And /dl redirector ignores the draft, serving an older complete build
