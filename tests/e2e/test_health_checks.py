@@ -101,9 +101,23 @@ class TestHealthEndpoint:
         assert resp.status_code == 200
 
     async def test_readiness_endpoint_returns_200(self, client):
-        """GET /ready must return HTTP 200 — endpoint not yet implemented."""
-        resp = await client.get("/ready")
-        assert resp.status_code == 200
+        """GET /ready returns 200 once the async boot warmup completes.
+
+        Readiness is primed by a BACKGROUND task (app_startup._warmup_readiness, started via
+        asyncio.create_task and not awaited by lifespan), so /ready is documented to return 503 while
+        warming and flip to 200 when state.is_warm is set. Poll it rather than racing the warmup.
+        """
+        import asyncio
+
+        resp = None
+        for _ in range(60):  # up to ~30s for the engine terminal + admin queries to warm
+            resp = await client.get("/ready")
+            if resp.status_code == 200:
+                break
+            await asyncio.sleep(0.5)
+        assert resp is not None and resp.status_code == 200, (
+            f"/ready never became ready: {resp.status_code if resp else 'no response'}"
+        )
 
     async def test_health_includes_database_status(self, client):
         """Health response should include dependency status fields.

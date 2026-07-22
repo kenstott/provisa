@@ -282,17 +282,21 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     _check_sql_capabilities(role, request.discovery_mode)
     from provisa.pgwire._pipeline import execute_sql_batch
 
-    # Translate the pipeline's governance outcomes to HTTP: a governance denial (RLS/masking/visibility/
-    # relationship guard) raises PermissionError → 403; a malformed/invalid statement raises ValueError
-    # → 400. Previously _compile_govern_execute raised HTTPException directly; the one pipeline raises
-    # typed errors, so the surface maps them (else they surface as 500).
+    # Request-boundary error handling (mirrors the pgwire handle_query handler): a governance denial
+    # (RLS/masking/visibility/relationship guard) raises PermissionError → 403; any OTHER error from an
+    # arbitrary user query — a source/engine rejection (UndefinedTable, syntax, type mismatch, ...) or a
+    # parse error — is a client error → 400 with the detail, exactly as pgwire converts it to a SQLSTATE
+    # error response. Converting a bad query to an error RESPONSE (not crashing the request) is the
+    # documented boundary contract, not silent error handling.
     try:
         result = await execute_sql_batch(
             request.sql, role_id, state, discovery_mode=request.discovery_mode, as_of=_as_of
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
-    except ValueError as exc:
+    except HTTPException:
+        raise
+    except Exception as exc:  # allow-ble: request boundary — an arbitrary user query can raise ANY engine/driver exception type
         raise HTTPException(status_code=400, detail=str(exc))
     return _finalize(result, source="engine", strategy="batch", physical_sql=request.sql)
 
