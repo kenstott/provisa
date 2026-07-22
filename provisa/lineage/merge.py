@@ -24,6 +24,10 @@ evaluation order, no stable value). The platform describes the distinction for o
 
 from __future__ import annotations
 
+import collections
+import copy
+import hashlib
+import json
 from dataclasses import dataclass, field
 
 from sqlglot.errors import SqlglotError
@@ -238,3 +242,97 @@ def build_federation_graph(
         mark_materialized(g, mats)
         graphs.append(g)
     return merge_graphs(graphs)
+
+
+# --------------------------------------------------------------------------- #
+# REQ-1161 incremental build.
+#
+# A federation graph is expensive because every view's SQL is parsed and traversed into a column-level
+# sub-DAG. Rebuilding all of that on every request does not scale. Incremental build memoizes each
+# view's PARSED sub-DAG by its SQL text, so a request recomputes ONLY the views whose definition changed
+# since the last build and unions the rest from cache — the entire graph is never re-derived from
+# scratch. When NOTHING changed (same view set + SQL + commands + materialized set), even the union is
+# skipped and the prior merged graph is returned. The cheap cross-view post-processing
+# (requalify/qualify/mark) depends on the full view set, so it runs on a COPY each build, leaving the
+# cached sub-DAG pristine.
+# --------------------------------------------------------------------------- #
+_SUBDAG_CACHE: collections.OrderedDict[tuple[str, str, str], LineageGraph | None] = (
+    collections.OrderedDict()
+)
+_SUBDAG_CACHE_MAX = 4096
+_LAST_FEDERATION: dict[str, object] = {}  # {"key": <fingerprint>, "result": MergedGraph}
+
+
+def _commands_fingerprint(commands: dict[str, dict] | None) -> str:
+    """Stable hash of the command contracts build_column_graph consumes — a contract change MUST
+    invalidate cached sub-DAGs (command taint-closure edges depend on the declared columns)."""
+    if not commands:
+        return ""
+    return hashlib.sha256(json.dumps(commands, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _cached_subdag(
+    sql: str, dialect: str, commands: dict[str, dict] | None, fp: str
+) -> LineageGraph | None:
+    """The pristine per-view column graph for ``sql`` — parsed once, then served from a bounded LRU
+    until its definition (or a command contract) changes. None if the SQL will not parse (cached too,
+    so a permanently-bad view is not re-parsed every request)."""
+    key = (sql, dialect, fp)
+    if key in _SUBDAG_CACHE:
+        _SUBDAG_CACHE.move_to_end(key)
+        return _SUBDAG_CACHE[key]
+    try:
+        g: LineageGraph | None = build_column_graph(sql, dialect=dialect, commands=commands or {})
+    except SqlglotError:
+        g = None
+    _SUBDAG_CACHE[key] = g
+    _SUBDAG_CACHE.move_to_end(key)
+    while len(_SUBDAG_CACHE) > _SUBDAG_CACHE_MAX:
+        _SUBDAG_CACHE.popitem(last=False)
+    return g
+
+
+def build_federation_graph_incremental(
+    views: list[tuple[str, str]],
+    *,
+    commands: dict[str, dict] | None = None,
+    materialized_relations: set[str] | None = None,
+    dialect: str = "postgres",
+) -> MergedGraph:
+    """REQ-1161 incremental federation build — identical RESULT to build_federation_graph, but each
+    view's parse/column-graph step is memoized by its SQL, so a request recomputes ONLY the changed
+    views and unions the rest from cache. If the entire input is unchanged since the last build, the
+    prior merged graph is returned without re-unioning (never rebuild the whole graph)."""
+    mats = materialized_relations or set()
+    fp = _commands_fingerprint(commands)
+    # Whole-input fingerprint: if identical to the last build, nothing changed — return the prior graph.
+    top_key = hashlib.sha256(
+        json.dumps(
+            {"views": sorted(views), "fp": fp, "mats": sorted(mats), "dialect": dialect},
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    if _LAST_FEDERATION.get("key") == top_key:
+        return _LAST_FEDERATION["result"]  # type: ignore[return-value]
+
+    bare_to_full = {relation.split(".")[-1]: relation for relation, _ in views}
+    graphs: list[LineageGraph] = []
+    for relation, sql in views:
+        base = _cached_subdag(sql, dialect, commands, fp)
+        if base is None:
+            continue
+        g = copy.deepcopy(base)  # never mutate the cached pristine sub-DAG
+        requalify_relations(g, bare_to_full)
+        qualify_outputs(g, relation)
+        mark_materialized(g, mats)
+        graphs.append(g)
+    result = merge_graphs(graphs)
+    _LAST_FEDERATION["key"] = top_key
+    _LAST_FEDERATION["result"] = result
+    return result
+
+
+def clear_federation_cache() -> None:
+    """Drop all cached sub-DAGs and the last-merged graph (test hook / explicit invalidation)."""
+    _SUBDAG_CACHE.clear()
+    _LAST_FEDERATION.clear()

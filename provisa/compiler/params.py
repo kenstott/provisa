@@ -53,6 +53,33 @@ _COMMENT_PREFIX = "-- provisa-params:"
 _PARAM_RE = _re.compile(r"\$(\d+)=(NULL|TRUE|FALSE|-?\d+(?:\.\d+)?|'(?:[^']|'')*')")
 
 
+def _token_char_spans(sql: str) -> list[tuple[int, int]] | None:
+    """Char spans covered by sqlglot tokens (string literals, identifiers, keywords, numbers, ...).
+
+    A SQL comment is NOT a token, so a genuine ``--`` / ``/* */`` comment start falls OUTSIDE every
+    span, while the SAME directive text sitting INSIDE a string literal falls INSIDE that STRING token's
+    span. This is what lets directive extraction be parse-aware and refuse a directive smuggled in a
+    literal (the parser-differential where governance/params were toggled by text the engine treats as
+    a string). Returns None if the SQL cannot be tokenized — the caller then FAILS SAFE (an
+    unconfirmable directive is not honored)."""
+    import sqlglot
+
+    try:
+        toks = sqlglot.tokenize(sql, read="postgres")
+    except Exception:
+        return None
+    return [(t.start, t.end) for t in toks]
+
+
+def _inside_a_token(pos: int, spans: list[tuple[int, int]] | None) -> bool:
+    """True if char offset ``pos`` lies within any token span (e.g. inside a string literal) — i.e. it
+    is NOT a genuine top-level comment. None spans (untokenizable SQL) → treat as inside, so a
+    governance/params directive we cannot confirm is a real comment is NOT honored (fail safe)."""
+    if spans is None:
+        return True
+    return any(s <= pos <= e for s, e in spans)
+
+
 def embed_params_comment(sql: str, params: list) -> str:
     """Prepend a provisa-params comment so the SQL is self-contained and executable."""
     if not params:
@@ -67,17 +94,23 @@ def extract_params_comment(sql: str) -> tuple[str, list]:  # REQ-603
     Searches all lines — the comment may be embedded inside a subquery wrapper
     added by the UI (e.g. SELECT * FROM (<comment>\n...) _sample LIMIT N).
     """
+    spans = _token_char_spans(sql)
     lines = sql.split("\n")
+    offset = 0
     for i, line in enumerate(lines):
         stripped = line.strip()
-        if not stripped.startswith(_COMMENT_PREFIX):
-            continue
-        matches = _PARAM_RE.findall(stripped)
-        remaining = "\n".join(lines[:i] + lines[i + 1 :])
-        if not matches:
-            return remaining, []
-        indexed = sorted((int(idx), _parse_sql_literal(val)) for idx, val in matches)
-        return remaining, [v for _, v in indexed]
+        if stripped.startswith(_COMMENT_PREFIX):
+            # Parse-aware: honor the directive ONLY when this ``--`` is a genuine comment, never when
+            # the line lives inside a (multi-line) string literal — else a literal could inject params.
+            prefix_pos = offset + (len(line) - len(line.lstrip()))
+            if not _inside_a_token(prefix_pos, spans):
+                matches = _PARAM_RE.findall(stripped)
+                remaining = "\n".join(lines[:i] + lines[i + 1 :])
+                if not matches:
+                    return remaining, []
+                indexed = sorted((int(idx), _parse_sql_literal(val)) for idx, val in matches)
+                return remaining, [v for _, v in indexed]
+        offset += len(line) + 1  # +1 for the '\n' consumed by split
     return sql, []
 
 
@@ -90,15 +123,24 @@ def extract_relationship_guard_comment(sql: str) -> tuple[str, bool]:  # REQ-603
     opted_out is True only when the comment is present. Both the role flag
     AND this comment must be present to bypass V002.
     """
-    lines = sql.split("\n")
-    filtered = []
+    spans = _token_char_spans(sql)
     opted_out = False
-    for line in lines:
-        if _RELATIONSHIP_GUARD_RE.search(line):
-            opted_out = True
-        else:
-            filtered.append(line)
-    return "\n".join(filtered), opted_out
+    out_parts: list[str] = []
+    last = 0
+    for m in _RELATIONSHIP_GUARD_RE.finditer(sql):
+        # Parse-aware: the same text inside a string literal is inert — only a real comment opts out
+        # (and only then does the role flag decide whether V002 is actually bypassed).
+        if _inside_a_token(m.start(), spans):
+            continue
+        opted_out = True
+        # A ``--`` comment runs to end of line; strip from the directive start to EOL, preserving any
+        # code BEFORE it on the same line (the old line-drop deleted that code too).
+        eol = sql.find("\n", m.start())
+        eol = len(sql) if eol == -1 else eol
+        out_parts.append(sql[last : m.start()])
+        last = eol
+    out_parts.append(sql[last:])
+    return "".join(out_parts), opted_out
 
 
 class ParamCollector:

@@ -24,6 +24,31 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import CompilationContext, TableMeta
 
+
+def split_sql_statements(sql: str) -> list[str]:
+    """Split a batch into statements on TOP-LEVEL semicolons ONLY, statement-aware.
+
+    Uses sqlglot's tokenizer so a ``;`` inside a string literal, quoted identifier, comment, or a
+    dollar-quoted block does NOT mis-split (a naive ``str.split(';')`` turns ``SELECT 'a;b'`` into two
+    malformed fragments). Original statement text is preserved (sliced between top-level semicolon
+    tokens, not re-rendered), so COPY/CTAS regex matching and governance see EXACTLY what executes —
+    closing the parser-differential where the batch was tokenized one way for governance and another
+    at execution. Blank fragments (a trailing ``;``) are dropped."""
+    tokens = sqlglot.tokenize(sql, read="postgres")
+    stmts: list[str] = []
+    start = 0
+    for tok in tokens:
+        if tok.token_type == sqlglot.TokenType.SEMICOLON:
+            seg = sql[start:tok.start].strip()
+            if seg:
+                stmts.append(seg)
+            start = tok.end + 1
+    tail = sql[start:].strip()
+    if tail:
+        stmts.append(tail)
+    return stmts
+
+
 # --- Type coercion for cross-source JOINs ---
 
 _NUMERIC_TYPES = {

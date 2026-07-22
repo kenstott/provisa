@@ -466,6 +466,9 @@ async def _execute_call_body(
         role_id,
         exec_params=resolved_params or None,
     )
+    from provisa.pgwire._pipeline import require_governed_plan
+
+    require_governed_plan(plan)  # REQ-1176: verify before this path executes plan SQL on the engine
     exec_sql = plan.exec_sql or ""
     physical_sql = plan.physical_sql or ""
 

@@ -101,24 +101,20 @@ class TestTableProfileEndpoint:
         assert resp.status_code == 404
 
 
-class TestCompileGovernExecute:
-    """The extracted core shared by /data/sql and the view-profile endpoint."""
+class TestGovernedPipeline:
+    """The ONE governed pipeline (_govern_and_route → _execute_plan) shared by /data/sql,
+    the view-profile endpoint, pgwire, MCP, Flight and airport."""
 
     async def test_compiles_and_routes_semantic_sql(self, client):
         from provisa.api.app import state
-        from provisa.api.data.endpoint_dev import _compile_govern_execute
+        from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
-        result, _sources, _default, _decision, _physical = await _compile_govern_execute(
-            "SELECT id, amount FROM orders", "admin", state
-        )
+        plan = await _govern_and_route("SELECT id, amount FROM orders", "admin")
+        result = await _execute_plan(plan, state)
         assert result.column_names == ["id", "amount"]
 
     async def test_unknown_role_rejected(self, client):
-        from fastapi import HTTPException
+        from provisa.pgwire._pipeline import _govern_and_route
 
-        from provisa.api.app import state
-        from provisa.api.data.endpoint_dev import _compile_govern_execute
-
-        with pytest.raises(HTTPException) as exc:
-            await _compile_govern_execute("SELECT 1", "no_such_role", state)
-        assert exc.value.status_code == 400
+        with pytest.raises(PermissionError):
+            await _govern_and_route("SELECT 1", "no_such_role")

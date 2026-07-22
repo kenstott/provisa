@@ -289,7 +289,10 @@ async def test_run_sql_routes_through_govern_and_route(state, monkeypatch):
 
     result = await tools.run_sql(state, "analyst", "SELECT * FROM sales.orders")
 
-    govern.assert_awaited_once_with("SELECT * FROM sales.orders", "analyst")
+    govern.assert_awaited_once_with(
+        "SELECT * FROM sales.orders", "analyst",
+        session_vars=None, discovery_mode=False, as_of=None,
+    )
     assert result["columns"] == ["id", "name"]
     assert result["rows"] == [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
     assert result["total_rows"] == 2
@@ -315,6 +318,39 @@ async def test_run_sql_invokes_registered_command(state, monkeypatch):
     govern.assert_not_awaited()  # the command hook short-circuits the table pipeline
     assert result["columns"] == ["id", "region"]
     assert result["rows"] == [{"id": 1, "region": "east"}]
+
+
+async def test_run_sql_composed_command_routes_to_pipeline(state, monkeypatch):
+    # REQ-1159: a command composed INLINE (joined) — not standalone — must NOT be
+    # short-circuited by the standalone hook; it routes through _govern_and_route, where
+    # the shared inline-localization pass (_localize_inline_commands) runs. The real hook
+    # returns None for a joined statement, so govern is awaited with the composed SQL.
+    import provisa.pgwire._pipeline as pipeline
+
+    plan = pipeline._Plan(
+        route=Route.ENGINE,
+        sql="SELECT 1",
+        source_id="pg",
+        dialect="trino",
+        physical_sql="SELECT 1",
+    )
+    govern = AsyncMock(return_value=plan)
+    monkeypatch.setattr(pipeline, "_govern_and_route", govern)
+    monkeypatch.setattr(
+        pipeline,
+        "_execute_plan",
+        AsyncMock(return_value=QueryResult(rows=[(1,)], column_names=["id"])),
+    )
+
+    composed = (
+        "SELECT o.id, e.score FROM orders o "
+        "JOIN enrich_orders('sales.orders') e ON o.id = e.id"
+    )
+    await tools.run_sql(state, "analyst", composed)
+
+    govern.assert_awaited_once_with(
+        composed, "analyst", session_vars=None, discovery_mode=False, as_of=None
+    )
 
 
 async def test_run_sql_applies_row_cap(state, monkeypatch):

@@ -659,7 +659,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
     # Stage 5: Execute
     from provisa.transpiler.router import Route as _Route
+    from provisa.pgwire._pipeline import require_governed_plan
 
+    require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
     exec_sql = plan.exec_sql or ""
     physical_sql = plan.physical_sql or ""
     if plan.route != _Route.ENGINE and plan.source_id:
@@ -832,6 +834,9 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             sql_str, _, _ = result
             semantic_sql = make_semantic_sql(sql_str, ctx)
             plan = await _govern_and_route_compiled(semantic_sql, role_id, exec_params=None)
+            from provisa.pgwire._pipeline import require_governed_plan
+
+            require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
             if plan.route != _Route.ENGINE and plan.source_id:
                 rows = await _dispatch_execution_direct(
                     plan.exec_sql or "", plan.source_id, [], state

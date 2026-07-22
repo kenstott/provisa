@@ -43,16 +43,18 @@ def governed_table_scan_arrow(
     """
     from provisa.compiler.sql_gen import ColumnRef
     from provisa.executor.formats.arrow import rows_to_arrow_table
-    from provisa.pgwire._pipeline import _govern_and_route
+    from provisa.pgwire._pipeline import govern_batch_final_plan, require_governed_plan
     from provisa.transpiler.router import Route
 
     # session_vars={} makes RLS current_setting() predicates deny-by-default (NULL)
     # rather than reaching an engine that lacks the function — the airport transport
-    # has no SET LOCAL channel (REQ-1120).
+    # has no SET LOCAL channel (REQ-1120). govern_batch_final_plan runs any leading statements of a
+    # multi-statement batch (governed) and returns the final statement's plan for Arrow rendering.
     plan = asyncio.run_coroutine_threadsafe(
-        _govern_and_route(sql, role_id, session_vars={}),
+        govern_batch_final_plan(sql, role_id, state, session_vars={}),
         main_loop,
     ).result()
+    require_governed_plan(plan)  # REQ-1176: this Arrow terminal must verify the stamp too, not just _execute_plan
 
     if plan.route == Route.ENGINE:
         assert plan.physical_sql is not None
@@ -148,10 +150,11 @@ def governed_mutation(
     ``total_changed`` metadata when the driver reports none.
     """
     from provisa.api.app import state as _app_state
-    from provisa.api.data.endpoint_dev import _compile_govern_execute
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
-    result, _sources, _default, _decision, _phys = asyncio.run_coroutine_threadsafe(
-        _compile_govern_execute(sql, role_id, _app_state),
-        main_loop,
-    ).result()
+    async def _run():
+        _plan = await _govern_and_route(sql, role_id)
+        return await _execute_plan(_plan, _app_state)
+
+    result = asyncio.run_coroutine_threadsafe(_run(), main_loop).result()
     return len(result.rows)

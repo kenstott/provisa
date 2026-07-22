@@ -215,6 +215,7 @@ CREATE TABLE IF NOT EXISTS roles (
     id              TEXT PRIMARY KEY,
     capabilities    JSONB NOT NULL DEFAULT '[]',
     domain_access   JSONB NOT NULL DEFAULT '[]',
+    rate_limit      JSONB,  -- REQ-1174: per-role rate + burst; mirrors schema_org.roles.rate_limit
     parent_role_id  TEXT REFERENCES roles(id)
 );
 
@@ -556,6 +557,13 @@ END $$;
 -- Add org_id to roles (nullable = system role: admin, superadmin)
 DO $$ BEGIN
     ALTER TABLE roles ADD COLUMN IF NOT EXISTS org_id TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- Add rate_limit to roles (REQ-1174) — pre-1174 control planes lack it, so the role
+-- repository's rate_limit upsert fails against an existing Postgres roles table.
+DO $$ BEGIN
+    ALTER TABLE roles ADD COLUMN IF NOT EXISTS rate_limit JSONB;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

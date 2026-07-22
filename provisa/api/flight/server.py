@@ -441,7 +441,7 @@ class ProvisaFlightServer(
             CypherTranslateError,
             cypher_to_sql,
         )
-        from provisa.pgwire._pipeline import _govern_and_route_compiled
+        from provisa.pgwire._pipeline import _govern_and_route_compiled, require_governed_plan
 
         query_text = str(request.get("query", ""))
         # role drives governance/RLS routing; defaulting to admin would bypass authz.
@@ -508,6 +508,7 @@ class ProvisaFlightServer(
             raise flight.FlightServerError(
                 f"Route {plan.route!r} is not supported for Cypher via Flight"
             )  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
 
         def _run() -> list[dict[str, object]]:
             # On a worker thread — go through the sync engine terminal, not a raw cursor.
@@ -575,7 +576,7 @@ class ProvisaFlightServer(
     ):  # REQ-267, REQ-266  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute SQL through the shared governance pipeline and return Arrow record batches."""
         from provisa.compiler.sql_gen import ColumnRef
-        from provisa.pgwire._pipeline import _govern_and_route
+        from provisa.pgwire._pipeline import govern_batch_final_plan, require_governed_plan
         from provisa.pgwire.function_call import maybe_invoke_registered_function
 
         sql = str(request.get("query", ""))
@@ -597,7 +598,7 @@ class ProvisaFlightServer(
 
         try:
             plan = asyncio.run_coroutine_threadsafe(
-                _govern_and_route(sql, role_id),
+                govern_batch_final_plan(sql, role_id, self._state),
                 self._main_loop,
             ).result()
         except PermissionError as exc:
@@ -605,6 +606,7 @@ class ProvisaFlightServer(
         except ValueError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+        require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
         if plan.route == Route.ENGINE:
             assert plan.physical_sql is not None
             # Arrow Flight is an advertised, engine-specific transport (REQ-825).
@@ -638,7 +640,7 @@ class ProvisaFlightServer(
         self, request: dict[str, object]
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a GraphQL query ticket and return Arrow record batches."""
-        from provisa.pgwire._pipeline import _govern_and_route_compiled
+        from provisa.pgwire._pipeline import _govern_and_route_compiled, require_governed_plan
 
         role_id = str(request.get("role", ""))
         ticket_bytes = json.dumps(request).encode("utf-8")
@@ -654,6 +656,7 @@ class ProvisaFlightServer(
         except ValueError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+        require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
         if plan.route == Route.DIRECT:
             result = asyncio.run_coroutine_threadsafe(
                 self._state.federation_engine.execute_native(
