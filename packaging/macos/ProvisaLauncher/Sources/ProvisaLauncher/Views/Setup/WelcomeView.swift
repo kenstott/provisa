@@ -19,7 +19,7 @@ struct WelcomeView: View {
                     .font(.system(size: 44, weight: .bold, design: .default))
                     .foregroundStyle(.white)
 
-                Text("Data Virtualization Platform")
+                Text("Active Semantic Layer")
                     .font(.title3)
                     .foregroundStyle(.white.opacity(0.7))
             }
