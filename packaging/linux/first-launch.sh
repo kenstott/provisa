@@ -587,6 +587,14 @@ main() {
   # ── Native tier (default): a Python venv, no Docker ──
   # Single-node — no primary/secondary role prompt; the venv serves everything.
   if [ "$NEEDS_DOCKER" = false ]; then
+    # The native tier is single-node. A multi-node deploy (Terraform passes
+    # --role secondary) only makes sense on the Trino/Docker tier, so fail loud
+    # rather than silently degrading a secondary into a standalone primary.
+    if [ "$CLI_ROLE" = "secondary" ]; then
+      err "engine=${DEPLOY_ENGINE} runs the single-node native tier, which has no secondary role."
+      err "For a multi-node cluster set PROVISA_ENGINE=trino (the Docker tier)."
+      exit 1
+    fi
     info "Setting up Provisa (native — no Docker)..."
     ROLE=primary
     setup_native_venv

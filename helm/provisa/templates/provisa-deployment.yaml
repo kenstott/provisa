@@ -102,8 +102,11 @@ spec:
             - name: PLATFORM_DATABASE_URL
               value: "postgresql+asyncpg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE)"
             # Deployment engine (parity with the desktop wizard, REQ-972..979).
+            # The user-facing "external" maps to the app's engine key "sqlalchemy"
+            # (the value the installers write); the engine registry has no "external"
+            # key and rejects it, so translate here.
             - name: PROVISA_ENGINE
-              value: "{{ .Values.deployment.engine }}"
+              value: "{{ if eq .Values.deployment.engine "external" }}sqlalchemy{{ else }}{{ .Values.deployment.engine }}{{ end }}"
             {{- if eq .Values.deployment.engine "external" }}
             - name: PROVISA_ENGINE_URL
               value: "{{ required "deployment.engineUrl is required when deployment.engine=external" .Values.deployment.engineUrl }}"
