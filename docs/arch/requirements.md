@@ -11589,3 +11589,31 @@ Webhooks (tracked_webhooks from the remote schema registry) are now governed, di
 **Code:** `provisa/api/data/action_exec.py`, `provisa/pgwire/function_call.py`, `provisa/bolt/session.py`, `provisa/api/rest/generator.py`, `provisa/api/rest/openapi_spec.py`, `provisa/grpc/proto_gen.py`, `provisa/grpc/server.py`
 
 **Tests:** `tests/unit/test_webhook_all_surfaces.py`
+
+## 1. Access Governance & Security
+
+### REQ-1174 · Query Complexity Limits {#REQ-1174}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+Per-role query complexity limits (max_query_depth, max_query_nodes, max_query_time_ms) complement per-role request-rate limits ([REQ-369](#REQ-369)). Enforced at the GraphQL→IR compile boundary; over-limit requests return HTTP 413. Limits persist on the roles table and are configurable via admin API.
+
+**Use case:** Query complexity limits prevent resource exhaustion from complex or malicious queries, complementing request-rate limiting. Provides Hasura api_limits parity.
+
+**Code:** `provisa/compiler/limits.py`, `provisa/api/models/role.py`, `provisa/admin/admin_api.py`
+
+**Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `provisa-ui/e2e/security-query-limits.spec.ts`
+
+## 9. Deployment & Release
+
+### REQ-1175 · Release Integrity {#REQ-1175}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+A GitHub Release must never be published in a partial state (missing any installer/download-link asset). All four tag-triggered workflows (build-dmg, release-exports, build-pg-extensions, build-duckdb-extensions) create the release as a DRAFT via ensure-release; sibling workflows attach assets only with gh release upload --clobber (never flipping draft/prerelease). Only build-dmg's publish-release job undrafts the release after verifying the complete installer manifest (macOS core/runtime/obs/demo DMGs, Linux AppImage, Windows native + container installers, JDBC jar) is present via fail_on_unmatched_files; missing assets cause immediate failure leaving the release draft.
+
+**Use case:** Prevents /dl redirector from serving incomplete builds. In alpha.257/258, a partial release was published when build-dmg failed while sibling workflows succeeded, causing end users to download missing installers.
+
+**Code:** `.github/workflows/build-dmg.yml`, `.github/actions/ensure-release`, `site/functions/dl/[platform].js`
+
+**Tests:** `tests/unit/test_release_integrity.py`
