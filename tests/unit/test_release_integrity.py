@@ -138,10 +138,11 @@ def test_release_manifest_includes_all_installer_types():
     files_str = attach_step.get("with", {}).get("files", "")
     assert isinstance(files_str, str)
 
-    # The files section should reference all expected installer types via metadata outputs
+    # The files section should reference all expected installer types via metadata outputs. The
+    # Runtime DMG (dmg_runtime_name) was removed from the installer set (native venv tier replaced it),
+    # so it is intentionally absent from both the workflow outputs and this list.
     expected_patterns = [
         "dmg_name",
-        "dmg_runtime_name",
         "dmg_obs_name",
         "dmg_demo_name",
         "linux_name",
