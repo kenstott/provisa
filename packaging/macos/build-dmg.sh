@@ -137,8 +137,11 @@ save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
   count=$(ls "${IMAGES_DIR}"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
-  # Core: 5 registry images + zaychik + provisa + provisa-ui = 8 tarballs expected.
-  if [ "$count" -ge 8 ]; then
+  # In CI the tarballs are pre-populated from the ubuntu image-pull job and the macOS
+  # runner has no Docker, so skip when the core set is already present. The app-image
+  # tarballs (provisa/provisa-ui) are added by the same ubuntu job for airgapped Docker;
+  # they are only built here on a local build host that has Docker.
+  if [ "$count" -ge 6 ]; then
     info "Images pre-populated (${count} tarballs) — skipping docker pull."
     return
   fi
