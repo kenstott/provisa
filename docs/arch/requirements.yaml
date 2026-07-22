@@ -33759,11 +33759,25 @@
   description: >-
     Operators may declare custom source connectors (proprietary FDWs or ATTACH extensions) in config
     without code changes. A declarative descriptor per source_type specifies (a) required extension(s)
-    to load (FDW name for Postgres, DuckDB extension name for DuckDB), (b) attach/import template
-    (CREATE SERVER + IMPORT FOREIGN SCHEMA for Postgres; INSTALL/LOAD + ATTACH for DuckDB), and
-    (c) source_type mapping. Availability is verified at attach time against each engine's standard
-    extension catalog (pg_available_extensions for Postgres, duckdb_extensions() for DuckDB),
-    failing loud (never silent) when the declared extension is not installable.
+    to load, (b) the attach/import template, and (c) source_type mapping. Availability is verified at
+    attach time against each engine's standard extension catalog (pg_available_extensions for Postgres,
+    duckdb_extensions() for DuckDB), failing loud (never silent) when the declared extension is not
+    installable. The two native engines scope this differently because their extension APIs differ.
+    POSTGRES is a GENERIC descriptor: PG FDW is SQL/MED (an ISO standard), so every FDW uses the same
+    DDL shape — CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…) + CREATE USER MAPPING + IMPORT
+    FOREIGN SCHEMA (or an explicit CREATE FOREIGN TABLE when the FDW lacks IMPORT, e.g. file_fdw). The
+    descriptor supplies only the per-FDW variance: extension name, SERVER option keys (host vs
+    servername vs dbserver), the USER MAPPING key (user vs username), and a supports_import flag. So an
+    arbitrary standard-conforming FDW is drivable from config. DUCKDB is a CURATED UNION, not arbitrary:
+    DuckDB has no single standard, so we support only extensions that fit one of the TWO mechanisms our
+    engine already drives — (1) ATTACH-TYPE for database extensions (ATTACH '<dsn>' AS x (TYPE <t>),
+    generalized today by _DuckDBExtensionConnector / REQ-899: INSTALL <ext> [FROM community] + LOAD +
+    ATTACH), and (2) SCAN table-function for file/lake extensions (CREATE VIEW … AS SELECT * FROM
+    read_parquet(…) / read_csv_auto(…) / iceberg_scan(…) / delta_scan(…)). The popular methods
+    (postgres/sqlite/mssql/mongo/mysql; csv/parquet/iceberg/delta) are covered OOTB; the config admits a
+    new DuckDB source_type only when it declares one of these two mechanisms (mechanism + TYPE-name or
+    scan-function + connection/scan template). An extension exposing neither is not drivable and is
+    unsupported by design — no bespoke per-extension code path.
   use_case: >-
     BYO PG-federated or DuckDB-federated deployments with custom/proprietary extensions can extend
     reachability to new source types purely via config, without code changes or rebuilds. Extends
