@@ -1,21 +1,23 @@
 import Foundation
 
 enum InstallStepID: String, CaseIterable, Identifiable {
-    case staging  = "Staging files"
-    case vmStart  = "Starting virtual machine"
-    case images   = "Loading images"
-    case build    = "Building Provisa"
-    case finalize = "Finalizing"
+    case staging    = "Staging files"
+    case dockerStart = "Starting Docker engine"
+    case images     = "Loading images"
+    case build      = "Building Provisa"
+    case extensions = "Installing components"
+    case finalize   = "Finalizing"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .staging:  return "doc.on.doc"
-        case .vmStart:  return "server.rack"
-        case .images:   return "shippingbox"
-        case .build:    return "hammer"
-        case .finalize: return "checkmark.seal"
+        case .staging:     return "doc.on.doc"
+        case .dockerStart: return "shippingbox"
+        case .images:      return "square.stack.3d.up"
+        case .build:       return "hammer"
+        case .extensions:  return "puzzlepiece.extension"
+        case .finalize:    return "checkmark.seal"
         }
     }
 }
@@ -29,17 +31,25 @@ struct InstallStep: Identifiable {
 
 @MainActor
 final class InstallState: ObservableObject {
-    @Published var steps: [InstallStep] = InstallStepID.allCases.map { InstallStep(id: $0) }
+    // Default to the native step set; configure(needsDocker:) resets it once the
+    // chosen tier is known (the Docker tier adds the VM/image/build steps).
+    @Published var steps: [InstallStep] = InstallState.stepIDs(needsDocker: false).map { InstallStep(id: $0) }
     @Published var log: String = ""
     @Published var isComplete = false
     @Published var hasFailed = false
 
-    func markRunning(_ id: InstallStepID) {
-        update(id, status: .running)
+    /// The progress steps for a tier. Native (embedded, no Docker) has no VM, image
+    /// import, or image build — it only stages the bundled runtime, installs
+    /// components, and finalizes. The Docker tier adds those middle steps.
+    static func stepIDs(needsDocker: Bool) -> [InstallStepID] {
+        needsDocker
+            ? [.staging, .dockerStart, .images, .build, .extensions, .finalize]
+            : [.staging, .extensions, .finalize]
     }
 
-    func markDone(_ id: InstallStepID) {
-        update(id, status: .done)
+    /// Reset the step list for the chosen tier before an install begins.
+    func configure(needsDocker: Bool) {
+        steps = InstallState.stepIDs(needsDocker: needsDocker).map { InstallStep(id: $0) }
     }
 
     func appendLog(_ text: String) {
@@ -54,23 +64,26 @@ final class InstallState: ObservableObject {
         }
     }
 
-    private func update(_ id: InstallStepID, status: StepStatus) {
-        if let i = steps.firstIndex(where: { $0.id == id }) {
-            steps[i].status = status
-        }
+    /// Mark `id` running and every earlier step in the current tier's list done.
+    /// No-op if `id` isn't part of this tier (e.g. a vm_start marker on native).
+    private func advance(to id: InstallStepID) {
+        guard let idx = steps.firstIndex(where: { $0.id == id }) else { return }
+        for i in 0..<idx where steps[i].status != .done { steps[i].status = .done }
+        steps[idx].status = .running
     }
 
     // Called from background thread — route via Task
     nonisolated func parseProgress(_ text: String) {
         for line in text.components(separatedBy: "\n") {
-            let action: @Sendable () async -> Void
-            if      line.contains("PROGRESS:staging")  { action = { await self.markRunning(.staging) } }
-            else if line.contains("PROGRESS:vm_start") { action = { await self.markDone(.staging);  await self.markRunning(.vmStart) } }
-            else if line.contains("PROGRESS:images")   { action = { await self.markDone(.vmStart);  await self.markRunning(.images) } }
-            else if line.contains("PROGRESS:build")    { action = { await self.markDone(.images);   await self.markRunning(.build) } }
-            else if line.contains("PROGRESS:finalize") { action = { await self.markDone(.build);    await self.markRunning(.finalize) } }
+            let step: InstallStepID
+            if      line.contains("PROGRESS:staging")    { step = .staging }
+            else if line.contains("PROGRESS:vm_start")   { step = .dockerStart }
+            else if line.contains("PROGRESS:images")     { step = .images }
+            else if line.contains("PROGRESS:build")      { step = .build }
+            else if line.contains("PROGRESS:extensions") { step = .extensions }
+            else if line.contains("PROGRESS:finalize")   { step = .finalize }
             else { continue }
-            Task { @MainActor in await action() }
+            Task { @MainActor in self.advance(to: step) }
         }
     }
 }

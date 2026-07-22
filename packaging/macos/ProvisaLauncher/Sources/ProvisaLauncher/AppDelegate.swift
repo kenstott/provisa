@@ -44,6 +44,10 @@ import SwiftUI
             defer: false
         )
         window.center()
+        // Force dark aqua so native controls (radio labels, checkboxes) render in
+        // light text against the wizard's dark gradient — otherwise a Light-mode host
+        // draws them black and illegible.
+        window.appearance = NSAppearance(named: .darkAqua)
         window.contentViewController = NSHostingController(rootView: view)
         window.title = "Provisa Setup"
         window.isReleasedWhenClosed = false

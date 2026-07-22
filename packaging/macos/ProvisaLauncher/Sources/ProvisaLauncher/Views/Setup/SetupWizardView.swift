@@ -25,9 +25,11 @@ struct SetupWizardView: View {
                 case 0:
                     WelcomeView(onNext: { step = 1 })
                 case 1:
+                    // Demo selected → express path: accept defaults and install now.
+                    // "Choose your options" → continue into the deployment wizard.
                     DemoView(config: config,
                              onBack: { step = 0 },
-                             onNext: { step = 2 })
+                             onNext: { if config.installDemo { beginInstall() } else { step = 2 } })
                 case 2:
                     DeploymentView(config: config,
                                    onBack: { step = 1 },
@@ -93,6 +95,8 @@ struct SetupWizardView: View {
     private func beginInstall() {
         step = 6
         Task { @MainActor in
+            // Show the step list for the chosen tier (native has no VM/image/build steps).
+            installState.configure(needsDocker: config.needsDocker)
             runner.run(config: config, state: installState)
         }
     }

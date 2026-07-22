@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Demo step (REQ-972..979): a single upfront question — install the demo dataset and
-/// guided tour, or start with an empty install. Asked before Deployment so the demo
-/// decision is a clean yes/no, not a checkbox buried among engine/observability options.
+/// Demo step (REQ-972..979): a single upfront question. "Install the demo dataset"
+/// is the express path — accept all defaults and start installing immediately.
+/// "Choose your options" routes into the deployment wizard for a custom setup.
 struct DemoView: View {
     @ObservedObject var config: SetupConfig
     let onBack: () -> Void
@@ -18,7 +18,7 @@ struct DemoView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Picker("", selection: $config.installDemo) {
                     Text("Install the demo dataset and open the guided tour").tag(true)
-                    Text("Start with an empty install").tag(false)
+                    Text("Choose your options").tag(false)
                 }
                 .pickerStyle(.radioGroup)
                 .labelsHidden()
