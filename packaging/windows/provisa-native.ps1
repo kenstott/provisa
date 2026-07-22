@@ -128,11 +128,18 @@ function Start-DemoServers {
   # guided tour queries these sources) against the live endpoints; starting them fire-and-forget
   # raced the API load and left the demo empty. Mirrors demo/run-demo-servers.sh, which curls both
   # before proceeding.
-  $petReady = Wait-HttpReady "http://localhost:$PetPort/api/v3/pet/findByStatus?status=available" 30
-  $gqlReady = Wait-HttpReady "http://localhost:$GqlPort/graphql?query=%7B__typename%7D" 30
-  if (-not $petReady) { Write-Err "Demo petstore server did not become ready on port $PetPort." }
-  if (-not $gqlReady) { Write-Err "Demo graphql server did not become ready on port $GqlPort." }
-  Write-Info "Demo mock servers started (petstore :$PetPort, graphql :$GqlPort)."
+  #
+  # Poll BOTH in one shared window (Wait-HttpReadyAll) rather than 30s + 30s sequentially: on a cold
+  # first launch off a freshly-staged runtime (Defender scanning every .pyd), the first server's own
+  # cold import can eat most of a tight 30s window, so the second falsely "timed out" though it had
+  # bound. One 90s concurrent window both fits the cold start and stops the false-failure errors.
+  $petUrl = "http://localhost:$PetPort/api/v3/pet/findByStatus?status=available"
+  $gqlUrl = "http://localhost:$GqlPort/graphql?query=%7B__typename%7D"
+  $notReady = Wait-HttpReadyAll @($petUrl, $gqlUrl) 90
+  if ($notReady -contains $petUrl) { Write-Err "Demo petstore server did not become ready on port $PetPort within 90s." }
+  if ($notReady -contains $gqlUrl) { Write-Err "Demo graphql server did not become ready on port $GqlPort within 90s." }
+  if ($notReady.Count -eq 0) { Write-Info "Demo mock servers ready (petstore :$PetPort, graphql :$GqlPort)." }
+  else { Write-Info "Demo mock servers started (petstore :$PetPort, graphql :$GqlPort)." }
 }
 
 function Stop-DemoServers {
@@ -226,6 +233,24 @@ function Wait-HttpReady {
     }
   }
   return $false
+}
+
+# Wait until ALL given URLs answer (any HTTP status = the server has bound) within one shared window,
+# polling every cycle. Returns the URLs still unanswered (empty array = all ready). Concurrent by
+# construction: N cold servers warm inside the SAME timeout instead of stacking per-server waits.
+function Wait-HttpReadyAll {
+  param([string[]]$Urls, [int]$TimeoutSec = 90)
+  $deadline = (Get-Date).AddSeconds($TimeoutSec)
+  $pending = [System.Collections.Generic.List[string]]::new()
+  $Urls | ForEach-Object { $pending.Add($_) }
+  while (((Get-Date) -lt $deadline) -and ($pending.Count -gt 0)) {
+    foreach ($u in @($pending)) {
+      try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 $u | Out-Null; [void]$pending.Remove($u) }
+      catch { if ($_.Exception.Response) { [void]$pending.Remove($u) } }
+    }
+    if ($pending.Count -gt 0) { Start-Sleep -Milliseconds 500 }
+  }
+  return ,($pending.ToArray())
 }
 
 function Open-Native {

@@ -114,8 +114,8 @@ function Invoke-Warmup {
 # The tail of the API error log, for the failure panel when the worker died without a clean ERROR
 # breadcrumb (e.g. an unexpected crash rather than the guarded staging failure).
 function Get-ErrorDetail {
-  param([int]$MaxLines = 12)
-  $f = Join-Path $LogDir 'native-api.err.log'
+  param([string]$LogName = 'native-api.err.log', [int]$MaxLines = 12)
+  $f = Join-Path $LogDir $LogName
   if (-not (Test-Path $f)) { return '' }
   try { (Get-Content -Path $f -Tail $MaxLines -ErrorAction Stop) -join "`r`n" } catch { return '' }
 }
@@ -191,8 +191,18 @@ $btnOpen.Location = New-Object System.Drawing.Point(240, 180)
 $btnOpen.Size = New-Object System.Drawing.Size(100, 28)
 $btnOpen.Visible = $false
 $btnOpen.Add_Click({
-  Start-Process (Resolve-OpenUrl -UiPort $UiPort -Demo $Demo)
-  $form.Close()
+  # Never open blind: if nothing is listening on the UI port yet, the browser would just show a
+  # connection error ("no server"), which is exactly the dead-end this button used to cause. Only
+  # open when the port is actually up; otherwise tell the user it is still starting.
+  if (Test-PortOpen $UiPort) {
+    Start-Process (Resolve-OpenUrl -UiPort $UiPort -Demo $Demo)
+    $form.Close()
+  } else {
+    [System.Windows.Forms.MessageBox]::Show(
+      "Provisa isn't serving on port $UiPort yet, so the browser would show nothing. It's still starting - keep waiting. If this persists, check %USERPROFILE%\.provisa\.logs.",
+      'Still starting', [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+  }
 })
 $form.Controls.Add($btnOpen)
 
@@ -262,6 +272,22 @@ $timer.Add_Tick({
     $header.ForeColor = [System.Drawing.Color]::Firebrick
     $detail = Get-ErrorDetail
     $status.Text = if ($detail) { "The engine exited during startup:`r`n$detail" } else { 'The engine exited during startup. See %USERPROFILE%\.provisa\.logs.' }
+    $btnClose.Visible = $true
+    return
+  }
+
+  # UI server died: the API bound its port (we got past START) but the UI port never came up. Without
+  # this the dead UI is invisible and the app never opens — the readiness gate needs BOTH ports, but
+  # the exit check above only watches the API. A UI uvicorn binds in a second or two, so a port still
+  # closed at 30s means it crashed (typically the UI port already in use). Surface its log tail.
+  if ($worker.HasExited -and (Test-PortOpen $ApiPort) -and $script:Elapsed -gt 30 -and -not (Test-PortOpen $UiPort)) {
+    $script:Done = $true
+    $timer.Stop()
+    $bar.Style = 'Continuous'; $bar.Value = 0
+    $header.Text = 'Provisa could not start'
+    $header.ForeColor = [System.Drawing.Color]::Firebrick
+    $detail = Get-ErrorDetail 'native-ui.err.log'
+    $status.Text = if ($detail) { "The UI server exited during startup (is port $UiPort already in use?):`r`n$detail" } else { "The UI server did not come up on port $UiPort. See %USERPROFILE%\.provisa\.logs." }
     $btnClose.Visible = $true
     return
   }

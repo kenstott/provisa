@@ -94,6 +94,25 @@ Describe 'Wait-HttpReady' {
   }
 }
 
+Describe 'Wait-HttpReadyAll (concurrent readiness window)' {
+  It 'returns empty when every endpoint answers' {
+    Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 200 } }
+    (Wait-HttpReadyAll @('http://localhost:1/', 'http://localhost:2/') 5).Count | Should -Be 0
+  }
+  It 'returns the URLs still unanswered after the timeout' {
+    Mock Invoke-WebRequest { throw [System.Net.WebException]::new('refused') }
+    $r = Wait-HttpReadyAll @('http://localhost:1/', 'http://localhost:2/') 1
+    $r.Count | Should -Be 2
+  }
+  It 'drops only the endpoints that answer, keeps the rest' {
+    Mock Invoke-WebRequest {
+      if ($Uri -match ':1/') { [pscustomobject]@{ StatusCode = 200 } }
+      else { throw [System.Net.WebException]::new('refused') }
+    }
+    Wait-HttpReadyAll @('http://localhost:1/', 'http://localhost:2/') 1 | Should -Be @('http://localhost:2/')
+  }
+}
+
 Describe 'Native-Env' {
   BeforeEach {
     # Backslash path with NO drive letter: Join-Path tolerates it on Linux (a drive-qualified
@@ -156,26 +175,30 @@ Describe 'Start-DemoServers (readiness gate - the demo fix)' {
     Mock Write-Err  { }
   }
 
-  It 'waits for BOTH mock endpoints before returning' {
-    Mock Wait-HttpReady { $true }
+  It 'waits for BOTH mock endpoints in one concurrent window' {
+    Mock Wait-HttpReadyAll { @() }
     Start-DemoServers
-    Should -Invoke Wait-HttpReady -Times 2 -Exactly
-    Should -Invoke Wait-HttpReady -Times 1 -ParameterFilter { $Url -match ':18080/api/v3/pet/findByStatus' }
-    Should -Invoke Wait-HttpReady -Times 1 -ParameterFilter { $Url -match ':4000/graphql' }
+    Should -Invoke Wait-HttpReadyAll -Times 1 -Exactly
+    Should -Invoke Wait-HttpReadyAll -Times 1 -ParameterFilter {
+      (($Urls -join ' ') -match ':18080/api/v3/pet/findByStatus') -and (($Urls -join ' ') -match ':4000/graphql')
+    }
   }
   It 'launches both uvicorn mock servers' {
-    Mock Wait-HttpReady { $true }
+    Mock Wait-HttpReadyAll { @() }
     Start-DemoServers
     Should -Invoke Start-Process -Times 2 -Exactly
   }
-  It 'reports an error when a mock never becomes ready' {
-    Mock Wait-HttpReady { $false }
+  It 'reports an error for each mock that never becomes ready' {
+    Mock Wait-HttpReadyAll {
+      @('http://localhost:18080/api/v3/pet/findByStatus?status=available',
+        'http://localhost:4000/graphql?query=%7B__typename%7D')
+    }
     Start-DemoServers
     Should -Invoke Write-Err -Times 2 -Exactly -Because 'both petstore and graphql failed readiness'
   }
   It 'aborts early (no launch) when demo assets are missing' {
     Mock Test-Path { $false }
-    Mock Wait-HttpReady { $true }
+    Mock Wait-HttpReadyAll { @() }
     Start-DemoServers
     Should -Invoke Start-Process -Times 0 -Exactly
     Should -Invoke Write-Err -Times 1 -Exactly
