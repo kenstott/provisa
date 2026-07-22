@@ -48,9 +48,12 @@ EMERALD = (16, 185, 129)  # #10B981 — accent dot
 # Mark geometry in the 512×512 viewBox (icon.svg, group translate(48,66) scale 4)
 _TILE_RADIUS = 112
 _STEM = (168, 138, 228, 394, 28)  # x0, y0, x1, y1, corner-radius
+# Bowl, cutout, and dot are concentric (icon.svg: all at cx=52, cy=35 in the
+# scaled group → 256, 206 in the 512 viewBox). Keep them equal so the emerald
+# dot sits centered in the P's loop.
 _BOWL = (256, 206, 88)  # cx, cy, r  (white)
-_CUTOUT = (256, 202, 42)  # cx, cy, r  (graphite)
-_DOT = (256, 202, 18)  # cx, cy, r  (emerald)
+_CUTOUT = (256, 206, 42)  # cx, cy, r  (graphite)
+_DOT = (256, 206, 18)  # cx, cy, r  (emerald)
 
 _SS = 4  # supersample factor for smooth edges
 

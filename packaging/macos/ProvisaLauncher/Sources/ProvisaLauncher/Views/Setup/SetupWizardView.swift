@@ -25,24 +25,28 @@ struct SetupWizardView: View {
                 case 0:
                     WelcomeView(onNext: { step = 1 })
                 case 1:
-                    DeploymentView(config: config,
-                                   onBack: { step = 0 },
-                                   onNext: { step = 2 })
+                    DemoView(config: config,
+                             onBack: { step = 0 },
+                             onNext: { step = 2 })
                 case 2:
-                    InstallLocationView(config: config,
-                                        onBack: { step = 1 },
-                                        onNext: { step = config.needsDocker ? 3 : 4 })
+                    DeploymentView(config: config,
+                                   onBack: { step = 1 },
+                                   onNext: { step = 3 })
                 case 3:
+                    InstallLocationView(config: config,
+                                        onBack: { step = 2 },
+                                        onNext: { step = config.needsDocker ? 4 : 5 })
+                case 4:
                     // Resource budget only matters for the Docker/Lima tier; the native
                     // tier runs in-process, so skip straight to Network.
                     ResourceBudgetView(config: config,
-                                       onBack: { step = 2 },
-                                       onNext: { step = 4 })
-                case 4:
-                    NetworkView(config: config,
-                                onBack: { step = config.needsDocker ? 3 : 2 },
-                                onNext: { beginInstall() })
+                                       onBack: { step = 3 },
+                                       onNext: { step = 5 })
                 case 5:
+                    NetworkView(config: config,
+                                onBack: { step = config.needsDocker ? 4 : 3 },
+                                onNext: { beginInstall() })
+                case 6:
                     InstallProgressView(state: installState,
                                         onCancel: { runner.cancel() })
                 default:
@@ -71,7 +75,7 @@ struct SetupWizardView: View {
                     UserDefaults.standard.set(config.installDir.path, forKey: "provisaInstallDir")
                     startProvisa()
                 }
-                step = installState.hasFailed ? 5 : 6
+                step = installState.hasFailed ? 6 : 7
             }
         }
     }
@@ -87,7 +91,7 @@ struct SetupWizardView: View {
     }
 
     private func beginInstall() {
-        step = 5
+        step = 6
         Task { @MainActor in
             runner.run(config: config, state: installState)
         }

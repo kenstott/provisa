@@ -85,9 +85,27 @@ def make_background(scale: int = SCALE) -> Image.Image:
     tag_y = brand_y + int(66 * scale)
     draw.text((brand_x, tag_y), "Data Virtualization Platform", font=tag_font, fill=TEXT_DIM)
 
+    # ── icon-label plates ─────────────────────────────────────────────────
+    # Finder renders the "Provisa" / "Applications" icon labels in black, which is
+    # illegible on the dark background (create-dmg can't set label text colour), so
+    # draw a light rounded plate behind each label position for contrast. The icon
+    # centres (165 / 495) and icon-size (128) come from build-dmg.sh's create-dmg call;
+    # the label sits just below the 128px icon (centre y=230 → icon bottom ≈294).
+    label_fill = (236, 240, 241, 240)  # light chip
+    label_cy = int(306 * scale)
+    label_h = int(26 * scale)
+    for cx, half_w in ((165, 62), (495, 78)):  # Provisa (narrow), Applications (wide)
+        ccx = int(cx * scale)
+        hw = int(half_w * scale)
+        draw.rounded_rectangle(
+            [ccx - hw, label_cy - label_h // 2, ccx + hw, label_cy + label_h // 2],
+            radius=int(6 * scale),
+            fill=label_fill,
+        )
+
     # ── instruction text ──────────────────────────────────────────────────
     inst_font = _font(int(16 * scale))
-    inst_y = int(H * scale * 0.88)
+    inst_y = int(H * scale * 0.84)
     inst_text = "Drag Provisa to the Applications folder to install"
     bbox = draw.textbbox((0, 0), inst_text, font=inst_font)
     inst_x = (sw - (bbox[2] - bbox[0])) // 2

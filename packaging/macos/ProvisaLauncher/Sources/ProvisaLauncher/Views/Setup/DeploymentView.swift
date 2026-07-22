@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Deployment step (REQ-972..979): pick the federation engine and optional
-/// observability-integration / demo add-ons. Everything defaults to the
-/// self-contained native tier (DuckDB, no Docker).
+/// observability integration. The demo decision is a separate upfront step
+/// (DemoView). Everything defaults to the self-contained Embedded Desktop tier
+/// (no Docker).
 struct DeploymentView: View {
     @ObservedObject var config: SetupConfig
     let onBack: () -> Void
@@ -22,8 +23,8 @@ struct DeploymentView: View {
                     .foregroundStyle(.white.opacity(0.5))
 
                 Picker("", selection: $config.engine) {
-                    Text("DuckDB — native (recommended)").tag(FederationEngineChoice.duckdb)
-                    Text("Trino — Docker").tag(FederationEngineChoice.trino)
+                    Text("Embedded Desktop (recommended)").tag(FederationEngineChoice.duckdb)
+                    Text("Federation Engine - Docker").tag(FederationEngineChoice.trino)
                     Text("External engine").tag(FederationEngineChoice.external)
                 }
                 .pickerStyle(.radioGroup)
@@ -61,19 +62,6 @@ struct DeploymentView: View {
                     TextField("http://collector-host:4317", text: $config.otlpEndpoint)
                         .wizardField()
                 }
-
-                Divider().background(.white.opacity(0.12))
-
-                // ── Demo ──
-                Toggle(isOn: $config.installDemo) {
-                    Text("Install the demo dataset (opens a guided tour)")
-                        .foregroundStyle(.white)
-                }
-                .toggleStyle(.checkbox)
-                Text("A complete, fully functional Provisa install — pick it with confidence; nothing is limited. To reconfigure with other options later, just run the installer again.")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 60)
 
