@@ -92,11 +92,12 @@ def make_background(scale: int = SCALE) -> Image.Image:
     # centres (165 / 495) and icon-size (128) come from build-dmg.sh's create-dmg call;
     # the label sits just below the 128px icon (centre y=230 → icon bottom ≈294).
     label_fill = (236, 240, 241, 240)  # light chip
-    # Finder draws the label just below the 128px icon (centre y=230): text centre
-    # lands near 230 + 64 + gap ≈ 302. Centre the plate there so the text sits
-    # vertically centred within it, not riding the top edge.
-    label_cy = int(302 * scale)
-    label_h = int(22 * scale)
+    # Finder draws the label just below the 128px icon (centre y=230): icon bottom
+    # ≈294, label text centre ≈309. Centre the plate there and make it tall enough
+    # to contain the label whatever Finder's exact metric — the real position can
+    # only be confirmed on a mounted DMG, so err toward a generous plate.
+    label_cy = int(310 * scale)
+    label_h = int(30 * scale)
     for cx, half_w in ((165, 62), (495, 78)):  # Provisa (narrow), Applications (wide)
         ccx = int(cx * scale)
         hw = int(half_w * scale)

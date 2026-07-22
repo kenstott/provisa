@@ -448,12 +448,6 @@ jobs:
           name: docker-images-core
           path: packaging/macos/images/
 
-      - name: Download provisa wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: provisa-wheels
-          path: packaging/macos/tmp-provisa-wheels/
-
       - name: Download Calcite plugins
         uses: actions/download-artifact@v4
         with:

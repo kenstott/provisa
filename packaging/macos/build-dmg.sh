@@ -97,38 +97,6 @@ download_otel_agent() {
   ok "OTel Java agent bundled ($(du -sh "$jar" | cut -f1))."
 }
 
-# ── Pre-build provisa wheels for linux/arm64 (airgapped pip install) ─────────
-# Wheels are built inside a linux/arm64 container on the build host (network
-# available here, not at install time). Bundled into provisa-source/wheels/ so
-# Dockerfile can use --no-index --find-links /wheels with no PyPI access.
-build_provisa_wheels() {
-  local wheels_dir="${SCRIPT_DIR}/tmp-provisa-wheels"
-  # Skip if .whl files are already present (e.g. downloaded from CI artifact by pull-images job)
-  if [ -d "$wheels_dir" ] && ls "${wheels_dir}"/*.whl &>/dev/null 2>&1; then
-    info "Provisa wheels present ($(ls "${wheels_dir}"/*.whl | wc -l | tr -d ' ') wheels) — skipping build."
-    return
-  fi
-  local stamp_file="${wheels_dir}/.pyproject_mtime"
-  local current_mtime
-  current_mtime=$(stat -f '%m' "${REPO_ROOT}/pyproject.toml" 2>/dev/null || echo "0")
-  if [ -d "$wheels_dir" ] && [ "$(ls -A "$wheels_dir" 2>/dev/null)" ] \
-     && [ -f "$stamp_file" ] && [ "$(cat "$stamp_file")" = "$current_mtime" ]; then
-    info "Provisa wheels cached — skipping."
-    return
-  fi
-  rm -rf "$wheels_dir"
-  mkdir -p "$wheels_dir"
-  info "Building provisa wheels for linux/arm64 (requires network on build host)..."
-  # Copy source to writable tmpfs inside container — egg-info can't be written to :ro mount
-  docker run --rm --platform linux/arm64 \
-    -v "${REPO_ROOT}:/src:ro" \
-    -v "${wheels_dir}:/wheels" \
-    python:3.12-slim \
-    bash -c "cp -r /src /tmp/src && pip wheel --no-cache-dir --wheel-dir /wheels /tmp/src"
-  echo "$current_mtime" > "${wheels_dir}/.pyproject_mtime"
-  ok "Provisa wheels built ($(ls "$wheels_dir" | wc -l | tr -d ' ') wheels)."
-}
-
 # ── Save service images as tarballs ──────────────────────────────────────────
 # Images are saved as .tar.gz (gzip -9) to fit under GitHub's 2 GB per-asset
 # limit. Trino:481 is ~1.5 GB uncompressed but ~600 MB gzipped. `docker load`
@@ -197,34 +165,18 @@ embed_compose() {
   cp -r "${REPO_ROOT}/observability" "${res}/observability"
   cp "${REPO_ROOT}/scripts/provisa" "${res}/provisa-cli"
   chmod +x "${res}/provisa-cli"
-  # Bundle provisa source (Dockerfile + wheels) — the build context for a host
-  # `docker compose build` when installing the Docker tier from source (install.sh).
-  local src_dst="${res}/provisa-source"
-  mkdir -p "$src_dst"
-  cp "${REPO_ROOT}/Dockerfile"    "$src_dst/"
-  cp "${REPO_ROOT}/main.py"        "$src_dst/"
-  cp "${REPO_ROOT}/pyproject.toml" "$src_dst/"
-  cp -r "${REPO_ROOT}/provisa"    "${src_dst}/provisa"
-  # Build React UI and embed static files so the provisa-ui container can serve them.
-  # The UI prebuild builds the offline MkDocs docs site (public/docs-site/); point it
-  # at the build venv's mkdocs so no global install is required.
+  # Build the React UI so bundle_native_payload can stage it into the venv (the
+  # native tier's ui_server serves it). The prebuild renders the offline MkDocs
+  # docs site; point it at the build venv's mkdocs so no global install is needed.
+  # NOTE: the Docker tier docker-loads prebuilt image tarballs (it does not host-build
+  # from source), so the old provisa-source/ + Linux wheelhouse are no longer bundled.
   info "Building React UI..."
   local venv="${SCRIPT_DIR}/.build-venv"
   "${venv}/bin/pip" install mkdocs-material pymdown-extensions --quiet --upgrade
   (cd "${REPO_ROOT}/provisa-ui" \
     && MKDOCS_BIN="${venv}/bin/mkdocs" PYTHON_BIN="${venv}/bin/python3" \
        npm ci --silent && MKDOCS_BIN="${venv}/bin/mkdocs" PYTHON_BIN="${venv}/bin/python3" npm run build)
-  mkdir -p "${src_dst}/static"
-  cp -r "${REPO_ROOT}/provisa-ui/dist/." "${src_dst}/static/"
-  ok "React UI built and embedded."
-  # Embed pre-built wheels so Dockerfile pip install needs no network
-  local wheels_src="${SCRIPT_DIR}/tmp-provisa-wheels"
-  if [ ! -d "$wheels_src" ] || [ -z "$(ls -A "$wheels_src" 2>/dev/null)" ]; then
-    err "No wheels found in ${wheels_src} — run build_provisa_wheels() first."
-    exit 1
-  fi
-  cp -r "$wheels_src" "${src_dst}/wheels"
-  ok "Compose files, config, and provisa source embedded."
+  ok "React UI built. Compose files, config, and observability embedded."
 }
 
 # ── Stage the native venv payload (REQ-979) ──────────────────────────────────
@@ -581,7 +533,6 @@ main() {
 
   generate_assets
   save_images
-  build_provisa_wheels
   embed_compose        # copies observability/ from repo; builds provisa-ui/dist; before download_otel_agent
   download_otel_agent  # adds opentelemetry-javaagent.jar into Resources/observability/trino-otel/
   bundle_native_payload # bare interpreter + macOS wheelhouse + ui-dist (uses provisa-ui/dist from embed_compose)

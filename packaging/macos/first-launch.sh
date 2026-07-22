@@ -196,21 +196,6 @@ ask_flight_port() {
   _ask_port "Flight" "8815" "Which port should the Provisa Arrow Flight server listen on?"
 }
 
-# ── Stage provisa source for first-launch image build ─────────────────────────
-stage_provisa_source() {
-  local dest="${PROVISA_HOME}/provisa-source"
-  if [ -d "$dest" ] && [ -f "${dest}/Dockerfile" ]; then
-    return 0
-  fi
-  mkdir -p "$dest"
-  local src="${RESOURCES}/provisa-source"
-  if [ ! -d "$src" ]; then
-    err "provisa-source not found in bundle. Reinstall Provisa."
-    exit 1
-  fi
-  cp -r "$src"/. "$dest/"
-  ok "Provisa source staged to ${dest}"
-}
 # ── Stage compose files into ~/.provisa/compose/ ─────────────────────────────
 # The Docker tier runs `docker compose -f ~/.provisa/compose/...` on the user's
 # own Docker; the compose files + observability/ config live here (project_dir).
