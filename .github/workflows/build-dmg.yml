@@ -914,6 +914,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      # gh release create resolves the repo via local git; without a checkout the "Ensure release
+      # exists" step dies with "fatal: not a git repository" whenever it wins the create race against
+      # the sibling duckdb/pg/exports workflows (the alpha.257 release failure). A shallow checkout
+      # is enough — --generate-notes is server-side.
+      - name: Checkout (so gh release create has a git repo)
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
