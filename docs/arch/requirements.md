@@ -11446,7 +11446,7 @@ A materialized view's time-travel capability is a property of its DEFINITION, gu
 
 **Code:** `provisa/mv/bitemporal.py`, `provisa/mv/refresh.py`, `provisa/mv/models.py`, `provisa/api/admin/schema_common.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`, `provisa/core/repositories/table.py`, `provisa/api/admin/schema_helpers.py`, `provisa/api/app_rebuild.py`
 
-**Tests:** `tests/unit/test_bitemporal.py`, `tests/unit/test_bitemporal_exec.py`, `tests/unit/test_bitemporal_pg.py`, `tests/unit/test_bitemporal_iceberg.py`, `tests/unit/test_bitemporal_refresh_e2e.py`
+**Tests:** `tests/unit/test_bitemporal.py`, `tests/unit/test_bitemporal_exec.py`, `tests/unit/test_bitemporal_pg.py`, `tests/unit/test_bitemporal_iceberg.py`, `tests/unit/test_bitemporal_refresh_e2e.py`, `tests/integration/test_bitemporal_http_e2e.py`
 
 ### REQ-1163 · Materialization Store {#REQ-1163}
 
@@ -11536,7 +11536,7 @@ Calendars are declarable through the admin surface and the calendar→MV binding
 
 **Code:** `provisa/core/repositories/calendar.py`, `provisa/api/admin/schema_query.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/pages/tables/TableEditForm.tsx`
 
-**Tests:** `tests/integration/test_periodic_snapshot_graphql_e2e.py`
+**Tests:** `tests/unit/test_snapshot_schedule_wiring.py`, `tests/integration/test_periodic_snapshot_graphql_e2e.py`
 
 ### REQ-1170 · Table Load Protection {#REQ-1170}
 
@@ -11548,7 +11548,7 @@ Load protection ([REQ-1141](#REQ-1141) off-peak window) and snapshotting on the 
 
 **Code:** `provisa/api/admin/schema_mutation.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_load_protection_snapshot_conflict.py`
 
 ### REQ-1171 · Calendar Boundary {#REQ-1171}
 
@@ -11560,7 +11560,7 @@ Snapshot-schedule grains extend to support the full RFC 5545 RRULE recurrence mo
 
 **Code:** `provisa/events/calendars.py`, `provisa-ui/src/pages/tables/RecurrenceBuilder.tsx`
 
-**Tests:** —
+**Tests:** `tests/unit/test_calendar_rrule.py`
 
 ## 5. Query Languages, Compilation & Operations
 
@@ -11574,7 +11574,7 @@ Registered callable field names (tracked functions and webhooks) in GraphQL sche
 
 **Code:** `provisa/compiler/actions_schema.py`, `provisa/api/app_loaders.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_callable_field_naming.py`
 
 ## 8. Client Access & Protocols
 

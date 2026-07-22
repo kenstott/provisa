@@ -113,6 +113,17 @@ def _validate_load_protection(
     return None
 
 
+def _snapshot_load_protection_conflict(
+    load_protected: bool | None,
+    off_peak_window: str | None,
+    mv_bitemporal_mode: str | None,
+) -> bool:  # REQ-1170
+    """True when load protection (off-peak window) AND snapshotting are both configured on one
+    table — their timing can fight (a snapshot boundary may fall outside the off-peak window), so
+    the caller emits a WARNING (not a block)."""
+    return bool((load_protected or off_peak_window) and mv_bitemporal_mode)
+
+
 def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | None":  # REQ-1141
     """Validate an off-peak window spec at write time; returns a failing MutationResult on a
     malformed spec/zone, else None (no silent default window)."""
@@ -977,7 +988,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             # fight — a snapshot boundary can fall outside the off-peak window, so the snapshot never
             # captures the intended instant. Warn (not block): they compose only when the snapshot
             # deadline can wait for the off-peak refresh (allowed_lateness).
-            if (load_protected or off_peak_window) and row.mv_bitemporal_mode:
+            if _snapshot_load_protection_conflict(
+                load_protected, off_peak_window, row.mv_bitemporal_mode
+            ):
                 logging.getLogger(__name__).warning(
                     "table %s: load protection (off-peak window) AND %r snapshotting are both set — "
                     "verify the snapshot boundary falls inside the off-peak refresh window (or that "

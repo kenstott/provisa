@@ -33105,6 +33105,7 @@
   - tests/unit/test_bitemporal_pg.py
   - tests/unit/test_bitemporal_iceberg.py
   - tests/unit/test_bitemporal_refresh_e2e.py
+  - tests/integration/test_bitemporal_http_e2e.py
   since: 2026-07
   scenario: 'Given a materialized view declared bitemporal (snapshot or delta) on a business key
 
@@ -33392,6 +33393,7 @@
   - provisa/api/admin/schema_mutation.py
   - provisa-ui/src/pages/tables/TableEditForm.tsx
   tests:
+  - tests/unit/test_snapshot_schedule_wiring.py
   - tests/integration/test_periodic_snapshot_graphql_e2e.py
 - id: REQ-1170
   status: complete
@@ -33416,6 +33418,8 @@
     Then a warning is emitted if the snapshot boundary is incompatible with the off-peak window
 
     '
+  tests:
+  - tests/unit/test_load_protection_snapshot_conflict.py
   related_reqs:
   - REQ-1141
 - id: REQ-1171
@@ -33446,6 +33450,8 @@
     And the system rejects RRULE specs with COUNT or UNTIL (unbounded requirement)
 
     '
+  tests:
+  - tests/unit/test_calendar_rrule.py
   related_reqs:
   - REQ-1168
   - REQ-1169
@@ -33485,6 +33491,8 @@
     And the reverse-lookup alias key routes "addPet" back to the "add_pet" command
 
     '
+  tests:
+  - tests/unit/test_callable_field_naming.py
 - id: REQ-1173
   status: complete
   since: 2026-07
