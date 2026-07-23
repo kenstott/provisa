@@ -257,6 +257,87 @@ sources:
 
 ---
 
+## Custom Connectors (REQ-1177)
+
+The native federation engines — Postgres and DuckDB — gain reachability to a new source type when an operator declares a connector for it in `config/custom_connectors.yaml`. No code is required. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors`; `provisa/federation/engine.py` `build_pg_engine` line 577, `build_duckdb_engine` line 485]
+
+Connector extensibility itself predates this. The Trino engine has long been extensible at its own layer — one generic JDBC connector parametrized per source type, a catalog `.properties` body per type, and Provisa's own custom Trino connector plugins (Splunk, SharePoint, Calcite). [tool-verified: `provisa/federation/trino_connectors.py` `_TrinoJdbcConnector`, `_TRINO_JDBC_TYPES`; `trino/plugins/trino-splunk`, `trino/plugins/trino-sharepoint`, `trino/plugins/trino-calcite`] REQ-1177 brings that same config-driven extensibility to the two native, no-cluster engines, which previously carried a fixed connector set.
+
+The config ships empty. Built-in connectors cover out-of-the-box reach; everything in this file is operator-authored. [tool-verified: `config/custom_connectors.yaml` line 52: `connectors: []`] Set `PROVISA_CUSTOM_CONNECTORS` to point at a different path (useful for tests).
+
+### Descriptor kinds
+
+| Engine | Kind | Mechanism | What the descriptor supplies |
+| --- | --- | --- | --- |
+| `postgres` | `pg_fdw` | SQL/MED (ISO standard) | `extension`, `server_options`, `user_mapping`, `supports_import`, `table_options`, `remote_schema` |
+| `duckdb` | `duckdb_attach` | INSTALL/LOAD + ATTACH | `extension`, `probe_symbol`, `attach_template`, `remote_schema` |
+| `duckdb` | `duckdb_scan` | INSTALL/LOAD + scanner view | `extension`, `probe_symbol`, `scan_template` |
+
+**Postgres is generic.** SQL/MED is an ISO standard, so every conforming FDW shares the same DDL shape: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, optional `CREATE USER MAPPING`, then either `IMPORT FOREIGN SCHEMA` (when `supports_import: true`) or an explicit `CREATE FOREIGN TABLE` per table (when `false`). A `pg_fdw` descriptor supplies only the per-FDW variance — extension name, server option keys, user-mapping keys, import flag, table options. Any standard-conforming FDW is therefore drivable from config alone. [tool-verified: `provisa/federation/custom_connectors.py` `GenericPgFdwConnector.details` lines 98–125]
+
+**DuckDB supports two mechanisms.** An extension exposing a catalog via ATTACH uses `duckdb_attach`; one exposing a read table-function uses `duckdb_scan`. An extension fitting neither pattern is not supported. [tool-verified: `provisa/federation/custom_connectors.py` `GenericDuckDbAttachConnector`, `GenericDuckDbScanConnector`]
+
+An unknown `kind` value fails loud at startup — a descriptor typo must not silently leave a source type unreachable. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors` lines 178–197]
+
+### Probe gating
+
+Availability is verified at attach time against each engine's standard discovery catalog:
+
+- **Postgres** — checks `pg_extension`, then `pg_available_extensions`. [tool-verified: `provisa/federation/connector_duckdb.py` `_probe_pg_extension` lines 333–344]
+- **DuckDB** — runs `INSTALL`/`LOAD` and checks `duckdb_functions()` for the declared `probe_symbol`. [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBExtensionConnector.probe` lines 160–180]
+
+A declared extension that is not installable fails loud. No silent skip, no fallback. A connector whose probe fails is simply not active for that deployment.
+
+### Template variables
+
+Every `server_options` value, `user_mapping` value, `attach_template`, and `scan_template` may use `{field}` placeholders. Available fields: [tool-verified: `provisa/federation/custom_connectors.py` `_source_fields` lines 53–63]
+
+`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus any key from `federation_hints`. DuckDB attach templates also receive `{alias}` — the internal catalog alias Provisa assigns to the attached database.
+
+A template referencing an unknown field fails loud at attach time, surfacing a descriptor/source mismatch before broken DDL reaches the engine.
+
+### Examples
+
+**Postgres — MongoDB via `mongo_fdw` (no schema import; columns supplied per table)**
+
+```yaml
+# config/custom_connectors.yaml
+connectors:
+  - engine: postgres
+    source_type: mongodb
+    kind: pg_fdw
+    extension: mongo_fdw
+    mechanism: attach_r
+    server_options:
+      address: "{host}"
+      port: "{port}"
+    user_mapping:
+      username: "{username}"
+      password: "{password}"
+    supports_import: false
+    table_options:
+      database: "{database}"
+      collection: "{table_name}"
+```
+
+**DuckDB — Excel files via `read_xlsx` (scan table-function)**
+
+```yaml
+  - engine: duckdb
+    source_type: xlsx
+    kind: duckdb_scan
+    extension: excel
+    install_from_community: false
+    probe_symbol: read_xlsx
+    scan_template: "read_xlsx('{path}')"
+```
+
+[tool-verified: `config/custom_connectors.yaml` commented examples, lines 26–50]
+
+With either descriptor in place, registering a source with the declared `source_type` routes through the custom connector, subject to a successful probe. No other configuration change is needed.
+
+---
+
 ## Warehouses as Named Sources
 
 Snowflake, Databricks, and ClickHouse can be registered as named sources independently of which federation engine is active. [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
