@@ -41,9 +41,13 @@ Copy-Item (Join-Path $ScriptDir 'provisa-mark.png')        $BuildDir
 # build if any bundled script carries a non-ASCII byte rather than ship an installer that never runs.
 foreach ($ps1 in (Get-ChildItem $BuildDir -Filter '*.ps1')) {
   $bytes = [System.IO.File]::ReadAllBytes($ps1.FullName)
-  $bad = for ($i = 0; $i -lt $bytes.Length; $i++) { if ($bytes[$i] -gt 127) { $i; break } }
-  if ($null -ne $bad) {
-    throw "$($ps1.Name): non-ASCII byte at offset $bad. Windows PowerShell 5.1 mis-decodes BOM-less UTF-8 as Windows-1252, which breaks parsing. Replace it with ASCII (em-dash -> -, ellipsis -> ...)."
+  # A leading UTF-8 BOM (EF BB BF) is fine - it makes PS 5.1 decode the file as UTF-8. Skip it and
+  # scan the actual content, since a BOM'd file is safe regardless of what bytes follow.
+  $start = if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { 3 } else { 0 }
+  for ($i = $start; $i -lt $bytes.Length; $i++) {
+    if ($bytes[$i] -gt 127) {
+      throw "$($ps1.Name): non-ASCII byte at offset $i. A BOM-less .ps1 with non-ASCII is mis-decoded by Windows PowerShell 5.1 as Windows-1252, which breaks parsing. Replace it with ASCII (em-dash -> -, ellipsis -> ...) or save the file with a UTF-8 BOM."
+    }
   }
 }
 Write-Host '[build-sfx] Verified bundled scripts are pure ASCII.' -ForegroundColor Cyan
