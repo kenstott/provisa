@@ -13,7 +13,7 @@
 // instance-local (a per-instance copy that diverges across instances behind a load balancer).
 
 import { describe, it, expect, vi } from "vitest";
-import type { MockedResponse } from "@apollo/client/testing/react";
+import type { MockedResponse } from "@apollo/client/testing";
 import { render, screen } from "../../../test-utils/render";
 import { TableEditForm } from "../TableEditForm";
 import { MaterializeStoreInfo as MATERIALIZE_STORE_INFO_QUERY } from "../../../hooks/admin.graphql";

@@ -12,7 +12,8 @@ import type { ReactElement, ReactNode } from "react";
 import { render, type RenderOptions } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { I18nextProvider } from "react-i18next";
-import { MockedProvider, type MockedResponse } from "@apollo/client/testing/react";
+import { MockedProvider } from "@apollo/client/testing/react";
+import type { MockedResponse } from "@apollo/client/testing";
 import { theme } from "../theme/theme";
 import i18n from "../i18n";
 
