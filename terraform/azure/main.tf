@@ -264,21 +264,31 @@ locals {
 
   appimage_url = "https://${var.storage_account_name}.blob.core.windows.net/${var.storage_container}/${var.appimage_blob}"
 
+  # Core-images zip lives in the same container as the AppImage blob. When the blob
+  # name carries a virtual-directory prefix, keep it; a bare blob name (dirname ".")
+  # means the zip sits at the container root alongside it.
+  images_zip  = "provisa-core-images-amd64-${var.provisa_version}.zip"
+  images_blob = dirname(var.appimage_blob) == "." ? local.images_zip : "${dirname(var.appimage_blob)}/${local.images_zip}"
+
   base_cloud_init = <<-YAML
     #cloud-config
     packages:
       - azure-cli
       - fuse
+      - unzip
     runcmd:
       - az login --identity --username ${azurerm_user_assigned_identity.provisa.client_id}
       - az storage blob download --account-name ${var.storage_account_name} --container-name ${var.storage_container} --name ${var.appimage_blob} --file /opt/Provisa.AppImage --auth-mode login
       - chmod +x /opt/Provisa.AppImage
+      # Stage the amd64 core-images zip beside the AppImage; first-launch docker-loads
+      # it locally (airgap path) when run from /opt with PROVISA_VERSION set (below).
+      - az storage blob download --account-name ${var.storage_account_name} --container-name ${var.storage_container} --name ${local.images_blob} --file /opt/${local.images_zip} --auth-mode login
   YAML
 
   # Deployment choices (parity with the desktop wizard, REQ-972..979) forwarded to
   # the AppImage as env — cloud-init runcmd runs a non-login shell, so prefix the
   # invocation inline rather than relying on exported env persisting.
-  deploy_env = "env PROVISA_ENGINE='${var.federation_engine}' PROVISA_ENGINE_URL='${var.engine_url}' PROVISA_MATERIALIZE_URL='${var.materialize_url}' PROVISA_OBS_MODE='${var.obs_mode}' PROVISA_OTLP_ENDPOINT='${var.otlp_endpoint}' PROVISA_INSTALL_DEMO='${var.install_demo ? "y" : "n"}'"
+  deploy_env = "env PROVISA_VERSION='${var.provisa_version}' PROVISA_ENGINE='${var.federation_engine}' PROVISA_ENGINE_URL='${var.engine_url}' PROVISA_MATERIALIZE_URL='${var.materialize_url}' PROVISA_OBS_MODE='${var.obs_mode}' PROVISA_OTLP_ENDPOINT='${var.otlp_endpoint}' PROVISA_INSTALL_DEMO='${var.install_demo ? "y" : "n"}'"
 
   ssh_key_config = var.ssh_public_key != "" ? [{
     username   = var.admin_username
@@ -353,7 +363,7 @@ resource "azurerm_linux_virtual_machine" "primary" {
 
   custom_data = base64encode(<<-YAML
     ${local.base_cloud_init}
-      - ${local.deploy_env} /opt/Provisa.AppImage --non-interactive --role primary --ram-gb ${local.effective_ram}
+      - cd /opt && ${local.deploy_env} /opt/Provisa.AppImage --non-interactive --role primary --ram-gb ${local.effective_ram}
   YAML
   )
 }
@@ -431,7 +441,7 @@ resource "azurerm_linux_virtual_machine" "secondary" {
 
   custom_data = base64encode(<<-YAML
     ${local.base_cloud_init}
-      - ${local.deploy_env} /opt/Provisa.AppImage --non-interactive --role secondary --primary-ip primary.provisa.internal --ram-gb ${local.effective_worker_ram}
+      - cd /opt && ${local.deploy_env} /opt/Provisa.AppImage --non-interactive --role secondary --primary-ip primary.provisa.internal --ram-gb ${local.effective_worker_ram}
   YAML
   )
 }

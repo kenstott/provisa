@@ -68,6 +68,16 @@ variable "appimage_s3_key" {
   default     = "releases/Provisa.AppImage"
 }
 
+variable "provisa_version" {
+  description = <<-EOT
+    Provisa release version (e.g. v0.1.0-alpha.271). Must match the AppImage build.
+    The node stages the matching core-images zip (provisa-core-images-amd64-<version>.zip)
+    from the same S3 directory as appimage_s3_key, and exports PROVISA_VERSION so first-launch
+    finds it locally (airgap path) instead of downloading from the GitHub release.
+  EOT
+  type        = string
+}
+
 variable "key_pair" {
   description = "EC2 key pair name for SSH access. Leave blank to disable SSH."
   type        = string
