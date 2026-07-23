@@ -310,6 +310,22 @@ native_env_pairs() {
     [ -n "$TRINO_HOST" ]      && e+=("TRINO_HOST=${TRINO_HOST}")
     [ -n "$TRINO_PORT" ]      && e+=("TRINO_PORT=${TRINO_PORT}")
     [ -n "$OTLP_ENDPOINT" ]   && e+=("OTEL_EXPORTER_OTLP_ENDPOINT=${OTLP_ENDPOINT}")
+    if [ "$DEMO" = "true" ]; then
+        # Demo tier: point the runtime at the bundled native demo config (engine: duckdb,
+        # auth: none -> no setup wizard) and mark the run a demo so the UI auto-starts the
+        # guided tour (setup_router._is_demo reads PROVISA_DEMO). Resolve the config + sample-data
+        # dir from the venv's own package so wheel-staged (provisa/_config) and source-checkout
+        # layouts both work. Mirrors the Windows native launcher (packaging/windows/provisa-native.ps1).
+        # Without this the app boots the plain installer config (no auth) and renders the first-run
+        # SetupPage instead of the demo — REQ-414/REQ-972.
+        local py demo_cfg demo_dir
+        py="$(native_python)"
+        demo_cfg="$("$py" -c 'from provisa.cli import _resolve_demo as r; print(r()[0])')"
+        demo_dir="$("$py" -c 'from provisa.cli import _resolve_demo as r; print(r()[1])')"
+        e+=("PROVISA_CONFIG=${demo_cfg}")
+        e+=("PROVISA_DEMO_DIR=${demo_dir}")
+        e+=("PROVISA_DEMO=1")
+    fi
     printf '%s\n' "${e[@]}"
 }
 
