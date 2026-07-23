@@ -37,6 +37,27 @@ def _server(datadir: str):
     return pgserver.get_server(Path(datadir), cleanup_mode=None)
 
 
+def _stage_bundled_extensions() -> None:
+    """REQ-1158: stage the PyPI-delivered provisa-pg-ext FDW/extension bundle into the SHARED pgserver
+    ``pginstall`` so the pg federation engine (PgFederationRuntime), which connects to this same
+    embedded Postgres, can ``CREATE EXTENSION`` sqlite_fdw/pg_duckdb/... offline — no github.com round
+    trip. pgserver has one install dir for all data dirs, so staging here reaches every instance.
+
+    Best-effort by DESIGN, not silent error-swallowing: only the embedded/air-gapped tier ships the
+    provisa-pg-ext wheel; a BYO-Postgres deployment supplies its own FDWs, so an absent wheel is a
+    no-op. But if the wheel IS installed yet lacks this platform's bundle, staging fails LOUD
+    (BundledPgExtensionsMissing) — a packaging defect must not be papered over."""
+    try:
+        import provisa_pg_ext  # type: ignore[import-not-found]  # noqa: F401 — presence probe for the optional wheel
+    except ModuleNotFoundError:
+        return  # BYO / non-embedded tier: FDWs come from the system Postgres, not the wheel
+    import pgserver
+
+    from provisa.pg_extensions.staging import stage_bundled_pg_extensions
+
+    stage_bundled_pg_extensions(Path(pgserver.__file__).parent / "pginstall")
+
+
 def _socket_port(sockdir: str) -> int:
     """The port pgserver's unix socket listens on, read from the socket filename
     (``.s.PGSQL.<port>``). Explicit — never guessed."""
@@ -51,6 +72,7 @@ def start(datadir: str, init_sql: str | None = None) -> tuple[str, int]:
     ``provisa`` database, apply ``init_sql`` once, and return ``(host, port)`` for
     a unix-socket asyncpg connection."""
     srv = _server(datadir)
+    _stage_bundled_extensions()  # REQ-1158: make the PyPI-delivered FDWs loadable by the pg fed engine
     if "1" not in srv.psql("SELECT 1 FROM pg_roles WHERE rolname='provisa'"):
         srv.psql("CREATE ROLE provisa LOGIN PASSWORD 'provisa' SUPERUSER")
     fresh = "1" not in srv.psql("SELECT 1 FROM pg_database WHERE datname='provisa'")
