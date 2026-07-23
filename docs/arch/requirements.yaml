@@ -17082,14 +17082,13 @@
   type: infrastructure
   description: 'macOS and Windows use an extension model: the container/compute tier is the only tier
     that requires an external container runtime. On macOS, it uses the user''s Docker (Docker Desktop
-    or colima); on Windows, it provisions WSL2 + containerd — never VirtualBox. App images (provisa,
-    provisa-ui, zaychik) are built at DMG-build time, shipped in core-images.tar, docker load-ed at
-    first launch, and resolved via docker-compose.airgap.yml. Obs and Demo are extension packages that
-    load images into the existing runtime and write a compose file into `~/.provisa/extensions/<name>/`.
-    The launcher enumerates `extensions/*/docker-compose.*.yml` at startup and appends each found file
-    to the compose file list, composing the service set dynamically. `PROVISA_REDIRECT_ENABLED`, MinIO,
-    and OTel env vars are set only when the obs extension is present. The native base tier (REQ-979)
-    has no runtime VM at all.'
+    or colima); on Windows, it provisions WSL2 + containerd — never VirtualBox. App images (provisa, provisa-ui,
+    zaychik) are built at DMG-build time, shipped in core-images.tar, docker load-ed at first launch,
+    and resolved via docker-compose.airgap.yml. Obs and Demo are extension packages that load images into
+    the existing runtime and write a compose file into `~/.provisa/extensions/<name>/`. The launcher enumerates
+    `extensions/*/docker-compose.*.yml` at startup and appends each found file to the compose file list,
+    composing the service set dynamically. `PROVISA_REDIRECT_ENABLED`, MinIO, and OTel env vars are set
+    only when the obs extension is present. The native base tier (REQ-979) has no runtime VM at all.'
   use_case: Extension model lets users install observability and demo services incrementally without reinstalling
     Core, and lets the launcher automatically discover installed extensions without hard-coded feature
     flags.
@@ -17107,9 +17106,9 @@
     a WSL2 distro named `provisa` with containerd + nerdctl-full, loads the bundled core image tarballs,
     copies the compose tree to /opt/provisa/compose inside the distro, and runs `nerdctl compose` there
     (provisa-container.ps1). macOS container tier bundles core-images.tar built at DMG-build time, docker
-    load-s images at first launch, and uses docker-compose.airgap.yml. No VirtualBox or embedded VM.
-    install-container.ps1 stops the native tier before starting the stack; the tier is reversible by
-    switching back to provisa-native.ps1. uninstall.ps1 unregisters the WSL distro.
+    load-s images at first launch, and uses docker-compose.airgap.yml. No VirtualBox or embedded VM. install-container.ps1
+    stops the native tier before starting the stack; the tier is reversible by switching back to provisa-native.ps1.
+    uninstall.ps1 unregisters the WSL distro.
   tests:
   - tests/e2e/test_installer.py
   - tests/unit/test_infra_requirements.py
@@ -28452,10 +28451,10 @@
   category: Desktop Installation
   priority: MUST
   type: infrastructure
-  description: The native tier builds a Python VENV at first launch from PyPI (pinned to release).
-    The DMG/EXE bundles a bare python-build-standalone interpreter + a wheelhouse. First-launch creates
-    ~/.provisa/venv and installs provisa[embedded] online from PyPI, or offline via pip --no-index
-    --find-links from the bundled wheelhouse. The native tier runs with no Docker or container dependencies.
+  description: The native tier builds a Python VENV at first launch from PyPI (pinned to release). The
+    DMG/EXE bundles a bare python-build-standalone interpreter + a wheelhouse. First-launch creates ~/.provisa/venv
+    and installs provisa[embedded] online from PyPI, or offline via pip --no-index --find-links from the
+    bundled wheelhouse. The native tier runs with no Docker or container dependencies.
   use_case: Ensures the entire native-tier stack is self-contained and runs on any OS (macOS, Windows,
     Linux) without requiring external Python environments or container runtimes.
   target: 2026-Q3
@@ -28468,8 +28467,8 @@
   - tests/unit/test_desktop_install.py
   - tests/unit/test_infra_requirements.py
   notes: Windows native builder (build-sfx.ps1) downloads python-build-standalone for x86_64-pc-windows-msvc,
-    bundles it with a wheelhouse, and stages the built UI at a static path. first-launch-native.ps1
-    creates the VENV at %USERPROFILE%\.provisa\venv, installs from wheelhouse or PyPI, and provisa-native.ps1
+    bundles it with a wheelhouse, and stages the built UI at a static path. first-launch-native.ps1 creates
+    the VENV at %USERPROFILE%\.provisa\venv, installs from wheelhouse or PyPI, and provisa-native.ps1
     runs the two uvicorn processes (API factory + ui_server). The Windows base installer ships NO VirtualBox,
     OVA, or Trino; the container/compute tier (WSL2 + containerd, Trino image) is a separate on-demand
     download per REQ-889 (additive, reversible tier toggle).
@@ -28599,6 +28598,7 @@
   - tests/unit/test_injector.py
   - tests/unit/test_probe_type_config_validation.py
   - tests/unit/test_live_change_gates.py
+  - tests/mvmvp/test_mv_triggers_e2e.py
   related_reqs:
   - REQ-941
   - REQ-855
@@ -32824,7 +32824,7 @@
   category: Materialized Views & Caching
   priority: SHOULD
   type: behavioral
-  since: '2026-07'
+  since: 2026-07
   description: 'A registered relation backed by `view_sql` (a Provisa-managed view or, with materialize=true,
     a materialized view -- REQ-885/REQ-543, provisa/core/models.py:496-498) is DERIVED, not a base table,
     and MUST be exposed query-only: the schema generator MUST NOT emit insert/upsert/update/delete GraphQL
@@ -32836,11 +32836,11 @@
     provisa/compiler/schema_gen.py:_build_visible_tables), and the mutation-field loop skips read_only
     relations (provisa/compiler/schema_gen.py). The GraphQL read surface (query fields, aggregates, relationships)
     is UNCHANGED -- only the write surface is withdrawn. A base table is never affected (view_sql is null).
-    Raw-SQL write-rejection: because every raw-SQL surface funnels through the one governed pipeline
-    (REQ-1176), the guard lives in ONE place -- _reject_view_writes (provisa/pgwire/_pipeline.py), called
-    from both _govern_and_route (pgwire / REST /data/sql / Flight SQL / MCP) and _govern_and_route_compiled
-    (Bolt/Cypher / gRPC). It rejects any INSERT/UPSERT/UPDATE/DELETE/MERGE whose TARGET is a view_sql_map
-    relation; a view read in the FROM/USING of a write, and all base-table writes, are unaffected.'
+    Raw-SQL write-rejection: because every raw-SQL surface funnels through the one governed pipeline (REQ-1176),
+    the guard lives in ONE place -- _reject_view_writes (provisa/pgwire/_pipeline.py), called from both
+    _govern_and_route (pgwire / REST /data/sql / Flight SQL / MCP) and _govern_and_route_compiled (Bolt/Cypher
+    / gRPC). It rejects any INSERT/UPSERT/UPDATE/DELETE/MERGE whose TARGET is a view_sql_map relation;
+    a view read in the FROM/USING of a write, and all base-table writes, are unaffected.'
   use_case: A steward composes an MV over a Provisa-hosted function (REQ-885) and it appears in GraphQL
     for querying, but insert/update/delete mutations are no longer generated for it -- so a client cannot
     issue a write that would be lost on the next refresh. The relation reads like any table; it just cannot
@@ -32872,37 +32872,36 @@
   category: Package Distribution
   priority: MUST
   type: infrastructure
-  since: '2026-07'
+  since: 2026-07
   description: 'A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned per-platform
-    PostgreSQL extension and FDW binaries, published to PyPI so the embedded tier acquires them via
-    PyPI/Artifactory instead of github.com/kenstott/provisa/releases (unreachable behind PyPI/Maven/npm-only
-    enterprise proxies). Payload (scripts/ci/build_pg_extensions.sh): core contrib file_fdw + postgres_fdw,
-    external sqlite_fdw + mysql_fdw, and pg_duckdb — where pg_duckdb (csv/parquet/json + httpfs + iceberg
-    via DuckDB) SUBSUMES the REQ-898 parquet_fdw / parquet_s3_fdw / pg_lake / pg_analytics functionality in
-    one maintained extension rather than four heterogeneous build systems. Built by the `wheel` job in
-    .github/workflows/build-pg-extensions.yml, which collects the per-platform build tarballs
-    (packaging/pg-ext/collect.py merges them under provisa_pg_ext/_ext), builds ONE universal wheel
-    (python -m build), and publishes to PyPI. Runtime discovery: packaging/pg-ext/provisa_pg_ext.ext_root()
+    PostgreSQL extension and FDW binaries, published to PyPI so the embedded tier acquires them via PyPI/Artifactory
+    instead of github.com/kenstott/provisa/releases (unreachable behind PyPI/Maven/npm-only enterprise
+    proxies). Payload (scripts/ci/build_pg_extensions.sh): core contrib file_fdw + postgres_fdw, external
+    sqlite_fdw + mysql_fdw, and pg_duckdb — where pg_duckdb (csv/parquet/json + httpfs + iceberg via DuckDB)
+    SUBSUMES the REQ-898 parquet_fdw / parquet_s3_fdw / pg_lake / pg_analytics functionality in one maintained
+    extension rather than four heterogeneous build systems. Built by the `wheel` job in .github/workflows/build-pg-extensions.yml,
+    which collects the per-platform build tarballs (packaging/pg-ext/collect.py merges them under provisa_pg_ext/_ext),
+    builds ONE universal wheel (python -m build), and publishes to PyPI. Runtime discovery: packaging/pg-ext/provisa_pg_ext.ext_root()
     locates the bundle; provisa/pg_extensions/staging.py stage_bundled_pg_extensions() copies the running
-    platform''s FDW modules into a pgserver pginstall and provisa/federation/fdw_artifact_catalog.py
-    registers what landed (fails loud if the wheel lacks this platform''s bundle — no github.com fallback),
-    keyed by the REQ-898 config/pg_extension_catalog.yaml inventory (provisa/pg_extensions/catalog.py). A
-    pgserver configured with FDW sources thus loads the bundled modules via CREATE EXTENSION straight from
-    the PyPI wheel — the offline analog of the DuckDB extension staging (REQ-1142). The FDW set IS the
-    pgserver federation engine''s (PgFederationRuntime, provisa/federation/pg_runtime.py) REACHABILITY
-    matrix: each FDW defines a reachable source type (postgres_fdw→postgres, sqlite_fdw→sqlite,
-    file_fdw→csv, mysql_fdw→mysql, pg_duckdb→parquet/csv/json/httpfs/iceberg). Runtime staging is WIRED:
-    provisa/core/control_plane_pg.py start() calls _stage_bundled_extensions() at embedded-pgserver boot,
-    staging the wheel''s modules into the shared pginstall so the pg fed engine can CREATE EXTENSION them
-    offline (best-effort: a BYO-Postgres tier without the wheel is a clean no-op — its FDWs come from the
-    system PG, discovered via the STANDARD pg_available_extensions catalog, connector_duckdb._probe_pg_extension).
-    Reachability is proven end-to-end per FDW through PgFederationRuntime.attach_source: file_fdw + postgres_fdw
-    (test_embedded_pg_fdw_engine_e2e), sqlite_fdw (test_embedded_pg_sqlite_fdw_e2e), pg_duckdb csv/parquet
-    (test_embedded_pg_duckdb_engine_e2e) and iceberg (test_embedded_pg_duckdb_iceberg_e2e), and the runtime
-    directly (test_pg_runtime_e2e); mysql_fdw is best-effort (client lib), matching the CI smoke gate
-    (scripts/ci/smoke_pg_extensions.py, wired in build-pg-extensions.yml, which CREATE EXTENSIONs each on a
-    fresh pgserver). Declarative BYO custom-connector description (adding a source_type→attach mapping for a
-    custom FDW / DuckDB ATTACH extension purely in config) is a SEPARATE requirement, not this packaging one.'
+    platform''s FDW modules into a pgserver pginstall and provisa/federation/fdw_artifact_catalog.py registers
+    what landed (fails loud if the wheel lacks this platform''s bundle — no github.com fallback), keyed
+    by the REQ-898 config/pg_extension_catalog.yaml inventory (provisa/pg_extensions/catalog.py). A pgserver
+    configured with FDW sources thus loads the bundled modules via CREATE EXTENSION straight from the
+    PyPI wheel — the offline analog of the DuckDB extension staging (REQ-1142). The FDW set IS the pgserver
+    federation engine''s (PgFederationRuntime, provisa/federation/pg_runtime.py) REACHABILITY matrix:
+    each FDW defines a reachable source type (postgres_fdw→postgres, sqlite_fdw→sqlite, file_fdw→csv,
+    mysql_fdw→mysql, pg_duckdb→parquet/csv/json/httpfs/iceberg). Runtime staging is WIRED: provisa/core/control_plane_pg.py
+    start() calls _stage_bundled_extensions() at embedded-pgserver boot, staging the wheel''s modules
+    into the shared pginstall so the pg fed engine can CREATE EXTENSION them offline (best-effort: a BYO-Postgres
+    tier without the wheel is a clean no-op — its FDWs come from the system PG, discovered via the STANDARD
+    pg_available_extensions catalog, connector_duckdb._probe_pg_extension). Reachability is proven end-to-end
+    per FDW through PgFederationRuntime.attach_source: file_fdw + postgres_fdw (test_embedded_pg_fdw_engine_e2e),
+    sqlite_fdw (test_embedded_pg_sqlite_fdw_e2e), pg_duckdb csv/parquet (test_embedded_pg_duckdb_engine_e2e)
+    and iceberg (test_embedded_pg_duckdb_iceberg_e2e), and the runtime directly (test_pg_runtime_e2e);
+    mysql_fdw is best-effort (client lib), matching the CI smoke gate (scripts/ci/smoke_pg_extensions.py,
+    wired in build-pg-extensions.yml, which CREATE EXTENSIONs each on a fresh pgserver). Declarative BYO
+    custom-connector description (adding a source_type→attach mapping for a custom FDW / DuckDB ATTACH
+    extension purely in config) is a SEPARATE requirement, not this packaging one.'
   use_case: Embedded tier (and enterprise deployments behind restricted proxies) can install PostgreSQL
     extensions offline via standard PyPI/Artifactory channels instead of fetching from unreachable GitHub
     releases.
@@ -33005,26 +33004,24 @@
     hook (provisa/pgwire/function_call.py maybe_invoke_registered_function) now returns None for any composed
     statement (joined/sub-queried), so it never mis-runs one command as the whole result; the localizer
     owns composition. Every raw-SQL surface gets it for free by routing through the one pipeline: pgwire,
-    MCP run_sql, Arrow Flight SQL, and REST /data/sql. The drifted second pipeline
-    (provisa/api/data/endpoint_dev.py::_compile_govern_execute) has been DELETED; REST /data/sql, airport
-    writes, and table-profile now route through _govern_and_route/_execute_plan, with as_of (REQ-1163),
-    discovery_mode, __provisa__ view expansion, and govdata folded into the one pipeline. The single
-    chokepoint is enforced: _govern_and_route mints an unforgeable provenance stamp on every plan and
-    _execute_plan refuses any plan lacking one (tests/unit/test_governed_chokepoint.py). gRPC (typed
-    proto → _govern_and_route_compiled, no raw-SQL entry), Bolt/Cypher
-    (command invoked standalone via CALL, REQ-1156 — no inline-SQL syntax) and GraphQL (commands are generated
-    fields, not raw SQL) have no raw-SQL inline-composition surface, so REQ-1159 is N/A there. The pass
-    (a) detects every command call in the parsed tree, (b) executes each to a local relation
-    typed by the command''s declared output dataset contract, substituting the call site via a size-adaptive
-    mechanism (VALUES CTE below a row threshold, registered Arrow table above), (c) forces local federation
-    execution (Route.ENGINE — a command cannot be pushed to a remote source), (d) applies governance at
-    the correct DEFINER/INVOKER identity for the command''s input plus the caller''s governance for the
-    outer SQL, and (e) validates rows in/out against the command''s declared input/output dataset schema
-    (fail-loud). Prerequisite: a canonical per-dataset contract — one or more scalar (column_value) args
-    plus one or more TYPED input datasets (result_set/table_ref args, each carrying an ordered relational
-    field-list) and exactly one TYPED output dataset; canonical field-list is the source of truth (single
-    GraphQL-scalar vocabulary), with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out),
-    not stored truth.'
+    MCP run_sql, Arrow Flight SQL, and REST /data/sql. The drifted second pipeline (provisa/api/data/endpoint_dev.py::_compile_govern_execute)
+    has been DELETED; REST /data/sql, airport writes, and table-profile now route through _govern_and_route/_execute_plan,
+    with as_of (REQ-1163), discovery_mode, __provisa__ view expansion, and govdata folded into the one
+    pipeline. The single chokepoint is enforced: _govern_and_route mints an unforgeable provenance stamp
+    on every plan and _execute_plan refuses any plan lacking one (tests/unit/test_governed_chokepoint.py).
+    gRPC (typed proto → _govern_and_route_compiled, no raw-SQL entry), Bolt/Cypher (command invoked standalone
+    via CALL, REQ-1156 — no inline-SQL syntax) and GraphQL (commands are generated fields, not raw SQL)
+    have no raw-SQL inline-composition surface, so REQ-1159 is N/A there. The pass (a) detects every command
+    call in the parsed tree, (b) executes each to a local relation typed by the command''s declared output
+    dataset contract, substituting the call site via a size-adaptive mechanism (VALUES CTE below a row
+    threshold, registered Arrow table above), (c) forces local federation execution (Route.ENGINE — a
+    command cannot be pushed to a remote source), (d) applies governance at the correct DEFINER/INVOKER
+    identity for the command''s input plus the caller''s governance for the outer SQL, and (e) validates
+    rows in/out against the command''s declared input/output dataset schema (fail-loud). Prerequisite:
+    a canonical per-dataset contract — one or more scalar (column_value) args plus one or more TYPED input
+    datasets (result_set/table_ref args, each carrying an ordered relational field-list) and exactly one
+    TYPED output dataset; canonical field-list is the source of truth (single GraphQL-scalar vocabulary),
+    with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out), not stored truth.'
   use_case: A steward composes a governed external transform directly in ordinary SQL joined against federated
     tables, on any surface, and — because the command declares and validates its input/output dataset
     columns — column-level lineage can close across the opaque RPC boundary via taint-closure splicing
@@ -33051,14 +33048,13 @@
   - tests/unit/test_mcp_server.py
   - tests/unit/test_governed_chokepoint.py
   - tests/e2e/test_transport_contract.py
-  scenario: |
-    Given a registered command with a typed input/output dataset contract
-    When a client submits SQL that composes the command inline (FROM cmd(args) e JOIN a source table)
-    Then on every raw-SQL surface (pgwire, REST /data/sql, MCP run_sql, Arrow Flight) the command is
-      localized to a typed local relation via the one _govern_and_route/_execute_plan pipeline
-    And the outer statement joins against it and returns the enriched rows identically on each surface
-    And the composed statement is never handed to the federation engine as an unknown table function
-    And no surface can bypass the pipeline: _execute_plan refuses any plan lacking a top-minted stamp
+  scenario: "Given a registered command with a typed input/output dataset contract\nWhen a client submits\
+    \ SQL that composes the command inline (FROM cmd(args) e JOIN a source table)\nThen on every raw-SQL\
+    \ surface (pgwire, REST /data/sql, MCP run_sql, Arrow Flight) the command is\n  localized to a typed\
+    \ local relation via the one _govern_and_route/_execute_plan pipeline\nAnd the outer statement joins\
+    \ against it and returns the enriched rows identically on each surface\nAnd the composed statement\
+    \ is never handed to the federation engine as an unknown table function\nAnd no surface can bypass\
+    \ the pipeline: _execute_plan refuses any plan lacking a top-minted stamp\n"
   since: 2026-07
   target: 2026-Q4
   related_reqs:
@@ -33080,22 +33076,22 @@
     (REQ-862 spans / input versions) to stamp which version flowed. Implemented as a full node+edge graph
     builder (provisa/lineage/graph.py build_column_graph / LineageGraph) that preserves intermediate relations
     (CTEs, subqueries, joins), alongside the pre-existing leaf-collapsed resolver (provisa/lineage/columns.py
-    resolve_column_lineage, retained for the flat output->source view). Each inline command, once localized into
-    a typed CTE/Arrow relation, contributes real edges: taint-closure by default (each declared output
+    resolve_column_lineage, retained for the flat output->source view). Each inline command, once localized
+    into a typed CTE/Arrow relation, contributes real edges: taint-closure by default (each declared output
     column derives from ALL declared input columns) or precise per-column edges when declared; command
     nodes are visually distinct opaque-transform boundaries tagged with the command name and its contract.
-    Two grains from one graph: relation-level zoom-out and column-level drill-in. Surfaces (shipped): an
-    API that takes a view/statement and returns graph JSON (nodes + edges) — POST /admin/lineage/graph
+    Two grains from one graph: relation-level zoom-out and column-level drill-in. Surfaces (shipped):
+    an API that takes a view/statement and returns graph JSON (nodes + edges) — POST /admin/lineage/graph
     (provisa/api/admin/lineage_router.py) — and a UI DAG visualization (provisa-ui/src/components/lineage/LineageDag.tsx,
-    LineagePage.tsx); previously column lineage was only OTel span attributes emitted at MV refresh. Each transform
-    (edge) MUST be NAMED and/or DEFINED, not left as an opaque SQL-expression string: the resolver decomposes
-    each projection expression and matches every operation against the union vocabulary of SQL operators/standard
-    functions (SQLGlot expression nodes), engine built-in scalar functions, and registered commands (projected
-    into pg_proc/routines, each carrying its declared contract) — so e.g. lat,lng <- city, state is labeled
-    as the chain "concat/+ (SQL op) -> geocode (command, contract as its def)". This is a sub-DAG inside
-    the edge: the column-level graph states the derivation, and zooming into an edge reveals the named
-    operation chain (expression-level command nodes reuse the same contract / taint-closure machinery).
-    A transform matching no known op is itself a signal worth flagging.'
+    LineagePage.tsx); previously column lineage was only OTel span attributes emitted at MV refresh. Each
+    transform (edge) MUST be NAMED and/or DEFINED, not left as an opaque SQL-expression string: the resolver
+    decomposes each projection expression and matches every operation against the union vocabulary of
+    SQL operators/standard functions (SQLGlot expression nodes), engine built-in scalar functions, and
+    registered commands (projected into pg_proc/routines, each carrying its declared contract) — so e.g.
+    lat,lng <- city, state is labeled as the chain "concat/+ (SQL op) -> geocode (command, contract as
+    its def)". This is a sub-DAG inside the edge: the column-level graph states the derivation, and zooming
+    into an edge reveals the named operation chain (expression-level command nodes reuse the same contract
+    / taint-closure machinery). A transform matching no known op is itself a signal worth flagging.'
   use_case: A steward inspects the end-to-end derivation of any view's output columns — across SQL and
     opaque command boundaries alike — as a rendered DAG; the visualization doubles as a discipline mirror,
     since an over-declared "frankenstein" command renders as a wide fan-in node, making sloppy contracts
@@ -33111,12 +33107,18 @@
   tests:
   - tests/unit/test_lineage_graph.py
   - provisa-ui/src/__tests__/LineagePage.test.tsx
-  scenario: |
-    Given a view whose SQL projects output columns through CTEs, joins, and one inline-composed command
+  scenario: 'Given a view whose SQL projects output columns through CTEs, joins, and one inline-composed
+    command
+
     When the column-lineage graph API is invoked for that view
+
     Then a node+edge DAG is returned preserving intermediate relations
+
     And the inline command appears as a first-class contract-validated node with taint-closure edges
+
     And each transform edge is named against the SQL-op / built-in / registered-command vocabulary
+
+    '
   since: 2026-07
   target: 2026-Q4
   competitive_position:
@@ -33132,7 +33134,7 @@
   category: Federation-Wide Provenance Graph
   priority: MUST
   type: behavioral
-  since: '2026-07'
+  since: 2026-07
   description: 'The platform MUST be able to merge every per-view / per-statement column-level lineage
     DAG (REQ-1160) into ONE federation-wide provenance graph — spanning all registered views, MVs, and
     inline-composed commands across all sources — by unioning nodes on canonical resolved dataset identity
@@ -33152,12 +33154,12 @@
     graph and as a diagnostic) for operator judgment; it does not unilaterally reject. IMPLEMENTATION
     (provisa/lineage/merge.py, provisa/lineage/graph.py, provisa/api/admin/lineage_router.py): merge/union
     on canonical dataset identity (real-relation node keys, quoting normalized), base→derived stitching
-    with transparent command-contract boundaries, cycle detect+characterize (feedback vs error),
-    progressive slicing (ego-graph / upstream / downstream / depth / domain filter), and the GET
-    /admin/lineage/federation API. Built INCREMENTALLY (build_federation_graph_incremental): each view''s
-    parsed sub-DAG is memoized by its SQL, so a request recomputes ONLY the views whose definition changed
-    and unions the rest from cache; an unchanged input returns the prior merged graph without re-unioning
-    — the entire graph is never rebuilt from scratch.'
+    with transparent command-contract boundaries, cycle detect+characterize (feedback vs error), progressive
+    slicing (ego-graph / upstream / downstream / depth / domain filter), and the GET /admin/lineage/federation
+    API. Built INCREMENTALLY (build_federation_graph_incremental): each view''s parsed sub-DAG is memoized
+    by its SQL, so a request recomputes ONLY the views whose definition changed and unions the rest from
+    cache; an unchanged input returns the prior merged graph without re-unioning — the entire graph is
+    never rebuilt from scratch.'
   use_case: An operator runs impact analysis (change a source column, see everything affected across every
     domain), traces any derived column back to its sources across the whole federation, and inspects circular
     definitions with enough context to judge whether a cycle is an intended time-lagged feedback loop
@@ -33171,15 +33173,13 @@
   - tests/unit/test_lineage_merge.py
   - tests/unit/test_lineage_incremental.py
   - tests/unit/test_lineage_graph.py
-  scenario: |
-    Given multiple registered views/MVs whose per-statement column lineage DAGs share dataset columns,
-      including a cross-view chain and a materialization boundary
-    When the federation graph is requested
-    Then the per-view DAGs merge into ONE graph unioned on canonical dataset identity (base source column
-      → every derived column, command boundaries transparent), cycles are characterized as feedback (across
-      a materialized boundary) vs error, and it is sliceable by ego/upstream/downstream/depth/domain
-    And on a subsequent request only views whose SQL changed are re-parsed — the whole graph is never
-      rebuilt from scratch, and an unchanged input returns the prior merged graph
+  scenario: "Given multiple registered views/MVs whose per-statement column lineage DAGs share dataset\
+    \ columns,\n  including a cross-view chain and a materialization boundary\nWhen the federation graph\
+    \ is requested\nThen the per-view DAGs merge into ONE graph unioned on canonical dataset identity\
+    \ (base source column\n  → every derived column, command boundaries transparent), cycles are characterized\
+    \ as feedback (across\n  a materialized boundary) vs error, and it is sliceable by ego/upstream/downstream/depth/domain\n\
+    And on a subsequent request only views whose SQL changed are re-parsed — the whole graph is never\n\
+    \  rebuilt from scratch, and an unchanged input returns the prior merged graph\n"
   competitive_position:
     status: ahead
     rationale: A live, column-level, cross-source, command-transparent provenance map of the entire federation
@@ -33201,7 +33201,7 @@
     the whole fresh dataset stamped with system time; `delta` appends only the rows the ENGINE computes
     as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys — never folded row-by-row
     in Provisa. "As of" history is DERIVED at read time from the immutable append log (latest batch for
-    snapshot; a ROW_NUMBER window per business key for delta), so consumer-facing `as_of` semantics are
+    snapshot; a ROW_NUMBER window per entity key for delta), so consumer-facing `as_of` semantics are
     identical across every substrate. On Iceberg each append is exactly one snapshot (REQ-844). Declared
     end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table -> MVDefinition.bitemporal
     -> refresh_mv) with a UI control in TableEditForm. NOTE: exposing `as_of` as a query-language argument
@@ -33228,7 +33228,7 @@
   - tests/unit/test_bitemporal_refresh_e2e.py
   - tests/integration/test_bitemporal_http_e2e.py
   since: 2026-07
-  scenario: 'Given a materialized view declared bitemporal (snapshot or delta) on a business key
+  scenario: 'Given a materialized view declared bitemporal (snapshot or delta) on an entity key
 
     When it is refreshed repeatedly as rows are inserted, updated, and deleted
 
@@ -33299,13 +33299,13 @@
   category: Materialization Store
   priority: SHOULD
   type: behavioral
-  since: '2026-07'
+  since: 2026-07
   description: 'Declarative `entity` and `fact` shortcuts that LOWER to the existing MV / bitemporal /
     relationship primitives — the two constructs both a star schema and a Data Vault are built from, kept
     methodology-neutral. (1) `entity` — a keyed, deduplicated, optionally-historized projection of a source;
     lowers to a materialized view (view_sql projecting the key + attributes) with materialize=true, and
     when history is requested a bitemporal MV (REQ-1162): history=scd2 → mode=delta, history=snapshot
-    → mode=snapshot, keyed on the business key. Serves a star DIMENSION (SCD1/SCD2) and a Data Vault HUB+SATELLITE.
+    → mode=snapshot, keyed on the entity key. Serves a star DIMENSION (SCD1/SCD2) and a Data Vault HUB+SATELLITE.
     (2) `fact` — join to entity keys, reduce to a declared grain, aggregate measures; lowers to a materialized
     view (SELECT grain + dimension FK columns + aggregated measures, GROUP BY grain+FKs) plus registered
     relationships to the entities. Serves a star FACT and a DV LINK (a degenerate fact of keys). The lowering
@@ -33319,14 +33319,12 @@
   - provisa/mv/modeling.py
   tests:
   - tests/unit/test_modeling.py
-  scenario: |
-    Given an `entity` spec (business key + attributes, optional history=scd2|snapshot) and a `fact` spec
-      (grain + dimension FK refs + measures)
-    When the specs are lowered
-    Then the entity becomes a materialize=true MV projecting key+attributes (bitemporal mode=delta for
-      scd2, mode=snapshot for snapshot, keyed on the business key) and the fact becomes an MV selecting
-      grain + FK columns + aggregated measures grouped by grain+FKs, plus registered relationships to the
-      entities — the same registrations a modeler would hand-write, portable across engines
+  scenario: "Given an `entity` spec (entity key + attributes, optional history=scd2|snapshot) and a\
+    \ `fact` spec\n  (grain + dimension FK refs + measures)\nWhen the specs are lowered\nThen the entity\
+    \ becomes a materialize=true MV projecting key+attributes (bitemporal mode=delta for\n  scd2, mode=snapshot\
+    \ for snapshot, keyed on the entity key) and the fact becomes an MV selecting\n  grain + FK columns\
+    \ + aggregated measures grouped by grain+FKs, plus registered relationships to the\n  entities — the\
+    \ same registrations a modeler would hand-write, portable across engines\n"
   related_reqs:
   - REQ-1162
   - REQ-1160
@@ -33337,7 +33335,7 @@
   category: Table Processor (Shared)
   priority: MUST
   type: constraint
-  since: '2026-07'
+  since: 2026-07
   description: 'The inline MV preprocess hook (REQ-957) is RESCOPED from a row transform (rows → rows)
     to a PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a mutated dataset.
     Row transforms are explicitly out of scope — they belong in SQL (engine pushdown) or external processors
@@ -33599,8 +33597,8 @@
     apply the active naming convention (apollo_graphql camelCase, hasura_graphql snake_case) at the emit
     site, matching table field name behavior. Previously callable fields retained their raw registered
     names regardless of the configured convention.
-  use_case: Consistent naming across table fields and callable fields improves developer experience
-    and ensures the GraphQL surface respects the configured naming convention uniformly.
+  use_case: Consistent naming across table fields and callable fields improves developer experience and
+    ensures the GraphQL surface respects the configured naming convention uniformly.
   code:
   - provisa/compiler/actions_schema.py
   - provisa/api/app_loaders.py
@@ -33631,14 +33629,14 @@
   type: behavioral
   description: 'Webhooks (tracked_webhooks from the remote schema registry) are now governed, discoverable
     commands routable across all protocol surfaces (pgwire, Bolt, Flight, REST, gRPC, MCP), extending
-    REQ-872 from tracked_functions alone. A webhook: enforces writable_by authorization identically
-    to tracked functions; appears in list_visible_commands discovery; is routed through the shared
-    invoke_tracked_function executor (with a webhook-specific branch in invoke_tracked_webhook); and
-    is invocable via SELECT webhook(...) on pgwire, CALL webhook(...) YIELD on Bolt, POST /{domain}/commands/{name}
-    on REST, and as an MCP tool.'
-  use_case: Webhooks (scalar-argument HTTP POST mutations) were previously GraphQL-only and lacked
-    governance. Making webhooks governed, discoverable, and multi-surface-routable unifies command access
-    patterns across all query surfaces and enforces consistent authorization.
+    REQ-872 from tracked_functions alone. A webhook: enforces writable_by authorization identically to
+    tracked functions; appears in list_visible_commands discovery; is routed through the shared invoke_tracked_function
+    executor (with a webhook-specific branch in invoke_tracked_webhook); and is invocable via SELECT webhook(...)
+    on pgwire, CALL webhook(...) YIELD on Bolt, POST /{domain}/commands/{name} on REST, and as an MCP
+    tool.'
+  use_case: Webhooks (scalar-argument HTTP POST mutations) were previously GraphQL-only and lacked governance.
+    Making webhooks governed, discoverable, and multi-surface-routable unifies command access patterns
+    across all query surfaces and enforces consistent authorization.
   code:
   - provisa/api/data/action_exec.py
   - provisa/pgwire/function_call.py
@@ -33669,282 +33667,318 @@
   category: Query Complexity Limits
   priority: MUST
   type: constraint
-  description: >-
-    Per-role query complexity limits (max_query_depth, max_query_nodes, max_query_time_ms) complement per-role request-rate limits (REQ-369). Enforced at the GraphQL→IR compile boundary; over-limit requests return HTTP 413. Limits persist on the roles table and are configurable via admin API.
-  use_case: >-
-    Query complexity limits prevent resource exhaustion from complex or malicious queries, complementing request-rate limiting. Provides Hasura api_limits parity.
+  description: Per-role query complexity limits (max_query_depth, max_query_nodes, max_query_time_ms)
+    complement per-role request-rate limits (REQ-369). Enforced at the GraphQL→IR compile boundary; over-limit
+    requests return HTTP 413. Limits persist on the roles table and are configurable via admin API.
+  use_case: Query complexity limits prevent resource exhaustion from complex or malicious queries, complementing
+    request-rate limiting. Provides Hasura api_limits parity.
   code:
-    - provisa/compiler/limits.py
-    - provisa/api/models/role.py
-    - provisa/admin/admin_api.py
+  - provisa/compiler/limits.py
+  - provisa/api/models/role.py
+  - provisa/admin/admin_api.py
   tests:
-    - tests/unit/test_query_limits.py
-    - tests/unit/test_hasura_api_limits.py
-    - provisa-ui/e2e/security-query-limits.spec.ts
-  since: "2026-07"
-  scenario: |
-    Given a role with max_query_depth=3, max_query_nodes=100, max_query_time_ms=5000
+  - tests/unit/test_query_limits.py
+  - tests/unit/test_hasura_api_limits.py
+  - provisa-ui/e2e/security-query-limits.spec.ts
+  since: 2026-07
+  scenario: 'Given a role with max_query_depth=3, max_query_nodes=100, max_query_time_ms=5000
+
     When a GraphQL query is submitted that exceeds any limit
+
     Then the request is rejected with HTTP 413 at the GraphQL→IR compile boundary
+
+    '
   competitive_position:
     status: parity
-    rationale: >-
-      Hasura provides api_limits (depth_limit, node_limit, time_limit) per role via api_limits.yaml.
-      Provisa implements equivalent functionality in the admin GraphQL API, matching Hasura's governance model.
+    rationale: Hasura provides api_limits (depth_limit, node_limit, time_limit) per role via api_limits.yaml.
+      Provisa implements equivalent functionality in the admin GraphQL API, matching Hasura's governance
+      model.
   e2e: true
-  e2e_reason: >-
-    Verification requires end-to-end validation: configuring limits via admin API (REST/GraphQL), then executing queries through the data endpoint to confirm 413 rejection when limits are exceeded.
+  e2e_reason: 'Verification requires end-to-end validation: configuring limits via admin API (REST/GraphQL),
+    then executing queries through the data endpoint to confirm 413 rejection when limits are exceeded.'
 - id: REQ-1175
   status: complete
-  group: "9. Deployment & Release"
+  group: 9. Deployment & Release
   category: Release Integrity
   priority: MUST
   type: constraint
-  description: >-
-    A GitHub Release must never be published in a partial state (missing any installer/download-link asset). All four tag-triggered workflows (build-dmg, release-exports, build-pg-extensions, build-duckdb-extensions) create the release as a DRAFT via ensure-release; sibling workflows attach assets only with gh release upload --clobber (never flipping draft/prerelease). Only build-dmg's publish-release job undrafts the release after verifying the complete installer manifest (macOS core/runtime/obs/demo DMGs, Linux AppImage, Windows native + container installers, JDBC jar) is present via fail_on_unmatched_files; missing assets cause immediate failure leaving the release draft.
-  use_case: >-
-    Prevents /dl redirector from serving incomplete builds. In alpha.257/258, a partial release was published when build-dmg failed while sibling workflows succeeded, causing end users to download missing installers.
+  description: A GitHub Release must never be published in a partial state (missing any installer/download-link
+    asset). All four tag-triggered workflows (build-dmg, release-exports, build-pg-extensions, build-duckdb-extensions)
+    create the release as a DRAFT via ensure-release; sibling workflows attach assets only with gh release
+    upload --clobber (never flipping draft/prerelease). Only build-dmg's publish-release job undrafts
+    the release after verifying the complete installer manifest (macOS core/runtime/obs/demo DMGs, Linux
+    AppImage, Windows native + container installers, JDBC jar) is present via fail_on_unmatched_files;
+    missing assets cause immediate failure leaving the release draft.
+  use_case: Prevents /dl redirector from serving incomplete builds. In alpha.257/258, a partial release
+    was published when build-dmg failed while sibling workflows succeeded, causing end users to download
+    missing installers.
   code:
-    - .github/workflows/build-dmg.yml
-    - .github/actions/ensure-release
-    - site/functions/dl/[platform].js
+  - .github/workflows/build-dmg.yml
+  - .github/actions/ensure-release
+  - site/functions/dl/[platform].js
   tests:
-    - tests/unit/test_release_integrity.py
-  since: "2026-07"
-  scenario: |
-    Given a tag is pushed triggering all four tag-triggered workflows
-    When any workflow completes before build-dmg's publish-release job
+  - tests/unit/test_release_integrity.py
+  since: 2026-07
+  scenario: 'Given a tag is pushed triggering all four tag-triggered workflows
+
+    When any workflow completes before build-dmg''s publish-release job
+
     Then assets are uploaded to a DRAFT release (not visible to /dl)
-    And if build-dmg's manifest verification fails
+
+    And if build-dmg''s manifest verification fails
+
     Then the release remains DRAFT and is never published
+
     And /dl redirector ignores the draft, serving an older complete build
+
+    '
 - id: REQ-1176
   status: complete
-  group: "1. Access Governance & Security"
+  group: 1. Access Governance & Security
   category: Execution Integrity
   priority: MUST
   type: constraint
-  description: >-
-    All governed SQL execution flows through exactly one pipeline (_govern_and_route/_govern_and_route_compiled → _execute_plan)
-    that mints unforgeable per-plan provenance stamps (256-bit process-private capability tokens). No surface may assemble its own
-    govern+route+execute sequence. Plans lacking valid stamps are rejected before row access, making ungoverned data egress
-    (RLS/masking/column-visibility/write-ACL bypass) mechanically impossible.
-  use_case: >-
-    Prevents side-door or hand-crafted execution plans from bypassing governance. A static AST ratchet test enforces that no
-    NEW module co-locates decide_route + apply_governance, and runtime stamp validation rejects any plan without valid provenance.
+  description: All governed SQL execution flows through exactly one pipeline (_govern_and_route/_govern_and_route_compiled
+    → _execute_plan) that mints unforgeable per-plan provenance stamps (256-bit process-private capability
+    tokens). No surface may assemble its own govern+route+execute sequence. Plans lacking valid stamps
+    are rejected before row access, making ungoverned data egress (RLS/masking/column-visibility/write-ACL
+    bypass) mechanically impossible.
+  use_case: Prevents side-door or hand-crafted execution plans from bypassing governance. A static AST
+    ratchet test enforces that no NEW module co-locates decide_route + apply_governance, and runtime stamp
+    validation rejects any plan without valid provenance.
   code:
-    - provisa/pgwire/_pipeline.py
+  - provisa/pgwire/_pipeline.py
   tests:
-    - tests/unit/test_governed_chokepoint.py
-    - tests/e2e/test_transport_contract.py
-  since: "2026-07"
-  scenario: |
-    Given a hand-crafted execution plan assembled outside _govern_and_route
+  - tests/unit/test_governed_chokepoint.py
+  - tests/e2e/test_transport_contract.py
+  since: 2026-07
+  scenario: 'Given a hand-crafted execution plan assembled outside _govern_and_route
+
     When the plan is submitted to _execute_plan without a valid provenance stamp
+
     Then the plan is rejected before any row is read, preventing RLS/masking bypass
+
     And given a plan routed through _govern_and_route with a valid stamp
+
     When submitted to _execute_plan
+
     Then the stamp is validated and execution proceeds with governance enforced
+
+    '
   related_reqs:
-    - REQ-1159
-    - REQ-1163
-    - REQ-272
-    - REQ-825
+  - REQ-1159
+  - REQ-1163
+  - REQ-272
+  - REQ-825
 - id: REQ-1177
   status: complete
-  since: "2026-07"
-  group: "4. Source Connectors"
+  since: 2026-07
+  group: 4. Source Connectors
   category: Connector Configuration
   priority: SHOULD
   type: behavioral
-  description: >-
-    Operators may declare custom source connectors (proprietary FDWs or ATTACH extensions) in config
-    without code changes. A declarative descriptor per source_type specifies (a) required extension(s)
+  description: 'Operators may declare custom source connectors (proprietary FDWs or ATTACH extensions)
+    in config without code changes. A declarative descriptor per source_type specifies (a) required extension(s)
     to load, (b) the attach/import template, and (c) source_type mapping. Availability is verified at
-    attach time against each engine's standard extension catalog (pg_available_extensions for Postgres,
-    duckdb_extensions() for DuckDB), failing loud (never silent) when the declared extension is not
-    installable. The two native engines scope this differently because their extension APIs differ.
-    POSTGRES is a GENERIC descriptor: PG FDW is SQL/MED (an ISO standard), so every FDW uses the same
-    DDL shape — CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…) + CREATE USER MAPPING + IMPORT
-    FOREIGN SCHEMA (or an explicit CREATE FOREIGN TABLE when the FDW lacks IMPORT, e.g. file_fdw). The
-    descriptor supplies only the per-FDW variance: extension name, SERVER option keys (host vs
-    servername vs dbserver), the USER MAPPING key (user vs username), and a supports_import flag. So an
-    arbitrary standard-conforming FDW is drivable from config. DUCKDB is a CURATED UNION, not arbitrary:
-    DuckDB has no single standard, so we support only extensions that fit one of the TWO mechanisms our
-    engine already drives — (1) ATTACH-TYPE for database extensions (ATTACH '<dsn>' AS x (TYPE <t>),
-    generalized today by _DuckDBExtensionConnector / REQ-899: INSTALL <ext> [FROM community] + LOAD +
-    ATTACH), and (2) SCAN table-function for file/lake extensions (CREATE VIEW … AS SELECT * FROM
-    read_parquet(…) / read_csv_auto(…) / iceberg_scan(…) / delta_scan(…)). The popular methods
-    (postgres/sqlite/mssql/mongo/mysql; csv/parquet/iceberg/delta) are covered OOTB; the config admits a
-    new DuckDB source_type only when it declares one of these two mechanisms (mechanism + TYPE-name or
-    scan-function + connection/scan template). An extension exposing neither is not drivable and is
-    unsupported by design — no bespoke per-extension code path.
+    attach time against each engine''s standard extension catalog (pg_available_extensions for Postgres,
+    duckdb_extensions() for DuckDB), failing loud (never silent) when the declared extension is not installable.
+    The two native engines scope this differently because their extension APIs differ. POSTGRES is a GENERIC
+    descriptor: PG FDW is SQL/MED (an ISO standard), so every FDW uses the same DDL shape — CREATE SERVER
+    … FOREIGN DATA WRAPPER <fdw> OPTIONS(…) + CREATE USER MAPPING + IMPORT FOREIGN SCHEMA (or an explicit
+    CREATE FOREIGN TABLE when the FDW lacks IMPORT, e.g. file_fdw). The descriptor supplies only the per-FDW
+    variance: extension name, SERVER option keys (host vs servername vs dbserver), the USER MAPPING key
+    (user vs username), and a supports_import flag. So an arbitrary standard-conforming FDW is drivable
+    from config. DUCKDB is a CURATED UNION, not arbitrary: DuckDB has no single standard, so we support
+    only extensions that fit one of the TWO mechanisms our engine already drives — (1) ATTACH-TYPE for
+    database extensions (ATTACH ''<dsn>'' AS x (TYPE <t>), generalized today by _DuckDBExtensionConnector
+    / REQ-899: INSTALL <ext> [FROM community] + LOAD + ATTACH), and (2) SCAN table-function for file/lake
+    extensions (CREATE VIEW … AS SELECT * FROM read_parquet(…) / read_csv_auto(…) / iceberg_scan(…) /
+    delta_scan(…)). The popular methods (postgres/sqlite/mssql/mongo/mysql; csv/parquet/iceberg/delta)
+    are covered OOTB; the config admits a new DuckDB source_type only when it declares one of these two
+    mechanisms (mechanism + TYPE-name or scan-function + connection/scan template). An extension exposing
+    neither is not drivable and is unsupported by design — no bespoke per-extension code path.
 
 
-    CONFORMANCE TARGETS (each is a real extension we do NOT ship an OOTB connector for, chosen to
-    exercise a DIFFERENT descriptor branch than any hardcoded connector — passing them proves the
-    descriptor is general, not a re-expression of what we already hardcode):
+    CONFORMANCE TARGETS (each is a real extension we do NOT ship an OOTB connector for, chosen to exercise
+    a DIFFERENT descriptor branch than any hardcoded connector — passing them proves the descriptor is
+    general, not a re-expression of what we already hardcode):
 
-    (1) PG SQL/MED → mongo_fdw (EnterpriseDB/mongo_fdw). Reaches the mongo:7 service ALREADY in
-    docker-compose.test.yml (seeded by db/mongo-init.js, requires_mongodb marker) — no new infra; only
-    the FDW binary (libmongoc) is built. Descriptor: {extension: mongo_fdw, server_options:{address,
-    port}, user_mapping:{username, password}, table_options:{database, collection}, supports_import:
-    false}. Exercises the credentialed CREATE USER MAPPING path, a distinct SERVER key (address), NoSQL
-    collection→foreign-table OPTIONS, and the explicit CREATE FOREIGN TABLE branch — none of which our
-    OOTB PG connectors combine. Also proves cross-engine parity (mongo is reached OOTB by the DuckDB
-    engine via DuckDBMongoConnector; here PG reaches it purely from config).
+    (1) PG SQL/MED → mongo_fdw (EnterpriseDB/mongo_fdw). Reaches the mongo:7 service ALREADY in docker-compose.test.yml
+    (seeded by db/mongo-init.js, requires_mongodb marker) — no new infra; only the FDW binary (libmongoc)
+    is built. Descriptor: {extension: mongo_fdw, server_options:{address, port}, user_mapping:{username,
+    password}, table_options:{database, collection}, supports_import: false}. Exercises the credentialed
+    CREATE USER MAPPING path, a distinct SERVER key (address), NoSQL collection→foreign-table OPTIONS,
+    and the explicit CREATE FOREIGN TABLE branch — none of which our OOTB PG connectors combine. Also
+    proves cross-engine parity (mongo is reached OOTB by the DuckDB engine via DuckDBMongoConnector; here
+    PG reaches it purely from config).
 
-    (2) DuckDB ATTACH → ducklake (duckdb/ducklake). Self-contained: ATTACH 'ducklake:cat.ducklake' AS
-    lake (DATA_PATH 'data/') over a local DuckDB/SQLite catalog + local parquet, no server. Exercises the
-    URI-scheme-prefix DSN + extra ATTACH option (DATA_PATH) form, distinct from our stock ATTACH '<dsn>'
+    (2) DuckDB ATTACH → ducklake (duckdb/ducklake). Self-contained: ATTACH ''ducklake:cat.ducklake'' AS
+    lake (DATA_PATH ''data/'') over a local DuckDB/SQLite catalog + local parquet, no server. Exercises
+    the URI-scheme-prefix DSN + extra ATTACH option (DATA_PATH) form, distinct from our stock ATTACH ''<dsn>''
     AS x (TYPE <t>).
 
-    (3) DuckDB SCAN → excel / read_xlsx (duckdb/duckdb-excel). Self-contained: CREATE VIEW v AS SELECT *
-    FROM read_xlsx('f.xlsx', sheet='Q1', header=true) over a local .xlsx, no server. Exercises a scan
-    table-function with NAMED ARGS (sheet/range/header), distinct from our stock read_csv_auto/read_parquet.
-  scenario: |-
-    Given an operator declares a custom source connector in config/custom_connectors.yaml with no code change
+    (3) DuckDB SCAN → excel / read_xlsx (duckdb/duckdb-excel). Self-contained: CREATE VIEW v AS SELECT
+    * FROM read_xlsx(''f.xlsx'', sheet=''Q1'', header=true) over a local .xlsx, no server. Exercises a
+    scan table-function with NAMED ARGS (sheet/range/header), distinct from our stock read_csv_auto/read_parquet.'
+  scenario: 'Given an operator declares a custom source connector in config/custom_connectors.yaml with
+    no code change
+
     When the descriptor is a duckdb_attach for a new source_type over a real ducklake catalog
+
     Then the DuckDB engine reaches that source_type and the runtime attaches it and returns its rows
+
     When the descriptor is a duckdb_scan for a new source_type over a real .xlsx via read_xlsx
-    Then the DuckDB engine reaches that source_type and the runtime scans it in place and returns its rows
+
+    Then the DuckDB engine reaches that source_type and the runtime scans it in place and returns its
+    rows
+
     When the descriptor is a generic pg_fdw for a new source_type
-    Then the Postgres engine reaches that source_type and its connector emits standard SQL/MED IMPORT FOREIGN SCHEMA DDL
-    And a descriptor naming an unknown kind fails loud at load rather than leaving the source_type silently unreachable
-  use_case: >-
-    BYO PG-federated or DuckDB-federated deployments with custom/proprietary extensions can extend
-    reachability to new source types purely via config, without code changes or rebuilds. Extends
-    REQ-898 config/pg_extension_catalog.yaml from a packaged-inventory model to an operator-authored
-    connector descriptor.
+
+    Then the Postgres engine reaches that source_type and its connector emits standard SQL/MED IMPORT
+    FOREIGN SCHEMA DDL
+
+    And a descriptor naming an unknown kind fails loud at load rather than leaving the source_type silently
+    unreachable'
+  use_case: BYO PG-federated or DuckDB-federated deployments with custom/proprietary extensions can extend
+    reachability to new source types purely via config, without code changes or rebuilds. Extends REQ-898
+    config/pg_extension_catalog.yaml from a packaged-inventory model to an operator-authored connector
+    descriptor.
   code:
-    - provisa/federation/custom_connectors.py
-    - provisa/federation/engine.py
-    - provisa/federation/pg_runtime.py
-    - provisa/federation/duckdb_runtime.py
-    - config/custom_connectors.yaml
+  - provisa/federation/custom_connectors.py
+  - provisa/federation/engine.py
+  - provisa/federation/pg_runtime.py
+  - provisa/federation/duckdb_runtime.py
+  - config/custom_connectors.yaml
   tests:
-    - tests/unit/test_custom_connectors.py
-    - tests/integration/test_custom_connectors_e2e.py
-    - tests/integration/test_custom_connectors_pg_e2e.py
-    - tests/features/REQ-1177.feature
+  - tests/unit/test_custom_connectors.py
+  - tests/integration/test_custom_connectors_e2e.py
+  - tests/integration/test_custom_connectors_pg_e2e.py
+  - tests/features/REQ-1177.feature
   related_reqs:
-    - REQ-898
-    - REQ-1158
-    - REQ-1142
+  - REQ-898
+  - REQ-1158
+  - REQ-1142
 - id: REQ-1178
   status: complete
-  since: "2026-07"
-  group: "4. Source Connectors"
+  since: 2026-07
+  group: 4. Source Connectors
   category: Connector Configuration
   priority: SHOULD
   type: behavioral
-  description: >-
-    Expand ClickHouse federation engine reach beyond the 7 OOTB source types by (1) adding OOTB native
-    engines — SQLite (DATABASE engine, file, no server) and Hudi (lakehouse, zero-copy) — and (2) enabling
-    operators to define config-driven ClickHouse connectors without code, in three kinds mirroring the
-    engine's mechanisms: clickhouse_database (CREATE DATABASE ENGINE=… auto-expose, e.g. Redis),
-    clickhouse_table (per-table CREATE TABLE ENGINE=…, columns from the registry, e.g. the JDBC/ODBC
+  description: 'Expand ClickHouse federation engine reach beyond the 7 OOTB source types by (1) adding
+    OOTB native engines — SQLite (DATABASE engine, file, no server) and Hudi (lakehouse, zero-copy) —
+    and (2) enabling operators to define config-driven ClickHouse connectors without code, in three kinds
+    mirroring the engine''s mechanisms: clickhouse_database (CREATE DATABASE ENGINE=… auto-expose, e.g.
+    Redis), clickhouse_table (per-table CREATE TABLE ENGINE=…, columns from the registry, e.g. the JDBC/ODBC
     bridge), clickhouse_scan (CREATE TABLE ENGINE=… with ClickHouse inferring the schema, e.g. HDFS/URL).
-    Availability is probed against ClickHouse's STANDARD discovery catalog (system.table_engines),
-    failing loud when a declared engine is absent from the build.
-  scenario: |-
-    Given a ClickHouse federation engine
+    Availability is probed against ClickHouse''s STANDARD discovery catalog (system.table_engines), failing
+    loud when a declared engine is absent from the build.'
+  scenario: 'Given a ClickHouse federation engine
+
     When an operator registers a SQLite source (OOTB, no config)
+
     Then the engine reaches sqlite live and the runtime returns its federated rows
+
     When an operator declares a clickhouse_database/table/scan connector for a new source_type in config/custom_connectors.yaml
+
     Then the engine reaches that new source_type with no code change
-    And an absent ClickHouse integration engine fails loud at attach time
-  use_case: >-
-    ClickHouse's 50+ integration engines outreach today's OOTB types. Config-driven connector
+
+    And an absent ClickHouse integration engine fails loud at attach time'
+  use_case: ClickHouse's 50+ integration engines outreach today's OOTB types. Config-driven connector
     extensibility (parallel to REQ-1177) gives operators live federation to arbitrary databases without
     engineering. Streaming ingestion engines (Kafka/RabbitMQ/NATS) are out of scope — they follow the
     materialized-view ingestion model, not live pull reach.
   code:
-    - provisa/federation/clickhouse_connectors.py
-    - provisa/federation/clickhouse_runtime.py
-    - provisa/federation/custom_connectors.py
-    - provisa/federation/engine.py
-    - config/custom_connectors.yaml
+  - provisa/federation/clickhouse_connectors.py
+  - provisa/federation/clickhouse_runtime.py
+  - provisa/federation/custom_connectors.py
+  - provisa/federation/engine.py
+  - config/custom_connectors.yaml
   tests:
-    - tests/unit/test_clickhouse_connectors.py
-    - tests/unit/test_custom_connectors.py
-    - tests/integration/test_clickhouse_runtime_e2e.py
-    - tests/features/REQ-1178.feature
+  - tests/unit/test_clickhouse_connectors.py
+  - tests/unit/test_custom_connectors.py
+  - tests/integration/test_clickhouse_runtime_e2e.py
+  - tests/features/REQ-1178.feature
   related_reqs:
-    - REQ-1177
-    - REQ-909
-    - REQ-904
-    - REQ-899
-    - REQ-904
+  - REQ-1177
+  - REQ-909
+  - REQ-904
+  - REQ-899
+  - REQ-904
 - id: REQ-1179
   status: complete
-  since: "2026-07"
-  group: "4. Source Connectors"
+  since: 2026-07
+  group: 4. Source Connectors
   category: Connector Configuration
   priority: MUST
   type: behavioral
-  description: >-
-    mongo_fdw (EnterpriseDB PG SQL/MED connector) reaches MongoDB live end-to-end as a conformance
-    target for REQ-1177. The extension binary is built from scripts/build_mongo_fdw.sh (mongo_fdw +
-    bundled libmongoc 1.30.2 and json-c linked against embedded PG 16.2). The E2E test installs the
-    extension dylibs into pgserver's embedded PG with @loader_path rpath so that mongo_fdw and libmongoc
-    co-locate and resolve correctly. The descriptor (extension: mongo_fdw, server_options:{address,
-    port}, user_mapping:{username, password}, table_options:{database, collection}, supports_import:
-    false) drives config-only pg_fdw to read docker-seeded MongoDB.product_reviews without import.
-  scenario: |-
-    Given the mongo_fdw extension is built and installed into pgserver's embedded PG
+  description: 'mongo_fdw (EnterpriseDB PG SQL/MED connector) reaches MongoDB live end-to-end as a conformance
+    target for REQ-1177. The extension binary is built from scripts/build_mongo_fdw.sh (mongo_fdw + bundled
+    libmongoc 1.30.2 and json-c linked against embedded PG 16.2). The E2E test installs the extension
+    dylibs into pgserver''s embedded PG with @loader_path rpath so that mongo_fdw and libmongoc co-locate
+    and resolve correctly. The descriptor (extension: mongo_fdw, server_options:{address, port}, user_mapping:{username,
+    password}, table_options:{database, collection}, supports_import: false) drives config-only pg_fdw
+    to read docker-seeded MongoDB.product_reviews without import.'
+  scenario: 'Given the mongo_fdw extension is built and installed into pgserver''s embedded PG
+
     When a config-driven PG connector with extension: mongo_fdw targets a real MongoDB container
+
     Then the pgserver federation engine creates the foreign server with the address/port, emits
+
     CREATE USER MAPPING with username/password, and creates foreign tables over the specified database
+
     and collection
-    And the engine returns federated rows from MongoDB without pre-importing schema
-  use_case: >-
-    Proves that REQ-1177 config-driven descriptors generalize beyond hardcoded connectors. mongo_fdw
-    exercises a distinct descriptor branch (credentialed, explicit CREATE FOREIGN TABLE, separate
-    SERVER key, NoSQL collection options) not combined by any OOTB PG connector, validating descriptor
-    composability and cross-engine parity (MongoDB is already reachable OOTB via DuckDB).
+
+    And the engine returns federated rows from MongoDB without pre-importing schema'
+  use_case: Proves that REQ-1177 config-driven descriptors generalize beyond hardcoded connectors. mongo_fdw
+    exercises a distinct descriptor branch (credentialed, explicit CREATE FOREIGN TABLE, separate SERVER
+    key, NoSQL collection options) not combined by any OOTB PG connector, validating descriptor composability
+    and cross-engine parity (MongoDB is already reachable OOTB via DuckDB).
   code:
-    - scripts/build_mongo_fdw.sh
-    - provisa/federation/custom_connectors.py
-    - provisa/federation/pg_runtime.py
+  - scripts/build_mongo_fdw.sh
+  - provisa/federation/custom_connectors.py
+  - provisa/federation/pg_runtime.py
   tests:
-    - tests/integration/test_custom_connectors_mongo_e2e.py
+  - tests/integration/test_custom_connectors_mongo_e2e.py
   related_reqs:
-    - REQ-1177
-    - REQ-1158
-    - REQ-899
+  - REQ-1177
+  - REQ-1158
+  - REQ-899
   e2e: true
-  e2e_reason: >-
-    Behavior is only verifiable end-to-end by building mongo_fdw, installing its dylibs into pgserver,
-    seeding MongoDB, and running a full federation round-trip query.
+  e2e_reason: Behavior is only verifiable end-to-end by building mongo_fdw, installing its dylibs into
+    pgserver, seeding MongoDB, and running a full federation round-trip query.
 - id: REQ-1180
   status: complete
-  since: "2026-07"
-  group: "4. Source Connectors"
+  since: 2026-07
+  group: 4. Source Connectors
   category: Connector Configuration
   priority: MUST
   type: constraint
-  description: >-
-    GenericPgFdwConnector (provisa/federation/custom_connectors.py) emits a bare `CREATE USER MAPPING
-    ... SERVER s` with NO OPTIONS clause when user_mapping is present but empty (e.g., user_mapping: {}).
-    If user_mapping is absent, no mapping is created. If keys are present, OPTIONS(...) is emitted.
-    This constraint enables no-auth FDW scenarios (e.g., mongo_fdw against unauthenticated MongoDB),
-    where an empty username would force the driver to attempt a failing auth handshake.
-  scenario: |-
-    Given a GenericPgFdwConnector with user_mapping: {} (empty dict)
+  description: 'GenericPgFdwConnector (provisa/federation/custom_connectors.py) emits a bare `CREATE USER
+    MAPPING ... SERVER s` with NO OPTIONS clause when user_mapping is present but empty (e.g., user_mapping:
+    {}). If user_mapping is absent, no mapping is created. If keys are present, OPTIONS(...) is emitted.
+    This constraint enables no-auth FDW scenarios (e.g., mongo_fdw against unauthenticated MongoDB), where
+    an empty username would force the driver to attempt a failing auth handshake.'
+  scenario: 'Given a GenericPgFdwConnector with user_mapping: {} (empty dict)
+
     When the connector compiles CREATE USER MAPPING SQL
+
     Then the SQL is `CREATE USER MAPPING FOR current_user SERVER s` with no OPTIONS clause
+
     Given a GenericPgFdwConnector with no user_mapping key
+
     Then no mapping is created
-    Given a GenericPgFdwConnector with user_mapping: {username: 'u', password: 'p'}
-    Then the SQL is `CREATE USER MAPPING FOR current_user SERVER s OPTIONS (username 'u', password 'p')`
-  use_case: >-
-    Unauthenticated FDW targets (no credentials needed) require the bare SQL/MED form to avoid triggering
-    unnecessary auth. This constraint prevents driver-level failures when credentials are not applicable.
+
+    Given a GenericPgFdwConnector with user_mapping: {username: ''u'', password: ''p''}
+
+    Then the SQL is `CREATE USER MAPPING FOR current_user SERVER s OPTIONS (username ''u'', password ''p'')`'
+  use_case: Unauthenticated FDW targets (no credentials needed) require the bare SQL/MED form to avoid
+    triggering unnecessary auth. This constraint prevents driver-level failures when credentials are not
+    applicable.
   code:
-    - provisa/federation/custom_connectors.py
+  - provisa/federation/custom_connectors.py
   tests:
-    - tests/unit/test_custom_connectors.py
+  - tests/unit/test_custom_connectors.py
   related_reqs:
-    - REQ-1177
-    - REQ-1179
+  - REQ-1177
+  - REQ-1179

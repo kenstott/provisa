@@ -8,7 +8,7 @@ hand-write (REQ-1164). [tool-verified: modeling.py module docstring lines 11-28]
 ## What entities and facts are
 
 An **entity** is a keyed, deduplicated, optionally-historized projection of a source relation. You
-name it, point it at a source, declare the business key and the attributes you want to carry,
+name it, point it at a source, declare the entity key and the attributes you want to carry,
 and choose a history mode. Provisa writes the view SQL and registers the MV. When history is
 enabled, the MV is bitemporal. [tool-verified: `Entity` dataclass, modeling.py lines 53-69;
 `entity_registration` function, modeling.py lines 105-120]
@@ -31,10 +31,10 @@ Three modes are available on an entity [tool-verified: `_HISTORY` constant at mo
 | Mode | Meaning | Bitemporal mode |
 |---|---|---|
 | `none` | Current-only. No history. | — |
-| `scd2` | Track every change. Append only changed rows (delta) keyed on the business key. | `delta` |
+| `scd2` | Track every change. Append only changed rows (delta) keyed on the entity key. | `delta` |
 | `snapshot` | Track every refresh. Append the full result set each refresh, stamped with system time. | `snapshot` |
 
-`scd2` needs a business key to compute the delta. `snapshot` works on any engine but storage grows
+`scd2` needs an entity key to compute the delta. `snapshot` works on any engine but storage grows
 by a full copy per refresh. Pick `scd2` for large, slowly-changing sources; pick `snapshot` when
 you need full history and the source can't supply a key.
 
@@ -66,7 +66,7 @@ The default aggregation is `sum` [tool-verified: `Measure.agg` default at modeli
        - **Name:** `Customer`
        - **Source relation:** `raw.customers`
        - **Domain:** *(your domain)*
-       - **Business key:** `id`
+       - **Entity key:** `id`
        - **Attributes:** `name, region, tier`
        - **History:** `SCD2 (track changes — delta bitemporal)`
     4. Click **Create**.
@@ -94,7 +94,7 @@ modeling.py lines 105-120]:
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- registered as a bitemporal delta MV, business key: ["id"]
+-- registered as a bitemporal delta MV, entity key: ["id"]
 ```
 
 ### Register the Sales fact
@@ -165,7 +165,7 @@ A segmented control at the top of the modal switches between **Entity (dimension
 | Name | yes | The MV name in the catalog |
 | Source relation | yes | Dotted relation, e.g. `raw.customers` |
 | Domain | yes | Domain the MV belongs to |
-| Business key | yes | Comma-separated key column(s), e.g. `id` |
+| Entity key | yes | Comma-separated key column(s), e.g. `id` |
 | Attributes | no | Comma-separated attribute columns, e.g. `name, region, tier` |
 | History | no | `none` / `scd2` / `snapshot`; default is `none` |
 
@@ -207,7 +207,7 @@ mutation RegisterEntity($input: EntityInput!) {
 | `name` | String | — | Catalog name for the entity MV |
 | `source` | String | — | Source relation (`schema.table` or quoted) |
 | `domainId` | String | — | Domain id |
-| `key` | [String] | — | Business key column(s) |
+| `key` | [String] | — | Entity key column(s) |
 | `attributes` | [String] | `[]` | Attribute columns to project |
 | `history` | String | `"none"` | `"none"` \| `"scd2"` \| `"snapshot"` |
 | `visibleTo` | [String] | `["public"]` | Role visibility list |

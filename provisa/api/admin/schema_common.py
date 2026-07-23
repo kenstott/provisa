@@ -301,7 +301,7 @@ def _sync_view_mv(
     consistency: str = "shared",  # REQ-879
     preprocess: str | None = None,  # REQ-957
     bitemporal_mode: str | None = None,  # REQ-1162: None | "snapshot" | "delta"
-    bitemporal_key: list[str] | None = None,  # REQ-1162: business key (required for delta)
+    bitemporal_key: list[str] | None = None,  # REQ-1162: entity key (required for delta)
     persist: str = "replace",  # REQ-965: replace | append | upsert
     primary_key: list[str] | None = None,  # REQ-970: row identity
     incremental: bool = False,  # REQ-969: incremental maintenance

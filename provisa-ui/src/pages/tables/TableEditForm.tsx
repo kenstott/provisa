@@ -32,6 +32,8 @@ import { useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
 import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
 import { sourceProbeTypes } from "../../liveCapability";
+import { IR_TYPES_FALLBACK, toIrType } from "../../irTypes";
+import { fetchIrTypes } from "../../api/admin";
 import { IANA_TIME_ZONES, NAMING_CONVENTIONS } from "./constants";
 import { DescriptionField } from "./DescriptionField";
 import { FieldLabel } from "./FieldLabel";
@@ -90,6 +92,17 @@ export function TableEditForm({
 }: TableEditFormProps) {
   const { t } = useTranslation();
   const roleOptions = roles.map((r) => ({ id: r.id, label: r.id }));
+
+  // REQ-846: canonical IR type vocabulary for the per-column Data Type override dropdown, fetched
+  // from the backend (authoritative list in provisa/core/ir_types.py); fallback if the fetch fails.
+  const [irTypes, setIrTypes] = useState<string[]>(IR_TYPES_FALLBACK);
+  useEffect(() => {
+    fetchIrTypes()
+      .then((types) => {
+        if (types.length > 0) setIrTypes(types);
+      })
+      .catch(() => setIrTypes(IR_TYPES_FALLBACK));
+  }, []);
 
   // REQ-1143: keep the top-of-form refresh-policy summary in sync with the draft knobs. The tree is
   // never re-derived client-side — a debounced preview query re-runs describe_refresh_policy server-
@@ -745,6 +758,7 @@ export function TableEditForm({
           <Table.Tr>
             <Table.Th>{t("tableEditForm.columnHeader")}</Table.Th>
             <Table.Th>{t("tableEditForm.pkHeader")}</Table.Th>
+            <Table.Th>{t("tableEditForm.dataTypeHeader")}</Table.Th>
             <Table.Th>{t("tableEditForm.sqlAliasHeader")}</Table.Th>
             <Table.Th>{t("tableEditForm.descriptionHeader")}</Table.Th>
             <Table.Th>{t("tableEditForm.visibleToHeader")}</Table.Th>
@@ -806,6 +820,23 @@ export function TableEditForm({
                   />
                 </Table.Td>
                 <Table.Td>
+                  <Select
+                    aria-label={t("tableEditForm.dataTypeHeader")}
+                    placeholder={t("tableEditForm.dataTypePlaceholder")}
+                    data={Array.from(
+                      new Set([
+                        ...(c.dataType ? [toIrType(c.dataType)] : []),
+                        ...irTypes,
+                      ]),
+                    ).map((v) => ({ value: v, label: v }))}
+                    value={c.dataType ? toIrType(c.dataType) : null}
+                    onChange={(v) => updateEditCol(i, "dataType", v ?? "")}
+                    searchable
+                    comboboxProps={{ withinPortal: true }}
+                    styles={{ input: { fontFamily: "monospace" } }}
+                  />
+                </Table.Td>
+                <Table.Td>
                   <TextInput
                     aria-label={t("tableEditForm.sqlAliasHeader")}
                     value={c.alias || c.computedSqlAlias}
@@ -847,7 +878,7 @@ export function TableEditForm({
                     onChange={(selected) =>
                       updateEditCol(i, "visibleTo", selected)
                     }
-                    label={t("tableEditForm.visibleToHeader")}
+                    ariaLabel={t("tableEditForm.visibleToHeader")}
                   />
                 </Table.Td>
                 <Table.Td>
@@ -857,7 +888,7 @@ export function TableEditForm({
                     onChange={(selected) =>
                       updateEditCol(i, "writableBy", selected)
                     }
-                    label={t("tableEditForm.writableByHeader")}
+                    ariaLabel={t("tableEditForm.writableByHeader")}
                   />
                 </Table.Td>
                 <Table.Td>
