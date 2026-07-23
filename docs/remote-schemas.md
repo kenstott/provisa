@@ -211,7 +211,7 @@ A table registered from any remote schema source is a first-class Provisa table.
 4. Column masking — masking rules apply in Stage 2 of the governance pipeline. (REQ-040, REQ-263)
 5. Predicate guard — masked columns are rejected from WHERE and HAVING clauses. (REQ-603)
 
-Remote tables are registered with `GovernanceLevel.pre_approved`, meaning ad-hoc queries are allowed without registry approval. (REQ-001, REQ-003) [tool-verified: `provisa/api/admin/graphql_remote_router.py:98`] Stewards may change the governance level after registration.
+Ad-hoc queries against remote tables are allowed under the user's rights alone — access is uniform rights-based (table/column rights + approved relationships), with no per-table governance mode. (REQ-001, REQ-003)
 
 **Relationship governance (V002).** JOIN conditions against remote tables — when queried via SQL or Cypher — must match a registered, approved relationship. (REQ-604) The V002 check is skipped for GraphQL queries because SDL-defined relationships are pre-approved by design. See [docs/security.md](security.md#relationship-governance-v002).
 

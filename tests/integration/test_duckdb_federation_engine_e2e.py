@@ -77,7 +77,6 @@ def test_duckdb_query_applies_rls():
                 "domain_id": "sales",
                 "schema_name": "main",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "first_name", "state")
@@ -113,7 +112,6 @@ def test_duckdb_federates_csv_and_sqlite():
                 "domain_id": "sales",
                 "schema_name": "main",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "first_name", "state")
@@ -125,7 +123,6 @@ def test_duckdb_federates_csv_and_sqlite():
                 "domain_id": "sales",
                 "schema_name": "main",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "customer_id", "amount")

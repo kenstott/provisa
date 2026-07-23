@@ -36,7 +36,6 @@ def _make_schema_input(
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "columns": [{"column_name": c, "visible_to": [role_id]} for c in table_columns],
         }
     ]
@@ -91,7 +90,6 @@ class TestREQ525PerRoleProtoGeneration:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": c, "visible_to": ["viewer"] if c in visible else ["admin"]}
                     for c in all_cols
@@ -130,7 +128,6 @@ class TestREQ525PerRoleProtoGeneration:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             }
         ]
@@ -164,7 +161,6 @@ class TestREQ538ProtoTypeMappings:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [{"column_name": n, "visible_to": ["admin"]} for n in col_names],
             }
         ]
@@ -227,7 +223,6 @@ class TestREQ538ProtoTypeMappings:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             },
             {
@@ -236,7 +231,6 @@ class TestREQ538ProtoTypeMappings:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [{"column_name": "cust_id", "visible_to": ["admin"]}],
             },
         ]

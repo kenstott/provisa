@@ -87,6 +87,34 @@ class ClickHouseMysqlConnector(Connector):
         }
 
 
+class ClickHouseSqliteConnector(Connector):  # REQ-1178
+    """Mount a SQLite database file into ClickHouse via the SQLite database engine.
+
+    ``CREATE DATABASE ... ENGINE = SQLite('<path>')`` exposes every table of a local SQLite file under
+    a local database — the CREATE DATABASE auto-expose shape, like PostgreSQL/MySQL but over a file, so
+    no server. ClickHouse parity with the SQLite reach the pg (sqlite_fdw) and duckdb (sqlite) engines
+    already offer."""
+
+    engine = "clickhouse"
+    source_type = "sqlite"
+    mechanism = Mechanism.ATTACH_RW
+    key = "clickhouse_sqlite"
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        if source.path is None:
+            raise ValueError(f"sqlite source {source.id!r} has no path")
+        local_schema = f"ch_{source.id}"
+        return {
+            "attach_ddl": [
+                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = SQLite(\'{source.path}\')'
+            ],
+            "local_schema": local_schema,
+        }
+
+
 class ClickHouseMongoConnector(Connector):
     """Mount a MongoDB collection into ClickHouse via the MongoDB table engine.
 
@@ -225,3 +253,9 @@ class ClickHouseDeltaLakeConnector(_ClickHouseLakeConnector):
     source_type = "delta_lake"
     key = "clickhouse_delta"
     _engine_name = "DeltaLake"
+
+
+class ClickHouseHudiConnector(_ClickHouseLakeConnector):  # REQ-1178
+    source_type = "hudi"
+    key = "clickhouse_hudi"
+    _engine_name = "Hudi"

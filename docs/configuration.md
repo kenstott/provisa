@@ -129,7 +129,6 @@ tables:
     table: orders
     alias: purchase_orders     # optional: override GraphQL name
     description: "Customer purchase orders"  # optional: GraphQL description
-    governance: pre-approved    # or: registry-required
     columns:
       - name: id
         visible_to: [admin, analyst]
@@ -195,7 +194,7 @@ columns:
 
 The path format is `source_column.key1.key2...`. The compiler generates `json_extract_scalar(source_column, '$.key1.key2')` in the SQL. (REQ-151)
 
-**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. (REQ-152) For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine, where SQLGlot transpiles `->>'key'` to `json_extract_scalar`. (REQ-152) Mutations are unaffected since path columns are read-only computed fields. (REQ-153)
+**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. (REQ-152) For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine. (REQ-152) Mutations are unaffected since path columns are read-only computed fields. (REQ-153)
 
 ### Masking Types
 
@@ -315,7 +314,6 @@ views:
       GROUP BY 1, 2
     description: "Monthly revenue by region"
     domain_id: sales-analytics
-    governance: registry-required
     materialize: true
     refresh_interval: 3600
     columns:
@@ -334,7 +332,6 @@ views:
 | `id` | Yes | Unique view identifier |
 | `sql` | Yes | SQL SELECT statement defining the view |
 | `domain_id` | Yes | Domain for schema visibility |
-| `governance` | No | `pre-approved` (default) or `registry-required` |
 | `materialize` | No | `true` = periodic CTAS refresh, `false` = live federated view |
 | `refresh_interval` | No | Seconds between refreshes (materialized only, default 300) |
 | `description` | No | Appears in GraphQL SDL |
@@ -517,7 +514,7 @@ Superuser credentials (`superuser` block) work with any provider and always reso
 
 ## Upsert Mutations
 
-For tables with a primary key, Provisa auto-generates `upsert_<table>` mutation fields. (REQ-212) These compile to `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`. (REQ-212) SQLGlot transpiles to the target dialect (e.g., MySQL `ON DUPLICATE KEY UPDATE`). (REQ-212)
+For tables with a primary key, Provisa auto-generates `upsert_<table>` mutation fields. (REQ-212) These compile to an upsert in the target dialect — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` on PostgreSQL, `ON DUPLICATE KEY UPDATE` on MySQL. (REQ-212)
 
 ```graphql
 mutation {
@@ -543,7 +540,7 @@ The `distinct_on` argument selects the first row for each distinct value of the 
 }
 ```
 
-Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. (REQ-213) For non-PG dialects, SQLGlot provides a window function fallback. (REQ-213)
+Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. (REQ-213) For non-PG dialects, a window-function fallback is used. (REQ-213)
 
 ## Column Presets
 

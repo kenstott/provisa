@@ -69,7 +69,6 @@ def _build_schema():
             "domain_id": "default",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},

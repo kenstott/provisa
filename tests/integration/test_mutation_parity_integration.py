@@ -186,7 +186,6 @@ class TestDistinctOn:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             }
         ]
@@ -226,7 +225,6 @@ class TestDistinctOn:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "region", "visible_to": ["admin"]},

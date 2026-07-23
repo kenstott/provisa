@@ -168,10 +168,88 @@ class GenericDuckDbScanConnector(_DuckDBExtensionConnector):  # REQ-1177
         return {"view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM {_fmt(self._scan_template, fields)}"}
 
 
+async def _probe_clickhouse_engine(fetch, ch_engine: str) -> ProbeResult:  # REQ-1178
+    """Probe a ClickHouse integration table engine against its STANDARD discovery catalog
+    (system.table_engines) — present ⇒ available, absent ⇒ unavailable with remediation."""
+    rows = await fetch(f"SELECT 1 FROM system.table_engines WHERE name = '{ch_engine}'")
+    if rows:
+        return ProbeResult(True, f"ClickHouse engine {ch_engine} available")
+    return ProbeResult(
+        False,
+        f"ClickHouse engine {ch_engine} not present in this build",
+        f"this ClickHouse must be built with the {ch_engine} integration engine",
+    )
+
+
+class _GenericClickHouseConnector(Connector):  # REQ-1178
+    """Shared base for config-declared ClickHouse connectors — probes system.table_engines."""
+
+    engine = "clickhouse"
+
+    def __init__(self, d: dict) -> None:
+        self.source_type = d["source_type"]
+        self.key = d.get("key") or f"custom_{d['source_type']}"
+        self._ch_engine: str = d["ch_engine"]
+        self._engine_template: str = d["engine_template"]
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    async def probe(self, fetch) -> ProbeResult:
+        return await _probe_clickhouse_engine(fetch, self._ch_engine)
+
+
+class GenericClickHouseDatabaseConnector(_GenericClickHouseConnector):  # REQ-1178
+    """CREATE DATABASE … ENGINE = <Engine>(…) — a relational engine that auto-exposes every remote
+    table (PostgreSQL/MySQL/SQLite shape)."""
+
+    mechanism = Mechanism.ATTACH_RW
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True, write=True)
+
+    def details(self, source: Source) -> dict:
+        fields = _source_fields(source)
+        local_schema = f"ch_{source.id}"
+        return {
+            "attach_ddl": [
+                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" '
+                f"ENGINE = {_fmt(self._engine_template, fields)}"
+            ],
+            "local_schema": local_schema,
+        }
+
+
+class GenericClickHouseTableConnector(_GenericClickHouseConnector):  # REQ-1178
+    """CREATE TABLE … ENGINE = <Engine>(…) — a per-table engine whose columns the registry supplies
+    (MongoDB/Redis shape). The engine_template may carry a {table} placeholder the runtime binds."""
+
+    mechanism = Mechanism.ATTACH_RW
+
+    def details(self, source: Source) -> dict:
+        fields = _source_fields(source)
+        fields["table"] = "{table}"  # runtime binds the collection/table name; keep it a placeholder
+        return {"engine_clause": _fmt(self._engine_template, fields), "requires_columns": True}
+
+
+class GenericClickHouseScanConnector(_GenericClickHouseConnector):  # REQ-1178
+    """CREATE TABLE … ENGINE = <Engine>(…) with ClickHouse inferring the schema — a file/lake/URL
+    engine read in place (S3/URL/File/Iceberg/Delta/Hudi shape)."""
+
+    mechanism = Mechanism.SCAN
+
+    def details(self, source: Source) -> dict:
+        fields = _source_fields(source)
+        return {"engine_clause": _fmt(self._engine_template, fields), "infer": True, "validate": True}
+
+
 _KINDS = {
     "pg_fdw": GenericPgFdwConnector,
     "duckdb_attach": GenericDuckDbAttachConnector,
     "duckdb_scan": GenericDuckDbScanConnector,
+    "clickhouse_database": GenericClickHouseDatabaseConnector,
+    "clickhouse_table": GenericClickHouseTableConnector,
+    "clickhouse_scan": GenericClickHouseScanConnector,
 }
 
 

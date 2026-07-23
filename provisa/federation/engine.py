@@ -600,13 +600,16 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
     from provisa.federation.clickhouse_connectors import (
         ClickHouseCsvConnector,
         ClickHouseDeltaLakeConnector,
+        ClickHouseHudiConnector,
         ClickHouseIcebergConnector,
         ClickHouseMongoConnector,
         ClickHouseMysqlConnector,
         ClickHouseParquetConnector,
         ClickHousePostgresConnector,
+        ClickHouseSqliteConnector,
     )
     from provisa.federation.clickhouse_backend import ClickHouseBackend
+    from provisa.federation.custom_connectors import load_custom_connectors
 
     # ATTACH connectors reach external sources in place via ClickHouse's native integration/table
     # engines (zero-copy); every other readable source lands. Reach is derived, not a fixed list.
@@ -617,11 +620,15 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
             attach=[
                 ClickHousePostgresConnector(),  # postgresql — CREATE DATABASE ENGINE=PostgreSQL
                 ClickHouseMysqlConnector(),  # mysql — CREATE DATABASE ENGINE=MySQL
+                ClickHouseSqliteConnector(),  # sqlite — CREATE DATABASE ENGINE=SQLite (file, REQ-1178)
                 ClickHouseMongoConnector(),  # mongodb — MongoDB table engine (columns from registry)
                 ClickHouseCsvConnector(),  # csv — S3/URL/File engine by path scheme
                 ClickHouseParquetConnector(),  # parquet — S3/URL/File engine by path scheme
                 ClickHouseIcebergConnector(),  # iceberg — IcebergS3 lakehouse engine (zero-copy)
                 ClickHouseDeltaLakeConnector(),  # delta_lake — DeltaLake lakehouse engine (zero-copy)
+                ClickHouseHudiConnector(),  # hudi — Hudi lakehouse engine (zero-copy, REQ-1178)
+                # Config-declared ClickHouse connectors (JDBC/ODBC bridge, Redis, HDFS, URL, …) — REQ-1178
+                *load_custom_connectors("clickhouse"),
             ],
         ),
         native_store="clickhouse",  # its own tables are native; attached sources reference in place

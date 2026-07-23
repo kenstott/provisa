@@ -11645,3 +11645,15 @@ Operators may declare custom source connectors (proprietary FDWs or ATTACH exten
 **Code:** `provisa/federation/pg_runtime.py`, `provisa/federation/duckdb_runtime.py`, `provisa/federation/connector_duckdb.py`, `provisa/pg_extensions/catalog.py`, `config/pg_extension_catalog.yaml`
 
 **Tests:** —
+
+### REQ-1178 · Connector Configuration {#REQ-1178}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Expand ClickHouse federation engine reach beyond the 7 OOTB source types by (1) adding OOTB native engines — SQLite (DATABASE engine, file, no server) and Hudi (lakehouse, zero-copy) — and (2) enabling operators to define config-driven ClickHouse connectors without code, in three kinds mirroring the engine's mechanisms: clickhouse_database (CREATE DATABASE ENGINE=… auto-expose, e.g. Redis), clickhouse_table (per-table CREATE TABLE ENGINE=…, columns from the registry, e.g. the JDBC/ODBC bridge), clickhouse_scan (CREATE TABLE ENGINE=… with ClickHouse inferring the schema, e.g. HDFS/URL). Availability is probed against ClickHouse's STANDARD discovery catalog (system.table_engines), failing loud when a declared engine is absent from the build.
+
+**Use case:** ClickHouse's 50+ integration engines outreach today's OOTB types. Config-driven connector extensibility (parallel to [REQ-1177](#REQ-1177)) gives operators live federation to arbitrary databases without engineering. Streaming ingestion engines (Kafka/RabbitMQ/NATS) are out of scope — they follow the materialized-view ingestion model, not live pull reach.
+
+**Code:** `provisa/federation/clickhouse_connectors.py`, `provisa/federation/clickhouse_runtime.py`, `provisa/federation/custom_connectors.py`, `provisa/federation/engine.py`, `config/custom_connectors.yaml`
+
+**Tests:** `tests/unit/test_clickhouse_connectors.py`, `tests/unit/test_custom_connectors.py`, `tests/integration/test_clickhouse_runtime_e2e.py`

@@ -86,7 +86,6 @@ class TestJSONBFieldPromotion:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "events",
-                "governance": "pre-approved",
                 "columns": [
                     {
                         "column_name": "id",
@@ -174,7 +173,6 @@ class TestViewRLSEnforcement:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders_view",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     # 'secret_col' only visible to admin
@@ -240,7 +238,6 @@ class TestViewRLSEnforcement:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "revenue_view",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {"column_name": "revenue", "visible_to": ["analyst"]},
@@ -287,7 +284,6 @@ class TestViewComputedSemantics:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "order_summary",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {
@@ -344,7 +340,6 @@ class TestJSONPathExpressions:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "events",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {
@@ -404,7 +399,6 @@ class TestDomainPrefix:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": []},
                     {"column_name": "amount", "visible_to": []},
@@ -466,7 +460,6 @@ class TestTableAlias:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "legacy_order_data",
-                "governance": "pre-approved",
                 "alias": alias,
                 "columns": [
                     {"column_name": "id", "visible_to": []},

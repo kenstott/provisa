@@ -68,7 +68,6 @@ def _make_schema_input(
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "enable_aggregates": enable_aggregates,
             "enable_group_by": enable_group_by,
             "columns": [
@@ -86,7 +85,6 @@ def _make_schema_input(
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},
@@ -416,7 +414,6 @@ class TestAggregates:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "enable_aggregates": True,
                 "columns": [
                     {"column_name": "id", "visible_to": ["analyst"]},

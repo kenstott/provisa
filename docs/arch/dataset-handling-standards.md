@@ -18,11 +18,11 @@
 
 ## Source Type Reference
 
-### Direct-route RDBMS — Trino connector + SQLGlot dialect
+### Direct-route RDBMS — Trino connector + dialect
 
 These types are in both `SOURCE_TO_CONNECTOR` and `SOURCE_TO_DIALECT`. They support direct-route execution (single-source queries bypass Trino) and federated execution.
 
-| Source type | Trino connector | SQLGlot dialect | Physical schema concept | Trino catalog schema query |
+| Source type | Trino connector | dialect | Physical schema concept | Trino catalog schema query |
 | --- | --- | --- | --- | --- |
 | `postgresql` | `postgresql` | `postgres` | Schema | `information_schema.schemata` (filter system schemas) |
 | `mysql` | `mysql` | `mysql` | Database | `information_schema.schemata` (filter system dbs) |
@@ -46,7 +46,7 @@ Tables: `information_schema.tables WHERE table_schema = ?`.
 
 ### TRINO_ONLY lake sources — Trino connector, no direct driver
 
-These types are in `SOURCE_TO_CONNECTOR` and `TRINO_ONLY_SOURCES`. All queries route through Trino. No SQLGlot dialect; no direct driver. Time-travel (`as_of`) is supported on `iceberg` and `delta_lake` (REQ-372).
+These types are in `SOURCE_TO_CONNECTOR` and `TRINO_ONLY_SOURCES`. All queries route through Trino. No dialect; no direct driver. Time-travel (`as_of`) is supported on `iceberg` and `delta_lake` (REQ-372).
 
 | Source type | Trino connector | Physical schema concept | Trino catalog schema query |
 | --- | --- | --- | --- |
@@ -60,7 +60,7 @@ Tables: `information_schema.tables WHERE table_schema = ?`.
 
 ### NoSQL / non-relational — Trino connector, no direct driver
 
-These types are in `SOURCE_TO_CONNECTOR` but have no SQLGlot dialect and no direct driver. All queries route through Trino using the mapping DSL (REQ-251). Introspection falls back to Trino.
+These types are in `SOURCE_TO_CONNECTOR` but have no dialect and no direct driver. All queries route through Trino using the mapping DSL (REQ-251). Introspection falls back to Trino.
 
 | Source type | Trino connector | Physical schema concept | Trino catalog schema query |
 | --- | --- | --- | --- |

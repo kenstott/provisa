@@ -39,7 +39,6 @@ def _build_schema_and_ctx(
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "analyst"]},
                     {"column_name": "customer_id", "visible_to": ["admin", "analyst"]},
@@ -55,7 +54,6 @@ def _build_schema_and_ctx(
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "analyst"]},
                     {"column_name": "name", "visible_to": ["admin", "analyst"]},
@@ -342,7 +340,6 @@ class TestPagination:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             },
             {
@@ -351,7 +348,6 @@ class TestPagination:
                 "domain_id": "meta",
                 "schema_name": "public",
                 "table_name": "registered_tables",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
@@ -363,7 +359,6 @@ class TestPagination:
                 "domain_id": "ops",
                 "schema_name": "public",
                 "table_name": "queries",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
@@ -395,7 +390,6 @@ class TestPagination:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             },
             {
@@ -404,7 +398,6 @@ class TestPagination:
                 "domain_id": "meta",
                 "schema_name": "public",
                 "table_name": "registered_tables",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
@@ -416,7 +409,6 @@ class TestPagination:
                 "domain_id": "ops",
                 "schema_name": "public",
                 "table_name": "traces",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "trace_id", "visible_to": ["admin"]},
@@ -448,7 +440,6 @@ class TestPagination:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             },
             {
@@ -457,7 +448,6 @@ class TestPagination:
                 "domain_id": "meta",
                 "schema_name": "public",
                 "table_name": "registered_tables",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
@@ -469,7 +459,6 @@ class TestPagination:
                 "domain_id": "ops",
                 "schema_name": "public",
                 "table_name": "queries",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
@@ -640,7 +629,6 @@ class TestNestedRelationship:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -652,7 +640,6 @@ class TestNestedRelationship:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -709,7 +696,6 @@ class TestNestedRelationship:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -721,7 +707,6 @@ class TestNestedRelationship:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -764,7 +749,6 @@ class TestNestedRelationship:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -776,7 +760,6 @@ class TestNestedRelationship:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -819,7 +802,6 @@ class TestNestedRelationship:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "departments",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -831,7 +813,6 @@ class TestNestedRelationship:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "employees",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "dept_id", "visible_to": ["admin"]},
@@ -844,7 +825,6 @@ class TestNestedRelationship:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "emp_id", "visible_to": ["admin"]},
@@ -895,7 +875,6 @@ class TestNestedRelationship:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "cust_id", "visible_to": ["admin"]},
@@ -907,7 +886,6 @@ class TestNestedRelationship:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -978,7 +956,6 @@ class TestJoinTypeCast:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "product_id", "visible_to": ["admin"]},
@@ -990,7 +967,6 @@ class TestJoinTypeCast:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "reviews",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "product_id", "visible_to": ["admin"]},
                     {"column_name": "rating", "visible_to": ["admin"]},
@@ -1033,7 +1009,6 @@ class TestJoinTypeCast:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "ext_ref", "visible_to": ["admin"]},
@@ -1045,7 +1020,6 @@ class TestJoinTypeCast:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "externals",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "ref_id", "visible_to": ["admin"]},
                     {"column_name": "label", "visible_to": ["admin"]},
@@ -1127,7 +1101,6 @@ class TestRelationshipVisibility:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "limited"]},
                     {
@@ -1143,7 +1116,6 @@ class TestRelationshipVisibility:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "limited"]},
                     {"column_name": "name", "visible_to": ["admin", "limited"]},
@@ -1247,7 +1219,6 @@ class TestOpsDefaultLimit:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             },
             {
@@ -1256,7 +1227,6 @@ class TestOpsDefaultLimit:
                 "domain_id": "meta",
                 "schema_name": "public",
                 "table_name": "registered_tables",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
@@ -1268,7 +1238,6 @@ class TestOpsDefaultLimit:
                 "domain_id": "ops",
                 "schema_name": "public",
                 "table_name": "queries",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
@@ -1333,7 +1302,6 @@ class TestGqlJsonBlobExtraction:
                 "domain_id": "shelter",
                 "schema_name": "public",
                 "table_name": "departments",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -1345,7 +1313,6 @@ class TestGqlJsonBlobExtraction:
                 "domain_id": "shelter",
                 "schema_name": "public",
                 "table_name": "assignments",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "dept_id", "visible_to": ["admin"]},

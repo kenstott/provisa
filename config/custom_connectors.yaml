@@ -1,9 +1,10 @@
 # Config-driven custom source connectors for the native federation engines (REQ-1177).
 #
-# Declare a connector for a NEW source_type here and the native pg / duckdb engine gains reachability to
-# it — no code. Availability is verified at attach time against the engine's standard discovery catalog
-# (pg_available_extensions for Postgres, duckdb_extensions()/duckdb_functions() for DuckDB); a declared
-# extension that is not installable fails LOUD (never a silent skip).
+# Declare a connector for a NEW source_type here and the native pg / duckdb / clickhouse engine gains
+# reachability to it — no code. Availability is verified at attach time against the engine's standard
+# discovery catalog (pg_available_extensions for Postgres, duckdb_extensions()/duckdb_functions() for
+# DuckDB, system.table_engines for ClickHouse); a declared extension/engine that is absent fails LOUD
+# (never a silent skip).
 #
 # Ships EMPTY: the built-in connectors are the OOTB reach; anything here is operator-authored (or the
 # test fixture at tests/fixtures/custom_connectors.yaml, selected via PROVISA_CUSTOM_CONNECTORS). Every
@@ -21,6 +22,13 @@
 #   extension, probe_symbol, install_from_community, attach_template (may use {alias}), remote_schema
 # kind: duckdb_scan  (DuckDB, SCAN table-function)
 #   extension, probe_symbol, install_from_community, scan_template  (e.g. read_xlsx('{path}'))
+# kind: clickhouse_database  (ClickHouse, CREATE DATABASE ENGINE=… — auto-exposes every remote table)
+#   ch_engine        — the ClickHouse engine name, probed in system.table_engines (e.g. Redis, MySQL)
+#   engine_template  — the ENGINE = <...> body (e.g. "Redis('{host}:{port}', {db_index}, '{password}')")
+# kind: clickhouse_table  (ClickHouse, CREATE TABLE ENGINE=… — per-table; columns come from the registry)
+#   ch_engine, engine_template (may carry a {table} placeholder — e.g. "JDBC('{jdbc_url}','{db}','{table}')")
+# kind: clickhouse_scan  (ClickHouse, CREATE TABLE ENGINE=… — ClickHouse infers the schema; read in place)
+#   ch_engine, engine_template (e.g. "HDFS('{path}', '{format}')")
 #
 # ── REQ-1177 conformance targets (each is a non-OOTB extension; used by the test suite) ──
 # connectors:
@@ -48,5 +56,20 @@
 #     install_from_community: false
 #     probe_symbol: read_xlsx
 #     scan_template: "read_xlsx('{path}')"
+#   - engine: clickhouse        # ClickHouse DATABASE → Redis (auto-exposes keys as a table)
+#     source_type: redis
+#     kind: clickhouse_database
+#     ch_engine: Redis
+#     engine_template: "Redis('{host}:{port}', {db_index}, '{password}')"
+#   - engine: clickhouse        # ClickHouse TABLE → JDBC bridge (any JDBC source; needs clickhouse-jdbc-bridge)
+#     source_type: jdbc
+#     kind: clickhouse_table
+#     ch_engine: JDBC
+#     engine_template: "JDBC('{jdbc_url}', '{database}', '{table}')"
+#   - engine: clickhouse        # ClickHouse SCAN → HDFS (schema inferred; read in place)
+#     source_type: hdfs
+#     kind: clickhouse_scan
+#     ch_engine: HDFS
+#     engine_template: "HDFS('{path}', '{format}')"
 
 connectors: []

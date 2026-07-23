@@ -65,7 +65,6 @@ def _schema_input() -> SchemaInput:
                 "domain_id": "sales",
                 "schema_name": _SCHEMA,
                 "table_name": _TABLE,
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

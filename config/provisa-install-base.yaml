@@ -19,7 +19,6 @@ tables:
   domain_id: pet-store
   schema: pet_store
   table: pets
-  governance: pre-approved
   description: "Pet inventory \u2014 managed by the inventory department"
   columns:
   - name: id

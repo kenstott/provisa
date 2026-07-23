@@ -26,3 +26,18 @@ connectors:
     install_from_community: false
     probe_symbol: read_xlsx
     scan_template: "read_xlsx('{path}')"
+  - engine: clickhouse        # ClickHouse DATABASE → Redis (REQ-1178)
+    source_type: redis
+    kind: clickhouse_database
+    ch_engine: Redis
+    engine_template: "Redis('{host}:{port}', {db_index}, '{password}')"
+  - engine: clickhouse        # ClickHouse TABLE (columns from registry) → JDBC bridge (REQ-1178)
+    source_type: jdbc
+    kind: clickhouse_table
+    ch_engine: JDBC
+    engine_template: "JDBC('{jdbc_url}', '{database}', '{table}')"
+  - engine: clickhouse        # ClickHouse SCAN (schema-inferred) → HDFS (REQ-1178)
+    source_type: hdfs
+    kind: clickhouse_scan
+    ch_engine: HDFS
+    engine_template: "HDFS('{path}', '{format}')"

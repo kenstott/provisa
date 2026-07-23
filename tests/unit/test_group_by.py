@@ -33,7 +33,6 @@ def _build_schema_and_ctx(enable_group_by: bool = True, enable_aggregates: bool 
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "enable_aggregates": enable_aggregates,
             "enable_group_by": enable_group_by,
             "columns": [
@@ -79,7 +78,6 @@ def _build_schema_and_ctx_with_rel():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "enable_group_by": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -95,7 +93,6 @@ def _build_schema_and_ctx_with_rel():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},
@@ -164,7 +161,6 @@ class TestGroupBySchema:
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             },
         ]

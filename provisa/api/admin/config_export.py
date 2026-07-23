@@ -46,7 +46,6 @@ _TABLE_KEYS = frozenset(
         "table",
         "alias",
         "description",
-        "governance",
         "columns",
         "view_sql",
         "materialize",
@@ -55,7 +54,7 @@ _TABLE_KEYS = frozenset(
         "unique_constraints",  # REQ-1093
     }
 )
-_COLUMN_KEYS = frozenset({"name", "description", "visible_to", "governance"})
+_COLUMN_KEYS = frozenset({"name", "description", "visible_to"})
 _REL_KEYS = frozenset(
     {
         "id",

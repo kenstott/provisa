@@ -521,7 +521,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         _schema_cfg = raw_config.get("schema", {}) if raw_config else {}
         tables = _filter_tables_by_schema_cfg(tables, _schema_cfg, state.source_allowed_domains)
 
-        # Install LISTEN/NOTIFY triggers on pre-approved PostgreSQL tables
+        # Install LISTEN/NOTIFY triggers on registered PostgreSQL tables
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
         state.pg_notify_tables = await ensure_pg_notify_triggers(conn, tables, state.source_types)

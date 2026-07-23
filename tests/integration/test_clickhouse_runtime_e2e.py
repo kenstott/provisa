@@ -14,6 +14,8 @@ named view, and a federated query returns its rows.
 
 from __future__ import annotations
 
+import sqlite3
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,6 +28,18 @@ chdb = pytest.importorskip("chdb")
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
+
+
+def _make_sqlite(path: Path) -> None:
+    """A tiny SQLite database file with one populated table — the remote of a federated read."""
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE widget (id INTEGER, name TEXT, qty INTEGER)")
+    con.executemany(
+        "INSERT INTO widget VALUES (?, ?, ?)",
+        [(1, "sprocket", 10), (2, "gear", 20), (3, "cog", 30)],
+    )
+    con.commit()
+    con.close()
 
 
 async def test_clickhouse_runtime_federates_csv_source():
@@ -46,6 +60,72 @@ async def test_clickhouse_runtime_federates_csv_source():
 
         rows = rt.run_sync('SELECT "id" FROM "sales"."customers" ORDER BY "id" LIMIT 3')
         assert len(rows.rows) == 3
+    finally:
+        rt.close()
+
+
+async def test_clickhouse_runtime_federates_sqlite_source(tmp_path):
+    """REQ-1178: the OOTB ClickHouse SQLite connector mounts a SQLite file via the SQLite DATABASE
+    engine (auto-exposes every table) and a federated query returns its rows — no server."""
+    db = tmp_path / "shop.db"
+    _make_sqlite(db)
+    rt = ClickHouseFederationRuntime.embedded()
+    try:
+        src = SimpleNamespace(
+            id="shop",
+            type=SimpleNamespace(value="sqlite"),
+            path=str(db),
+            schema_name="inv",
+            table_name="widget",
+            federation_hints={},
+        )
+        rt.attach_source(src)
+
+        total = rt.run_sync('SELECT count(*) AS n FROM "inv"."widget"')
+        assert total.rows[0][0] == 3
+
+        rows = rt.run_sync('SELECT "name" FROM "inv"."widget" WHERE "qty" >= 20 ORDER BY "id"')
+        assert [r[0] for r in rows.rows] == ["gear", "cog"]
+    finally:
+        rt.close()
+
+
+async def test_clickhouse_config_driven_connector_federates_sqlite(tmp_path, monkeypatch):
+    """REQ-1178: a config-DECLARED ClickHouse connector (no code) for a new source_type reaches a real
+    source end-to-end. A clickhouse_database descriptor drives the SQLite DATABASE engine; the runtime
+    builds its engine from the same custom-connector config, so the descriptor alone grants reach."""
+    db = tmp_path / "ledger.db"
+    _make_sqlite(db)
+    cfg = tmp_path / "custom_connectors.yaml"
+    cfg.write_text(
+        textwrap.dedent(
+            """
+            connectors:
+              - engine: clickhouse
+                source_type: sqlite_custom
+                kind: clickhouse_database
+                ch_engine: SQLite
+                engine_template: "SQLite('{path}')"
+            """
+        )
+    )
+    monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", str(cfg))
+
+    rt = ClickHouseFederationRuntime.embedded()  # builds its engine AFTER the env override
+    try:
+        assert rt._engine.reachable("sqlite_custom")  # the descriptor granted reach — no code
+        src = SimpleNamespace(
+            id="ledger",
+            type=SimpleNamespace(value="sqlite_custom"),
+            path=str(db),
+            schema_name="fin",
+            table_name="widget",
+            federation_hints={},
+        )
+        rt.attach_source(src)
+
+        rows = rt.run_sync('SELECT "id", "name" FROM "fin"."widget" ORDER BY "id"')
+        assert [(r[0], r[1]) for r in rows.rows] == [(1, "sprocket"), (2, "gear"), (3, "cog")]
     finally:
         rt.close()
 

@@ -60,7 +60,6 @@ def _si():
                 "domain_id": "s",
                 "schema_name": _DS,
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],

@@ -58,7 +58,6 @@ def _minimal_table(source_id: str = "pg-src", domain_id: str = "d1") -> dict:
         "domain_id": domain_id,
         "schema": "public",
         "table": "orders",
-        "governance": "pre-approved",
         "columns": [{"name": "id", "visible_to": ["admin"]}],
     }
 

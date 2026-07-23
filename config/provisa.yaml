@@ -216,7 +216,6 @@ tables:
   domain_id: pet-store
   enable_aggregates: true
   enable_group_by: true
-  governance: pre-approved
   schema: pet_store
   source_id: pet-store-pg
   table: pets
@@ -252,7 +251,6 @@ tables:
   description: "Pets available for purchase \u2014 filtered by status from Petstore\
     \ API"
   domain_id: pet-store
-  governance: pre-approved
   schema: default
   source_id: petstore-api
   table: find_pets_by_status
@@ -287,7 +285,6 @@ tables:
     - analyst
   description: Pets filtered by tag from Petstore API
   domain_id: pet-store
-  governance: pre-approved
   schema: default
   source_id: petstore-api
   table: find_pets_by_tags
@@ -322,7 +319,6 @@ tables:
     - analyst
   description: Individual pet record by ID from Petstore API
   domain_id: pet-store
-  governance: pre-approved
   schema: default
   source_id: petstore-api
   table: get_pet_by_id
@@ -338,7 +334,6 @@ tables:
     - analyst
   description: Pet inventory counts by status from Petstore API
   domain_id: pet-store
-  governance: pre-approved
   schema: default
   source_id: petstore-api
   table: get_inventory
@@ -373,7 +368,6 @@ tables:
     - analyst
   description: Individual purchase order by ID from Petstore API
   domain_id: pet-store
-  governance: pre-approved
   schema: default
   source_id: petstore-api
   table: get_order_by_id
@@ -406,7 +400,6 @@ tables:
     - admin
   description: User account by username from Petstore API
   domain_id: pet-store
-  governance: pre-approved
   schema: default
   source_id: petstore-api
   table: get_user_by_name
@@ -431,7 +424,6 @@ tables:
     - analyst
   description: Prospective adopters who have submitted inquiries
   domain_id: pet-store
-  governance: pre-approved
   schema: default
   source_id: inquiries-sqlite
   table: users
@@ -468,7 +460,6 @@ tables:
   domain_id: pet-store
   enable_aggregates: true
   enable_group_by: true
-  governance: pre-approved
   schema: default
   source_id: inquiries-sqlite
   table: inquiries
@@ -501,7 +492,6 @@ tables:
   description: "Full breed catalog \u2014 use to answer what care protocols apply\
     \ and which adopter profiles match each species in custody"
   domain_id: shelter
-  governance: pre-approved
   schema: graphql
   source_id: graphql-demo
   table: animalBreeds
@@ -537,7 +527,6 @@ tables:
   description: "Care requirements and placement context for a single breed \u2014\
     \ use before making a staffing assignment or adoption decision"
   domain_id: shelter
-  governance: pre-approved
   schema: graphql
   source_id: graphql-demo
   table: animalBreed
@@ -585,7 +574,6 @@ tables:
   description: "All staff eligible for breed assignments \u2014 use to identify who\
     \ can be assigned or scheduled"
   domain_id: shelter
-  governance: pre-approved
   schema: graphql
   source_id: graphql-demo
   table: employees
@@ -636,7 +624,6 @@ tables:
   description: "Contact details and department for a single staff member \u2014 use\
     \ to route assignment requests or resolve scheduling conflicts"
   domain_id: shelter
-  governance: pre-approved
   schema: graphql
   source_id: graphql-demo
   table: employee
@@ -668,7 +655,6 @@ tables:
   description: "Complete accountability map of staff to breeds \u2014 use to spot\
     \ coverage gaps or single-keeper risk across all species"
   domain_id: shelter
-  governance: pre-approved
   schema: graphql
   source_id: graphql-demo
   table: assignments
@@ -704,7 +690,6 @@ tables:
   description: "All breeds a given staff member is accountable for \u2014 use to assess\
     \ workload before adding a new assignment"
   domain_id: shelter
-  governance: pre-approved
   schema: graphql
   source_id: graphql-demo
   table: assignmentsByEmployee
@@ -740,7 +725,6 @@ tables:
   description: "All staff responsible for a breed \u2014 use to verify minimum keeper\
     \ coverage and identify backup gaps"
   domain_id: shelter
-  governance: pre-approved
   schema: graphql
   source_id: graphql-demo
   table: assignmentsByBreed
@@ -772,7 +756,6 @@ tables:
   description: "Full weekly shift roster \u2014 use for shelter-wide coverage analysis\
     \ and to surface days where any location is understaffed"
   domain_id: shelter
-  governance: pre-approved
   schema: graphql
   source_id: graphql-demo
   table: schedules
@@ -808,7 +791,6 @@ tables:
   description: "A staff member's shift coverage for the week \u2014 use for availability\
     \ checks before scheduling a new assignment or event"
   domain_id: shelter
-  governance: pre-approved
   schema: graphql
   source_id: graphql-demo
   table: scheduleByEmployee

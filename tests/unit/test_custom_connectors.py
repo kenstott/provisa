@@ -23,6 +23,9 @@ import pytest
 
 from provisa.federation.connector_base import Mechanism
 from provisa.federation.custom_connectors import (
+    GenericClickHouseDatabaseConnector,
+    GenericClickHouseScanConnector,
+    GenericClickHouseTableConnector,
     GenericDuckDbAttachConnector,
     GenericDuckDbScanConnector,
     GenericPgFdwConnector,
@@ -122,18 +125,73 @@ def test_duckdb_scan_excel_view_ddl():
 
 
 # --------------------------------------------------------------------------- #
+# ClickHouse generic — DATABASE / TABLE / SCAN  (REQ-1178)
+# --------------------------------------------------------------------------- #
+def test_clickhouse_database_emits_create_database_and_local_schema():
+    d = {
+        "source_type": "redis", "kind": "clickhouse_database", "ch_engine": "Redis",
+        "engine_template": "Redis('{host}:{port}', {db_index}, '{password}')",
+    }
+    c = GenericClickHouseDatabaseConnector(d)
+    det = c.details(_src(id="cache", host="redis", port=6379, password="pw",
+                         federation_hints={"db_index": "0"}))
+    assert det["local_schema"] == "ch_cache"
+    assert det["attach_ddl"] == [
+        'CREATE DATABASE IF NOT EXISTS "ch_cache" ENGINE = Redis(\'redis:6379\', 0, \'pw\')'
+    ]
+    assert c.mechanism is Mechanism.ATTACH_RW
+    assert c.capability().write is True
+
+
+def test_clickhouse_table_emits_engine_clause_and_requires_columns():
+    d = {
+        "source_type": "jdbc", "kind": "clickhouse_table", "ch_engine": "JDBC",
+        "engine_template": "JDBC('{jdbc_url}', '{database}', '{table}')",
+    }
+    det = GenericClickHouseTableConnector(d).details(
+        _src(id="erp", database="prod", federation_hints={"jdbc_url": "jdbc:oracle:thin:@h:1521"})
+    )
+    # {table} stays a placeholder the runtime binds from the registry; columns supplied there.
+    assert det == {
+        "engine_clause": "JDBC('jdbc:oracle:thin:@h:1521', 'prod', '{table}')",
+        "requires_columns": True,
+    }
+
+
+def test_clickhouse_scan_emits_inferred_engine_clause():
+    d = {
+        "source_type": "hdfs", "kind": "clickhouse_scan", "ch_engine": "HDFS",
+        "engine_template": "HDFS('{path}', '{format}')",
+    }
+    c = GenericClickHouseScanConnector(d)
+    det = c.details(_src(id="logs", path="hdfs://nn:8020/logs/*", federation_hints={"format": "JSONEachRow"}))
+    assert det == {
+        "engine_clause": "HDFS('hdfs://nn:8020/logs/*', 'JSONEachRow')",
+        "infer": True, "validate": True,
+    }
+    assert c.mechanism is Mechanism.SCAN
+
+
+# --------------------------------------------------------------------------- #
 # Loader
 # --------------------------------------------------------------------------- #
 def test_loader_filters_by_engine(monkeypatch):
     monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", _FIXTURE)
     pg = load_custom_connectors("postgres")
     duck = load_custom_connectors("duckdb")
+    ch = load_custom_connectors("clickhouse")
     assert [c.source_type for c in pg] == ["mongodb"]
     assert isinstance(pg[0], GenericPgFdwConnector)
     assert sorted(c.source_type for c in duck) == ["ducklake", "xlsx"]
     kinds = {c.source_type: type(c).__name__ for c in duck}
     assert kinds["ducklake"] == "GenericDuckDbAttachConnector"
     assert kinds["xlsx"] == "GenericDuckDbScanConnector"
+    ch_kinds = {c.source_type: type(c).__name__ for c in ch}
+    assert ch_kinds == {
+        "redis": "GenericClickHouseDatabaseConnector",
+        "jdbc": "GenericClickHouseTableConnector",
+        "hdfs": "GenericClickHouseScanConnector",
+    }
 
 
 def test_loader_absent_config_is_empty(monkeypatch):
