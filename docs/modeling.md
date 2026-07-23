@@ -1,3 +1,7 @@
+<!-- markdownlint-disable MD046 -->
+<!-- MD046 off: mkdocs-material `===` content-tab bodies are indented, which the linter
+     misreads as indented code blocks; the fenced code blocks below are required for rendering. -->
+
 # Data Modeling (Entities & Facts)
 
 Provisa gives you two declarative primitives — `entity` and `fact` — that cover the building
@@ -29,7 +33,7 @@ Three modes are available on an entity [tool-verified: `_HISTORY` constant at mo
 `_HISTORY_MODE` dict at modeling.py line 40]:
 
 | Mode | Meaning | Bitemporal mode |
-|---|---|---|
+| --- | --- | --- |
 | `none` | Current-only. No history. | — |
 | `scd2` | Track every change. Append only changed rows (delta) keyed on the entity key. | `delta` |
 | `snapshot` | Track every refresh. Append the full result set each refresh, stamped with system time. | `snapshot` |
@@ -161,7 +165,7 @@ A segmented control at the top of the modal switches between **Entity (dimension
 [tool-verified: ModelingForm.tsx lines 141-171; modelingForm.json]
 
 | Field | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | Name | yes | The MV name in the catalog |
 | Source relation | yes | Dotted relation, e.g. `raw.customers` |
 | Domain | yes | Domain the MV belongs to |
@@ -174,7 +178,7 @@ A segmented control at the top of the modal switches between **Entity (dimension
 [tool-verified: ModelingForm.tsx lines 172-196; modelingForm.json]
 
 | Field | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | Name | yes | The MV name in the catalog |
 | Source relation | yes | Dotted relation, e.g. `raw.orders` |
 | Domain | yes | Domain the MV belongs to |
@@ -203,7 +207,7 @@ mutation RegisterEntity($input: EntityInput!) {
 `EntityInput` fields [tool-verified: types.py lines 449-456]:
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `name` | String | — | Catalog name for the entity MV |
 | `source` | String | — | Source relation (`schema.table` or quoted) |
 | `domainId` | String | — | Domain id |
@@ -226,7 +230,7 @@ mutation RegisterFact($input: FactInput!) {
 `FactInput` fields [tool-verified: types.py lines 472-479]:
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `name` | String | — | Catalog name for the fact MV |
 | `source` | String | — | Source relation |
 | `domainId` | String | — | Domain id |
@@ -250,23 +254,332 @@ On success, `registerFact` returns a message of the form:
 
 Neither pattern requires separate tooling. The same two primitives compose into both.
 
-**Kimball star schema**
+### Kimball star schema
 
-- A dimension is an entity with the attributes you want to conformed-select. Choose `none` for
-  SCD Type 1 (current only, rebuilt on refresh). Choose `scd2` for SCD Type 2 (row-versioned,
-  full history in the bitemporal MV). [tool-verified: modeling.py docstring line 18-20]
-- A fact table is a fact. Declare the grain, the additive measures, and one dimension reference
-  per FK. Provisa writes the GROUP BY and registers the join paths. [tool-verified: modeling.py
-  docstring lines 21-23]
+This walkthrough builds a three-dimension star. Two source tables are new:
 
-**Data Vault**
+- `raw.products` — `product_id`, `name`, `category`, `list_price` [inferred: introduced for this example]
+- `raw.date_spine` — `date_key`, `year`, `quarter`, `month` [inferred: introduced for this example]
 
-- A hub is an entity with `history: "none"` — the deduplicated business-key set.
-- A satellite is an entity with `history: "scd2"` or `history: "snapshot"` — the time-stamped
-  attribute record beside the hub key. [tool-verified: modeling.py docstring line 19]
-- A link is a fact with no measures — a pure key-set joining two or more entities. Add
-  `measures` to turn it into a Point-in-Time or bridge aggregate. [tool-verified: modeling.py
-  line 130 comment]
+`raw.orders` also gains `product_id` and `order_date` columns here. [inferred]
+
+#### Choosing SCD type
+
+History mode is the only dial between SCD Type 1 and Type 2:
+
+| SCD type | History mode | Effect |
+| --- | --- | --- |
+| Type 1 (current only) | `none` | MV rebuilt on refresh; no row history |
+| Type 2 (versioned) | `scd2` | Bitemporal delta MV; each change appends a new row keyed on the entity key |
+
+[tool-verified: `_HISTORY_MODE` at modeling.py line 40; `entity_registration` history branch at
+lines 115-119]
+
+Use `scd2` when downstream queries need to join a dimension as it existed at transaction time — a
+customer's tier at the moment of purchase, not their current tier. Use `none` for stable lookups.
+A date spine never changes. A product catalog where you only need the current price can rebuild on
+every refresh.
+
+#### Grain decision
+
+The grain is the lowest level of detail the fact answers. `order_id` gives one row per order,
+preserving the ability to count distinct orders and join to any dimension at order granularity.
+A coarser grain — say `["customer_id", "order_date"]` — pre-aggregates across orders and discards
+that detail permanently. Declare the narrowest grain the business needs; coarser rollups are cheap
+to derive afterward.
+
+#### Register the dimensions
+
+**Customer** (SCD Type 2 — tier changes must be preserved):
+
+```graphql
+mutation {
+  registerEntity(input: {
+    name: "Customer"
+    source: "raw.customers"
+    domainId: "sales"
+    key: ["id"]
+    attributes: ["name", "region", "tier"]
+    history: "scd2"
+  }) { success message }
+}
+```
+
+Generates a bitemporal delta MV keyed on `id` [tool-verified: entity_registration modeling.py
+lines 105-120]:
+
+```sql
+SELECT "id", "name", "region", "tier" FROM "raw"."customers"
+-- bitemporal delta MV, entity key: ["id"]
+```
+
+**Product** (SCD Type 1 — current catalog, no version history needed):
+
+```graphql
+mutation {
+  registerEntity(input: {
+    name: "Product"
+    source: "raw.products"
+    domainId: "sales"
+    key: ["product_id"]
+    attributes: ["name", "category", "list_price"]
+    history: "none"
+  }) { success message }
+}
+```
+
+Generates an ordinary MV rebuilt on refresh [tool-verified: entity_registration modeling.py
+lines 105-114; `mv_bitemporal_mode` is only added when `history != "none"`, line 115]:
+
+```sql
+SELECT "product_id", "name", "category", "list_price" FROM "raw"."products"
+```
+
+**DateDim** (no history — a date is immutable):
+
+```graphql
+mutation {
+  registerEntity(input: {
+    name: "DateDim"
+    source: "raw.date_spine"
+    domainId: "sales"
+    key: ["date_key"]
+    attributes: ["year", "quarter", "month"]
+    history: "none"
+  }) { success message }
+}
+```
+
+Generates:
+
+```sql
+SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
+```
+
+#### Register the Sales fact across three dimensions
+
+Grain: `order_id`. Three dimension references — one FK column each. Both measures are additive sums.
+
+```graphql
+mutation {
+  registerFact(input: {
+    name: "Sales"
+    source: "raw.orders"
+    domainId: "sales"
+    grain: ["order_id"]
+    measures: [
+      { column: "amount",   agg: "sum" }
+      { column: "quantity", agg: "sum" }
+    ]
+    dimensions: [
+      { entity: "Customer", via: "customer_id" }
+      { entity: "Product",  via: "product_id"  }
+      { entity: "DateDim",  via: "order_date"  }
+    ]
+  }) { success message }
+}
+```
+
+Provisa computes `group_cols = dedup([grain] + [dim FKs])`
+= `["order_id", "customer_id", "product_id", "order_date"]` and generates
+[tool-verified: fact_registration modeling.py lines 125-131]:
+
+```sql
+SELECT "order_id", "customer_id", "product_id", "order_date",
+       SUM("amount")   AS "amount",
+       SUM("quantity") AS "quantity"
+FROM   "raw"."orders"
+GROUP BY "order_id", "customer_id", "product_id", "order_date"
+```
+
+Three relationships are registered automatically [tool-verified: modeling_register.py lines 89-98,
+cardinality `"many_to_one"` at line 95]:
+
+| Relationship | Cardinality |
+| --- | --- |
+| `Sales.customer_id → Customer` | many-to-one |
+| `Sales.product_id → Product` | many-to-one |
+| `Sales.order_date → DateDim` | many-to-one |
+
+#### Conformed dimensions
+
+A conformed dimension is registered once and referenced by name from any number of facts. Suppose
+`raw.returns` holds `return_id`, `customer_id`, `product_id`, and `amount`. The Returns fact reuses
+Customer and Product without re-registering them:
+
+```graphql
+mutation {
+  registerFact(input: {
+    name: "Returns"
+    source: "raw.returns"
+    domainId: "sales"
+    grain: ["return_id"]
+    measures: [{ column: "amount", agg: "sum" }]
+    dimensions: [
+      { entity: "Customer", via: "customer_id" }
+      { entity: "Product",  via: "product_id"  }
+    ]
+  }) { success message }
+}
+```
+
+Both `Sales` and `Returns` point to the same `Customer` and `Product` entities. Provisa's join
+paths enforce that queries through either fact traverse the same dimension definition
+[tool-verified: fact_registration uses entity name as `target_table` at modeling.py lines 138-140;
+fact_table_input wires `target_table_id` from that name at modeling_register.py lines 91-93].
+
+---
+
+### Data Vault
+
+The same primitives map directly onto Data Vault vocabulary:
+
+| DV artifact | Primitive | History |
+| --- | --- | --- |
+| Hub | `entity` | `none` — entity keys only |
+| Satellite | `entity` | `scd2` or `snapshot` — attribute history beside the hub key |
+| Link | `fact` with no measures | — |
+| Bridge / aggregate link | `fact` with measures | — |
+
+The example builds a minimal vault over `raw.customers` and `raw.orders`.
+
+#### Hubs
+
+A hub holds the entity key and nothing else. `attributes: []` with `history: "none"` produces a
+deduplicated current key set; attribute history lives entirely in the satellite.
+
+```graphql
+mutation {
+  registerEntity(input: {
+    name: "CustomerHub"
+    source: "raw.customers"
+    domainId: "vault"
+    key: ["id"]
+    attributes: []
+    history: "none"
+  }) { success message }
+}
+```
+
+Generates [tool-verified: entity_registration modeling.py lines 107-108;
+`cols = dedup([*key, *attributes])` = `["id"]` when `attributes=[]`]:
+
+```sql
+SELECT "id" FROM "raw"."customers"
+```
+
+```graphql
+mutation {
+  registerEntity(input: {
+    name: "OrderHub"
+    source: "raw.orders"
+    domainId: "vault"
+    key: ["order_id"]
+    attributes: []
+    history: "none"
+  }) { success message }
+}
+```
+
+Generates:
+
+```sql
+SELECT "order_id" FROM "raw"."orders"
+```
+
+#### Satellite
+
+The satellite sits beside the hub key and carries full attribute history. Use `scd2` to append
+only changed rows; use `snapshot` to stamp every full refresh.
+
+```graphql
+mutation {
+  registerEntity(input: {
+    name: "CustomerSat"
+    source: "raw.customers"
+    domainId: "vault"
+    key: ["id"]
+    attributes: ["name", "region", "tier"]
+    history: "scd2"
+  }) { success message }
+}
+```
+
+Generates [tool-verified: entity_registration modeling.py lines 115-119;
+`_HISTORY_MODE["scd2"]` = `"delta"` at modeling.py line 40]:
+
+```sql
+SELECT "id", "name", "region", "tier" FROM "raw"."customers"
+-- bitemporal delta MV, entity key: ["id"]
+```
+
+`CustomerSat` and `CustomerHub` both key on `id`. The hub is the stable join target; the satellite
+provides point-in-time attribute access through the bitemporal layer.
+
+#### Link (measureless fact)
+
+A link records which hub keys co-occurred — keys only, no measures. Provisa omits the `GROUP BY`
+when `measures` is empty [tool-verified: modeling.py lines 130-131:
+`if f.measures: view_sql += " GROUP BY ..."`].
+
+```graphql
+mutation {
+  registerFact(input: {
+    name: "OrderCustomerLink"
+    source: "raw.orders"
+    domainId: "vault"
+    grain: ["order_id"]
+    measures: []
+    dimensions: [
+      { entity: "CustomerHub", via: "customer_id" }
+      { entity: "OrderHub",    via: "order_id"    }
+    ]
+  }) { success message }
+}
+```
+
+`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`.
+No measures, so no `GROUP BY`. Generates [tool-verified: fact_registration modeling.py lines
+125-131]:
+
+```sql
+SELECT "order_id", "customer_id" FROM "raw"."orders"
+```
+
+Two relationships registered: `OrderCustomerLink.customer_id → CustomerHub` and
+`OrderCustomerLink.order_id → OrderHub`, both many-to-one
+[tool-verified: modeling_register.py lines 89-98].
+
+#### Bridge / aggregate link
+
+Add measures to the link and Provisa emits the `GROUP BY`, producing a pre-aggregated bridge. At
+`order_id` grain with one customer per order, the result is one aggregated row per order:
+
+```graphql
+mutation {
+  registerFact(input: {
+    name: "OrderSummary"
+    source: "raw.orders"
+    domainId: "vault"
+    grain: ["order_id"]
+    measures: [{ column: "amount", agg: "sum" }]
+    dimensions: [
+      { entity: "CustomerHub", via: "customer_id" }
+      { entity: "OrderHub",    via: "order_id"    }
+    ]
+  }) { success message }
+}
+```
+
+`group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`
+(the duplicate `order_id` from the dimension list is dropped by `_dedup`). Generates
+[tool-verified: fact_registration modeling.py lines 125-131]:
+
+```sql
+SELECT "order_id", "customer_id", SUM("amount") AS "amount"
+FROM   "raw"."orders"
+GROUP BY "order_id", "customer_id"
+```
 
 The model does not decide the methodology. Grain, conformance, SCD choice, and the hub/satellite
 split remain the modeler's decisions. Provisa executes them. [tool-verified: modeling.py
