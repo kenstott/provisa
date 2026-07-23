@@ -7,7 +7,7 @@ Provisa is configured via a YAML file (default: `config/provisa.yaml`). (REQ-528
 ```yaml
 sources:
   - id: sales-pg           # unique identifier
-    type: postgresql        # postgresql, mysql, sqlserver, oracle, duckdb, mongodb, cassandra
+    type: postgresql
     host: postgres
     port: 5432
     database: provisa
@@ -19,11 +19,100 @@ sources:
     pgbouncer_port: 6432
 ```
 
-Supported source types: `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `snowflake`, `bigquery`, `redshift`, `databricks`, `clickhouse`, `druid`, `exasol`, `hive`, `elasticsearch`, `pinot`, `delta_lake`, `iceberg`, `mongodb`, `cassandra`, `redis`, `kafka`, `google_sheets`, `prometheus`, `govdata`.
+All sources share a common field set. [tool-verified: `provisa/core/models.py:129-212`]
 
-## GovData Sources
+| Field | Default | Notes |
+|-------|---------|-------|
+| `id` | required | Alphanumeric, hyphens, underscores |
+| `type` | required | See table below |
+| `host` | `""` | Hostname or IP |
+| `port` | `0` | `0` means each connector supplies its own default — there is no central default-port map |
+| `database` | `""` | |
+| `username` | `""` | |
+| `password` | `""` | Supports `${env:VAR}` secret resolution |
+| `path` | `null` | File path or URI for file-based sources |
+| `base_url` | `null` | Base URL for API sources |
+| `pool_min` / `pool_max` | `1` / `5` | Connection pool bounds |
+| `cache_enabled` | `true` | Toggle caching for all tables in this source |
+| `cache_ttl` | `null` | Seconds; `null` inherits the global default |
+| `federation_hints` | `{}` | Per-connector extended parameters (dict[str,str]); see type reference below. REQ-281 |
+| `mapping` | `{}` | Mapping DSL for redis, elasticsearch, prometheus. REQ-251 |
+| `allowed_domains` | `[]` | Restrict this source to specific domain IDs; empty = unrestricted |
+| `description` | `""` | |
 
-Sources of type `govdata` expose U.S. government open data. (REQ-540) Access is partitioned by subject grouping. [tool-verified: `provisa/core/models.py` lines 543–574]
+### Supported source types [tool-verified: `provisa/core/models.py:36-101`]
+
+| Type | Connection style | Notes |
+|------|-----------------|-------|
+| **RDBMS** | | |
+| `postgresql` | host/port | Asyncpg pool; PgBouncer opt-in via `use_pgbouncer` |
+| `mysql` | host/port | |
+| `mariadb` | host/port | |
+| `singlestore` | host/port | |
+| `sqlserver` | host/port | |
+| `oracle` | host/port | |
+| `firebird` | host + `path` (DB file) | DuckDB firebird community extension (REQ-899) |
+| `duckdb` | host/port | |
+| `cockroachdb` | host/port | Reuses PostgreSQL driver/dialect (REQ-950) |
+| `yugabytedb` | host/port | Reuses PostgreSQL driver/dialect (REQ-950) |
+| `greenplum` | host/port | Reuses PostgreSQL driver/dialect (REQ-950) |
+| `tidb` | host/port | Reuses MySQL driver/dialect (REQ-950) |
+| **Cloud DW** | | |
+| `snowflake` | host/port + `federation_hints` | `account` required in hints |
+| `bigquery` | `federation_hints` | `project` required; auth via `GOOGLE_APPLICATION_CREDENTIALS` |
+| `databricks` | host + `federation_hints` | `http_path` required in hints |
+| `fabric` | env vars or `PROVISA_ENGINE_URL` | T-SQL over TDS, Azure AD auth |
+| `synapse` | env vars or `PROVISA_ENGINE_URL` | T-SQL over TDS, Azure AD auth |
+| `redshift` | host/port | |
+| **OLAP** | | |
+| `clickhouse` | host/port + `federation_hints` | `secure` hint toggles TLS; port defaults 8123/8443 |
+| `elasticsearch` | host/port + `mapping` DSL | |
+| `pinot` | host/port | Controller REST endpoint |
+| `druid` | host/port | Broker Avatica endpoint |
+| `exasol` | host/port | |
+| **Data Lake** | | |
+| `delta_lake` | `path` (table URI) | DuckDB `delta_scan`; object-store access via `federation_hints` |
+| `iceberg` | `path` (table URI) | DuckDB `iceberg_scan`; object-store access via `federation_hints` |
+| `hudi` | `path` (table URI) | ClickHouse Hudi engine, zero-copy (REQ-1178) |
+| `hive` | host/port (metastore) + `mapping.storage` | Storage backend in `mapping["storage"]`: hadoop/hdfs/local/s3/azure/adls |
+| `hive_s3` | host/port (metastore) + `mapping` S3 keys | Distinct type; always S3 storage (REQ-229) |
+| **NoSQL** | | |
+| `mongodb` | host/port | Plain connection fields; no mapping DSL |
+| `cassandra` | host/port | Plain connection fields; no mapping DSL |
+| `redis` | host/port + `mapping` DSL | |
+| **Streaming** | | |
+| `kafka` | registration-only | Real config lives in `kafka_sources[]`; see §Kafka below |
+| `websocket` | host/port/path + `federation_hints` | External WebSocket feed |
+| `rss` | host/port/path + `federation_hints` | RSS 2.0 / Atom feed |
+| **Graph/Semantic** | | |
+| `neo4j` | [UNVERIFIED end-to-end mapping] | |
+| `sparql` | [UNVERIFIED end-to-end mapping] | |
+| **File** | | |
+| `sqlite` | `path` | Always routes through engine (no direct pool) |
+| `csv` | `path` | |
+| `parquet` | `path` | |
+| `files` | `path` (directory) | Glob crawler; surfaces CSV/Parquet/XLSX/JSON as tables |
+| **API/Remote** | | |
+| `google_sheets` | `federation_hints.spreadsheet_id` | |
+| `prometheus` | host/port or `mapping.url` + `mapping` DSL | |
+| `graphql_remote` | `base_url` + optional `mapping` | Headers, forward-client-headers, timeout in `mapping` |
+| `openapi` | `base_url` | |
+| `grpc_remote` | [UNVERIFIED end-to-end mapping] | |
+| `airport` | `base_url` (Flight location) | DuckDB airport extension (REQ-899) |
+| `ingest` | push receiver | External services POST JSON events |
+| **SaaS** | | |
+| `sharepoint` | `base_url` or `host` + `mapping` | Auth via `mapping.auth_type` |
+| `splunk` | `host`/`port` or `base_url` + `mapping` | |
+| **GovData** | | |
+| `govdata` | subject + `domain_id` | Separate `GovDataSource` model; see §GovData below |
+
+### Source type reference
+
+Types needing non-obvious config each have a short entry below. RDBMS types (postgresql, mysql, etc.) use only the common fields above — no additional section needed.
+
+#### GovData [tool-verified: `provisa/core/models.py:953-983`]
+
+`govdata` sources use a separate top-level model, `GovDataSource`, not the generic `Source`. (REQ-540) Access is partitioned by subject grouping.
 
 ```yaml
 sources:
@@ -31,11 +120,12 @@ sources:
     type: govdata
     subject: COMMERCE
     domain_id: federal-analytics
+    api_key: ${env:GOVDATA_API_KEY}   # optional
+    start_year: 2020                   # optional year filter
+    end_year: 2024                     # optional year filter
 ```
 
-### Subject Groupings [tool-verified]
-
-Each subject maps to one or more GovData schemas. (REQ-540) Configuring a `govdata` source with a subject exposes all schemas for that subject automatically. (REQ-540)
+Each subject maps to one or more GovData schemas. Configuring a `govdata` source with a subject exposes all schemas for that subject automatically. (REQ-540)
 
 | Subject | Schemas |
 |---------|---------|
@@ -47,10 +137,381 @@ Each subject maps to one or more GovData schemas. (REQ-540) Configuring a `govda
 | `PUBLIC_SAFETY` | `crime` |
 | `ENVIRONMENT` | `lands` |
 | `WEATHER` | `weather` |
+| `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-The `ref` and `geo` schemas are always included as linker schemas — not configurable and not listed above. (REQ-541) Use subject `ALL` to grant access to every schema. [tool-verified: `provisa/core/models.py` lines 561–563]
+The `ref` and `geo` schemas are always included as linker schemas — not configurable and not listed above. (REQ-541) Use subject `ALL` to grant access to every schema. [tool-verified: `provisa/core/models.py:961-963`]
 
+#### Kafka [tool-verified: `provisa/federation/trino_connectors.py:497-502`, `provisa/api/app_loaders.py:113-118`]
+
+The `kafka` row in `sources:` is registration-only. Its connector's `details()` returns `{}` — the real configuration lives in the top-level `kafka_sources[]` block, not in a `sources:` row. Kafka is always a VIRTUAL_SOURCE (routes through the engine; no direct pool). [tool-verified: `provisa/transpiler/router.py:44-63`]
+
+```yaml
+kafka_sources:
+  - id: event-stream
+    bootstrap_servers: kafka:9092
+    schema_registry_url: http://schema-registry:8081  # optional
+    topics:
+      - id: order-created
+        topic: orders.events
+        default_window: 1h          # auto-injected time bound
+        schema_source: manual       # manual, registry, or sample
+        value_format: json
+        discriminator:              # filter shared topic by message type
+          field: event_type
+          value: OrderCreated
+        columns:
+          - name: event_type
+            type: varchar
+          - name: order_id
+            type: integer
+          - name: amount
+            type: double
+          - name: metadata
+            type: varchar           # raw JSON for complex nested data
+      - id: order-shipped
+        topic: orders.events        # same physical topic
+        default_window: 1h
+        discriminator:
+          field: event_type
+          value: OrderShipped
+        columns:
+          - name: event_type
+            type: varchar
+          - name: order_id
+            type: integer
+          - name: shipped_at
+            type: timestamp
+```
+
+**Time Window** — `default_window` bounds every query to a recent time period, preventing unbounded reads from high-volume topics. (REQ-148) Format: `1h`, `30m`, `7d`, `60s`. Defaults to `1h`. Auto-injected as `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Clients can override with their own `_timestamp` filter in the GraphQL `where` argument.
+
+**Discriminator** — Multiple topic configs can point to the same physical Kafka topic with different `discriminator` values, producing separate GraphQL types. (REQ-149) The discriminator is auto-injected as a WHERE clause.
+
+**Schema Source**
+
+| Value | Behavior |
+|-------|----------|
+| `registry` | Fetch schema from Confluent Schema Registry |
+| `manual` | Define columns inline in config (no Schema Registry needed) |
+| `sample` | Auto-discover from sample messages |
+
+#### Snowflake [tool-verified: `provisa/executor/drivers/snowflake.py:48-62`]
+
+`account` in `federation_hints` is required. `warehouse`, `role`, and `schema` are optional.
+
+```yaml
+sources:
+  - id: my-snowflake
+    type: snowflake
+    host: org.snowflakecomputing.com
+    username: svc_provisa
+    password: ${env:SNOWFLAKE_PASSWORD}
+    database: MY_DB
+    federation_hints:
+      account: myorg-myaccount     # required
+      warehouse: COMPUTE_WH
+      role: PROVISA_ROLE
+      schema: PUBLIC               # remote schema override
+```
+
+#### Databricks [tool-verified: `provisa/executor/drivers/databricks.py:34-52`]
+
+`http_path` in `federation_hints` is required. `password` carries the personal access token. `catalog` is optional (carried in SQL/hints, not the `database` field).
+
+```yaml
+sources:
+  - id: my-databricks
+    type: databricks
+    host: my-workspace.azuredatabricks.net
+    password: ${env:DATABRICKS_TOKEN}
+    federation_hints:
+      http_path: /sql/1.0/warehouses/xxxx   # required
+      catalog: my_unity_catalog              # optional
+```
+
+#### BigQuery [tool-verified: `provisa/federation/connector_duckdb.py:238`]
+
+`project` in `federation_hints` is required. Authentication uses `GOOGLE_APPLICATION_CREDENTIALS` (path to a service-account key file) or Application Default Credentials in the engine environment.
+
+```yaml
+sources:
+  - id: my-bigquery
+    type: bigquery
+    federation_hints:
+      project: my-gcp-project     # required
+```
+
+#### Fabric / Synapse [tool-verified: `provisa/core/models.py:56-57`]
+
+Both use T-SQL over TDS with Azure AD authentication. Authenticate with `az login` (developer) or a managed identity (production) — the engine reads credentials via `azure-identity`'s `DefaultAzureCredential`. Connection details come from env vars: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) or `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), or via `PROVISA_ENGINE_URL`.
+
+```yaml
+sources:
+  - id: my-fabric
+    type: fabric
+    # host/database read from FABRIC_SQL_SERVER / FABRIC_DATABASE when not set here
+```
+
+#### ClickHouse [tool-verified: `provisa/executor/drivers/clickhouse.py:49-59`]
+
+`secure` in `federation_hints` enables TLS on the HTTP interface. Port defaults to `8123` (plain) or `8443` (when `secure: "true"`). `schema` in `federation_hints` overrides the remote schema. [tool-verified: `provisa/federation/connector_duckdb.py:378-379`]
+
+```yaml
+sources:
+  - id: my-clickhouse
+    type: clickhouse
+    host: ch.example.com
+    password: ${env:CLICKHOUSE_PASSWORD}
+    federation_hints:
+      secure: "true"    # uses port 8443; omit to use 8123
+      schema: analytics
+```
+
+#### Delta Lake / Iceberg [tool-verified: `provisa/federation/connector_duckdb.py:291-327`]
+
+`path` is the table URI (S3, GCS, ADLS, or local). Object-store access needs `federation_hints` credentials. For Cloudflare R2, add `account_id`.
+
+```yaml
+sources:
+  - id: events-delta
+    type: delta_lake
+    path: s3://my-bucket/data/events
+    federation_hints:
+      access_key_id: ${env:S3_ACCESS_KEY}
+      secret_access_key: ${env:S3_SECRET}
+
+  - id: r2-parquet
+    type: parquet
+    path: s3://my-bucket/data/events.parquet
+    federation_hints:
+      access_key_id: ${env:R2_ACCESS_KEY}
+      secret_access_key: ${env:R2_SECRET}
+      account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
+```
+
+#### Hive / Hive S3 [tool-verified: `provisa/federation/trino_connectors.py:244-363`]
+
+`host` and `port` point to the Hive Thrift metastore (default port 9083). For `hive`, set `mapping["storage"]` to choose the object store backend. Missing required keys fail loud — no fallback. [tool-verified: `provisa/federation/trino_connectors.py:328-331`]
+
+`hive_s3` is a distinct type that always declares S3 storage (REQ-229); no `mapping.storage` needed.
+
+```yaml
+sources:
+  - id: hive-s3-lake
+    type: hive
+    host: metastore.internal
+    port: 9083
+    mapping:
+      storage: s3
+      endpoint: https://s3.us-east-1.amazonaws.com
+      access_key_id: ${env:AWS_ACCESS_KEY_ID}
+      secret_access_key: ${env:AWS_SECRET_ACCESS_KEY}
+      region: us-east-1
+      path_style: true           # required for MinIO and non-AWS S3-compatible endpoints
+
+  - id: hive-adls-lake
+    type: hive
+    host: metastore.internal
+    port: 9083
+    mapping:
+      storage: adls
+      storage_account: mystorageaccount
+      access_key: ${env:ADLS_ACCESS_KEY}
+      # sas_token: ${env:ADLS_SAS_TOKEN}   # alternative to access_key
+```
+
+`mapping.storage` accepted values: `hadoop` (default), `hdfs`, `local`, `s3`, `azure`, `adls`. S3 mapping keys: `endpoint`, `access_key_id`, `secret_access_key`, `region`, `path_style`. ADLS mapping keys: `storage_account`, `access_key` or `sas_token`.
+
+#### Redis [tool-verified: `provisa/core/trino_catalog_files.py:54-75`]
+
+Uses the `mapping` DSL. `mongodb` and `cassandra` use plain connection fields and do NOT use the mapping DSL.
+
+```yaml
+sources:
+  - id: my-redis
+    type: redis
+    host: redis.internal
+    port: 6379
+    password: ${env:REDIS_PASSWORD}
+    mapping:
+      tables:
+        - name: sessions
+          key_pattern: "session:*"
+          key_column: key           # default "key"
+          value_type: hash          # hash | string | zset | list; default hash
+          columns:
+            - name: user_id
+              data_type: VARCHAR
+              field: user_id        # Redis hash field name
+            - name: expires_at
+              data_type: BIGINT
+              field: expires_at
+```
+
+#### Elasticsearch [tool-verified: `provisa/core/trino_catalog_files.py:78-104`]
+
+```yaml
+sources:
+  - id: my-es
+    type: elasticsearch
+    host: es.internal
+    port: 9200
+    username: elastic
+    password: ${env:ES_PASSWORD}
+    mapping:
+      tls: true
+      tables:
+        - name: logs
+          index: app-logs-*
+          discover: false
+          columns:
+            - name: timestamp
+              data_type: TIMESTAMP
+              path: "@timestamp"
+            - name: level
+              data_type: VARCHAR
+              path: level
+            - name: message
+              data_type: VARCHAR
+              path: message
+```
+
+#### Prometheus [tool-verified: `provisa/core/trino_catalog_files.py:107-124`]
+
+`mapping.url` overrides `host:port` when both are present.
+
+```yaml
+sources:
+  - id: my-prometheus
+    type: prometheus
+    mapping:
+      url: http://prometheus.internal:9090
+      tables:
+        - name: http_requests
+          metric: http_requests_total
+          labels_as_columns: [method, status, handler]
+          value_column: value      # default "value"
+          default_range: 1h        # default "1h"
+```
+
+#### Google Sheets [tool-verified: `provisa/federation/connector_duckdb.py:273-275`]
+
+`spreadsheet_id` in `federation_hints` is required. Auth uses a DuckDB `gsheet` SECRET provisioned at attach time.
+
+```yaml
+sources:
+  - id: my-sheet
+    type: google_sheets
+    federation_hints:
+      spreadsheet_id: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
+```
+
+#### File sources (csv / parquet / sqlite / files)
+
+`path` is required. `files` crawls a directory for CSV, Parquet, XLSX, and JSON files, surfacing each as a table. All file-based sources are VIRTUAL (route through the engine; no direct pool). [tool-verified: `provisa/transpiler/router.py:44-48`]
+
+```yaml
+sources:
+  - id: orders-csv
+    type: csv
+    path: /data/orders.csv
+
+  - id: data-lake-dir
+    type: files
+    path: /data/lake/         # directory; each file becomes a table
+```
+
+#### API / Remote sources
+
+**openapi** — set `base_url` to the OpenAPI base URL. Schema discovery reads the OpenAPI spec at startup.
+
+```yaml
+sources:
+  - id: payment-api
+    type: openapi
+    base_url: https://api.payments.example.com/v1
+```
+
+**graphql_remote** — set `base_url`. Optional `mapping` keys: `headers` (dict of static headers), `forward_client_headers` (bool), `timeout_seconds` (int). [tool-verified: `provisa/hasura_v2/mapper.py:129-152`]
+
+```yaml
+sources:
+  - id: orders-gql
+    type: graphql_remote
+    base_url: https://orders.internal/graphql
+    mapping:
+      headers:
+        X-Api-Key: ${env:ORDERS_API_KEY}
+      forward_client_headers: true
+      timeout_seconds: 30
+```
+
+**airport** — `base_url` is the Arrow Flight server location. DuckDB airport extension (REQ-899). [tool-verified: `provisa/federation/connector_duckdb.py:285-288`]
+
+```yaml
+sources:
+  - id: flight-source
+    type: airport
+    base_url: grpc://flight.internal:8815
+```
+
+**websocket / rss** — use `host`, `port`, `path`, and `federation_hints`. [tool-verified: `provisa/api/data/subscribe.py:85-129`]
+
+```yaml
+sources:
+  - id: market-feed
+    type: websocket
+    host: feed.example.com
+    port: 443
+    path: /ws/v1
+    federation_hints:
+      use_ssl: "true"
+      subscribe_payload: '{"action":"subscribe","channels":["ticker"]}'
+      event_path: data
+
+  - id: news-rss
+    type: rss
+    host: feeds.example.com
+    port: 443
+    path: /rss/latest
+    federation_hints:
+      use_ssl: "true"
+      poll_interval: "300"      # seconds
+      # feed_url: https://...  # overrides host/port/path when set
+```
+
+**sharepoint** [tool-verified: `provisa/federation/trino_connectors.py:394-423`]
+
+```yaml
+sources:
+  - id: my-sharepoint
+    type: sharepoint
+    base_url: https://myorg.sharepoint.com/sites/data
+    username: ${env:SP_CLIENT_ID}
+    password: ${env:SP_CLIENT_SECRET}
+    database: ${env:SP_TENANT_ID}
+    mapping:
+      auth_type: CLIENT_CREDENTIALS   # default
+      # certificate_path: /path/to/cert.pem
+      # certificate_password: ${env:CERT_PASSWORD}
+```
+
+**splunk** [tool-verified: `provisa/federation/trino_connectors.py:426-457`]
+
+```yaml
+sources:
+  - id: my-splunk
+    type: splunk
+    host: splunk.internal
+    port: 8089
+    password: ${env:SPLUNK_TOKEN}
+    database: search           # Splunk app name (optional)
+    mapping:
+      use_token: true          # default; false = username/password auth
+      datamodel_filter: ""     # optional Splunk Data Model filter
+      disable_ssl_validation: false
+```
 
 ## Domains
 
@@ -129,7 +590,6 @@ tables:
     table: orders
     alias: purchase_orders     # optional: override GraphQL name
     description: "Customer purchase orders"  # optional: GraphQL description
-    governance: pre-approved    # or: registry-required
     columns:
       - name: id
         visible_to: [admin, analyst]
@@ -195,7 +655,7 @@ columns:
 
 The path format is `source_column.key1.key2...`. The compiler generates `json_extract_scalar(source_column, '$.key1.key2')` in the SQL. (REQ-151)
 
-**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. (REQ-152) For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine, where SQLGlot transpiles `->>'key'` to `json_extract_scalar`. (REQ-152) Mutations are unaffected since path columns are read-only computed fields. (REQ-153)
+**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. (REQ-152) For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine. (REQ-152) Mutations are unaffected since path columns are read-only computed fields. (REQ-153)
 
 ### Masking Types
 
@@ -315,7 +775,6 @@ views:
       GROUP BY 1, 2
     description: "Monthly revenue by region"
     domain_id: sales-analytics
-    governance: registry-required
     materialize: true
     refresh_interval: 3600
     columns:
@@ -334,7 +793,6 @@ views:
 | `id` | Yes | Unique view identifier |
 | `sql` | Yes | SQL SELECT statement defining the view |
 | `domain_id` | Yes | Domain for schema visibility |
-| `governance` | No | `pre-approved` (default) or `registry-required` |
 | `materialize` | No | `true` = periodic CTAS refresh, `false` = live federated view |
 | `refresh_interval` | No | Seconds between refreshes (materialized only, default 300) |
 | `description` | No | Appears in GraphQL SDL |
@@ -351,64 +809,6 @@ Views go through the same governance pipeline as tables — RLS, masking, sampli
 ### Query-only views
 
 Both `materialize: true` and `materialize: false` views expose their GraphQL type as query-only. No insert, upsert, update, or delete mutations are generated for `view_sql`-backed relations. (REQ-1157) [tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]
-
-## Kafka Sources
-
-```yaml
-kafka_sources:
-  - id: event-stream
-    bootstrap_servers: kafka:9092
-    schema_registry_url: http://schema-registry:8081  # optional
-    topics:
-      - id: order-created
-        topic: orders.events
-        default_window: 1h          # auto-injected time bound
-        schema_source: manual       # manual, registry, or sample
-        value_format: json
-        discriminator:              # filter shared topic by message type
-          field: event_type
-          value: OrderCreated
-        columns:
-          - name: event_type
-            type: varchar
-          - name: order_id
-            type: integer
-          - name: amount
-            type: double
-          - name: metadata
-            type: varchar           # raw JSON for complex nested data
-      - id: order-shipped
-        topic: orders.events        # same physical topic
-        default_window: 1h
-        discriminator:
-          field: event_type
-          value: OrderShipped
-        columns:
-          - name: event_type
-            type: varchar
-          - name: order_id
-            type: integer
-          - name: shipped_at
-            type: timestamp
-```
-
-### Time Window
-
-`default_window` bounds every query to a recent time period, preventing unbounded reads from high-volume topics. (REQ-148) Format: `1h`, `30m`, `7d`, `60s`. Defaults to `1h`.
-
-The window is auto-injected as `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. (REQ-148) Clients can override with their own `_timestamp` filter in the GraphQL `where` argument.
-
-### Discriminator
-
-Multiple topic configs can point to the same physical Kafka topic with different `discriminator` values, producing separate GraphQL types. (REQ-149) The discriminator is auto-injected as a WHERE clause.
-
-### Schema Source
-
-| Value | Behavior |
-|-------|----------|
-| `registry` | Fetch schema from Confluent Schema Registry |
-| `manual` | Define columns inline in config (no Schema Registry needed) |
-| `sample` | Auto-discover from sample messages |
 
 ## Cache
 
@@ -517,7 +917,7 @@ Superuser credentials (`superuser` block) work with any provider and always reso
 
 ## Upsert Mutations
 
-For tables with a primary key, Provisa auto-generates `upsert_<table>` mutation fields. (REQ-212) These compile to `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`. (REQ-212) SQLGlot transpiles to the target dialect (e.g., MySQL `ON DUPLICATE KEY UPDATE`). (REQ-212)
+For tables with a primary key, Provisa auto-generates `upsert_<table>` mutation fields. (REQ-212) These compile to an upsert in the target dialect — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` on PostgreSQL, `ON DUPLICATE KEY UPDATE` on MySQL. (REQ-212)
 
 ```graphql
 mutation {
@@ -543,7 +943,7 @@ The `distinct_on` argument selects the first row for each distinct value of the 
 }
 ```
 
-Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. (REQ-213) For non-PG dialects, SQLGlot provides a window function fallback. (REQ-213)
+Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. (REQ-213) For non-PG dialects, a window-function fallback is used. (REQ-213)
 
 ## Column Presets
 
@@ -706,9 +1106,11 @@ Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. (REQ-549) U
 
 ## Federation Engine
 
-Provisa selects a federation engine at startup. Precedence: explicit `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` config field → `duckdb` (the zero-config default, REQ-989). Changes take effect on service restart. [tool-verified: `engine.py` `build_engine`]
+Configuring a federation engine is optional. The default is `duckdb` — zero-config, in-process, no external service required (REQ-989). Choose another engine when you need MPP scale or want to reuse an existing warehouse.
 
-### Federation engines [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
+Precedence: `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` config field → `duckdb`. Changes take effect on service restart. [tool-verified: `engine.py` `build_engine`]
+
+### Engine overview [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
 
 | Engine key | Label | Dialect | MPP | External-link mechanism | Auth |
 |-----------|-------|---------|-----|------------------------|------|
@@ -725,43 +1127,122 @@ Provisa selects a federation engine at startup. Precedence: explicit `PROVISA_EN
 | `synapse` | Azure Synapse | T-SQL | Yes | ADLS OPENROWSET / external tables | Azure AD |
 | `sqlalchemy` | SQLAlchemy (any RDB) | Per-dialect | No | None (land-only) | Per-dialect credentials |
 
-### Engine selection
+### Engine reference
+
+#### trino / trino-byo
+
+`trino` is the managed Provisa coordinator; `trino-byo` connects to your own Trino cluster. Both use Trino SQL and have the broadest source type reach.
 
 ```bash
-# Environment variable (highest precedence after explicit arg)
-PROVISA_ENGINE=databricks
-
-# Or set via admin UI — persisted to config; takes effect on restart
+PROVISA_ENGINE=trino
+TRINO_HOST=trino.internal
+TRINO_PORT=8080
 ```
 
-For URL-driven engines (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy), set the connection URL:
+Materialization store defaults to `TENANT_DATABASE_URL` (PostgreSQL).
+
+#### pg
+
+Federates via postgres_fdw (SQL/MED) and pg_duckdb extensions. Single-node; no MPP. Best when your data already lives in PostgreSQL and you want to join in a few remote sources.
 
 ```bash
-# Snowflake
-PROVISA_ENGINE_URL="snowflake://user:pass@account/db/schema?warehouse=WH"
+PROVISA_ENGINE=pg
+# Connection uses the standard PG_* env vars
+```
 
-# Databricks
-PROVISA_ENGINE_URL="databricks://token:TOKEN@my-workspace.azuredatabricks.net?http_path=/sql/1.0/warehouses/xxxx"
+Materialization store defaults to `TENANT_DATABASE_URL`.
 
-# BigQuery (project from URL or $GOOGLE_CLOUD_PROJECT; auth via service-account key)
-PROVISA_ENGINE_URL="bigquery://my-project?location=US"
+#### duckdb
 
-# ClickHouse Server
+In-process; no external service. The default engine (REQ-989). `PROVISA_DATA_DIR` controls where the embedded store lives (`~/.provisa` by default).
+
+```bash
+PROVISA_ENGINE=duckdb   # or omit — this is the default
+```
+
+Materialization store defaults to `~/.provisa/materialize.duckdb` — the only engine with a non-PostgreSQL default store.
+
+#### clickhouse (embedded) / clickhouse-server
+
+`clickhouse` uses chdb (in-process). `clickhouse-server` connects to an external ClickHouse instance or ClickHouse Cloud. Both read Delta Lake, Iceberg, and Hudi directly via native ClickHouse table engines.
+
+```bash
+# External server
+PROVISA_ENGINE=clickhouse-server
 PROVISA_ENGINE_URL="clickhouse://user:pass@host:9000/db"
-
-# Fabric (blank → reads FABRIC_SQL_SERVER / FABRIC_DATABASE)
-# Synapse (blank → reads SYNAPSE_SQL_SERVER / SYNAPSE_DATABASE)
 ```
+
+Materialization store defaults to `TENANT_DATABASE_URL`.
+
+#### snowflake
+
+Engine-as-warehouse: Snowflake runs the queries; Provisa pushes source data through external stages.
+
+```bash
+PROVISA_ENGINE=snowflake
+PROVISA_ENGINE_URL="snowflake://user:pass@account/db/schema?warehouse=WH"
+```
+
+Materialization store defaults to `TENANT_DATABASE_URL`.
+
+#### databricks
+
+Unity Catalog external tables bridge Provisa-managed sources into Databricks SQL.
+
+```bash
+PROVISA_ENGINE=databricks
+PROVISA_ENGINE_URL="databricks://token:TOKEN@my-workspace.azuredatabricks.net?http_path=/sql/1.0/warehouses/xxxx"
+```
+
+Materialization store defaults to `TENANT_DATABASE_URL`.
+
+#### bigquery
+
+BigQuery external and BigLake tables. Project comes from the URL or `GOOGLE_CLOUD_PROJECT`; auth via service-account key.
+
+```bash
+PROVISA_ENGINE=bigquery
+PROVISA_ENGINE_URL="bigquery://my-project?location=US"
+# GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+```
+
+Materialization store defaults to `TENANT_DATABASE_URL`.
+
+#### fabric / synapse
+
+Both use T-SQL over TDS with Azure AD auth (`az login` or managed identity). Omit `PROVISA_ENGINE_URL` to read connection details from env vars instead.
+
+```bash
+PROVISA_ENGINE=fabric
+# FABRIC_SQL_SERVER=...   FABRIC_DATABASE=...
+# or: PROVISA_ENGINE_URL set explicitly
+
+PROVISA_ENGINE=synapse
+# SYNAPSE_SQL_SERVER=...  SYNAPSE_DATABASE=...
+```
+
+Materialization store defaults to `TENANT_DATABASE_URL`.
+
+#### sqlalchemy
+
+Generic RDBMS land-only engine (no federation to external sources). Use for single-warehouse deployments or testing.
+
+```bash
+PROVISA_ENGINE=sqlalchemy
+PROVISA_ENGINE_URL="postgresql+psycopg2://user:pass@host/db"
+```
+
+Materialization store defaults to `TENANT_DATABASE_URL`.
 
 ### Materialization store
 
-When a source cannot attach live (no ATTACH connector), it lands into the engine's materialization store. The store to use is resolved in this order: explicit `PROVISA_MATERIALIZE_URL` → engine's declared default → hard error (no silent fallback). [tool-verified: `engine.py` `materialize_store`]
+When a source cannot attach live (no ATTACH connector for the selected engine), it lands into the engine's materialization store. Resolution order: explicit `PROVISA_MATERIALIZE_URL` → engine's declared default → hard error (no silent fallback). [tool-verified: `engine.py` `materialize_store`]
 
-DuckDB declares its embedded file (`~/.provisa/materialize.duckdb`) as the default, so the DuckDB engine requires no store configuration. All other engines default to the platform `TENANT_DATABASE_URL` (PostgreSQL). Override with `PROVISA_MATERIALIZE_URL` for any engine.
+DuckDB declares its embedded file (`~/.provisa/materialize.duckdb`) as its default. All other engines default to `TENANT_DATABASE_URL` (PostgreSQL). Override any engine with `PROVISA_MATERIALIZE_URL`.
 
-### Per-engine credentials and hints
+### Per-source federation hints
 
-Extended connection parameters that standard host/port/user/password fields cannot carry go in `federation_hints` on the source:
+Extended connection parameters that standard host/port/user/password fields cannot carry go in `federation_hints` on the source. See the source type reference above for per-type hint keys. A consolidated example:
 
 ```yaml
 sources:
