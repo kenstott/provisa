@@ -56,7 +56,7 @@ function Stage-Runtime {
     # DLLs (libcrypto etc.), so Remove-Item fails and the upgrade silently aborts - leaving the
     # stale process serving the old (configless, no-demo) app. Stop anything running out of the
     # staged runtime (and the app scripts) first, then re-stage.
-    # The DEMO mock servers (.demo.pid) run out of THIS runtime too and hold its DLLs — they must be
+    # The DEMO mock servers (.demo.pid) run out of THIS runtime too and hold its DLLs - they must be
     # killed as well or the removal below fails (the exact bug that pinned an install to its old
     # runtime: a "244" install kept running 242 because the demo python.exe never let go).
     foreach ($pf in @((Join-Path $ProvisaHome '.native.pid'), (Join-Path $ProvisaHome '.demo.pid'))) {
@@ -78,7 +78,7 @@ function Stage-Runtime {
       catch { Start-Sleep -Milliseconds 750 }
     }
     if (-not $removed) {
-      Write-Status 'ERROR' "Could not replace the old runtime — a Provisa process is still holding it. Fully quit Provisa (check the tray/Task Manager for python.exe) and re-run setup."
+      Write-Status 'ERROR' "Could not replace the old runtime - a Provisa process is still holding it. Fully quit Provisa (check the tray/Task Manager for python.exe) and re-run setup."
       Write-Err "Could not replace the old runtime at $RuntimeDst - a Provisa process is still holding it. Fully quit Provisa and re-run setup."
       exit 1
     }
