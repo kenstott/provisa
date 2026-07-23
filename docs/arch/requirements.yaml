@@ -33778,6 +33778,29 @@
     new DuckDB source_type only when it declares one of these two mechanisms (mechanism + TYPE-name or
     scan-function + connection/scan template). An extension exposing neither is not drivable and is
     unsupported by design — no bespoke per-extension code path.
+
+
+    CONFORMANCE TARGETS (each is a real extension we do NOT ship an OOTB connector for, chosen to
+    exercise a DIFFERENT descriptor branch than any hardcoded connector — passing them proves the
+    descriptor is general, not a re-expression of what we already hardcode):
+
+    (1) PG SQL/MED → mongo_fdw (EnterpriseDB/mongo_fdw). Reaches the mongo:7 service ALREADY in
+    docker-compose.test.yml (seeded by db/mongo-init.js, requires_mongodb marker) — no new infra; only
+    the FDW binary (libmongoc) is built. Descriptor: {extension: mongo_fdw, server_options:{address,
+    port}, user_mapping:{username, password}, table_options:{database, collection}, supports_import:
+    false}. Exercises the credentialed CREATE USER MAPPING path, a distinct SERVER key (address), NoSQL
+    collection→foreign-table OPTIONS, and the explicit CREATE FOREIGN TABLE branch — none of which our
+    OOTB PG connectors combine. Also proves cross-engine parity (mongo is reached OOTB by the DuckDB
+    engine via DuckDBMongoConnector; here PG reaches it purely from config).
+
+    (2) DuckDB ATTACH → ducklake (duckdb/ducklake). Self-contained: ATTACH 'ducklake:cat.ducklake' AS
+    lake (DATA_PATH 'data/') over a local DuckDB/SQLite catalog + local parquet, no server. Exercises the
+    URI-scheme-prefix DSN + extra ATTACH option (DATA_PATH) form, distinct from our stock ATTACH '<dsn>'
+    AS x (TYPE <t>).
+
+    (3) DuckDB SCAN → excel / read_xlsx (duckdb/duckdb-excel). Self-contained: CREATE VIEW v AS SELECT *
+    FROM read_xlsx('f.xlsx', sheet='Q1', header=true) over a local .xlsx, no server. Exercises a scan
+    table-function with NAMED ARGS (sheet/range/header), distinct from our stock read_csv_auto/read_parquet.
   use_case: >-
     BYO PG-federated or DuckDB-federated deployments with custom/proprietary extensions can extend
     reachability to new source types purely via config, without code changes or rebuilds. Extends
