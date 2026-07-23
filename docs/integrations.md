@@ -264,4 +264,4 @@ See [docs/import.md](import.md) for migrating from Hasura to Provisa.
 
 ## Kafka
 
-See [docs/sources.md](sources.md#kafka) for Kafka topic configuration as read-only tables and query result sinks.
+See [docs/sources.md](sources.md#kafka-sources) for Kafka topic configuration as read-only tables and query result sinks.
