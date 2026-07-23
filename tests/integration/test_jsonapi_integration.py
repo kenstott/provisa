@@ -613,12 +613,19 @@ class TestJSONAPIPaginationHTTP:
         # integration: mock-justified — pipeline execution is an external boundary;
         # real generator+serializer run against the stub rows below.
         async def _fake_govern(sql, role_id, exec_params, state):
-            return MagicMock()
+            # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
+            # fake terminal returns a scalar count row rather than the full data rows.
+            plan = MagicMock()
+            plan._is_count = "COUNT(*)" in sql
+            return plan
 
         async def _fake_execute(plan, state):
             result = MagicMock()
-            result.rows = [list(r.values()) for r in stub_rows]
-            result.columns = list(stub_rows[0].keys())
+            if getattr(plan, "_is_count", False):
+                result.rows = [[len(stub_rows)]]  # engine-side COUNT(*) → single scalar row
+            else:
+                result.rows = [list(r.values()) for r in stub_rows]
+                result.columns = list(stub_rows[0].keys())
             return result
 
         monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)
@@ -658,12 +665,19 @@ class TestJSONAPIPaginationHTTP:
         ]
 
         async def _fake_govern(sql, role_id, exec_params, state):
-            return MagicMock()
+            # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
+            # fake terminal returns a scalar count row rather than the full data rows.
+            plan = MagicMock()
+            plan._is_count = "COUNT(*)" in sql
+            return plan
 
         async def _fake_execute(plan, state):
             result = MagicMock()
-            result.rows = [list(r.values()) for r in stub_rows]
-            result.columns = list(stub_rows[0].keys())
+            if getattr(plan, "_is_count", False):
+                result.rows = [[len(stub_rows)]]  # engine-side COUNT(*) → single scalar row
+            else:
+                result.rows = [list(r.values()) for r in stub_rows]
+                result.columns = list(stub_rows[0].keys())
             return result
 
         monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)
@@ -708,12 +722,19 @@ class TestJSONAPIPaginationHTTP:
         stub_rows = [{"id": 1, "region": "US", "amount": 10.0, "created_at": "2026-01-01"}]
 
         async def _fake_govern(sql, role_id, exec_params, state):
-            return MagicMock()
+            # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
+            # fake terminal returns a scalar count row rather than the full data rows.
+            plan = MagicMock()
+            plan._is_count = "COUNT(*)" in sql
+            return plan
 
         async def _fake_execute(plan, state):
             result = MagicMock()
-            result.rows = [list(r.values()) for r in stub_rows]
-            result.columns = list(stub_rows[0].keys())
+            if getattr(plan, "_is_count", False):
+                result.rows = [[len(stub_rows)]]  # engine-side COUNT(*) → single scalar row
+            else:
+                result.rows = [list(r.values()) for r in stub_rows]
+                result.columns = list(stub_rows[0].keys())
             return result
 
         monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)
@@ -781,12 +802,19 @@ class TestJSONAPIPaginationHTTP:
         ]
 
         async def _fake_govern(sql, role_id, exec_params, state):
-            return MagicMock()
+            # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
+            # fake terminal returns a scalar count row rather than the full data rows.
+            plan = MagicMock()
+            plan._is_count = "COUNT(*)" in sql
+            return plan
 
         async def _fake_execute(plan, state):
             result = MagicMock()
-            result.rows = [list(r.values()) for r in stub_rows]
-            result.columns = list(stub_rows[0].keys())
+            if getattr(plan, "_is_count", False):
+                result.rows = [[len(stub_rows)]]  # engine-side COUNT(*) → single scalar row
+            else:
+                result.rows = [list(r.values()) for r in stub_rows]
+                result.columns = list(stub_rows[0].keys())
             return result
 
         monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)

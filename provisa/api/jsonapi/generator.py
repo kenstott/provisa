@@ -440,7 +440,11 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             log.exception("JSON:API query execution failed for %s", gql_table)
             return _jsonapi_error_response(500, "Internal Server Error", str(e))
 
-        # Count query — same filters, no pagination, single field — for accurate total
+        # Count query — same filters, no pagination — for accurate total. The compiled inner
+        # SELECT is wrapped in COUNT(*) so the engine computes the cardinality and only a single
+        # scalar row crosses the wire; the full matching set is never materialized in this process
+        # to be counted (REQ-028: no transport buffers a whole result set to page it). RLS/masking
+        # still bind to the inner base tables — apply_governance rewrites nested table refs.
         count_field = "id" if "id" in all_scalars else all_scalars[0]
         count_gql = _build_graphql_query(gql_table, [count_field], filters, [], None, None)
         try:
@@ -450,9 +454,10 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             return _jsonapi_error_response(400, "Bad Request", str(e))
         if not count_compiled:
             return _jsonapi_error_response(400, "Bad Request", "Count compilation failed")
+        count_sql = f"SELECT COUNT(*) AS total FROM ({count_compiled[0].sql}) AS _provisa_count"
         try:
             count_plan = await _govern_and_route_compiled(
-                count_compiled[0].sql,
+                count_sql,
                 role_id,
                 exec_params=count_compiled[0].params or None,
                 state=state,
@@ -467,7 +472,8 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         except Exception as e:
             log.exception("JSON:API count query failed for %s", gql_table)
             return _jsonapi_error_response(500, "Internal Server Error", str(e))
-        total_count = len(count_result.rows)
+        # COUNT(*) yields exactly one scalar row by SQL semantics — no empty-result fallback.
+        total_count = int(next(iter(count_result.rows))[0])
 
         # Serialize to flat rows first
         from provisa.executor.serialize import serialize_rows
