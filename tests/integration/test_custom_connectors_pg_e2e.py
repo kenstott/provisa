@@ -11,11 +11,11 @@ operator declares a `pgfdw_custom` source_type in config/custom_connectors.yaml 
 PROVISA_CUSTOM_CONNECTORS) pointing at the GENERIC pg_fdw descriptor, and PgFederationRuntime imports a
 loopback Postgres schema through postgres_fdw and returns its rows — no engine code change.
 
-postgres_fdw stands in for the requirement's named conformance target (mongo_fdw) because it is a core
-contrib FDW the embedded PG test stack already builds; both exercise the same generic descriptor path —
-CREATE SERVER … FOREIGN DATA WRAPPER + CREATE USER MAPPING + IMPORT FOREIGN SCHEMA — from config alone.
-The mongo_fdw-specific no-import / table-OPTIONS branch is covered at the DDL level in
-tests/unit/test_custom_connectors.py (mongo_fdw requires the libmongoc binary, not built here).
+This covers the IMPORT FOREIGN SCHEMA branch of the generic descriptor path (CREATE SERVER … FOREIGN
+DATA WRAPPER + CREATE USER MAPPING + IMPORT FOREIGN SCHEMA) with postgres_fdw, a core contrib FDW the
+embedded PG test stack already builds. The requirement's NAMED conformance target, mongo_fdw, is
+federated LIVE against a real MongoDB — exercising the no-import / table-OPTIONS branch — in
+tests/integration/test_custom_connectors_mongo_e2e.py.
 """
 
 from __future__ import annotations

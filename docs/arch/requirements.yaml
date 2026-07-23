@@ -33876,3 +33876,75 @@
     - REQ-904
     - REQ-899
     - REQ-904
+- id: REQ-1179
+  status: complete
+  since: "2026-07"
+  group: "4. Source Connectors"
+  category: Connector Configuration
+  priority: MUST
+  type: behavioral
+  description: >-
+    mongo_fdw (EnterpriseDB PG SQL/MED connector) reaches MongoDB live end-to-end as a conformance
+    target for REQ-1177. The extension binary is built from scripts/build_mongo_fdw.sh (mongo_fdw +
+    bundled libmongoc 1.30.2 and json-c linked against embedded PG 16.2). The E2E test installs the
+    extension dylibs into pgserver's embedded PG with @loader_path rpath so that mongo_fdw and libmongoc
+    co-locate and resolve correctly. The descriptor (extension: mongo_fdw, server_options:{address,
+    port}, user_mapping:{username, password}, table_options:{database, collection}, supports_import:
+    false) drives config-only pg_fdw to read docker-seeded MongoDB.product_reviews without import.
+  scenario: |-
+    Given the mongo_fdw extension is built and installed into pgserver's embedded PG
+    When a config-driven PG connector with extension: mongo_fdw targets a real MongoDB container
+    Then the pgserver federation engine creates the foreign server with the address/port, emits
+    CREATE USER MAPPING with username/password, and creates foreign tables over the specified database
+    and collection
+    And the engine returns federated rows from MongoDB without pre-importing schema
+  use_case: >-
+    Proves that REQ-1177 config-driven descriptors generalize beyond hardcoded connectors. mongo_fdw
+    exercises a distinct descriptor branch (credentialed, explicit CREATE FOREIGN TABLE, separate
+    SERVER key, NoSQL collection options) not combined by any OOTB PG connector, validating descriptor
+    composability and cross-engine parity (MongoDB is already reachable OOTB via DuckDB).
+  code:
+    - scripts/build_mongo_fdw.sh
+    - provisa/federation/custom_connectors.py
+    - provisa/federation/pg_runtime.py
+  tests:
+    - tests/integration/test_custom_connectors_mongo_e2e.py
+  related_reqs:
+    - REQ-1177
+    - REQ-1158
+    - REQ-899
+  e2e: true
+  e2e_reason: >-
+    Behavior is only verifiable end-to-end by building mongo_fdw, installing its dylibs into pgserver,
+    seeding MongoDB, and running a full federation round-trip query.
+- id: REQ-1180
+  status: complete
+  since: "2026-07"
+  group: "4. Source Connectors"
+  category: Connector Configuration
+  priority: MUST
+  type: constraint
+  description: >-
+    GenericPgFdwConnector (provisa/federation/custom_connectors.py) emits a bare `CREATE USER MAPPING
+    ... SERVER s` with NO OPTIONS clause when user_mapping is present but empty (e.g., user_mapping: {}).
+    If user_mapping is absent, no mapping is created. If keys are present, OPTIONS(...) is emitted.
+    This constraint enables no-auth FDW scenarios (e.g., mongo_fdw against unauthenticated MongoDB),
+    where an empty username would force the driver to attempt a failing auth handshake.
+  scenario: |-
+    Given a GenericPgFdwConnector with user_mapping: {} (empty dict)
+    When the connector compiles CREATE USER MAPPING SQL
+    Then the SQL is `CREATE USER MAPPING FOR current_user SERVER s` with no OPTIONS clause
+    Given a GenericPgFdwConnector with no user_mapping key
+    Then no mapping is created
+    Given a GenericPgFdwConnector with user_mapping: {username: 'u', password: 'p'}
+    Then the SQL is `CREATE USER MAPPING FOR current_user SERVER s OPTIONS (username 'u', password 'p')`
+  use_case: >-
+    Unauthenticated FDW targets (no credentials needed) require the bare SQL/MED form to avoid triggering
+    unnecessary auth. This constraint prevents driver-level failures when credentials are not applicable.
+  code:
+    - provisa/federation/custom_connectors.py
+  tests:
+    - tests/unit/test_custom_connectors.py
+  related_reqs:
+    - REQ-1177
+    - REQ-1179

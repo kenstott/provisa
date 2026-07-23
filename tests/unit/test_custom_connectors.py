@@ -69,6 +69,22 @@ def test_pg_fdw_no_import_emits_server_ddl_and_table_options():
     assert det["table_options"] == "OPTIONS (database 'test', collection 'customer_reviews')"
 
 
+def test_pg_fdw_bare_user_mapping_when_empty():
+    # `user_mapping: {}` ⇒ the mapping must EXIST but carry NO options — the SQL/MED form a no-auth FDW
+    # (mongo_fdw against an unauthenticated MongoDB) needs; a `username ''` would make the driver auth.
+    d = {
+        "source_type": "mongodb", "kind": "pg_fdw", "extension": "mongo_fdw", "mechanism": "attach_r",
+        "server_options": {"address": "{host}", "port": "{port}"},
+        "user_mapping": {},
+        "supports_import": False,
+        "table_options": {"database": "{database}", "collection": "{table_name}"},
+    }
+    det = GenericPgFdwConnector(d).details(_src())
+    assert det["server_ddl"][-1] == (
+        "CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER fdw_reviews"
+    )  # no OPTIONS clause
+
+
 def test_pg_fdw_import_path_emits_attach_ddl_and_local_schema():
     d = {
         "source_type": "widgets", "kind": "pg_fdw", "extension": "widget_fdw",

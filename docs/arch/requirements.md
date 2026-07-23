@@ -11657,3 +11657,27 @@ Expand ClickHouse federation engine reach beyond the 7 OOTB source types by (1) 
 **Code:** `provisa/federation/clickhouse_connectors.py`, `provisa/federation/clickhouse_runtime.py`, `provisa/federation/custom_connectors.py`, `provisa/federation/engine.py`, `config/custom_connectors.yaml`
 
 **Tests:** `tests/unit/test_clickhouse_connectors.py`, `tests/unit/test_custom_connectors.py`, `tests/integration/test_clickhouse_runtime_e2e.py`, `tests/features/REQ-1178.feature`
+
+### REQ-1179 · Connector Configuration {#REQ-1179}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+mongo_fdw (EnterpriseDB PG SQL/MED connector) reaches MongoDB live end-to-end as a conformance target for [REQ-1177](#REQ-1177). The extension binary is built from scripts/build_mongo_fdw.sh (mongo_fdw + bundled libmongoc 1.30.2 and json-c linked against embedded PG 16.2). The E2E test installs the extension dylibs into pgserver's embedded PG with @loader_path rpath so that mongo_fdw and libmongoc co-locate and resolve correctly. The descriptor (extension: mongo_fdw, server_options:{address, port}, user_mapping:{username, password}, table_options:{database, collection}, supports_import: false) drives config-only pg_fdw to read docker-seeded MongoDB.product_reviews without import.
+
+**Use case:** Proves that [REQ-1177](#REQ-1177) config-driven descriptors generalize beyond hardcoded connectors. mongo_fdw exercises a distinct descriptor branch (credentialed, explicit CREATE FOREIGN TABLE, separate SERVER key, NoSQL collection options) not combined by any OOTB PG connector, validating descriptor composability and cross-engine parity (MongoDB is already reachable OOTB via DuckDB).
+
+**Code:** `scripts/build_mongo_fdw.sh`, `provisa/federation/custom_connectors.py`, `provisa/federation/pg_runtime.py`
+
+**Tests:** `tests/integration/test_custom_connectors_mongo_e2e.py`
+
+### REQ-1180 · Connector Configuration {#REQ-1180}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+GenericPgFdwConnector (provisa/federation/custom_connectors.py) emits a bare `CREATE USER MAPPING ... SERVER s` with NO OPTIONS clause when user_mapping is present but empty (e.g., user_mapping: {}). If user_mapping is absent, no mapping is created. If keys are present, OPTIONS(...) is emitted. This constraint enables no-auth FDW scenarios (e.g., mongo_fdw against unauthenticated MongoDB), where an empty username would force the driver to attempt a failing auth handshake.
+
+**Use case:** Unauthenticated FDW targets (no credentials needed) require the bare SQL/MED form to avoid triggering unnecessary auth. This constraint prevents driver-level failures when credentials are not applicable.
+
+**Code:** `provisa/federation/custom_connectors.py`
+
+**Tests:** `tests/unit/test_custom_connectors.py`

@@ -103,11 +103,14 @@ class GenericPgFdwConnector(Connector):  # REQ-1177
             f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER {self._fdw} "
             f"OPTIONS ({_opts(self._server_options, fields)})",
         ]
-        if self._user_mapping:
-            ddl.append(
-                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
-                f"OPTIONS ({_opts(self._user_mapping, fields)})"
-            )
+        if self._user_mapping is not None:
+            # A bare (no-OPTIONS) user mapping is the SQL/MED form a no-auth FDW needs (mongo_fdw against
+            # an unauthenticated MongoDB): the mapping must EXIST, but an empty username/password would
+            # make the driver attempt a failing auth. `user_mapping: {}` ⇒ bare; keys ⇒ OPTIONS(...).
+            um = f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server}"
+            if self._user_mapping:
+                um += f" OPTIONS ({_opts(self._user_mapping, fields)})"
+            ddl.append(um)
         if self._supports_import:
             local_schema = f"fdw_{source.id}"
             ddl += [
