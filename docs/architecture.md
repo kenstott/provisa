@@ -103,7 +103,7 @@ flowchart TD
     H -- no --> I{Input Type}
     I -- GraphQL --> I1[Compile → Semantic SQL]
     I -- SQL --> I2[Parse & Validate SQL\nApply Namespace / Source Binding]
-    I -- Cypher --> I3[Translate Cypher → SQLGlot AST\nResolve Node / Rel Mappings]
+    I -- Cypher --> I3[Translate Cypher → SQL\nResolve Node / Rel Mappings]
     I1 --> J[Governance: RLS + Masking + Visibility + Sampling]
     I2 --> J
     I3 --> J
@@ -382,11 +382,11 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `api/jsonapi/` | Auto-generated JSON:API endpoints with pagination and error handling |
 | `api/data/subscribe.py` | SSE subscriptions — LISTEN/NOTIFY, polling, Debezium CDC |
 | `compiler/` | GraphQL/SQL parsers, semantic SQL generator, RLS, masking, sampling, two-stage governance (`stage2.py`) |
-| `cypher/` | Cypher → SQLGlot translator, parser, label map (REQ-351), write translator for Cypher mutations |
+| `cypher/` | Cypher → SQL translator, parser, label map (REQ-351), write translator for Cypher mutations |
 | `pgwire/` | PostgreSQL wire-protocol server; `catalog.py` intercepts pg_catalog/information_schema for per-role object visibility (REQ-527, REQ-883, REQ-891) |
 | `vector/` | Vector search — model registry, embedding providers (openai/ollama/huggingface), `cosine_similarity()` translation, pgvector fallback cache, declarative embedding generation (REQ-419–431) |
 | `compiler/federation.py` | Apollo Federation v2 subgraph support |
-| `transpiler/` | SQLGlot transpilation, routing logic |
+| `transpiler/` | Dialect transpilation, routing logic |
 | `executor/` | Federated/direct execution, serialization, output formats |
 | `executor/drivers/` | Direct source drivers (PostgreSQL, MySQL, DuckDB, Snowflake, Databricks, ClickHouse, …) |
 | `executor/trino_flight.py` | ADBC Flight SQL client for the federation engine |

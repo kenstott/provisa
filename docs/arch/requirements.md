@@ -9530,7 +9530,7 @@ probe_type is the event loop's input-side change-detection axis, orthogonal to t
 
 **Code:** `provisa/core/change_signal.py`, `provisa/core/models.py`, `provisa/events/injector.py`, `provisa/events/boot.py`, `provisa/events/app_wiring.py`, `provisa/events/probes.py`, `provisa/events/handlers.py`, `provisa/federation/residency.py`, `provisa/federation/store_writer.py`, `provisa/federation/freshness_gate.py`
 
-**Tests:** `tests/unit/test_probes.py`, `tests/unit/test_injector.py`, `tests/unit/test_probe_type_config_validation.py`, `tests/unit/test_live_change_gates.py`
+**Tests:** `tests/unit/test_probes.py`, `tests/unit/test_injector.py`, `tests/unit/test_probe_type_config_validation.py`, `tests/unit/test_live_change_gates.py`, `tests/mvmvp/test_mv_triggers_e2e.py`
 
 ### REQ-983 · Derived / MV Processor {#REQ-983}
 
@@ -11440,7 +11440,7 @@ The platform MUST be able to merge every per-view / per-statement column-level l
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-A materialized view's time-travel capability is a property of its DEFINITION, guaranteed on any materializing substrate (Iceberg, PostgreSQL, DuckDB, ...). Maintenance is APPEND-ONLY — a version, once written, is never updated or deleted (no valid_to write-back), so it works on engines that cannot cheaply UPDATE a federated store. Each refresh appends one of two ways: `snapshot` appends the whole fresh dataset stamped with system time; `delta` appends only the rows the ENGINE computes as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys — never folded row-by-row in Provisa. "As of" history is DERIVED at read time from the immutable append log (latest batch for snapshot; a ROW_NUMBER window per business key for delta), so consumer-facing `as_of` semantics are identical across every substrate. On Iceberg each append is exactly one snapshot ([REQ-844](#REQ-844)). Declared end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table -> MVDefinition.bitemporal -> refresh_mv) with a UI control in TableEditForm. NOTE: exposing `as_of` as a query-language argument that routes bitemporal-MV reads through reconstruction is tracked as [REQ-1163](#REQ-1163) (the consumer query surface, analogous to [REQ-372](#REQ-372) for sources).
+A materialized view's time-travel capability is a property of its DEFINITION, guaranteed on any materializing substrate (Iceberg, PostgreSQL, DuckDB, ...). Maintenance is APPEND-ONLY — a version, once written, is never updated or deleted (no valid_to write-back), so it works on engines that cannot cheaply UPDATE a federated store. Each refresh appends one of two ways: `snapshot` appends the whole fresh dataset stamped with system time; `delta` appends only the rows the ENGINE computes as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys — never folded row-by-row in Provisa. "As of" history is DERIVED at read time from the immutable append log (latest batch for snapshot; a ROW_NUMBER window per entity key for delta), so consumer-facing `as_of` semantics are identical across every substrate. On Iceberg each append is exactly one snapshot ([REQ-844](#REQ-844)). Declared end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table -> MVDefinition.bitemporal -> refresh_mv) with a UI control in TableEditForm. NOTE: exposing `as_of` as a query-language argument that routes bitemporal-MV reads through reconstruction is tracked as [REQ-1163](#REQ-1163) (the consumer query surface, analogous to [REQ-372](#REQ-372) for sources).
 
 **Use case:** Time-travel previously existed only on Iceberg; when Iceberg was unreachable the substrate degraded to replace/append/upsert, losing history. Append-only bitemporal materialization makes time-travel available on any substrate — the same definition retargets across engines without remodeling.
 
@@ -11464,7 +11464,7 @@ A bitemporal materialized view ([REQ-1162](#REQ-1162)) is READABLE through the q
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Declarative `entity` and `fact` shortcuts that LOWER to the existing MV / bitemporal / relationship primitives — the two constructs both a star schema and a Data Vault are built from, kept methodology-neutral. (1) `entity` — a keyed, deduplicated, optionally-historized projection of a source; lowers to a materialized view (view_sql projecting the key + attributes) with materialize=true, and when history is requested a bitemporal MV ([REQ-1162](#REQ-1162)): history=scd2 → mode=delta, history=snapshot → mode=snapshot, keyed on the business key. Serves a star DIMENSION (SCD1/SCD2) and a Data Vault HUB+SATELLITE. (2) `fact` — join to entity keys, reduce to a declared grain, aggregate measures; lowers to a materialized view (SELECT grain + dimension FK columns + aggregated measures, GROUP BY grain+FKs) plus registered relationships to the entities. Serves a star FACT and a DV LINK (a degenerate fact of keys). The lowering is pure (a spec → the same registration a user would hand-write), so the whole warehouse retargets across engines as IR — the model GENERATES the star/vault, it does not decide the methodology (grain, conformance, SCD choice stay the modeler's).
+Declarative `entity` and `fact` shortcuts that LOWER to the existing MV / bitemporal / relationship primitives — the two constructs both a star schema and a Data Vault are built from, kept methodology-neutral. (1) `entity` — a keyed, deduplicated, optionally-historized projection of a source; lowers to a materialized view (view_sql projecting the key + attributes) with materialize=true, and when history is requested a bitemporal MV ([REQ-1162](#REQ-1162)): history=scd2 → mode=delta, history=snapshot → mode=snapshot, keyed on the entity key. Serves a star DIMENSION (SCD1/SCD2) and a Data Vault HUB+SATELLITE. (2) `fact` — join to entity keys, reduce to a declared grain, aggregate measures; lowers to a materialized view (SELECT grain + dimension FK columns + aggregated measures, GROUP BY grain+FKs) plus registered relationships to the entities. Serves a star FACT and a DV LINK (a degenerate fact of keys). The lowering is pure (a spec → the same registration a user would hand-write), so the whole warehouse retargets across engines as IR — the model GENERATES the star/vault, it does not decide the methodology (grain, conformance, SCD choice stay the modeler's).
 
 **Use case:** Star schemas and Data Vaults are compositions of a tiny primitive set (dimension/fact, hub/ satellite/link). First-class entity/fact sugar lets a modeler declare them once and have Provisa generate the underlying portable MV definitions, instead of hand-writing each view_sql + flags.
 
@@ -11636,12 +11636,172 @@ All governed SQL execution flows through exactly one pipeline (_govern_and_route
 
 ### REQ-1177 · Connector Configuration {#REQ-1177}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Operators may declare custom source connectors (proprietary FDWs or ATTACH extensions) in config without code changes. A declarative descriptor per source_type specifies (a) required extension(s) to load, (b) the attach/import template, and (c) source_type mapping. Availability is verified at attach time against each engine's standard extension catalog (pg_available_extensions for Postgres, duckdb_extensions() for DuckDB), failing loud (never silent) when the declared extension is not installable. The two native engines scope this differently because their extension APIs differ. POSTGRES is a GENERIC descriptor: PG FDW is SQL/MED (an ISO standard), so every FDW uses the same DDL shape — CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…) + CREATE USER MAPPING + IMPORT FOREIGN SCHEMA (or an explicit CREATE FOREIGN TABLE when the FDW lacks IMPORT, e.g. file_fdw). The descriptor supplies only the per-FDW variance: extension name, SERVER option keys (host vs servername vs dbserver), the USER MAPPING key (user vs username), and a supports_import flag. So an arbitrary standard-conforming FDW is drivable from config. DUCKDB is a CURATED UNION, not arbitrary: DuckDB has no single standard, so we support only extensions that fit one of the TWO mechanisms our engine already drives — (1) ATTACH-TYPE for database extensions (ATTACH '<dsn>' AS x (TYPE <t>), generalized today by _DuckDBExtensionConnector / [REQ-899](#REQ-899): INSTALL <ext> [FROM community] + LOAD + ATTACH), and (2) SCAN table-function for file/lake extensions (CREATE VIEW … AS SELECT * FROM read_parquet(…) / read_csv_auto(…) / iceberg_scan(…) / delta_scan(…)). The popular methods (postgres/sqlite/mssql/mongo/mysql; csv/parquet/iceberg/delta) are covered OOTB; the config admits a new DuckDB source_type only when it declares one of these two mechanisms (mechanism + TYPE-name or scan-function + connection/scan template). An extension exposing neither is not drivable and is unsupported by design — no bespoke per-extension code path.  CONFORMANCE TARGETS (each is a real extension we do NOT ship an OOTB connector for, chosen to exercise a DIFFERENT descriptor branch than any hardcoded connector — passing them proves the descriptor is general, not a re-expression of what we already hardcode): (1) PG SQL/MED → mongo_fdw (EnterpriseDB/mongo_fdw). Reaches the mongo:7 service ALREADY in docker-compose.test.yml (seeded by db/mongo-init.js, requires_mongodb marker) — no new infra; only the FDW binary (libmongoc) is built. Descriptor: {extension: mongo_fdw, server_options:{address, port}, user_mapping:{username, password}, table_options:{database, collection}, supports_import: false}. Exercises the credentialed CREATE USER MAPPING path, a distinct SERVER key (address), NoSQL collection→foreign-table OPTIONS, and the explicit CREATE FOREIGN TABLE branch — none of which our OOTB PG connectors combine. Also proves cross-engine parity (mongo is reached OOTB by the DuckDB engine via DuckDBMongoConnector; here PG reaches it purely from config). (2) DuckDB ATTACH → ducklake (duckdb/ducklake). Self-contained: ATTACH 'ducklake:cat.ducklake' AS lake (DATA_PATH 'data/') over a local DuckDB/SQLite catalog + local parquet, no server. Exercises the URI-scheme-prefix DSN + extra ATTACH option (DATA_PATH) form, distinct from our stock ATTACH '<dsn>' AS x (TYPE <t>). (3) DuckDB SCAN → excel / read_xlsx (duckdb/duckdb-excel). Self-contained: CREATE VIEW v AS SELECT * FROM read_xlsx('f.xlsx', sheet='Q1', header=true) over a local .xlsx, no server. Exercises a scan table-function with NAMED ARGS (sheet/range/header), distinct from our stock read_csv_auto/read_parquet.
 
 **Use case:** BYO PG-federated or DuckDB-federated deployments with custom/proprietary extensions can extend reachability to new source types purely via config, without code changes or rebuilds. Extends [REQ-898](#REQ-898) config/pg_extension_catalog.yaml from a packaged-inventory model to an operator-authored connector descriptor.
 
-**Code:** `provisa/federation/pg_runtime.py`, `provisa/federation/duckdb_runtime.py`, `provisa/federation/connector_duckdb.py`, `provisa/pg_extensions/catalog.py`, `config/pg_extension_catalog.yaml`
+**Code:** `provisa/federation/custom_connectors.py`, `provisa/federation/engine.py`, `provisa/federation/pg_runtime.py`, `provisa/federation/duckdb_runtime.py`, `config/custom_connectors.yaml`
+
+**Tests:** `tests/unit/test_custom_connectors.py`, `tests/integration/test_custom_connectors_e2e.py`, `tests/integration/test_custom_connectors_pg_e2e.py`, `tests/features/REQ-1177.feature`
+
+### REQ-1178 · Connector Configuration {#REQ-1178}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Expand ClickHouse federation engine reach beyond the 7 OOTB source types by (1) adding OOTB native engines — SQLite (DATABASE engine, file, no server) and Hudi (lakehouse, zero-copy) — and (2) enabling operators to define config-driven ClickHouse connectors without code, in three kinds mirroring the engine's mechanisms: clickhouse_database (CREATE DATABASE ENGINE=… auto-expose, e.g. Redis), clickhouse_table (per-table CREATE TABLE ENGINE=…, columns from the registry, e.g. the JDBC/ODBC bridge), clickhouse_scan (CREATE TABLE ENGINE=… with ClickHouse inferring the schema, e.g. HDFS/URL). Availability is probed against ClickHouse's STANDARD discovery catalog (system.table_engines), failing loud when a declared engine is absent from the build.
+
+**Use case:** ClickHouse's 50+ integration engines outreach today's OOTB types. Config-driven connector extensibility (parallel to [REQ-1177](#REQ-1177)) gives operators live federation to arbitrary databases without engineering. Streaming ingestion engines (Kafka/RabbitMQ/NATS) are out of scope — they follow the materialized-view ingestion model, not live pull reach.
+
+**Code:** `provisa/federation/clickhouse_connectors.py`, `provisa/federation/clickhouse_runtime.py`, `provisa/federation/custom_connectors.py`, `provisa/federation/engine.py`, `config/custom_connectors.yaml`
+
+**Tests:** `tests/unit/test_clickhouse_connectors.py`, `tests/unit/test_custom_connectors.py`, `tests/integration/test_clickhouse_runtime_e2e.py`, `tests/features/REQ-1178.feature`
+
+### REQ-1179 · Connector Configuration {#REQ-1179}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+mongo_fdw (EnterpriseDB PG SQL/MED connector) reaches MongoDB live end-to-end as a conformance target for [REQ-1177](#REQ-1177). The extension binary is built from scripts/build_mongo_fdw.sh (mongo_fdw + bundled libmongoc 1.30.2 and json-c linked against embedded PG 16.2). The E2E test installs the extension dylibs into pgserver's embedded PG with @loader_path rpath so that mongo_fdw and libmongoc co-locate and resolve correctly. The descriptor (extension: mongo_fdw, server_options:{address, port}, user_mapping:{username, password}, table_options:{database, collection}, supports_import: false) drives config-only pg_fdw to read docker-seeded MongoDB.product_reviews without import.
+
+**Use case:** Proves that [REQ-1177](#REQ-1177) config-driven descriptors generalize beyond hardcoded connectors. mongo_fdw exercises a distinct descriptor branch (credentialed, explicit CREATE FOREIGN TABLE, separate SERVER key, NoSQL collection options) not combined by any OOTB PG connector, validating descriptor composability and cross-engine parity (MongoDB is already reachable OOTB via DuckDB).
+
+**Code:** `scripts/build_mongo_fdw.sh`, `provisa/federation/custom_connectors.py`, `provisa/federation/pg_runtime.py`
+
+**Tests:** `tests/integration/test_custom_connectors_mongo_e2e.py`
+
+### REQ-1180 · Connector Configuration {#REQ-1180}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+GenericPgFdwConnector (provisa/federation/custom_connectors.py) emits a bare `CREATE USER MAPPING ... SERVER s` with NO OPTIONS clause when user_mapping is present but empty (e.g., user_mapping: {}). If user_mapping is absent, no mapping is created. If keys are present, OPTIONS(...) is emitted. This constraint enables no-auth FDW scenarios (e.g., mongo_fdw against unauthenticated MongoDB), where an empty username would force the driver to attempt a failing auth handshake.
+
+**Use case:** Unauthenticated FDW targets (no credentials needed) require the bare SQL/MED form to avoid triggering unnecessary auth. This constraint prevents driver-level failures when credentials are not applicable.
+
+**Code:** `provisa/federation/custom_connectors.py`
+
+**Tests:** `tests/unit/test_custom_connectors.py`
+
+## 9. Deployment & Release
+
+### REQ-1181 · Terraform Cloud Deployment {#REQ-1181}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+
+Terraform GCP provisioning automatically stages release artifacts (AppImage and provisa-core-images-amd64-<version>.zip) from GitHub releases into the target GCS bucket before VM boot via a configurable null_resource.stage_artifacts, gated by a stage_from_github bool (default true). Requires authenticated gh and gsutil on the operator machine.
+
+**Use case:** Cloud deployments need release artifacts available in GCS before the VM starts. Automating the download and upload reduces manual operator steps and ensures artifact freshness for multi-region or repeated deployments.
+
+**Code:** `terraform/gcp/main.tf`, `terraform/gcp/variables.tf`
 
 **Tests:** —
+
+### REQ-1182 · Identity Provider Configuration {#REQ-1182}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Cloud deployments support automated identity-provider selection via an auth_provider Terraform variable (none|firebase|basic|keycloak|oauth|oidc). The variable is exported to the Compute Engine node as PROVISA_IDP, driving the server's env-based _auto_configure_idp logic. Firebase is a first-class option via firebase_project_id and firebase_service_account_key variables.
+
+**Use case:** Cloud deployments require identity providers to be configured at boot time. Environment-based auto-configuration enables one-shot, reproducible deployments without post-launch manual setup or Terraform output re-entry.
+
+**Code:** `terraform/gcp/variables.tf`, `terraform/gcp/main.tf`, `provisa/api/setup_router.py`
+
+**Tests:** —
+
+### REQ-1183 · Linux Installation & Systemd Integration {#REQ-1183}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+The Linux first-launch installer persists all IdP-related environment variables (PROVISA_IDP, FIREBASE_PROJECT_ID, FIREBASE_SERVICE_ACCOUNT_KEY, KEYCLOAK_*, OAUTH_*) into a systemd EnvironmentFile at ~/.provisa/provisa.env, allowing the server running under systemd to resolve these variables for IdP auto-configuration without re-entry from the first-launch process.
+
+**Use case:** Cloud VMs running under systemd (not a user login shell) require environment variables to be persisted to a file readable by the systemd unit. This decouples the first-launch process from the long-running server.
+
+**Code:** `provisa/cli/linux_installer.py`, `provisa/api/setup_router.py`
+
+**Tests:** —
+
+### REQ-1184 · Linux Installation & Systemd Integration {#REQ-1184}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+
+Non-interactive (cloud) Linux deployments automatically enable and start the Provisa systemd service via `systemctl enable --now` instead of only installing the unit file. This ensures the server is running immediately after deployment without waiting for a manual start command or system reboot.
+
+**Use case:** Cloud deployments are unattended and need the server running immediately. Automatic enable and start reduces the gap between terraform apply and service readiness, eliminating the need for post-deployment SSH commands.
+
+**Code:** `provisa/cli/linux_installer.py`
+
+**Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1185 · Result Handling & Streaming {#REQ-1185}
+
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** structural
+
+Engine-agnostic query results implement a ResultStream Protocol (column_names, column_types, batches(), iter_rows(), rows); two implementations separate fully-materialized QueryResult (bounded metadata/catalog paths) from lazy StreamingQueryResult (row batches, once-consumed iterator, stateless for shared-pool SaaS deployment).
+
+**Use case:** SaaS shared-pool load management requires small stateless Provisa instances behind a load balancer. In-process result materialization (fetchall) causes OOM on small pods when users request large result sets, so every result-bearing surface must stream and never materialize unbounded user data.
+
+**Code:** `provisa/executor/result.py`
+
+**Tests:** —
+
+### REQ-1186 · Result Handling & Streaming {#REQ-1186}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+pgwire ENGINE route streams the engine's result set lazily instead of materializing the full result in Provisa memory. ProvisaSession.execute_sql governs on the event loop via govern_pgwire_plan coroutine, then drains the engine's synchronous streaming terminal (execute_engine_sync) on the socketserver worker thread.
+
+**Use case:** Streaming prevents OOM on large result sets by deferring row materialization to the client's consumption rate. SaaS deployments with resource-constrained pods require all user-facing query results to stream unbounded data.
+
+**Code:** `provisa/pgwire/session.py`, `provisa/executor/`
+
+**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`
+
+### REQ-1187 · Result Handling & Streaming {#REQ-1187}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+ENGINE streaming branch calls require_governed_plan(plan) before the engine executes, ensuring a single chokepoint where the plan is stamped with governed-provenance guarantee (same contract Flight's streaming sink honors).
+
+**Use case:** Governance audit trail requires every executed plan to carry a deterministic provenance stamp. Single chokepoint enforcement prevents silent bypass of governance policy at the engine level.
+
+**Code:** `provisa/executor/`
+
+**Tests:** `tests/integration/test_governance_integration.py`, `tests/unit/test_governance.py`
+
+### REQ-1188 · Result Handling & Streaming {#REQ-1188}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+execute_engine_sync and backend execute_sync implementations accept a session_hints keyword parameter for per-plan Trino session properties, preventing silent loss of session-scoped directives (e.g., retry_policy=NONE for non-replayable sources) on the synchronous execution path.
+
+**Use case:** Trino session properties control engine behavior per query (e.g., retry_policy for Kafka sources). Without session_hints on the sync path, properties set at plan-governance time are silently dropped, causing non-deterministic behavior between async and sync execution paths.
+
+**Code:** `provisa/backends/`, `provisa/executor/`
+
+**Tests:** —
+
+### REQ-1189 · Result Handling & Streaming {#REQ-1189}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+ProvisaQueryResult adapts a ResultStream (streaming or materialized) to the buenavista QueryResult ABC, pulling row batches lazily. When the engine supplies no per-column types, exactly one batch is buffered to infer wire types for RowDescription before DataRow transmission, never buffering the full result.
+
+**Use case:** pgwire RowDescription must precede DataRow and requires column type inference. Buffering only one batch instead of the full result minimizes memory overhead while providing complete type information to the client.
+
+**Code:** `provisa/pgwire/`, `provisa/executor/result.py`
+
+**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`
+
+### REQ-1190 · Result Handling & Streaming {#REQ-1190}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+DIRECT routes (catalog, schema metadata, govdata, admin endpoints) and all non-ENGINE transports remain async-native and materialize results via _execute_plan on the event loop (unchanged behavior).
+
+**Use case:** Metadata and governance queries are bounded (small result sets) and benefit from in-memory caching. Only user-facing ENGINE queries require streaming to prevent OOM on unbounded result sets.
+
+**Code:** `provisa/executor/`, `provisa/graphql/`
+
+**Tests:** `tests/integration/test_catalog_integration.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/governance-core.spec.ts`

@@ -68,7 +68,6 @@ def _minimal_config_dict(
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "order_items",
-                "governance": "pre-approved",
                 "columns": [
                     {"name": "id", "visible_to": ["analyst"]},
                     {"name": "total_amount", "visible_to": ["analyst"]},
@@ -95,7 +94,6 @@ def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "order_items",
-                "governance": "pre-approved",
                 "description": None,
                 "alias": None,
                 "gql_naming_convention": None,
@@ -397,7 +395,6 @@ class TestDomainPrefixEmptyDomain:
                     "domain_id": "",
                     "schema_name": "default",
                     "table_name": "testns__users",
-                    "governance": "pre-approved",
                     "description": None,
                     "alias": None,
                     "gql_naming_convention": None,

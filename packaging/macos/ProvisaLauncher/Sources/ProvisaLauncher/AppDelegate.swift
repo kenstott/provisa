@@ -8,22 +8,86 @@ import SwiftUI
     private var setupWindow: NSWindow?
     private var statusService: ServiceStatus?
 
-    private static var sentinel: URL {
-        let base: URL
+    private static var installBase: URL {
         if let saved = UserDefaults.standard.string(forKey: "provisaInstallDir"), !saved.isEmpty {
-            base = URL(fileURLWithPath: saved)
-        } else {
-            base = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".provisa")
+            return URL(fileURLWithPath: saved)
         }
-        return base.appendingPathComponent(".first-launch-complete")
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".provisa")
     }
+
+    private static var sentinel: URL { installBase.appendingPathComponent(".first-launch-complete") }
+    private static var configFile: URL { installBase.appendingPathComponent("config.yaml") }
 
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.setActivationPolicy(.accessory)
         if FileManager.default.fileExists(atPath: Self.sentinel.path) {
-            activateMenuBar()
+            // A completed install may carry a config written by an earlier release whose
+            // shape predates keys the current CLI requires (e.g. `runtime:`), which makes
+            // `provisa start` hang. Surface that instead of silently starting a broken config.
+            if let (old, new) = staleConfig() {
+                promptStaleConfig(old: old, new: new)
+            } else {
+                activateMenuBar()
+            }
         } else {
             showSetupWizard()
+        }
+    }
+
+    // MARK: - Prior-release config detection
+
+    /// The release baked into this bundle (Contents/Resources/VERSION), or nil for a dev build.
+    private func bundleVersion() -> String? {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent("VERSION"),
+              let raw = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let v = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return v.isEmpty ? nil : v
+    }
+
+    /// The `version:` stamped into config.yaml, or nil if the file has no such key
+    /// (a config written before the version stamp existed — i.e. an earlier release).
+    private func configVersion() -> String? {
+        guard let text = try? String(contentsOf: Self.configFile, encoding: .utf8) else { return nil }
+        for line in text.split(whereSeparator: \.isNewline) {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("version:") {
+                return String(t.dropFirst("version:".count)).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
+    }
+
+    /// Returns (old, new) when an existing config was written by a different release than
+    /// this bundle; nil when it matches, is absent, or the bundle carries no version (dev build).
+    private func staleConfig() -> (old: String, new: String)? {
+        guard let new = bundleVersion() else { return nil }
+        guard FileManager.default.fileExists(atPath: Self.configFile.path) else { return nil }
+        let old = configVersion()
+        if old == new { return nil }
+        return (old: old ?? "an earlier release", new: new)
+    }
+
+    private func promptStaleConfig(old: String, new: String) {
+        NSApp.setActivationPolicy(.regular)
+        let alert = NSAlert()
+        alert.messageText = "Configuration from an earlier release"
+        alert.informativeText = """
+        Provisa found a configuration written by \(old). This version is \(new). \
+        A configuration from an earlier release may not start correctly.
+
+        Overwrite it with updated settings, or keep your current one?
+        """
+        alert.addButton(withTitle: "Overwrite…")   // .alertFirstButtonReturn (default)
+        alert.addButton(withTitle: "Keep Current")
+        NSApp.activate(ignoringOtherApps: true)
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            try? FileManager.default.removeItem(at: Self.sentinel)
+            try? FileManager.default.removeItem(at: Self.configFile)
+            showSetupWizard()   // regenerates config.yaml via first-launch.sh
+        } else {
+            activateMenuBar()
+            NSApp.setActivationPolicy(.accessory)
         }
     }
 

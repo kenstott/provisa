@@ -44,7 +44,7 @@ def test_invalid_mode_rejected():
 
 
 def test_delta_requires_key():
-    with pytest.raises(ValueError, match="requires a business key"):
+    with pytest.raises(ValueError, match="requires an entity key"):
         BitemporalSpec(key=(), mode=MODE_DELTA)
 
 

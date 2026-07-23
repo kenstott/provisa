@@ -60,7 +60,6 @@ def _orders_table(schema: str) -> dict:
         "domain_id": "sales",
         "schema_name": schema,
         "table_name": "orders",
-        "governance": "pre-approved",
         "columns": [
             {"column_name": c, "visible_to": ["admin"]} for c in ("id", "customer_id", "amount")
         ],
@@ -74,7 +73,6 @@ def _customers_table(schema: str) -> dict:
         "domain_id": "sales",
         "schema_name": schema,
         "table_name": "customers",
-        "governance": "pre-approved",
         "columns": [{"column_name": c, "visible_to": ["admin"]} for c in ("id", "name", "state")],
     }
 

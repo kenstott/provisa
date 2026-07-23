@@ -21,6 +21,7 @@ export function MultiSelect({
   onChange,
   className,
   label,
+  ariaLabel,
   placeholder,
 }: {
   options: { id: string; label: string }[];
@@ -28,6 +29,7 @@ export function MultiSelect({
   onChange: (selected: string[]) => void;
   className?: string;
   label?: string;
+  ariaLabel?: string;
   placeholder?: string;
 }) {
   const { t } = useTranslation();
@@ -40,7 +42,7 @@ export function MultiSelect({
       label={label}
       // Callers historically render this with no visible label; supply an
       // accessible name so the combobox is never anonymous to screen readers.
-      aria-label={label ?? placeholder ?? t("multiSelect.defaultLabel")}
+      aria-label={ariaLabel ?? label ?? placeholder ?? t("multiSelect.defaultLabel")}
       placeholder={value.length === 0 ? (placeholder ?? t("multiSelect.all")) : undefined}
       searchable
       clearable

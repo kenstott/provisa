@@ -7,18 +7,18 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'
 BOLD='\033[1m'; NC='\033[0m'
 
-info()  { printf "${CYAN}[deploy]${NC} %s\n" "$*"; }
-ok()    { printf "${GREEN}[deploy]${NC} %s\n" "$*"; }
-warn()  { printf "${YELLOW}[deploy]${NC} %s\n" "$*"; }
+info()  { printf "${CYAN}[deploy]${NC} %s\n" "$*" >&2; }
+ok()    { printf "${GREEN}[deploy]${NC} %s\n" "$*" >&2; }
+warn()  { printf "${YELLOW}[deploy]${NC} %s\n" "$*" >&2; }
 err()   { printf "${RED}[deploy]${NC} %s\n" "$*" >&2; }
 fatal() { err "$*"; exit 1; }
 
 ask() {
   local prompt="$1" default="${2:-}" var
   if [ -n "$default" ]; then
-    printf "%s [%s]: " "$prompt" "$default"
+    printf "%s [%s]: " "$prompt" "$default" >&2
   else
-    printf "%s: " "$prompt"
+    printf "%s: " "$prompt" >&2
   fi
   read -r var
   echo "${var:-$default}"
@@ -26,24 +26,24 @@ ask() {
 
 ask_secret() {
   local prompt="$1" var
-  printf "%s: " "$prompt"
+  printf "%s: " "$prompt" >&2
   read -rs var
-  echo
+  echo >&2
   echo "$var"
 }
 
 pick() {
   local prompt="$1"; shift
   local options=("$@")
-  echo "$prompt"
+  echo "$prompt" >&2
   local i=1
   for opt in "${options[@]}"; do
-    printf "  [%d] %s\n" "$i" "$opt"
+    printf "  [%d] %s\n" "$i" "$opt" >&2
     (( i++ ))
   done
   local choice
   while true; do
-    printf "Choice [1-%d]: " "${#options[@]}"
+    printf "Choice [1-%d]: " "${#options[@]}" >&2
     read -r choice
     if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
       echo "${options[$((choice-1))]}"
@@ -180,6 +180,8 @@ AWS)
   APPIMAGE_S3_BUCKET=$(ask "S3 bucket containing Provisa.AppImage")
   [ -z "$APPIMAGE_S3_BUCKET" ] && fatal "S3 bucket is required."
   APPIMAGE_S3_KEY=$(ask "S3 key" "releases/Provisa.AppImage")
+  PROVISA_VERSION=$(ask "Provisa version (matches the AppImage build, e.g. v0.1.0-alpha.271)")
+  [ -z "$PROVISA_VERSION" ] && fatal "Provisa version is required."
 
   info "Verifying s3://${APPIMAGE_S3_BUCKET}/${APPIMAGE_S3_KEY}..."
   aws s3api head-object \
@@ -188,6 +190,17 @@ AWS)
     --region "$REGION" &>/dev/null \
     || fatal "Object not found: s3://${APPIMAGE_S3_BUCKET}/${APPIMAGE_S3_KEY}"
   ok "AppImage found."
+
+  S3_DIR="$(dirname "$APPIMAGE_S3_KEY")"
+  IMAGES_ZIP="provisa-core-images-amd64-${PROVISA_VERSION}.zip"
+  IMAGES_KEY="${S3_DIR}/${IMAGES_ZIP}"
+  info "Verifying s3://${APPIMAGE_S3_BUCKET}/${IMAGES_KEY}..."
+  aws s3api head-object \
+    --bucket "$APPIMAGE_S3_BUCKET" \
+    --key "$IMAGES_KEY" \
+    --region "$REGION" &>/dev/null \
+    || fatal "Core-images zip not found: s3://${APPIMAGE_S3_BUCKET}/${IMAGES_KEY}"
+  ok "Core-images zip found."
 
   echo
   SSH_ENABLED=$(pick "Enable SSH access to nodes?" "Yes" "No")
@@ -211,6 +224,7 @@ AWS)
   printf "  Disk:         %s GB/node\n" "$ROOT_VOLUME_GB"
   printf "  RAM budget:   %s GB (0=all)\n" "$RAM_BUDGET_GB"
   printf "  AppImage:     s3://%s/%s\n" "$APPIMAGE_S3_BUCKET" "$APPIMAGE_S3_KEY"
+  printf "  Version:      %s\n" "$PROVISA_VERSION"
   printf "  SSH key:      %s\n" "${KEY_PAIR:-disabled}"
   printf "  Admin CIDR:   %s\n" "${ADMIN_CIDR:-n/a}"
   printf "  VPC CIDR:     %s\n" "$VPC_CIDR"
@@ -229,6 +243,7 @@ root_volume_gb        = ${ROOT_VOLUME_GB}
 ram_budget_gb       = ${RAM_BUDGET_GB}
 appimage_s3_bucket  = "${APPIMAGE_S3_BUCKET}"
 appimage_s3_key     = "${APPIMAGE_S3_KEY}"
+provisa_version     = "${PROVISA_VERSION}"
 key_pair            = "${KEY_PAIR}"
 admin_cidr          = "${ADMIN_CIDR}"
 vpc_cidr            = "${VPC_CIDR}"
@@ -283,6 +298,8 @@ Azure)
   [ -z "$STORAGE_ACCOUNT" ] && fatal "Storage account name is required."
   STORAGE_CONTAINER=$(ask "Blob container" "releases")
   APPIMAGE_BLOB=$(ask "Blob name" "Provisa.AppImage")
+  PROVISA_VERSION=$(ask "Provisa version (matches the AppImage build, e.g. v0.1.0-alpha.271)")
+  [ -z "$PROVISA_VERSION" ] && fatal "Provisa version is required."
 
   info "Verifying blob..."
   az storage blob show \
@@ -292,6 +309,18 @@ Azure)
     --auth-mode login &>/dev/null \
     || fatal "Blob not found: ${STORAGE_ACCOUNT}/${STORAGE_CONTAINER}/${APPIMAGE_BLOB}"
   ok "AppImage found."
+
+  BLOB_DIR="$(dirname "$APPIMAGE_BLOB")"
+  IMAGES_ZIP="provisa-core-images-amd64-${PROVISA_VERSION}.zip"
+  [ "$BLOB_DIR" = "." ] && IMAGES_BLOB="$IMAGES_ZIP" || IMAGES_BLOB="${BLOB_DIR}/${IMAGES_ZIP}"
+  info "Verifying core-images blob ${IMAGES_BLOB}..."
+  az storage blob show \
+    --account-name "$STORAGE_ACCOUNT" \
+    --container-name "$STORAGE_CONTAINER" \
+    --name "$IMAGES_BLOB" \
+    --auth-mode login &>/dev/null \
+    || fatal "Core-images zip not found: ${STORAGE_ACCOUNT}/${STORAGE_CONTAINER}/${IMAGES_BLOB}"
+  ok "Core-images zip found."
 
   echo
   SSH_ENABLED=$(pick "Enable SSH access to nodes?" "Yes" "No")
@@ -318,6 +347,7 @@ Azure)
   printf "  Disk:           %s GB/node\n" "$OS_DISK_GB"
   printf "  RAM budget:     %s GB (0=all)\n" "$RAM_BUDGET_GB"
   printf "  AppImage:       %s/%s/%s\n" "$STORAGE_ACCOUNT" "$STORAGE_CONTAINER" "$APPIMAGE_BLOB"
+  printf "  Version:        %s\n" "$PROVISA_VERSION"
   printf "  SSH:            %s\n" "${ADMIN_CIDR:-disabled}"
   printf "  VNet CIDR:      %s\n" "$VNET_CIDR"
   echo
@@ -337,6 +367,7 @@ ram_budget_gb          = ${RAM_BUDGET_GB}
 storage_account_name   = "${STORAGE_ACCOUNT}"
 storage_container      = "${STORAGE_CONTAINER}"
 appimage_blob          = "${APPIMAGE_BLOB}"
+provisa_version        = "${PROVISA_VERSION}"
 ssh_public_key         = "${SSH_PUBLIC_KEY}"
 admin_cidr             = "${ADMIN_CIDR}"
 vnet_cidr              = "${VNET_CIDR}"
@@ -392,11 +423,20 @@ GCP)
   GCS_BUCKET=$(ask "GCS bucket name")
   [ -z "$GCS_BUCKET" ] && fatal "GCS bucket is required."
   GCS_OBJECT=$(ask "Object path" "releases/Provisa.AppImage")
+  PROVISA_VERSION=$(ask "Provisa version (matches the AppImage build, e.g. v0.1.0-alpha.271)")
+  [ -z "$PROVISA_VERSION" ] && fatal "Provisa version is required."
 
   info "Verifying gs://${GCS_BUCKET}/${GCS_OBJECT}..."
   gsutil stat "gs://${GCS_BUCKET}/${GCS_OBJECT}" &>/dev/null \
     || fatal "Object not found: gs://${GCS_BUCKET}/${GCS_OBJECT}"
   ok "AppImage found."
+
+  GCS_DIR="$(dirname "$GCS_OBJECT")"
+  IMAGES_ZIP="provisa-core-images-amd64-${PROVISA_VERSION}.zip"
+  info "Verifying gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_ZIP}..."
+  gsutil stat "gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_ZIP}" &>/dev/null \
+    || fatal "Core-images zip not found: gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_ZIP}"
+  ok "Core-images zip found."
 
   echo
   SSH_ENABLED=$(pick "Enable SSH access to nodes?" "Yes" "No")
@@ -424,6 +464,7 @@ GCP)
   printf "  Disk:         %s GB/node\n" "$DISK_GB"
   printf "  RAM budget:   %s GB (0=all)\n" "$RAM_BUDGET_GB"
   printf "  AppImage:     gs://%s/%s\n" "$GCS_BUCKET" "$GCS_OBJECT"
+  printf "  Version:      %s\n" "$PROVISA_VERSION"
   printf "  SSH:          %s\n" "${ADMIN_CIDR:-disabled}"
   printf "  Subnet CIDR:  %s\n" "$NETWORK_CIDR"
   echo
@@ -443,6 +484,7 @@ disk_gb        = ${DISK_GB}
 ram_budget_gb  = ${RAM_BUDGET_GB}
 gcs_bucket     = "${GCS_BUCKET}"
 gcs_object     = "${GCS_OBJECT}"
+provisa_version = "${PROVISA_VERSION}"
 ssh_public_key = "${SSH_PUBLIC_KEY}"
 admin_cidr     = "${ADMIN_CIDR}"
 network_cidr   = "${NETWORK_CIDR}"

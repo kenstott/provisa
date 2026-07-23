@@ -27,7 +27,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 
 ### RDBMS
 
-| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
+| Source Type | Direct Driver | Connector Name | Dialect | Mutations |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- |
 | `postgresql` | asyncpg | postgresql | postgres | Yes |
 | `mysql` | aiomysql | mysql | mysql | Yes |
@@ -41,7 +41,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `greenplum` | asyncpg (pg wire) | postgresql | postgres | Yes |
 | `tidb` | aiomysql (mysql wire) | mysql | mysql | Yes |
 
-Wire-compatible databases reuse a base wire's JDBC driver, native async driver, and SQLGlot dialect — CockroachDB, YugabyteDB, and Greenplum ride the PostgreSQL wire; TiDB rides the MySQL wire. They need only registry entries, no new connector code. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
+Wire-compatible databases reuse a base wire's JDBC driver, native async driver, and dialect — CockroachDB, YugabyteDB, and Greenplum ride the PostgreSQL wire; TiDB rides the MySQL wire. They need only registry entries, no new connector code. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
 
 `firebird` (Firebird 3/4/5) and `airport` (Arrow Flight server) are registered source types reached in place via DuckDB community extensions when DuckDB is the active engine — no direct driver, no federated connector. [tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
 
@@ -49,7 +49,7 @@ Wire-compatible databases reuse a base wire's JDBC driver, native async driver, 
 
 [tool-verified: `executor/drivers/snowflake.py`, `executor/drivers/databricks.py`, `executor/drivers/registry.py`]
 
-| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations | Notes |
+| Source Type | Direct Driver | Connector Name | Dialect | Mutations | Notes |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
 | `snowflake` | SnowflakeDriver | snowflake | snowflake | Federated | Reads via snowflake-connector-python; lands replica; `account`/`warehouse`/`role` in `federation_hints` (REQ-988) |
 | `bigquery` | — | bigquery | bigquery | Federated | No DirectDriver; reaches via federation engine or BigQuery engine ATTACH |
@@ -63,7 +63,7 @@ Wire-compatible databases reuse a base wire's JDBC driver, native async driver, 
 
 [tool-verified: `executor/drivers/clickhouse.py`]
 
-| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations | Notes |
+| Source Type | Direct Driver | Connector Name | Dialect | Mutations | Notes |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
 | `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Federated | Reads via clickhouse-connect (HTTP); `secure: "true"` in `federation_hints` for TLS (REQ-986) |
 | `druid` | — | druid | druid | No | — |
@@ -73,7 +73,7 @@ Wire-compatible databases reuse a base wire's JDBC driver, native async driver, 
 
 ### Data Lake / Open Table Formats
 
-These source types are federation-only — no direct driver, no SQLGlot dialect. [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
+These source types are federation-only — no direct driver, no dialect. [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
 
 | Source Type | Connector Name | Time Travel | Notes |
 | ------------ | ----------------- | ------------- | ------- |
@@ -244,7 +244,6 @@ sources:
     subject: COMMERCE
     domain_id: federal-analytics
     description: U.S. commerce and securities data
-    governance: pre-approved
 ```
 
 | Field | Required | Default | Description |
@@ -253,7 +252,93 @@ sources:
 | `subject` | Yes | — | One of the subject values above |
 | `domain_id` | Yes | — | Domain this source belongs to |
 | `description` | No | `""` | Human-readable description |
-| `governance` | No | `pre-approved` | Governance level for all tables in this source |
+
+---
+
+## Custom Connectors (REQ-1177)
+
+The native federation engines — Postgres, DuckDB, and ClickHouse — gain reachability to a new source type when an operator declares a connector for it in `config/custom_connectors.yaml`. No code is required. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors`; `provisa/federation/engine.py` `build_pg_engine`, `build_duckdb_engine`, `build_clickhouse_engine`]
+
+Connector extensibility itself predates this. The Trino engine has long been extensible at its own layer — one generic JDBC connector parametrized per source type, a catalog `.properties` body per type, and Provisa's own custom Trino connector plugins (Splunk, SharePoint, Calcite). [tool-verified: `provisa/federation/trino_connectors.py` `_TrinoJdbcConnector`, `_TRINO_JDBC_TYPES`; `trino/plugins/trino-splunk`, `trino/plugins/trino-sharepoint`, `trino/plugins/trino-calcite`] REQ-1177 brings that same config-driven extensibility to the two native, no-cluster engines, which previously carried a fixed connector set.
+
+The config ships empty. Built-in connectors cover out-of-the-box reach; everything in this file is operator-authored. [tool-verified: `config/custom_connectors.yaml` line 52: `connectors: []`] Set `PROVISA_CUSTOM_CONNECTORS` to point at a different path (useful for tests).
+
+### Descriptor kinds
+
+| Engine | Kind | Mechanism | What the descriptor supplies |
+| --- | --- | --- | --- |
+| `postgres` | `pg_fdw` | SQL/MED (ISO standard) | `extension`, `server_options`, `user_mapping`, `supports_import`, `table_options`, `remote_schema` |
+| `duckdb` | `duckdb_attach` | INSTALL/LOAD + ATTACH | `extension`, `probe_symbol`, `attach_template`, `remote_schema` |
+| `duckdb` | `duckdb_scan` | INSTALL/LOAD + scanner view | `extension`, `probe_symbol`, `scan_template` |
+| `clickhouse` | `clickhouse_database` | `CREATE DATABASE ENGINE=…` (auto-exposes every remote table) | `ch_engine`, `engine_template` |
+| `clickhouse` | `clickhouse_table` | per-table `CREATE TABLE ENGINE=…` (columns from the registry) | `ch_engine`, `engine_template` (may carry `{table}`) |
+| `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`, ClickHouse infers the schema | `ch_engine`, `engine_template` |
+
+**Postgres is generic.** SQL/MED is an ISO standard, so every conforming FDW shares the same DDL shape: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, optional `CREATE USER MAPPING`, then either `IMPORT FOREIGN SCHEMA` (when `supports_import: true`) or an explicit `CREATE FOREIGN TABLE` per table (when `false`). A `pg_fdw` descriptor supplies only the per-FDW variance — extension name, server option keys, user-mapping keys, import flag, table options. Any standard-conforming FDW is therefore drivable from config alone. [tool-verified: `provisa/federation/custom_connectors.py` `GenericPgFdwConnector.details` lines 98–125]
+
+**DuckDB supports two mechanisms.** An extension exposing a catalog via ATTACH uses `duckdb_attach`; one exposing a read table-function uses `duckdb_scan`. An extension fitting neither pattern is not supported. [tool-verified: `provisa/federation/custom_connectors.py` `GenericDuckDbAttachConnector`, `GenericDuckDbScanConnector`]
+
+**ClickHouse supports three mechanisms**, one per integration-engine shape: a relational DATABASE engine that auto-exposes every remote table (`clickhouse_database`, e.g. Redis/MySQL), a per-table engine whose columns the registry supplies (`clickhouse_table`, e.g. the JDBC/ODBC bridge — the `engine_template` may carry a `{table}` placeholder the runtime binds), and a file/lake/URL engine whose schema ClickHouse infers (`clickhouse_scan`, e.g. HDFS/URL). SQLite (DATABASE engine, file, no server) and Hudi (lakehouse, zero-copy) ship OOTB. [tool-verified: `provisa/federation/custom_connectors.py` `GenericClickHouseDatabaseConnector`, `GenericClickHouseTableConnector`, `GenericClickHouseScanConnector`; `provisa/federation/clickhouse_connectors.py` `ClickHouseSqliteConnector`, `ClickHouseHudiConnector`] (REQ-1178)
+
+An unknown `kind` value fails loud at startup — a descriptor typo must not silently leave a source type unreachable. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors` lines 178–197]
+
+### Probe gating
+
+Availability is verified at attach time against each engine's standard discovery catalog:
+
+- **Postgres** — checks `pg_extension`, then `pg_available_extensions`. [tool-verified: `provisa/federation/connector_duckdb.py` `_probe_pg_extension` lines 333–344]
+- **DuckDB** — runs `INSTALL`/`LOAD` and checks `duckdb_functions()` for the declared `probe_symbol`. [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBExtensionConnector.probe` lines 160–180]
+- **ClickHouse** — checks `system.table_engines` for the declared `ch_engine`; absent from the build fails loud. [tool-verified: `provisa/federation/custom_connectors.py` `_probe_clickhouse_engine`]
+
+A declared extension that is not installable fails loud. No silent skip, no fallback. A connector whose probe fails is simply not active for that deployment.
+
+### Template variables
+
+Every `server_options` value, `user_mapping` value, `attach_template`, and `scan_template` may use `{field}` placeholders. Available fields: [tool-verified: `provisa/federation/custom_connectors.py` `_source_fields` lines 53–63]
+
+`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus any key from `federation_hints`. DuckDB attach templates also receive `{alias}` — the internal catalog alias Provisa assigns to the attached database.
+
+A template referencing an unknown field fails loud at attach time, surfacing a descriptor/source mismatch before broken DDL reaches the engine.
+
+### Examples
+
+**Postgres — MongoDB via `mongo_fdw` (no schema import; columns supplied per table)**
+
+```yaml
+# config/custom_connectors.yaml
+connectors:
+  - engine: postgres
+    source_type: mongodb
+    kind: pg_fdw
+    extension: mongo_fdw
+    mechanism: attach_r
+    server_options:
+      address: "{host}"
+      port: "{port}"
+    user_mapping:
+      username: "{username}"
+      password: "{password}"
+    supports_import: false
+    table_options:
+      database: "{database}"
+      collection: "{table_name}"
+```
+
+**DuckDB — Excel files via `read_xlsx` (scan table-function)**
+
+```yaml
+  - engine: duckdb
+    source_type: xlsx
+    kind: duckdb_scan
+    extension: excel
+    install_from_community: false
+    probe_symbol: read_xlsx
+    scan_template: "read_xlsx('{path}')"
+```
+
+[tool-verified: `config/custom_connectors.yaml` commented examples, lines 26–50]
+
+With either descriptor in place, registering a source with the declared `source_type` routes through the custom connector, subject to a successful probe. No other configuration change is needed.
 
 ---
 
@@ -377,16 +462,6 @@ kafka_sources:
 | `topics[].description` | Human-readable description |
 | `topics[].default_window` | Default time window for windowed queries (e.g. `1h`) (REQ-148) |
 | `topics[].columns` | Column definitions for the topic schema (REQ-150) |
-
----
-
-## Governance
-
-Every registered table has a `governance` field. [tool-verified: `provisa/core/models.py` `GovernanceLevel` enum, lines 73–76]
-
-| Value | Behaviour |
-| ------- | ----------- |
-| `pre-approved` | Queries run against this table with user rights alone; no registry approval required (REQ-003) |
 
 ---
 

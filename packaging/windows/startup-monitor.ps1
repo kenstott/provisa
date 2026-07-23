@@ -4,7 +4,7 @@
 # itself when the app is genuinely ready.
 #
 # Why this exists: the launcher chain runs -WindowStyle Hidden, so a first launch showed NOTHING for
-# the tens of seconds the API spends loading the demo config + introspecting sources — and a fatal
+# the tens of seconds the API spends loading the demo config + introspecting sources - and a fatal
 # staging failure (a locked runtime that could not be replaced) was written to a hidden console and
 # lost, so the user saw "nothing happened." This window shows progress AND surfaces those errors.
 #Requires -Version 5.1
@@ -41,7 +41,7 @@ function Resolve-Demo {
   return (Read-Cfg 'demo' 'false') -eq 'true'
 }
 
-# The URL to open once ready — ?tour=1 auto-starts the guided tour for a demo install (App.tsx reads
+# The URL to open once ready - ?tour=1 auto-starts the guided tour for a demo install (App.tsx reads
 # the query param), mirroring provisa-native.ps1 Open-Native.
 function Resolve-OpenUrl {
   param([int]$UiPort, [bool]$Demo)
@@ -61,7 +61,7 @@ function Get-LastStatus {
   return $null
 }
 
-# Split a breadcrumb into its state token and human message. "STAGING|Staging runtime…" -> both.
+# Split a breadcrumb into its state token and human message. "STAGING|Staging runtime..." -> both.
 function Parse-Status {
   param([string]$Line)
   if (-not $Line) { return $null }
@@ -125,7 +125,45 @@ function Get-ErrorDetail {
 # ==============================================================================
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+
+# Opt into per-monitor DPI awareness before any window exists. Without this, Windows bitmap-stretches
+# the whole dialog on high-DPI displays, which is what made the logo look jagged/pixelated.
+try {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DpiAwareness {
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+  [DllImport("shcore.dll")] public static extern int SetProcessDpiAwareness(int value);
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  public static void Enable() {
+    // -4 = PER_MONITOR_AWARE_V2 (Win10 1703+); fall back to older APIs on downlevel systems.
+    try { if (SetProcessDpiAwarenessContext(new IntPtr(-4))) return; } catch {}
+    try { SetProcessDpiAwareness(2); return; } catch {}
+    try { SetProcessDPIAware(); } catch {}
+  }
+}
+'@
+  [DpiAwareness]::Enable()
+} catch {}
+
 [System.Windows.Forms.Application]::EnableVisualStyles()
+[System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
+
+# Downscale a source image to an exact pixel size with high-quality bicubic interpolation. WinForms'
+# PictureBox.SizeMode='Zoom' uses low-quality scaling, which visibly aliases a 256px mark down to 48px.
+function New-ScaledBitmap {
+  param([System.Drawing.Image]$Source, [int]$Width, [int]$Height)
+  $bmp = New-Object System.Drawing.Bitmap($Width, $Height)
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.InterpolationMode  = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $g.SmoothingMode      = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+  $g.PixelOffsetMode    = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+  $g.DrawImage($Source, 0, 0, $Width, $Height)
+  $g.Dispose()
+  return $bmp
+}
 
 $UiPort  = [int](Resolve-UiPort)
 $ApiPort = [int](Resolve-ApiPort)
@@ -148,8 +186,16 @@ if (Test-Path $icon) { $form.Icon = New-Object System.Drawing.Icon($icon) }
 
 $logoFile = Join-Path $ScriptDir 'provisa-mark.png'
 if (Test-Path $logoFile) {
+  # Read the file into memory first so the on-disk handle isn't locked, then pre-scale to the exact
+  # DPI-adjusted pixel size with bicubic interpolation for a crisp mark at any scale factor.
+  $srcBytes = [System.IO.File]::ReadAllBytes($logoFile)
+  $ms = New-Object System.IO.MemoryStream(,$srcBytes)
+  $srcImg = [System.Drawing.Image]::FromStream($ms)
+  $dpiScale = [double]$form.DeviceDpi / 96.0
+  $logoPx = [int][Math]::Round(48 * $dpiScale)
   $logo = New-Object System.Windows.Forms.PictureBox
-  $logo.Image = [System.Drawing.Image]::FromFile($logoFile)
+  $logo.Image = New-ScaledBitmap -Source $srcImg -Width $logoPx -Height $logoPx
+  $srcImg.Dispose(); $ms.Dispose()
   $logo.SizeMode = 'Zoom'
   $logo.Location = New-Object System.Drawing.Point(20, 20)
   $logo.Size = New-Object System.Drawing.Size(48, 48)
@@ -165,7 +211,7 @@ $header.AutoSize = $true
 $form.Controls.Add($header)
 
 $status = New-Object System.Windows.Forms.Label
-$status.Text = 'Preparing…'
+$status.Text = 'Preparing...'
 $status.Location = New-Object System.Drawing.Point(20, 90)
 $status.Size = New-Object System.Drawing.Size(420, 60)
 $form.Controls.Add($status)
@@ -208,18 +254,18 @@ $form.Controls.Add($btnOpen)
 
 # -- Launch the worker HIDDEN; the monitor owns readiness + the browser --------
 # PROVISA_STARTUP_UI tells the worker chain to (a) emit breadcrumbs and (b) NOT open the browser
-# itself — this window opens it exactly once, when /health passes.
+# itself - this window opens it exactly once, when /health passes.
 $env:PROVISA_STARTUP_UI = '1'
 $worker = Start-Process -FilePath 'powershell.exe' `
   -ArgumentList @('-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File', $Worker) `
   -WindowStyle Hidden -PassThru
 
 $script:Human = @{
-  STAGING = 'Staging the runtime…'
-  CONFIG  = 'Writing configuration…'
-  DEMO    = 'Starting demo services…'
-  START   = 'Starting the engine and UI…'
-  WAIT    = 'Waiting for the engine to become ready (this can take a minute on first run)…'
+  STAGING = 'Staging the runtime...'
+  CONFIG  = 'Writing configuration...'
+  DEMO    = 'Starting demo services...'
+  START   = 'Starting the engine and UI...'
+  WAIT    = 'Waiting for the engine to become ready (this can take a minute on first run)...'
 }
 $script:Elapsed = 0
 $script:Done    = $false
@@ -248,7 +294,7 @@ $timer.Add_Tick({
   if (Test-Ready -UiPort $UiPort -ApiPort $ApiPort) {
     $script:Done = $true
     $timer.Stop()
-    $status.Text = 'Warming up…'
+    $status.Text = 'Warming up...'
     [System.Windows.Forms.Application]::DoEvents()  # repaint the label before the blocking warmup burst
     Invoke-Warmup -UiPort $UiPort
     Start-Process (Resolve-OpenUrl -UiPort $UiPort -Demo $Demo)
@@ -260,7 +306,7 @@ $timer.Add_Tick({
   if ($parsed -and $script:Human.ContainsKey($parsed.State)) { $status.Text = $script:Human[$parsed.State] }
   elseif ($parsed -and $parsed.Message)                      { $status.Text = $parsed.Message }
 
-  # The worker process exited but the app never became ready and no ERROR was written — surface the
+  # The worker process exited but the app never became ready and no ERROR was written - surface the
   # API log tail so an unexpected crash is visible rather than silent. (The worker exiting is normal
   # BEFORE health when it only launches the detached servers, so we also require it to be past the
   # WAIT stage before treating exit as a failure.)
@@ -277,7 +323,7 @@ $timer.Add_Tick({
   }
 
   # UI server died: the API bound its port (we got past START) but the UI port never came up. Without
-  # this the dead UI is invisible and the app never opens — the readiness gate needs BOTH ports, but
+  # this the dead UI is invisible and the app never opens - the readiness gate needs BOTH ports, but
   # the exit check above only watches the API. A UI uvicorn binds in a second or two, so a port still
   # closed at 30s means it crashed (typically the UI port already in use). Surface its log tail.
   if ($worker.HasExited -and (Test-PortOpen $ApiPort) -and $script:Elapsed -gt 30 -and -not (Test-PortOpen $UiPort)) {

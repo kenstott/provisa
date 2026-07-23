@@ -1,0 +1,8 @@
+# Local Terraform state, provider plugins, and per-deployment variable files.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+override.tf
+override.tf.json

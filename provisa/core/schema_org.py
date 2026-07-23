@@ -113,7 +113,6 @@ registered_tables = Table(
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
     Column("schema_name", Text, nullable=False),
     Column("table_name", Text, nullable=False),
-    Column("governance", Text, nullable=False, server_default="pre-approved"),
     Column("alias", Text),
     Column("description", Text),
     Column("cache_ttl", Integer),

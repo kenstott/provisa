@@ -50,7 +50,6 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "enable_aggregates": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -67,7 +66,6 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},

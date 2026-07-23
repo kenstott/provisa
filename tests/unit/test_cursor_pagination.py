@@ -33,7 +33,6 @@ def _build_schema_and_ctx():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin", "analyst"]},
                 {"column_name": "customer_id", "visible_to": ["admin", "analyst"]},
@@ -381,7 +380,6 @@ def _base_tables():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "enable_aggregates": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},

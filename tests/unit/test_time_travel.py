@@ -40,7 +40,6 @@ def _build_lake_ctx(source_type: str):
             "domain_id": "datalake",
             "schema_name": "db",
             "table_name": "events",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "ts", "visible_to": ["admin"]},

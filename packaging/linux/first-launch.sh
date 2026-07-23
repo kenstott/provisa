@@ -297,6 +297,19 @@ ask_api_port() {
 # ── Install systemd service (non-interactive / cloud deployments) ─────────────
 install_systemd() {
   local unit="/etc/systemd/system/provisa.service"
+  # Persist auth env (PROVISA_IDP + provider secrets) so the server, running
+  # under systemd rather than this first-launch process, auto-configures the IdP
+  # and can resolve ${env:...} secret placeholders at runtime.
+  local env_file="${PROVISA_HOME}/provisa.env"
+  : > "$env_file"
+  chmod 600 "$env_file"
+  for var in PROVISA_IDP FIREBASE_PROJECT_ID FIREBASE_SERVICE_ACCOUNT_KEY \
+             KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
+             OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET; do
+    if [ -n "${!var:-}" ]; then
+      printf '%s=%s\n' "$var" "${!var}" >> "$env_file"
+    fi
+  done
   cat > "$unit" <<UNIT
 [Unit]
 Description=Provisa Data Platform
@@ -308,6 +321,7 @@ Type=simple
 User=${USER}
 Environment=DOCKER_HOST=unix://${BUNDLED_SOCKET}
 Environment=XDG_RUNTIME_DIR=${PROVISA_HOME}/run
+EnvironmentFile=-${env_file}
 ExecStart=${LOCAL_BIN}/provisa start --foreground
 ExecStop=${LOCAL_BIN}/provisa stop
 Restart=on-failure
@@ -317,7 +331,8 @@ RestartSec=10
 WantedBy=multi-user.target
 UNIT
   systemctl daemon-reload
-  ok "systemd unit installed: ${unit}"
+  systemctl enable --now provisa
+  ok "systemd unit installed and started: ${unit}"
 }
 
 # ── Resolve deployment (parity with macOS wizard / install.sh, REQ-972..979) ──
@@ -331,9 +346,11 @@ UNIT
 _compute_needs_docker() {
   DEMO_MODE="${PROVISA_DEMO_MODE:-native}"
   NEEDS_DOCKER=false
-  [ "$DEPLOY_ENGINE" != "duckdb" ] && NEEDS_DOCKER=true
-  [ "$OBS_MODE" = "docker" ] && NEEDS_DOCKER=true
-  { [ "$(_lc "$INSTALL_DEMO")" = "y" ] && [ "$DEMO_MODE" = "docker" ]; } && NEEDS_DOCKER=true
+  # if-form, not `[ cond ] && VAR=true`: under `set -e` a false single-line test
+  # makes the statement return non-zero and aborts the whole script.
+  if [ "$DEPLOY_ENGINE" != "duckdb" ]; then NEEDS_DOCKER=true; fi
+  if [ "$OBS_MODE" = "docker" ]; then NEEDS_DOCKER=true; fi
+  if [ "$(_lc "$INSTALL_DEMO")" = "y" ] && [ "$DEMO_MODE" = "docker" ]; then NEEDS_DOCKER=true; fi
 }
 resolve_deployment() {
   if [ "$NON_INTERACTIVE" = true ]; then
@@ -636,7 +653,7 @@ main() {
     ok "First-launch setup complete (native — no Docker)."
 
     if [ "$NON_INTERACTIVE" = true ]; then
-      ok "Node configured (native). systemd service installed — enable with: systemctl enable --now provisa"
+      ok "Node configured (native). systemd service enabled and started."
       return
     fi
     printf "\n${GREEN}${BOLD}Provisa is ready.${NC}\n"
@@ -667,7 +684,7 @@ main() {
   ok "First-launch setup complete."
 
   if [ "$NON_INTERACTIVE" = true ]; then
-    ok "Node configured as ${ROLE}. systemd service installed — enable with: systemctl enable --now provisa"
+    ok "Node configured as ${ROLE}. systemd service enabled and started."
     return
   fi
 

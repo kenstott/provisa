@@ -35,6 +35,23 @@ Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')           $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ico')             $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa-mark.png')        $BuildDir
 
+# Windows PowerShell 5.1 reads a BOM-less .ps1 as the ANSI codepage (Windows-1252), NOT UTF-8. A
+# non-ASCII byte inside a double-quoted string (e.g. an em-dash) then decodes to a stray quote and
+# the whole script fails to PARSE - no line runs, no error surfaces, the launcher hangs. Fail the
+# build if any bundled script carries a non-ASCII byte rather than ship an installer that never runs.
+foreach ($ps1 in (Get-ChildItem $BuildDir -Filter '*.ps1')) {
+  $bytes = [System.IO.File]::ReadAllBytes($ps1.FullName)
+  # A leading UTF-8 BOM (EF BB BF) is fine - it makes PS 5.1 decode the file as UTF-8. Skip it and
+  # scan the actual content, since a BOM'd file is safe regardless of what bytes follow.
+  $start = if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { 3 } else { 0 }
+  for ($i = $start; $i -lt $bytes.Length; $i++) {
+    if ($bytes[$i] -gt 127) {
+      throw "$($ps1.Name): non-ASCII byte at offset $i. A BOM-less .ps1 with non-ASCII is mis-decoded by Windows PowerShell 5.1 as Windows-1252, which breaks parsing. Replace it with ASCII (em-dash -> -, ellipsis -> ...) or save the file with a UTF-8 BOM."
+    }
+  }
+}
+Write-Host '[build-sfx] Verified bundled scripts are pure ASCII.' -ForegroundColor Cyan
+
 # -- React UI (served from <site-packages>/static by ui_server) ----------------
 # The UI is built on Linux and delivered to this job as a prebuilt dist - the
 # provisa-ui toolchain (rolldown) pins non-optional darwin native bindings that

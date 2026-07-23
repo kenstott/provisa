@@ -112,7 +112,6 @@ def _make_config(spec_path: str) -> dict:
                 "schema": "default",
                 "table": "find_pets_by_status",
                 "alias": "pet_by_status",
-                "governance": "pre-approved",
                 "columns": [
                     {"name": "id", "visible_to": ["admin"]},
                     {"name": "name", "visible_to": ["admin"]},

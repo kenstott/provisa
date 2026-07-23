@@ -152,7 +152,6 @@ def _si(customers_schema: str, orders_schema: str) -> SchemaInput:
                 "domain_id": "sales",
                 "schema_name": customers_schema,
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "first_name", "state")
@@ -164,7 +163,6 @@ def _si(customers_schema: str, orders_schema: str) -> SchemaInput:
                 "domain_id": "sales",
                 "schema_name": orders_schema,
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
                     for c in ("id", "customer_id", "amount")

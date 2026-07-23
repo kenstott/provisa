@@ -37,7 +37,6 @@ def _build(role_id="admin"):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin", "analyst"]},
                 {"column_name": "amount", "visible_to": ["admin", "analyst"]},

@@ -155,7 +155,7 @@ export interface RegisteredTable {
   mvConsistency: string; // REQ-879: "shared" (fleet-coordinated) | "distributed" (per-instance)
   mvPreprocess: string | null; // REQ-1165: inline preflight(rows, ctx) check source; null = no check
   mvBitemporalMode: string | null; // REQ-1162: null | "snapshot" | "delta" (append-only time travel)
-  mvBitemporalKey: string[]; // REQ-1162: business key a version belongs to (required for delta)
+  mvBitemporalKey: string[]; // REQ-1162: entity key a version belongs to (required for delta)
   mvPersist: string; // REQ-965: replace | append | upsert
   mvPrimaryKey: string[]; // REQ-970: row identity (required for upsert / incremental)
   mvIncremental: boolean; // REQ-969: incremental maintenance

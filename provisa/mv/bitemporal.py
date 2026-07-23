@@ -28,7 +28,7 @@ TWO HARD RULES shape the design:
        absence from a later snapshot. Simple and universal; storage grows by full size per refresh.
      - DELTA — append ONLY what changed since the current reconstructed state: new/changed rows as
        upserts, disappeared keys as tombstones. The DELTA IS COMPUTED BY THE ENGINE (anti-joins in
-       an INSERT ... SELECT), never folded in Provisa. Smaller storage; needs a business key.
+       an INSERT ... SELECT), never folded in Provisa. Smaller storage; needs an entity key.
 
 SYSTEM time (transaction time — when Provisa recorded it) is Provisa-managed via one append stamp.
 VALID time (business time — when a fact is true) is NOT computed here: the view's own SELECT
@@ -73,7 +73,7 @@ class BitemporalSpec:
         if self.mode not in MODES:
             raise ValueError(f"invalid bitemporal mode {self.mode!r}; expected one of {sorted(MODES)}")
         if self.mode == MODE_DELTA and not self.key:
-            raise ValueError("delta bitemporal mode requires a business key (no key ⇒ no delta)")
+            raise ValueError("delta bitemporal mode requires an entity key (no key ⇒ no delta)")
         managed = [self.system_column, *([self.op_column] if self.mode == MODE_DELTA else [])]
         valid = [c for c in (self.valid_from, self.valid_to) if c]
         allcols = managed + valid

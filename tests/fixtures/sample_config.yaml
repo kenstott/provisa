@@ -27,7 +27,6 @@ tables:
     domain_id: sales-analytics
     schema: public
     table: orders
-    governance: pre-approved
     columns:
       - name: id
         data_type: integer
@@ -46,7 +45,6 @@ tables:
     domain_id: sales-analytics
     schema: public
     table: customers
-    governance: pre-approved
     columns:
       - name: id
         data_type: integer
@@ -61,7 +59,6 @@ tables:
     domain_id: product-catalog
     schema: public
     table: products
-    governance: registry-required
     columns:
       - name: id
         data_type: integer

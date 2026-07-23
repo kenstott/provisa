@@ -16,7 +16,7 @@ lowers them to the existing materialized-view / bitemporal / relationship machin
 
 - ``Entity`` — a keyed, deduplicated, optionally-historized projection of a source. Lowers to a
   materialized view; when history is requested it is a bitemporal MV (REQ-1162): history="scd2" →
-  delta mode, history="snapshot" → snapshot mode, keyed on the business key. Serves a star DIMENSION
+  delta mode, history="snapshot" → snapshot mode, keyed on the entity key. Serves a star DIMENSION
   (SCD1/SCD2) and a Data Vault HUB + SATELLITE.
 - ``Fact`` — a join to entity keys, reduced to a declared grain, with aggregated measures. Lowers to
   a materialized view (grain + dimension FK columns + aggregated measures, GROUP BY grain+FKs) plus
@@ -62,7 +62,7 @@ class Entity:
 
     def __post_init__(self) -> None:
         if not self.key:
-            raise ValueError(f"entity {self.name!r} must declare a business key")
+            raise ValueError(f"entity {self.name!r} must declare an entity key")
         if self.history not in _HISTORY:
             raise ValueError(
                 f"entity {self.name!r} history {self.history!r} must be one of {sorted(_HISTORY)}"
@@ -114,7 +114,7 @@ def entity_registration(e: Entity) -> dict:
     }
     mode = _HISTORY_MODE.get(e.history)
     if mode is not None:
-        # Historized entity → a bitemporal MV keyed on the business key (REQ-1162).
+        # Historized entity → a bitemporal MV keyed on the entity key (REQ-1162).
         reg["mv_bitemporal_mode"] = mode
         reg["mv_bitemporal_key"] = list(e.key)
     return reg

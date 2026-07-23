@@ -99,7 +99,6 @@ def _mutable_table(tid, name, domain, source="pg1"):
         "domain_id": domain,
         "schema_name": "public",
         "table_name": name,
-        "governance": "pre-approved",
         "columns": [{"column_name": "id", "visible_to": ["admin"]}],
     }
 

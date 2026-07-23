@@ -117,7 +117,6 @@ _TABLES = [
         "domain_id": "sales",
         "schema_name": "public",
         "table_name": "orders",
-        "governance": "pre-approved",
         "columns": [
             # visible to everyone (empty visible_to)
             {"column_name": "id", "visible_to": []},

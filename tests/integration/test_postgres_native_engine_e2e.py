@@ -66,7 +66,6 @@ def _tbl(i: int, tname: str, cols: list[str]) -> dict:
         "domain_id": "sales",
         "schema_name": "pgself",  # the engine's own native store
         "table_name": tname,
-        "governance": "pre-approved",
         "columns": [{"column_name": c, "visible_to": ["admin"]} for c in cols],
     }
 

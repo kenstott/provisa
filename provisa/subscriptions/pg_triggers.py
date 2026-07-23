@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Install LISTEN/NOTIFY triggers on pre-approved PostgreSQL subscription tables."""
+"""Install LISTEN/NOTIFY triggers on registered PostgreSQL subscription tables."""
 
 # Requirements: REQ-258
 
@@ -54,7 +54,7 @@ async def ensure_pg_notify_triggers(  # REQ-258
     tables: list[dict],
     source_types: dict[str, str],
 ) -> set[str]:
-    """Idempotently install notify triggers on all pre-approved PostgreSQL tables.
+    """Idempotently install notify triggers on all registered PostgreSQL tables.
 
     Returns the set of table_names where triggers were successfully installed.
     Tables where installation fails (e.g. insufficient privilege) are omitted;

@@ -36,7 +36,6 @@ def _build_schema_and_ctx(
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "enable_aggregates": True,
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "analyst"]},
@@ -53,7 +52,6 @@ def _build_schema_and_ctx(
                 "domain_id": "sales",
                 "schema_name": "public",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -228,7 +226,6 @@ class TestAggregate:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "enable_aggregates": True,
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "limited"]},
@@ -283,7 +280,6 @@ class TestAggregate:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "tags",
-                "governance": "pre-approved",
                 "enable_aggregates": True,
                 "columns": [
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -365,7 +361,6 @@ class TestAggregate:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "enable_aggregates": True,
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
@@ -379,7 +374,6 @@ class TestAggregate:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "customers",
-                "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -480,7 +474,6 @@ class TestAggregate:
                 "domain_id": "d",
                 "schema_name": "public",
                 "table_name": "orders",
-                "governance": "pre-approved",
                 "enable_aggregates": True,
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "analyst"]},

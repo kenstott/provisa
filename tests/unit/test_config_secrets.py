@@ -54,7 +54,6 @@ _VALID_CONFIG = {
             "domain_id": "analytics",
             "schema": "public",
             "table": "events",
-            "governance": "pre-approved",
             "columns": [
                 {"name": "id", "visible_to": ["admin"]},
                 {"name": "event_type", "visible_to": ["admin"]},
@@ -250,7 +249,6 @@ class TestParseConfigFile:
                 domain_id: ops
                 schema: public
                 table: shipments
-                governance: pre-approved
                 columns:
                   - name: id
                     visible_to: [admin]
@@ -286,7 +284,6 @@ class TestParseConfigFile:
                 domain_id: sales
                 schema: public
                 table: orders
-                governance: pre-approved
                 columns:
                   - name: order_id
                     visible_to: [admin, analyst]
@@ -296,7 +293,6 @@ class TestParseConfigFile:
                 domain_id: ops
                 schema: public
                 table: shipments
-                governance: registry-required
                 columns:
                   - name: id
                     visible_to: [admin]

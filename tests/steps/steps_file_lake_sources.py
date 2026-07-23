@@ -75,7 +75,6 @@ def _build_lake_ctx(source_type: str):
             "domain_id": "datalake",
             "schema_name": "db",
             "table_name": "events",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "ts", "visible_to": ["admin"]},
@@ -481,7 +480,6 @@ def then_graphql_fields_reflect_snake_case(shared_data):
             "domain_id": "test_domain",
             "schema_name": "camel_lake",
             "table_name": customers_td.table_name,
-            "governance": "pre-approved",
             "columns": columns_for_schema,
             # REQ-789: request snake_case GraphQL field naming so the SDL field
             # names mirror the snake_case column names produced by the connector.
@@ -819,7 +817,6 @@ def when_graphql_query_issued_for_customers(shared_data):
             "domain_id": "datalake",
             "schema_name": "db",
             "table_name": customers_td.table_name,
-            "governance": "pre-approved",
             "columns": columns_for_schema,
             "gql_naming_convention": "snake",
         }

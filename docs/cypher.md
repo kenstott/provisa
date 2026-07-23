@@ -1,6 +1,6 @@
 # Cypher Query Support
 
-Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` module. (REQ-345, REQ-347) Queries are parsed by a custom recursive-descent parser (no external Cypher library) (REQ-571), schema-resolved against the semantic layer (REQ-351), and emitted as SQLGlot expression trees in PostgreSQL dialect. (REQ-066, REQ-347) The router then transpiles to the target execution dialect (Trino) via SQLGlot. (REQ-066, REQ-067)
+Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` module. (REQ-345, REQ-347) Queries are parsed by a custom recursive-descent parser (no external Cypher library) (REQ-571), schema-resolved against the semantic layer (REQ-351), and emitted as SQL, then routed to the target execution engine. (REQ-066, REQ-067, REQ-347)
 
 ## Implemented Features
 
@@ -183,7 +183,7 @@ Rules:
 - Every write is gated on the target table's `writable_by` ACL; a role without write rights is rejected at compile time. (REQ-663)
 - The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time. (REQ-664)
 - Relationships cannot be written — they are derived from foreign-key joins, not stored edges. Targeting a relationship is a hard error. (REQ-665)
-- Writes run through the full write pipeline: RLS injection, dialect transpilation, and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload). (REQ-798)
+- Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload). (REQ-798)
 - `MERGE`, `DETACH DELETE`, and `REMOVE` are unsupported and rejected at parse time. (REQ-671)
 
 ---

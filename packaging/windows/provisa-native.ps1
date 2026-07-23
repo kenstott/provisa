@@ -283,7 +283,7 @@ function Show-Help {
 }
 
 # When the startup-monitor GUI is driving the launch (PROVISA_STARTUP_UI=1) it owns the readiness
-# wait and opens the browser itself, so the CLI must NOT also open it — that would race and double-
+# wait and opens the browser itself, so the CLI must NOT also open it - that would race and double-
 # open. A plain CLI/shortcut start still opens the browser here.
 $MonitorDriven = [bool]$env:PROVISA_STARTUP_UI
 $command = if ($args.Count -gt 0) { $args[0] } else { 'help' }
