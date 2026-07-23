@@ -33982,3 +33982,401 @@
   related_reqs:
   - REQ-1177
   - REQ-1179
+- id: REQ-1181
+  status: complete
+  since: 2026-07
+  group: 9. Deployment & Release
+  category: Terraform Cloud Deployment
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    Terraform GCP provisioning automatically stages release artifacts (AppImage and provisa-core-images-amd64-<version>.zip)
+    from GitHub releases into the target GCS bucket before VM boot via a configurable null_resource.stage_artifacts,
+    gated by a stage_from_github bool (default true). Requires authenticated gh and gsutil on the operator machine.
+  use_case: >-
+    Cloud deployments need release artifacts available in GCS before the VM starts. Automating the download and upload
+    reduces manual operator steps and ensures artifact freshness for multi-region or repeated deployments.
+  code:
+  - terraform/gcp/main.tf
+  - terraform/gcp/variables.tf
+  since: 2026-07
+  target: 2026-Q3
+- id: REQ-1182
+  status: complete
+  since: 2026-07
+  group: 9. Deployment & Release
+  category: Identity Provider Configuration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Cloud deployments support automated identity-provider selection via an auth_provider Terraform variable
+    (none|firebase|basic|keycloak|oauth|oidc). The variable is exported to the Compute Engine node as PROVISA_IDP,
+    driving the server's env-based _auto_configure_idp logic. Firebase is a first-class option via firebase_project_id
+    and firebase_service_account_key variables.
+  scenario: |
+    Given a Terraform GCP deployment configured with auth_provider = "firebase"
+    When the Compute Engine instance starts and PROVISA_IDP="firebase" is set
+    Then the server automatically loads Firebase credentials from FIREBASE_PROJECT_ID and FIREBASE_SERVICE_ACCOUNT_KEY
+    And the server initializes the Firebase IdP without manual config changes
+  use_case: >-
+    Cloud deployments require identity providers to be configured at boot time. Environment-based auto-configuration
+    enables one-shot, reproducible deployments without post-launch manual setup or Terraform output re-entry.
+  code:
+  - terraform/gcp/variables.tf
+  - terraform/gcp/main.tf
+  - provisa/api/setup_router.py
+  since: 2026-07
+  target: 2026-Q3
+- id: REQ-1183
+  status: complete
+  since: 2026-07
+  group: 9. Deployment & Release
+  category: Linux Installation & Systemd Integration
+  priority: MUST
+  type: infrastructure
+  description: >-
+    The Linux first-launch installer persists all IdP-related environment variables (PROVISA_IDP, FIREBASE_PROJECT_ID,
+    FIREBASE_SERVICE_ACCOUNT_KEY, KEYCLOAK_*, OAUTH_*) into a systemd EnvironmentFile at ~/.provisa/provisa.env,
+    allowing the server running under systemd to resolve these variables for IdP auto-configuration without
+    re-entry from the first-launch process.
+  scenario: |
+    Given a non-interactive Linux cloud deployment with PROVISA_IDP and FIREBASE_* env vars set during first-launch
+    When the first-launch installer completes and persists variables to ~/.provisa/provisa.env
+    Then systemd starts the provisa service and the server resolves ${env:PROVISA_IDP} and ${env:FIREBASE_*} at runtime
+    And the IdP auto-configuration succeeds without manual re-entry after system reboot
+  use_case: >-
+    Cloud VMs running under systemd (not a user login shell) require environment variables to be persisted
+    to a file readable by the systemd unit. This decouples the first-launch process from the long-running server.
+  code:
+  - provisa/cli/linux_installer.py
+  - provisa/api/setup_router.py
+  since: 2026-07
+  target: 2026-Q3
+- id: REQ-1184
+  status: complete
+  since: 2026-07
+  group: 9. Deployment & Release
+  category: Linux Installation & Systemd Integration
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    Non-interactive (cloud) Linux deployments automatically enable and start the Provisa systemd service
+    via `systemctl enable --now` instead of only installing the unit file. This ensures the server is
+    running immediately after deployment without waiting for a manual start command or system reboot.
+  scenario: |
+    Given a non-interactive Linux cloud deployment (no user login shell)
+    When the installer completes
+    Then systemctl enable --now provisa is called automatically
+    And the server is running without manual intervention
+  use_case: >-
+    Cloud deployments are unattended and need the server running immediately. Automatic enable and start
+    reduces the gap between terraform apply and service readiness, eliminating the need for post-deployment
+    SSH commands.
+  code:
+  - provisa/cli/linux_installer.py
+  since: 2026-07
+  target: 2026-Q3
+- id: REQ-1185
+  status: in-progress
+  since: 2026-07
+  group: 6. Execution, Routing, Caching & Performance
+  category: Result Handling & Streaming
+  priority: MUST
+  type: structural
+  description: >-
+    Engine-agnostic query results implement a ResultStream Protocol (column_names, column_types, batches(), iter_rows(), rows);
+    two implementations separate fully-materialized QueryResult (bounded metadata/catalog paths) from lazy StreamingQueryResult
+    (row batches, once-consumed iterator, stateless for shared-pool SaaS deployment).
+  use_case: >-
+    SaaS shared-pool load management requires small stateless Provisa instances behind a load balancer.
+    In-process result materialization (fetchall) causes OOM on small pods when users request large result sets,
+    so every result-bearing surface must stream and never materialize unbounded user data.
+  code:
+  - provisa/executor/result.py
+  scenario: |
+    Given a QueryResult for bounded metadata (catalog, config, schema refresh)
+    When the caller iterates .rows
+    Then all rows are held in memory as a list[tuple] (fully materialized)
+    And successive calls to .rows return the same list without re-execution
+    Given a StreamingQueryResult for row-producing queries (user-facing engine output)
+    When the caller iterates .batches() or .iter_rows()
+    Then row batches are fetched lazily from a once-consumed iterator
+    And the result object never buffers the full set in Provisa memory
+    When .rows or .materialize() is called
+    Then all buffered rows are collected into memory explicitly with user awareness
+    When .rows or .materialize() is called a second time on the same StreamingQueryResult
+    Then RuntimeError is raised (no silent replay of exhausted iterator)
+  related_reqs:
+  - REQ-028
+  target: 2026-Q3
+- id: REQ-1186
+  status: complete
+  since: 2026-07
+  group: 6. Execution, Routing, Caching & Performance
+  category: Result Handling & Streaming
+  priority: MUST
+  type: behavioral
+  description: >-
+    pgwire ENGINE route streams the engine's result set lazily instead of materializing the full result
+    in Provisa memory. ProvisaSession.execute_sql governs on the event loop via govern_pgwire_plan coroutine,
+    then drains the engine's synchronous streaming terminal (execute_engine_sync) on the socketserver worker thread.
+  use_case: >-
+    Streaming prevents OOM on large result sets by deferring row materialization to the client's consumption rate.
+    SaaS deployments with resource-constrained pods require all user-facing query results to stream unbounded data.
+  code:
+  - provisa/pgwire/session.py
+  - provisa/executor/
+  tests:
+  - tests/integration/test_pgwire_integration.py
+  - tests/integration/test_preflight_streaming.py
+  - tests/e2e/test_preflight_streaming_e2e.py
+  related_reqs:
+  - REQ-028
+  - REQ-1176
+  - REQ-1185
+  scenario: |
+    Given a pgwire query on an ENGINE route
+    When the query is governed and execution begins
+    Then rows flow from the engine via DataRow messages without buffering the full result
+    And the result streams at the client's consumption rate via the socketserver worker thread
+    When the client closes the connection mid-result
+    Then the server terminates the engine cursor and cleans up without materializing remaining rows
+- id: REQ-1187
+  status: complete
+  since: 2026-07
+  group: 6. Execution, Routing, Caching & Performance
+  category: Result Handling & Streaming
+  priority: MUST
+  type: constraint
+  description: >-
+    ENGINE streaming branch calls require_governed_plan(plan) before the engine executes, ensuring a single
+    chokepoint where the plan is stamped with governed-provenance guarantee (same contract Flight's streaming sink honors).
+  use_case: >-
+    Governance audit trail requires every executed plan to carry a deterministic provenance stamp.
+    Single chokepoint enforcement prevents silent bypass of governance policy at the engine level.
+  code:
+  - provisa/executor/
+  tests:
+  - tests/integration/test_governance_integration.py
+  - tests/unit/test_governance.py
+  related_reqs:
+  - REQ-1176
+  - REQ-028
+  scenario: |
+    Given an ENGINE route query with a compiled plan
+    When the streaming executor is about to send rows to the engine
+    Then require_governed_plan(plan) is called and verifies the plan is governed
+    And execution proceeds only if the plan carries the provenance stamp
+    When the plan is missing the stamp
+    Then execution is blocked with a governance violation
+- id: REQ-1188
+  status: complete
+  since: 2026-07
+  group: 6. Execution, Routing, Caching & Performance
+  category: Result Handling & Streaming
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    execute_engine_sync and backend execute_sync implementations accept a session_hints keyword parameter
+    for per-plan Trino session properties, preventing silent loss of session-scoped directives (e.g., retry_policy=NONE
+    for non-replayable sources) on the synchronous execution path.
+  use_case: >-
+    Trino session properties control engine behavior per query (e.g., retry_policy for Kafka sources).
+    Without session_hints on the sync path, properties set at plan-governance time are silently dropped,
+    causing non-deterministic behavior between async and sync execution paths.
+  code:
+  - provisa/backends/
+  - provisa/executor/
+  related_reqs:
+  - REQ-1186
+  scenario: |
+    Given a Trino backend query with retry_policy=NONE in session properties
+    When execute_engine_sync is called with session_hints on the sync path
+    Then the Trino session properties are applied and not dropped
+    When a non-replayable source (Kafka) fails mid-execution
+    Then the engine respects retry_policy=NONE and does not retry
+    When execute_engine_sync is called without session_hints
+    Then session properties are ignored (native backends ignore them already)
+- id: REQ-1189
+  status: complete
+  since: 2026-07
+  group: 6. Execution, Routing, Caching & Performance
+  category: Result Handling & Streaming
+  priority: MUST
+  type: behavioral
+  description: >-
+    ProvisaQueryResult adapts a ResultStream (streaming or materialized) to the buenavista QueryResult ABC,
+    pulling row batches lazily. When the engine supplies no per-column types, exactly one batch is buffered
+    to infer wire types for RowDescription before DataRow transmission, never buffering the full result.
+  use_case: >-
+    pgwire RowDescription must precede DataRow and requires column type inference. Buffering only one batch
+    instead of the full result minimizes memory overhead while providing complete type information to the client.
+  code:
+  - provisa/pgwire/
+  - provisa/executor/result.py
+  tests:
+  - tests/integration/test_pgwire_integration.py
+  - tests/integration/test_preflight_streaming.py
+  - tests/e2e/test_preflight_streaming_e2e.py
+  related_reqs:
+  - REQ-1185
+  - REQ-1186
+  scenario: |
+    Given a pgwire query result from an ENGINE route without pre-supplied column types
+    When ProvisaQueryResult is created with the ResultStream
+    Then exactly one batch is buffered to infer column types
+    And RowDescription is sent to the client with inferred types
+    And remaining rows are streamed lazily on demand
+    When all result rows are consumed
+    Then the ResultStream is exhausted and buffered batch is released
+    When only partial results are consumed before client closes
+    Then remaining rows are never fetched from the engine
+- id: REQ-1190
+  status: complete
+  since: 2026-07
+  group: 6. Execution, Routing, Caching & Performance
+  category: Result Handling & Streaming
+  priority: MUST
+  type: constraint
+  description: >-
+    DIRECT routes (catalog, schema metadata, govdata, admin endpoints) and all non-ENGINE transports
+    remain async-native and materialize results via _execute_plan on the event loop (unchanged behavior).
+  use_case: >-
+    Metadata and governance queries are bounded (small result sets) and benefit from in-memory caching.
+    Only user-facing ENGINE queries require streaming to prevent OOM on unbounded result sets.
+  code:
+  - provisa/executor/
+  - provisa/graphql/
+  tests:
+  - tests/integration/test_catalog_integration.py
+  - tests/integration/test_governance_integration.py
+  - provisa-ui/e2e/governance-core.spec.ts
+  related_reqs:
+  - REQ-1185
+  - REQ-1186
+  scenario: |
+    Given a DIRECT route query (catalog, config, schema refresh)
+    When execute_plan is called on the event loop
+    Then results are materialized in full via _execute_plan
+    And the QueryResult is returned with .rows containing all rows
+    When a subsequent call requests .rows
+    Then the same materialized list is returned without re-execution
+    Given an async GraphQL query for metadata
+    When the query executes on the event loop
+    Then materialization is accepted and results are cached in memory
+- id: REQ-1191
+  status: proposed
+  group: 7. Result Delivery
+  category: Large Result Redirect & CTAS
+  priority: SHOULD
+  type: behavioral
+  description: HTTP-addressable local materialization. Extend the existing local_dir file:// materialization
+    to an http:// addressable serve endpoint (e.g. /data/redirect-file/<name>) so locally-materialized
+    redirect results are downloadable over HTTP by a client, not only via desktop file:// paths.
+  use_case: HTTP-addressable local materialization generalizes the Trino "engine writes the file, client
+    receives only a URL" property to the embedded/no-object-store case, enabling web clients and remote
+    consumers to retrieve materialized results.
+  code:
+  - provisa/executor/redirect.py
+  target: 2026-Q3
+  e2e: true
+  e2e_reason: HTTP endpoint behavior and file serve correctness are only verifiable through a live server
+    and HTTP transport.
+- id: REQ-1192
+  status: proposed
+  group: 7. Result Delivery
+  category: Large Result Redirect & CTAS
+  priority: SHOULD
+  type: constraint
+  description: Per-username access scoping on served redirect files. Only the user who owns (created) a
+    materialized redirect file may retrieve it. Authorization is derived from the requesting identity/bearer
+    token per request, consistent with Provisa's stateless, token-derived governance.
+  use_case: Per-username access scoping ensures users cannot retrieve redirect results materialized by
+    other users, maintaining data isolation and governance.
+  target: 2026-Q3
+  scenario: |
+    Given a redirect file materialized by user A
+    When user B requests the file via HTTP with their bearer token
+    Then the request is rejected with 403 Forbidden
+- id: REQ-1193
+  status: proposed
+  group: 7. Result Delivery
+  category: Large Result Redirect & CTAS
+  priority: SHOULD
+  type: behavioral
+  description: Age-based reaping of local redirect files. Locally-materialized files are reaped after
+    they exceed a maximum age (TTL). The S3 path already has cleanup scheduling; the local path needs
+    an equivalent TTL reaper for long-running instances.
+  use_case: TTL-based reaping prevents indefinite disk usage accumulation from materialized redirect
+    files on long-running embedded or on-premise deployments.
+  code:
+  - provisa/executor/redirect.py
+  target: 2026-Q3
+  scenario: |
+    Given a locally-materialized redirect file created at time T
+    When a cleanup job runs and current time exceeds T + TTL
+    Then the file is deleted from disk
+- id: REQ-1194
+  status: proposed
+  group: 7. Result Delivery
+  category: Large Result Redirect & CTAS
+  priority: SHOULD
+  type: structural
+  description: Extend engine-native ctas_redirect beyond Trino to all object-store-capable engines. Databricks
+    uses INSERT OVERWRITE DIRECTORY / CTAS to external volume; Snowflake uses COPY INTO <stage> FROM
+    (query); ClickHouse uses INSERT INTO FUNCTION s3(...) SELECT ...; DuckDB uses COPY (query) TO 's3://...'
+    via httpfs. Each engine implements its native result-to-object-store write and returns only the
+    resulting URI; Provisa stays out of the data path.
+  use_case: Engine-native CTAS to object stores removes Provisa from the materialization data path,
+    enabling large result handling to scale with engine resources and object-store throughput rather
+    than Provisa memory/bandwidth.
+  code:
+  - provisa/federation/backend.py
+  target: 2026-Q3
+  scenario: |
+    Given a large result query against Snowflake, Databricks, ClickHouse, or DuckDB
+    When ctas_redirect is available and object store is configured
+    Then the engine writes results directly to the object store and returns only the URI
+- id: REQ-1195
+  status: proposed
+  group: 7. Result Delivery
+  category: Large Result Redirect & CTAS
+  priority: SHOULD
+  type: constraint
+  description: Sink-tier selection rule. ctas_redirect targets the engine's native object-store sink
+    when a reachable object store is configured (PROVISA_REDIRECT_ENDPOINT + credentials); otherwise
+    it falls back to Provisa's local_dir + HTTP-serve (REQ-1191). For DuckDB, this fallback is a deployment
+    gap (no guaranteed bucket), not a capability gap — configuring an object store promotes it to the
+    native path. PostgreSQL core COPY cannot target object storage (extension required), so PG stays
+    on the local/host-file tier absent an extension.
+  use_case: Sink-tier selection ensures redirect results use the highest-fidelity, most scalable path
+    available given the engine and deployment configuration.
+  target: 2026-Q3
+  scenario: |
+    Given PROVISA_REDIRECT_ENDPOINT is configured
+    When a large result redirect is needed
+    Then the engine-native CTAS to object store is used if available
+    Given PROVISA_REDIRECT_ENDPOINT is NOT configured
+    When a large result redirect is needed
+    Then the local_dir + HTTP-serve fallback is used
+- id: REQ-1196
+  status: accepted
+  group: 7. Result Delivery
+  category: Large Result Redirect & CTAS
+  priority: SHOULD
+  type: constraint
+  description: Design decision — no Provisa-side byte-metering (Arrow buffer counting) and no compile-time
+    cartesian product-budget control. Once materialization is engine-native, a cartesian/large-result
+    blowup is bounded by the engine's own resource governors, the existing wall-time timeout, and
+    engine-native CTAS, with Provisa never in the data path. The embedded in-process engine is desktop-dev
+    / single-tenant only, so its lack of isolation is acceptable. The existing default row cap (100
+    rows unless full_results capability) remains the primary cheap safeguard against accidental full
+    pulls.
+  use_case: Deferring cartesian blowup control to engine-side governors (memory, CPU, concurrency limits)
+    and timeouts keeps the Provisa result path stateless and avoids redundant metering. The default row
+    cap provides sufficient protection for typical usage patterns.
+  since: 2026-07
+  scenario: |
+    Given a cartesian product that would produce 1M rows
+    When executed against an engine with memory/timeout governors
+    Then the engine terminates the query and Provisa never materializes the full result

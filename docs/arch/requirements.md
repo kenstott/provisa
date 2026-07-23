@@ -9530,7 +9530,7 @@ probe_type is the event loop's input-side change-detection axis, orthogonal to t
 
 **Code:** `provisa/core/change_signal.py`, `provisa/core/models.py`, `provisa/events/injector.py`, `provisa/events/boot.py`, `provisa/events/app_wiring.py`, `provisa/events/probes.py`, `provisa/events/handlers.py`, `provisa/federation/residency.py`, `provisa/federation/store_writer.py`, `provisa/federation/freshness_gate.py`
 
-**Tests:** `tests/unit/test_probes.py`, `tests/unit/test_injector.py`, `tests/unit/test_probe_type_config_validation.py`, `tests/unit/test_live_change_gates.py`
+**Tests:** `tests/unit/test_probes.py`, `tests/unit/test_injector.py`, `tests/unit/test_probe_type_config_validation.py`, `tests/unit/test_live_change_gates.py`, `tests/mvmvp/test_mv_triggers_e2e.py`
 
 ### REQ-983 · Derived / MV Processor {#REQ-983}
 
@@ -11681,3 +11681,127 @@ GenericPgFdwConnector (provisa/federation/custom_connectors.py) emits a bare `CR
 **Code:** `provisa/federation/custom_connectors.py`
 
 **Tests:** `tests/unit/test_custom_connectors.py`
+
+## 9. Deployment & Release
+
+### REQ-1181 · Terraform Cloud Deployment {#REQ-1181}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+
+Terraform GCP provisioning automatically stages release artifacts (AppImage and provisa-core-images-amd64-<version>.zip) from GitHub releases into the target GCS bucket before VM boot via a configurable null_resource.stage_artifacts, gated by a stage_from_github bool (default true). Requires authenticated gh and gsutil on the operator machine.
+
+**Use case:** Cloud deployments need release artifacts available in GCS before the VM starts. Automating the download and upload reduces manual operator steps and ensures artifact freshness for multi-region or repeated deployments.
+
+**Code:** `terraform/gcp/main.tf`, `terraform/gcp/variables.tf`
+
+**Tests:** —
+
+### REQ-1182 · Identity Provider Configuration {#REQ-1182}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Cloud deployments support automated identity-provider selection via an auth_provider Terraform variable (none|firebase|basic|keycloak|oauth|oidc). The variable is exported to the Compute Engine node as PROVISA_IDP, driving the server's env-based _auto_configure_idp logic. Firebase is a first-class option via firebase_project_id and firebase_service_account_key variables.
+
+**Use case:** Cloud deployments require identity providers to be configured at boot time. Environment-based auto-configuration enables one-shot, reproducible deployments without post-launch manual setup or Terraform output re-entry.
+
+**Code:** `terraform/gcp/variables.tf`, `terraform/gcp/main.tf`, `provisa/api/setup_router.py`
+
+**Tests:** —
+
+### REQ-1183 · Linux Installation & Systemd Integration {#REQ-1183}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+The Linux first-launch installer persists all IdP-related environment variables (PROVISA_IDP, FIREBASE_PROJECT_ID, FIREBASE_SERVICE_ACCOUNT_KEY, KEYCLOAK_*, OAUTH_*) into a systemd EnvironmentFile at ~/.provisa/provisa.env, allowing the server running under systemd to resolve these variables for IdP auto-configuration without re-entry from the first-launch process.
+
+**Use case:** Cloud VMs running under systemd (not a user login shell) require environment variables to be persisted to a file readable by the systemd unit. This decouples the first-launch process from the long-running server.
+
+**Code:** `provisa/cli/linux_installer.py`, `provisa/api/setup_router.py`
+
+**Tests:** —
+
+### REQ-1184 · Linux Installation & Systemd Integration {#REQ-1184}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+
+Non-interactive (cloud) Linux deployments automatically enable and start the Provisa systemd service via `systemctl enable --now` instead of only installing the unit file. This ensures the server is running immediately after deployment without waiting for a manual start command or system reboot.
+
+**Use case:** Cloud deployments are unattended and need the server running immediately. Automatic enable and start reduces the gap between terraform apply and service readiness, eliminating the need for post-deployment SSH commands.
+
+**Code:** `provisa/cli/linux_installer.py`
+
+**Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1185 · Result Handling & Streaming {#REQ-1185}
+
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** structural
+
+Engine-agnostic query results implement a ResultStream Protocol (column_names, column_types, batches(), iter_rows(), rows); two implementations separate fully-materialized QueryResult (bounded metadata/catalog paths) from lazy StreamingQueryResult (row batches, once-consumed iterator, stateless for shared-pool SaaS deployment).
+
+**Use case:** SaaS shared-pool load management requires small stateless Provisa instances behind a load balancer. In-process result materialization (fetchall) causes OOM on small pods when users request large result sets, so every result-bearing surface must stream and never materialize unbounded user data.
+
+**Code:** `provisa/executor/result.py`
+
+**Tests:** —
+
+### REQ-1186 · Result Handling & Streaming {#REQ-1186}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+pgwire ENGINE route streams the engine's result set lazily instead of materializing the full result in Provisa memory. ProvisaSession.execute_sql governs on the event loop via govern_pgwire_plan coroutine, then drains the engine's synchronous streaming terminal (execute_engine_sync) on the socketserver worker thread.
+
+**Use case:** Streaming prevents OOM on large result sets by deferring row materialization to the client's consumption rate. SaaS deployments with resource-constrained pods require all user-facing query results to stream unbounded data.
+
+**Code:** `provisa/pgwire/session.py`, `provisa/executor/`
+
+**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`
+
+### REQ-1187 · Result Handling & Streaming {#REQ-1187}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+ENGINE streaming branch calls require_governed_plan(plan) before the engine executes, ensuring a single chokepoint where the plan is stamped with governed-provenance guarantee (same contract Flight's streaming sink honors).
+
+**Use case:** Governance audit trail requires every executed plan to carry a deterministic provenance stamp. Single chokepoint enforcement prevents silent bypass of governance policy at the engine level.
+
+**Code:** `provisa/executor/`
+
+**Tests:** `tests/integration/test_governance_integration.py`, `tests/unit/test_governance.py`
+
+### REQ-1188 · Result Handling & Streaming {#REQ-1188}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+execute_engine_sync and backend execute_sync implementations accept a session_hints keyword parameter for per-plan Trino session properties, preventing silent loss of session-scoped directives (e.g., retry_policy=NONE for non-replayable sources) on the synchronous execution path.
+
+**Use case:** Trino session properties control engine behavior per query (e.g., retry_policy for Kafka sources). Without session_hints on the sync path, properties set at plan-governance time are silently dropped, causing non-deterministic behavior between async and sync execution paths.
+
+**Code:** `provisa/backends/`, `provisa/executor/`
+
+**Tests:** —
+
+### REQ-1189 · Result Handling & Streaming {#REQ-1189}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+ProvisaQueryResult adapts a ResultStream (streaming or materialized) to the buenavista QueryResult ABC, pulling row batches lazily. When the engine supplies no per-column types, exactly one batch is buffered to infer wire types for RowDescription before DataRow transmission, never buffering the full result.
+
+**Use case:** pgwire RowDescription must precede DataRow and requires column type inference. Buffering only one batch instead of the full result minimizes memory overhead while providing complete type information to the client.
+
+**Code:** `provisa/pgwire/`, `provisa/executor/result.py`
+
+**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`
+
+### REQ-1190 · Result Handling & Streaming {#REQ-1190}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+DIRECT routes (catalog, schema metadata, govdata, admin endpoints) and all non-ENGINE transports remain async-native and materialize results via _execute_plan on the event loop (unchanged behavior).
+
+**Use case:** Metadata and governance queries are bounded (small result sets) and benefit from in-memory caching. Only user-facing ENGINE queries require streaming to prevent OOM on unbounded result sets.
+
+**Code:** `provisa/executor/`, `provisa/graphql/`
+
+**Tests:** `tests/integration/test_catalog_integration.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/governance-core.spec.ts`
