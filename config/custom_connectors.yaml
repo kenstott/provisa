@@ -1,0 +1,52 @@
+# Config-driven custom source connectors for the native federation engines (REQ-1177).
+#
+# Declare a connector for a NEW source_type here and the native pg / duckdb engine gains reachability to
+# it — no code. Availability is verified at attach time against the engine's standard discovery catalog
+# (pg_available_extensions for Postgres, duckdb_extensions()/duckdb_functions() for DuckDB); a declared
+# extension that is not installable fails LOUD (never a silent skip).
+#
+# Ships EMPTY: the built-in connectors are the OOTB reach; anything here is operator-authored (or the
+# test fixture at tests/fixtures/custom_connectors.yaml, selected via PROVISA_CUSTOM_CONNECTORS). Every
+# template may reference {id} {host} {port} {database} {username} {password} {path} {schema_name}
+# {table_name} and any federation_hints key; DuckDB attach templates also get {alias}.
+#
+# ── Descriptor kinds ─────────────────────────────────────────────────────────
+# kind: pg_fdw  (Postgres, generic SQL/MED)
+#   extension       — the FDW name (CREATE EXTENSION / FOREIGN DATA WRAPPER)
+#   server_options  — CREATE SERVER OPTIONS(...) — key -> value template
+#   user_mapping    — CREATE USER MAPPING OPTIONS(...) — omit for a credential-less FDW
+#   supports_import — true → IMPORT FOREIGN SCHEMA; false → explicit CREATE FOREIGN TABLE + table_options
+#   remote_schema   — schema to IMPORT (default 'public'); table_options — per-table OPTIONS when no import
+# kind: duckdb_attach  (DuckDB, ATTACH-type)
+#   extension, probe_symbol, install_from_community, attach_template (may use {alias}), remote_schema
+# kind: duckdb_scan  (DuckDB, SCAN table-function)
+#   extension, probe_symbol, install_from_community, scan_template  (e.g. read_xlsx('{path}'))
+#
+# ── REQ-1177 conformance targets (each is a non-OOTB extension; used by the test suite) ──
+# connectors:
+#   - engine: postgres          # PG SQL/MED → mongo_fdw (reaches the mongo:7 already in the test stack)
+#     source_type: mongodb
+#     kind: pg_fdw
+#     extension: mongo_fdw
+#     mechanism: attach_r
+#     server_options: {address: "{host}", port: "{port}"}
+#     user_mapping:   {username: "{username}", password: "{password}"}
+#     supports_import: false
+#     table_options:  {database: "{database}", collection: "{table_name}"}
+#   - engine: duckdb            # DuckDB ATTACH → ducklake (local catalog + parquet)
+#     source_type: ducklake
+#     kind: duckdb_attach
+#     extension: ducklake
+#     install_from_community: false
+#     probe_symbol: ducklake_snapshots
+#     attach_template: "ATTACH 'ducklake:{path}' AS \"{alias}\" (DATA_PATH '{data_path}')"
+#     remote_schema: main
+#   - engine: duckdb            # DuckDB SCAN → excel/read_xlsx (local .xlsx)
+#     source_type: xlsx
+#     kind: duckdb_scan
+#     extension: excel
+#     install_from_community: false
+#     probe_symbol: read_xlsx
+#     scan_template: "read_xlsx('{path}')"
+
+connectors: []

@@ -461,6 +461,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         DuckDBSnowflakeConnector,
         DuckDBSqliteConnector,
     )
+    from provisa.federation.custom_connectors import load_custom_connectors
 
     return FederationEngine(
         "duckdb",
@@ -480,6 +481,8 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
             DuckDBAirportConnector(),
             DuckDBIcebergConnector(),  # core `iceberg` extension — iceberg_scan (REQ-899)
             DuckDBDeltaConnector(),  # core `delta` extension — delta_scan (REQ-899)
+            # REQ-1177: operator-declared custom ATTACH/SCAN extensions (config/custom_connectors.yaml).
+            *load_custom_connectors("duckdb"),
         ],
         native_store="duckdb",
         driver_class=DriverClass.PARTIAL,
@@ -553,6 +556,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         SqliteFdwConnector,
         TdsFdwConnector,
     )
+    from provisa.federation.custom_connectors import load_custom_connectors
     from provisa.federation.pg_backend import PgBackend
 
     return FederationEngine(
@@ -569,6 +573,8 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             MysqlFdwConnector(),  # mysql (needs a bundled client lib; probe-gated)
             TdsFdwConnector(),  # sqlserver via tds_fdw (bundled freetds; probe-gated)
             OracleFdwConnector(),  # oracle via oracle_fdw (operator-supplied Instant Client; probe-gated)
+            # REQ-1177: operator-declared custom FDWs (config/custom_connectors.yaml) — probe-gated last.
+            *load_custom_connectors("postgres"),
         ],
         native_store="postgres",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
