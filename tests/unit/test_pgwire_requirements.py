@@ -1034,13 +1034,14 @@ class TestReq614SqlOnly:
     """REQ-614: pgwire listener accepts only SQL; GraphQL and Cypher are not parsed."""
 
     def test_execute_pgwire_sql_is_sql_pipeline(self):
-        # REQ-614: The pipeline entry point is named for SQL
-        from provisa.pgwire._pipeline import execute_pgwire_sql
+        # REQ-614: The pipeline entry point is named for SQL and routes through governance.
+        # execute_pgwire_sql delegates the govern step to govern_pgwire_plan (the govern-then-
+        # stream split, REQ-028); governance still lives on the SQL pipeline entry points.
+        from provisa.pgwire._pipeline import execute_pgwire_sql, govern_pgwire_plan
         import inspect
 
-        source = inspect.getsource(execute_pgwire_sql)
-        # Must route through governance pipeline (govern_and_route)
-        assert "_govern_and_route" in source
+        assert "govern_pgwire_plan" in inspect.getsource(execute_pgwire_sql)
+        assert "_govern_and_route" in inspect.getsource(govern_pgwire_plan)
 
     def test_pipeline_does_not_import_graphql_resolvers(self):
         # REQ-614: No GraphQL execution in the pgwire pipeline module

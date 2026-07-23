@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Any
 from provisa.federation.backend import EngineBackend
 
 if TYPE_CHECKING:
-    from provisa.executor.result import QueryResult
+    from provisa.executor.result import QueryResult, ResultStream
 
 _log = logging.getLogger(__name__)
 
@@ -263,7 +263,17 @@ class NativeEngineBackend(EngineBackend):
     ) -> QueryResult:
         return await self._runtime_for(state).run(sql, params)
 
-    def execute_sync(self, state: Any, sql: str, params: list | None = None) -> QueryResult:
+    def execute_sync(
+        self,
+        state: Any,
+        sql: str,
+        params: list | None = None,
+        *,
+        session_hints: dict[str, str] | None = None,
+    ) -> ResultStream:
+        # A native runtime ignores session_hints exactly as its async ``execute`` does — the
+        # hints (FTE retry_policy etc.) are Trino session properties with no native analogue.
+        del session_hints
         return self._runtime_for(state).run_sync(sql, params)
 
     # -- engine-specific transports (Arrow) (REQ-986) --------------------------

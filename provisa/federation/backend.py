@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from provisa.executor.result import QueryResult
+    from provisa.executor.result import QueryResult, ResultStream
     from provisa.federation.engine import FederationEngine
 
 _log = logging.getLogger(__name__)
@@ -322,7 +322,14 @@ class EngineBackend:
             "(native-runtime execution binding is separate feature work)"
         )
 
-    def execute_sync(self, state: Any, sql: str, params: list | None = None) -> QueryResult:
+    def execute_sync(
+        self,
+        state: Any,
+        sql: str,
+        params: list | None = None,
+        *,
+        session_hints: dict[str, str] | None = None,
+    ) -> ResultStream:
         raise NotImplementedError(
             f"live ENGINE-terminal execution for engine {self.engine.name!r} is not wired"
         )
@@ -557,13 +564,22 @@ class TrinoBackend(EngineBackend):
             ),
         )
 
-    def execute_sync(self, state: Any, sql: str, params: list | None = None) -> QueryResult:
+    def execute_sync(
+        self,
+        state: Any,
+        sql: str,
+        params: list | None = None,
+        *,
+        session_hints: dict[str, str] | None = None,
+    ) -> QueryResult:
         from provisa.executor.trino import execute_trino
 
         conn = state.engine_conn
         if conn is None:
             raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        return execute_trino(cast("Any", conn), sql, params=params)
+        return execute_trino(
+            cast("Any", conn), sql, params=params, session_hints=session_hints
+        )
 
     # -- engine-specific transports (Arrow via Zaychik Flight SQL proxy) --------
 

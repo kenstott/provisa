@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pyarrow as pa
 
-    from provisa.executor.result import QueryResult
+    from provisa.executor.result import QueryResult, ResultStream
     from provisa.federation.engine import FederationEngine
     from provisa.transpiler.router import RouteDecision
 
@@ -125,11 +125,21 @@ class EngineRuntime:  # REQ-825, REQ-840
             extra_table_attrs=extra_table_attrs,
         )
 
-    def execute_engine_sync(self, sql: str, params: list | None = None) -> QueryResult:
+    def execute_engine_sync(
+        self,
+        sql: str,
+        params: list | None = None,
+        *,
+        session_hints: dict[str, str] | None = None,
+    ) -> ResultStream:
         """SYNCHRONOUS ENGINE terminal — for callers already on a worker thread (Arrow
-        Flight, API-response materialization, OTEL compaction) that must not touch the
-        event loop."""
-        return self._backend.execute_sync(self._state, sql, params)
+        Flight, pgwire socketserver, API-response materialization, OTEL compaction) that must
+        not touch the event loop. Returns a :class:`ResultStream`: the DuckDB engine streams
+        lazily (batched cursor), Trino materializes; consumers that call ``.rows`` buffer
+        explicitly. ``session_hints`` carries per-plan session properties (e.g. the FTE
+        ``retry_policy`` for non-replayable sources); Trino injects them, native engines ignore
+        them exactly as their async ``execute`` does."""
+        return self._backend.execute_sync(self._state, sql, params, session_hints=session_hints)
 
     @contextmanager
     def isolated_sync(self):

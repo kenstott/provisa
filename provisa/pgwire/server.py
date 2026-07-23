@@ -44,7 +44,7 @@ from buenavista.postgres import (
     ServerResponse,
 )
 
-from provisa.executor.result import QueryResult as EngineResult
+from provisa.executor.result import ResultStream
 
 log = logging.getLogger(__name__)
 
@@ -191,21 +191,34 @@ def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
     return BVType.TEXT
 
 
-class ProvisaQueryResult(BVQueryResult):  # REQ-529
-    """Adapts EngineResult (or DuckDB catalog result) to the buenavista QueryResult ABC."""
+class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
+    """Adapts a :class:`ResultStream` (streaming ENGINE terminal, materialized DIRECT/admin
+    result, or DuckDB catalog result) to the buenavista QueryResult ABC.
 
-    def __init__(self, engine_result: EngineResult, original_sql: str = ""):
+    Rows are pulled lazily: a streaming result's batches are drained only as buenavista emits
+    DataRow messages, so a large user result set never fully materializes. The wire protocol
+    needs column types up front (RowDescription precedes DataRow); when the engine supplies no
+    per-column types, exactly ONE batch is buffered to infer them — a bounded peek, not the
+    whole result."""
+
+    def __init__(self, engine_result: ResultStream, original_sql: str = ""):
         super().__init__()
-        self._rows = engine_result.rows
         self._cols = engine_result.column_names
         self._status = _tag_from_sql(original_sql)
-        if engine_result.column_types:
+        self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
+        self._head: list | None = None
+        ctypes = engine_result.column_types
+        # A None entry (or absent types) means the type must be inferred from data, which
+        # requires the first batch on hand before RowDescription is sent.
+        if not ctypes or any(t is None for t in ctypes):
+            self._head = next(self._batch_iter, [])
+        if ctypes:
             self._types = [
-                _duckdb_type_to_bvtype(t) if t else _infer_bvtype(self._rows, i)
-                for i, t in enumerate(engine_result.column_types)
+                _duckdb_type_to_bvtype(t) if t else _infer_bvtype(self._head or [], i)
+                for i, t in enumerate(ctypes)
             ]
         else:
-            self._types = [_infer_bvtype(self._rows, i) for i in range(len(self._cols))]
+            self._types = [_infer_bvtype(self._head or [], i) for i in range(len(self._cols))]
 
     def has_results(self) -> bool:
         return len(self._cols) > 0
@@ -217,7 +230,10 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529
         return (self._cols[index], self._types[index])
 
     def rows(self) -> Iterator[list]:
-        return iter(self._rows)  # type: ignore[return-value]
+        if self._head is not None:
+            yield from self._head
+        for batch in self._batch_iter:
+            yield from batch
 
     def status(self) -> str:
         return self._status or "OK"
@@ -266,13 +282,51 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         if loop is None:
             raise RuntimeError("Event loop not available")
 
-        from provisa.pgwire._pipeline import execute_pgwire_sql
+        from provisa.pgwire._pipeline import (
+            _execute_plan,
+            _Plan,
+            govern_pgwire_plan,
+            require_governed_plan,
+        )
+
+        # Govern on the event loop, then — for the ENGINE route — drain the engine's SYNC
+        # streaming terminal HERE on the socketserver worker thread (REQ-028). Mirrors Flight
+        # SQL's govern-then-stream split: the private engine cursor is created and drained on
+        # this one thread, and rows flow lazily as buenavista emits DataRow (never buffered on
+        # the loop). DIRECT/admin/govdata routes are async-native and materialize via the loop.
+        try:
+            governed = asyncio.run_coroutine_threadsafe(
+                govern_pgwire_plan(stripped, self.role_id), loop
+            ).result(timeout=120)
+        except PermissionError as exc:
+            raise PermissionError(str(exc)) from exc
+        except Exception as exc:
+            log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
+            raise RuntimeError(str(exc)) from exc
+
+        from provisa.transpiler.router import Route
 
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                execute_pgwire_sql(stripped, self.role_id), loop
-            )
-            result = future.result(timeout=120)
+            if isinstance(governed, _Plan) and governed.route == Route.ENGINE:
+                from provisa.api.app import state
+
+                # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
+                # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
+                # executes — the single-chokepoint guarantee is not satisfied by _execute_plan alone.
+                require_governed_plan(governed)
+                if governed.physical_sql is None:
+                    raise RuntimeError("ENGINE plan missing physical_sql")
+                result = state.federation_engine.execute_engine_sync(
+                    governed.physical_sql,
+                    governed.exec_params,
+                    session_hints=governed.session_hints,
+                )
+            elif isinstance(governed, _Plan):
+                result = asyncio.run_coroutine_threadsafe(
+                    _execute_plan(governed), loop
+                ).result(timeout=120)
+            else:
+                result = governed  # registered-function call: bounded, already materialized
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
         except Exception as exc:

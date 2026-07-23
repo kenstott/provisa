@@ -22,6 +22,7 @@ import decimal
 import pytest
 
 from provisa.executor.result import QueryResult as EngineResult
+from provisa.executor.result import StreamingQueryResult
 from provisa.pgwire.server import ProvisaQueryResult, _infer_bvtype, _tag_from_sql
 from buenavista.core import BVType
 
@@ -152,6 +153,39 @@ class TestProvisaQueryResult:
         assert qr.status() == "OK"
 
 
+class TestProvisaQueryResultStreaming:
+    """REQ-028: the ENGINE route wraps a lazy StreamingQueryResult and drains it on demand."""
+
+    def _stream(self, batches, cols, column_types=None):
+        return StreamingQueryResult(iter(batches), column_names=cols, column_types=column_types)
+
+    def test_rows_flatten_across_batches(self):
+        stream = self._stream([[(1, "a"), (2, "b")], [(3, "c")]], ["id", "name"])
+        qr = ProvisaQueryResult(stream, "SELECT 1")
+        assert list(qr.rows()) == [(1, "a"), (2, "b"), (3, "c")]
+
+    def test_type_inference_buffers_only_first_batch(self):
+        # No column_types → ONE batch is buffered to infer types up front, not the whole result.
+        stream = self._stream([[(1,)], [(2,)], [(3,)]], ["id"])
+        qr = ProvisaQueryResult(stream, "SELECT 1")
+        # Head buffered → first batch's row counted; the tail is untouched until rows() runs.
+        assert stream.stats.row_count == 1
+        assert not stream.stats.done
+        _, bvtype = qr.column(0)
+        assert bvtype == BVType.BIGINT
+        assert list(qr.rows()) == [(1,), (2,), (3,)]
+        assert stream.stats.row_count == 3 and stream.stats.done
+
+    def test_declared_types_skip_buffering(self):
+        # column_types present with no None → no head buffered; the stream stays fully lazy.
+        stream = self._stream([[(1,)], [(2,)]], ["id"], column_types=["BIGINT"])
+        qr = ProvisaQueryResult(stream, "SELECT 1")
+        assert stream.stats.row_count == 0  # nothing pulled at construction
+        _, bvtype = qr.column(0)
+        assert bvtype == BVType.BIGINT
+        assert list(qr.rows()) == [(1,), (2,)]
+
+
 class TestProvisaSessionCatalog:
     """Test that ProvisaSession routes catalog queries to catalog.answer."""
 
@@ -203,3 +237,115 @@ class TestProvisaSessionCatalog:
         sess = ProvisaSession()
         with pytest.raises(RuntimeError, match="Not authenticated"):
             sess.execute_sql("SELECT * FROM dogs")
+
+
+class TestProvisaSessionEngineStreaming:
+    """REQ-028: an ENGINE plan drains the engine's SYNC streaming terminal on the worker thread."""
+
+    def test_engine_route_streams_via_sync_terminal(self, monkeypatch):
+        import asyncio
+        import threading
+        from unittest.mock import MagicMock
+
+        from provisa.pgwire import _pipeline
+        from provisa.pgwire._pipeline import _Plan, _mint_stamp
+        from provisa.transpiler.router import Route
+        import provisa.pgwire.server as srv_mod
+        from provisa.pgwire.server import ProvisaSession
+
+        captured = {}
+
+        # A governed ENGINE plan (validly stamped so require_governed_plan passes).
+        plan = _Plan(
+            route=Route.ENGINE,
+            sql="select 1",
+            source_id="s",
+            dialect="postgres",
+            exec_params=[7],
+            physical_sql="SELECT 1",
+            session_hints={"retry_policy": "NONE"},
+            stamp=_mint_stamp(),
+        )
+
+        async def _govern(sql, role_id):
+            captured["governed"] = sql
+            return plan
+
+        monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)
+
+        def _execute_engine_sync(physical_sql, params, *, session_hints=None):
+            captured["physical_sql"] = physical_sql
+            captured["params"] = params
+            captured["session_hints"] = session_hints
+            return StreamingQueryResult(
+                iter([[(1,)], [(2,)]]), column_names=["n"], column_types=["BIGINT"]
+            )
+
+        state = MagicMock()
+        state.federation_engine.execute_engine_sync.side_effect = _execute_engine_sync
+        monkeypatch.setattr("provisa.api.app.state", state)
+
+        loop = asyncio.new_event_loop()
+        with srv_mod._loop_lock:
+            srv_mod._loop = loop
+        t = threading.Thread(target=loop.run_forever, daemon=True)
+        t.start()
+        try:
+            sess = ProvisaSession()
+            sess.role_id = "alice"
+            qr = sess.execute_sql("select n from t")
+            # session_hints (FTE retry_policy) reach the sync terminal — not silently dropped.
+            assert captured["session_hints"] == {"retry_policy": "NONE"}
+            assert captured["params"] == [7]
+            assert captured["physical_sql"] == "SELECT 1"
+            assert list(qr.rows()) == [(1,), (2,)]
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            t.join(timeout=2)
+            with srv_mod._loop_lock:
+                srv_mod._loop = None
+
+    def test_engine_route_rejects_ungoverned_plan(self, monkeypatch):
+        import asyncio
+        import threading
+        from unittest.mock import MagicMock
+
+        from provisa.pgwire import _pipeline
+        from provisa.pgwire._pipeline import _Plan
+        from provisa.transpiler.router import Route
+        import provisa.pgwire.server as srv_mod
+        from provisa.pgwire.server import ProvisaSession
+
+        # No stamp → the single-chokepoint guard must refuse before the engine runs.
+        plan = _Plan(
+            route=Route.ENGINE,
+            sql="select 1",
+            source_id="s",
+            dialect="postgres",
+            physical_sql="SELECT 1",
+            stamp=None,
+        )
+
+        async def _govern(sql, role_id):
+            return plan
+
+        monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)
+        state = MagicMock()
+        monkeypatch.setattr("provisa.api.app.state", state)
+
+        loop = asyncio.new_event_loop()
+        with srv_mod._loop_lock:
+            srv_mod._loop = loop
+        t = threading.Thread(target=loop.run_forever, daemon=True)
+        t.start()
+        try:
+            sess = ProvisaSession()
+            sess.role_id = "alice"
+            with pytest.raises(PermissionError):
+                sess.execute_sql("select n from t")
+            state.federation_engine.execute_engine_sync.assert_not_called()
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            t.join(timeout=2)
+            with srv_mod._loop_lock:
+                srv_mod._loop = None

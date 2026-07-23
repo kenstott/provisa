@@ -167,9 +167,11 @@ class TestWireParamBinding:
             captured["sql"] = sql
             from provisa.executor.result import QueryResult
 
+            # A materialized QueryResult short-circuits the ENGINE streaming branch (treated as a
+            # bounded, already-executed result), so execute_sql wraps it directly.
             return QueryResult(rows=[(99,)], column_names=["val"])
 
-        monkeypatch.setattr("provisa.pgwire._pipeline.execute_pgwire_sql", _mock_pipeline)
+        monkeypatch.setattr("provisa.pgwire._pipeline.govern_pgwire_plan", _mock_pipeline)
 
         from provisa.pgwire.server import ProvisaSession
         import asyncio

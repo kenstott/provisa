@@ -758,13 +758,18 @@ async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
     return await _govern_and_route(sql, role_id)
 
 
-async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266, REQ-267, REQ-272
-    """Run *sql* through governance and return rows + column names.
+async def govern_pgwire_plan(sql: str, role_id: str) -> _Plan | QueryResult:  # REQ-028, REQ-266
+    """Govern a pgwire statement to its last-mile plan WITHOUT executing the ENGINE terminal.
+
+    The pgwire socketserver worker thread drains the engine's SYNC streaming terminal itself —
+    the same govern-then-stream split Flight SQL uses (:func:`govern_batch_final_plan`), so a
+    large user result set never materializes on the event loop. Returns a fully materialized
+    :class:`QueryResult` only when the statement is a registered-function call (bounded command
+    output executed through the shared function hook), otherwise the governed ENGINE/DIRECT plan.
 
     Raises:
         PermissionError  – role not found or access violation
         ValueError       – SQL parse / validation error
-        RuntimeError     – routing / execution error
     """
     # REQ-892: rewrite enabled extension-surface operators/functions (pgvector distance,
     # JSON ->/->>/#>/#>>, compat fns) to federation-engine equivalents, rejecting any
@@ -783,5 +788,22 @@ async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266,
     if fn_result is not None:
         return fn_result
 
-    plan = await _govern_and_route(sql, role_id)
-    return await _execute_plan(plan)
+    return await _govern_and_route(sql, role_id)
+
+
+async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266, REQ-267, REQ-272
+    """Run *sql* through governance and return a fully materialized result.
+
+    The govern-then-materialize path used by non-streaming pgwire callers (and the DIRECT/admin
+    routes, which are async-native and buffer). The streaming ENGINE path splits this via
+    :func:`govern_pgwire_plan` + the sync engine terminal instead.
+
+    Raises:
+        PermissionError  – role not found or access violation
+        ValueError       – SQL parse / validation error
+        RuntimeError     – routing / execution error
+    """
+    res = await govern_pgwire_plan(sql, role_id)
+    if isinstance(res, _Plan):
+        return await _execute_plan(res)
+    return res
