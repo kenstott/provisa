@@ -33751,7 +33751,8 @@
     - REQ-272
     - REQ-825
 - id: REQ-1177
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: "4. Source Connectors"
   category: Connector Configuration
   priority: SHOULD
@@ -33801,18 +33802,31 @@
     (3) DuckDB SCAN → excel / read_xlsx (duckdb/duckdb-excel). Self-contained: CREATE VIEW v AS SELECT *
     FROM read_xlsx('f.xlsx', sheet='Q1', header=true) over a local .xlsx, no server. Exercises a scan
     table-function with NAMED ARGS (sheet/range/header), distinct from our stock read_csv_auto/read_parquet.
+  scenario: |-
+    Given an operator declares a custom source connector in config/custom_connectors.yaml with no code change
+    When the descriptor is a duckdb_attach for a new source_type over a real ducklake catalog
+    Then the DuckDB engine reaches that source_type and the runtime attaches it and returns its rows
+    When the descriptor is a duckdb_scan for a new source_type over a real .xlsx via read_xlsx
+    Then the DuckDB engine reaches that source_type and the runtime scans it in place and returns its rows
+    When the descriptor is a generic pg_fdw for a new source_type
+    Then the Postgres engine reaches that source_type and its connector emits standard SQL/MED IMPORT FOREIGN SCHEMA DDL
+    And a descriptor naming an unknown kind fails loud at load rather than leaving the source_type silently unreachable
   use_case: >-
     BYO PG-federated or DuckDB-federated deployments with custom/proprietary extensions can extend
     reachability to new source types purely via config, without code changes or rebuilds. Extends
     REQ-898 config/pg_extension_catalog.yaml from a packaged-inventory model to an operator-authored
     connector descriptor.
   code:
+    - provisa/federation/custom_connectors.py
+    - provisa/federation/engine.py
     - provisa/federation/pg_runtime.py
     - provisa/federation/duckdb_runtime.py
-    - provisa/federation/connector_duckdb.py
-    - provisa/pg_extensions/catalog.py
-    - config/pg_extension_catalog.yaml
-  target: "2026-Q3"
+    - config/custom_connectors.yaml
+  tests:
+    - tests/unit/test_custom_connectors.py
+    - tests/integration/test_custom_connectors_e2e.py
+    - tests/integration/test_custom_connectors_pg_e2e.py
+    - tests/features/REQ-1177.feature
   related_reqs:
     - REQ-898
     - REQ-1158
@@ -33833,11 +33847,13 @@
     bridge), clickhouse_scan (CREATE TABLE ENGINE=… with ClickHouse inferring the schema, e.g. HDFS/URL).
     Availability is probed against ClickHouse's STANDARD discovery catalog (system.table_engines),
     failing loud when a declared engine is absent from the build.
-  scenario: >-
-    Given a ClickHouse federation engine, when an operator registers a SQLite source (OOTB) or declares a
-    clickhouse_database/table/scan connector for a new source_type in config/custom_connectors.yaml, then
-    the engine reaches that source live — mounting it via the ClickHouse integration engine and returning
-    federated rows — with no code change, and an absent engine fails loud at attach time.
+  scenario: |-
+    Given a ClickHouse federation engine
+    When an operator registers a SQLite source (OOTB, no config)
+    Then the engine reaches sqlite live and the runtime returns its federated rows
+    When an operator declares a clickhouse_database/table/scan connector for a new source_type in config/custom_connectors.yaml
+    Then the engine reaches that new source_type with no code change
+    And an absent ClickHouse integration engine fails loud at attach time
   use_case: >-
     ClickHouse's 50+ integration engines outreach today's OOTB types. Config-driven connector
     extensibility (parallel to REQ-1177) gives operators live federation to arbitrary databases without
@@ -33853,6 +33869,7 @@
     - tests/unit/test_clickhouse_connectors.py
     - tests/unit/test_custom_connectors.py
     - tests/integration/test_clickhouse_runtime_e2e.py
+    - tests/features/REQ-1178.feature
   related_reqs:
     - REQ-1177
     - REQ-909
