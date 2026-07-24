@@ -25,9 +25,12 @@ connector):
      ``provisa.federation.trino_connectors.TRINO_CONNECTORS``, builds the catalog ``.properties``
      via the above, and issues ``CREATE CATALOG ... USING sharepoint WITH (...)`` against the live
      Trino coordinator.
-  3. Querying ``<catalog>.<schema>`` (a SharePoint list) via ``trino.dbapi`` then reads live from
-     the SharePoint site through Trino's sharepoint plugin — no data is landed in Provisa's own
-     store.
+  3. The connector exposes a single data schema, ``sharepoint``; each live SharePoint list is a
+     TABLE under it (the calcite-sharepoint-list plugin: ``SharePointListSchema`` holds one
+     ``SharePointListTable`` per list, keyed by ``SharePointNameConverter.toSqlName(displayName)``
+     — lowercased, spaces/hyphens -> underscores). Querying ``<catalog>.sharepoint.<list>`` via
+     ``trino.dbapi`` then reads live from the SharePoint site through the plugin — no data is
+     landed in Provisa's own store.
 
 Why this is credential-gated, not docker-gated
 -------------------------------------------------
@@ -82,7 +85,12 @@ pytestmark.append(
     )
 )
 
-_LIST_NAME = os.environ.get("SHAREPOINT_TEST_LIST", "ProvisaWidgetsE2E")
+# The list the connector must expose as a table. Defaults to the built-in "Documents" library,
+# which exists on every SharePoint site (toSqlName("Documents") == "documents") — a stable,
+# always-present target that does not depend on operator-created test fixtures. Override with
+# SHAREPOINT_TEST_LIST to assert a specific operator-managed list.
+_LIST_NAME = os.environ.get("SHAREPOINT_TEST_LIST", "documents")
+_DATA_SCHEMA = "sharepoint"  # calcite-sharepoint-list: JsonCustomSchema(name=sharepoint)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -129,9 +137,10 @@ def test_sharepoint_catalog_created_and_lists_visible():
     or certificate-path/certificate-password/tenant-id) and issues CREATE CATALOG against the live
     Trino coordinator. This does NOT seed data into SharePoint — creating/populating a SharePoint
     list requires Graph/REST calls out of scope for this test; ``SHAREPOINT_TEST_LIST`` must name
-    an existing list on the target site. The read assertion is intentionally structural (the list
-    shows up as a Trino schema) rather than asserting specific row content, since list contents are
-    operator-managed on the live tenant, not test-owned.
+    an existing list on the target site (defaults to the built-in Documents library). The read
+    assertion is intentionally structural (the list shows up as a Trino TABLE under the
+    ``sharepoint`` schema — the connector's live list enumeration) rather than asserting specific
+    row content, since list contents are operator-managed on the live tenant, not test-owned.
     """
     pytest.importorskip("trino")
     from provisa.core.catalog import create_catalog
@@ -146,8 +155,14 @@ def test_sharepoint_catalog_created_and_lists_visible():
     if _HAVE_SECRET:
         mapping["auth_type"] = "CLIENT_CREDENTIALS"
     else:
-        mapping["auth_type"] = "CLIENT_CREDENTIALS"
-        mapping["certificate_path"] = os.environ["SHAREPOINT_CERT_PATH"]
+        # Certificate app-only auth. The connector runs INSIDE the Trino container, where compose
+        # mounts the pfx at a fixed path (docker-compose.core.yml: ./sharepoint.pfx:/certs/sharepoint.pfx);
+        # certificate-path must therefore be that in-container path, NOT the host path in
+        # SHAREPOINT_CERT_PATH (which only gates the skip — proving a real cert exists to be mounted).
+        # Matches the CERTIFICATE contract in trino/catalog-install/e2e_sharepoint.properties and the
+        # steps_sharepoint_connector BDD assertion.
+        mapping["auth_type"] = "CERTIFICATE"
+        mapping["certificate_path"] = "/certs/sharepoint.pfx"
         mapping["certificate_password"] = os.environ["SHAREPOINT_CERT_PASSWORD"]
 
     src = Source(
@@ -162,22 +177,26 @@ def test_sharepoint_catalog_created_and_lists_visible():
     try:
         create_catalog(conn, src, os.environ.get("SHAREPOINT_CLIENT_SECRET", ""))
 
-        # Querying SHOW SCHEMAS through Trino IS reading through the federation engine — Trino's
-        # sharepoint connector enumerates live SharePoint lists on the site; nothing is landed.
-        schemas: set = set()
+        # Querying SHOW TABLES through Trino IS reading through the federation engine — the
+        # sharepoint connector enumerates live SharePoint lists as TABLES under its single
+        # ``sharepoint`` schema (getAvailableLists -> Graph); nothing is landed. SHOW SCHEMAS
+        # would NOT prove auth: the schema names (sharepoint/metadata/information_schema/
+        # pg_catalog) are static and returned without any Graph call.
+        tables: set = set()
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             try:
-                cur.execute(f"SHOW SCHEMAS FROM {catalog}")
-                schemas = {r[0] for r in cur.fetchall()}
+                cur.execute(f"SHOW TABLES FROM {catalog}.{_DATA_SCHEMA}")
+                tables = {r[0] for r in cur.fetchall()}
             except trino.exceptions.TrinoExternalError:
-                schemas = set()  # catalog freshly created; connector may not be warm yet
-            if schemas:
+                tables = set()  # catalog freshly created; connector may not be warm yet
+            if tables:
                 break
             time.sleep(2)
 
-        assert _LIST_NAME.lower() in {s.lower() for s in schemas}, (
-            f"Expected list {_LIST_NAME!r} among SharePoint schemas, got {sorted(schemas)}"
+        assert _LIST_NAME.lower() in {t.lower() for t in tables}, (
+            f"Expected list {_LIST_NAME!r} among SharePoint lists (tables under "
+            f"{_DATA_SCHEMA!r}), got {sorted(tables)}"
         )
     finally:
         _drop(cur, catalog)

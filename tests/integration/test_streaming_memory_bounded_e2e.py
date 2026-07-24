@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
+import queue
 import sys
 import tempfile
 from typing import Any
@@ -41,6 +42,32 @@ pytest.importorskip("adbc_driver_postgresql")
 _ROWS = 5_000_000  # ~1 GiB once materialized as Python tuples (3 cols: bigint, bigint, char(40))
 _HEADROOM = 400 * 1024 * 1024  # AS cap = process baseline + this; one stream batch fits, 1 GiB does not
 _SQL = "SELECT id, amount, label FROM big ORDER BY id"
+
+# A busted RLIMIT_AS is signaled to the parent through the worker's EXIT CODE, never through the result
+# queue: mp.Queue.put lazily starts a feeder thread on first use, and once the cap is exhausted
+# _start_new_thread fails ("can't start new thread"), so the ('mem',) sentinel could never be delivered
+# via the queue — the parent would just time out on an empty queue. os._exit(code) is a raw syscall that
+# needs neither a thread nor an allocation, so it always gets the signal out (REQ-1220 control tests).
+_MEM_EXIT_CODE = 42
+
+
+def _is_cap_bust(exc: BaseException) -> bool:
+    """True if ``exc`` (or anything in its cause/context chain) is an RLIMIT_AS bust. The bust surfaces
+    in several shapes: a Python MemoryError; a libpq/driver "out of memory"; asyncpg raising
+    ConnectionDoesNotExistError with a MemoryError as its __cause__ when the fetch allocation dies
+    mid-operation; or "can't start new thread" once the exhausted address space denies any further
+    thread-stack allocation. All are the same cap bust the materializing controls are asserting."""
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, MemoryError):
+            return True
+        msg = str(cur).lower()
+        if "out of memory" in msg or "memory allocation" in msg or "can't start new thread" in msg:
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
 
 
 class _DirectPools:
@@ -112,8 +139,6 @@ def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool = True) -> None
     Linux-only) and a materializing read busts it; without ``cap`` every variant runs to completion and
     the reported peak RSS is the metric that proves streaming stays bounded (cross-platform, REQ-1220)."""
     try:
-        import os
-
         # pyarrow's default (jemalloc/mimalloc) pool and OpenBLAS reserve large VIRTUAL arenas up front
         # that would bust RLIMIT_AS regardless of whether the read streams. Force plain malloc + single
         # thread so the address-space cap tracks ACTUAL usage — otherwise the arrow path aborts on the
@@ -218,15 +243,17 @@ def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool = True) -> None
             raise ValueError(f"unknown variant {variant!r}")
 
         q.put(("ok", n, _peak_rss_bytes()))
-    except MemoryError:
-        q.put(("mem",))
-    except Exception as exc:  # surfaced to the parent for a precise assertion message
-        # libpq raises its own out-of-memory (a driver DatabaseError) when the AS cap denies the
-        # fetchall allocation, rather than a Python MemoryError — still a cap bust, not a bug.
-        if "out of memory" in str(exc).lower() or "memory allocation" in str(exc).lower():
-            q.put(("mem",))
-        else:
+    except BaseException as exc:
+        # A cap bust is signaled by the exit code, NOT the queue — see _MEM_EXIT_CODE. os._exit needs no
+        # thread/allocation, so it delivers the signal even from a fully address-space-exhausted process.
+        if _is_cap_bust(exc):
+            os._exit(_MEM_EXIT_CODE)
+        # Genuine unexpected error: try to surface a precise message. If even this put fails (feeder
+        # thread can't start), fall through to a non-zero exit so the parent reports the raw exitcode.
+        try:
             q.put(("err", repr(exc)))
+        except BaseException:
+            raise exc from None
 
 
 # RLIMIT_AS discriminates the cap only on Linux; macOS ignores it for the large arena maps pyarrow/libpq
@@ -268,7 +295,14 @@ def _run_variant(dsn: str, variant: str, cap: bool = True) -> tuple:
     if proc.is_alive():
         proc.terminate()
         pytest.fail(f"variant {variant!r} did not finish within 300s")
-    return q.get(timeout=10)
+    # A cap bust exits with _MEM_EXIT_CODE and puts nothing on the queue (the feeder thread can't start
+    # under the exhausted address space) — read the outcome from the exit code, not the queue.
+    if proc.exitcode == _MEM_EXIT_CODE:
+        return ("mem",)
+    try:
+        return q.get(timeout=10)
+    except queue.Empty:
+        pytest.fail(f"variant {variant!r} produced no result (worker exitcode={proc.exitcode})")
 
 
 # Peak-RSS ceiling for a streaming read of ~1 GiB of rows: a bounded scan holds a handful of fetch
