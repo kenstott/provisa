@@ -74,11 +74,22 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          {{- if .Values.tls.enabled }}
+          # REQ-1257: the image CMD serves plaintext uvicorn; override it to bind
+          # the mounted TLS cert so the API listens HTTPS on {{ .Values.provisa.port }}.
+          command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "{{ .Values.provisa.port }}", "--ssl-certfile", "/app/certs/tls.crt", "--ssl-keyfile", "/app/certs/tls.key"]
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.provisa.port }}
             - name: flight
               containerPort: {{ .Values.provisa.flightPort }}
+            {{- range $name, $p := .Values.provisa.protocols }}
+            {{- if $p.enabled }}
+            - name: {{ $name }}
+              containerPort: {{ $p.port }}
+            {{- end }}
+            {{- end }}
           env:
             - name: PG_HOST
               value: {{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else if .Values.pgbouncer.enabled }}{{ .Release.Name }}-pgbouncer{{ else }}{{ .Release.Name }}-postgresql{{ end }}
@@ -123,6 +134,36 @@ spec:
               value: "8480"
             - name: FLIGHT_PORT
               value: "{{ .Values.provisa.flightPort }}"
+            {{- if .Values.tls.enabled }}
+            # REQ-1257: the app's wire-protocol listeners (Flight/pgwire/bolt/MCP/gRPC)
+            # read this pair to start their sockets in TLS mode.
+            - name: PROVISA_TLS_CERT
+              value: "/app/certs/tls.crt"
+            - name: PROVISA_TLS_KEY
+              value: "/app/certs/tls.key"
+            - name: PROVISA_MCP_TLS
+              value: "1"
+            {{- end }}
+            # REQ-1258: opt-in wire protocols. Each enabled listener needs its port
+            # env so the app binds it; the matching Service port exposes it.
+            {{- if .Values.provisa.protocols.pgwire.enabled }}
+            - name: PROVISA_PGWIRE_PORT
+              value: "{{ .Values.provisa.protocols.pgwire.port }}"
+            {{- end }}
+            {{- if .Values.provisa.protocols.bolt.enabled }}
+            - name: PROVISA_BOLT_PORT
+              value: "{{ .Values.provisa.protocols.bolt.port }}"
+            {{- end }}
+            {{- if .Values.provisa.protocols.mcp.enabled }}
+            - name: PROVISA_MCP_PORT
+              value: "{{ .Values.provisa.protocols.mcp.port }}"
+            - name: PROVISA_MCP_HOST
+              value: "0.0.0.0"
+            {{- end }}
+            {{- if .Values.provisa.protocols.grpc.enabled }}
+            - name: GRPC_PORT
+              value: "{{ .Values.provisa.protocols.grpc.port }}"
+            {{- end }}
             {{- if .Values.zaychik.enabled }}
             - name: ZAYCHIK_HOST
               value: "{{ .Release.Name }}-zaychik"
@@ -170,21 +211,33 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /app/config
+            {{- if .Values.tls.enabled }}
+            - name: tls-certs
+              mountPath: /app/certs
+              readOnly: true
+            {{- end }}
           resources:
             {{- toYaml .Values.provisa.resources | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /health
               port: {{ .Values.provisa.port }}
+              scheme: {{ if .Values.tls.enabled }}HTTPS{{ else }}HTTP{{ end }}
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
               port: {{ .Values.provisa.port }}
+              scheme: {{ if .Values.tls.enabled }}HTTPS{{ else }}HTTP{{ end }}
             initialDelaySeconds: 15
             periodSeconds: 30
       volumes:
         - name: config
           configMap:
             name: {{ .Release.Name }}-config
+        {{- if .Values.tls.enabled }}
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+        {{- end }}

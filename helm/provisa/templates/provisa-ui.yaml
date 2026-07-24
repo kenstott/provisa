@@ -1,0 +1,103 @@
+{{- if .Values.provisa.ui.enabled }}
+# REQ-1256: served UI. Runs provisa.ui_server (SPA static server + API reverse
+# proxy) from the same provisa image. The browser reaches this through the ingress;
+# the proxy hop to the API tracks tls.enabled (a plaintext hop to a TLS API port
+# fails, so the scheme must match — see provisa/ui_server.py).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-provisa-ui
+  labels:
+    app: provisa-ui
+spec:
+  replicas: {{ .Values.provisa.ui.replicaCount }}
+  selector:
+    matchLabels:
+      app: provisa-ui
+  template:
+    metadata:
+      labels:
+        app: provisa-ui
+    spec:
+      serviceAccountName: {{ .Release.Name }}-provisa
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: provisa-ui
+          image: "{{ .Values.provisa.image.repository }}:{{ .Values.provisa.image.tag }}"
+          imagePullPolicy: {{ .Values.provisa.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          {{- if .Values.tls.enabled }}
+          # REQ-1257: serve the SPA/proxy over HTTPS using the mounted cert.
+          command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "{{ .Values.provisa.ui.port }}", "--ssl-certfile", "/app/certs/tls.crt", "--ssl-keyfile", "/app/certs/tls.key"]
+          {{- else }}
+          command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "{{ .Values.provisa.ui.port }}"]
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.provisa.ui.port }}
+          env:
+            # REQ-1256/REQ-1257: the reverse-proxy upstream. Scheme tracks tls.enabled —
+            # ui_server derives verify=off for the internal https hop (the cert can't
+            # match the Service DNS name).
+            - name: PROVISA_API_URL
+              value: "{{ if .Values.tls.enabled }}https{{ else }}http{{ end }}://{{ .Release.Name }}-provisa:{{ .Values.provisa.port }}"
+          volumeMounts:
+            {{- if .Values.tls.enabled }}
+            - name: tls-certs
+              mountPath: /app/certs
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.provisa.ui.resources | nindent 12 }}
+          # TCP probe: the UI's own /health is proxied to the API, so an HTTP probe
+          # would couple UI readiness to the API. A socket check verifies the SPA
+          # server itself is listening.
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.provisa.ui.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.provisa.ui.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      {{- if .Values.tls.enabled }}
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-provisa-ui
+spec:
+  selector:
+    app: provisa-ui
+  ports:
+    - name: http
+      port: {{ .Values.provisa.ui.port }}
+      targetPort: {{ .Values.provisa.ui.port }}
+      protocol: TCP
+  type: ClusterIP
+{{- end }}

@@ -11,6 +11,15 @@ spec:
       port: {{ .Values.provisa.port }}
       targetPort: {{ .Values.provisa.port }}
       protocol: TCP
+    # REQ-1258: expose every enabled wire protocol served by the API container.
+    {{- range $name, $p := .Values.provisa.protocols }}
+    {{- if $p.enabled }}
+    - name: {{ $name }}
+      port: {{ $p.port }}
+      targetPort: {{ $p.port }}
+      protocol: TCP
+    {{- end }}
+    {{- end }}
   type: ClusterIP
 ---
 # Arrow Flight service — type is configurable (LoadBalancer recommended for production).

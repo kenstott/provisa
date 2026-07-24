@@ -22,6 +22,18 @@ deployment:
   # Optional external materialization-store DSN.
   materializeUrl: ""
 
+# Operator TLS on every in-cluster endpoint (REQ-1227 / REQ-1257 parity with the
+# cloud-VM deploy). Supply the cert as a standard kubernetes.io/tls Secret holding
+# tls.crt and tls.key — issue it with cert-manager or your PKI. When enabled the
+# API and UI containers serve uvicorn over HTTPS and the app's wire-protocol
+# listeners (pgwire/bolt/mcp/grpc) start TLS. This is the pod-level listener cert;
+# the ingress may terminate its own edge TLS separately (ingress.tls). Unlike the
+# VM installer there is NO self-signed generation here — bring a Secret.
+tls:
+  enabled: false
+  # Existing Secret of type kubernetes.io/tls with keys tls.crt and tls.key.
+  secretName: provisa-tls
+
 provisa:
   replicaCount: 2
   image:
@@ -36,6 +48,39 @@ provisa:
     # NodePort    — accessible at any node IP on a fixed high port
     type: LoadBalancer
     nodePort: ""  # optional; leave blank to auto-assign when type=NodePort
+  # Wire-protocol listeners served by the API container (REQ-1258 parity with the
+  # cloud-VM deploy). Each enabled protocol is published as a port on the provisa
+  # Service. Ports match the app's default listeners. These are non-HTTP protocols
+  # (raw TCP / gRPC) — reach them in-cluster via the ClusterIP Service or expose a
+  # per-protocol LoadBalancer/NodePort out of band.
+  protocols:
+    pgwire:
+      enabled: true
+      port: 5439
+    bolt:
+      enabled: true
+      port: 7687
+    mcp:
+      enabled: true
+      port: 8009
+    grpc:
+      enabled: true
+      port: 50051
+  # Served UI (REQ-1256): a separate Deployment running provisa.ui_server — the SPA
+  # static server + API reverse proxy. The browser reaches it through the ingress;
+  # the proxy hop to the API uses http/https matching tls.enabled. Uses the provisa
+  # image (same wheel bundles the compiled UI).
+  ui:
+    enabled: true
+    replicaCount: 2
+    port: 3000
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
   resources:
     requests:
       cpu: 250m

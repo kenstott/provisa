@@ -12625,3 +12625,53 @@ During self-service org creation ([REQ-1249](#REQ-1249)), a Firebase user is off
 **Code:** `provisa/api/auth_router.py`, `provisa/api/admin/orgs_router.py`, `provisa/core/schema_admin.py`, `provisa/demo/`
 
 **Tests:** —
+
+## 8. Deployment & Infrastructure
+
+### REQ-1256 · Kubernetes Deployment {#REQ-1256}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+
+Helm chart must ship a served UI surface: a provisa-ui Deployment + Service exposing the SPA on port 3000 internally, reverse-proxying the API backend. PROVISA_API_URL is set to the in-cluster API service (https://{release}-provisa:8000 when TLS enabled), matching the fixed provisa/ui_server.py reverse-proxy hop.
+
+**Use case:** Enables Kubernetes deployments to serve the full Provisa UI stack (frontend SPA + backend federation engine) through a single release, maintaining parity with cloud-VM Terraform deployments.
+
+**Code:** `charts/provisa/templates/ui-deployment.yaml`, `charts/provisa/templates/ui-service.yaml`, `charts/provisa/templates/ui-configmap.yaml`, `charts/provisa/values.yaml`
+
+**Tests:** —
+
+### REQ-1257 · Kubernetes Deployment {#REQ-1257}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+
+Helm chart must support operator TLS on every endpoint ([REQ-1227](#REQ-1227) parity): PROVISA_TLS_CERT and PROVISA_TLS_KEY env vars, a TLS cert Secret mounted into provisa and provisa-ui containers, uvicorn --ssl-certfile/--ssl-keyfile flags, and /health probes using scheme: HTTPS when TLS enabled.
+
+**Use case:** Ensures Kubernetes deployments meet enterprise TLS requirements for all protocol endpoints, matching the Terraform cloud-VM deployment model where the operator can supply their own certificates or use cert-manager integration.
+
+**Code:** `charts/provisa/templates/provisa-deployment.yaml`, `charts/provisa/templates/ui-deployment.yaml`, `charts/provisa/templates/tls-secret.yaml`, `charts/provisa/values.yaml`
+
+**Tests:** —
+
+### REQ-1258 · Kubernetes Deployment {#REQ-1258}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+
+Helm provisa Service must expose all protocol endpoints served by the API container: pgwire (5439), Bolt (7687), MCP (8009), gRPC (50051), in addition to API (8000) and Arrow Flight (8815).
+
+**Use case:** Allows external clients to reach every Provisa protocol (SQL, graph, LLM, RPC) through the Kubernetes Service endpoint, matching the multi-protocol API design and enabling parity with cloud-VM deployments where all ports are exposed through the passthrough load balancer.
+
+**Code:** `charts/provisa/templates/provisa-service.yaml`, `charts/provisa/values.yaml`
+
+**Tests:** —
+
+### REQ-1259 · Kubernetes Deployment {#REQ-1259}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+
+Helm chart cert provisioning must be a values.yaml toggle: supply an existing TLS Secret name, or specify cert-manager issuer configuration to auto-provision certificates. Self-signed generation via openssl is NOT used — certificate source is Kubernetes-native (Secret or cert-manager).
+
+**Use case:** Provides enterprise-grade certificate management without requiring manual self-signed generation, enabling operators to integrate their PKI (cert-manager, external CA) directly into the Helm values configuration.
+
+**Code:** `charts/provisa/templates/tls-secret.yaml`, `charts/provisa/templates/certificate.yaml`, `charts/provisa/values.yaml`
+
+**Tests:** —

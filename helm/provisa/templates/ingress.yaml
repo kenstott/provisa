@@ -6,6 +6,11 @@ metadata:
   annotations:
     {{- if eq .Values.ingress.className "nginx" }}
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    {{- if .Values.tls.enabled }}
+    # REQ-1257: the backend (UI/API pod) terminates its own TLS, so the ingress must
+    # speak HTTPS to it rather than plaintext.
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    {{- end }}
     {{- end }}
 spec:
   {{- if .Values.ingress.className }}
@@ -25,7 +30,15 @@ spec:
             pathType: Prefix
             backend:
               service:
+                # REQ-1256: front the served UI when enabled (it reverse-proxies the
+                # API itself); otherwise expose the API directly.
+                {{- if .Values.provisa.ui.enabled }}
+                name: {{ .Release.Name }}-provisa-ui
+                port:
+                  number: {{ .Values.provisa.ui.port }}
+                {{- else }}
                 name: {{ .Release.Name }}-provisa
                 port:
                   number: {{ .Values.provisa.port }}
+                {{- end }}
 {{- end }}
