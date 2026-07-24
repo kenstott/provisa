@@ -15753,29 +15753,39 @@
   category: Commercial Positioning
   priority: MAY
   type: infrastructure
-  description: 'SaaS tier: hosted control plane with customer-hosted data plane option.'
-  use_case: SaaS tier with customer-hosted data plane lets organizations adopt managed control without
-    moving their data.
+  description: 'SaaS tier: two isolation lanes. (a) Pooled shared-Trino cluster for free/small orgs ("trino-level isolation"). (b) BYO (bring-your-own) federation engine for enterprise — customer points Provisa at their own Databricks/Snowflake cluster. Both lanes route through the same _govern_and_route/_execute_plan pipeline (REQ-1244). Org-scoped sessions are pinned to one engine per deployment (subdomain → org → engine → credentials).'
+  use_case: Two-lane model lets Provisa serve both self-service free/small orgs on shared Trino and enterprise customers on their own federation engines without code branches or dual pipelines.
   tests:
   - tests/unit/test_control_plane.py
   - tests/unit/test_process_requirements.py
+  - tests/integration/test_multi_org_routing.py
   since: 2026-01
-  scenario: 'Given an organization wants managed control plane services
+  related_reqs:
+  - REQ-1243
+  - REQ-1244
+  scenario: 'Given an organization in the free/small tier
 
-    When they subscribe to the SaaS tier
+    When they query via a Provisa SaaS subdomain
 
-    Then they can host their data plane locally while the control plane is managed externally
+    Then the query routes to the shared pooled Trino cluster at trino-level isolation
+
+    Given an enterprise customer who subscribed to BYO
+
+    When they point Provisa to their own Databricks instance
+
+    Then queries route through that customer''s federation engine instance
+
+    And the two lanes share the same _govern_and_route/_execute_plan pipeline
 
     '
   integration_test: deferred
-  integration_test_reason: SaaS tier with customer-hosted data plane requires real cloud infrastructure.
+  integration_test_reason: SaaS tier with customer BYO engine requires real cloud infrastructure and multi-customer deployments.
   stakeholders:
   - ops
   - executive
   competitive_position:
     status: parity
-    rationale: Hosted SaaS with customer-hosted data plane is standard in Hasura Cloud, Dremio Cloud,
-      and Starburst Galaxy.
+    rationale: Hosted SaaS with BYO/BYOC engine is standard in Hasura Cloud, Dremio Cloud, and Starburst Galaxy.
 - id: REQ-074
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -35037,9 +35047,9 @@
   priority: MUST
   type: infrastructure
   description: >-
-    HTTPS/TLS encryption (REQ-1226) applies to ALL protocol endpoints in a cluster deployment — not just the web API and UI, but also pgwire, Bolt, Arrow Flight, gRPC, and MCP endpoints. TLS terminates at each protocol server inside the container. The cluster's L4 load balancers pass TCP through without termination, allowing each protocol server to handle its own encryption. Self-signed certificates are auto-generated when none are supplied.
+    HTTPS/TLS encryption (REQ-1226) applies to ALL protocol endpoints in a cluster deployment — not just the web API and UI, but also pgwire, Bolt, Arrow Flight, gRPC, and MCP endpoints. TLS terminates at each protocol server inside the container. The cluster's L4 load balancers pass TCP through without termination, allowing each protocol server to handle its own encryption. Self-signed certificates are auto-generated when none are supplied. In production SaaS deployments, REQ-1239 supplies a real wildcard `*.provisa.dev` certificate via ACME DNS-01, written to PROVISA_TLS_CERT/PROVISA_TLS_KEY paths that all protocol servers read.
   use_case: >-
-    Encrypting all protocol endpoints (not just HTTP) ensures security across every client access path — database drivers (pgwire), graph traversal (Bolt), columnar streaming (Arrow Flight), service meshes (gRPC), and model context protocols (MCP) — without requiring separate external TLS termination per protocol.
+    Encrypting all protocol endpoints (not just HTTP) ensures security across every client access path — database drivers (pgwire), graph traversal (Bolt), columnar streaming (Arrow Flight), service meshes (gRPC), and model context protocols (MCP) — without requiring separate external TLS termination per protocol. Self-signed dev stand-in allows local testing; production uses a real trusted cert.
   since: "2026-07"
   scenario: |
     Given a cluster deployment with no TLS certificates supplied
@@ -35056,6 +35066,10 @@
     When the deployment starts
     Then all protocol servers use the supplied certificates
     And each endpoint is served over the operator's TLS credentials
+    Given a production SaaS deployment with ACME DNS-01 provisioned wildcard cert
+    When the deployment starts
+    Then the wildcard cert (*.provisa.dev) is read from PROVISA_TLS_CERT/PROVISA_TLS_KEY
+    And all protocol servers use the same wildcard cert across all subdomains
 - id: REQ-1229
   status: proposed
   group: "8. Deployment & Infrastructure"
@@ -35174,3 +35188,603 @@
     When the user needs to query org-beta's data
     Then they must use a separate credential scoped to org-beta
     And the TLS SNI hostname and HTTP Host header serve as ergonomic addressing only and cannot override the credential's org identity
+- id: REQ-1233
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Org Identity & Subdomain Addressing
+  priority: MUST
+  type: infrastructure
+  target: "2026-Q3"
+  description: >-
+    The subdomain `{org}.provisa.dev` is the org identity. `cloud.provisa.dev` is the org-agnostic entry point (login + org picker). Every data/control endpoint is addressed by the org subdomain: `bolt://{org}.provisa.dev`, `postgresql://…@{org}.provisa.dev`, the Arrow Flight Location, `grpc+tls://{org}.provisa.dev`, MCP, and `https://{org}.provisa.dev/data`.
+  use_case: >-
+    Subdomain-based org identity is ergonomic for multi-org SaaS and self-integrating with DNS/TLS (every subdomain is a distinct DNS name and TLS certificate request). It requires no protocol-specific multiplexing headers.
+  code:
+  - provisa/auth/middleware.py
+  - provisa/api/app.py
+  tests:
+  - tests/integration/test_subdomain_routing.py
+  scenario: |
+    Given a user of acme.provisa.dev
+    When they connect a pgwire client to postgresql://user@acme.provisa.dev:5439
+    Then the subdomain acme names the org
+    And queries execute within acme's data plane
+    Given a user switching orgs at cloud.provisa.dev
+    When they select org beta
+    Then they are redirected to beta.provisa.dev
+    And their session is org-scoped to beta
+- id: REQ-1234
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Org Identity & Subdomain Addressing
+  priority: MUST
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    The subdomain selector is delivered in two transports: (1) HTTP `Host` header for web/REST/GraphQL, (2) TLS SNI on wire protocols (pgwire, bolt, Arrow Flight, gRPC, MCP). One string, one job. Wire protocol servers currently do `wrap_socket(server_side=True)` with NO sni_callback; an sni_callback must stash the indicated host per-connection so downstream auth/routing can read it.
+  use_case: >-
+    SNI extraction on wire protocols allows the same org-routing logic to apply to pgwire/bolt/Arrow Flight connections without protocol-specific header mechanisms. All clients resolve the org name via DNS; TLS SNI carries it transparently.
+  code:
+  - provisa/pgwire/server.py:442
+  - provisa/bolt/server.py:213
+  - provisa/auth/middleware.py
+  tests:
+  - tests/integration/test_wire_sni_extraction.py
+  scenario: |
+    Given a pgwire client connecting to acme.provisa.dev on port 5439
+    When the TLS ClientHello arrives
+    Then the SNI extension contains "acme.provisa.dev"
+    And the sni_callback extracts it and stashes it per-connection
+    And downstream auth middleware reads it to identify the org
+    Given a Bolt client connecting to beta.provisa.dev:7687
+    Then the same SNI extraction applies
+- id: REQ-1235
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Org Identity & Subdomain Addressing
+  priority: MUST
+  type: constraint
+  target: "2026-Q3"
+  description: >-
+    The subdomain never authorizes — it only names the org. The authenticated credential must authorize that org: an org-scoped credential's `active_org_id` must EQUAL the subdomain org (reject on mismatch); a person-scoped (OIDC) identity must be a MEMBER of the subdomain org (check user_org_memberships) else reject. No default org, no fallback — an unnamed or unauthorized org is a rejection, never a guess.
+  use_case: >-
+    Subdomain naming + credential authorization prevents a credential intended for org-acme from accessing org-beta data. A person can hold memberships in multiple orgs but must use org-matched credentials or re-authenticate for each org.
+  code:
+  - provisa/auth/middleware.py:240-280
+  tests:
+  - tests/integration/test_auth_org_scoping.py
+  - tests/unit/test_auth_middleware.py
+  related_reqs:
+  - REQ-1232
+  scenario: |
+    Given a credential with active_org_id=acme
+    When a request arrives for acme.provisa.dev
+    Then the subdomain org matches the credential's org
+    And the request is authorized
+    When the same credential arrives at beta.provisa.dev
+    Then the subdomain org (beta) ≠ credential's org (acme)
+    And the request is rejected
+    Given a person-scoped OIDC identity with memberships in [acme, beta]
+    When the person lands on acme.provisa.dev
+    Then the auth middleware checks user_org_memberships for acme
+    And the check passes; acme-scoped session is minted
+    When the person later accesses beta.provisa.dev
+    Then a fresh membership check is required for beta
+    And a new org-scoped session is minted
+- id: REQ-1236
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Org Identity & Subdomain Addressing
+  priority: MUST
+  type: constraint
+  target: "2026-Q3"
+  description: >-
+    For wire protocols, the credential is org-scoped (per REQ-1232), so SNI is a cross-check: parse org from SNI, reject the connection if it ≠ the credential's active_org_id. Catches the error case of right-credential/wrong-subdomain.
+  use_case: >-
+    Wire SNI cross-check prevents typos or DNS hijack risks where a client connects to the wrong subdomain with a valid but mismatched credential. Catches human error early in TLS handshake.
+  code:
+  - provisa/pgwire/server.py
+  - provisa/bolt/server.py
+  - provisa/auth/middleware.py
+  tests:
+  - tests/integration/test_wire_sni_cross_check.py
+  scenario: |
+    Given a pgwire credential with active_org_id=acme
+    When the client connects via SNI beta.provisa.dev
+    Then the auth layer extracts SNI org (beta)
+    And compares it to the credential's org (acme)
+    And the mismatch is detected
+    Then the connection is rejected with a clear error
+- id: REQ-1237
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Org Identity & Subdomain Addressing
+  priority: MUST
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    OIDC/social identity is person-scoped; Provisa mints the org-scoped session. Google/OIDC providers (e.g., provisa/auth/providers/oauth.py:74-76, keycloak.py:68-70) return `AuthIdentity(user_id=sub, email=…)` with NO `active_org_id` — the IdP proves the person, never the org. After IdP auth completes, Provisa mints its OWN org-scoped session (sets `active_org_id`) gated by a membership check. The subdomain selects the org pre-auth, so no org-picker screen is needed: land on `acme.provisa.dev` → OIDC login → membership check on `acme` → acme-scoped session returned.
+  use_case: >-
+    Person-scoped IdP identity + Provisa-minted org-scoped session separates authentication (IdP: who am I?) from authorization (Provisa: which orgs can I access?). Enables subdomain-driven org selection without extra UI screens.
+  code:
+  - provisa/auth/providers/oauth.py:74-80
+  - provisa/auth/providers/keycloak.py:68-70
+  - provisa/auth/middleware.py:240-280
+  tests:
+  - tests/integration/test_oidc_to_org_session.py
+  scenario: |
+    Given a user landing on acme.provisa.dev (no active session)
+    When they are redirected to Google for OIDC
+    Then the IdP returns AuthIdentity(user_id=sub, email=user@example.com)
+    And no active_org_id is present in the IdP response
+    When Provisa receives the IdP token
+    Then it checks user_org_memberships for the user in org acme
+    And finds the membership exists
+    Then it mints a new org-scoped session with active_org_id=acme
+    And sets the User-Agent cookie as org-scoped
+    And the user is logged into acme
+    When the user later visits beta.provisa.dev
+    Then the acme session is no longer valid (cross-subdomain)
+    And a fresh OIDC → membership check → new beta session is required
+- id: REQ-1238
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Org Identity & Subdomain Addressing
+  priority: MUST
+  type: constraint
+  target: "2026-Q3"
+  description: >-
+    The `x-org-id` header path in provisa/auth/middleware.py:252-253 currently passes the header without checking `user_org_memberships` — a user could pass any org_id and gain cross-org access. This is the interactive org-switcher lane for a person-scoped session with no subdomain (e.g., POST to /api/switch-org with x-org-id). The passed org MUST be validated against membership; reject if not a member. This corrects a defect that was previously masked by single-org deployments.
+  use_case: >-
+    Header-path membership validation closes a privilege-escalation hole where a person-scoped session could be tricked into accessing an org they are not a member of via header manipulation.
+  code:
+  - provisa/auth/middleware.py:251-253
+  tests:
+  - tests/integration/test_x_org_id_validation.py
+  - tests/unit/test_auth_middleware.py
+  scenario: |
+    Given a person-scoped session (from OIDC, no active_org_id yet)
+    When they submit a request with x-org-id: beta
+    And they are not a member of org beta
+    Then the middleware validates the membership check
+    And finds no membership
+    And rejects the request with 403 Forbidden
+    Given the same session with x-org-id: acme
+    And they ARE a member of org acme
+    Then the middleware validates and finds membership
+    And allows the request
+    And sets active_org_id=acme for the duration
+- id: REQ-1239
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Deployment & Infrastructure
+  priority: MUST
+  type: infrastructure
+  target: "2026-Q3"
+  description: >-
+    Wildcard TLS for `*.provisa.dev` via ACME DNS-01. Obtain a true wildcard `*.provisa.dev` cert from Let's Encrypt using ACME DNS-01 with a scoped Cloudflare API token (Zone.DNS:Edit on provisa.dev only). One wildcard certificate covers `cloud.provisa.dev` and every `{org}.provisa.dev` across all protocols (SNI matches regardless of port). Cert is written to `PROVISA_TLS_CERT` and `PROVISA_TLS_KEY` paths that packaging/linux/first-launch.sh:443-451 already adopts. Node-side renewal timer (90-day). Replaces the self-signed dev stand-in for public SaaS deploys.
+  use_case: >-
+    `.dev` is HSTS-preloaded, so a real trusted cert is mandatory for any public deploy. A single wildcard cert covers unlimited subdomains without per-subdomain provisioning or Cloudflare TLS termination (which would break wire protocols). Automated ACME renewal ensures uptime across certificate lifecycle.
+  code:
+  - packaging/linux/first-launch.sh:443-451
+  - provisa/api/app.py
+  - provisa/pgwire/server.py
+  - provisa/bolt/server.py
+  tests:
+  - tests/integration/test_wildcard_cert_provisioning.py
+  - tests/e2e/test_acme_dns01_renewal.py
+  scenario: |
+    Given a Provisa SaaS deployment on provisa.dev
+    When the infrastructure runs cert provisioning via ACME
+    Then a DNS-01 challenge is issued against Cloudflare (using scoped token)
+    And the wildcard cert *.provisa.dev is obtained
+    When the cert is written to PROVISA_TLS_CERT/PROVISA_TLS_KEY
+    Then all protocol servers (API, pgwire, bolt, Arrow Flight, gRPC, MCP) read and use it
+    And cloud.provisa.dev and all {org}.provisa.dev subdomains are valid under the cert
+    When the cert is 30 days from expiry
+    Then a renewal timer triggers
+    And a new cert is obtained and deployed without downtime
+- id: REQ-1240
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Deployment & Infrastructure
+  priority: MUST
+  type: infrastructure
+  target: "2026-Q3"
+  description: >-
+    Cloudflare DNS split: Zone `provisa.dev` stays on Cloudflare. `provisa.dev` + `www.provisa.dev` remain Cloudflare-proxied (orange) for the marketing site. `cloud.provisa.dev` and `*.provisa.dev` are DNS-only (grey-cloud) records pointing at the GCP L4 LB IPs, so raw TCP reaches the LB and in-container TLS terminates. Cloudflare proxy carries only HTTP(S) and would terminate TLS itself, breaking wire protocols. No GCP Cloud DNS zone needed; DNS-01 ACME uses the Cloudflare token.
+  use_case: >-
+    DNS-only records for app subdomains allow wire protocols (pgwire, bolt, Arrow Flight, gRPC, MCP) to reach the load balancer with raw TCP, where in-container TLS terminates per-port. Cloudflare proxy on marketing site keeps SEO and CDN benefits without interfering with protocol servers.
+  code:
+  - packaging/linux/first-launch.sh
+  - infrastructure/cloudflare-setup
+  tests:
+  - tests/integration/test_dns_split_routing.py
+  scenario: |
+    Given a DNS lookup for www.provisa.dev
+    Then Cloudflare returns its proxied IP
+    And the marketing site is served via Cloudflare CDN
+    Given a DNS lookup for acme.provisa.dev
+    Then Cloudflare returns the GCP L4 LB IP (grey-cloud)
+    And raw TCP connections reach the load balancer
+    And TLS terminates in-container per protocol
+- id: REQ-1241
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Deployment & Infrastructure
+  priority: MUST
+  type: constraint
+  target: "2026-Q3"
+  description: >-
+    A session is always scoped to exactly one org and therefore one federation engine. `state.federation_engine` is a per-process singleton built once at startup (provisa/api/app.py:270), read with no org parameter at provisa/api/_query_helpers.py:126, so one process serves one engine. Subdomain-pinned single-org sessions (per REQ-1235) enforce this invariant: each org gets its own Provisa instance (or process) with its own federation engine binding. Until per-org engine routing is built (REQ-1244), sessions cannot switch engines without re-launching the process.
+  use_case: >-
+    Single-engine-per-session is a hard invariant that simplifies caching, planning, and freshness logic. Processes are stateless and can be scaled horizontally per-org or per-engine-instance. Cross-engine session switching requires building an org→engine registry and replacing the singleton (future work, REQ-1244).
+  code:
+  - provisa/api/app.py:270
+  - provisa/api/_query_helpers.py:126
+  tests:
+  - tests/unit/test_session_org_invariant.py
+  scenario: |
+    Given a Provisa instance deployed for org acme
+    When state.federation_engine is initialized
+    Then it is built as a per-process singleton
+    And all queries in this process route through that engine
+    When a request arrives for org acme
+    Then the session's org matches the engine's org
+    And the query executes against acme's federation engine
+    When a user later attempts to switch to org beta
+    Then the current session cannot switch engines (REQ-1242 handles re-auth)
+- id: REQ-1242
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Deployment & Infrastructure
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    In-session org switch (e.g., click "switch to acme" in UI) tears down the org-scoped session and mints a new one for the target org (membership-checked), REUSING the already-proven IdP identity (no password/IdP round-trip required), then redirects to `{org}.provisa.dev`. It is a scoped re-login, NOT a live cross-engine swap — it preserves the single-engine-per-session invariant (REQ-1241). Future work (REQ-1244) will enable live multi-engine switching without re-auth.
+  use_case: >-
+    Org-switch without IdP round-trip is ergonomic for multi-org users. Redirecting to the target subdomain re-establishes DNS and TLS SNI for clean cross-org addressing. Re-minting the session (not retaining it) respects the single-engine invariant until multi-engine routing is built.
+  code:
+  - provisa/api/auth_router.py
+  - provisa/auth/middleware.py
+  tests:
+  - tests/integration/test_org_switch_ergonomic.py
+  - provisa-ui/e2e/org-switcher.spec.ts
+  target: "2026-Q3"
+  scenario: |
+    Given a user logged into acme.provisa.dev (acme-scoped session)
+    When they click "Switch to org: beta" in the UI
+    Then a POST to /api/switch-org?target_org=beta is sent
+    And the handler checks membership in org beta (using the existing IdP identity)
+    And finds membership valid
+    Then the acme session is invalidated
+    And a new beta-scoped session is minted (reusing the IdP proof)
+    And the response redirects to beta.provisa.dev
+    When the browser follows the redirect
+    Then TLS SNI is beta.provisa.dev
+    And cookies are set for the beta subdomain
+    And the user is logged into beta without re-entering IdP credentials
+- id: REQ-1243
+  status: accepted
+  group: "9. Multi-Org SaaS Routing"
+  category: Deployment & Infrastructure
+  priority: MUST
+  type: structural
+  target: "2026-Q3"
+  description: >-
+    Two isolation lanes coexist: (a) Pooled/shared Trino cluster — the free/small tier, "trino-level isolation," all orgs start here. (b) BYO (bring-your-own) cluster — a customer points Provisa at their OWN federation engine instance (e.g., Databricks, Snowflake); self-service, the customer may change their own fed-engine instance, billed separately. Both lanes route through the SAME _govern_and_route/_execute_plan pipeline; routing is org-specific at deployment time (which instance serves which org), not in-session switching (REQ-1244 defers per-org dynamic engine selection).
+  use_case: >-
+    Dual-lane model serves free/small orgs economically on shared infrastructure while enabling enterprise customers to run on their own data warehouses. Unified pipeline means no code branching and shared planner/cache/freshness logic.
+  code:
+  - provisa/api/app.py:270
+  - provisa/compiler/_govern_and_route
+  - provisa/federation/runtime.py
+  tests:
+  - tests/integration/test_pooled_lane.py
+  - tests/integration/test_byo_lane.py
+  scenario: |
+    Given an org alice in the free tier
+    When a query is submitted
+    Then the deployed Provisa instance for alice has federation_engine = shared Trino
+    And the query routes through the shared engine
+    Given an org acme in the BYO tier
+    When their Provisa instance is deployed with federation_engine = their Databricks
+    And a query is submitted
+    Then the query routes through acme's Databricks
+    And the same _govern_and_route pipeline is used
+    And both alice and acme share cache and planner logic
+- id: REQ-1244
+  status: proposed
+  group: "9. Multi-Org SaaS Routing"
+  category: Deployment & Infrastructure
+  priority: SHOULD
+  type: constraint
+  target: "2026-Q4"
+  description: >-
+    Per-org engine routing is deferred. In-session multi-engine switching requires replacing the per-process singleton (app.py:270 / _query_helpers.py:126) with an org→engine registry that feeds the SAME _govern_and_route/_execute_plan pipeline. Until built, heterogeneous engines are served via subdomain-pinned single-org/single-engine sessions (REQ-1241/1242). Future work: build org-scoped engine registry, keyed by org_id, read at query time to select the federation engine per-session org.
+  use_case: >-
+    Dynamic per-org engine routing (without re-auth) enables Provisa to serve one org with Trino, another with Snowflake, and a third with Databricks from the SAME deployment and process. Preserves the single-engine-per-session invariant while allowing org-to-engine mapping to change at deployment time.
+  code:
+  - provisa/api/app.py:270
+  - provisa/api/_query_helpers.py:126
+  - provisa/federation/runtime.py
+  tests:
+  - tests/integration/test_per_org_engine_routing.py
+  scenario: |
+    Given a multi-org SaaS deployment with org→engine registry
+    When org alice queries (pinned to shared Trino)
+    Then the registry maps alice → shared_trino
+    And the federation engine is selected at query time
+    When org acme queries (pinned to their Databricks)
+    Then the registry maps acme → acme_databricks
+    And acme's Databricks engine is used for the query
+    When the registry is updated to remap alice to a private Databricks
+    Then no code changes or process restart are needed
+    And the new engine is used on the next query
+- id: REQ-1245
+  status: proposed
+  group: "9. Multi-Org SaaS Routing"
+  category: Deployment & Infrastructure
+  priority: MUST
+  type: infrastructure
+  target: "2026-Q4"
+  description: >-
+    Control-plane persistence is required for multi-instance fleet deployments. The control_plane store is currently in-memory (provisa/control_plane/store.py:16, "V1: no DB persistence") — a blocker for running multiple Provisa instances behind a load balancer. Multiple instances cannot share state (sources, roles, registered tables, relationships, etc.) and cannot coordinate cache invalidation or governance updates. Persistence must use the same org-scoped control-plane backend (PostgreSQL/SQLite/MySQL) that holds platform state (orgs, users, memberships), ensuring each org's control plane is isolated and durable.
+  use_case: >-
+    Persisted control plane enables horizontal scale-out of Provisa instances, load-balanced by subdomain org, each instance serving its own org's control-plane state from the shared backend. Required for production SaaS deployments with high availability.
+  code:
+  - provisa/control_plane/store.py:16
+  - provisa/core/database.py
+  - provisa/core/schema_admin.py
+  tests:
+  - tests/integration/test_control_plane_persistence.py
+  - tests/integration/test_multi_instance_coordination.py
+  scenario: |
+    Given a fleet of Provisa instances behind a load balancer
+    When instance-1 adds a source to org acme's control plane
+    Then the source is persisted to the shared backend
+    When instance-2 handles the next query for acme
+    Then it reads the same source from the persistent backend
+    And no state divergence occurs
+    When any instance invalidates a cache key for acme
+    Then the invalidation is broadcast to all instances serving acme
+    (Future: req-distributed cache invalidation)
+- id: REQ-1246
+  status: proposed
+  group: 2. Authentication & Identity
+  category: Authentication
+  priority: MUST
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    First verified Firebase login provisions a user_profile record, decoupled from the local_users/bcrypt-password path. No password is created for Firebase identities. Firebase ID token serves as the credential. Provisioning occurs in the initial POST /auth/register on a Firebase identity (REQ-121 validates Firebase auth; REQ-124 is hard-gated to provider=="basic" and cannot onboard Firebase identities).
+  use_case: >-
+    Enables self-service signup on cloud.provisa.dev with Firebase as the primary identity provider, separating password-managed local users from federated identities.
+  code:
+    - provisa/api/auth_router.py
+    - provisa/auth/
+    - provisa/core/schema_admin.py
+  tests:
+    - tests/integration/test_firebase_signup.py
+    - tests/unit/test_firebase_user_provisioning.py
+  scenario: |
+    Given a user with a Firebase identity authenticating via /auth/register for the first time
+    When they submit a valid Firebase ID token
+    Then a user_profile record is created with their Firebase email and sub
+    And no local_users/password record is created
+    And the next request with that token is recognized as an existing user
+    When that user later authenticates
+    Then they use their Firebase ID token, not a password
+- id: REQ-1247
+  status: proposed
+  group: 11. Frontend UI & UX
+  category: Authentication
+  priority: MUST
+  type: ui
+  target: "2026-Q4"
+  description: >-
+    Self-service signup landing on cloud.provisa.dev presents two options to a not-logged-in user: LOG IN or CREATE ACCOUNT. The choice routes to distinct flows: LOG IN → Firebase login (existing user or new self-registration via Firebase), CREATE ACCOUNT → signup flow including org membership selection (REQ-1248 / REQ-1249 / REQ-1250).
+  use_case: >-
+    Org-agnostic entry point ergonomically guides new users into account creation while retaining fast login for existing users.
+  code:
+    - provisa-ui/pages/auth/landing.tsx
+    - provisa-ui/components/auth/signup-choice.tsx
+  tests:
+    - provisa-ui/e2e/auth-landing.spec.ts
+  scenario: |
+    Given an unauthenticated user navigates to cloud.provisa.dev
+    When the page loads
+    Then two buttons are displayed: "LOG IN" and "CREATE ACCOUNT"
+    When they click "LOG IN"
+    Then the Firebase login flow is initiated
+    When they click "CREATE ACCOUNT"
+    Then the signup flow is displayed (REQ-1248 / REQ-1249 / REQ-1250)
+- id: REQ-1248
+  status: proposed
+  group: "3. Multi-tenancy & Organization"
+  category: Org Membership
+  priority: MUST
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    During account creation, a Firebase-authenticated user auto-joins an org if they hold a valid org_invites token (via invite URL or code). Provisioning reuses existing invite validation/consumption logic, upserting user_org_memberships at the inherited role from the invite record. If no invite is held, they proceed to REQ-1249 or REQ-1250 (create new org or request admission to existing org).
+  use_case: >-
+    Decouples Firebase signup from org membership: invited users skip org selection, while non-invited users choose between creating a new org or requesting membership in an existing one.
+  code:
+    - provisa/api/auth_router.py
+    - provisa/api/admin/invites_router.py
+  tests:
+    - tests/integration/test_signup_with_invite.py
+  scenario: |
+    Given a user with a valid org_invites token completes Firebase authentication
+    When they reach account creation and the system detects the valid invite
+    Then user_org_memberships is upserted with the org_id and inherited role
+    And the user is auto-joined to the invited org
+    And the invite token is consumed (marked expired/used)
+    And the flow proceeds to post-signup org navigation
+- id: REQ-1249
+  status: proposed
+  group: "3. Multi-tenancy & Organization"
+  category: Org Membership
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    During account creation, a Firebase user without an org invite may CREATE A NEW ORG (self-service): inserts an orgs row with the user as owner/admin, inserts user_org_memberships at owner/admin role, provisions the per-org schema org_{id}, and registers a control-plane tenant initialized to the shared/pooled Trino cluster (REQ-1243/1244). The createOrg endpoint (currently admin-only /admin/orgs) becomes available as part of the signup flow.
+  use_case: >-
+    Enables self-service multi-org SaaS: new users can immediately spin up a workspace (org) without waiting for admin provisioning.
+  code:
+    - provisa/api/auth_router.py
+    - provisa/api/admin/orgs_router.py
+    - provisa/core/schema_admin.py
+  tests:
+    - tests/integration/test_signup_create_org.py
+  scenario: |
+    Given a Firebase user without an org invite during signup
+    When they select "Create New Org"
+    Then an orgs row is inserted with org_name set to user input
+    And a user_org_memberships record is created with the user at owner/admin role
+    And the per-org schema org_{id} is provisioned (CREATE SCHEMA org_{id})
+    And a control-plane tenant is registered, initially pinned to the shared Trino cluster
+    And the user is logged into the new org
+- id: REQ-1250
+  status: proposed
+  group: "3. Multi-tenancy & Organization"
+  category: Org Membership
+  priority: SHOULD
+  type: structural
+  target: "2026-Q4"
+  description: >-
+    Org membership is pull-based via org_join_requests, the inverse of org_invites. New registry table org_join_requests(user_id, org_id, status, requested_at, decided_by, decided_at) is added to REGISTRY_TABLES in provisa/core/schema_admin.py. Per-org visibility flag orgs.open_to_requests: if False (invite_only, the default), admission requests are silently rejected (no signal that the request was received, to avoid org-name enumeration). If True (open_to_requests), requests are logged pending admin approval. Requesters must be Firebase-authenticated. Anti-abuse: at most one open request per (user, org); rate-limited per requester; stale requests auto-expire (same TTL as org_invites).
+  use_case: >-
+    Pull-based membership model enables users to request admission to public orgs without requiring org admins to discover and invite them. Silently rejecting invite_only requests prevents org enumeration attacks.
+  code:
+    - provisa/core/schema_admin.py
+  tests:
+    - tests/integration/test_org_join_request_table.py
+    - tests/unit/test_org_join_request_visibility.py
+  scenario: |
+    Given an org acme with open_to_requests = True
+    When a Firebase user requests membership to acme
+    Then an org_join_requests record is created with status='pending'
+    And only one open request per (user, org) is allowed
+    Given an org beta with open_to_requests = False
+    When a user requests membership to beta
+    Then the request is silently rejected (no error to the user)
+- id: REQ-1251
+  status: proposed
+  group: "3. Multi-tenancy & Organization"
+  category: Org Membership
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Admin approval/denial of org_join_requests. When an admin approves a request, the approval path reuses the membership-insert logic (provisa/api/auth_router.py and related) minus the token check, granting the lowest-privilege member role (never admin). Deny path closes the request (status='denied'). Both actions record decided_by (admin user_id) and decided_at.
+  use_case: >-
+    Enables org admins to gate membership while supporting the pull-based admission model.
+  code:
+    - provisa/api/admin/orgs_router.py
+    - provisa/api/auth_router.py
+  tests:
+    - tests/integration/test_org_join_request_approval.py
+  scenario: |
+    Given a pending org_join_requests record for user jane requesting membership in org acme
+    When an acme admin approves the request via the admin surface
+    Then user_org_memberships is upserted for jane → acme at member role
+    And org_join_requests.status is set to 'approved'
+    And decided_by and decided_at are recorded
+    When the admin denies the request instead
+    Then org_join_requests.status is set to 'denied'
+    And jane does not gain membership
+- id: REQ-1252
+  status: proposed
+  group: 10. Admin Console & Governance
+  category: Org Administration
+  priority: SHOULD
+  type: ui
+  target: "2026-Q4"
+  description: >-
+    Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pending org_join_requests for the org, approve requests, and deny requests. Display requester email, request date, and admin action buttons.
+  use_case: >-
+    Provides org admins with a centralized interface to manage pull-based membership requests.
+  code:
+    - provisa-ui/admin/orgs/OrgsTab.tsx
+    - provisa/api/admin/orgs_router.py
+  tests:
+    - provisa-ui/e2e/admin-join-requests.spec.ts
+  scenario: |
+    Given an org admin viewing the Orgs admin panel
+    When they navigate to the "Pending Requests" tab
+    Then pending org_join_requests are listed with requester email, request date
+    When they click "Approve" on a request
+    Then the approval flow is triggered (REQ-1251)
+    When they click "Deny"
+    Then the deny flow is triggered (REQ-1251)
+- id: REQ-1253
+  status: proposed
+  group: "8. Deployment & Infrastructure"
+  category: Cloud Load Balancing
+  priority: MUST
+  type: infrastructure
+  target: "2026-Q4"
+  description: >-
+    All protocol surfaces (API port 8000, UI port 3000, Arrow Flight 8815, pgwire 5439, Bolt 7687, MCP 8009, gRPC 50051) must be fronted by a single shared external passthrough load-balancer endpoint per cloud provider, not one LB per protocol. This is required by the subdomain-as-org model (REQ-1233): {org}.provisa.dev must resolve to one A record and reach every protocol by preserving the destination port to the backend node.
+  use_case: >-
+    Enables the subdomain-as-org identity model where a single DNS name and IP address serve all protocols. Cloud-specific realizations: GCP uses a backend-service passthrough NLB forwarding rule with all_ports=true on one static IP; AWS uses a single Network Load Balancer with one listener/target-group per protocol port sharing the NLB's endpoint; Azure uses a single Standard Load Balancer with one LB rule per protocol port on a single frontend public IP. Backend liveness is gated by the API HTTPS /health probe. Refs: REQ-1233, REQ-1239, REQ-1240, REQ-1227.
+- id: REQ-1254
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Cloud Load Balancing
+  priority: MUST
+  type: infrastructure
+  since: "2026-07"
+  description: >-
+    Web UI must be published on host port 443 across all cloud Terraform deployments (GCP, AWS, Azure). The UI container continues listening on port 3000 with TLS; docker-compose publishes ${UI_PORT}:3000 with UI_PORT set to 443 in cloud environments. first-launch.sh persists UI_PORT into the systemd EnvironmentFile so provisa start picks it up.
+  use_case: >-
+    The .dev gTLD is HSTS-preloaded in browsers, forcing http to https:443. Publishing the UI on port 443 allows cloud.provisa.dev and {org}.provisa.dev URLs to resolve without a port suffix, composing with the single shared passthrough LB (REQ-1253) which forwards all ports to the backend node preserving destination port.
+  code:
+    - first-launch.sh
+    - terraform/gcp/main.tf
+    - terraform/aws/main.tf
+    - terraform/azure/main.tf
+    - docker-compose.yml
+  scenario: |
+    Given a cloud deployment of Provisa on GCP/AWS/Azure
+    When cloud Terraform applies with UI_PORT=443 in the EnvironmentFile
+    Then the web UI is reachable at https://cloud.provisa.dev (port 443) or https://{org}.provisa.dev (port 443)
+    And the UI container continues listening on localhost:3000 with TLS
+    And no port suffix is required in the URL due to HSTS enforcement
+  related:
+    - REQ-1253
+    - REQ-1227
+- id: REQ-1255
+  status: proposed
+  group: "3. Multi-tenancy & Organization"
+  category: Org Membership
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    During self-service org creation (REQ-1249), a Firebase user is offered an opt-in checkbox or toggle
+    to seed the newly created org with the pre-federated demo configuration, including demo sources (GraphQL,
+    OpenAPI petstore) and sample data tables with pre-registered relationships and governance policies.
+  use_case: >-
+    Reduces time-to-value for new orgs by providing immediate hands-on federation examples without requiring
+    manual source registration or data import. Users can explore Provisa's query composition, relationship discovery,
+    and governance features against real federated sources in seconds.
+  code:
+    - provisa/api/auth_router.py
+    - provisa/api/admin/orgs_router.py
+    - provisa/core/schema_admin.py
+    - provisa/demo/
+  relates_to:
+    - REQ-1249
+    - REQ-960
+  scenario: |
+    Given a Firebase user without an org invite during signup
+    When they select "Create New Org" and see a checkbox "Seed with demo configuration"
+    Then org creation proceeds with an optional flag to invoke the demo seeding logic
+    And if checked, _seed_built_in_sources() and _seed_ops_pg() run scoped to the new org_id
+    And the new org is immediately populated with demo GraphQL/OpenAPI sources, sample tables, and governance rules
+    And the user is logged into the fully-seeded org

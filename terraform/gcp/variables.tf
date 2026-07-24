@@ -118,6 +118,26 @@ variable "admin_cidr" {
   default     = ""
 }
 
+variable "tls_cert_pem" {
+  description = <<-EOT
+    PEM-encoded TLS certificate served by every Provisa listener (API, UI, pgwire,
+    bolt, Flight, gRPC, MCP). Supply a wildcard *.provisa.dev cert so cloud.provisa.dev
+    and every {org}.provisa.dev terminate on one cert (REQ-1239). Full chain (leaf +
+    issuers) recommended. When set together with tls_key_pem, first-launch adopts it via
+    PROVISA_TLS_CERT and skips self-signed generation. Generate with
+    scripts/issue-wildcard-cert.sh. Leave blank to fall back to a self-signed dev cert.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "tls_key_pem" {
+  description = "PEM-encoded private key matching tls_cert_pem. Required when tls_cert_pem is set."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # ── Auth (parity with the desktop installer wizard, REQ-972..979) ──────────────
 variable "auth_provider" {
   description = "Identity provider PROVISA_IDP: 'none' (unsecured), 'firebase', 'basic', 'keycloak', 'oauth', or 'oidc'."

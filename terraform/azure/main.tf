@@ -45,33 +45,27 @@ resource "azurerm_network_security_group" "nodes" {
   resource_group_name = azurerm_resource_group.main.name
   tags                = merge(var.tags, { Project = "provisa" })
 
-  security_rule {
-    name                       = "AllowHTTPAPI"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "8000"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
-    name                       = "AllowArrowFlight"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "8815"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
+  # One inbound Allow rule per enabled protocol port (REQ-1253). The shared LB
+  # fronts all of them on a single frontend IP; this opens each port to the internet
+  # so `{org}.provisa.dev:<port>` reaches the node. Priorities are spaced from 100.
+  dynamic "security_rule" {
+    for_each = local.enabled_protocols
+    content {
+      name                       = "AllowProtocol${title(security_rule.key)}"
+      priority                   = 100 + index(keys(local.enabled_protocols), security_rule.key) * 10
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = tostring(security_rule.value.port)
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
   }
 
   security_rule {
     name                       = "AllowIntraCluster"
-    priority                   = 120
+    priority                   = 200
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "*"
@@ -85,7 +79,7 @@ resource "azurerm_network_security_group" "nodes" {
     for_each = var.ssh_public_key != "" && var.admin_cidr != "" ? [1] : []
     content {
       name                       = "AllowSSH"
-      priority                   = 130
+      priority                   = 210
       direction                  = "Inbound"
       access                     = "Allow"
       protocol                   = "Tcp"
@@ -122,10 +116,19 @@ resource "azurerm_role_assignment" "blob_reader" {
   principal_id         = azurerm_user_assigned_identity.provisa.principal_id
 }
 
-# ── Public IPs for Load Balancer ───────────────────────────────────────────────
+# ── Standard Load Balancer — ONE shared IP, every protocol port ────────────────
+# The subdomain-as-org model (REQ-1233/1253) requires {org}.provisa.dev to reach
+# every protocol on a single A record: the org name resolves to one IP and the
+# client connects the protocol's port (bolt 7687, pgwire 5439, …). A single
+# Standard LB with one frontend public IP fronts every listener; one LB rule per
+# enabled protocol preserves the destination port to the node, so a single
+# `*.provisa.dev` record serves api/ui/flight/pgwire/bolt/mcp/grpc alike. The api
+# rule gets an HTTPS /health probe (REQ-1227: TLS on every endpoint); the rest use
+# a TCP connect probe. The NSG (local.enabled_protocols) still restricts which
+# ports actually reach the node.
 
-resource "azurerm_public_ip" "api" {
-  name                = "provisa-api-pip"
+resource "azurerm_public_ip" "shared" {
+  name                = "provisa-shared-pip"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   allocation_method   = "Static"
@@ -133,94 +136,52 @@ resource "azurerm_public_ip" "api" {
   tags                = merge(var.tags, { Project = "provisa" })
 }
 
-resource "azurerm_public_ip" "flight" {
-  name                = "provisa-flight-pip"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
-  tags                = merge(var.tags, { Project = "provisa" })
-}
-
-# ── Load Balancer — HTTP API (port 8000) ───────────────────────────────────────
-
-resource "azurerm_lb" "api" {
-  name                = "provisa-api-lb"
+resource "azurerm_lb" "shared" {
+  name                = "provisa-shared-lb"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   sku                 = "Standard"
   tags                = merge(var.tags, { Project = "provisa" })
 
   frontend_ip_configuration {
-    name                 = "provisa-api-frontend"
-    public_ip_address_id = azurerm_public_ip.api.id
+    name                 = "provisa-shared-frontend"
+    public_ip_address_id = azurerm_public_ip.shared.id
   }
 }
 
-resource "azurerm_lb_backend_address_pool" "api" {
-  name            = "provisa-api-pool"
-  loadbalancer_id = azurerm_lb.api.id
+resource "azurerm_lb_backend_address_pool" "shared" {
+  name            = "provisa-shared-pool"
+  loadbalancer_id = azurerm_lb.shared.id
 }
 
-resource "azurerm_lb_probe" "api" {
-  name            = "provisa-api-health"
-  loadbalancer_id = azurerm_lb.api.id
-  protocol        = "Http"
-  port            = 8000
-  request_path    = "/health"
+# One probe per enabled protocol. api uses an HTTPS /health probe (Azure Standard
+# LB does not validate the cert, so the node's self-signed / operator wildcard cert
+# is accepted); the rest use a TCP connect probe. first-launch brings all listeners
+# up together, so app-level /health on the API port is the liveness signal.
+resource "azurerm_lb_probe" "shared" {
+  for_each        = local.enabled_protocols
+  name            = "provisa-${each.key}-health"
+  loadbalancer_id = azurerm_lb.shared.id
+  protocol        = each.value.probe == "https" ? "Https" : "Tcp"
+  port            = each.value.port
+  request_path    = each.value.probe == "https" ? each.value.path : null
+
   interval_in_seconds = 30
   number_of_probes    = 2
 }
 
-resource "azurerm_lb_rule" "api" {
-  name                           = "provisa-api-rule"
-  loadbalancer_id                = azurerm_lb.api.id
+# One rule per enabled protocol, all sharing the single frontend IP and backend
+# pool. frontend_port == backend_port preserves the destination port to the node.
+resource "azurerm_lb_rule" "shared" {
+  for_each                       = local.enabled_protocols
+  name                           = "provisa-${each.key}-rule"
+  loadbalancer_id                = azurerm_lb.shared.id
   protocol                       = "Tcp"
-  frontend_port                  = 8000
-  backend_port                   = 8000
-  frontend_ip_configuration_name = "provisa-api-frontend"
-  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.api.id]
-  probe_id                       = azurerm_lb_probe.api.id
-}
-
-# ── Load Balancer — Arrow Flight / gRPC (port 8815) ───────────────────────────
-
-resource "azurerm_lb" "flight" {
-  name                = "provisa-flight-lb"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  sku                 = "Standard"
-  tags                = merge(var.tags, { Project = "provisa" })
-
-  frontend_ip_configuration {
-    name                 = "provisa-flight-frontend"
-    public_ip_address_id = azurerm_public_ip.flight.id
-  }
-}
-
-resource "azurerm_lb_backend_address_pool" "flight" {
-  name            = "provisa-flight-pool"
-  loadbalancer_id = azurerm_lb.flight.id
-}
-
-resource "azurerm_lb_probe" "flight" {
-  name                = "provisa-flight-health"
-  loadbalancer_id     = azurerm_lb.flight.id
-  protocol            = "Tcp"
-  port                = 8815
-  interval_in_seconds = 30
-  number_of_probes    = 2
-}
-
-resource "azurerm_lb_rule" "flight" {
-  name                           = "provisa-flight-rule"
-  loadbalancer_id                = azurerm_lb.flight.id
-  protocol                       = "Tcp"
-  frontend_port                  = 8815
-  backend_port                   = 8815
-  frontend_ip_configuration_name = "provisa-flight-frontend"
-  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.flight.id]
-  probe_id                       = azurerm_lb_probe.flight.id
+  frontend_port                  = each.value.port
+  backend_port                   = each.value.port
+  frontend_ip_configuration_name = "provisa-shared-frontend"
+  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.shared.id]
+  probe_id                       = azurerm_lb_probe.shared[each.key].id
 }
 
 # ── Private DNS ────────────────────────────────────────────────────────────────
@@ -270,6 +231,29 @@ locals {
   images_zip  = "provisa-core-images-amd64-${var.provisa_version}.zip"
   images_blob = dirname(var.appimage_blob) == "." ? local.images_zip : "${dirname(var.appimage_blob)}/${local.images_zip}"
 
+  # ── Protocol surface ─────────────────────────────────────────────────────────
+  # One row per externally-reachable protocol. `enabled` gates the whole chain: NSG
+  # port, LB probe, LB rule, and (for wire protocols) the container listener env var.
+  # Add a row here and every layer follows. api uses an HTTPS /health probe (REQ-1227:
+  # TLS on every endpoint); the rest use a TCP connect probe. `env` drives first-launch's
+  # protocol overlay.
+  protocols = {
+    api    = { port = 8000, enabled = true, probe = "https", path = "/health", env = null }
+    ui     = { port = 443, enabled = true, probe = "tcp", path = null, env = null }
+    flight = { port = 8815, enabled = true, probe = "tcp", path = null, env = "FLIGHT_PORT" }
+    pgwire = { port = 5439, enabled = var.enable_pgwire, probe = "tcp", path = null, env = "PROVISA_PGWIRE_PORT" }
+    bolt   = { port = 7687, enabled = var.enable_bolt, probe = "tcp", path = null, env = "PROVISA_BOLT_PORT" }
+    mcp    = { port = 8009, enabled = var.enable_mcp, probe = "tcp", path = null, env = "PROVISA_MCP_PORT" }
+    grpc   = { port = 50051, enabled = var.enable_grpc, probe = "tcp", path = null, env = "GRPC_PORT" }
+  }
+  enabled_protocols = { for k, v in local.protocols : k => v if v.enabled }
+
+  # Inline `env` assignments for each enabled wire protocol (the container listener
+  # env var first-launch persists; its protocol overlay publishes the matching
+  # container port and the shared LB fronts it). api/ui are served unconditionally
+  # by the app image, so their env is null and skipped here.
+  protocol_env = join(" ", [for k, v in local.enabled_protocols : "${v.env}=${v.port}" if v.env != null])
+
   base_cloud_init = <<-YAML
     #cloud-config
     packages:
@@ -283,12 +267,43 @@ locals {
       # Stage the amd64 core-images zip beside the AppImage; first-launch docker-loads
       # it locally (airgap path) when run from /opt with PROVISA_VERSION set (below).
       - az storage blob download --account-name ${var.storage_account_name} --container-name ${var.storage_container} --name ${local.images_blob} --file /opt/${local.images_zip} --auth-mode login
+    %{~if var.tls_cert_pem != "" && var.tls_key_pem != ""~}
+      # Operator-supplied wildcard TLS cert (REQ-1239). Written here and adopted by
+      # first-launch's ensure_tls_certs via PROVISA_TLS_CERT/KEY (in deploy_env below),
+      # which fans it out to every listener. base64 sidesteps PEM newline/quoting
+      # hazards in the cloud-init YAML.
+      - mkdir -p /etc/provisa/tls
+      - printf '%s' '${base64encode(var.tls_cert_pem)}' | base64 -d > /etc/provisa/tls/node.crt
+      - printf '%s' '${base64encode(var.tls_key_pem)}' | base64 -d > /etc/provisa/tls/node.key
+      - chmod 600 /etc/provisa/tls/node.key
+    %{~endif~}
   YAML
 
   # Deployment choices (parity with the desktop wizard, REQ-972..979) forwarded to
   # the AppImage as env — cloud-init runcmd runs a non-login shell, so prefix the
-  # invocation inline rather than relying on exported env persisting.
-  deploy_env = "env PROVISA_VERSION='${var.provisa_version}' PROVISA_ENGINE='${var.federation_engine}' PROVISA_ENGINE_URL='${var.engine_url}' PROVISA_MATERIALIZE_URL='${var.materialize_url}' PROVISA_OBS_MODE='${var.obs_mode}' PROVISA_OTLP_ENDPOINT='${var.otlp_endpoint}' PROVISA_INSTALL_DEMO='${var.install_demo ? "y" : "n"}'"
+  # invocation inline rather than relying on exported env persisting. Carries the
+  # deployment choices, the enabled wire-protocol listener ports (local.protocol_env),
+  # the MCP host/role, the auth/IDP settings, and (when supplied) the operator TLS
+  # cert paths written by base_cloud_init above.
+  deploy_env = join(" ", compact([
+    "env",
+    "PROVISA_VERSION='${var.provisa_version}'",
+    "PROVISA_ENGINE='${var.federation_engine}'",
+    "PROVISA_ENGINE_URL='${var.engine_url}'",
+    "PROVISA_MATERIALIZE_URL='${var.materialize_url}'",
+    "PROVISA_OBS_MODE='${var.obs_mode}'",
+    "PROVISA_OTLP_ENDPOINT='${var.otlp_endpoint}'",
+    "PROVISA_INSTALL_DEMO='${var.install_demo ? "y" : "n"}'",
+    local.protocol_env,
+    # UI host-publish port: base compose publishes ${UI_PORT}:3000; 443 lets
+    # https://cloud.provisa.dev resolve without a port suffix (.dev is HSTS-preloaded).
+    "UI_PORT=${local.protocols.ui.port}",
+    var.enable_mcp ? "PROVISA_MCP_HOST=0.0.0.0 PROVISA_MCP_ROLE='${var.mcp_role}'" : "",
+    "PROVISA_IDP='${var.auth_provider}'",
+    "FIREBASE_PROJECT_ID='${var.firebase_project_id}'",
+    "FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'",
+    var.tls_cert_pem != "" && var.tls_key_pem != "" ? "PROVISA_TLS_CERT=/etc/provisa/tls/node.crt PROVISA_TLS_KEY=/etc/provisa/tls/node.key" : "",
+  ]))
 
   ssh_key_config = var.ssh_public_key != "" ? [{
     username   = var.admin_username
@@ -311,16 +326,10 @@ resource "azurerm_network_interface" "primary" {
   }
 }
 
-resource "azurerm_network_interface_backend_address_pool_association" "primary_api" {
+resource "azurerm_network_interface_backend_address_pool_association" "primary" {
   network_interface_id    = azurerm_network_interface.primary.id
   ip_configuration_name   = "primary"
-  backend_address_pool_id = azurerm_lb_backend_address_pool.api.id
-}
-
-resource "azurerm_network_interface_backend_address_pool_association" "primary_flight" {
-  network_interface_id    = azurerm_network_interface.primary.id
-  ip_configuration_name   = "primary"
-  backend_address_pool_id = azurerm_lb_backend_address_pool.flight.id
+  backend_address_pool_id = azurerm_lb_backend_address_pool.shared.id
 }
 
 resource "azurerm_linux_virtual_machine" "primary" {
@@ -384,18 +393,11 @@ resource "azurerm_network_interface" "secondary" {
   }
 }
 
-resource "azurerm_network_interface_backend_address_pool_association" "secondary_api" {
+resource "azurerm_network_interface_backend_address_pool_association" "secondary" {
   count                   = max(var.node_count - 1, 0)
   network_interface_id    = azurerm_network_interface.secondary[count.index].id
   ip_configuration_name   = "secondary"
-  backend_address_pool_id = azurerm_lb_backend_address_pool.api.id
-}
-
-resource "azurerm_network_interface_backend_address_pool_association" "secondary_flight" {
-  count                   = max(var.node_count - 1, 0)
-  network_interface_id    = azurerm_network_interface.secondary[count.index].id
-  ip_configuration_name   = "secondary"
-  backend_address_pool_id = azurerm_lb_backend_address_pool.flight.id
+  backend_address_pool_id = azurerm_lb_backend_address_pool.shared.id
 }
 
 resource "azurerm_linux_virtual_machine" "secondary" {

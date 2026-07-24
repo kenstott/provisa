@@ -176,7 +176,7 @@ locals {
   # first-launch's protocol overlay.
   protocols = {
     api    = { port = 8000, enabled = true, probe = "https", path = "/health", env = null }
-    ui     = { port = 3000, enabled = true, probe = "tcp", path = null, env = null }
+    ui     = { port = 443, enabled = true, probe = "tcp", path = null, env = null }
     flight = { port = 8815, enabled = true, probe = "tcp", path = null, env = "FLIGHT_PORT" }
     pgwire = { port = 5439, enabled = var.enable_pgwire, probe = "tcp", path = null, env = "PROVISA_PGWIRE_PORT" }
     bolt   = { port = 7687, enabled = var.enable_bolt, probe = "tcp", path = null, env = "PROVISA_BOLT_PORT" }
@@ -269,6 +269,24 @@ locals {
     # these into the systemd EnvironmentFile and its protocol overlay publishes the
     # matching container ports; the NetLB above fronts each one.
     ${local.protocol_exports}
+    # UI host-publish port. The UI container listens on 3000 (fixed in the node
+    # overlay's uvicorn command); the base compose publishes $${UI_PORT}:3000 on the
+    # host. Moving it to 443 lets https://cloud.provisa.dev resolve with no port
+    # suffix (.dev is HSTS-preloaded, so browsers force https:443). first-launch
+    # persists UI_PORT into the systemd EnvironmentFile so `provisa start`'s compose
+    # interpolation picks it up.
+    export UI_PORT=${local.protocols.ui.port}
+%{~if var.tls_cert_pem != "" && var.tls_key_pem != ""~}
+    # Operator-supplied wildcard TLS cert (REQ-1239). Written here and adopted by
+    # first-launch's ensure_tls_certs via PROVISA_TLS_CERT/KEY, which fans it out to
+    # every listener. base64 sidesteps PEM newline/quoting hazards in the metadata heredoc.
+    mkdir -p /etc/provisa/tls
+    printf '%s' '${base64encode(var.tls_cert_pem)}' | base64 -d > /etc/provisa/tls/node.crt
+    printf '%s' '${base64encode(var.tls_key_pem)}' | base64 -d > /etc/provisa/tls/node.key
+    chmod 600 /etc/provisa/tls/node.key
+    export PROVISA_TLS_CERT=/etc/provisa/tls/node.crt
+    export PROVISA_TLS_KEY=/etc/provisa/tls/node.key
+%{~endif~}
     cd /opt
   SHELL
 
@@ -380,47 +398,32 @@ resource "google_compute_instance" "secondary" {
   })
 }
 
-# ── Regional External Passthrough LB — one per enabled protocol ───────────────
-# Each enabled protocol gets a static IP, health check (HTTP /health for the API,
-# TCP connect otherwise), regional TCP backend service over the node instance
-# group, and a passthrough forwarding rule on its port. for_each keeps the whole
-# topology in lock-step with local.protocols.
+# ── Regional External Passthrough LB — ONE shared IP, every protocol port ─────
+# The subdomain-as-org model (REQ-1233/1253) requires {org}.provisa.dev to reach
+# every protocol on a single A record: the org name resolves to one IP and the
+# client connects the protocol's port (bolt 7687, pgwire 5439, …). A backend-
+# service passthrough NLB with all_ports=true fronts every listener on one static
+# IP — the destination port is preserved to the node, so a single `*.provisa.dev`
+# record serves api/ui/flight/pgwire/bolt/mcp/grpc alike. One HTTPS /health probe
+# on the API port (REQ-1227) gates backend liveness for the whole stack; first-
+# launch brings all listeners up together, so app-level /health is the signal.
+# The firewall (local.protocol_ports) still restricts which ports actually reach
+# the node, so all_ports on the rule is not a widening of the attack surface.
 
-resource "google_compute_address" "protocol" {
-  for_each = local.enabled_protocols
-  name     = "provisa-${each.key}-ip"
-  region   = var.region
+resource "google_compute_address" "shared" {
+  name   = "provisa-shared-ip"
+  region = var.region
 }
 
-resource "google_compute_region_health_check" "protocol" {
-  for_each = local.enabled_protocols
-  name     = "provisa-${each.key}-health"
-  region   = var.region
+resource "google_compute_region_health_check" "shared" {
+  name   = "provisa-shared-health"
+  region = var.region
 
-  dynamic "http_health_check" {
-    for_each = each.value.probe == "http" ? [1] : []
-    content {
-      port         = each.value.port
-      request_path = each.value.path
-    }
-  }
-
-  # REQ-1227: the API is served over TLS, so its LB probe must speak HTTPS. GCP
-  # HTTPS health checks do not validate the certificate, so the node's self-signed
-  # cert is accepted.
-  dynamic "https_health_check" {
-    for_each = each.value.probe == "https" ? [1] : []
-    content {
-      port         = each.value.port
-      request_path = each.value.path
-    }
-  }
-
-  dynamic "tcp_health_check" {
-    for_each = each.value.probe == "tcp" ? [1] : []
-    content {
-      port = each.value.port
-    }
+  # HTTPS health check: GCP does not validate the cert, so the node's self-signed
+  # (or operator wildcard) cert is accepted.
+  https_health_check {
+    port         = local.protocols.api.port
+    request_path = local.protocols.api.path
   }
 
   check_interval_sec  = 30
@@ -428,13 +431,12 @@ resource "google_compute_region_health_check" "protocol" {
   unhealthy_threshold = 3
 }
 
-resource "google_compute_region_backend_service" "protocol" {
-  for_each              = local.enabled_protocols
-  name                  = "provisa-${each.key}"
+resource "google_compute_region_backend_service" "shared" {
+  name                  = "provisa-shared"
   region                = var.region
   protocol              = "TCP"
   load_balancing_scheme = "EXTERNAL"
-  health_checks         = [google_compute_region_health_check.protocol[each.key].id]
+  health_checks         = [google_compute_region_health_check.shared.id]
 
   backend {
     group          = google_compute_instance_group.nodes.id
@@ -442,51 +444,14 @@ resource "google_compute_region_backend_service" "protocol" {
   }
 }
 
-resource "google_compute_forwarding_rule" "protocol" {
-  for_each              = local.enabled_protocols
-  name                  = "provisa-${each.key}"
+resource "google_compute_forwarding_rule" "shared" {
+  name                  = "provisa-shared"
   region                = var.region
-  ip_address            = google_compute_address.protocol[each.key].id
+  ip_address            = google_compute_address.shared.id
   ip_protocol           = "TCP"
-  port_range            = tostring(each.value.port)
+  all_ports             = true
   load_balancing_scheme = "EXTERNAL"
-  backend_service       = google_compute_region_backend_service.protocol[each.key].id
-}
-
-# The api/flight LBs were hand-coded before the for_each refactor; the GCP resource
-# names are unchanged (provisa-api*/provisa-flight*), so migrate state in place
-# rather than destroy/recreate — this also preserves the existing static IPs.
-moved {
-  from = google_compute_address.api
-  to   = google_compute_address.protocol["api"]
-}
-moved {
-  from = google_compute_region_health_check.api
-  to   = google_compute_region_health_check.protocol["api"]
-}
-moved {
-  from = google_compute_region_backend_service.api
-  to   = google_compute_region_backend_service.protocol["api"]
-}
-moved {
-  from = google_compute_forwarding_rule.api
-  to   = google_compute_forwarding_rule.protocol["api"]
-}
-moved {
-  from = google_compute_address.flight
-  to   = google_compute_address.protocol["flight"]
-}
-moved {
-  from = google_compute_region_health_check.flight
-  to   = google_compute_region_health_check.protocol["flight"]
-}
-moved {
-  from = google_compute_region_backend_service.flight
-  to   = google_compute_region_backend_service.protocol["flight"]
-}
-moved {
-  from = google_compute_forwarding_rule.flight
-  to   = google_compute_forwarding_rule.protocol["flight"]
+  backend_service       = google_compute_region_backend_service.shared.id
 }
 
 # ── Instance Group (unmanaged) for LB backends ─────────────────────────────────

@@ -65,54 +65,27 @@ resource "aws_route_table_association" "public" {
 }
 
 # ── Security Groups ────────────────────────────────────────────────────────────
-
-resource "aws_security_group" "lb" {
-  name        = "provisa-lb"
-  description = "ALB/NLB — HTTP API and Arrow Flight"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "HTTP API"
-    from_port   = 8000
-    to_port     = 8000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  ingress {
-    description = "Arrow Flight / gRPC"
-    from_port   = 8815
-    to_port     = 8815
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
+# An NLB is a passthrough that preserves the client IP — there is no LB security
+# group to source from, so the node SG opens every enabled protocol port straight
+# to the internet (REQ-1253: one shared endpoint fronting every protocol port).
+# One ingress rule per enabled protocol, driven by local.enabled_protocols.
 
 resource "aws_security_group" "nodes" {
   name        = "provisa-nodes"
-  description = "Provisa nodes — API, Flight, internal services"
+  description = "Provisa nodes — every enabled protocol port, internal services"
   vpc_id      = aws_vpc.main.id
 
-  # API from LB
-  ingress {
-    description     = "HTTP API from LB"
-    from_port       = 8000
-    to_port         = 8000
-    protocol        = "tcp"
-    security_groups = [aws_security_group.lb.id]
-  }
-  # Flight from LB
-  ingress {
-    description     = "Arrow Flight from LB"
-    from_port       = 8815
-    to_port         = 8815
-    protocol        = "tcp"
-    security_groups = [aws_security_group.lb.id]
+  # One rule per externally-reachable protocol (NLB preserves client IP, so the
+  # node itself is the ingress boundary — no LB SG to source from).
+  dynamic "ingress" {
+    for_each = local.enabled_protocols
+    content {
+      description = "${ingress.key} protocol"
+      from_port   = ingress.value.port
+      to_port     = ingress.value.port
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
   }
   # Internal cluster — all ports between nodes
   ingress {
@@ -200,6 +173,31 @@ locals {
   images_zip = "provisa-core-images-amd64-${var.provisa_version}.zip"
   images_key = "${dirname(var.appimage_s3_key)}/${local.images_zip}"
 
+  # ── Protocol surface ─────────────────────────────────────────────────────────
+  # One row per externally-reachable protocol. `enabled` gates the whole chain:
+  # node SG ingress port, NLB target group, listener, target attachments, and (for
+  # wire protocols) the container listener env var. Add a row here and every layer
+  # follows. api uses an HTTPS /health probe (REQ-1227: TLS on every endpoint); the
+  # rest use a TCP connect probe. `env`/`port` drive first-launch's protocol overlay.
+  protocols = {
+    api    = { port = 8000, enabled = true, probe = "https", path = "/health", env = null }
+    ui     = { port = 443, enabled = true, probe = "tcp", path = null, env = null }
+    flight = { port = 8815, enabled = true, probe = "tcp", path = null, env = "FLIGHT_PORT" }
+    pgwire = { port = 5439, enabled = var.enable_pgwire, probe = "tcp", path = null, env = "PROVISA_PGWIRE_PORT" }
+    bolt   = { port = 7687, enabled = var.enable_bolt, probe = "tcp", path = null, env = "PROVISA_BOLT_PORT" }
+    mcp    = { port = 8009, enabled = var.enable_mcp, probe = "tcp", path = null, env = "PROVISA_MCP_PORT" }
+    grpc   = { port = 50051, enabled = var.enable_grpc, probe = "tcp", path = null, env = "GRPC_PORT" }
+  }
+  enabled_protocols = { for k, v in local.protocols : k => v if v.enabled }
+  # Shell `export` lines fed into base_user_data: the container listener env var for
+  # each enabled wire protocol (first-launch persists these and its protocol overlay
+  # publishes the matching container port). api/ui/flight are served unconditionally
+  # by the app image, so only the opt-in protocols need a toggle.
+  protocol_exports = join("\n    ", concat(
+    [for k, v in local.enabled_protocols : "export ${v.env}=${v.port}" if contains(["pgwire", "bolt", "mcp", "grpc"], k)],
+    var.enable_mcp ? ["export PROVISA_MCP_HOST=0.0.0.0", "export PROVISA_MCP_ROLE=${var.mcp_role}"] : []
+  ))
+
   base_user_data = <<-SHELL
     #!/bin/bash
     set -euo pipefail
@@ -220,6 +218,34 @@ locals {
     export PROVISA_OBS_MODE="${var.obs_mode}"
     export PROVISA_OTLP_ENDPOINT="${var.otlp_endpoint}"
     export PROVISA_INSTALL_DEMO="${var.install_demo ? "y" : "n"}"
+    # Auth (REQ-972..979 parity). PROVISA_IDP drives _auto_configure_idp; the
+    # server reads these at runtime, so first-launch persists them into the
+    # systemd unit's EnvironmentFile.
+    export PROVISA_IDP="${var.auth_provider}"
+    export FIREBASE_PROJECT_ID="${var.firebase_project_id}"
+    export FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'
+    # Opt-in wire-protocol listeners (pgwire/bolt/mcp/grpc). first-launch persists
+    # these into the systemd EnvironmentFile and its protocol overlay publishes the
+    # matching container ports; the NLB above fronts each one.
+    ${local.protocol_exports}
+    # UI host-publish port. The UI container listens on 3000 (fixed in the node
+    # overlay's uvicorn command); the base compose publishes $${UI_PORT}:3000 on the
+    # host. Moving it to 443 lets https://cloud.provisa.dev resolve with no port
+    # suffix (.dev is HSTS-preloaded, so browsers force https:443). first-launch
+    # persists UI_PORT into the systemd EnvironmentFile so `provisa start`'s compose
+    # interpolation picks it up.
+    export UI_PORT=${local.protocols.ui.port}
+%{~if var.tls_cert_pem != "" && var.tls_key_pem != ""~}
+    # Operator-supplied wildcard TLS cert (REQ-1239). Written here and adopted by
+    # first-launch's ensure_tls_certs via PROVISA_TLS_CERT/KEY, which fans it out to
+    # every listener. base64 sidesteps PEM newline/quoting hazards in the user-data heredoc.
+    mkdir -p /etc/provisa/tls
+    printf '%s' '${base64encode(var.tls_cert_pem)}' | base64 -d > /etc/provisa/tls/node.crt
+    printf '%s' '${base64encode(var.tls_key_pem)}' | base64 -d > /etc/provisa/tls/node.key
+    chmod 600 /etc/provisa/tls/node.key
+    export PROVISA_TLS_CERT=/etc/provisa/tls/node.crt
+    export PROVISA_TLS_KEY=/etc/provisa/tls/node.key
+%{~endif~}
     cd /opt
   SHELL
 
@@ -299,95 +325,69 @@ resource "aws_instance" "secondary" {
   tags = { Name = "provisa-secondary-${count.index + 1}" }
 }
 
-# ── ALB — HTTP API (port 8000) ─────────────────────────────────────────────────
+# ── Network Load Balancer — ONE shared endpoint, every protocol port ──────────
+# The subdomain-as-org model (REQ-1233/1253) requires {org}.provisa.dev to reach
+# every protocol on a single DNS name: the org name resolves to the NLB and the
+# client connects the protocol's port (bolt 7687, pgwire 5439, …). A single
+# passthrough NLB fronts every listener — the destination port is preserved to the
+# node, so one `*.provisa.dev` record serves api/ui/flight/pgwire/bolt/mcp/grpc
+# alike. This is the AWS equivalent of GCP's all_ports passthrough forwarding rule:
+# one target group + listener per enabled protocol, all on the same NLB DNS name.
+# The api target group probes app-level HTTPS /health (REQ-1227); the rest use a
+# TCP connect probe, since first-launch brings all listeners up together.
 
-resource "aws_lb" "api" {
-  name               = "provisa-api"
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.lb.id]
-  subnets            = aws_subnet.public[*].id
-  internal           = false
-}
-
-resource "aws_lb_target_group" "api" {
-  name     = "provisa-api"
-  port     = 8000
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
-
-  health_check {
-    path                = "/health"
-    interval            = 30
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-  }
-}
-
-resource "aws_lb_listener" "api" {
-  load_balancer_arn = aws_lb.api.arn
-  port              = 8000
-  protocol          = "HTTP"
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.api.arn
-  }
-}
-
-resource "aws_lb_target_group_attachment" "api_primary" {
-  target_group_arn = aws_lb_target_group.api.arn
-  target_id        = aws_instance.primary.id
-  port             = 8000
-}
-
-resource "aws_lb_target_group_attachment" "api_secondary" {
-  count            = max(var.node_count - 1, 0)
-  target_group_arn = aws_lb_target_group.api.arn
-  target_id        = aws_instance.secondary[count.index].id
-  port             = 8000
-}
-
-# ── NLB — Arrow Flight / gRPC (port 8815) ─────────────────────────────────────
-
-resource "aws_lb" "flight" {
-  name               = "provisa-flight"
+resource "aws_lb" "shared" {
+  name               = "provisa-shared"
   load_balancer_type = "network"
   subnets            = aws_subnet.public[*].id
   internal           = false
 }
 
-resource "aws_lb_target_group" "flight" {
-  name     = "provisa-flight"
-  port     = 8815
+resource "aws_lb_target_group" "protocol" {
+  for_each = local.enabled_protocols
+  name     = "provisa-${each.key}"
+  port     = each.value.port
   protocol = "TCP"
   vpc_id   = aws_vpc.main.id
 
+  # api probes app-level HTTPS /health (REQ-1227); AWS does not validate the cert,
+  # so the node's self-signed (or operator wildcard) cert is accepted. Every other
+  # protocol uses a TCP connect probe — first-launch brings all listeners up together.
   health_check {
-    protocol            = "TCP"
+    protocol            = each.value.probe == "https" ? "HTTPS" : "TCP"
+    path                = each.value.probe == "https" ? each.value.path : null
     interval            = 30
     healthy_threshold   = 2
     unhealthy_threshold = 3
   }
 }
 
-resource "aws_lb_listener" "flight" {
-  load_balancer_arn = aws_lb.flight.arn
-  port              = 8815
+resource "aws_lb_listener" "protocol" {
+  for_each          = local.enabled_protocols
+  load_balancer_arn = aws_lb.shared.arn
+  port              = each.value.port
   protocol          = "TCP"
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.flight.arn
+    target_group_arn = aws_lb_target_group.protocol[each.key].arn
   }
 }
 
-resource "aws_lb_target_group_attachment" "flight_primary" {
-  target_group_arn = aws_lb_target_group.flight.arn
+resource "aws_lb_target_group_attachment" "primary" {
+  for_each         = local.enabled_protocols
+  target_group_arn = aws_lb_target_group.protocol[each.key].arn
   target_id        = aws_instance.primary.id
-  port             = 8815
+  port             = each.value.port
 }
 
-resource "aws_lb_target_group_attachment" "flight_secondary" {
-  count            = max(var.node_count - 1, 0)
-  target_group_arn = aws_lb_target_group.flight.arn
-  target_id        = aws_instance.secondary[count.index].id
-  port             = 8815
+# One attachment per (enabled protocol × secondary node). Flatten the product into
+# a single map keyed "protocol-index" so a single for_each covers every combination.
+resource "aws_lb_target_group_attachment" "secondary" {
+  for_each = {
+    for pair in setproduct(keys(local.enabled_protocols), range(max(var.node_count - 1, 0))) :
+    "${pair[0]}-${pair[1]}" => { protocol = pair[0], index = pair[1] }
+  }
+  target_group_arn = aws_lb_target_group.protocol[each.value.protocol].arn
+  target_id        = aws_instance.secondary[each.value.index].id
+  port             = local.enabled_protocols[each.value.protocol].port
 }
