@@ -39,6 +39,10 @@ cp "${CONFIG_SRC}/capabilities.yaml" "${CONFIG_SRC}/pg_extension_catalog.yaml" "
 # its embedded SQLite sample data. The config resolves the SQLite paths via ${env:PROVISA_DEMO_DIR},
 # which cli.py points at provisa/_config/demo/files.
 cp "${CONFIG_SRC}/provisa-install.yaml" "$CONFIG_DST/"
+# Minimal install skeleton the first-run setup wizard layers `auth` onto (REQ-120): system
+# sources/domains + the built-in admin role. ProvisaConfig requires sources/domains/tables/roles,
+# so a fileless first-run install has no valid config for _load_and_build until the wizard writes one.
+cp "${CONFIG_SRC}/provisa-install-base.yaml" "$CONFIG_DST/"
 mkdir -p "$CONFIG_DST/demo/files"
 cp "${REPO_ROOT}/demo/files/pet_store.sqlite" "${REPO_ROOT}/demo/files/inquiries.sqlite" \
    "$CONFIG_DST/demo/files/"

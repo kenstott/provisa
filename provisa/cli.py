@@ -48,6 +48,20 @@ def _resolve_demo() -> tuple[Path, Path]:
     return _REPO_ROOT / "config" / "provisa-install.yaml", _REPO_ROOT / "demo" / "files"
 
 
+def _resolve_base_config() -> Path:
+    """Return the shipped minimal install skeleton (``provisa-install-base.yaml``): system sources +
+    domains, the built-in ``admin`` role, empty tables, ``auth: none``. ``ProvisaConfig`` requires
+    ``sources``/``domains``/``tables``/``roles``, so a fileless first-run install has no valid config
+    for ``_load_and_build`` to parse; the setup wizard layers ``auth`` onto this base to produce one.
+
+    Prefers the wheel-staged copy under ``provisa/_config`` (REQ-1127); falls back to the repo tree.
+    """
+    pkg_cfg = _PKG_ROOT / "_config" / "provisa-install-base.yaml"
+    if pkg_cfg.exists():
+        return pkg_cfg
+    return _REPO_ROOT / "config" / "provisa-install-base.yaml"
+
+
 def _apply_demo_config() -> Path:
     """Point the embedded runtime at the bundled demo (REQ-414 sample federation). Sets PROVISA_CONFIG
     to the demo config and PROVISA_DEMO_DIR to its sample-data dir (the config resolves the embedded
