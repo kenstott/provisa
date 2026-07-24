@@ -65,7 +65,7 @@ import uuid
 
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 # The read_gsheet() call is a DuckDB C-extension network call that CANNOT be interrupted from
 # Python (SIGALRM only runs between bytecodes, never during a blocking C call), so it runs in a

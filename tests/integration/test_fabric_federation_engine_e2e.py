@@ -22,7 +22,7 @@ import os
 
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 pytest.importorskip("pyodbc", reason="pyodbc required")
 pytest.importorskip("azure.identity", reason="azure-identity required")

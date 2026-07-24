@@ -20,7 +20,7 @@ from urllib.parse import quote
 
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 # Skips when the driver is absent (current dev/CI) — the reason is explicit, never a silent pass.
 pytest.importorskip("snowflake.connector", reason="snowflake-connector-python not installed")

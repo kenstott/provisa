@@ -434,7 +434,20 @@ async def _run_lane(lane: Lane) -> list[tuple]:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("lane", _LANES, ids=[lane.id for lane in _LANES])
+@pytest.mark.parametrize(
+    "lane",
+    # The DuckDB reference lane always runs in every default lane; the cloud-DW lanes carry
+    # requires_warehouse so the default lanes DESELECT them (never a phantom skip) and only the
+    # warehouse lane — which loads .env creds and runs this file by path — executes them.
+    [
+        pytest.param(
+            lane,
+            id=lane.id,
+            marks=[] if lane is _DUCKDB else [pytest.mark.requires_warehouse],
+        )
+        for lane in _LANES
+    ],
+)
 async def test_engine_governed_rows_certify_against_ground_truth(lane: Lane):
     """Each reachable engine's governed rows must diff clean against the engine-independent
     ground truth. A collation/NULL/coercion bug that changes which rows survive the RLS

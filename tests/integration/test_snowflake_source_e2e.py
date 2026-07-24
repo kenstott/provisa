@@ -19,7 +19,7 @@ import os
 
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 pytest.importorskip("snowflake.connector", reason="snowflake-connector-python not installed")
 

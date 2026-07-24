@@ -107,7 +107,10 @@ rc=0
 # memory. The four `-m` selectors PARTITION the default lane (each test in exactly one
 # shard); a CLI `-m` overrides the ini `addopts` `-m`, so the base exclusions are folded
 # back in here, while `--ignore=tests/e2e` from addopts is preserved.
-_BASE="not packaging and not cluster and not isolated"
+# requires_warehouse: cloud-DW e2es needing external SaaS creds run ONLY in the warehouse lane
+# (by path, with .env creds loaded). Excluding them from every default lane means they are never
+# collected credential-less and so never surface as phantom skips in core.
+_BASE="not packaging and not cluster and not isolated and not requires_warehouse"
 _KAFKA="requires_kafka or requires_debezium"
 _DATASTORE="requires_elasticsearch or requires_sparql or requires_mongodb or requires_prometheus"
 
@@ -196,13 +199,14 @@ case "${TEST_ALL_WAREHOUSE:-auto}" in
 esac
 if [[ "$_run_warehouse" == "1" ]]; then
   echo "== lane: warehouse (cloud DW creds from .env) =="
-  # Own process so the warehouse creds live ONLY here — every cloud-DW e2e is skipif-gated on its
-  # provider env, so it skips cleanly when a cred is absent. With the current .env: Snowflake,
+  # Own process so the warehouse creds live ONLY here. These files carry requires_warehouse and are
+  # excluded from every default lane; they run here by path. With the current .env: Snowflake,
   # Databricks (source), BigQuery, Fabric identity, and SharePoint creds ARE present and RUN;
   # Databricks bulk/external-link + Fabric + Synapse paths skip without R2/ADLS staging creds
-  # (or SYNAPSE_*); ClickHouse skips without CLICKHOUSE_HOST. Cloud-DW e2es hit live SaaS
-  # endpoints, so an occasional TLS reset / Graph-auth error is external transience, not a code
-  # defect — re-run the single lane to confirm.
+  # (or SYNAPSE_*) — the genuine external-cred floor. Cloud-DW e2es hit live SaaS endpoints, so an
+  # occasional TLS reset / Graph-auth error is external transience, not a code defect — re-run the
+  # single lane to confirm. (ClickHouse is NOT here: it self-provisions via requires_clickhouse in
+  # the default/core lane.)
   ( _load_warehouse_creds
     COVERAGE_FILE=.coverage.warehouse pytest \
       tests/integration/test_snowflake_source_e2e.py \
@@ -213,8 +217,10 @@ if [[ "$_run_warehouse" == "1" ]]; then
       tests/integration/test_bigquery_federation_engine_e2e.py \
       tests/integration/test_fabric_federation_engine_e2e.py \
       tests/integration/test_synapse_federation_engine_e2e.py \
-      tests/integration/test_clickhouse_source_e2e.py \
+      tests/integration/test_redshift_source_e2e.py \
       tests/integration/test_sharepoint_source_e2e.py \
+      tests/integration/test_google_sheets_source_e2e.py \
+      tests/integration/test_cross_vendor_parity_e2e.py \
       -o addopts="" "${COV_ARGS[@]}" "$@" ) || rc=1
 fi
 

@@ -24,7 +24,7 @@ import os
 
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 pytest.importorskip("databricks.sql", reason="databricks-sql-connector required")
 

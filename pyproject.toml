@@ -221,6 +221,7 @@ markers = [
     "requires_firebird: requires Firebird service (docker compose up firebird)",
     "requires_exasol: requires Exasol service (docker compose up exasol); amd64-only image",
     "requires_redshift: requires a live AWS Redshift cluster (REDSHIFT_* env); no self-provision",
+    "requires_warehouse: cloud-DW e2e needing external SaaS creds (Snowflake/Databricks/BigQuery/Fabric/Synapse); runs only in the warehouse lane where .env creds load, excluded from default lanes so it is never a phantom skip",
     "requires_sharepoint: requires a live SharePoint site (SHAREPOINT_* env); no self-provision",
     "requires_splunk: requires Splunk service (docker compose up splunk)",
     "requires_airport: requires the airport-go Flight shim (docker compose up airport-shim)",
