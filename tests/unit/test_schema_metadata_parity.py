@@ -66,6 +66,9 @@ METADATA_ONLY_TABLES = REGISTRY_ONLY_TABLES | {
     "source_catalog_cache",
     "events",
     "event_status",
+    # superadmin_bootstrap: the platform superadmin singleton (schema_admin), portable
+    # metadata created via metadata.create_all — no raw SQL DDL to mirror.
+    "superadmin_bootstrap",
 }
 
 _CONSTRAINT_KW = {

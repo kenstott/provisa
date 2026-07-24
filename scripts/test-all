@@ -27,7 +27,7 @@ cd "$(dirname "$0")/.."
 # exported vars win. The standard lanes run clean, so warehouse tests simply skip there.
 _load_warehouse_creds() {
   [[ -f .env ]] || return 0
-  local cred_re='^(SNOWFLAKE_|DATABRICKS_|GOOGLE_|BIGQUERY_|FABRIC_|SYNAPSE_|CLICKHOUSE_)' key line
+  local cred_re='^(SNOWFLAKE_|DATABRICKS_|GOOGLE_|BIGQUERY_|FABRIC_|SYNAPSE_|CLICKHOUSE_|SP_)' key line
   set -a
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
@@ -38,6 +38,17 @@ _load_warehouse_creds() {
     eval "export $line"
   done < .env
   set +a
+  # SharePoint: .env authors the Azure AD app + cert under the SP_ prefix, but the
+  # sharepoint e2e reads SHAREPOINT_* (its own naming). Bridge SP_* -> SHAREPOINT_* so the
+  # already-present, runnable cert credential is actually USED instead of skipped on a name
+  # mismatch. certificate_path is authored relative (./sharepoint.pfx); resolve to absolute
+  # so the test works regardless of its own cwd.
+  [[ -n "${SP_SITE_URL:-}"     ]] && export SHAREPOINT_SITE_URL="$SP_SITE_URL"
+  [[ -n "${SP_TENANT_ID:-}"    ]] && export SHAREPOINT_TENANT_ID="$SP_TENANT_ID"
+  [[ -n "${SP_CLIENT_ID:-}"    ]] && export SHAREPOINT_CLIENT_ID="$SP_CLIENT_ID"
+  [[ -n "${SP_CLIENT_SECRET:-}" ]] && export SHAREPOINT_CLIENT_SECRET="$SP_CLIENT_SECRET"
+  [[ -n "${SP_CERT_PATH:-}"    ]] && export SHAREPOINT_CERT_PATH="$(cd "$(dirname "$SP_CERT_PATH")" && pwd)/$(basename "$SP_CERT_PATH")"
+  [[ -n "${SP_CERT_PASSWORD:-}" ]] && export SHAREPOINT_CERT_PASSWORD="$SP_CERT_PASSWORD"
 }
 
 # Auto-enable the warehouse lane whenever .env carries provider creds, so cloud-DW testing ALWAYS
@@ -45,7 +56,7 @@ _load_warehouse_creds() {
 # Each cloud e2e is still skipif-gated on its own provider env, so absent providers skip cleanly.
 _have_warehouse_creds() {
   [[ -f .env ]] || return 1
-  grep -qE '^[[:space:]]*(SNOWFLAKE_|DATABRICKS_|GOOGLE_|BIGQUERY_|FABRIC_|SYNAPSE_|CLICKHOUSE_)[A-Z0-9_]*=[^[:space:]]' .env
+  grep -qE '^[[:space:]]*(SNOWFLAKE_|DATABRICKS_|GOOGLE_|BIGQUERY_|FABRIC_|SYNAPSE_|CLICKHOUSE_|SP_)[A-Z0-9_]*=[^[:space:]]' .env
 }
 
 # Load the LLM api keys from .env for the e2e lane's non-deterministic LLM-eval tests, OVERRIDING any
@@ -193,6 +204,7 @@ if [[ "$_run_warehouse" == "1" ]]; then
       tests/integration/test_fabric_federation_engine_e2e.py \
       tests/integration/test_synapse_federation_engine_e2e.py \
       tests/integration/test_clickhouse_source_e2e.py \
+      tests/integration/test_sharepoint_source_e2e.py \
       -o addopts="" "${COV_ARGS[@]}" "$@" ) || rc=1
 fi
 
