@@ -306,11 +306,17 @@ class TestReq530TLS:
         assert cert is None and key is None
 
         # Confirm app_startup.py reads CERT+KEY and only builds ssl_ctx when both are present.
+        # REQ-1227: TLS resolution is centralized in _resolve_tls(), which returns a (cert, key)
+        # tuple only when both are set (gated by `if cert and key:`) and None otherwise; the pgwire
+        # start-up gates SSLContext creation on that tuple being non-None.
         src = inspect.getsource(app_mod)
         assert "PROVISA_PGWIRE_CERT" in src, "app_startup.py must read PROVISA_PGWIRE_CERT"
         assert "PROVISA_PGWIRE_KEY" in src, "app_startup.py must read PROVISA_PGWIRE_KEY"
-        assert "if _cert and _key:" in src, (
-            "app_startup.py must gate SSLContext creation on both CERT and KEY being set"
+        assert "if cert and key:" in src, (
+            "_resolve_tls must gate the (cert, key) pair on both being set"
+        )
+        assert "if _pgwire_tls is not None:" in src, (
+            "app_startup.py must gate SSLContext creation on _resolve_tls returning a pair"
         )
 
     def test_ssl_negotiation_sends_n_when_no_ctx(self):

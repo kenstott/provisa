@@ -41,6 +41,15 @@ def _build_sqlalchemy():
     return build_sqlalchemy_engine("postgresql://h/db")
 
 
+def _build_rows_only():
+    # REQ-1219 expanded sqlalchemy/pg to advertise ARROW/ARROW_STREAM via the generic row→batch
+    # adapter, so no shipped engine is rows-only. Restrict one explicitly to exercise the
+    # fail-closed contract (REQ-888): an engine that advertises ROWS alone must reject ARROW_STREAM.
+    eng = build_sqlalchemy_engine("postgresql://h/db")
+    eng._capabilities = frozenset({EngineCapability.ROWS})
+    return eng
+
+
 def _state():
     return types.SimpleNamespace(trino_conn=object(), flight_client=None, source_pools=None)
 
@@ -89,12 +98,13 @@ def test_snowflake_and_databricks_advertise_arrow_transports():
         )
 
 
-def test_sqlalchemy_supports_rows_only():
-    # A generic SQLAlchemy-backed engine is row-oriented — no Arrow transport.
+def test_sqlalchemy_advertises_all_three_transports():
+    # REQ-1219: a generic SQLAlchemy-backed engine surfaces ARROW and ARROW_STREAM via the generic
+    # row→batch adapter over its lazy row stream — no longer rows-only.
     rt = _rt(_build_sqlalchemy)
     assert rt.supports(EngineCapability.ROWS) is True
-    assert rt.supports(EngineCapability.ARROW) is False
-    assert rt.supports(EngineCapability.ARROW_STREAM) is False
+    assert rt.supports(EngineCapability.ARROW) is True
+    assert rt.supports(EngineCapability.ARROW_STREAM) is True
 
 
 # ---- fail-closed contract (REQ-888) -----------------------------------------
@@ -105,14 +115,14 @@ def test_require_supported_capability_does_not_raise():
 
 
 def test_require_unsupported_capability_fails_closed():
-    # A generic SQLAlchemy engine advertises ROWS only, so ARROW_STREAM fails closed.
-    rt = _rt(_build_sqlalchemy)
+    # A rows-only engine (no Arrow transport) fails closed when ARROW_STREAM is required.
+    rt = _rt(_build_rows_only)
     with pytest.raises(UnsupportedCapabilityError):
         rt.require(EngineCapability.ARROW_STREAM)
 
 
 def test_unsupported_capability_error_names_engine_and_capability():
-    rt = _rt(_build_sqlalchemy)
+    rt = _rt(_build_rows_only)
     with pytest.raises(UnsupportedCapabilityError) as exc:
         rt.require(EngineCapability.ARROW_STREAM)
     msg = str(exc.value)

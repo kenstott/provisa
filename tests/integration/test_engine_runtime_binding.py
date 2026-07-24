@@ -63,13 +63,16 @@ def test_default_engine_is_duckdb(monkeypatch):
 
 
 def test_bound_runtime_gates_capabilities_fail_closed(monkeypatch):
-    # The pg engine advertises ROWS only (no Arrow transport), so requiring ARROW_STREAM must
-    # fail closed. (DuckDB/Trino now advertise all three transports per REQ-986.)
+    # The bound runtime gates on whatever the bound engine advertises. Every shipped engine now
+    # advertises all three transports (pg/sqlalchemy via the generic row→batch adapter, REQ-1219;
+    # DuckDB/Trino natively, REQ-986), so restrict the bound engine to ROWS to prove the runtime
+    # still fails closed on a missing capability rather than silently degrading.
     monkeypatch.setenv("PROVISA_ENGINE", "pg")
     from provisa.api.app import AppState
 
     rt = AppState().federation_engine
     assert rt.supports(EngineCapability.ROWS) is True
+    rt.engine._capabilities = frozenset({EngineCapability.ROWS})
     assert rt.supports(EngineCapability.ARROW_STREAM) is False
     with pytest.raises(UnsupportedCapabilityError):
         rt.require(EngineCapability.ARROW_STREAM)
