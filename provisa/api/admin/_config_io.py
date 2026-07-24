@@ -27,6 +27,23 @@ def config_path() -> Path:
     return Path(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
 
 
+def read_config_for_setup() -> dict:  # REQ-164, REQ-120
+    """Config the setup wizard layers ``auth`` onto. ``ProvisaConfig`` requires
+    ``sources``/``domains``/``tables``/``roles``, so a fileless first-run install (empty
+    config) has nothing valid for ``_load_and_build`` to parse after the wizard writes.
+    Start from the shipped minimal skeleton (``provisa-install-base.yaml``: system
+    sources/domains + the built-in ``admin`` role) so the wizard always produces a valid
+    config. An existing config is used as-is."""
+    cfg = read_config()
+    if cfg:
+        return cfg
+    from provisa.cli import _resolve_base_config
+
+    base = _resolve_base_config()
+    with open(base) as f:
+        return yaml.safe_load(f) or {}
+
+
 def write_config(path: Path, cfg: dict) -> None:  # REQ-164
     # First-run setup creates the config for the first time — there is nothing to
     # back up and the config dir may not exist yet. Only snapshot an existing file.

@@ -15,7 +15,14 @@ COPY main.py pyproject.toml ./
 COPY provisa/ ./provisa/
 # static/ contains the built React SPA; may be empty in dev builds
 COPY static/ ./static/
-RUN mkdir -p ./config
+# Bake the shipped configs so a demo deploy loads a complete, valid config instead of
+# dropping into the first-run wizard (parity with native launch f7289d27): the full
+# pet-store + shelter demo (provisa-install.yaml, auth: none) and the minimal wizard
+# base skeleton (provisa-install-base.yaml). The demo config resolves its SQLite paths
+# via ${env:PROVISA_DEMO_DIR}; stage that sample data under /app/config/demo/files —
+# NOT /app/demo, which docker-compose.app.yml bind-mounts (./demo) and would shadow.
+COPY config/ ./config/
+COPY demo/files/pet_store.sqlite demo/files/inquiries.sqlite ./config/demo/files/
 
 EXPOSE 8000 3000
 

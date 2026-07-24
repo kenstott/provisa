@@ -38,11 +38,11 @@ def _idp_override() -> str | None:
 async def _auto_configure_idp(provider: str, pool) -> None:
     """Write auth config for provider from env vars — no wizard required."""
     import uuid
-    from provisa.api.admin._config_io import config_path, read_config, write_config
+    from provisa.api.admin._config_io import config_path, read_config_for_setup, write_config
 
     cfg_path = config_path()
-    cfg = read_config()
-    if "auth" in cfg:
+    cfg = read_config_for_setup()
+    if "auth" in cfg and cfg["auth"].get("provider") not in (None, "none"):
         return  # already configured
 
     auth_section: dict = {
@@ -138,7 +138,7 @@ class SetupRequest(BaseModel):
 async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, REQ-471, REQ-472
     import uuid
     from provisa.api.app import state, _load_and_build
-    from provisa.api.admin._config_io import config_path, read_config, write_config
+    from provisa.api.admin._config_io import config_path, read_config_for_setup, write_config
 
     if body.provider not in ("basic", "firebase", "none"):
         raise HTTPException(
@@ -165,7 +165,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
 
     if body.provider == "none":
         cfg_path = config_path()
-        cfg = read_config()
+        cfg = read_config_for_setup()
         cfg["auth"] = {"provider": "none"}
         _apply_naming(cfg)
         write_config(cfg_path, cfg)
@@ -214,7 +214,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         }
 
     cfg_path = config_path()
-    cfg = read_config()
+    cfg = read_config_for_setup()
     cfg["auth"] = auth_section
     _apply_naming(cfg)
     write_config(cfg_path, cfg)
