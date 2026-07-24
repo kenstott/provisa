@@ -108,6 +108,87 @@ variable "admin_cidr" {
   default     = ""
 }
 
+variable "tls_cert_pem" {
+  description = <<-EOT
+    PEM-encoded TLS certificate served by every Provisa listener (API, UI, pgwire,
+    bolt, Flight, gRPC, MCP). Supply a wildcard *.provisa.dev cert so cloud.provisa.dev
+    and every {org}.provisa.dev terminate on one cert (REQ-1239). Full chain (leaf +
+    issuers) recommended. When set together with tls_key_pem, first-launch adopts it via
+    PROVISA_TLS_CERT and skips self-signed generation. Generate with
+    scripts/issue-wildcard-cert.sh. Leave blank to fall back to a self-signed dev cert.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "tls_key_pem" {
+  description = "PEM-encoded private key matching tls_cert_pem. Required when tls_cert_pem is set."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# ── Auth (parity with the desktop installer wizard, REQ-972..979) ──────────────
+variable "auth_provider" {
+  description = "Identity provider PROVISA_IDP: 'none' (unsecured), 'firebase', 'basic', 'keycloak', 'oauth', or 'oidc'."
+  type        = string
+  default     = "none"
+  validation {
+    condition     = contains(["none", "firebase", "basic", "keycloak", "oauth", "oidc"], var.auth_provider)
+    error_message = "auth_provider must be one of: none, firebase, basic, keycloak, oauth, oidc."
+  }
+}
+
+variable "firebase_project_id" {
+  description = "Firebase project ID when auth_provider=firebase."
+  type        = string
+  default     = ""
+}
+
+variable "firebase_service_account_key" {
+  description = "Firebase service-account JSON (or blank to use ADC on the node) when auth_provider=firebase."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# ── Protocol surfaces (each gates an NSG rule + shared-LB rule + container listener) ─
+# API (8000), Arrow Flight (8815), and the UI (3000) are always exposed. The
+# following are opt-in wire protocols Provisa can serve over the same federated
+# catalog; enabling one publishes its port on the provisa container, opens the NSG,
+# and adds an LB rule on the shared frontend IP. Ports are fixed to each protocol's
+# client-expected default (psql 5439, Neo4j Bolt 7687, MCP 8009, gRPC 50051).
+# Default on for a fully exercisable test cluster.
+variable "enable_pgwire" {
+  description = "Expose the Postgres wire protocol (port 5439) — DBeaver/psql over the federated catalog."
+  type        = bool
+  default     = true
+}
+
+variable "enable_bolt" {
+  description = "Expose the Neo4j Bolt protocol (port 7687) — Neo4j Browser/Bloom, Cypher over the graph."
+  type        = bool
+  default     = true
+}
+
+variable "enable_mcp" {
+  description = "Expose the MCP server (port 8009, REQ-1008) for agent/tool access."
+  type        = bool
+  default     = true
+}
+
+variable "enable_grpc" {
+  description = "Expose the gRPC API (port 50051). Only serves once a proto schema is registered."
+  type        = bool
+  default     = true
+}
+
+variable "mcp_role" {
+  description = "Role the MCP server runs queries as when enable_mcp=true."
+  type        = string
+  default     = "admin"
+}
+
 variable "tags" {
   description = "Additional tags applied to all resources"
   type        = map(string)

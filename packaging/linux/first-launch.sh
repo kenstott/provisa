@@ -632,7 +632,7 @@ install_systemd() {
              KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
              OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET \
              PROVISA_PGWIRE_PORT PROVISA_BOLT_PORT PROVISA_MCP_PORT \
-             PROVISA_MCP_HOST PROVISA_MCP_ROLE GRPC_PORT; do
+             PROVISA_MCP_HOST PROVISA_MCP_ROLE GRPC_PORT UI_PORT; do
     if [ -n "${!var:-}" ]; then
       printf '%s=%s\n' "$var" "${!var}" >> "$env_file"
     fi

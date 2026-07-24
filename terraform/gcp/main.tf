@@ -176,7 +176,7 @@ locals {
   # first-launch's protocol overlay.
   protocols = {
     api    = { port = 8000, enabled = true, probe = "https", path = "/health", env = null }
-    ui     = { port = 3000, enabled = true, probe = "tcp", path = null, env = null }
+    ui     = { port = 443, enabled = true, probe = "tcp", path = null, env = null }
     flight = { port = 8815, enabled = true, probe = "tcp", path = null, env = "FLIGHT_PORT" }
     pgwire = { port = 5439, enabled = var.enable_pgwire, probe = "tcp", path = null, env = "PROVISA_PGWIRE_PORT" }
     bolt   = { port = 7687, enabled = var.enable_bolt, probe = "tcp", path = null, env = "PROVISA_BOLT_PORT" }
@@ -269,6 +269,13 @@ locals {
     # these into the systemd EnvironmentFile and its protocol overlay publishes the
     # matching container ports; the NetLB above fronts each one.
     ${local.protocol_exports}
+    # UI host-publish port. The UI container listens on 3000 (fixed in the node
+    # overlay's uvicorn command); the base compose publishes $${UI_PORT}:3000 on the
+    # host. Moving it to 443 lets https://cloud.provisa.dev resolve with no port
+    # suffix (.dev is HSTS-preloaded, so browsers force https:443). first-launch
+    # persists UI_PORT into the systemd EnvironmentFile so `provisa start`'s compose
+    # interpolation picks it up.
+    export UI_PORT=${local.protocols.ui.port}
 %{~if var.tls_cert_pem != "" && var.tls_key_pem != ""~}
     # Operator-supplied wildcard TLS cert (REQ-1239). Written here and adopted by
     # first-launch's ensure_tls_certs via PROVISA_TLS_CERT/KEY, which fans it out to
