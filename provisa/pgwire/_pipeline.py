@@ -61,6 +61,11 @@ class _Plan:
     physical_sql: str | None = field(default=None)
     # Per-query the engine session overrides (e.g. retry_policy=NONE to bypass FTE).
     session_hints: dict[str, str] | None = field(default=None)
+    # REQ-1194/REQ-1195: an IR-level directive to materialize this result to a sink (CTAS-to-object-
+    # store, presigned URL) instead of returning rows. Set by the planner from the caller's delivery
+    # preference; _execute_plan runs the ONE materialize terminal when present. Every transport
+    # inherits it — the redirect decision is no longer transport-local.
+    materialize: object | None = field(default=None)  # executor.redirect.Delivery | None
     # Governed-provenance stamp (see below). Minted ONLY at the top of the pipeline
     # (_govern_and_route / _govern_and_route_compiled); _execute_plan refuses any plan lacking a
     # valid one, so an un-governed / side-door plan can never be executed.
@@ -258,6 +263,7 @@ async def _govern_and_route(
     session_vars: dict[str, str] | None = None,
     discovery_mode: bool = False,
     as_of: str | None = None,
+    deliver: object | None = None,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     import sqlglot
     import sqlglot.expressions as exp
@@ -419,6 +425,16 @@ async def _govern_and_route(
                 route=Route.ENGINE, source_id=None, dialect=None, reason="query references a view"
             )
 
+    # REQ-1194/REQ-1195: a delivery request materializes the result via the federation engine's
+    # CTAS-to-object-store terminal, so the plan MUST carry engine-physical SQL regardless of the
+    # route the rows would otherwise take. Force ENGINE so the physical_sql branch below runs.
+    if deliver is not None and decision.route != Route.ENGINE:
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE, source_id=None, dialect=None, reason="result delivery requested"
+        )
+
     # REQ-1159: a localized statement carries an inline local relation as a VALUES list, which rides
     # along on whichever route the router picks — DIRECT inlines the VALUES into the single source's
     # SQL (the source executes it), and a genuinely cross-source statement is detected and routed to
@@ -475,6 +491,7 @@ async def _govern_and_route(
             dialect=state.federation_engine.dialect,
             exec_params=exec_params,
             physical_sql=physical_sql,
+            materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
     else:
@@ -509,6 +526,18 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     from provisa.transpiler.router import Route
 
     engine = state.federation_engine
+
+    if plan.materialize is not None:
+        # ONE materialize terminal (REQ-1194/REQ-1195): the governed plan asked for sink delivery.
+        # The planner forced the ENGINE lowering so physical_sql is the federated CTAS source. Return
+        # the delivery handle on the result; the row list is empty (zero rows transit memory).
+        from typing import cast
+
+        from provisa.executor.redirect import Delivery, run_materialize
+
+        assert plan.physical_sql is not None
+        handle = await run_materialize(state, plan.physical_sql, cast(Delivery, plan.materialize))
+        return QueryResult(rows=[], column_names=[], redirect=handle)
 
     if plan.route == Route.ENGINE:
         assert plan.physical_sql is not None
@@ -557,6 +586,7 @@ async def execute_sql_batch(
     session_vars: dict[str, str] | None = None,
     discovery_mode: bool = False,
     as_of: str | None = None,
+    deliver: object | None = None,
 ) -> QueryResult:
     """Govern + execute a (possibly multi-statement) SQL batch through the ONE pipeline, returning the
     LAST statement's result (psql/JDBC batch semantics).
@@ -576,13 +606,21 @@ async def execute_sql_batch(
     if not statements:
         return QueryResult(rows=[], column_names=[])
     result: QueryResult | None = None
-    for stmt in statements:
+    for _i, stmt in enumerate(statements):
         cmd = await maybe_invoke_registered_function(stmt, role_id, state)
         if cmd is not None:
             result = cmd
             continue
+        # Delivery applies only to the final (result) statement of the batch; leading statements run
+        # inline so their side effects land without spilling intermediate results to a sink.
+        _deliver = deliver if _i == len(statements) - 1 else None
         plan = await _govern_and_route(
-            stmt, role_id, session_vars=session_vars, discovery_mode=discovery_mode, as_of=as_of
+            stmt,
+            role_id,
+            session_vars=session_vars,
+            discovery_mode=discovery_mode,
+            as_of=as_of,
+            deliver=_deliver,
         )
         result = await _execute_plan(plan, state)
     assert result is not None
@@ -621,6 +659,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
     exec_params: list | None = None,
     state: Any | None = None,
     api_args: dict | None = None,
+    deliver: object | None = None,
 ) -> _Plan:
     """Governance + routing for already-physical SQL.
 
@@ -682,6 +721,15 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         _exec_sql, governed_sql, gov_ctx, ctx, state, nf_args=_nf_args
     )
 
+    # REQ-1194/REQ-1195: sink delivery materializes via the federation engine's CTAS terminal, so the
+    # plan MUST carry engine-physical SQL. Force ENGINE regardless of the route the rows would take.
+    if deliver is not None and decision.route != Route.ENGINE:
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE, source_id=None, dialect=None, reason="result delivery requested"
+        )
+
     if decision.route == Route.ENGINE:
         _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
@@ -729,6 +777,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             exec_sql=_exec_sql,
             physical_sql=physical_sql,
             session_hints=_hints,
+            materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
     else:

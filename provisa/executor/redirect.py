@@ -497,3 +497,104 @@ async def presign_ctas_result(  # REQ-044, REQ-029
     )
 
     return url
+
+
+# --------------------------------------------------------------------------- #
+# The ONE materialize terminal (REQ-1194/REQ-1195).
+#
+# The redirect/materialize decision is an IR-level route directive attached to a governed plan by the
+# top of the pipeline. Every transport inherits it because they all execute through _execute_plan —
+# there is no transport-local "should I redirect?" branch anymore. This terminal is the single sink:
+# it selects a sink tier and hands back an opaque delivery handle that each surface reports in its own
+# envelope. Zero result rows flow through Provisa's memory on this path.
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class Delivery:  # REQ-1194, REQ-1195
+    """A governed request to materialize a result to a sink instead of returning rows.
+
+    Carried on ``_Plan.materialize`` and consumed by :func:`run_materialize`. ``output_format`` is the
+    on-disk file format (parquet/orc); ``config`` is the resolved :class:`RedirectConfig`; ``role`` is
+    the requesting role, threaded to the sink for per-username access scoping (REQ-1192).
+    """
+
+    output_format: str
+    config: RedirectConfig
+    role: str | None = None
+
+
+def delivery_from_request(  # REQ-1194, REQ-1195
+    *,
+    force_redirect: bool,
+    redirect_format: str | None,
+    threshold: int | None,
+    role: str | None,
+) -> Delivery | None:
+    """Translate a buffered transport's caller redirect request into a ``_Plan.materialize`` directive.
+
+    The buffered transports (GraphQL, JSON:API, Bolt) each read a redirect request from their own
+    side-channel — HTTP ``X-Provisa-Redirect*`` headers, or Bolt transaction metadata — and call this
+    to build the IR directive. Returns ``None`` when no redirect was asked for: that is the opt-out
+    (``deliver=None``) the streaming transports also use, so the plan returns rows as usual.
+    """
+    from dataclasses import replace
+
+    if not force_redirect:
+        return None
+    config = RedirectConfig.from_env()
+    if threshold is not None:
+        config = replace(config, enabled=True, threshold=threshold)
+    fmt = redirect_format or config.default_format or "parquet"
+    return Delivery(output_format=fmt, config=config, role=role)
+
+
+_CONTENT_TYPES = {
+    "parquet": "application/vnd.apache.parquet",
+    "orc": "application/x-orc",
+}
+
+
+async def run_materialize(state, physical_sql: str, delivery: Delivery) -> dict:  # REQ-1194, REQ-1195
+    """Materialize *physical_sql* to the selected sink and return the delivery handle.
+
+    Sink-tier selection rule (REQ-1195): when the engine can write the requested format natively to a
+    configured object store, the engine runs a CTAS straight to object storage (REQ-1194) and the
+    client receives a presigned URL — zero rows transit Provisa. Otherwise the local/HTTP sink tier
+    (REQ-1191) is used. The tiers are exclusive and chosen here, once, for every transport.
+
+    Returns a handle dict: ``{sink, redirect_url, row_count, expires_in, content_type}``.
+    """
+    import asyncio
+
+    fmt = delivery.output_format.lower()
+    config = delivery.config
+
+    # Object-store tier requires only that the engine can CTAS-write the format natively (parquet/orc)
+    # and is connected; S3 creds/bucket come from config/env/IAM. An empty endpoint_url means real AWS
+    # S3, not "no store", so it does NOT disqualify this tier.
+    object_store_available = (
+        is_engine_native_format(fmt) and getattr(state, "engine_conn", None) is not None
+    )
+
+    if object_store_available:
+        # Object-store tier: the engine CTAS-writes Parquet/ORC directly to S3-compatible storage.
+        ctas_result = state.federation_engine.ctas_redirect(physical_sql, fmt)
+        url = await presign_ctas_result(ctas_result["s3_prefix"], config)
+        # Do NOT drop the Iceberg table here — DROP TABLE on the JDBC catalog purges S3 data files
+        # immediately, invalidating the presigned URL. The background task deletes objects after TTL.
+        asyncio.create_task(schedule_s3_cleanup(ctas_result["s3_prefix"], config))
+        return {
+            "sink": "object-store",
+            "redirect_url": url,
+            "row_count": ctas_result["row_count"],
+            "expires_in": config.ttl,
+            "content_type": _CONTENT_TYPES.get(fmt, "application/octet-stream"),
+        }
+
+    # Local/HTTP sink tier (REQ-1191/REQ-1192/REQ-1193): served by the app's redirect-file endpoint
+    # with per-username scoping and TTL reaping. Implemented as the follow-on increment.
+    raise NotImplementedError(
+        "local/HTTP materialization sink (REQ-1191) not yet wired — configure an object store "
+        "(PROVISA_REDIRECT_ENDPOINT) with a native format (parquet/orc) to materialize results"
+    )
