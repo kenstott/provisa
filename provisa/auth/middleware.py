@@ -87,16 +87,29 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         # ``state`` on the first request. None → settings above are already final (test/eager path).
         self._config_resolver = config_resolver
         self._resolved = config_resolver is None
+        # Generation of auth_config this middleware last resolved against. -1 = never resolved; the
+        # resolver path re-resolves whenever state.auth_reconfig_generation advances (runtime auth
+        # (re)configure — setup wizard / PROVISA_IDP boot deferral), so a server that starts unsecured
+        # and later becomes firebase enforces without a process restart (REQ-1259).
+        self._resolved_generation = -1
         self._resolve_lock = asyncio.Lock()
 
+    def _current_generation(self) -> int:
+        from provisa.api.app import state
+
+        return getattr(state, "auth_reconfig_generation", 0)
+
     async def _ensure_resolved(self) -> None:
-        if self._resolved:
+        resolver = self._config_resolver
+        if resolver is None:
+            return  # eager/test path — settings were passed in and are final
+        gen = self._current_generation()
+        if self._resolved and gen == self._resolved_generation:
             return
         async with self._resolve_lock:
-            if self._resolved:
+            gen = self._current_generation()
+            if self._resolved and gen == self._resolved_generation:
                 return
-            resolver = self._config_resolver
-            assert resolver is not None  # _resolved is False only when a resolver was set
             s = resolver()
             self._provider = s["provider"]
             self._mapping_rules = s.get("mapping_rules") or []
@@ -110,6 +123,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             self._superuser = s["superuser"]
             self._bootstrap_superadmin = s["bootstrap_superadmin"]
             self._resolved = True
+            self._resolved_generation = gen
 
     async def _upsert_profile(self, identity: AuthIdentity) -> None:
         """Record last-seen identity in user_profiles (platform control plane).

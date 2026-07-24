@@ -166,6 +166,11 @@ class AppState:
     source_cache: dict[str, dict] = {}  # source_id → {cache_enabled, cache_ttl}
     table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
     auth_config: dict | None = None  # auth section from provisa.yaml
+    # Bumped every time _load_and_build resolves auth_config. The lazily-resolving AuthMiddleware
+    # (config_resolver path) caches its provider on first request; comparing this generation lets it
+    # re-resolve when auth is (re)configured at runtime — e.g. the setup wizard or a PROVISA_IDP boot
+    # deferral turns an unsecured server into a firebase one without a process restart (REQ-1259).
+    auth_reconfig_generation: int = 0
     auth_middleware_active: bool = False  # True only when wire_auth installed AuthMiddleware
     redis_url: str | None = None  # resolved Redis URL (REDIS_URL env or cache.redis_url)
     rate_limiter: Any | None = None  # REQ-369-371: Redis-backed RateLimiter (None until startup)
@@ -343,6 +348,9 @@ async def _load_and_build(
     state.auth_config = (
         None if (isinstance(_raw_auth, dict) and _raw_auth.get("provider") == "none") else _raw_auth
     )
+    # Signal the lazily-resolving AuthMiddleware that auth_config may have changed so it re-resolves
+    # its provider on the next request (runtime reconfigure — setup wizard / PROVISA_IDP boot path).
+    state.auth_reconfig_generation += 1
 
     # Load config into PG (and create the engine catalogs)
     config = parse_config_dict(raw_config)
@@ -707,6 +715,16 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     except Exception:
         _log.exception("Startup failed during _load_and_build")
         raise
+
+    # REQ-1259: when PROVISA_IDP names an identity provider (e.g. firebase from the GCP/installer
+    # deploy) but the loaded config carries no auth section, configure it now — BEFORE any request
+    # reaches the middleware — so the server enforces auth from its first request instead of serving
+    # an unsecured admin window until the UI happens to call /setup/status.
+    from provisa.api.setup_router import _auto_configure_idp, _idp_override
+
+    _idp = _idp_override()
+    if _idp and state.admin_db is not None and state.auth_config is None:
+        await _auto_configure_idp(_idp, state.admin_db)
 
     _prewarm_govdata_jvm(_log)
 
