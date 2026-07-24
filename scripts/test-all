@@ -111,6 +111,11 @@ rc=0
 # (by path, with .env creds loaded). Excluding them from every default lane means they are never
 # collected credential-less and so never surface as phantom skips in core.
 _BASE="not packaging and not cluster and not isolated and not requires_warehouse"
+# On a macOS host the RLIMIT_AS cap tests (linux_mem) cannot discriminate — Darwin ignores the cap —
+# so they @skipif on macOS and would surface as phantom skips in the default lanes. The linux-mem
+# container lane below runs them for real instead, so DESELECT them from every default lane on macOS.
+# On a Linux host they DO discriminate natively: leave them in the default lanes (linux-mem no-ops).
+[[ "$(uname -s)" == "Darwin" ]] && _BASE="$_BASE and not linux_mem"
 _KAFKA="requires_kafka or requires_debezium"
 _DATASTORE="requires_elasticsearch or requires_sparql or requires_mongodb or requires_prometheus"
 

@@ -258,9 +258,17 @@ def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool = True) -> None
 
 # RLIMIT_AS discriminates the cap only on Linux; macOS ignores it for the large arena maps pyarrow/libpq
 # make. The cap-based tests carry this marker; the measured-peak-RSS metric tests run everywhere.
-linux_only = pytest.mark.skipif(
+# @linux_only stacks TWO markers: linux_mem (so scripts/test-all's default lanes deselect these on a
+# macOS host, where the linux-mem container lane runs them instead — no phantom skip) and the
+# skipif safety net (so a direct macOS run still skips rather than falsely passing an unenforced cap).
+# On a Linux host the marker is not excluded and skipif passes, so the default/core lane runs them.
+_linux_only_skip = pytest.mark.skipif(
     sys.platform != "linux", reason="RLIMIT_AS cap discriminates only on Linux; macOS ignores it"
 )
+
+
+def linux_only(fn):
+    return pytest.mark.linux_mem(_linux_only_skip(fn))
 
 
 @pytest.fixture(scope="module")
