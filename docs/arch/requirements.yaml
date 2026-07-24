@@ -34606,3 +34606,57 @@
     Given a proto schema is registered via the registry API
     When subsequent health check probes are sent
     Then the listener responds healthy
+- id: REQ-1211
+  status: accepted
+  group: "8. Deployment & Infrastructure"
+  category: Linux AppImage Deployment
+  priority: MUST
+  type: constraint
+  description: >-
+    Linux AppImage deployments must stage the docker-compose tree out of the AppImage's self-mount into a persistent, writable location (${PROVISA_HOME}/compose) during first-launch and record project_dir there, as the AppImage mount (/tmp/.mount_Provis*) is read-only and ephemeral.
+  use_case: >-
+    The AppImage mount is read-only, blocking Trino plugin extraction and other write operations; it is also ephemeral and vanishes when the AppImage process exits, causing the systemd `provisa start` daemon to lose its compose files on restart.
+  target: "2026-Q3"
+  scenario: |
+    Given a Linux AppImage deployment is launched for the first time
+    When first-launch.sh executes
+    Then the docker-compose tree is staged from the AppImage mount to ${PROVISA_HOME}/compose
+    And project_dir is recorded in configuration
+    And subsequent `provisa start` invocations find the compose files in the persistent location
+    And plugin extraction succeeds on persistent writable storage
+- id: REQ-1212
+  status: accepted
+  group: "8. Deployment & Infrastructure"
+  category: Docker Image Build
+  priority: MUST
+  type: constraint
+  description: >-
+    The provisa/provisa:local core Docker image must have the built React SPA present in static/ at image-build time; CI core-image jobs must run the vite build into static/ before `docker build`.
+  use_case: >-
+    Without the UI bundle in the image, the provisa-ui container serves HTTP 503 "UI not bundled", making Provisa inaccessible via the web interface.
+  target: "2026-Q3"
+  scenario: |
+    Given a CI core-image job is triggered
+    When the job builds the Docker image
+    Then it first runs `npm run build` in provisa-ui to generate static/
+    And the docker build command includes the populated static/ directory
+    When the provisa-ui container is deployed and starts
+    Then the React SPA is available and HTTP 200 is served on the web interface port
+    And the UI is not unavailable with HTTP 503
+- id: REQ-1213
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: VM Cloud Deployment
+  priority: MUST
+  type: infrastructure
+  description: GCP VM startup-script writes /etc/apt/apt.conf.d/99provisa-resilient before the first apt-get update, setting Acquire::http::Timeout=30, Acquire::https::Timeout=30, Acquire::Retries=3, Acquire::http::Pipeline-Depth=0 to prevent indefinite CLOSE-WAIT hangs when Canonical mirrors half-close sockets mid-response.
+  use_case: apt's default HTTP pipelining wedges forever (no timeout) on half-closed mirror sockets; under set -euo pipefail, hung apt-get update never errors and blocks the entire node boot indefinitely. Configuring timeouts and disabling pipelining makes apt deterministic on first-launch.
+  code:
+    - terraform/gcp/main.tf
+  since: "2026-07"
+  scenario: |
+    Given a GCP VM instance is created with Provisa terraform/gcp configuration
+    When the base_startup script executes before the first apt-get update
+    Then /etc/apt/apt.conf.d/99provisa-resilient is written with Acquire::http::Timeout=30, Acquire::https::Timeout=30, Acquire::Retries=3, Acquire::http::Pipeline-Depth=0
+    And subsequent apt-get update commands respect the timeout and retry settings
+    And the node boot completes deterministically without indefinite CLOSE-WAIT hangs

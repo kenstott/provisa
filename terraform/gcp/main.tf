@@ -197,10 +197,26 @@ locals {
   base_startup = <<-SHELL
     #!/bin/bash
     set -euo pipefail
+    # apt's HTTP method pipelines requests by default and, when a Canonical mirror
+    # (e.g. security.ubuntu.com) half-closes a socket mid-response, the method sits
+    # in CLOSE-WAIT forever with no timeout — wedging `apt-get update` indefinitely.
+    # Under `set -e` that never errors, so first-launch never starts. Force a hard
+    # per-connection timeout, bounded retries, and disable pipelining to make the
+    # fresh-boot apt phase deterministic.
+    cat > /etc/apt/apt.conf.d/99provisa-resilient <<'APTCONF'
+    Acquire::http::Timeout "30";
+    Acquire::https::Timeout "30";
+    Acquire::Retries "3";
+    Acquire::http::Pipeline-Depth "0";
+    APTCONF
     # Ubuntu 22.04 base images ship no gcloud. Add the Cloud SDK apt repo first.
     apt-get update -qq
     apt-get install -y -qq apt-transport-https ca-certificates gnupg curl fuse unzip
-    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+    # GCE re-runs this startup-script on every boot/reset. gpg --dearmor prompts on
+    # /dev/tty before overwriting an existing keyring; with no tty the re-run dies
+    # (exit 2), bricking the node on any reboot. --batch --yes forces overwrite so
+    # the script is idempotent.
+    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/cloud.google.gpg
     echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" > /etc/apt/sources.list.d/google-cloud-sdk.list
     apt-get update -qq
     apt-get install -y -qq google-cloud-cli
@@ -212,7 +228,7 @@ locals {
     # Use Docker's official repo, NOT Ubuntu's docker.io: the CLI (scripts/provisa
     # compose_cmd) requires Compose v2 (`docker compose`), which docker.io omits —
     # only docker-compose-plugin provides it, and the stack fails to start without it.
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker.gpg
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/docker.gpg
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
     apt-get update -qq
     apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
