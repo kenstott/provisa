@@ -724,11 +724,13 @@ async def _exec_api_route(
 
 
 async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redirect_config):
-    """Execute CTAS redirect path.
+    """Prepare the GQL query's engine-physical SQL, then materialize via the ONE sink terminal.
 
-    Returns redirect_info dict on success, or raises.
+    The GQL path hydrates/inlines API tables into the query before lowering; from there the sink is
+    the shared :func:`run_materialize` terminal (REQ-1194/REQ-1195) that every transport uses — not a
+    transport-local CTAS. Returns the delivery handle, or raises.
     """
-    from provisa.executor.redirect import presign_ctas_result, schedule_s3_cleanup
+    from provisa.executor.redirect import Delivery, run_materialize
 
     _, _, _, _ = await _hydrate_api_tables_before_engine(compiled, ctx, state)
     _ctas_exec_sql = rewrite_semantic_to_catalog_physical(compiled.sql, ctx)
@@ -750,21 +752,11 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
 
         _ctas_exec_sql = rewrite_all_from_cache(_ctas_exec_sql, _ctas_rewrites)
     physical_sql = state.federation_engine.transpile_physical(_ctas_exec_sql)
-    ctas_result = state.federation_engine.ctas_redirect(physical_sql, effective_redirect_format)
-    url = await presign_ctas_result(ctas_result["s3_prefix"], redirect_config)
-    # Do NOT drop the Iceberg table here — DROP TABLE on the JDBC catalog purges
-    # S3 data files immediately, invalidating the presigned URL before the user
-    # can download. The background task deletes S3 objects after TTL expires.
-    asyncio.create_task(schedule_s3_cleanup(ctas_result["s3_prefix"], redirect_config))
-    content_type = {"parquet": "application/vnd.apache.parquet", "orc": "application/x-orc"}.get(
-        effective_redirect_format, "application/octet-stream"
+    return await run_materialize(
+        state,
+        physical_sql,
+        Delivery(output_format=effective_redirect_format, config=redirect_config),
     )
-    return {
-        "redirect_url": url,
-        "row_count": ctas_result["row_count"],
-        "expires_in": redirect_config.ttl,
-        "content_type": content_type,
-    }
 
 
 async def _exec_probe_redirect(

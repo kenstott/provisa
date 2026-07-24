@@ -32,10 +32,10 @@ from typing import Any
 
 import duckdb
 
-from provisa.executor.result import QueryResult
+from provisa.executor.result import QueryResult, ResultStream
 from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
-from provisa.federation.runtime_support import columns_from_describe, result_from_dbapi
+from provisa.federation.runtime_support import columns_from_describe, stream_from_dbapi
 from provisa.transpiler.transpile import transpile
 
 
@@ -356,10 +356,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
         return await loop.run_in_executor(None, _run)
 
-    def run_sync(self, duck_sql: str, params: list | None = None) -> QueryResult:
-        """Synchronous variant of run() for callers already on a worker thread (Arrow Flight, etc.)."""
-        res = self._con.execute(duck_sql, params) if params else self._con.execute(duck_sql)
-        return result_from_dbapi(res)
+    def run_sync(self, duck_sql: str, params: list | None = None) -> ResultStream:
+        """Synchronous variant of run() for callers already on a worker thread (Arrow Flight, etc.).
+
+        Streams rows lazily over a PRIVATE cursor (batched ``fetchmany``) so a large result never
+        fully materializes; the cursor is closed when the stream drains (REQ-028). A private cursor
+        (not the shared connection) keeps concurrent worker-thread queries from corrupting each
+        other's fetch state. Consumers that call ``.rows`` still get the full list — the buffering
+        is then explicit at their call site."""
+        cur = self._con.cursor()
+        cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+        return stream_from_dbapi(cur, on_close=lambda *_: cur.close())
 
     # -- Arrow transport (REQ-986) ---------------------------------------------
 

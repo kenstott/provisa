@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -171,7 +172,9 @@ class IsolatedServer:
         )
         self._proc = subprocess.Popen(
             [
-                str(_REPO_ROOT / ".venv" / "bin" / "uvicorn"),
+                sys.executable,
+                "-m",
+                "uvicorn",
                 "main:app",
                 "--host",
                 "127.0.0.1",

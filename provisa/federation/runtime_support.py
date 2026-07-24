@@ -17,19 +17,65 @@ as free functions the concretes call, not in a base class."""
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from typing import Any, Callable
 
-from provisa.executor.result import QueryResult
+from provisa.executor.result import (
+    QueryResult,
+    ResultStream,
+    StreamingQueryResult,
+    StreamStats,
+)
+
+# Rows pulled per fetchmany when streaming a DBAPI cursor. Bounds the in-memory
+# working set to one batch instead of the whole result (REQ-028).
+_STREAM_BATCH_ROWS = 1000
 
 
 def result_from_dbapi(obj: Any) -> QueryResult:
     """Build a QueryResult from a DBAPI cursor or result object (anything exposing
     ``.description`` + ``.fetchall()``). A ``None`` description (non-SELECT) yields no
     columns and no rows. Used by the pg / sqlalchemy / duckdb runtimes; clickhouse
-    delegates to its own ``_backend.query`` and does not use this."""
+    delegates to its own ``_backend.query`` and does not use this.
+
+    Fully materializes. Use :func:`stream_from_dbapi` where the cursor's fetch state
+    outlives this call and the caller is on a worker thread — but NOT for drivers that
+    close the cursor before the result is drained, nor across the async ``run_async``
+    boundary (a blocking ``fetchmany`` must not be pulled on the event-loop thread)."""
     cols = [d[0] for d in obj.description] if obj.description else []
     rows = obj.fetchall() if obj.description else []
     return QueryResult(rows=rows, column_names=cols)
+
+
+def stream_from_dbapi(
+    obj: Any,
+    *,
+    on_close: Callable[[StreamStats], None] | None = None,
+) -> ResultStream:
+    """Build a lazily-streamed result from a DBAPI cursor/result whose fetch state OUTLIVES
+    this call. Rows are pulled in batches of ``_STREAM_BATCH_ROWS`` via ``fetchmany`` so a
+    large result never fully materializes.
+
+    Preconditions the caller MUST guarantee: the cursor stays open until the stream drains,
+    and no other query runs on it meanwhile (hold a private cursor). ``on_close`` fires once
+    at drain — the DuckDB terminal uses it to close the private cursor. Drivers that close
+    the cursor in a ``finally`` or share one cursor across concurrent queries must use
+    :func:`result_from_dbapi` instead. A ``None`` description (non-SELECT) yields an empty
+    materialized result and fires ``on_close`` immediately."""
+    if not obj.description:
+        if on_close is not None:
+            on_close(StreamStats(done=True))
+        return QueryResult(rows=[], column_names=[])
+    cols = [d[0] for d in obj.description]
+
+    def _batches() -> Iterator[list[tuple]]:
+        while True:
+            chunk = obj.fetchmany(_STREAM_BATCH_ROWS)
+            if not chunk:
+                return
+            yield chunk
+
+    return StreamingQueryResult(_batches(), column_names=cols, on_close=on_close)
 
 
 def columns_from_describe(rows: Any) -> dict[str, str]:

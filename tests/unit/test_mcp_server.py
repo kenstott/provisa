@@ -291,7 +291,7 @@ async def test_run_sql_routes_through_govern_and_route(state, monkeypatch):
 
     govern.assert_awaited_once_with(
         "SELECT * FROM sales.orders", "analyst",
-        session_vars=None, discovery_mode=False, as_of=None,
+        session_vars=None, discovery_mode=False, as_of=None, deliver=None,
     )
     assert result["columns"] == ["id", "name"]
     assert result["rows"] == [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
@@ -349,7 +349,7 @@ async def test_run_sql_composed_command_routes_to_pipeline(state, monkeypatch):
     await tools.run_sql(state, "analyst", composed)
 
     govern.assert_awaited_once_with(
-        composed, "analyst", session_vars=None, discovery_mode=False, as_of=None
+        composed, "analyst", session_vars=None, discovery_mode=False, as_of=None, deliver=None
     )
 
 

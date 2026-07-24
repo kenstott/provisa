@@ -98,7 +98,7 @@ async def test_select_1(pgwire_server, mock_state):
     with (
         patch("provisa.auth.providers.simple._provider_instance", provider),
         patch("provisa.api.app.state", mock_state),
-        patch("provisa.pgwire._pipeline.execute_pgwire_sql", _stub_pipeline),
+        patch("provisa.pgwire._pipeline.govern_pgwire_plan", _stub_pipeline),
     ):
         conn = await asyncpg.connect(
             host="127.0.0.1",
@@ -149,7 +149,7 @@ async def test_none_provider_trust_mode(pgwire_server):
 
     with (
         patch("provisa.api.app.state", trust_state),
-        patch("provisa.pgwire._pipeline.execute_pgwire_sql", _stub_pipeline),
+        patch("provisa.pgwire._pipeline.govern_pgwire_plan", _stub_pipeline),
     ):
         conn = await asyncpg.connect(
             host="127.0.0.1",

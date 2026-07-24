@@ -60,6 +60,9 @@ class BoltSession:
         # Buffered result from last RUN: list of column-ordered value lists
         self._result_columns: list[str] = []
         self._result_rows: list[list[Any]] = []
+        # REQ-1194/REQ-1195: a materialize handle when the last RUN redirected to a sink instead of
+        # buffering rows. Surfaced in the trailing PULL SUCCESS metadata — Bolt's side-channel.
+        self._result_redirect: dict | None = None
         self._pull_offset: int = 0
 
     # ── Response helpers ───────────────────────────────────────────────────────
@@ -215,6 +218,7 @@ class BoltSession:
     def handle_reset(self) -> None:
         self._result_columns = []
         self._result_rows = []
+        self._result_redirect = None
         self._pull_offset = 0
         if self.state != State.DEFUNCT:
             self.state = State.READY if self.role_id else State.AUTHENTICATION
@@ -281,9 +285,28 @@ class BoltSession:
 
         role_id, include_ops = resolved
 
+        # REQ-1194/REQ-1195: a caller requests materialization via Bolt transaction metadata — the
+        # side-channel that rides RUN's `extra` map without touching the record stream. The handle is
+        # surfaced in the trailing PULL SUCCESS metadata.
+        from provisa.executor.redirect import delivery_from_request
+
+        tx_meta = extra.get("tx_metadata") or {}
+        _redir_thr = tx_meta.get("provisa_redirect_threshold")
+        delivery = delivery_from_request(
+            force_redirect=str(tx_meta.get("provisa_redirect", "")).lower() == "true",
+            redirect_format=tx_meta.get("provisa_redirect_format"),
+            threshold=int(_redir_thr) if _redir_thr is not None else None,
+            role=role_id,
+        )
+
         try:
-            columns, rows = await _execute_cypher(
-                cypher, parameters, role_id, include_ops=include_ops, roles=self.roles
+            columns, rows, redirect = await _execute_cypher(
+                cypher,
+                parameters,
+                role_id,
+                include_ops=include_ops,
+                roles=self.roles,
+                deliver=delivery,
             )
         except PermissionError as exc:
             self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
@@ -300,6 +323,7 @@ class BoltSession:
 
         self._result_columns = columns
         self._result_rows = rows
+        self._result_redirect = redirect
         self._pull_offset = 0
 
         in_tx = self.state in (State.TX_READY, State.TX_STREAMING)
@@ -364,7 +388,10 @@ class BoltSession:
         in_tx = self.state == State.TX_STREAMING
         if not has_more:
             self.state = State.TX_READY if in_tx else State.READY
-        self.send_success({"has_more": has_more, "t_last": 0, "type": "r"})
+        summary: dict = {"has_more": has_more, "t_last": 0, "type": "r"}
+        if not has_more and self._result_redirect is not None:
+            summary["redirect"] = self._result_redirect  # REQ-1194/REQ-1195
+        self.send_success(summary)
 
     def handle_discard(self, fields: list[Any]) -> None:
         if self.state == State.FAILED:
@@ -616,7 +643,7 @@ async def _graph_counts(
 
     async def _count(cypher: str) -> int:
         try:
-            _cols, rows = await _execute_cypher(cypher, {}, role_id, include_ops=include_ops)
+            _cols, rows, _ = await _execute_cypher(cypher, {}, role_id, include_ops=include_ops)
             return int(rows[0][0]) if rows and rows[0] else 0
         except Exception:
             return 0
@@ -709,7 +736,7 @@ async def _impute_relationships(
             f" WHERE a.{src_prop} IN [{src_ids}] AND b.{tgt_prop} IN [{tgt_ids}] RETURN r"
         )
         try:
-            _cols, rrows = await _execute_cypher(query, {}, role_id, include_ops=include_ops)
+            _cols, rrows, _ = await _execute_cypher(query, {}, role_id, include_ops=include_ops)
         except Exception:
             continue
         for row in rrows:
@@ -801,8 +828,14 @@ async def _execute_cypher(
     role_id: str,
     include_ops: bool = True,
     roles: list[str] | None = None,
-) -> tuple[list[str], list[list[Any]]]:
-    """Run Cypher through the Provisa pipeline; return (columns, rows-of-values)."""
+    deliver: Any = None,
+) -> tuple[list[str], list[list[Any]], dict | None]:
+    """Run Cypher through the Provisa pipeline; return (columns, rows-of-values, redirect-handle).
+
+    ``deliver`` (a ``Delivery`` or None) requests the read result be materialized to a sink instead of
+    buffered; when it fires the returned rows are empty and the third element is the sink handle. Only
+    the read path honours it — catalog/system, command, and write branches never redirect (REQ-1194).
+    """
     from provisa.api.app import state as app_state
     from provisa.cypher.assembler import (
         assemble_rows,
@@ -827,35 +860,39 @@ async def _execute_cypher(
 
     result = _system_query(cypher, ctx, role_id, include_ops, app_state, roles)
     if result is not None:
-        return result
+        return (*result, None)
 
     # REQ-1156: `CALL <command>(args)` naming a registered command invokes it through the single
     # governed executor and returns its rows — so Bolt/Cypher clients (Neo4j Browser/Bloom) can run
     # a command exactly like GraphQL/SQL. Placed after _system_query so `CALL dbms.*` still wins.
     cmd = await _maybe_invoke_command_call(cypher, role_id, app_state)
     if cmd is not None:
-        return cmd
+        return (*cmd, None)
 
     # Browser sysinfo node/rel totals — compute real counts (matches the internal graph browser).
     _q = cypher.strip()
     if "count(*)" in _q and "'nodes'" in _q and "'relationships'" in _q:
         node_count, rel_count = await _graph_counts(ctx, role_id, include_ops, app_state)
-        return ["result"], [
-            [{"name": "nodes", "data": node_count}],
-            [{"name": "relationships", "data": rel_count}],
-        ]
+        return (
+            ["result"],
+            [
+                [{"name": "nodes", "data": node_count}],
+                [{"name": "relationships", "data": rel_count}],
+            ],
+            None,
+        )
 
     # Browser auto-complete-relationships probe — impute edges among visible nodes (REQ-345).
     #   MATCH (a)-[r]->(b) WHERE id(a) IN $existingNodeIds AND id(b) IN $newNodeIds RETURN r
     if "$existingNodeIds" in cypher and "$newNodeIds" in cypher:
-        return await _impute_relationships(parameters, ctx, role_id, include_ops, app_state)
+        return (*await _impute_relationships(parameters, ctx, role_id, include_ops, app_state), None)
 
     # Try write path first; fall through to read path if it doesn't parse as a write.
     from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
 
     try:
         parse_cypher_write(cypher)
-        return await _execute_write_cypher(cypher, role_id, ctx, include_ops, app_state)
+        return (*await _execute_write_cypher(cypher, role_id, ctx, include_ops, app_state), None)
     except CypherWriteParseError:
         pass
 
@@ -895,8 +932,12 @@ async def _execute_cypher(
         semantic_sql,
         role_id,
         exec_params=resolved_params or None,
+        deliver=deliver,
     )
     result = await _execute_plan(plan)
+    if result.redirect is not None:
+        # Materialized to a sink — no records stream; the handle rides the trailing SUCCESS metadata.
+        return [], [], result.redirect
     raw_rows = [dict(zip(result.column_names, row)) for row in result.rows]
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r) for r in assembled]
@@ -907,7 +948,7 @@ async def _execute_cypher(
 
     columns = list(raw_rows[0].keys()) if raw_rows else []
     rows = [[row.get(col) for col in columns] for row in serializable]
-    return columns, rows
+    return columns, rows, None
 
 
 async def _execute_write_cypher(
