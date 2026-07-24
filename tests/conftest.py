@@ -311,7 +311,11 @@ class _DockerServiceManager:
         # whole isolated stack down by default so a run never leaks containers (which
         # starve later runs of memory) and never leaves anything touching dev.
         # PYTEST_DOCKER_KEEP=1 keeps it up for local iteration.
-        if os.environ.get("PYTEST_DOCKER_KEEP"):
+        # PYTEST_NO_DOCKER=1 means no stack was ever provisioned (collection_finish
+        # returned early) and the `docker` CLI may be absent — e.g. the linux-mem lane
+        # runs this suite INSIDE a container with only pgserver — so skip teardown too,
+        # else sessionfinish raises FileNotFoundError('docker') and masks the results.
+        if os.environ.get("PYTEST_DOCKER_KEEP") or os.environ.get("PYTEST_NO_DOCKER"):
             return
         subprocess.run(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes"],

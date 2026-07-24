@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -17,7 +18,18 @@ import pytest
 
 from tests._noauth_config import pin_no_auth_config
 
-_PG_BIN = "/Library/PostgreSQL/16/bin"
+
+def _pg_tool(name: str) -> str:
+    """Resolve a PG client binary (pg_dump/pg_restore).
+
+    PATH first — Linux CI and the linux-mem Docker lane ship pg_* on PATH. Fall back
+    to the macOS EDB installer's bin dir, where the binaries are NOT on PATH by default
+    (local dev). Both are real install layouts this suite runs under; this is resolution,
+    not error-masking.
+    """
+    return shutil.which(name) or f"/Library/PostgreSQL/16/bin/{name}"
+
+
 _SNAPSHOT_PATH = Path.home() / "provisa-test-db-snapshot.dump"
 _LIVE_SERVER_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
 
@@ -53,13 +65,20 @@ def _db_snapshot_restore():
     """
     import time
 
+    # No isolated stack was provisioned (PYTEST_NO_DOCKER — e.g. the linux-mem lane runs
+    # a single pgserver-backed suite in a bare container). There is no app PG at
+    # PG_HOST:PG_PORT to snapshot, and pg_dump may be absent — nothing to protect.
+    if os.environ.get("PYTEST_NO_DOCKER"):
+        yield
+        return
+
     # Retry pg_dump up to 5 times — live server DDL may hold AccessExclusiveLock
     # briefly at startup, causing pg_dump's AccessShareLock to deadlock/fail.
     result = None
     for attempt in range(5):
         result = subprocess.run(
             [
-                f"{_PG_BIN}/pg_dump",
+                _pg_tool("pg_dump"),
                 "--format=custom",
                 "--no-acl",
                 "--no-owner",
@@ -82,7 +101,7 @@ def _db_snapshot_restore():
 
     subprocess.run(
         [
-            f"{_PG_BIN}/pg_restore",
+            _pg_tool("pg_restore"),
             "--clean",
             "--if-exists",
             "--no-acl",
