@@ -304,12 +304,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
             raise RuntimeError(str(exc)) from exc
 
+        from provisa.api.app import state
         from provisa.transpiler.router import Route
 
         try:
             if isinstance(governed, _Plan) and governed.route == Route.ENGINE:
-                from provisa.api.app import state
-
                 # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
                 # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
                 # executes — the single-chokepoint guarantee is not satisfied by _execute_plan alone.
@@ -320,6 +319,24 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     governed.physical_sql,
                     governed.exec_params,
                     session_hints=governed.session_hints,
+                )
+            elif (
+                isinstance(governed, _Plan)
+                and governed.route == Route.DIRECT
+                and governed.source_id
+                and state.source_pools.has(governed.source_id)
+                and state.source_pools.supports_stream(governed.source_id)
+            ):
+                # REQ-1190: a single-reachable-source scan STREAMS via the source's server-side cursor,
+                # drained on this worker thread just like the ENGINE terminal — never materialized on the
+                # loop (streaming-uniformity Defect 1). REQ-1176: verify the stamp before the source runs.
+                require_governed_plan(governed)
+                result = state.federation_engine.execute_native_stream(
+                    state.source_pools,
+                    governed.source_id,
+                    governed.sql,
+                    governed.exec_params,
+                    loop=loop,
                 )
             elif isinstance(governed, _Plan):
                 result = asyncio.run_coroutine_threadsafe(

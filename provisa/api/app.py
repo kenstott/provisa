@@ -414,7 +414,18 @@ async def _load_and_build(
     tenant_db = state.tenant_db
     assert tenant_db is not None
     async with tenant_db.acquire() as conn:
-        _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
+        # Single-writer cluster invariant: every node loads the byte-identical baked config, but only
+        # the primary may DELETE rows. A secondary's upserts are idempotent no-ops (the advisory lock
+        # in load_config serializes them), so it stays consistent with the primary; replace mode would
+        # let a secondary wipe primary-registered rows, so it is hard-disabled off the primary. Secrets
+        # (source passwords) are file-only by design — schema.sql never stores them — so every node must
+        # parse this file for source pools; PG holds only the shared, primary-written schema.
+        _is_primary = os.environ.get("PROVISA_ROLE", "primary").strip().lower() != "secondary"
+        _replace_mode = _is_primary and os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         await load_config(config, conn, state.federation_engine, replace=_replace_mode)
 
     _mark("load_config")

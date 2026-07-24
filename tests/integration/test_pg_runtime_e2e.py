@@ -81,6 +81,21 @@ async def test_pg_runtime_federates_postgres_source(pg_with_fdw):
         assert len(res.rows) == 3
         assert [r[0] for r in res.rows] == [1, 2, 3]
 
+        # REQ-1220: ADBC zero-copy Arrow — materialized table.
+        tbl = rt.run_arrow('SELECT "id", "amount" FROM "sales"."orders" ORDER BY "id"')
+        assert tbl.column_names == ["id", "amount"]
+        assert tbl.column("id").to_pylist() == [1, 2, 3]
+
+        # REQ-1220: ADBC lazy record-batch stream — (schema, generator), memory-bounded.
+        schema, batch_gen = rt.run_arrow_stream(
+            'SELECT "id", "amount" FROM "sales"."orders" ORDER BY "id"'
+        )
+        assert schema.names == ["id", "amount"]
+        import pyarrow as pa
+
+        streamed = pa.Table.from_batches(list(batch_gen), schema=schema)
+        assert streamed.column("id").to_pylist() == [1, 2, 3]
+
         # the materialization-store reference for a pg engine is its own database name
         assert rt.ensure_materialize_attached()  # non-empty
     finally:

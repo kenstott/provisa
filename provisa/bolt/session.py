@@ -933,6 +933,7 @@ async def _execute_cypher(
         role_id,
         exec_params=resolved_params or None,
         deliver=deliver,
+        buffered=True,  # REQ-1224: buffered transport — terminal auto-thresholds inline vs CTAS
     )
     result = await _execute_plan(plan)
     if result.redirect is not None:

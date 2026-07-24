@@ -19,8 +19,40 @@ from provisa.executor.result import QueryResult
 # Requirements: REQ-027, REQ-052
 
 
+class DirectResultStream(ABC):  # REQ-1190
+    """A lazily-drained DIRECT read: a server-side cursor whose fetch state OUTLIVES the open call.
+
+    The single reachable source's own driver streams the result in bounded batches so a large
+    passthrough scan never fully materializes in Provisa — the DIRECT analogue of the ENGINE
+    streaming terminal (REQ-1190, streaming-uniformity-gap Defect 1). Column names/types are known
+    at open (before the first row); ``fetch`` pulls the next batch (``[]`` = exhausted); ``close``
+    releases the cursor/connection/transaction exactly once."""
+
+    column_names: list[str]
+    column_types: list[str] | None
+
+    @abstractmethod
+    async def fetch(self, size: int) -> list[tuple]:
+        """Pull up to ``size`` rows from the server-side cursor; an empty list means exhausted."""
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Release the cursor, transaction, and pooled connection. Idempotent."""
+
+
 class DirectDriver(ABC):  # REQ-027, REQ-052
     """Abstract async driver for direct database execution."""
+
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        """Whether ``open_stream`` yields a genuine server-side cursor. Default ``False`` — a driver
+        without a bounded streaming read still materializes via ``execute`` (the remaining DIRECT
+        conformance gap for that source, streaming-uniformity-gap Defect 1)."""
+        return False
+
+    async def open_stream(self, sql: str, params: list | None = None) -> DirectResultStream:  # REQ-1190
+        """Open a bounded server-side cursor over ``sql``. Only valid when ``supports_streaming``."""
+        raise NotImplementedError(f"{type(self).__name__} does not support streaming DIRECT reads")
 
     def configure(self, extra: dict[str, str]) -> None:  # REQ-986/987/988
         """Accept source-specific connection extras from ``Source.federation_hints`` before

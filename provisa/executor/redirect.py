@@ -549,6 +549,25 @@ def delivery_from_request(  # REQ-1194, REQ-1195
     return Delivery(output_format=fmt, config=config, role=role)
 
 
+def auto_delivery_for_buffered(role: str | None) -> Delivery | None:  # REQ-1224
+    """The AUTOMATIC materialize policy for a buffered transport (GraphQL, JSON:API, Bolt).
+
+    Unlike :func:`delivery_from_request` (caller-driven, an unconditional CTAS), this fires with NO
+    caller side-channel: when large-result redirect is enabled in system config, every buffered-transport
+    result is subject to the row-count threshold at the single terminal — the body is inlined below the
+    threshold and landed as an engine-native CTAS above it (REQ-1224, streaming-uniformity Defect 4).
+    The threshold decision lives in ``_execute_plan``; this only carries the resolved config/format/role.
+
+    Returns ``None`` when redirect is disabled, so the terminal returns rows inline exactly as before —
+    the automatic threshold is opt-in via the PROVISA_REDIRECT_* system configuration.
+    """
+    config = RedirectConfig.from_env()
+    if not config.enabled:
+        return None
+    fmt = config.default_format or "parquet"
+    return Delivery(output_format=fmt, config=config, role=role)
+
+
 _CONTENT_TYPES = {
     "parquet": "application/vnd.apache.parquet",
     "orc": "application/x-orc",

@@ -447,6 +447,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 exec_params=compiled.params or None,
                 state=state,
                 deliver=delivery,
+                buffered=True,  # REQ-1224: buffered transport — terminal auto-thresholds inline vs CTAS
             )
             result = await _execute_plan(plan, state)
         except PermissionError as e:

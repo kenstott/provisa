@@ -22,8 +22,10 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-from provisa.executor.result import QueryResult
-from provisa.federation.runtime_support import result_from_dbapi, run_async
+from provisa.executor.result import QueryResult, ResultStream
+from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
+
+_ARROW_CHUNK_ROWS = 65_536  # rows per lazy Cloud Fetch chunk (REQ-1216)
 
 
 class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
@@ -230,17 +232,16 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
 
     # -- execution -------------------------------------------------------------
 
-    def run_sync(self, sql: str, params: list | None = None) -> QueryResult:
-        """Execute SQL already in the Databricks dialect (transpiled by the backend seam)."""
-        cur = self._conn.cursor()
-        try:
-            cur.execute(sql, params or None)
-            return result_from_dbapi(cur)
-        finally:
-            cur.close()
+    def run_sync(self, sql: str, params: list | None = None) -> ResultStream:
+        """Execute SQL already in the Databricks dialect (transpiled by the backend seam) and STREAM it.
+
+        Built on the lazy ``fetchmany_arrow`` terminal (``run_arrow_stream``) so the pgwire ENGINE route
+        stays memory-bounded — no full ``QueryResult`` materialization (REQ-1217, Defect 3)."""
+        schema, batches = self.run_arrow_stream(sql, params)
+        return stream_rows_from_arrow(schema, batches)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
-        return await run_async(self.run_sync, sql, params)
+        return await run_async_materialized(self.run_sync, sql, params)
 
     # -- Arrow transport (REQ-987) ---------------------------------------------
 
@@ -256,13 +257,32 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
 
     def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
         """Execute Databricks-dialect SQL and return ``(schema, batch_generator)`` for lazy
-        record-batch streaming through the Flight server's GeneratorStream (REQ-987)."""
-        table = self.run_arrow(sql, params)
+        record-batch streaming through the Flight server's GeneratorStream (REQ-987, REQ-1216, REQ-1217).
+
+        Genuinely lazy: ``fetchmany_arrow`` pulls Cloud Fetch chunks from the server on demand, so the
+        full result never materializes — peak memory is bounded by one chunk. The cursor closes when the
+        generator drains or the consumer stops early. A zero-row result yields an empty-schema stream."""
+        cur = self._conn.cursor()
+        cur.execute(sql, params or None)
+        first = cur.fetchmany_arrow(_ARROW_CHUNK_ROWS)
+        if first.num_rows == 0:  # exhausted immediately — carries the column schema, no rows
+            schema = first.schema
+            cur.close()
+            return schema, iter(())
+        schema = first.schema
 
         def _batches():
-            yield from table.to_batches()
+            try:
+                yield from first.to_batches()
+                while True:
+                    tbl = cur.fetchmany_arrow(_ARROW_CHUNK_ROWS)
+                    if tbl.num_rows == 0:
+                        break
+                    yield from tbl.to_batches()
+            finally:
+                cur.close()
 
-        return table.schema, _batches()
+        return schema, _batches()
 
     def close(self) -> None:
         self._conn.close()

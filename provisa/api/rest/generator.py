@@ -237,6 +237,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 role_id,
                 exec_params=compiled.params or None,
                 state=state,
+                buffered=True,  # REQ-1224: buffered transport — terminal auto-thresholds inline vs CTAS
             )
             result = await _execute_plan(plan, state)
         except PermissionError as exc:
@@ -246,6 +247,11 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         except Exception as e:
             log.exception("REST query execution failed for %s", table)
             raise HTTPException(status_code=500, detail=str(e))
+
+        if result.redirect is not None:
+            # REQ-1224: the result exceeded the row threshold and was landed as an engine-native CTAS
+            # off Provisa's heap — surface the delivery handle instead of buffering the body here.
+            return JSONResponse(content={"data": None, "meta": {"redirect": result.redirect}})
 
         # Serialize
         from provisa.executor.serialize import serialize_rows

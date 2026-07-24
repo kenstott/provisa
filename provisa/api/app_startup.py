@@ -302,6 +302,19 @@ def _evaluate_licensing(_log: logging.Logger) -> None:
         _log.exception("licensing evaluation failed; continuing without a nag")
 
 
+def _resolve_tls(cert_env: str, key_env: str) -> tuple[str, str] | None:
+    """Per-server cert/key from its own env vars, else the node-wide PROVISA_TLS_CERT/KEY pair.
+
+    REQ-1227: every protocol endpoint serves TLS in a cluster deploy. Certs are provisioned once per
+    node — first-launch.sh generates a self-signed pair when none is supplied — and every server
+    points at the same pair unless a per-protocol override is set."""
+    cert = os.environ.get(cert_env) or os.environ.get("PROVISA_TLS_CERT")
+    key = os.environ.get(key_env) or os.environ.get("PROVISA_TLS_KEY")
+    if cert and key:
+        return cert, key
+    return None
+
+
 async def _start_servers(_log: logging.Logger) -> None:
     """Start gRPC, Arrow Flight, pgwire, Live Query Engine, and APQ cache servers."""
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
@@ -321,13 +334,20 @@ async def _start_servers(_log: logging.Logger) -> None:
             grpc_port = int(
                 os.environ.get("GRPC_PORT", str(state.server_cfg.get("grpc_port", 50051)))
             )
+            _grpc_tls = _resolve_tls("PROVISA_GRPC_CERT", "PROVISA_GRPC_KEY")
             state._grpc_server = await start_grpc_server(
                 grpc_port,
                 state,
                 pb2_path,
                 pb2_grpc_path,
+                tls=_grpc_tls,
             )
-            _log.info("gRPC server listening on %s:%d", state.hostname, grpc_port)
+            _log.info(
+                "gRPC server listening on %s:%d (TLS=%s)",
+                state.hostname,
+                grpc_port,
+                _grpc_tls is not None,
+            )
         except Exception:
             _log.exception("gRPC server startup failed")
 
@@ -337,11 +357,26 @@ async def _start_servers(_log: logging.Logger) -> None:
         flight_port = int(
             os.environ.get("FLIGHT_PORT", str(state.server_cfg.get("flight_port", 8815)))
         )
-        flight_server = ProvisaFlightServer(
-            state,
-            location=f"grpc://0.0.0.0:{flight_port}",
-            main_loop=asyncio.get_running_loop(),
-        )
+        _flight_tls = _resolve_tls("PROVISA_FLIGHT_CERT", "PROVISA_FLIGHT_KEY")
+        if _flight_tls is not None:
+            _fc, _fk = _flight_tls
+            with open(_fc, "rb") as _f:
+                _flight_cert_bytes = _f.read()
+            with open(_fk, "rb") as _f:
+                _flight_key_bytes = _f.read()
+            # grpc+tls scheme + tls_certificates make FlightServerBase bind a TLS listener (REQ-1227).
+            flight_server = ProvisaFlightServer(
+                state,
+                location=f"grpc+tls://0.0.0.0:{flight_port}",
+                main_loop=asyncio.get_running_loop(),
+                tls_certificates=[(_flight_cert_bytes, _flight_key_bytes)],
+            )
+        else:
+            flight_server = ProvisaFlightServer(
+                state,
+                location=f"grpc://0.0.0.0:{flight_port}",
+                main_loop=asyncio.get_running_loop(),
+            )
         import threading
 
         flight_thread = threading.Thread(
@@ -350,7 +385,12 @@ async def _start_servers(_log: logging.Logger) -> None:
         )
         flight_thread.start()
         state._flight_server = flight_server
-        _log.info("Arrow Flight server listening on %s:%d", state.hostname, flight_port)
+        _log.info(
+            "Arrow Flight server listening on %s:%d (TLS=%s)",
+            state.hostname,
+            flight_port,
+            _flight_tls is not None,
+        )
     except Exception:
         _log.exception("Arrow Flight server startup failed")
 
@@ -372,11 +412,10 @@ async def _start_servers(_log: logging.Logger) -> None:
             _pgwire_catalog._KNOWN_SETTINGS["search_path"] = f"org_{state.org_id}"  # REQ-695
 
             _ssl_ctx: _ssl.SSLContext | None = None
-            _cert = os.environ.get("PROVISA_PGWIRE_CERT")
-            _key = os.environ.get("PROVISA_PGWIRE_KEY")
-            if _cert and _key:
+            _pgwire_tls = _resolve_tls("PROVISA_PGWIRE_CERT", "PROVISA_PGWIRE_KEY")
+            if _pgwire_tls is not None:
                 _ssl_ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
-                _ssl_ctx.load_cert_chain(_cert, _key)
+                _ssl_ctx.load_cert_chain(*_pgwire_tls)
 
             start_pgwire_server(
                 host="0.0.0.0",  # nosec B104 - pgwire server intentionally binds all interfaces
@@ -397,11 +436,10 @@ async def _start_servers(_log: logging.Logger) -> None:
             from provisa.bolt.server import start_bolt_server
 
             _bolt_ssl_ctx: _ssl_bolt.SSLContext | None = None
-            _bolt_cert = os.environ.get("PROVISA_BOLT_CERT")
-            _bolt_key = os.environ.get("PROVISA_BOLT_KEY")
-            if _bolt_cert and _bolt_key:
+            _bolt_tls = _resolve_tls("PROVISA_BOLT_CERT", "PROVISA_BOLT_KEY")
+            if _bolt_tls is not None:
                 _bolt_ssl_ctx = _ssl_bolt.SSLContext(_ssl_bolt.PROTOCOL_TLS_SERVER)
-                _bolt_ssl_ctx.load_cert_chain(_bolt_cert, _bolt_key)
+                _bolt_ssl_ctx.load_cert_chain(*_bolt_tls)
 
             start_bolt_server(
                 host="0.0.0.0",  # nosec B104 - bolt server intentionally binds all interfaces

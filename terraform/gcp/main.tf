@@ -171,10 +171,11 @@ locals {
   # One row per externally-reachable protocol. `enabled` gates the whole chain:
   # firewall port, health check, backend service, forwarding rule, instance-group
   # named_port, and (for wire protocols) the container listener env var. Add a row
-  # here and every layer follows. api uses an HTTP /health probe; the rest use a
-  # TCP connect probe. `env`/`port_env` drive first-launch's protocol overlay.
+  # here and every layer follows. api uses an HTTPS /health probe (REQ-1227: TLS on
+  # every endpoint); the rest use a TCP connect probe. `env`/`port_env` drive
+  # first-launch's protocol overlay.
   protocols = {
-    api    = { port = 8000, enabled = true, probe = "http", path = "/health", env = null }
+    api    = { port = 8000, enabled = true, probe = "https", path = "/health", env = null }
     ui     = { port = 3000, enabled = true, probe = "tcp", path = null, env = null }
     flight = { port = 8815, enabled = true, probe = "tcp", path = null, env = "FLIGHT_PORT" }
     pgwire = { port = 5439, enabled = var.enable_pgwire, probe = "tcp", path = null, env = "PROVISA_PGWIRE_PORT" }
@@ -398,6 +399,17 @@ resource "google_compute_region_health_check" "protocol" {
 
   dynamic "http_health_check" {
     for_each = each.value.probe == "http" ? [1] : []
+    content {
+      port         = each.value.port
+      request_path = each.value.path
+    }
+  }
+
+  # REQ-1227: the API is served over TLS, so its LB probe must speak HTTPS. GCP
+  # HTTPS health checks do not validate the certificate, so the node's self-signed
+  # cert is accepted.
+  dynamic "https_health_check" {
+    for_each = each.value.probe == "https" ? [1] : []
     content {
       port         = each.value.port
       request_path = each.value.path

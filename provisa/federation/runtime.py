@@ -158,6 +158,64 @@ class EngineRuntime:  # REQ-825, REQ-840
 
         return await execute_direct(source_pools, source_id, sql, params)
 
+    def execute_native_stream(
+        self,
+        source_pools: Any,
+        source_id: str,
+        sql: str,
+        params: list | None,
+        *,
+        loop: Any,
+    ) -> ResultStream:
+        """DIRECT STREAMING terminal (REQ-1190): a lazily-drained row :class:`ResultStream` over a
+        single reachable source's server-side cursor.
+
+        SYNCHRONOUS, for the streaming surfaces (pgwire, Flight SQL) that drive it on a worker thread:
+        the async source cursor is opened and pumped on the event ``loop`` via ``run_coroutine_threadsafe``,
+        one fetch batch at a time, so a large DIRECT scan never fully materializes (streaming-uniformity
+        Defect 1). The connection/transaction is held for the stream's life and released when the row
+        iterator drains (``on_close``). Only valid when ``source_pools.supports_stream(source_id)``."""
+        import asyncio
+
+        from provisa.executor.direct import open_direct_stream
+        from provisa.executor.result import StreamingQueryResult
+        from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+
+        ds = asyncio.run_coroutine_threadsafe(
+            open_direct_stream(source_pools, source_id, sql, params), loop
+        ).result()
+
+        released = [False]
+
+        def _release() -> None:
+            # Free the eagerly-opened server-side cursor exactly once — invoked by the stream's
+            # on_release both on drain-to-exhaustion (via _finish) and on an early schema-only
+            # close(). The generator's finally alone is insufficient: a schema probe never iterates
+            # it, so its finally never runs.
+            if released[0]:
+                return
+            released[0] = True
+            asyncio.run_coroutine_threadsafe(ds.close(), loop).result()
+
+        def _batches() -> Any:
+            try:
+                while True:
+                    chunk = asyncio.run_coroutine_threadsafe(
+                        ds.fetch(_STREAM_BATCH_ROWS), loop
+                    ).result()
+                    if not chunk:
+                        return
+                    yield chunk
+            finally:
+                _release()
+
+        return StreamingQueryResult(
+            _batches(),
+            column_names=ds.column_names,
+            column_types=ds.column_types,
+            on_release=_release,
+        )
+
     # -- engine-native metadata (REQ-825/840): introspection through the abstraction ----------
 
     def introspect_by_catalog(self, catalog: str, schema: str, table: str) -> dict[str, str]:

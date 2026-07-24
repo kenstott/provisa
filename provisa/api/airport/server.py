@@ -65,7 +65,11 @@ import pyarrow as pa
 import pyarrow.flight as flight
 
 from provisa.api.airport import pushdown, wire
-from provisa.api.airport.query import governed_mutation, governed_table_scan_arrow
+from provisa.api.airport.query import (
+    governed_mutation,
+    governed_table_scan_schema,
+    governed_table_scan_stream,
+)
 from provisa.api.airport.transactions import AirportTransactionManager
 
 if TYPE_CHECKING:
@@ -125,7 +129,10 @@ class ProvisaAirportServer(
         # Advertised endpoint location — where the client sends do_get. Reuse the same
         # gRPC connection by advertising this server's reachable address.
         self._location = f"grpc://{host}:{port}"
-        self._scan_cache: dict[tuple[str, str, str], pa.Table] = {}
+        # Cache the byte-stable ADVERTISED schema (small, off the result path — Defect 5), not the
+        # full table: flight_info / list_schemas populate it so the do_get that follows streams a
+        # schema byte-identical to what the client planned with.
+        self._schema_cache: dict[tuple[str, str, str], pa.Schema] = {}
         self._cache_lock = threading.Lock()
         self._txn = AirportTransactionManager()
 
@@ -257,13 +264,16 @@ class ProvisaAirportServer(
             return base
         return pa.schema(list(base) + [self._rowid_field()])
 
-    def _append_rowid(self, tbl: pa.Table, pk: list[str]) -> pa.Table:
+    def _append_rowid_batch(self, batch: pa.RecordBatch, pk: list[str]) -> pa.RecordBatch:
         """Append the rowid column = JSON-encoded PK tuple per row (decoded back on UPDATE/DELETE)."""
-        pk_lists = {c: tbl.column(c).to_pylist() for c in pk}
+        pk_lists = {c: batch.column(batch.schema.get_field_index(c)).to_pylist() for c in pk}
         values = [
-            json.dumps([pk_lists[c][i] for c in pk], default=str) for i in range(tbl.num_rows)
+            json.dumps([pk_lists[c][i] for c in pk], default=str) for i in range(batch.num_rows)
         ]
-        return tbl.append_column(self._rowid_field(), pa.array(values, type=pa.string()))
+        arrays = list(batch.columns) + [pa.array(values, type=pa.string())]
+        return pa.RecordBatch.from_arrays(
+            arrays, schema=pa.schema(list(batch.schema) + [self._rowid_field()])
+        )
 
     def _lookup(self, role_id: str, schema: str, table: str) -> str:
         for s, t, sql_ref in self._catalog_for_role(role_id):
@@ -271,19 +281,22 @@ class ProvisaAirportServer(
                 return sql_ref
         raise _err(f"airport: table not found for role {role_id!r}: {schema}.{table}")
 
-    def _scan_cached(self, role_id: str, schema: str, table: str, sql_ref: str) -> pa.Table:
-        """Governed full-table scan, cached per (role, schema, table). list_schemas populates
-        the cache so the do_get that follows streams a schema byte-identical to what the client
-        planned with. Pushdown scans (WHERE/projection) are NOT cached — they run fresh."""
+    def _base_schema_cached(self, role_id: str, schema: str, table: str, sql_ref: str) -> pa.Schema:
+        """The governed scan's byte-stable base Arrow schema, cached per (role, schema, table).
+
+        Derived from the query's TYPED output columns without holding the rows (Defect 5), so
+        flight_info / list_schemas advertise it and the do_get that follows streams a schema
+        byte-identical to what the client planned with. The full-table scan is NOT cached — do_get
+        streams data fresh."""
         key = (role_id, schema, table)
         with self._cache_lock:
-            cached = self._scan_cache.get(key)
+            cached = self._schema_cache.get(key)
         if cached is not None:
             return cached
-        tbl = governed_table_scan_arrow(self._state, self._main_loop, sql_ref, role_id)
+        base = governed_table_scan_schema(self._state, self._main_loop, sql_ref, role_id)
         with self._cache_lock:
-            self._scan_cache[key] = tbl
-        return tbl
+            self._schema_cache[key] = base
+        return base
 
     def _table_flight_info(
         self, schema: str, table: str, arrow_schema: pa.Schema, comment: str = ""
@@ -418,10 +431,10 @@ class ProvisaAirportServer(
         # yields each table's Arrow schema — already visibility-filtered for the role.
         by_schema: dict[str, list[tuple[str, str, pa.Schema]]] = {}
         for schema, table, sql_ref in self._catalog_for_role(role_id):
-            tbl = self._scan_cached(role_id, schema, table, sql_ref)
+            base = self._base_schema_cached(role_id, schema, table, sql_ref)
             pk = self._pk_for(role_id, schema, table)
             by_schema.setdefault(schema, []).append(
-                (schema, table, self._advertised_schema(tbl.schema, pk))
+                (schema, table, self._advertised_schema(base, pk))
             )
 
         schema_payloads: list[dict[str, Any]] = []
@@ -468,7 +481,11 @@ class ProvisaAirportServer(
         params = req.get("parameters") or {}
         columns: list[str] | None = None
         where: str | None = None
-        full_cols = list(self._scan_cached(role_id, schema, table, self._lookup(role_id, schema, table)).schema.names)
+        full_cols = list(
+            self._base_schema_cached(
+                role_id, schema, table, self._lookup(role_id, schema, table)
+            ).names
+        )
         column_ids = params.get("column_ids")
         columns = pushdown.resolve_projection(column_ids, full_cols)
         json_filters = params.get("json_filters")
@@ -705,16 +722,16 @@ class ProvisaAirportServer(
         self, role_id: str, schema: str, table: str
     ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]
         sql_ref = self._lookup(role_id, schema, table)
-        tbl = self._scan_cached(role_id, schema, table, sql_ref)
+        base = self._base_schema_cached(role_id, schema, table, sql_ref)
         pk = self._pk_for(role_id, schema, table)
-        return self._table_flight_info(schema, table, self._advertised_schema(tbl.schema, pk))
+        return self._table_flight_info(schema, table, self._advertised_schema(base, pk))
 
     # ------------------------------------------------------------- DoGet
     def do_get(  # pyright: ignore[reportPrivateImportUsage]
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]
         ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]
-    ) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]
+    ) -> flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]
         role_id = self._role(context)
         try:
             td = json.loads(ticket.ticket.decode("utf-8"))
@@ -727,11 +744,15 @@ class ProvisaAirportServer(
         columns = td.get("columns")
         where = td.get("where")
         sql_ref = self._lookup(role_id, schema, table)
-        full = self._scan_cached(role_id, schema, table, sql_ref)  # full advertised schema
+        base = self._base_schema_cached(role_id, schema, table, sql_ref)  # full advertised base
         pk = self._pk_for(role_id, schema, table)
+        advertised = self._advertised_schema(base, pk)
+
         if not columns and not where:
-            # No pushdown — full-table governed scan (cached, schema-stable).
-            out = full
+            # No pushdown — full-table governed scan, STREAMED (never materialized here; Defect 5).
+            _, batch_gen = governed_table_scan_stream(
+                self._state, self._main_loop, sql_ref, role_id
+            )
         else:
             # Pushdown: build the semantic SELECT with source-side projection + WHERE. Injecting the
             # predicate as a semantic WHERE means it flows through the IDENTICAL governance a user's
@@ -747,15 +768,28 @@ class ProvisaAirportServer(
             if where:
                 sql += f" WHERE {where}"
             _trace_pushdown(sql)
-            scanned = governed_table_scan_arrow(self._state, self._main_loop, sql, role_id)
-            # Return the FULL advertised schema (the airport contract: DuckDB planned the scan against
-            # the flight_info schema and projects client-side; a narrowed DoGet stream would mismatch).
-            # Source-side projection still happened above — unprojected columns are null-filled here
-            # and DuckDB never reads them (they are exactly the columns it projected out).
-            out = _pad_to_schema(scanned, full.schema)
-        if pk:
-            out = self._append_rowid(out, pk)  # the is_rowid pseudo-column DuckDB echoes on UPDATE/DELETE
-        return flight.RecordBatchStream(out)  # pyright: ignore[reportPrivateImportUsage]
+            _, batch_gen = governed_table_scan_stream(
+                self._state, self._main_loop, sql, role_id
+            )
+
+        # Stream each governed batch reshaped to the FULL advertised schema (the airport contract:
+        # DuckDB planned against the flight_info schema and projects client-side; a narrowed stream
+        # would mismatch). Source-side projection still happened above — the columns DuckDB projected
+        # out are null-filled per batch and never read. The is_rowid pseudo-column (JSON PK tuple) is
+        # appended per batch when the table has a PK, so DuckDB can echo it back on UPDATE/DELETE.
+        out_gen = self._reshape_batches(batch_gen, base, pk)
+        return flight.GeneratorStream(advertised, out_gen)  # pyright: ignore[reportPrivateImportUsage]
+
+    def _reshape_batches(
+        self, batch_gen: Any, base: pa.Schema, pk: list[str]
+    ) -> Any:
+        """Yield each streamed RecordBatch padded to ``base`` (+ per-batch rowid when PK) — the
+        streaming analogue of _pad_to_schema + _append_rowid, one batch in memory at a time."""
+        for batch in batch_gen:
+            padded = _pad_batch_to_schema(batch, base)
+            if pk:
+                padded = self._append_rowid_batch(padded, pk)
+            yield padded
 
     # ------------------------------------------------------------- DoExchange (DML)
     def do_exchange(  # pyright: ignore[reportPrivateImportUsage]
@@ -800,9 +834,9 @@ class ProvisaAirportServer(
         # Open the bidirectional stream by sending the output schema (airport requires the server
         # to Begin before the client streams data). We return the full table schema; with no
         # RETURNING requested DuckDB reads only the trailing total_changed metadata.
-        out_schema = self._scan_cached(
+        out_schema = self._base_schema_cached(
             role_id, schema, table, self._lookup(role_id, schema, table)
-        ).schema
+        )
         writer.begin(out_schema)
 
         incoming = reader.read_all()
@@ -847,9 +881,9 @@ class ProvisaAirportServer(
         # Begin the bidirectional stream (airport requires the server to send a schema before the
         # client streams the identity/value rows). No RETURNING chunks are emitted — DuckDB reads
         # only the trailing total_changed metadata.
-        out_schema = self._scan_cached(
+        out_schema = self._base_schema_cached(
             role_id, schema, table, self._lookup(role_id, schema, table)
-        ).schema
+        )
         writer.begin(out_schema)
 
         incoming = reader.read_all()
@@ -987,22 +1021,23 @@ def _arrow_type_to_ir(t: pa.DataType) -> str:
     raise _err(f"airport: create_table Arrow type {t!r} has no IR mapping")
 
 
-def _pad_to_schema(scanned: pa.Table, full_schema: pa.Schema) -> pa.Table:
-    """Re-shape a source-side-projected scan to the full advertised schema (null-fill absentees).
+def _pad_batch_to_schema(batch: pa.RecordBatch, full_schema: pa.Schema) -> pa.RecordBatch:
+    """Re-shape a source-side-projected scan batch to the full advertised schema (null-fill absentees).
 
     Keeps the DoGet stream schema == the flight_info schema DuckDB planned with, while preserving
     the source-side projection (only projected columns were actually read from the source). Columns
-    the client projected out are null here and are never read by DuckDB.
+    the client projected out are null here and are never read by DuckDB. Applied per streamed batch
+    so peak memory is one batch, not the whole scan (Defect 5).
     """
-    present = set(scanned.schema.names)
-    n = scanned.num_rows
-    arrays: list[pa.Array | pa.ChunkedArray] = []
+    present = set(batch.schema.names)
+    n = batch.num_rows
+    arrays: list[pa.Array] = []
     for field in full_schema:
         if field.name in present:
-            arrays.append(scanned.column(field.name))
+            arrays.append(batch.column(batch.schema.get_field_index(field.name)))
         else:
             arrays.append(pa.nulls(n, type=field.type))
-    return pa.table(arrays, schema=full_schema)
+    return pa.RecordBatch.from_arrays(arrays, schema=full_schema)
 
 
 def _trace_pushdown(sql: str) -> None:

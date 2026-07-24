@@ -22,8 +22,24 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from provisa.executor.result import QueryResult, ResultStream
-from provisa.federation.runtime_support import stream_from_dbapi
+from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
+from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+
+# Leading keywords of a row-returning statement — the only kind a server-side (streaming) cursor is
+# valid for. Everything else (DDL/DML) is executed buffered; psycopg2 rejects DECLARE CURSOR FOR it
+# (REQ-1222). A leading line/block comment is stripped before the keyword is read.
+_ROW_RETURNING = frozenset({"SELECT", "WITH", "VALUES", "TABLE", "SHOW", "EXPLAIN"})
+
+
+def _is_row_returning(sql: str) -> bool:
+    s = sql.lstrip()
+    while s.startswith("--") or s.startswith("/*"):
+        if s.startswith("--"):
+            s = s[s.find("\n") + 1 :].lstrip() if "\n" in s else ""
+        else:
+            end = s.find("*/")
+            s = s[end + 2 :].lstrip() if end != -1 else ""
+    return s[:12].split(None, 1)[0].upper() in _ROW_RETURNING if s else False
 
 
 class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
@@ -57,21 +73,43 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
     # -- execution -------------------------------------------------------------
 
     def run_sync(self, sql: str, params: list | None = None) -> ResultStream:
-        """Execute SQL already in the store's dialect (transpiled by the backend seam).
+        """Execute SQL already in the store's dialect (transpiled by the backend seam) and STREAM it.
 
-        Streams rows lazily over a PRIVATE cursor (batched ``fetchmany``) so a large result never
-        fully materializes in the runtime — matches the DuckDB terminal (REQ-1217). The transaction
-        commits and the cursor closes when the stream drains (``on_close``); a non-SELECT (``None``
-        description) drains immediately, so a write commits at once as before. Consumers that call
-        ``.rows`` still get the full list — the buffering is then explicit at their call site."""
-        cur = self._con.cursor()
-        cur.execute(sql, params or None)
+        A raw DBAPI cursor over psycopg2 buffers the ENTIRE result client-side on ``execute`` (its
+        default unnamed cursor), so ``fetchmany`` alone would not bound memory. Genuine streaming needs
+        a SERVER-SIDE cursor; SQLAlchemy exposes that portably through the ``stream_results`` execution
+        option — psycopg2 opens a named server-side cursor, other drivers use their equivalent. A
+        server-side cursor is only valid for a ROW-RETURNING statement, though: psycopg2 eagerly issues
+        ``DECLARE ... CURSOR FOR <sql>`` at execute, which is a syntax error for DDL/DML. So a
+        non-row-returning statement runs BUFFERED in a committing transaction (it returns no rows to
+        bound) and a row-returning one streams server-side. Either way the read runs on a DEDICATED
+        connection from the engine, isolated from the ``self._con`` cache/write connection; the
+        streaming connection closes when the stream drains (``on_close``). Consumers that call ``.rows``
+        still get the full list — the buffering is then explicit at their call site (REQ-1217,
+        REQ-1222)."""
+        if not _is_row_returning(sql):  # DDL / DML — no server-side cursor; execute + commit now
+            with self._sa.begin() as c:
+                c.exec_driver_sql(sql, tuple(params) if params else ())
+            return QueryResult(rows=[], column_names=[])
+
+        conn = self._sa.connect().execution_options(
+            stream_results=True, yield_per=_STREAM_BATCH_ROWS
+        )
+        result = conn.exec_driver_sql(sql, tuple(params) if params else ())
 
         def _close(*_: Any) -> None:
-            self._con.commit()
-            cur.close()
+            conn.close()
 
-        return stream_from_dbapi(cur, on_close=_close)
+        cols = list(result.keys())
+
+        def _batches() -> Any:
+            while True:
+                chunk = result.fetchmany(_STREAM_BATCH_ROWS)
+                if not chunk:
+                    return
+                yield [tuple(r) for r in chunk]
+
+        return StreamingQueryResult(_batches(), column_names=cols, on_close=_close)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
         """Async variant: MATERIALIZES on the executor (unlike ``run_sync``), because a lazy

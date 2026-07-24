@@ -19,6 +19,7 @@ dependencies = [
     "pyarrow",
     "adbc-driver-flightsql",
     "adbc-driver-manager",
+    "adbc-driver-postgresql",  # REQ-1220: Arrow-native zero-copy ADBC transport for the pg engine
     "httpx",
     "redis[hiredis]",
     "fakeredis",

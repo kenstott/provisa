@@ -138,6 +138,49 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
 
         return StreamingQueryResult(_batches(), column_names=cols, on_close=_close)
 
+    # -- Arrow transport (ADBC zero-copy) (REQ-1220) ---------------------------
+
+    def run_arrow(self, sql: str, params: list | None = None) -> Any:
+        """Execute governed physical SQL and return a ``pyarrow.Table`` via the ADBC PostgreSQL
+        driver's native Arrow reader — Postgres rows are decoded straight into Arrow, so NO Python
+        rows are materialized for the Flight/airport transport (zero-copy relative to the row path).
+
+        A dedicated short-lived ADBC connection isolates the read from the engine's psycopg2
+        write/cache connection; it closes when the table is built (REQ-1220)."""
+        from adbc_driver_postgresql import dbapi as adbc_pg
+
+        con = adbc_pg.connect(self._engine_dsn)
+        try:
+            cur = con.cursor()
+            cur.execute(sql, params or None)
+            return cur.fetch_arrow_table()
+        finally:
+            con.close()
+
+    def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
+        """Execute governed physical SQL and return ``(schema, batch_generator)`` for lazy
+        record-batch streaming. ADBC's ``fetch_record_batch`` yields an Arrow ``RecordBatchReader``
+        that pulls batches from the Postgres server on demand, so the full result never materializes
+        — peak memory is bounded by one batch. The dedicated ADBC connection closes when the
+        generator drains or the consumer stops early (REQ-1220)."""
+        from adbc_driver_postgresql import dbapi as adbc_pg
+
+        con = adbc_pg.connect(self._engine_dsn)
+        cur = con.cursor()
+        cur.execute(sql, params or None)
+        reader = cur.fetch_record_batch()
+        schema = reader.schema
+
+        def _batches() -> Any:
+            try:
+                for batch in reader:
+                    yield batch
+            finally:
+                cur.close()
+                con.close()
+
+        return schema, _batches()
+
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
         """Async variant: MATERIALIZES on the executor (unlike ``run_sync``), because a lazy
         server-side ``fetchmany`` pulled across the async boundary would block the event loop. Runs on

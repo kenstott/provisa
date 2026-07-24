@@ -15,13 +15,19 @@ COPY main.py pyproject.toml ./
 COPY provisa/ ./provisa/
 # static/ contains the built React SPA; may be empty in dev builds
 COPY static/ ./static/
-# Bake the shipped configs so a demo deploy loads a complete, valid config instead of
-# dropping into the first-run wizard (parity with native launch f7289d27): the full
-# pet-store + shelter demo (provisa-install.yaml, auth: none) and the minimal wizard
-# base skeleton (provisa-install-base.yaml). The demo config resolves its SQLite paths
-# via ${env:PROVISA_DEMO_DIR}; stage that sample data under /app/config/demo/files —
-# NOT /app/demo, which docker-compose.app.yml bind-mounts (./demo) and would shadow.
-COPY config/ ./config/
+# Bake ONLY the shipped runtime configs — NEVER the whole config/ dir. A blanket copy also
+# baked the dev-local config/provisa.yaml (a divergent 909-line config) into the image; a
+# secondary that loaded it registered a DIFFERENT source set than the primary's demo config
+# and crashed the shared control plane with a duplicate domain+table registration. Every
+# cluster node must load the byte-identical baked config, so bake an explicit, minimal set:
+# the demo (provisa-install.yaml, auth: none), the wizard base skeleton
+# (provisa-install-base.yaml), the engine capability + pg-extension catalogs, the custom
+# connector registry (REQ-1177), and the pgbouncer config. The demo config resolves its
+# SQLite paths via ${env:PROVISA_DEMO_DIR}; stage that sample data under /app/config/demo/files
+# — NOT /app/demo, which docker-compose.app.yml bind-mounts (./demo) and would shadow.
+COPY config/capabilities.yaml config/pg_extension_catalog.yaml config/custom_connectors.yaml \
+     config/provisa-install.yaml config/provisa-install-base.yaml ./config/
+COPY config/pgbouncer/ ./config/pgbouncer/
 COPY demo/files/pet_store.sqlite demo/files/inquiries.sqlite ./config/demo/files/
 
 EXPOSE 8000 3000

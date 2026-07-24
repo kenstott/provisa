@@ -21,9 +21,12 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from provisa.executor.result import QueryResult
+
+if TYPE_CHECKING:
+    from provisa.executor.redirect import Delivery
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +68,13 @@ class _Plan:
     # store, presigned URL) instead of returning rows. Set by the planner from the caller's delivery
     # preference; _execute_plan runs the ONE materialize terminal when present. Every transport
     # inherits it — the redirect decision is no longer transport-local.
-    materialize: object | None = field(default=None)  # executor.redirect.Delivery | None
+    materialize: Delivery | None = field(default=None)
+    # REQ-1224 (streaming-uniformity Defect 4): the AUTOMATIC materialize policy for a buffered
+    # transport (JSON:API, GraphQL, Bolt). Unlike `materialize` (caller-driven, unconditional CTAS),
+    # this rides the plan for every buffered result and the terminal DECIDES per-result — inline the
+    # body below the config row threshold, land an engine-native CTAS above it — with no caller
+    # side-channel. None for streaming transports and when redirect is disabled in system config.
+    auto_deliver: Delivery | None = field(default=None)
     # Governed-provenance stamp (see below). Minted ONLY at the top of the pipeline
     # (_govern_and_route / _govern_and_route_compiled); _execute_plan refuses any plan lacking a
     # valid one, so an un-governed / side-door plan can never be executed.
@@ -263,7 +272,8 @@ async def _govern_and_route(
     session_vars: dict[str, str] | None = None,
     discovery_mode: bool = False,
     as_of: str | None = None,
-    deliver: object | None = None,
+    deliver: Delivery | None = None,
+    buffered: bool = False,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     import sqlglot
     import sqlglot.expressions as exp
@@ -435,6 +445,20 @@ async def _govern_and_route(
             route=Route.ENGINE, source_id=None, dialect=None, reason="result delivery requested"
         )
 
+    # REQ-1224 (Defect 4): a buffered transport (JSON:API, GraphQL, Bolt) rides the AUTOMATIC
+    # threshold — the terminal inlines below the config row limit, lands an engine-native CTAS above
+    # it. That CTAS needs engine-physical SQL, so force ENGINE (same as an explicit deliver). None
+    # when redirect is disabled in system config, leaving inline behaviour unchanged (opt-in).
+    from provisa.executor.redirect import auto_delivery_for_buffered
+
+    auto_deliver = auto_delivery_for_buffered(role_id) if buffered and deliver is None else None
+    if auto_deliver is not None and decision.route != Route.ENGINE:
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE, source_id=None, dialect=None, reason="buffered-transport auto-delivery"
+        )
+
     # REQ-1159: a localized statement carries an inline local relation as a VALUES list, which rides
     # along on whichever route the router picks — DIRECT inlines the VALUES into the single source's
     # SQL (the source executes it), and a genuinely cross-source statement is detected and routed to
@@ -492,6 +516,7 @@ async def _govern_and_route(
             exec_params=exec_params,
             physical_sql=physical_sql,
             materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
+            auto_deliver=auto_deliver,  # REQ-1224: buffered-transport auto threshold (terminal decides)
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
     else:
@@ -537,6 +562,47 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
 
         assert plan.physical_sql is not None
         handle = await run_materialize(state, plan.physical_sql, cast(Delivery, plan.materialize))
+        return QueryResult(rows=[], column_names=[], redirect=handle)
+
+    if plan.auto_deliver is not None:
+        # AUTOMATIC threshold terminal (REQ-1224, Defect 4): a buffered transport (JSON:API, GraphQL,
+        # Bolt) whose plan carries no explicit sink. The terminal DECIDES per-result — drain the ENGINE
+        # stream up to the config row threshold; if the whole result fits, inline it (bounded by the
+        # threshold budget); if it exceeds, abandon the partial buffer and land an engine-native CTAS
+        # off Provisa's heap, surfacing the handle instead of rows. The planner forced ENGINE lowering
+        # so physical_sql is the federated CTAS source — no transport-local branch, no caller side-channel.
+        import asyncio
+        from typing import cast
+
+        from provisa.executor.redirect import Delivery, run_materialize
+
+        assert plan.physical_sql is not None
+        deliv = cast(Delivery, plan.auto_deliver)
+        threshold = deliv.config.threshold
+        physical_sql = plan.physical_sql
+
+        def _drain() -> tuple[list[str], list[str] | None, list[tuple], bool]:
+            stream = engine.execute_engine_sync(
+                physical_sql, params=plan.exec_params, session_hints=plan.session_hints
+            )
+            it = stream.iter_rows()
+            buffered_rows: list[tuple] = []
+            over = False
+            try:
+                for row in it:
+                    buffered_rows.append(row)
+                    if len(buffered_rows) > threshold:
+                        over = True
+                        break
+            finally:
+                if over:
+                    it.close()  # GeneratorExit → the engine cursor closes without a full drain
+            return stream.column_names, stream.column_types, buffered_rows, over
+
+        col_names, col_types, buffered_rows, over = await asyncio.to_thread(_drain)
+        if not over:
+            return QueryResult(rows=buffered_rows, column_names=col_names, column_types=col_types)
+        handle = await run_materialize(state, physical_sql, deliv)
         return QueryResult(rows=[], column_names=[], redirect=handle)
 
     if plan.route == Route.ENGINE:
@@ -586,7 +652,8 @@ async def execute_sql_batch(
     session_vars: dict[str, str] | None = None,
     discovery_mode: bool = False,
     as_of: str | None = None,
-    deliver: object | None = None,
+    deliver: Delivery | None = None,
+    buffered: bool = False,
 ) -> QueryResult:
     """Govern + execute a (possibly multi-statement) SQL batch through the ONE pipeline, returning the
     LAST statement's result (psql/JDBC batch semantics).
@@ -621,6 +688,7 @@ async def execute_sql_batch(
             discovery_mode=discovery_mode,
             as_of=as_of,
             deliver=_deliver,
+            buffered=buffered and _i == len(statements) - 1,
         )
         result = await _execute_plan(plan, state)
     assert result is not None
@@ -659,7 +727,8 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
     exec_params: list | None = None,
     state: Any | None = None,
     api_args: dict | None = None,
-    deliver: object | None = None,
+    deliver: Delivery | None = None,
+    buffered: bool = False,
 ) -> _Plan:
     """Governance + routing for already-physical SQL.
 
@@ -730,6 +799,18 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             route=Route.ENGINE, source_id=None, dialect=None, reason="result delivery requested"
         )
 
+    # REQ-1224 (Defect 4): buffered-transport auto threshold — the terminal decides inline-vs-CTAS.
+    # The CTAS needs engine-physical SQL, so force ENGINE. None when redirect is disabled (opt-in).
+    from provisa.executor.redirect import auto_delivery_for_buffered
+
+    auto_deliver = auto_delivery_for_buffered(role_id) if buffered and deliver is None else None
+    if auto_deliver is not None and decision.route != Route.ENGINE:
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE, source_id=None, dialect=None, reason="buffered-transport auto-delivery"
+        )
+
     if decision.route == Route.ENGINE:
         _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
@@ -778,6 +859,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             physical_sql=physical_sql,
             session_hints=_hints,
             materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
+            auto_deliver=auto_deliver,  # REQ-1224: buffered-transport auto threshold (terminal decides)
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
     else:

@@ -33,11 +33,12 @@ import struct
 from typing import Any
 
 from provisa.core.ir_types import to_ir
-from provisa.executor.result import QueryResult
-from provisa.federation.runtime_support import run_async
+from provisa.executor.result import QueryResult, ResultStream
+from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
 
 _SQL_COPT_SS_ACCESS_TOKEN = 1256
 _AAD_SCOPE = "https://database.windows.net/.default"
+_ARROW_CHUNK_ROWS = 10_000  # rows per lazy fetchmany chunk for the Arrow stream (REQ-1216)
 
 # Canonical IR name → T-SQL / Fabric-Warehouse type (Fabric supports a subset: VARCHAR, no TEXT).
 _IR_TO_TSQL: dict[str, str] = {
@@ -242,39 +243,66 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
 
     # -- execution -------------------------------------------------------------
 
-    def run_sync(self, sql: str, params: list | None = None) -> QueryResult:
-        """Execute T-SQL (transpiled by the backend seam) and return rows."""
-        del params  # SQL arrives fully substituted from the governed pipeline
-        cur = self._conn.cursor()
-        try:
-            cur.execute(sql)
-            cols = [c[0] for c in cur.description] if cur.description else []
-            rows = [tuple(r) for r in cur.fetchall()] if cur.description else []
-            return QueryResult(rows=rows, column_names=cols)
-        finally:
-            cur.close()
+    def run_sync(self, sql: str, params: list | None = None) -> ResultStream:
+        """Execute T-SQL (transpiled by the backend seam) and STREAM it.
+
+        Built on the lazy forward-only-cursor Arrow terminal (``run_arrow_stream``) so the pgwire ENGINE
+        route stays memory-bounded — no full ``QueryResult`` materialization (REQ-1217, Defect 3)."""
+        schema, batches = self.run_arrow_stream(sql, params)
+        return stream_rows_from_arrow(schema, batches)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
-        return await run_async(self.run_sync, sql, params)
+        return await run_async_materialized(self.run_sync, sql, params)
 
     # -- Arrow transport (built from the ODBC cursor — pyodbc has no native Arrow) --
 
     def run_arrow(self, sql: str, params: list | None = None) -> Any:
         import pyarrow as pa
 
-        res = self.run_sync(sql, params)
-        if not res.column_names:
-            return pa.table({})
-        cols = {name: [row[i] for row in res.rows] for i, name in enumerate(res.column_names)}
-        return pa.table(cols)
+        schema, batches = self.run_arrow_stream(sql, params)
+        return pa.Table.from_batches(list(batches), schema=schema)
 
     def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
-        table = self.run_arrow(sql, params)
+        """Return ``(schema, batch_generator)`` for lazy record-batch streaming (REQ-1216, REQ-1217).
+
+        pyodbc has no native Arrow, but a forward-only cursor pulls rows from the server incrementally:
+        ``fetchmany`` drains one chunk at a time and each chunk is converted to an Arrow batch, so the
+        full result never materializes — peak memory is bounded by one chunk. The schema is locked from
+        the first chunk and later chunks are coerced to it, keeping a stable schema across the stream.
+        The cursor closes when the generator drains or the consumer stops early."""
+        import pyarrow as pa
+
+        del params  # SQL arrives fully substituted from the governed pipeline
+        cur = self._conn.cursor()
+        cur.execute(sql)
+        names = [c[0] for c in cur.description] if cur.description else []
+        if not names:
+            cur.close()
+            return pa.table({}).schema, iter(())
+
+        def _chunk_to_table(rows: list, schema: Any) -> Any:
+            cols = {name: [row[i] for row in rows] for i, name in enumerate(names)}
+            return pa.table(cols, schema=schema) if schema is not None else pa.table(cols)
+
+        first_rows = cur.fetchmany(_ARROW_CHUNK_ROWS)
+        if not first_rows:
+            cur.close()
+            return pa.table({name: [] for name in names}).schema, iter(())
+        first_tbl = _chunk_to_table(first_rows, None)
+        schema = first_tbl.schema
 
         def _batches():
-            yield from table.to_batches()
+            try:
+                yield from first_tbl.to_batches()
+                while True:
+                    rows = cur.fetchmany(_ARROW_CHUNK_ROWS)
+                    if not rows:
+                        break
+                    yield from _chunk_to_table(rows, schema).to_batches()
+            finally:
+                cur.close()
 
-        return table.schema, _batches()
+        return schema, _batches()
 
     def close(self) -> None:
         self._conn.close()

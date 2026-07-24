@@ -112,6 +112,14 @@ class SourcePool:  # REQ-052, REQ-053
         driver = self._drivers[source_id]
         return await driver.execute(sql, params)
 
+    def supports_stream(self, source_id: str) -> bool:  # REQ-1190
+        """Whether this source's driver can open a bounded server-side cursor (streaming DIRECT read)."""
+        return self._drivers[source_id].supports_streaming
+
+    async def open_stream(self, source_id: str, sql: str, params: list | None = None):  # REQ-1190
+        """Open a lazily-drained DIRECT read on a source's driver (a :class:`DirectResultStream`)."""
+        return await self._drivers[source_id].open_stream(sql, params)
+
     async def execute_ddl(self, source_id: str, sql: str) -> None:  # REQ-031
         driver = self._drivers[source_id]
         await driver.execute_ddl(sql)

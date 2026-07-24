@@ -34239,11 +34239,14 @@
   priority: MUST
   type: constraint
   description: >-
-    DIRECT routes (catalog, schema metadata, govdata, admin endpoints) and all non-ENGINE transports
-    remain async-native and materialize results via _execute_plan on the event loop (unchanged behavior).
+    DIRECT routes must stream for user-data scans via the source's own server-side cursor or Arrow reader,
+    identically to ENGINE routes. Only metadata/admin/registered-function DIRECT routes (inherently bounded)
+    materialize results via _execute_plan on the event loop. execute_native must return a lazy (schema, batch_gen)
+    tuple, not a materialized QueryResult. See docs/arch/streaming-uniformity-gap.md (Defect 1).
   use_case: >-
-    Metadata and governance queries are bounded (small result sets) and benefit from in-memory caching.
-    Only user-facing ENGINE queries require streaming to prevent OOM on unbounded result sets.
+    A DIRECT single-reachable-source passthrough (e.g., SELECT * FROM one_source) can be unbounded and must not
+    materialize in Provisa RAM. Only bounded metadata queries (catalog, schema metadata, govdata, admin endpoints)
+    benefit from materialization. Streaming the source's native cursor prevents OOM on large user-data scans.
   code:
   - provisa/executor/
   - provisa/graphql/
@@ -34708,8 +34711,16 @@
   category: Multi-Protocol Exposure (Arrow Flight)
   priority: MUST
   type: behavioral
-  description: Arrow Flight SQL do_get ENGINE route (provisa/api/flight/server.py _do_get_sql_governed) streams via execute_engine_stream (schema + RecordBatch generator), wrapped in a GeneratorStream with the license nag attached as app_metadata on the first batch, replacing the prior execute_engine_arrow full-table materialization. All Flight-serving engines (DuckDB, Snowflake, Databricks, BigQuery, ClickHouse, Fabric/Synapse, Trino) declare EngineCapability.ARROW_STREAM.
-  use_case: Streaming via execute_engine_stream replaces full materialization with lazy per-batch pulls, enabling large result sets over Flight while maintaining license visibility and schema broadcast.
+  description: >-
+    Arrow Flight SQL do_get ENGINE route streams via execute_engine_stream. All Flight-serving
+    engines must declare EngineCapability.ARROW_STREAM only if run_arrow_stream genuinely streams
+    via server-side chunk APIs (fetch_arrow_batches, to_arrow_iterable, fetchmany→Arrow). CONFORMANCE
+    GAP: Databricks, BigQuery, MSSQL declare ARROW_STREAM but call run_arrow then .to_batches(),
+    materializing the whole table. See docs/arch/streaming-uniformity-gap.md Defect 2.
+  use_case: >-
+    Streaming via execute_engine_stream replaces full materialization with lazy per-batch pulls,
+    enabling large result sets over Flight. Engine capability declarations must be honest: only
+    declare ARROW_STREAM when the terminal is genuinely lazy via the driver's server-side chunk API.
   code:
     - provisa/api/flight/server.py
     - provisa/executor/_engine_executor.py
@@ -34731,8 +34742,16 @@
   category: Engine Streaming Terminals
   priority: MUST
   type: constraint
-  description: Per-engine Arrow streaming terminals (execute_engine_stream) are genuinely lazy. DuckDB run_arrow_stream pulls record batches on demand from a private cursor's fetch_record_batch reader (_ARROW_STREAM_BATCH_ROWS = 65536). Snowflake run_arrow_stream uses fetch_arrow_batches (server-side chunk fetch). In both cases, the cursor closes when the generator drains or the consumer stops early, preventing resource leaks on early termination.
-  use_case: Lazy per-batch pulls prevent materializing full result sets in memory and allow the consumer to stop early without forcing the engine to compute remaining batches, enabling efficient streaming over large results and unreliable transports.
+  description: >-
+    Per-engine Arrow streaming terminals (execute_engine_stream) and run_sync must be genuinely lazy.
+    DuckDB uses fetch_record_batch (_ARROW_STREAM_BATCH_ROWS = 65536). Snowflake uses fetch_arrow_batches.
+    CONFORMANCE GAP: Databricks, BigQuery, MSSQL fake laziness by calling run_arrow/.to_batches(),
+    materializing before batching. These must use server-side chunk APIs (BigQuery to_arrow_iterable,
+    Databricks Cloud Fetch iteration, MSSQL cursor fetchmany→Arrow). See docs/arch/streaming-uniformity-gap.md Defects 2-3.
+  use_case: >-
+    Genuinely lazy per-batch pulls prevent materializing full result sets in memory and allow the
+    consumer to stop early without forcing the engine to compute remaining batches. Only server-side
+    chunk APIs honor this for warehouse engines; materializing then rebatching violates the design.
   code:
     - provisa/executor/_engine_executor.py
   tests:
@@ -34746,12 +34765,21 @@
     And memory is not allocated for the full result set
 - id: REQ-1218
   status: complete
+  superseded_by: REQ-1231
   group: "7. Result Delivery"
   category: Protocol-Specific Result Handling
   priority: MUST
   type: constraint
-  description: Airport Flight transport (provisa/api/airport/query.py, server.py) is a materializing catalog-scan transport BY DESIGN. It caches full governed scans per (role, schema, table) for byte-stable schema advertisement and derives an is_rowid pseudo-column over the whole table for UPDATE/DELETE echo. It remains format/protocol-buffered like GraphQL/JSON:API/Bolt (not an unbounded passthrough); pushdown scans are bounded by the injected WHERE clause.
-  use_case: Caching full scans per (role, schema, table) allows byte-stable schema advertisement across requests; deriving is_rowid over the whole cached table enables row-level UPDATE/DELETE return values. Airport is not a query-result passthrough transport but a metadata-and-identity-caching catalog transport.
+  description: >-
+    Airport Flight transport drains the single streaming terminal identically to Flight SQL (REQ-1216).
+    Byte-stable schema advertisement comes from the plan's typed output columns (known pre-execution),
+    not by scanning rows. The is_rowid pseudo-column derives from source key metadata, a streamed rowid
+    column, or an off-heap CTAS side-table — never an in-Provisa full-table cache. Airport is a streaming
+    transport, not a materializing catalog-scan transport. See docs/arch/streaming-uniformity-gap.md Defect 5.
+  use_case: >-
+    Draining the streaming terminal prevents OOM on large table scans in airport. Schema and rowid
+    metadata are catalog-identity concerns separable from the result-streaming path. Off-heap CTAS
+    satisfies unbounded rowid mappings without materializing in Provisa RAM.
   code:
     - provisa/api/airport/query.py
     - provisa/api/airport/server.py
@@ -34760,11 +34788,11 @@
     - tests/integration/test_airport_service_e2e.py
   since: "2026-07"
   scenario: |
-    Given an airport request for a table schema
-    When the scan is cached per (role, schema, table)
-    Then subsequent requests return the same schema bytes (stable advertisement)
-    And UPDATE/DELETE operations can derive is_rowid from the cached full table scan
-    And pushdown WHERE clauses bound the scan size but do not stream unboundedly
+    Given an airport metadata request for a table schema
+    When the request arrives, the plan's typed columns advertise the schema pre-execution
+    Then subsequent requests return the same schema bytes (stable)
+    When UPDATE/DELETE echo needs is_rowid, it derives from source key metadata or a side-table
+    And the result stream drains unboundedly without buffering in Provisa RAM
 - id: REQ-1219
   status: complete
   group: "1. Cluster Configuration & Startup"
@@ -34816,3 +34844,309 @@
     And scripts/provisa auto-includes the overlay on next `provisa start`
     And the app loads the config without entering the first-run wizard
     And demo data is immediately available for exploration
+- id: REQ-1221
+  status: complete
+  group: "7. Result Delivery"
+  category: Arrow Streaming Adapter
+  priority: MUST
+  type: behavioral
+  description: >-
+    The generic row→Arrow-batch adapter (arrow_batches_from_rows in provisa/federation/runtime_support.py) enables ARROW and ARROW_STREAM transports on ROWS-only federation engines (Postgres via psycopg2, SQLAlchemy). It packs Python rows into memory-bounded Arrow RecordBatches (65536 rows/batch default), locks the Arrow schema from the first batch and casts subsequent batches to it, converts Decimal→float, and maps empty results to a null-typed schema.
+  use_case: >-
+    Postgres and SQLAlchemy engines have no native Arrow reader (only row-based results), but clients expect Arrow streaming via Flight-SQL and airport transports. The adapter bridges this gap by materializing batches incrementally instead of buffering the entire result set, enabling lazy streaming over large result sets without requiring zero-copy native Arrow support.
+  code:
+    - provisa/federation/runtime_support.py
+    - provisa/federation/native_backend.py
+    - provisa/federation/engine.py
+  tests:
+    - tests/unit/test_runtime_support.py
+    - tests/unit/test_native_arrow_transport.py
+    - tests/unit/test_engine_capability_traits.py
+  since: "2026-07"
+  scenario: |
+    Given a Postgres federation engine (ROWS-only, no native Arrow reader)
+    When Flight-SQL requests Arrow record batches (execute_stream)
+    Then native_backend.execute_stream branches on hasattr(rt, "run_arrow_stream")
+    And pg_backend has no run_arrow_stream method, so the adapter is used
+    And arrow_batches_from_rows adapts rt.run_sync's lazy row stream into (schema, batch_generator)
+    And batches are yielded incrementally (65536 rows/batch) instead of materializing the full result
+    And Flight-SQL client receives bounded Arrow RecordBatches over the wire
+- id: REQ-1222
+  status: complete
+  group: "7. Result Delivery"
+  category: Engine Streaming Terminals
+  priority: MUST
+  type: behavioral
+  description: >-
+    PgFederationRuntime gains run_arrow(sql, params) and run_arrow_stream(sql, params) methods for zero-copy Arrow transport via adbc_driver_postgresql. run_arrow returns a materialized pyarrow.Table; run_arrow_stream returns (schema, batch_generator) with record batches fetched on-demand from a dedicated short-lived ADBC connection. Postgres rows decode directly into Arrow RecordBatches without Python row materialization; streaming variant is memory-bounded by one batch size. Dependency on adbc-driver-postgresql added to pyproject.toml.
+  use_case: >-
+    PostgreSQL federation engine can expose Arrow streaming to Flight SQL and airport transports, enabling large result sets without buffering rows in Python memory or materializing the full result set client-side.
+  code:
+    - provisa/federation/pg_backend.py
+  tests:
+    - tests/integration/test_streaming_memory_bounded_e2e.py
+  since: "2026-07"
+  scenario: |
+    Given a PgFederationRuntime instance with a PostgreSQL connection
+    When run_arrow_stream(sql, params) is called for a 10M-row result
+    Then a dedicated ADBC connection is opened
+    And a (schema, batch_generator) tuple is returned immediately
+    And record batches are fetched on-demand (65536 rows/batch default) from adbc_driver_postgresql's fetch_record_batch
+    And peak memory is bounded to one batch
+    And the ADBC connection closes when the generator drains or the consumer stops early
+    And rows are decoded directly into Arrow with no Python row list materialization
+- id: REQ-1223
+  status: complete
+  group: "7. Result Delivery"
+  category: Engine Streaming Terminals
+  priority: MUST
+  type: behavioral
+  description: >-
+    SqlAlchemyFederationRuntime.run_sync classifies SQL statements by leading keyword (after stripping leading comments) to identify ROW-RETURNING queries (SELECT, WITH, VALUES, TABLE, SHOW, EXPLAIN). Row-returning statements stream via server-side named cursor using SQLAlchemy's stream_results execution option over psycopg2, replacing the prior unnamed cursor that buffered the entire result on execute(). Non-row-returning statements (DDL, DML) execute buffered in a committing transaction because psycopg2 syntax-errors on DECLARE CURSOR FOR DDL/DML. The streaming read runs on a dedicated connection closed when the stream drains.
+  use_case: >-
+    Server-side named cursors decouple result fetching from statement execution, allowing large result sets to remain on the server and be pulled incrementally without buffering client-side, enabling memory-bounded streaming on federation engines (Trino, Snowflake, Databricks, etc.) that use SQLAlchemy.
+  code:
+    - provisa/federation/sqlalchemy_backend.py
+  tests:
+    - tests/integration/test_streaming_memory_bounded_e2e.py
+  since: "2026-07"
+  scenario: |
+    Given a SqlAlchemyFederationRuntime instance with a SQLAlchemy engine connection
+    When run_sync(sql, params) is called with sql="SELECT * FROM large_table"
+    Then the statement is classified as ROW-RETURNING
+    And a named server-side cursor is declared via stream_results execution option
+    And rows are fetched on-demand from the cursor without buffering the full result
+    And peak memory is bounded to one fetch batch
+    Given run_sync(sql, params) is called with sql="CREATE TABLE foo AS SELECT * FROM bar"
+    When a DDL statement is detected
+    Then it executes buffered in a committing transaction (not via named cursor)
+    And the statement completes before returning (DDL cannot use server-side cursor)
+- id: REQ-1224
+  status: complete
+  group: "7. Result Delivery"
+  category: Large Result Redirect & CTAS
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Automatic stream↔CTAS threshold at the single terminal (_execute_plan). Buffered transports
+    (JSON:API, GraphQL, Bolt) land an engine-native CTAS via run_materialize above a configurable
+    row-count/byte threshold and inline the body below it — automatically, without requiring a caller
+    to pass deliver= via side-channel. Threshold is a system configuration (e.g., 10K rows, 100MB).
+    See docs/arch/streaming-uniformity-gap.md Defect 4.
+  use_case: >-
+    Buffered transports cannot stream incrementally to the wire and require materialization. An automatic
+    threshold at the terminal (not per-caller) prevents memory OOM on unexpectedly large results by
+    using engine-native CTAS for large sets while keeping small results inline for latency.
+  code:
+    - provisa/executor/redirect.py
+    - provisa/pgwire/_pipeline.py
+    - provisa/api/jsonapi/generator.py
+    - provisa/api/rest/generator.py
+    - provisa/bolt/session.py
+  tests:
+    - tests/unit/test_buffered_auto_threshold.py
+  since: "2026-07"
+  related_reqs:
+    - REQ-1203
+    - REQ-1204
+  scenario: |
+    Given a JSON:API query result with 5K rows
+    When _execute_plan executes with threshold=10K rows
+    Then the result materializes inline and returns body directly
+    Given a GraphQL query result with 50K rows
+    When _execute_plan executes with threshold=10K rows
+    Then a CTAS is landed via run_materialize
+    And a materialization handle is returned (not streamed rows)
+- id: REQ-1225
+  status: in-progress
+  group: "7. Result Delivery"
+  category: Engine Streaming Terminals
+  priority: MUST
+  type: behavioral
+  description: >-
+    Warehouse federation runtimes (Snowflake, Databricks, BigQuery, MSSQL, ClickHouse) must implement genuinely streaming `run_sync` terminals using their respective server-side chunk APIs. Each runtime builds `run_sync` on its single lazy Arrow primitive via `stream_rows_from_arrow(schema, batches)` in provisa/federation/runtime_support.py, returning a `StreamingQueryResult` (single-consume, one batch pulled at a time) rather than a fully materialized `QueryResult`. The async `run` terminal materializes via `run_async_materialized`, which drains the streaming `run_sync` on an executor thread, mirroring the PostgreSQL runtime split. `stream_rows_from_arrow` is the inverse primitive of `arrow_batches_from_rows`.
+  use_case: >-
+    Warehouse `run_sync` currently materializes the full result set, breaking memory boundedness on the pgwire ENGINE route despite REQ-1186. A genuinely streaming `run_sync` keeps the pgwire route OOM-safe for large results. See docs/arch/streaming-uniformity-gap.md Defect 3.
+  code:
+    - provisa/federation/snowflake_runtime.py
+    - provisa/federation/databricks_runtime.py
+    - provisa/federation/bigquery_runtime.py
+    - provisa/federation/mssql_warehouse_runtime.py
+    - provisa/federation/clickhouse_runtime.py
+    - provisa/federation/runtime_support.py
+  tests:
+    - tests/integration/test_streaming_memory_bounded_e2e.py
+  target: 2026-Q3
+  scenario: |
+    Given a warehouse engine (Snowflake, Databricks, BigQuery, MSSQL, ClickHouse) with a large result set (1M+ rows)
+    When pgwire ENGINE route calls run_sync(sql, params)
+    Then a StreamingQueryResult is returned immediately (not a materialized QueryResult)
+    And batches are fetched on-demand from the warehouse via its server-side chunk API
+    And memory consumption is bounded by one batch size (~64KB-1MB)
+    When a consumer stops early after 10 batches
+    Then the warehouse cursor/fetch context is closed
+    And remaining batches are never fetched
+    And memory allocated for the full result set is not consumed
+- id: REQ-1226
+  status: proposed
+  group: "8. Deployment & Infrastructure"
+  category: HTTPS/TLS Configuration
+  priority: MUST
+  type: infrastructure
+  description: >-
+    GCP/Docker cluster deployment must serve all endpoints over HTTPS with TLS encryption. If the operator does not supply TLS certificates, the deployment must auto-generate temporary self-signed certificates to enable HTTPS out of the box without manual certificate provisioning.
+  use_case: >-
+    HTTPS is a security baseline for production deployments. Auto-generating self-signed certificates removes the operational friction of manual certificate management for development and test environments while still enforcing encrypted transport in production-like setups.
+  target: 2026-Q4
+  scenario: |
+    Given a GCP/Docker cluster deployment with no TLS certificates supplied
+    When the deployment starts
+    Then HTTPS endpoints are served over automatically generated self-signed certificates
+    And TLS encryption is active without operator intervention
+    Given a GCP/Docker cluster deployment with operator-supplied TLS certificates
+    When the deployment starts
+    Then the supplied certificates are used instead of self-signed ones
+    And HTTPS endpoints are served using the provided TLS credentials
+- id: REQ-1227
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Clustered Deployment Configuration
+  priority: MUST
+  type: infrastructure
+  description: >-
+    In a clustered Provisa deployment, only the primary node loads the data config file from disk. The primary registers all datasources into the shared PostgreSQL backend. Secondary nodes do not load their own config file; instead, they connect to the primary's shared PostgreSQL and rebuild their in-memory schemas from what the primary registered there, establishing a single source of truth for the cluster.
+  use_case: >-
+    Centralizing config registration to the primary node ensures runtime-added datasources propagate to secondaries automatically without manual sync or config duplication across nodes.
+  since: "2026-07"
+  scenario: |
+    Given a clustered deployment with a primary and secondary node
+    When the primary starts
+    Then it loads the config file from disk
+    And registers all datasources into the shared PostgreSQL
+    When the secondary starts
+    Then it does not load the config file from disk
+    And it connects to the primary's shared PostgreSQL
+    And it rebuilds in-memory schemas from the registered datasources
+    When a datasource is added at runtime via the API
+    Then the primary registers it into shared PostgreSQL
+    And the secondary's next schema rebuild reads the new datasource automatically
+- id: REQ-1228
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: HTTPS/TLS Configuration
+  priority: MUST
+  type: infrastructure
+  description: >-
+    HTTPS/TLS encryption (REQ-1226) applies to ALL protocol endpoints in a cluster deployment — not just the web API and UI, but also pgwire, Bolt, Arrow Flight, gRPC, and MCP endpoints. TLS terminates at each protocol server inside the container. The cluster's L4 load balancers pass TCP through without termination, allowing each protocol server to handle its own encryption. Self-signed certificates are auto-generated when none are supplied.
+  use_case: >-
+    Encrypting all protocol endpoints (not just HTTP) ensures security across every client access path — database drivers (pgwire), graph traversal (Bolt), columnar streaming (Arrow Flight), service meshes (gRPC), and model context protocols (MCP) — without requiring separate external TLS termination per protocol.
+  since: "2026-07"
+  scenario: |
+    Given a cluster deployment with no TLS certificates supplied
+    When the deployment starts
+    Then self-signed certificates are auto-generated for all protocol endpoints
+    And the API server serves HTTPS
+    And the pgwire server serves TLS-wrapped connections on port 5439
+    And the Bolt server serves TLS-wrapped connections
+    And the Arrow Flight server serves TLS-wrapped connections
+    And the gRPC server serves TLS-wrapped connections
+    And the MCP server serves TLS-wrapped connections
+    And the L4 load balancer passes TCP through without intercepting TLS
+    Given a cluster deployment with operator-supplied TLS certificates
+    When the deployment starts
+    Then all protocol servers use the supplied certificates
+    And each endpoint is served over the operator's TLS credentials
+- id: REQ-1229
+  status: proposed
+  group: "8. Deployment & Infrastructure"
+  category: Clustered Deployment Configuration
+  priority: MUST
+  type: constraint
+  description: >-
+    In a clustered Provisa deployment, only the primary node may modify the config row store (DELETE, INSERT, UPDATE). Secondary nodes set PROVISA_ROLE=secondary, which forces load_config replace=OFF to prevent them from overwriting shared config rows. Concurrent identical config upserts across the cluster are serialized by a PostgreSQL advisory lock and are idempotent no-ops. All nodes load a byte-identical baked config file at startup; no runtime "pull config from primary PG" path exists.
+  use_case: >-
+    The single-writer invariant prevents secondaries from accidentally corrupting the shared config store. Advisory lock serialization ensures concurrent upserts are safe and idempotent. Byte-identical baked configs guarantee schema consistency across the cluster at startup.
+  target: "2026-Q3"
+  scenario: |
+    Given a clustered deployment with primary and secondary nodes
+    When the primary upserts a config row
+    Then the advisory lock serializes the write
+    And the row is written to the shared PostgreSQL
+    When a secondary attempts to DELETE or REPLACE a config row
+    Then PROVISA_ROLE=secondary forces load_config replace=OFF
+    And the DELETE/REPLACE is rejected
+    When multiple nodes attempt identical upserts concurrently
+    Then the advisory lock serializes them
+    And each upsert becomes an idempotent no-op
+    When any node starts
+    Then it loads the byte-identical baked config file
+    And no runtime pull from primary PG occurs
+- id: REQ-1230
+  status: proposed
+  group: "8. Deployment & Infrastructure"
+  category: Clustered Deployment Configuration
+  priority: MUST
+  type: infrastructure
+  description: >-
+    Secondary nodes in a cluster deployment run application tier only (Provisa API/UI + in-process protocol listeners on ports 3000, 5439, 7687, etc.). They do NOT run local postgres, redis, minio, or trino instances. Instead, control-plane, cache, object-store, and Trino-coordinator endpoints are repointed at the primary via intra-cluster networking. Secondary topology is selected via a standalone compose-secondary.yml base (not an additive overlay, since compose depends_on cannot be removed by overlay merge).
+  use_case: >-
+    Eliminating stateful services on secondaries reduces deployment complexity and resource footprint, centralizes all state on the primary, and ensures a clean restart topology where secondaries are ephemeral compute without persistent service dependencies.
+  target: "2026-Q3"
+  scenario: |
+    Given a cluster deployment with a secondary node
+    When compose-secondary.yml is applied
+    Then the Provisa API tier starts on port 3000
+    And pgwire listener starts on port 5439
+    And Bolt listener starts on port 7687
+    And Arrow Flight listener starts
+    And gRPC listener starts
+    And MCP listener starts
+    And no local postgres instance is provisioned
+    And no local redis instance is provisioned
+    And no local minio instance is provisioned
+    And no local trino instance is provisioned
+    When the secondary connects to its primary
+    Then control-plane endpoints resolve to the primary
+    And cache endpoints resolve to the primary's redis
+    And object-store endpoints resolve to the primary's minio
+    And Trino coordinator endpoint resolves to the primary
+- id: REQ-1231
+  status: complete
+  group: "7. Result Delivery"
+  category: Protocol-Specific Result Handling
+  priority: MUST
+  type: behavioral
+  description: >-
+    Airport Flight do_get routes through the governed_table_scan_stream() terminal, returning (schema, batch_generator).
+    ENGINE-routed queries return the engine's lazy record-batch stream via execute_engine_stream; DIRECT-routed queries return
+    typed Arrow RecordBatches (65_536 rows/batch) via execute_native_stream reshaped by _typed_batches_from_rows, wrapped in flight.GeneratorStream.
+    The advertised schema (flight_info / list_schemas) is byte-stable: derived from the query's TYPED output columns (DuckDB result schema on ENGINE;
+    native driver result-column types mapped via to_ir→_ir_to_arrow on DIRECT), independent of result row count. governed_table_scan_schema()
+    derives that schema without opening a row-streaming cursor (ENGINE closes the lazy reader; DIRECT releases the eagerly-opened cursor via close()/on_release).
+    Per-batch is_rowid derives from PK metadata, not whole-table materialization. This supersedes REQ-1218's _retype_null_columns pattern.
+  use_case: >-
+    Streaming governs all result transport uniformly without OOM risk on large table scans. Byte-stable schemas separate
+    catalog identity (known pre-execution) from result streaming. Eager cursor release on schema-only close frees resources
+    before drain completes. Per-batch rowid avoids full-table buffering for UPDATE/DELETE echo.
+  code:
+    - provisa/api/airport/query.py
+    - provisa/api/airport/server.py
+    - provisa/executor/result.py
+    - provisa/federation/runtime.py
+  tests:
+    - tests/integration/test_airport_service_e2e.py
+    - tests/integration/test_streaming_memory_bounded_e2e.py
+  since: "2026-07"
+  e2e: true
+  e2e_reason: >-
+    Airport Flight streaming behavior (schema stability, rowid derivation, memory bounds) is only verifiable through end-to-end
+    protocol interaction with the Arrow Flight server and multiple backend routes (ENGINE vs. DIRECT).
+  scenario: |
+    Given an airport Flight do_get request for a large table
+    When the request arrives at the governed_table_scan_stream terminal
+    Then the schema is derived from the query's TYPED output columns and advertised immediately
+    And the schema bytes remain stable regardless of row count or early disconnection
+    When the consumer pulls record batches (65_536 rows each) from the generator
+    Then is_rowid pseudo-columns derive per-batch from PK metadata without buffering the full table
+    And early close() releases the server-side cursor without draining all results
+    And memory usage stays bounded even for multi-GB result sets

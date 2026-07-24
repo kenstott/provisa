@@ -45,14 +45,18 @@ import re
 from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import unquote, urlparse
 
-from provisa.executor.result import QueryResult
+from provisa.executor.result import QueryResult, ResultStream
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     import pyarrow as pa
 from provisa.federation.engine import build_clickhouse_engine
-from provisa.federation.runtime_support import columns_from_describe, run_async
+from provisa.federation.runtime_support import (
+    columns_from_describe,
+    run_async_materialized,
+    stream_rows_from_arrow,
+)
 from provisa.transpiler.transpile import transpile
 
 
@@ -367,13 +371,17 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
     # -- NativeEngineBackend runtime protocol ----------------------------------
 
-    def run_sync(self, sql: str, params: list | None = None) -> QueryResult:
-        """Execute SQL ALREADY in the ClickHouse dialect (transpiled by the backend seam)."""
-        rows, cols = self._backend.query(sql)
-        return QueryResult(rows=rows, column_names=cols)
+    def run_sync(self, sql: str, params: list | None = None) -> ResultStream:
+        """Execute SQL ALREADY in the ClickHouse dialect (transpiled by the backend seam) and STREAM it.
+
+        Built on the lazy ``query_arrow_stream`` terminal (``run_arrow_stream``) so the pgwire ENGINE
+        route stays memory-bounded — no full ``QueryResult`` materialization (REQ-1217, Defect 3)."""
+        del params  # SQL arrives fully substituted from the governed pipeline
+        schema, batches = self.run_arrow_stream(sql)
+        return stream_rows_from_arrow(schema, batches)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
-        return await run_async(self.run_sync, sql, params)
+        return await run_async_materialized(self.run_sync, sql, params)
 
     def run_arrow(self, sql: str) -> pa.Table:
         """Execute ClickHouse-dialect SQL and return a native Arrow table — the ENGINE ARROW terminal

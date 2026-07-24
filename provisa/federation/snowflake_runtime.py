@@ -29,7 +29,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 import pyarrow as pa
 
 from provisa.executor.result import QueryResult
-from provisa.federation.runtime_support import result_from_dbapi, run_async
+from provisa.executor.result import ResultStream
+from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
 
 
 class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
@@ -114,17 +115,16 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
     # -- execution -------------------------------------------------------------
 
-    def run_sync(self, sql: str, params: list | None = None) -> QueryResult:
-        """Execute SQL already in the Snowflake dialect (transpiled by the backend seam)."""
-        cur = self._conn.cursor()
-        try:
-            cur.execute(sql, params or None)
-            return result_from_dbapi(cur)
-        finally:
-            cur.close()
+    def run_sync(self, sql: str, params: list | None = None) -> ResultStream:
+        """Execute SQL already in the Snowflake dialect (transpiled by the backend seam) and STREAM it.
+
+        Built on the lazy ``fetch_arrow_batches`` terminal (``run_arrow_stream``) so the pgwire ENGINE
+        route stays memory-bounded — no full ``QueryResult`` materialization (REQ-1217, Defect 3)."""
+        schema, batches = self.run_arrow_stream(sql, params)
+        return stream_rows_from_arrow(schema, batches)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
-        return await run_async(self.run_sync, sql, params)
+        return await run_async_materialized(self.run_sync, sql, params)
 
     # -- Arrow transport (REQ-988) ---------------------------------------------
 

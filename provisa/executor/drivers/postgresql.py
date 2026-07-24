@@ -19,10 +19,57 @@ does not support prepared statements in transaction mode).
 
 from __future__ import annotations
 
+from typing import Any
+
 import asyncpg
 
-from provisa.executor.drivers.base import DirectDriver
+from provisa.executor.drivers.base import DirectDriver, DirectResultStream
 from provisa.executor.result import QueryResult
+
+
+class _PgDirectStream(DirectResultStream):  # REQ-1190
+    """asyncpg server-side cursor: a pooled connection + open transaction held for the stream's life,
+    a prepared statement for the column attributes, and a cursor fetched in bounded batches. Releasing
+    commits the (read-only) transaction and returns the connection to the pool. This bounds a large
+    DIRECT passthrough scan to one fetch batch instead of the whole result (streaming-uniformity Defect 1)."""
+
+    def __init__(self, pool: asyncpg.Pool, sql: str, params: list) -> None:
+        self._pool = pool
+        self._sql = sql
+        self._params = params
+        self._conn: Any = None
+        self._tr: Any = None
+        self._cur: Any = None
+        self.column_names = []
+        self.column_types = None
+
+    async def _open(self) -> None:
+        conn = await self._pool.acquire(timeout=PostgreSQLDriver._ACQUIRE_TIMEOUT)
+        self._conn = conn
+        # A server-side cursor requires an open transaction; the read is committed on close.
+        self._tr = conn.transaction()
+        await self._tr.start()
+        stmt = await conn.prepare(self._sql)
+        attrs = stmt.get_attributes()
+        self.column_names = [a.name for a in attrs]
+        self.column_types = [a.type.name for a in attrs]
+        self._cur = await stmt.cursor(*self._params)
+
+    async def fetch(self, size: int) -> list[tuple]:
+        assert self._cur is not None
+        records = await self._cur.fetch(size)
+        return [tuple(r.values()) for r in records]
+
+    async def close(self) -> None:
+        if self._conn is None:
+            return
+        conn, tr = self._conn, self._tr
+        self._conn = self._tr = self._cur = None
+        try:
+            if tr is not None:
+                await tr.commit()
+        finally:
+            await self._pool.release(conn)
 
 
 class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
@@ -91,6 +138,19 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
                 column_names=columns,
                 column_types=col_types,
             )
+
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        # PgBouncer transaction-pool mode forbids the long-lived server-side cursor a stream needs, so
+        # only a direct connection streams; a pgbouncer'd source materializes via execute().
+        return not self._use_pgbouncer
+
+    async def open_stream(self, sql: str, params: list | None = None) -> _PgDirectStream:  # REQ-1190
+        pool = self._pool
+        assert pool is not None
+        stream = _PgDirectStream(pool, sql, list(params or []))
+        await stream._open()
+        return stream
 
     def _extract_columns(self, sql: str) -> list[str]:
         """Fallback column extraction from SQL for empty results via PgBouncer."""

@@ -44,6 +44,9 @@ FLIGHT_PORT="$(read_config flight_port 8815)"
 AUTO_OPEN="$(read_config auto_open_browser true)"
 FED_WORKERS="$(read_config federation_workers 0)"
 RUNTIME="$(read_config runtime docker)"
+# Cluster role (primary|secondary). A secondary uses the standalone secondary base
+# compose (app tier only, endpoints repointed at the primary) instead of core+app.
+ROLE_CFG="$(read_config role primary)"
 # image_source: build (host `docker compose build`) or tarball (docker load — add the
 # airgap overlay so build: services resolve to the loaded provisa/*:local tags).
 IMAGE_SOURCE="$(read_config image_source build)"
@@ -103,6 +106,21 @@ set -- "${_ARGS[@]+"${_ARGS[@]}"}"
 # rather than a host build. Extensions in ~/.provisa/extensions/*/docker-compose.*.yml
 # are appended automatically.
 _build_compose_files() {
+    # A secondary runs the app tier ONLY (no local postgres/redis/minio/trino) and
+    # shares the primary's control plane. first-launch emits a standalone base
+    # (compose-secondary.yml) with every endpoint repointed at the primary; use it
+    # in place of core+app+airgap. Extensions (demo, protocols) still layer on.
+    if [ "$ROLE_CFG" = "secondary" ] && [ -f "${PROVISA_HOME}/compose-secondary.yml" ]; then
+        local files="-f ${PROVISA_HOME}/compose-secondary.yml"
+        local ext_dir="${PROVISA_HOME}/extensions"
+        if [ -d "$ext_dir" ]; then
+            for ext_compose in "${ext_dir}"/*/docker-compose.*.yml; do
+                [ -f "$ext_compose" ] && files="${files} -f ${ext_compose}"
+            done
+        fi
+        echo "$files"
+        return
+    fi
     local files="-f ${PROJECT_DIR}/docker-compose.core.yml -f ${PROJECT_DIR}/docker-compose.app.yml"
     if { [ "$IMAGE_SOURCE" = "tarball" ] || [ "$RUNTIME" = "bundled" ]; } && [ -f "${PROJECT_DIR}/docker-compose.airgap.yml" ]; then
         files="${files} -f ${PROJECT_DIR}/docker-compose.airgap.yml"

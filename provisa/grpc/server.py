@@ -314,8 +314,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
 
 async def start_grpc_server(
-    port: int, state, pb2_path: str, pb2_grpc_path: str
-) -> grpc.aio.Server:  # REQ-045, REQ-143
+    port: int,
+    state,
+    pb2_path: str,
+    pb2_grpc_path: str,
+    tls: tuple[str, str] | None = None,
+) -> grpc.aio.Server:  # REQ-045, REQ-143, REQ-1227
     """Start a gRPC async server with the Provisa service.
 
     Args:
@@ -323,6 +327,8 @@ async def start_grpc_server(
         state: AppState with schemas, contexts, etc.
         pb2_path: Path to generated _pb2.py module.
         pb2_grpc_path: Path to generated _pb2_grpc.py module.
+        tls: Optional ``(cert_path, key_path)``. When set the server binds a TLS
+            secure port (REQ-1227); otherwise it binds an insecure port.
 
     Returns:
         The started grpc.aio.Server.
@@ -362,7 +368,17 @@ async def start_grpc_server(
     ]
     enable_reflection(server, service_names)
 
-    server.add_insecure_port(f"[::]:{port}")
+    if tls is not None:
+        _cert_path, _key_path = tls
+        with open(_cert_path, "rb") as _cf, open(_key_path, "rb") as _kf:
+            # grpc expects (private_key, certificate_chain) pairs; the stub's element type is a
+            # named tuple alias a plain tuple satisfies at runtime.
+            _creds = grpc.ssl_server_credentials(
+                [(_kf.read(), _cf.read())]  # pyright: ignore[reportArgumentType]
+            )
+        server.add_secure_port(f"[::]:{port}", _creds)
+    else:
+        server.add_insecure_port(f"[::]:{port}")
     await server.start()
-    log.info("gRPC server started on port %d", port)
+    log.info("gRPC server started on port %d (TLS=%s)", port, tls is not None)
     return server

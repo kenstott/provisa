@@ -30,7 +30,8 @@ from urllib.parse import parse_qs, urlparse
 
 from provisa.core.ir_types import to_ir
 from provisa.executor.result import QueryResult
-from provisa.federation.runtime_support import result_from_dbapi, run_async
+from provisa.executor.result import ResultStream
+from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
 
 # Canonical IR name → BigQuery standard-SQL type (for landed-table DDL / load schema).
 _IR_TO_BQ: dict[str, str] = {
@@ -196,16 +197,16 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
 
     # -- execution -------------------------------------------------------------
 
-    def run_sync(self, sql: str, params: list | None = None) -> QueryResult:
-        """Execute BigQuery-dialect SQL (transpiled by the backend seam) and return rows."""
-        del params  # BigQuery SQL arrives fully substituted from the governed pipeline
-        it = self._client.query(sql).result()
-        cols = [f.name for f in it.schema]
-        rows = [tuple(row.values()) for row in it]
-        return QueryResult(rows=rows, column_names=cols)
+    def run_sync(self, sql: str, params: list | None = None) -> ResultStream:
+        """Execute BigQuery-dialect SQL (transpiled by the backend seam) and STREAM it.
+
+        Built on the lazy ``to_arrow_iterable`` terminal (``run_arrow_stream``) so the pgwire ENGINE
+        route stays memory-bounded — no full ``QueryResult`` materialization (REQ-1217, Defect 3)."""
+        schema, batches = self.run_arrow_stream(sql, params)
+        return stream_rows_from_arrow(schema, batches)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
-        return await run_async(self.run_sync, sql, params)
+        return await run_async_materialized(self.run_sync, sql, params)
 
     # -- Arrow transport -------------------------------------------------------
 
@@ -217,18 +218,27 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
 
     def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
         """Execute BigQuery-dialect SQL and return ``(schema, batch_generator)`` for lazy record-batch
-        streaming through the Flight server's GeneratorStream."""
-        table = self.run_arrow(sql, params)
+        streaming through the Flight server's GeneratorStream (REQ-1216, REQ-1217).
+
+        Genuinely lazy: ``RowIterator.to_arrow_iterable`` pulls record batches from the Storage Read API
+        on demand, so the full result never materializes — peak memory is bounded by one batch. A
+        zero-row result yields an empty-schema stream (column names from the query schema, no rows)."""
+        import pyarrow as pa
+
+        del params
+        it = self._client.query(sql).result()
+        batch_iter = iter(it.to_arrow_iterable())
+        first = next(batch_iter, None)
+        if first is None:  # zero-row result yields no batches
+            names = [f.name for f in it.schema]
+            return pa.table({name: [] for name in names}).schema, iter(())
+        schema = first.schema
 
         def _batches():
-            yield from table.to_batches()
+            yield first
+            yield from batch_iter
 
-        return table.schema, _batches()
+        return schema, _batches()
 
     def close(self) -> None:
         self._client.close()
-
-
-# result_from_dbapi is imported for signature parity with the other runtimes; BigQuery builds
-# QueryResult directly from its RowIterator, so it is unused here.
-_ = result_from_dbapi

@@ -115,3 +115,28 @@ async def execute_direct(  # REQ-027, REQ-031
         span.set_attribute("error", True)
         span.set_attribute("error.message", str(last_exc)[:500])
         raise last_exc  # type: ignore[misc]
+
+
+async def open_direct_stream(  # REQ-1190
+    pool: SourcePool,
+    source_id: str,
+    sql: str,
+    params: list | None = None,
+):
+    """Open a bounded server-side cursor on a single reachable source — the DIRECT streaming terminal.
+
+    A large single-source passthrough scan (``SELECT * FROM one_big_source``) drains in fetch batches
+    instead of materializing the whole result in Provisa, so DIRECT is memory-bounded identically to
+    ENGINE (REQ-1190, streaming-uniformity-gap Defect 1). Reads only — a write never streams. No retry
+    loop: a connection error surfaces at open (before any row has been served), unlike ``execute_direct``
+    which can safely replay a whole buffered read.
+    """
+    with _tracer.start_as_current_span("direct.stream") as span:
+        from provisa.compiler.params import extract_params_comment
+
+        sql, embedded = extract_params_comment(sql)
+        effective_params = params if params is not None else embedded
+        span.set_attribute("db.source_id", source_id)
+        span.set_attribute("db.statement", sql[:1000])
+        log.info("[EXEC DIRECT STREAM] source=%s | sql=%s", source_id, sql[:200])
+        return await pool.open_stream(source_id, sql, effective_params)

@@ -133,6 +133,32 @@ def arrow_batches_from_rows(
     return schema, _gen()
 
 
+def stream_rows_from_arrow(
+    schema: Any,
+    batches: Iterator[Any],
+    *,
+    on_close: Callable[[StreamStats], None] | None = None,
+) -> ResultStream:
+    """Adapt a lazy Arrow ``(schema, RecordBatch iterator)`` into a row-based ``StreamingQueryResult``
+    — the inverse of :func:`arrow_batches_from_rows`. An engine whose only lazy primitive is Arrow
+    (Snowflake, Databricks, BigQuery, ClickHouse, MSSQL) builds its streaming ROWS terminal
+    (``run_sync``) on this, so the pgwire ENGINE route stays memory-bounded instead of materializing the
+    whole result (REQ-1217, streaming-uniformity-gap Defect 3). Each Arrow batch is converted to row
+    tuples on demand — peak memory is one batch — and draining the row stream drains (and closes) the
+    underlying Arrow generator. Column names come from the Arrow schema; a zero-row result yields the
+    columns and no rows."""
+    names = list(schema.names)
+
+    def _batches() -> Iterator[list[tuple]]:
+        for rb in batches:
+            if not rb.num_rows:
+                continue
+            cols = [col.to_pylist() for col in rb.columns]
+            yield list(zip(*cols, strict=True))
+
+    return StreamingQueryResult(_batches(), column_names=names, on_close=on_close)
+
+
 def columns_from_describe(rows: Any) -> dict[str, str]:
     """Map a DESCRIBE result's ``(name, type, ...)`` rows to ``{name: type_lower}``,
     the engine-introspection shape shared by the duckdb and clickhouse runtimes."""
@@ -148,3 +174,25 @@ async def run_async(
     async wrapper for runtimes whose driver is blocking (pg / sqlalchemy / clickhouse)."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: run_sync(sql, params))
+
+
+async def run_async_materialized(
+    run_sync: Callable[[str, list | None], ResultStream],
+    sql: str,
+    params: list | None = None,
+) -> QueryResult:
+    """Async entry for a runtime whose ``run_sync`` STREAMS (Snowflake/Databricks/BigQuery/ClickHouse/
+    MSSQL, built on ``stream_rows_from_arrow``). Drains the stream to a full ``QueryResult`` ON THE
+    EXECUTOR THREAD — a lazy fetch pulled across the async boundary would block the event loop, so
+    ``run`` materializes here exactly as the pg runtime's ``run`` does (REQ-1217, Defect 3)."""
+    loop = asyncio.get_event_loop()
+
+    def _drain() -> QueryResult:
+        rs = run_sync(sql, params)
+        return QueryResult(
+            rows=list(rs.iter_rows()),
+            column_names=rs.column_names,
+            column_types=rs.column_types,
+        )
+
+    return await loop.run_in_executor(None, _drain)

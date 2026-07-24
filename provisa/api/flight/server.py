@@ -643,6 +643,23 @@ class ProvisaFlightServer(
                 raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
         elif plan.route == Route.DIRECT:
+            if self._state.source_pools.has(plan.source_id) and self._state.source_pools.supports_stream(
+                plan.source_id
+            ):
+                # REQ-1190: a single-reachable-source scan streams via the source's server-side cursor,
+                # adapted to a lazy Arrow record-batch generator — never materialized on this transport
+                # (streaming-uniformity Defect 1). Mirrors the ENGINE streaming terminal above.
+                from provisa.federation.runtime_support import arrow_batches_from_rows
+
+                stream = self._state.federation_engine.execute_native_stream(
+                    self._state.source_pools,
+                    plan.source_id,
+                    plan.sql,
+                    plan.exec_params or [],
+                    loop=self._main_loop,
+                )
+                arrow_schema, batch_gen = arrow_batches_from_rows(stream)
+                return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
             result = asyncio.run_coroutine_threadsafe(
                 self._state.federation_engine.execute_native(
                     self._state.source_pools,

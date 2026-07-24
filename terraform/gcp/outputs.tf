@@ -1,11 +1,11 @@
 output "api_endpoint" {
-  description = "HTTP API load balancer URL"
-  value       = "http://${google_compute_address.protocol["api"].address}:${local.protocols.api.port}"
+  description = "HTTPS API load balancer URL (REQ-1227: TLS on every endpoint; self-signed cert)"
+  value       = "https://${google_compute_address.protocol["api"].address}:${local.protocols.api.port}"
 }
 
 output "ui_endpoint" {
-  description = "Web UI load balancer URL"
-  value       = "http://${google_compute_address.protocol["ui"].address}:${local.protocols.ui.port}"
+  description = "Web UI load balancer URL (HTTPS; self-signed cert)"
+  value       = "https://${google_compute_address.protocol["ui"].address}:${local.protocols.ui.port}"
 }
 
 output "protocol_endpoints" {

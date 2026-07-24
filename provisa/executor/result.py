@@ -131,6 +131,7 @@ class StreamingQueryResult:  # REQ-028
         "_closed",
         "_materialized",
         "_on_close",
+        "_on_release",
     )
 
     def __init__(
@@ -140,6 +141,7 @@ class StreamingQueryResult:  # REQ-028
         column_types: list[str] | None = None,
         *,
         on_close: Callable[[StreamStats], None] | None = None,
+        on_release: Callable[[], None] | None = None,
     ) -> None:
         self.column_names = column_names
         self.column_types = column_types
@@ -149,6 +151,10 @@ class StreamingQueryResult:  # REQ-028
         self._closed = False
         self._materialized: list[tuple] | None = None
         self._on_close = on_close
+        # Resource release (server-side cursor / pooled connection) that must run whether the stream
+        # drains to exhaustion OR is closed early for its schema alone — the source is opened eagerly
+        # at construction, so a never-iterated generator's finally can't be relied on to free it.
+        self._on_release = on_release
 
     def batches(self) -> Iterator[list[tuple]]:
         if self._materialized is not None:
@@ -190,10 +196,33 @@ class StreamingQueryResult:  # REQ-028
             )
         self._consumed = True
 
+    def close(self) -> None:
+        """Release the underlying source without draining the rows.
+
+        A consumer that needs only the result schema (``column_names``/``column_types``, populated
+        eagerly at open) closes the stream so the server-side cursor / pooled connection is freed —
+        otherwise an un-iterated eager cursor leaks it. The generator's own ``finally`` cannot be
+        relied on here: a generator suspended BEFORE its first yield takes no GeneratorExit on
+        ``close()``, so its ``finally`` never runs. The explicit ``on_release`` hook frees the
+        eagerly-opened resource regardless; idempotent with drain-to-exhaustion.
+        """
+        if self._closed:
+            return
+        source = self._batches
+        self._batches = None
+        self._consumed = True
+        if source is not None:
+            source_close = getattr(source, "close", None)
+            if source_close is not None:
+                source_close()
+        self._finish()
+
     def _finish(self) -> None:
         if self._closed:
             return
         self._closed = True
         self.stats.done = True
+        if self._on_release is not None:
+            self._on_release()
         if self._on_close is not None:
             self._on_close(self.stats)
