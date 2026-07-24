@@ -4,7 +4,10 @@ FROM python:3.12-slim AS installer
 WORKDIR /app
 COPY pyproject.toml .
 COPY vendor/ ./vendor/
-RUN pip install --no-cache-dir .
+# [firebase] pulls firebase-admin — the container is the single artifact for cloud deploys where
+# Firebase is a first-class IdP (REQ-1259). Without it FirebaseAuthProvider raises ImportError and
+# every authenticated request 500s. The desktop wheel keeps firebase optional; the image bakes it in.
+RUN pip install --no-cache-dir '.[firebase]'
 
 # Stage 2: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim
