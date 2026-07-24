@@ -35150,3 +35150,27 @@
     Then is_rowid pseudo-columns derive per-batch from PK metadata without buffering the full table
     And early close() releases the server-side cursor without draining all results
     And memory usage stays bounded even for multi-GB result sets
+- id: REQ-1232
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Authentication
+  priority: MUST
+  type: constraint
+  description: >-
+    Every credential (API key / token / session) is scoped to exactly one organization. Org identity is always determined by the credential's active_org_id in the authentication middleware, never by TLS SNI, HTTP header, or first-membership fallback.
+  use_case: >-
+    Ensures that a credential cannot be used to access data from a different organization. Users who hold memberships in multiple organizations must obtain a distinct org-scoped credential per organization.
+  code:
+    - provisa/auth/middleware.py
+  tests:
+    - tests/integration/test_auth_org_scoping.py
+    - tests/unit/test_auth_middleware.py
+  since: "2026-07"
+  scenario: |
+    Given a user who is a member of both org-acme and org-beta
+    When the user authenticates with a credential scoped to org-acme
+    Then queries executed with that credential can only access org-acme's tables and data
+    And the credential's active_org_id determines authorization, not the {org}.provisa.dev subdomain or any HTTP header
+    When the user needs to query org-beta's data
+    Then they must use a separate credential scoped to org-beta
+    And the TLS SNI hostname and HTTP Host header serve as ergonomic addressing only and cannot override the credential's org identity

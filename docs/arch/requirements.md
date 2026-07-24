@@ -12307,3 +12307,31 @@ Secondary nodes in a cluster deployment run application tier only (Provisa API/U
 **Code:** —
 
 **Tests:** —
+
+## 7. Result Delivery
+
+### REQ-1231 · Protocol-Specific Result Handling {#REQ-1231}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Airport Flight do_get routes through the governed_table_scan_stream() terminal, returning (schema, batch_generator). ENGINE-routed queries return the engine's lazy record-batch stream via execute_engine_stream; DIRECT-routed queries return typed Arrow RecordBatches (65_536 rows/batch) via execute_native_stream reshaped by _typed_batches_from_rows, wrapped in flight.GeneratorStream. The advertised schema (flight_info / list_schemas) is byte-stable: derived from the query's TYPED output columns (DuckDB result schema on ENGINE; native driver result-column types mapped via to_ir→_ir_to_arrow on DIRECT), independent of result row count. governed_table_scan_schema() derives that schema without opening a row-streaming cursor (ENGINE closes the lazy reader; DIRECT releases the eagerly-opened cursor via close()/on_release). Per-batch is_rowid derives from PK metadata, not whole-table materialization. This supersedes [REQ-1218](#REQ-1218)'s _retype_null_columns pattern.
+
+**Use case:** Streaming governs all result transport uniformly without OOM risk on large table scans. Byte-stable schemas separate catalog identity (known pre-execution) from result streaming. Eager cursor release on schema-only close frees resources before drain completes. Per-batch rowid avoids full-table buffering for UPDATE/DELETE echo.
+
+**Code:** `provisa/api/airport/query.py`, `provisa/api/airport/server.py`, `provisa/executor/result.py`, `provisa/federation/runtime.py`
+
+**Tests:** `tests/integration/test_airport_service_e2e.py`, `tests/integration/test_streaming_memory_bounded_e2e.py`
+
+## 3. Multi-tenancy & Organization
+
+### REQ-1232 · Authentication {#REQ-1232}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+Every credential (API key / token / session) is scoped to exactly one organization. Org identity is always determined by the credential's active_org_id in the authentication middleware, never by TLS SNI, HTTP header, or first-membership fallback.
+
+**Use case:** Ensures that a credential cannot be used to access data from a different organization. Users who hold memberships in multiple organizations must obtain a distinct org-scoped credential per organization.
+
+**Code:** `provisa/auth/middleware.py`
+
+**Tests:** `tests/integration/test_auth_org_scoping.py`, `tests/unit/test_auth_middleware.py`
