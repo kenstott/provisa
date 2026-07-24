@@ -38,7 +38,10 @@ read_config() {
 }
 
 PROJECT_DIR="$(read_config project_dir "")"
-UI_PORT="$(read_config ui_port 3000)"
+# Exported so `docker compose up` (a child process) can interpolate ${UI_PORT}
+# in the UI service's host-port publish (docker-compose.app.yml). Cloud deploys
+# set ui_port: 443 in config.yaml; desktop keeps the 3000 default (REQ-1254).
+export UI_PORT="$(read_config ui_port 3000)"
 API_PORT="$(read_config api_port 8000)"
 FLIGHT_PORT="$(read_config flight_port 8815)"
 AUTO_OPEN="$(read_config auto_open_browser true)"

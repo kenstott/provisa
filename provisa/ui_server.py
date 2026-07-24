@@ -41,7 +41,21 @@ _REPO_STATIC = Path(__file__).resolve().parent.parent / "static"
 STATIC_DIR = _PACKAGED_UI if _PACKAGED_UI.is_dir() else _REPO_STATIC
 
 # API container reachable via Docker network hostname; override via env var.
+# REQ-1227: in a cluster deploy every endpoint serves TLS, so the API listens
+# HTTPS on 8000. The node compose overlay (first-launch.sh) sets PROVISA_API_URL
+# to the https:// upstream on the UI service whenever it enables TLS; the desktop
+# default stays plaintext. A plaintext http:// hop to a TLS port fails with
+# httpx.ReadError, so the scheme must track the API's actual listener.
 API_BASE_URL = os.environ.get("PROVISA_API_URL", "http://provisa:8000")
+# TLS verification for the internal proxy leg keys off the resolved scheme, not a
+# cert env var (the UI container mounts the node cert at a fixed path, not via
+# PROVISA_TLS_CERT). This is an internal same-node container hop: the presented
+# cert is the node's public wildcard (e.g. *.provisa.dev) or a self-signed node
+# cert, neither of which can match the Docker service name "provisa", so TLS
+# hostname verification is structurally impossible here. The node itself is the
+# trust boundary (REQ-1227); verify is disabled only for this proxy leg — the
+# browser->UI leg is unaffected.
+_API_VERIFY = not API_BASE_URL.startswith("https://")
 
 # Paths that are always served from static files (never proxied).
 # /docs-site/ holds the bundled MkDocs Material site (served same-origin so the
@@ -127,7 +141,7 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
         k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")
     }
 
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with httpx.AsyncClient(timeout=120, verify=_API_VERIFY) as client:
         try:
             upstream = await client.request(
                 method=request.method,

@@ -512,6 +512,10 @@ services:
     command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key"]
     volumes:
       - ${CERT_DIR}:/app/certs:ro
+    environment:
+      # REQ-1227: the API now serves TLS on 8000, so the UI's reverse-proxy hop
+      # must use https — a plaintext http:// hop to a TLS port dies with ReadError.
+      PROVISA_API_URL: "https://provisa:8000"
 YAML
   ok "Node overlay written: ${file}"
 }
@@ -576,6 +580,10 @@ services:
       - "3000:3000"
     volumes:
       - ${CERT_DIR}:/app/certs:ro
+    environment:
+      # REQ-1227: the API now serves TLS on 8000, so the UI's reverse-proxy hop
+      # must use https — a plaintext http:// hop to a TLS port dies with ReadError.
+      PROVISA_API_URL: "https://provisa:8000"
     depends_on:
       - provisa
 YAML
@@ -632,7 +640,7 @@ install_systemd() {
              KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
              OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET \
              PROVISA_PGWIRE_PORT PROVISA_BOLT_PORT PROVISA_MCP_PORT \
-             PROVISA_MCP_HOST PROVISA_MCP_ROLE GRPC_PORT UI_PORT; do
+             PROVISA_MCP_HOST PROVISA_MCP_ROLE GRPC_PORT; do
     if [ -n "${!var:-}" ]; then
       printf '%s=%s\n' "$var" "${!var}" >> "$env_file"
     fi
@@ -809,9 +817,15 @@ write_config() {
     return
   fi
 
-  local hostname api_port
+  local hostname api_port ui_port
   hostname="$(ask_hostname)"
   api_port="$(ask_api_port)"
+  # UI host-publish port. The container always listens on 3000; the base compose
+  # publishes ${ui_port}:3000. Cloud deploys export UI_PORT=443 so the shared LB
+  # fronts the UI with no port suffix; desktop keeps the 3000 default (REQ-1254).
+  # The provisa CLI reads every port from config.yaml (read_config), so this must
+  # land here — an exported UI_PORT alone is clobbered at CLI line 41.
+  ui_port="${UI_PORT:-3000}"
 
   local demo_flag
   case "${INSTALL_DEMO:-n}" in [yY]|[yY][eE][sS]) demo_flag=true ;; *) demo_flag=false ;; esac
@@ -849,6 +863,7 @@ write_config() {
 role: primary
 hostname: ${hostname}
 api_port: ${api_port}
+ui_port: ${ui_port}
 runtime: ${runtime}
 ${img_src_line}
 docker_host: "unix://${DOCKER_SOCKET}"
@@ -878,6 +893,7 @@ YAML
 role: secondary
 hostname: ${hostname}
 api_port: ${api_port}
+ui_port: ${ui_port}
 runtime: ${runtime}
 ${img_src_line}
 docker_host: "unix://${DOCKER_SOCKET}"
