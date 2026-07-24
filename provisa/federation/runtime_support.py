@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+from decimal import Decimal
+from itertools import islice
 from typing import Any, Callable
 
 from provisa.executor.result import (
@@ -30,6 +32,11 @@ from provisa.executor.result import (
 # Rows pulled per fetchmany when streaming a DBAPI cursor. Bounds the in-memory
 # working set to one batch instead of the whole result (REQ-028).
 _STREAM_BATCH_ROWS = 1000
+
+# Rows folded into one Arrow RecordBatch by the generic row→Arrow adapter (REQ-1219). Larger than
+# the DBAPI fetch batch: an Arrow batch is columnar and cheap to hold, and fewer/larger batches cut
+# per-batch transport overhead. Matches the native Arrow runtimes' record-batch size.
+_ARROW_STREAM_BATCH_ROWS = 65_536
 
 
 def result_from_dbapi(obj: Any) -> QueryResult:
@@ -76,6 +83,54 @@ def stream_from_dbapi(
             yield chunk
 
     return StreamingQueryResult(_batches(), column_names=cols, on_close=on_close)
+
+
+def arrow_batches_from_rows(
+    result: ResultStream,
+    *,
+    batch_rows: int = _ARROW_STREAM_BATCH_ROWS,
+) -> tuple[Any, Iterator[Any]]:
+    """Adapt a lazy row ``ResultStream`` into ``(pa.Schema, RecordBatch generator)`` — the generic
+    Arrow-stream face for a ROWS-only engine (pg / sqlalchemy) that has no native Arrow reader
+    (REQ-1219). NOT zero-copy — Python rows are packed into Arrow columns — but memory-bounded: only
+    ``batch_rows`` rows are held at once, so Flight-SQL / airport stream from a row engine instead of
+    materializing the whole result.
+
+    The schema is LOCKED from the first batch (pyarrow type inference) and every later batch is cast
+    to it, so all record batches share one schema. An incompatible later value (e.g. a column that was
+    all-``NULL`` in the first batch but typed afterward) raises loudly rather than silently corrupting.
+    A zero-row result yields a null-typed schema (column names only) and an empty generator."""
+    import pyarrow as pa
+
+    names = result.column_names
+
+    def _conv(v: Any) -> Any:
+        return float(v) if isinstance(v, Decimal) else v
+
+    def _to_batch(rows: list[tuple], schema: Any | None) -> Any:
+        cols = [[_conv(r[i]) for r in rows] for i in range(len(names))]
+        if schema is None:
+            return pa.RecordBatch.from_arrays([pa.array(c) for c in cols], names=names)
+        arrays = [pa.array(c, type=schema.field(i).type) for i, c in enumerate(cols)]
+        return pa.RecordBatch.from_arrays(arrays, schema=schema)
+
+    row_iter = result.iter_rows()
+    first_rows = list(islice(row_iter, batch_rows))
+    if not first_rows:
+        empty = pa.schema([pa.field(n, pa.null()) for n in names])
+        return empty, iter(())
+    first_batch = _to_batch(first_rows, None)
+    schema = first_batch.schema
+
+    def _gen() -> Iterator[Any]:
+        yield first_batch
+        while True:
+            chunk = list(islice(row_iter, batch_rows))
+            if not chunk:
+                return
+            yield _to_batch(chunk, schema)
+
+    return schema, _gen()
 
 
 def columns_from_describe(rows: Any) -> dict[str, str]:

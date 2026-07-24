@@ -21,13 +21,14 @@ attach_source, ensure_materialize_attached.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import psycopg2
 
-from provisa.executor.result import QueryResult
+from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
-from provisa.federation.runtime_support import result_from_dbapi, run_async
+from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 
 
 class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
@@ -96,14 +97,62 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
 
     # -- execution -------------------------------------------------------------
 
-    def run_sync(self, sql: str, params: list | None = None) -> QueryResult:
-        """Execute SQL already in the Postgres dialect (transpiled by the backend seam)."""
-        cur = self._con.cursor()
+    def run_sync(self, sql: str, params: list | None = None) -> ResultStream:
+        """Execute governed physical SQL (a SELECT — transpiled by the backend seam) and STREAM it.
+
+        A psycopg2 default cursor buffers the entire result client-side on ``execute``, so ``fetchmany``
+        alone would not bound memory. Genuine streaming needs a SERVER-SIDE (named) cursor, which holds
+        an open portal and thus requires a transaction — incompatible with the engine connection's
+        ``autocommit``. So the read runs on a DEDICATED short-lived connection (autocommit off): the
+        named cursor pulls ``itersize`` rows per round-trip from Postgres, peak memory bounded by one
+        batch. The cursor/transaction/connection all close when the stream drains (``on_close``). A
+        private connection also isolates the open portal from the autocommit write/cache connection and
+        from other concurrent streams. Consumers that call ``.rows`` still get the full list — the
+        buffering is then explicit at their call site (REQ-1217)."""
+        read_con = psycopg2.connect(self._engine_dsn)
+        cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
+        cur.itersize = _STREAM_BATCH_ROWS
         cur.execute(sql, params or None)
-        return result_from_dbapi(cur)
+        # psycopg2 populates a NAMED cursor's ``.description`` only after the first FETCH, so peek one
+        # batch to force the portal and expose the columns before building the stream.
+        first = cur.fetchmany(_STREAM_BATCH_ROWS)
+
+        def _close(*_: Any) -> None:
+            cur.close()
+            read_con.commit()
+            read_con.close()
+
+        if not cur.description:  # non-row-returning statement — drain now
+            _close()
+            return QueryResult(rows=[], column_names=[])
+        cols = [d[0] for d in cur.description]
+
+        def _batches() -> Any:
+            if first:
+                yield first
+            while True:
+                chunk = cur.fetchmany(_STREAM_BATCH_ROWS)
+                if not chunk:
+                    return
+                yield chunk
+
+        return StreamingQueryResult(_batches(), column_names=cols, on_close=_close)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
-        return await run_async(self.run_sync, sql, params)
+        """Async variant: MATERIALIZES on the executor (unlike ``run_sync``), because a lazy
+        server-side ``fetchmany`` pulled across the async boundary would block the event loop. Runs on
+        the engine's autocommit connection with a client-side cursor (REQ-1217)."""
+        loop = asyncio.get_event_loop()
+
+        def _run() -> QueryResult:
+            cur = self._con.cursor()
+            cur.execute(sql, params or None)
+            cols = [d[0] for d in cur.description] if cur.description else []
+            rows = list(cur.fetchall()) if cur.description else []
+            cur.close()
+            return QueryResult(rows=rows, column_names=cols)
+
+        return await loop.run_in_executor(None, _run)
 
     def close(self) -> None:
         self._con.close()

@@ -100,7 +100,9 @@ def test_file_native_declared_per_engine():
 
 def test_streaming_trait_derives_from_arrow_stream_transport():
     assert build_trino_engine().streaming is True  # advertises ARROW_STREAM
-    assert build_sqlalchemy_engine("postgresql://h/db").streaming is False  # rows only
+    # REQ-1219: sqlalchemy/pg now advertise ARROW_STREAM via the generic row→Arrow adapter, so the
+    # derived streaming trait is True.
+    assert build_sqlalchemy_engine("postgresql://h/db").streaming is True
 
 
 # ---- an undeclared trait fails loud where a decision needs it (REQ-897) ------

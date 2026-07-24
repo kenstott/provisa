@@ -65,8 +65,21 @@ def test_duckdb_advertises_flight_stream():
     assert rt.supports(EngineCapability.ARROW_STREAM) is True
 
 
-def test_require_fails_closed_for_unsupported_transport():
+def test_sqlalchemy_advertises_arrow_via_adapter():
+    # REQ-1219: a ROWS-only runtime (sqlalchemy/pg) now DECLARES ARROW/ARROW_STREAM — the generic
+    # row→Arrow-batch adapter backs the Flight/airport transports over its lazy row stream.
     rt = EngineRuntime(build_sqlalchemy_engine("postgresql://h/db"), _state())
+    assert rt.supports(EngineCapability.ARROW) is True
+    assert rt.supports(EngineCapability.ARROW_STREAM) is True
+
+
+def test_require_fails_closed_for_unsupported_transport():
+    # An engine that advertises only ROWS still fails closed on an Arrow transport request.
+    rows_only = types.SimpleNamespace(
+        name="rows-only", capabilities=frozenset({EngineCapability.ROWS})
+    )
+    rt = EngineRuntime(build_sqlalchemy_engine("postgresql://h/db"), _state())
+    rt.engine = rows_only  # type: ignore[assignment]
     with pytest.raises(UnsupportedCapabilityError):
         rt.require(EngineCapability.ARROW_STREAM)
 

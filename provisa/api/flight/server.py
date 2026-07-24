@@ -569,6 +569,29 @@ class ProvisaFlightServer(
 
         return flight.GeneratorStream(table.schema, _gen())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+    def _license_stream_gen(self, schema, batch_gen, role_id: str):  # REQ-1137, REQ-1214
+        """Return a Flight GeneratorStream over a LAZY record-batch generator, attaching the license
+        nag as app_metadata on the first batch when nagging (out-of-band — row data untouched). The
+        streaming counterpart of :meth:`_license_stream`: the result never materializes as a Table."""
+        try:
+            from provisa.licensing import emit as _lic_emit
+
+            text = _lic_emit.nag_for_connection(f"flight:{role_id}")
+        except Exception:
+            text = None
+        meta = pa.py_buffer(text.replace("\n", " ").encode("utf-8")) if text else None
+
+        def _gen():
+            first = True
+            for batch in batch_gen:
+                if first and meta is not None:
+                    first = False
+                    yield (batch, meta)  # app_metadata rides the first chunk
+                else:
+                    yield batch
+
+        return flight.GeneratorStream(schema, _gen())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
     def _do_get_sql_governed(
         self, request: dict[str, object]
     ) -> (
@@ -609,12 +632,16 @@ class ProvisaFlightServer(
         require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
         if plan.route == Route.ENGINE:
             assert plan.physical_sql is not None
-            # Arrow Flight is an advertised, engine-specific transport (REQ-825).
+            # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145,
+            # REQ-1214): drain the engine's LAZY record-batch terminal so a large user result set
+            # never fully materializes on this transport (bounded by one batch, not total size).
             try:
-                table = self._state.federation_engine.execute_engine_arrow(plan.physical_sql, [])
+                arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
+                    plan.physical_sql, []
+                )
             except RuntimeError as exc:
                 raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            return self._license_stream(table, role_id)  # REQ-1137
+            return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
         elif plan.route == Route.DIRECT:
             result = asyncio.run_coroutine_threadsafe(
                 self._state.federation_engine.execute_native(

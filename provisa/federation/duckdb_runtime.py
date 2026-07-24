@@ -38,6 +38,11 @@ from provisa.federation.engine import build_duckdb_engine
 from provisa.federation.runtime_support import columns_from_describe, stream_from_dbapi
 from provisa.transpiler.transpile import transpile
 
+# Rows per Arrow record batch when lazily streaming the engine result (REQ-1214). Larger than the
+# DBAPI row-stream batch (1000) because Arrow batches carry columnar overhead per batch; still bounds
+# peak memory to one batch rather than the whole result.
+_ARROW_STREAM_BATCH_ROWS = 65_536
+
 
 def _mat_table_name(source: Any) -> str:
     """The internal ``mat`` schema table name for a landed (source, physical table). Keyed by the
@@ -378,13 +383,26 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     def run_arrow_stream(self, duck_sql: str, params: list | None = None):
         """Execute dialect-DuckDB SQL and return ``(schema, batch_generator)`` for lazy record-batch
-        streaming through the Flight server's GeneratorStream (REQ-986)."""
-        table = self.run_arrow(duck_sql, params)
+        streaming through the Flight server's GeneratorStream (REQ-986, REQ-1214).
+
+        Truly lazy: the batches are pulled from a PRIVATE cursor's Arrow record-batch reader
+        (``fetch_record_batch``) on demand, so the full result never materializes — peak memory is
+        bounded by one record batch, not the total result size. A private cursor (not the shared
+        connection) keeps concurrent worker-thread streams from corrupting each other's fetch state;
+        it is closed when the generator drains or the consumer stops early."""
+        cur = self._con.cursor()
+        cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+        reader = cur.fetch_record_batch(_ARROW_STREAM_BATCH_ROWS)
+        schema = reader.schema
 
         def _batches():
-            yield from table.to_batches()
+            try:
+                for batch in reader:
+                    yield batch
+            finally:
+                cur.close()
 
-        return table.schema, _batches()
+        return schema, _batches()
 
     def close(self) -> None:
         self._con.close()

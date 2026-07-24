@@ -145,13 +145,31 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
     def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
         """Execute Snowflake-dialect SQL and return ``(schema, batch_generator)`` for lazy
-        record-batch streaming through the Flight server's GeneratorStream (REQ-988)."""
-        table = self.run_arrow(sql, params)
+        record-batch streaming through the Flight server's GeneratorStream (REQ-988, REQ-1214).
+
+        Truly lazy: Snowflake's ``fetch_arrow_batches`` pulls result chunks from the server on demand,
+        so the full result never materializes — peak memory is bounded by one chunk. The private
+        cursor closes when the generator drains or the consumer stops early. A zero-row result yields
+        an empty-schema stream (column names from the cursor description, no rows)."""
+        cur = self._conn.cursor()
+        cur.execute(sql, params or None)
+        batch_iter = iter(cur.fetch_arrow_batches())
+        first = next(batch_iter, None)
+        if first is None:  # snowflake yields no batches for a zero-row result
+            names = [d[0] for d in (cur.description or [])]
+            cur.close()
+            return pa.table({name: [] for name in names}).schema, iter(())
+        schema = first.schema
 
         def _batches():
-            yield from table.to_batches()
+            try:
+                yield from first.to_batches()
+                for tbl in batch_iter:
+                    yield from tbl.to_batches()
+            finally:
+                cur.close()
 
-        return table.schema, _batches()
+        return schema, _batches()
 
     def close(self) -> None:
         self._conn.close()

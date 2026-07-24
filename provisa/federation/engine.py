@@ -543,6 +543,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
     pg_duckdb is unavailable. An operator override may STRIKE connectors from the candidate list by key
     (they are then never probed — see FederationEngine.discover(disabled=...)).
     """
+    from provisa.federation.runtime import EngineCapability
     from provisa.federation.connector_duckdb import (
         FileFdwConnector,
         MysqlFdwConnector,
@@ -584,6 +585,9 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         transactional=True,  # PostgreSQL is ACID
         backend_factory=PgBackend,  # in-process terminal driving PgFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
+        capabilities=frozenset(
+            {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
+        ),  # ARROW via the generic row→batch adapter over the lazy server-side cursor (REQ-1219)
     )
 
 
@@ -670,6 +674,7 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     SQL, so ANY SQLAlchemy-reachable database (Postgres, MySQL, Oracle, SQL Server,
     ClickHouse, ...) is a usable engine with no per-source connector. The URL comes
     from the arg or ``$PROVISA_ENGINE_URL``; its scheme names the native store."""
+    from provisa.federation.runtime import EngineCapability
     from provisa.federation.sqlalchemy_backend import SqlAlchemyBackend
 
     dsn = url or configured_engine_url()
@@ -687,6 +692,9 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
         transactional=True,  # a generic RDB store is transactional
         backend_factory=SqlAlchemyBackend,  # in-process terminal driving SqlAlchemyFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
+        capabilities=frozenset(
+            {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
+        ),  # ARROW via the generic row→batch adapter over the lazy row stream (REQ-1219)
     )
 
 

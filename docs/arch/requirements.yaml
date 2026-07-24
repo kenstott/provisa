@@ -34660,3 +34660,159 @@
     Then /etc/apt/apt.conf.d/99provisa-resilient is written with Acquire::http::Timeout=30, Acquire::https::Timeout=30, Acquire::Retries=3, Acquire::http::Pipeline-Depth=0
     And subsequent apt-get update commands respect the timeout and retry settings
     And the node boot completes deterministically without indefinite CLOSE-WAIT hangs
+- id: REQ-1214
+  status: complete
+  group: "7. Result Delivery"
+  category: Multi-Protocol Query Routing
+  priority: MUST
+  type: constraint
+  description: Every transport (gRPC, Arrow Flight, airport, GraphQL, JSON:API, Bolt, pgwire) routes through the single governed pipeline (_govern_and_route / _govern_and_route_compiled / _execute_plan) regardless of protocol. For ENGINE-route plans, raw-passthrough transports drain the engine's streaming terminal directly without materializing via _execute_plan; only genuinely-bounded routes (DIRECT native driver, metadata/admin, registered-function output) and format-buffered transports materialize through _execute_plan.
+  use_case: Centralizing routing through one pipeline ensures uniform governance (RLS, masking, audit), prevents per-transport SQL branches, and allows streaming transports to drain engine terminals directly while keeping buffered transports format-aware.
+  code:
+    - provisa/executor/_pipeline.py
+  tests:
+    - tests/unit/test_governed_chokepoint.py
+    - tests/integration/test_grpc_execution.py
+  since: "2026-07"
+  scenario: |
+    Given a gRPC streaming query request and an Arrow Flight query request against the same table
+    When both are routed through the ONE pipeline (_govern_and_route)
+    Then both receive the same governing stamp (audit, RLS, masking applied)
+    And the gRPC transport drains the engine's ResultStream directly without materializing
+    And the Arrow Flight transport drains the engine's RecordBatch generator directly without materializing
+    And a JSON:API buffered transport materializes through _execute_plan before formatting
+- id: REQ-1215
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Multi-Protocol Exposure (gRPC)
+  priority: MUST
+  type: behavioral
+  description: gRPC server-streaming query RPC (_handle_query in provisa/grpc/server.py) streams ENGINE-route query results lazily. Each row batch is pulled from the sync ResultStream (execute_engine_sync) through loop.run_in_executor, keeping the blocking cursor out of the event loop; peak memory is bounded to one batch. Governance stamp is verified via require_governed_plan before engine execution.
+  use_case: gRPC aio runs as an async generator over blocking engine cursors; wrapping ResultStream pulls in executor ensures the event loop never blocks and memory never exceeds one batch, enabling large result sets over gRPC.
+  code:
+    - provisa/grpc/server.py
+  tests:
+    - tests/unit/test_grpc_server.py
+    - tests/integration/test_grpc_execution.py
+  since: "2026-07"
+  scenario: |
+    Given a gRPC query RPC request for a 10M-row ENGINE-route result
+    When _handle_query pulls from execute_engine_sync via loop.run_in_executor
+    Then each batch is yielded as it arrives from the cursor
+    And the event loop remains unblocked
+    And peak memory stays bounded to one batch
+    And the governance stamp is verified before any engine execution
+- id: REQ-1216
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Multi-Protocol Exposure (Arrow Flight)
+  priority: MUST
+  type: behavioral
+  description: Arrow Flight SQL do_get ENGINE route (provisa/api/flight/server.py _do_get_sql_governed) streams via execute_engine_stream (schema + RecordBatch generator), wrapped in a GeneratorStream with the license nag attached as app_metadata on the first batch, replacing the prior execute_engine_arrow full-table materialization. All Flight-serving engines (DuckDB, Snowflake, Databricks, BigQuery, ClickHouse, Fabric/Synapse, Trino) declare EngineCapability.ARROW_STREAM.
+  use_case: Streaming via execute_engine_stream replaces full materialization with lazy per-batch pulls, enabling large result sets over Flight while maintaining license visibility and schema broadcast.
+  code:
+    - provisa/api/flight/server.py
+    - provisa/executor/_engine_executor.py
+  tests:
+    - tests/unit/test_flight_modes.py
+    - tests/integration/test_arrow_flight_integration.py
+  since: "2026-07"
+  scenario: |
+    Given an Arrow Flight do_get query for a 10M-row ENGINE-route result
+    When _do_get_sql_governed calls execute_engine_stream
+    Then a schema is returned immediately
+    And RecordBatch records are streamed as a generator
+    And the license nag is attached as app_metadata on the first batch
+    And the cursor closes when the generator drains or the consumer stops early
+    And peak memory is bounded to one batch
+- id: REQ-1217
+  status: complete
+  group: "7. Result Delivery"
+  category: Engine Streaming Terminals
+  priority: MUST
+  type: constraint
+  description: Per-engine Arrow streaming terminals (execute_engine_stream) are genuinely lazy. DuckDB run_arrow_stream pulls record batches on demand from a private cursor's fetch_record_batch reader (_ARROW_STREAM_BATCH_ROWS = 65536). Snowflake run_arrow_stream uses fetch_arrow_batches (server-side chunk fetch). In both cases, the cursor closes when the generator drains or the consumer stops early, preventing resource leaks on early termination.
+  use_case: Lazy per-batch pulls prevent materializing full result sets in memory and allow the consumer to stop early without forcing the engine to compute remaining batches, enabling efficient streaming over large results and unreliable transports.
+  code:
+    - provisa/executor/_engine_executor.py
+  tests:
+    - tests/unit/test_duckdb_stream_terminal.py
+    - tests/integration/test_preflight_streaming.py
+  since: "2026-07"
+  scenario: |
+    Given a DuckDB Arrow streaming query with 1M rows
+    When the consumer pulls the first 10 batches and then disconnects
+    Then DuckDB's cursor is closed and the remaining 990 batches are never fetched
+    And memory is not allocated for the full result set
+- id: REQ-1218
+  status: complete
+  group: "7. Result Delivery"
+  category: Protocol-Specific Result Handling
+  priority: MUST
+  type: constraint
+  description: Airport Flight transport (provisa/api/airport/query.py, server.py) is a materializing catalog-scan transport BY DESIGN. It caches full governed scans per (role, schema, table) for byte-stable schema advertisement and derives an is_rowid pseudo-column over the whole table for UPDATE/DELETE echo. It remains format/protocol-buffered like GraphQL/JSON:API/Bolt (not an unbounded passthrough); pushdown scans are bounded by the injected WHERE clause.
+  use_case: Caching full scans per (role, schema, table) allows byte-stable schema advertisement across requests; deriving is_rowid over the whole cached table enables row-level UPDATE/DELETE return values. Airport is not a query-result passthrough transport but a metadata-and-identity-caching catalog transport.
+  code:
+    - provisa/api/airport/query.py
+    - provisa/api/airport/server.py
+  tests:
+    - tests/integration/test_airport_source_e2e.py
+    - tests/integration/test_airport_service_e2e.py
+  since: "2026-07"
+  scenario: |
+    Given an airport request for a table schema
+    When the scan is cached per (role, schema, table)
+    Then subsequent requests return the same schema bytes (stable advertisement)
+    And UPDATE/DELETE operations can derive is_rowid from the cached full table scan
+    And pushdown WHERE clauses bound the scan size but do not stream unboundedly
+- id: REQ-1219
+  status: complete
+  group: "1. Cluster Configuration & Startup"
+  category: First-Run Setup Wizard
+  priority: MUST
+  type: constraint
+  description: >-
+    The first-run setup wizard layers an auth section onto a base config. When no config file exists, read_config_for_setup() in provisa/api/admin/_config_io.py falls back to the shipped minimal skeleton provisa-install-base.yaml (system sources/domains + built-in admin role, auth: none). The skeleton guarantees ProvisaConfig can be parsed after the wizard writes its auth section, ensuring _load_and_build always has a valid configuration to parse.
+  use_case: >-
+    First-run installs with no prior config file must produce a valid configuration that _load_and_build can parse. The skeleton provides sources/domains/tables/roles (no defaults possible) and allows the wizard to focus on auth layering, guaranteeing config validity on startup.
+  code:
+    - provisa/api/admin/_config_io.py
+    - provisa/cli.py
+    - scripts/build-wheel.sh
+  tests:
+    - tests/unit/test_setup_base_config.py
+  since: "2026-07"
+  scenario: |
+    Given a first-run install with no ~/.provisa/config.yaml
+    When the setup wizard is invoked
+    Then read_config_for_setup() loads the shipped provisa-install-base.yaml skeleton
+    And the wizard layers an auth section onto the skeleton
+    And the resulting config is written to ~/.provisa/config.yaml
+    When _load_and_build parses the config file on startup
+    Then it succeeds with a valid ProvisaConfig (sources, domains, tables, roles, auth all populated)
+- id: REQ-1220
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Demo Deployment Parity
+  priority: MUST
+  type: infrastructure
+  description: >-
+    On demo deployment, the app container (uvicorn main:app) loads a complete config rather than dropping into the first-run wizard. The Dockerfile bakes config/ and demo SQLite sample data into /app/config (demo data under /app/config/demo/files to avoid the ./demo compose bind-mount shadowing). packaging/linux/first-launch.sh::write_demo_overlay() writes ~/.provisa/extensions/demo/docker-compose.demo.yml exporting PROVISA_CONFIG=/app/config/provisa-install.yaml, PROVISA_DEMO=1, PROVISA_DEMO_DIR=/app/config/demo/files when INSTALL_DEMO=y and ROLE=primary (secondaries pull shared config from the primary DB). scripts/provisa auto-includes the overlay.
+  use_case: >-
+    Demo deployments must start with a populated config to avoid the first-run wizard and provide users with immediate sample data to explore. Docker/Linux demo parity with native launch (commit f7289d27) requires baking config and demo data into the image and wiring environment variables through the overlay mechanism.
+  code:
+    - Dockerfile
+    - packaging/linux/first-launch.sh
+    - scripts/provisa
+  tests:
+    - tests/unit/test_infra_requirements.py
+  since: "2026-07"
+  scenario: |
+    Given a demo deploy with INSTALL_DEMO=y and ROLE=primary
+    When the app container starts
+    Then PROVISA_CONFIG points to /app/config/provisa-install.yaml (baked into image)
+    And PROVISA_DEMO=1 and PROVISA_DEMO_DIR=/app/config/demo/files (baked demo data)
+    And the overlay ~/.provisa/extensions/demo/docker-compose.demo.yml is written by first-launch.sh
+    And scripts/provisa auto-includes the overlay on next `provisa start`
+    And the app loads the config without entering the first-run wizard
+    And demo data is immediately available for exploration

@@ -276,16 +276,32 @@ class NativeEngineBackend(EngineBackend):
         del session_hints
         return self._runtime_for(state).run_sync(sql, params)
 
-    # -- engine-specific transports (Arrow) (REQ-986) --------------------------
-    # Routed here only for engines whose capabilities declare ARROW / ARROW_STREAM (the runtime
-    # gates on capability before dispatch). A native runtime that has not wired an Arrow face is a
-    # real wiring gap — its ``run_arrow`` is absent and this raises, never a silent row fallback.
+    # -- engine-specific transports (Arrow) (REQ-986, REQ-1219) ----------------
+    # Routed here only for engines whose capabilities declare ARROW / ARROW_STREAM (the runtime gates
+    # on capability before dispatch). A runtime with a NATIVE Arrow reader (duckdb / snowflake) uses
+    # it directly (zero-copy). A ROWS-only runtime (pg / sqlalchemy) has no ``run_arrow*`` method, so
+    # its lazy row stream is packed into Arrow batches by the generic adapter (REQ-1219): bounded, not
+    # zero-copy. This is a genuine strategy choice, not a silent row fallback — the engine DECLARES
+    # ARROW/ARROW_STREAM only because this adapter backs it.
 
     def execute_arrow(self, state: Any, sql: str, params: list | None = None):
-        return self._runtime_for(state).run_arrow(sql, params)
+        rt = self._runtime_for(state)
+        if hasattr(rt, "run_arrow"):
+            return rt.run_arrow(sql, params)
+        import pyarrow as pa
+
+        from provisa.federation.runtime_support import arrow_batches_from_rows
+
+        schema, batches = arrow_batches_from_rows(rt.run_sync(sql, params))
+        return pa.Table.from_batches(list(batches), schema=schema)
 
     def execute_stream(self, state: Any, sql: str, params: list | None = None):
-        return self._runtime_for(state).run_arrow_stream(sql, params)
+        rt = self._runtime_for(state)
+        if hasattr(rt, "run_arrow_stream"):
+            return rt.run_arrow_stream(sql, params)
+        from provisa.federation.runtime_support import arrow_batches_from_rows
+
+        return arrow_batches_from_rows(rt.run_sync(sql, params))
 
     # -- cache terminal (materialization store) --------------------------------
 

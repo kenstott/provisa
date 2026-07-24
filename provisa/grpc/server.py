@@ -222,8 +222,15 @@ class ProvisaServicer:  # REQ-045, REQ-143
         governance → routing → physical pipeline — the same path SQL and Cypher use. gRPC never
         round-trips through GraphQL (query language → IR → governed IR → plan → physical)."""
 
+        import asyncio
+
         from provisa.grpc.query_ir import grpc_table_to_semantic_sql
-        from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+        from provisa.pgwire._pipeline import (
+            _execute_plan,
+            _govern_and_route_compiled,
+            require_governed_plan,
+        )
+        from provisa.transpiler.router import Route
 
         # Use await context.abort() directly rather than raising AbortError, which
         # can cause "Abort error has been replaced!" in gRPC aio async generators.
@@ -257,22 +264,53 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         try:
             plan = await _govern_and_route_compiled(semantic_sql, role_id, state=state)
-            result = await _execute_plan(plan, state)
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return
 
+        def _kwargs_for(out_cols: list[str], row) -> dict:
+            kwargs = {}
+            for i, col in enumerate(out_cols):
+                if i < len(row) and row[i] is not None:
+                    kwargs[col] = row[i]
+            return kwargs
+
+        # ENGINE route streams lazily off a worker thread — the full user result set never
+        # materializes on the event loop (REQ-1215). grpc.aio runs an async generator, so each
+        # batch is pulled through run_in_executor to keep the blocking cursor off the loop; peak
+        # memory is bounded by one batch, not the whole result.
+        if plan.route == Route.ENGINE:
+            require_governed_plan(plan)  # REQ-1176: streaming terminal verifies the stamp too
+            assert plan.physical_sql is not None
+            loop = asyncio.get_running_loop()
+            stream = await loop.run_in_executor(
+                None,
+                lambda: state.federation_engine.execute_engine_sync(
+                    plan.physical_sql, [], session_hints=plan.session_hints
+                ),
+            )
+            self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
+            _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
+            out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
+            batch_iter = stream.batches()
+            while True:
+                batch = await loop.run_in_executor(None, next, batch_iter, None)
+                if batch is None:
+                    break
+                for row in batch:
+                    yield msg_cls(**_kwargs_for(out_cols, row))
+            return
+
+        # Bounded routes (DIRECT / metadata / registered-function) buffer via the materializing
+        # terminal — async-native, memory bounded by the route's own contract.
+        result = await _execute_plan(plan, state)
         self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
         # Stream rows as proto messages, mapping result column names to proto fields by the same key
         # (governance may re-case or alias a column).
         _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
         out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
         for row in result.rows:
-            kwargs = {}
-            for i, col in enumerate(out_cols):
-                if i < len(row) and row[i] is not None:
-                    kwargs[col] = row[i]
-            yield msg_cls(**kwargs)
+            yield msg_cls(**_kwargs_for(out_cols, row))
 
 
 async def start_grpc_server(

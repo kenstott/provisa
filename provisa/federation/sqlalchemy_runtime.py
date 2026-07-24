@@ -19,10 +19,11 @@ attach_source, ensure_materialize_attached.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
-from provisa.executor.result import QueryResult
-from provisa.federation.runtime_support import result_from_dbapi, run_async
+from provisa.executor.result import QueryResult, ResultStream
+from provisa.federation.runtime_support import stream_from_dbapi
 
 
 class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
@@ -55,16 +56,38 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
 
     # -- execution -------------------------------------------------------------
 
-    def run_sync(self, sql: str, params: list | None = None) -> QueryResult:
-        """Execute SQL already in the store's dialect (transpiled by the backend seam)."""
+    def run_sync(self, sql: str, params: list | None = None) -> ResultStream:
+        """Execute SQL already in the store's dialect (transpiled by the backend seam).
+
+        Streams rows lazily over a PRIVATE cursor (batched ``fetchmany``) so a large result never
+        fully materializes in the runtime — matches the DuckDB terminal (REQ-1217). The transaction
+        commits and the cursor closes when the stream drains (``on_close``); a non-SELECT (``None``
+        description) drains immediately, so a write commits at once as before. Consumers that call
+        ``.rows`` still get the full list — the buffering is then explicit at their call site."""
         cur = self._con.cursor()
         cur.execute(sql, params or None)
-        result = result_from_dbapi(cur)
-        self._con.commit()
-        return result
+
+        def _close(*_: Any) -> None:
+            self._con.commit()
+            cur.close()
+
+        return stream_from_dbapi(cur, on_close=_close)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
-        return await run_async(self.run_sync, sql, params)
+        """Async variant: MATERIALIZES on the executor (unlike ``run_sync``), because a lazy
+        ``fetchmany`` pulled across the async boundary would block the event loop (REQ-1217)."""
+        loop = asyncio.get_event_loop()
+
+        def _run() -> QueryResult:
+            cur = self._con.cursor()
+            cur.execute(sql, params or None)
+            cols = [d[0] for d in cur.description] if cur.description else []
+            rows = list(cur.fetchall()) if cur.description else []
+            self._con.commit()
+            cur.close()
+            return QueryResult(rows=rows, column_names=cols)
+
+        return await loop.run_in_executor(None, _run)
 
     def close(self) -> None:
         self._con.close()
