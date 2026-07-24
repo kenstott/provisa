@@ -1,11 +1,16 @@
 output "api_endpoint" {
   description = "HTTP API load balancer URL"
-  value       = "http://${google_compute_address.api.address}:8000"
+  value       = "http://${google_compute_address.protocol["api"].address}:${local.protocols.api.port}"
 }
 
-output "flight_endpoint" {
-  description = "Arrow Flight / gRPC load balancer endpoint"
-  value       = "${google_compute_address.flight.address}:8815"
+output "ui_endpoint" {
+  description = "Web UI load balancer URL"
+  value       = "http://${google_compute_address.protocol["ui"].address}:${local.protocols.ui.port}"
+}
+
+output "protocol_endpoints" {
+  description = "host:port for every exposed protocol NetLB (api, ui, flight, and any enabled pgwire/bolt/mcp/grpc)"
+  value       = { for k, v in local.enabled_protocols : k => "${google_compute_address.protocol[k].address}:${v.port}" }
 }
 
 output "primary_ip" {

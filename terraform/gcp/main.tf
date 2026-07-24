@@ -34,26 +34,13 @@ resource "google_compute_subnetwork" "nodes" {
 
 # ── Firewall Rules ─────────────────────────────────────────────────────────────
 
-resource "google_compute_firewall" "api" {
-  name    = "provisa-allow-api"
+resource "google_compute_firewall" "protocols" {
+  name    = "provisa-allow-protocols"
   network = google_compute_network.main.name
 
   allow {
     protocol = "tcp"
-    ports    = ["8000"]
-  }
-
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["provisa-node"]
-}
-
-resource "google_compute_firewall" "flight" {
-  name    = "provisa-allow-flight"
-  network = google_compute_network.main.name
-
-  allow {
-    protocol = "tcp"
-    ports    = ["8815"]
+    ports    = local.protocol_ports
   }
 
   source_ranges = ["0.0.0.0/0"]
@@ -94,7 +81,7 @@ resource "google_compute_firewall" "lb_health" {
 
   allow {
     protocol = "tcp"
-    ports    = ["8000", "8815"]
+    ports    = local.protocol_ports
   }
 
   source_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
@@ -128,6 +115,7 @@ resource "null_resource" "stage_artifacts" {
     bucket  = var.gcs_bucket
     object  = var.gcs_object
     images  = local.images_object
+    plugins = local.plugins_object
   }
 
   provisioner "local-exec" {
@@ -138,11 +126,14 @@ resource "null_resource" "stage_artifacts" {
       trap 'rm -rf "$tmp"' EXIT
       gh release download "${var.provisa_version}" --repo "${var.github_repo}" \
         --pattern "Provisa-${var.provisa_version}-linux-x86_64.AppImage" \
-        --pattern "${local.images_zip}" -D "$tmp"
+        --pattern "${local.images_zip}" \
+        --pattern "${local.plugins_tarball}" -D "$tmp"
       gsutil cp "$tmp/Provisa-${var.provisa_version}-linux-x86_64.AppImage" \
         "gs://${var.gcs_bucket}/${var.gcs_object}"
       gsutil cp "$tmp/${local.images_zip}" \
         "gs://${var.gcs_bucket}/${local.images_object}"
+      gsutil cp "$tmp/${local.plugins_tarball}" \
+        "gs://${var.gcs_bucket}/${local.plugins_object}"
     EOT
   }
 }
@@ -169,6 +160,40 @@ locals {
   images_zip    = "provisa-core-images-amd64-${var.provisa_version}.zip"
   images_object = "${dirname(var.gcs_object)}/${local.images_zip}"
 
+  # Trino custom-connector jars ride a separate release asset (the slim AppImage
+  # excludes trino/plugins/ to stay under GitHub's 2 GB limit). first-launch's
+  # load_trino_plugins searches cwd (/opt) for this tarball, so stage it to GCS
+  # beside the AppImage — the VM has GCS read but no GitHub auth.
+  plugins_tarball = "provisa-trino-plugins-${var.provisa_version}.tar.gz"
+  plugins_object  = "${dirname(var.gcs_object)}/${local.plugins_tarball}"
+
+  # ── Protocol surface ─────────────────────────────────────────────────────────
+  # One row per externally-reachable protocol. `enabled` gates the whole chain:
+  # firewall port, health check, backend service, forwarding rule, instance-group
+  # named_port, and (for wire protocols) the container listener env var. Add a row
+  # here and every layer follows. api uses an HTTP /health probe; the rest use a
+  # TCP connect probe. `env`/`port_env` drive first-launch's protocol overlay.
+  protocols = {
+    api    = { port = 8000, enabled = true, probe = "http", path = "/health", env = null }
+    ui     = { port = 3000, enabled = true, probe = "tcp", path = null, env = null }
+    flight = { port = 8815, enabled = true, probe = "tcp", path = null, env = "FLIGHT_PORT" }
+    pgwire = { port = 5439, enabled = var.enable_pgwire, probe = "tcp", path = null, env = "PROVISA_PGWIRE_PORT" }
+    bolt   = { port = 7687, enabled = var.enable_bolt, probe = "tcp", path = null, env = "PROVISA_BOLT_PORT" }
+    mcp    = { port = 8009, enabled = var.enable_mcp, probe = "tcp", path = null, env = "PROVISA_MCP_PORT" }
+    grpc   = { port = 50051, enabled = var.enable_grpc, probe = "tcp", path = null, env = "GRPC_PORT" }
+  }
+  enabled_protocols = { for k, v in local.protocols : k => v if v.enabled }
+  # Ports opened to the internet / to GCP health-check probers.
+  protocol_ports = [for k, v in local.enabled_protocols : tostring(v.port)]
+  # Shell `export` lines fed into base_startup: the container listener env var for
+  # each enabled wire protocol (first-launch persists these and its protocol
+  # overlay publishes the matching container port). api/ui/flight are served
+  # unconditionally by the app image, so only the opt-in protocols need a toggle.
+  protocol_exports = join("\n    ", concat(
+    [for k, v in local.enabled_protocols : "export ${v.env}=${v.port}" if contains(["pgwire", "bolt", "mcp", "grpc"], k)],
+    var.enable_mcp ? ["export PROVISA_MCP_HOST=0.0.0.0", "export PROVISA_MCP_ROLE=${var.mcp_role}"] : []
+  ))
+
   base_startup = <<-SHELL
     #!/bin/bash
     set -euo pipefail
@@ -179,12 +204,30 @@ locals {
     echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" > /etc/apt/sources.list.d/google-cloud-sdk.list
     apt-get update -qq
     apt-get install -y -qq google-cloud-cli
+    # Rootful system Docker: on a single-tenant VM the box is the isolation
+    # boundary, so the bundled rootless daemon (uidmap/iptables/non-root/lingering
+    # gymnastics, and it refuses to run as root) buys nothing. first-launch attaches
+    # to this socket via PROVISA_DOCKER_MODE=system.
+    #
+    # Use Docker's official repo, NOT Ubuntu's docker.io: the CLI (scripts/provisa
+    # compose_cmd) requires Compose v2 (`docker compose`), which docker.io omits —
+    # only docker-compose-plugin provides it, and the stack fails to start without it.
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+    apt-get update -qq
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    systemctl enable --now docker
     gsutil cp gs://${var.gcs_bucket}/${var.gcs_object} /opt/Provisa.AppImage
     chmod +x /opt/Provisa.AppImage
     # Stage the amd64 core-images zip beside the AppImage. first-launch searches cwd
     # for provisa-core-images-amd64-$PROVISA_VERSION.zip and docker-loads it locally
     # (airgap path), so we cd /opt before launching below.
     gsutil cp gs://${var.gcs_bucket}/${local.images_object} /opt/${local.images_zip}
+    # Trino plugins tarball, staged beside the AppImage. first-launch's
+    # load_trino_plugins finds it via cwd (we cd /opt below) and extracts it into
+    # compose/trino/plugins/ so the bind-mounts resolve (else Trino crash-loops:
+    # "No service providers of type io.trino.spi.Plugin").
+    gsutil cp gs://${var.gcs_bucket}/${local.plugins_object} /opt/${local.plugins_tarball}
     # The metadata script runner executes as root with no HOME; first-launch.sh
     # needs it for ~/.provisa and ~/.local/bin under `set -u`.
     export HOME=/root
@@ -197,12 +240,18 @@ locals {
     export PROVISA_OBS_MODE="${var.obs_mode}"
     export PROVISA_OTLP_ENDPOINT="${var.otlp_endpoint}"
     export PROVISA_INSTALL_DEMO="${var.install_demo ? "y" : "n"}"
+    # Attach to the rootful system Docker installed above, not bundled rootless.
+    export PROVISA_DOCKER_MODE="system"
     # Auth (REQ-972..979 parity). PROVISA_IDP drives _auto_configure_idp; the
     # server reads these at runtime, so first-launch persists them into the
     # systemd unit's EnvironmentFile.
     export PROVISA_IDP="${var.auth_provider}"
     export FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'
+    # Opt-in wire-protocol listeners (pgwire/bolt/mcp/grpc). first-launch persists
+    # these into the systemd EnvironmentFile and its protocol overlay publishes the
+    # matching container ports; the NetLB above fronts each one.
+    ${local.protocol_exports}
     cd /opt
   SHELL
 
@@ -314,20 +363,36 @@ resource "google_compute_instance" "secondary" {
   })
 }
 
-# ── Regional External Passthrough LB — HTTP API (port 8000) ───────────────────
+# ── Regional External Passthrough LB — one per enabled protocol ───────────────
+# Each enabled protocol gets a static IP, health check (HTTP /health for the API,
+# TCP connect otherwise), regional TCP backend service over the node instance
+# group, and a passthrough forwarding rule on its port. for_each keeps the whole
+# topology in lock-step with local.protocols.
 
-resource "google_compute_address" "api" {
-  name   = "provisa-api-ip"
-  region = var.region
+resource "google_compute_address" "protocol" {
+  for_each = local.enabled_protocols
+  name     = "provisa-${each.key}-ip"
+  region   = var.region
 }
 
-resource "google_compute_region_health_check" "api" {
-  name   = "provisa-api-health"
-  region = var.region
+resource "google_compute_region_health_check" "protocol" {
+  for_each = local.enabled_protocols
+  name     = "provisa-${each.key}-health"
+  region   = var.region
 
-  http_health_check {
-    port         = 8000
-    request_path = "/health"
+  dynamic "http_health_check" {
+    for_each = each.value.probe == "http" ? [1] : []
+    content {
+      port         = each.value.port
+      request_path = each.value.path
+    }
+  }
+
+  dynamic "tcp_health_check" {
+    for_each = each.value.probe == "tcp" ? [1] : []
+    content {
+      port = each.value.port
+    }
   }
 
   check_interval_sec  = 30
@@ -335,12 +400,13 @@ resource "google_compute_region_health_check" "api" {
   unhealthy_threshold = 3
 }
 
-resource "google_compute_region_backend_service" "api" {
-  name                  = "provisa-api"
+resource "google_compute_region_backend_service" "protocol" {
+  for_each              = local.enabled_protocols
+  name                  = "provisa-${each.key}"
   region                = var.region
   protocol              = "TCP"
   load_balancing_scheme = "EXTERNAL"
-  health_checks         = [google_compute_region_health_check.api.id]
+  health_checks         = [google_compute_region_health_check.protocol[each.key].id]
 
   backend {
     group          = google_compute_instance_group.nodes.id
@@ -348,78 +414,70 @@ resource "google_compute_region_backend_service" "api" {
   }
 }
 
-resource "google_compute_forwarding_rule" "api" {
-  name                  = "provisa-api"
+resource "google_compute_forwarding_rule" "protocol" {
+  for_each              = local.enabled_protocols
+  name                  = "provisa-${each.key}"
   region                = var.region
-  ip_address            = google_compute_address.api.id
+  ip_address            = google_compute_address.protocol[each.key].id
   ip_protocol           = "TCP"
-  port_range            = "8000"
+  port_range            = tostring(each.value.port)
   load_balancing_scheme = "EXTERNAL"
-  backend_service       = google_compute_region_backend_service.api.id
+  backend_service       = google_compute_region_backend_service.protocol[each.key].id
 }
 
-# ── Regional External Passthrough LB — Arrow Flight (port 8815) ───────────────
-
-resource "google_compute_address" "flight" {
-  name   = "provisa-flight-ip"
-  region = var.region
+# The api/flight LBs were hand-coded before the for_each refactor; the GCP resource
+# names are unchanged (provisa-api*/provisa-flight*), so migrate state in place
+# rather than destroy/recreate — this also preserves the existing static IPs.
+moved {
+  from = google_compute_address.api
+  to   = google_compute_address.protocol["api"]
 }
-
-resource "google_compute_region_health_check" "flight" {
-  name   = "provisa-flight-health"
-  region = var.region
-
-  tcp_health_check {
-    port = 8815
-  }
-
-  check_interval_sec  = 30
-  healthy_threshold   = 2
-  unhealthy_threshold = 3
+moved {
+  from = google_compute_region_health_check.api
+  to   = google_compute_region_health_check.protocol["api"]
 }
-
-resource "google_compute_region_backend_service" "flight" {
-  name                  = "provisa-flight"
-  region                = var.region
-  protocol              = "TCP"
-  load_balancing_scheme = "EXTERNAL"
-  health_checks         = [google_compute_region_health_check.flight.id]
-
-  backend {
-    group          = google_compute_instance_group.nodes.id
-    balancing_mode = "CONNECTION"
-  }
+moved {
+  from = google_compute_region_backend_service.api
+  to   = google_compute_region_backend_service.protocol["api"]
 }
-
-resource "google_compute_forwarding_rule" "flight" {
-  name                  = "provisa-flight"
-  region                = var.region
-  ip_address            = google_compute_address.flight.id
-  ip_protocol           = "TCP"
-  port_range            = "8815"
-  load_balancing_scheme = "EXTERNAL"
-  backend_service       = google_compute_region_backend_service.flight.id
+moved {
+  from = google_compute_forwarding_rule.api
+  to   = google_compute_forwarding_rule.protocol["api"]
+}
+moved {
+  from = google_compute_address.flight
+  to   = google_compute_address.protocol["flight"]
+}
+moved {
+  from = google_compute_region_health_check.flight
+  to   = google_compute_region_health_check.protocol["flight"]
+}
+moved {
+  from = google_compute_region_backend_service.flight
+  to   = google_compute_region_backend_service.protocol["flight"]
+}
+moved {
+  from = google_compute_forwarding_rule.flight
+  to   = google_compute_forwarding_rule.protocol["flight"]
 }
 
 # ── Instance Group (unmanaged) for LB backends ─────────────────────────────────
 
 resource "google_compute_instance_group" "nodes" {
-  name      = "provisa-nodes"
-  zone      = var.zone
-  network   = google_compute_network.main.id
+  name    = "provisa-nodes"
+  zone    = var.zone
+  network = google_compute_network.main.id
 
   instances = concat(
     [google_compute_instance.primary.self_link],
     google_compute_instance.secondary[*].self_link
   )
 
-  named_port {
-    name = "api"
-    port = 8000
-  }
-
-  named_port {
-    name = "flight"
-    port = 8815
+  dynamic "named_port" {
+    for_each = local.enabled_protocols
+    content {
+      name = named_port.key
+      port = named_port.value.port
+    }
   }
 }

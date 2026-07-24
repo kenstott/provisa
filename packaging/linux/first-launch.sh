@@ -18,6 +18,19 @@ BUNDLED_SOCKET="${PROVISA_HOME}/run/docker.sock"
 BUNDLED_DATA="${PROVISA_HOME}/docker-data"
 BUNDLED_PID="${PROVISA_HOME}/run/dockerd.pid"
 
+# Docker runtime selector. `bundled` (default): rootless dockerd shipped in the
+# AppImage — right for the desktop, where we run as an unprivileged user with no
+# sudo. `system`: an already-running rootful Docker daemon (its socket) — set by
+# the cloud/VM startup (PROVISA_DOCKER_MODE=system), where the script runs as root
+# and rootless dockerd refuses to start. The socket feeds DOCKER_HOST, the config
+# docker_host, and the systemd unit.
+DOCKER_MODE="${PROVISA_DOCKER_MODE:-bundled}"
+if [ "$DOCKER_MODE" = system ]; then
+  DOCKER_SOCKET="${PROVISA_DOCKER_SOCKET:-/var/run/docker.sock}"
+else
+  DOCKER_SOCKET="$BUNDLED_SOCKET"
+fi
+
 # Release version baked into the AppDir (VERSION), used to pin the online native
 # pip install to the matching release (parity with macOS Resources/VERSION).
 PROVISA_VERSION="${PROVISA_VERSION:-$(cat "${APPDIR}/VERSION" 2>/dev/null || true)}"
@@ -171,8 +184,18 @@ ask_ram_budget() {
   ok "RAM budget: ${budget_gb}GB → Trino workers: ${TRINO_WORKERS}"
 }
 
-# ── Start bundled rootless Docker ─────────────────────────────────────────────
+# ── Start / attach Docker ─────────────────────────────────────────────────────
 start_docker() {
+  if [ "$DOCKER_MODE" = system ]; then
+    export DOCKER_HOST="unix://${DOCKER_SOCKET}"
+    if ! docker info >/dev/null 2>&1; then
+      err "System Docker not reachable at ${DOCKER_SOCKET}. Start the docker service and re-run."
+      exit 1
+    fi
+    ok "Using system Docker (${DOCKER_SOCKET})."
+    return
+  fi
+
   if [ ! -x "$BUNDLED_ROOTLESS" ]; then
     err "Bundled Docker runtime not found at ${APPDIR}/bin/ — reinstall Provisa."
     exit 1
@@ -257,6 +280,92 @@ load_images() {
   ok "Loaded ${count} images."
 }
 
+# ── Acquire Trino custom-connector plugins ────────────────────────────────────
+# The slim AppImage ships compose/trino WITHOUT plugins/ (build-appimage.sh excludes
+# it to stay under GitHub's 2 GB asset limit). The custom connectors (trino-file,
+# trino-sharepoint, trino-splunk, …) ride the separate release asset
+# provisa-trino-plugins-<version>.tar.gz. docker-compose.core.yml bind-mounts
+# ./trino/plugins/<name> into /usr/lib/trino/plugin/<name>; without the jars Docker
+# auto-creates an EMPTY source dir and Trino aborts on startup ("No service providers
+# of type io.trino.spi.Plugin"). Extract the tarball into compose/trino/plugins/ so
+# every mount resolves. Discovery mirrors load_images: local-first for airgap, else
+# download from the pinned release.
+load_trino_plugins() {
+  local dest="${COMPOSE_DIR}/trino/plugins"
+  # Idempotent: the AppImage never ships this dir, so its presence means a prior run
+  # already extracted the plugins.
+  if ls "${dest}/trino-file/"*.jar >/dev/null 2>&1; then
+    ok "Trino plugins already present."
+    return
+  fi
+  mkdir -p "$dest"
+
+  local tarball="provisa-trino-plugins-${PROVISA_VERSION}.tar.gz"
+  local src="" cand appdir_parent
+  appdir_parent="$(dirname "$APPDIR")"
+  for cand in "${appdir_parent}/${tarball}" "${HOME}/Downloads/${tarball}" "${PWD}/${tarball}"; do
+    [ -f "$cand" ] && { src="$cand"; break; }
+  done
+  if [ -z "$src" ] && [ -n "$PROVISA_VERSION" ]; then
+    info "Downloading Trino plugins (${tarball})..."
+    if curl -fL --retry 3 --retry-delay 5 -o "${PROVISA_HOME}/${tarball}" \
+         "https://github.com/kenstott/provisa/releases/download/${PROVISA_VERSION}/${tarball}"; then
+      src="${PROVISA_HOME}/${tarball}"
+    fi
+  fi
+  if [ -z "$src" ]; then
+    err "Trino plugins not found. Place ${tarball} beside the AppImage (airgap) or connect to the network, then re-run."
+    exit 1
+  fi
+  info "Extracting Trino plugins..."
+  tar -xzf "$src" -C "$dest"
+  [ "$src" = "${PROVISA_HOME}/${tarball}" ] && rm -f "$src"
+  ok "Trino plugins installed to ${dest}."
+}
+
+# ── Protocol overlay (opt-in wire protocols) ──────────────────────────────────
+# docker-compose.app.yml publishes only the always-on ports (API 8000, UI 3000,
+# Flight 8815). The opt-in wire protocols — pgwire, Bolt, MCP, gRPC — are gated by
+# env vars the cloud/VM startup exports (PROVISA_PGWIRE_PORT, PROVISA_BOLT_PORT,
+# PROVISA_MCP_PORT, GRPC_PORT). The app image never publishes those container ports
+# on its own, so emit an extension overlay that publishes each enabled port and
+# passes the listener env through. scripts/provisa auto-includes every
+# ~/.provisa/extensions/*/docker-compose.*.yml, so `provisa start` picks it up.
+# app_startup binds each listener on 0.0.0.0:<port> inside the container, so the
+# host:container mapping is 1:1.
+write_protocol_overlay() {
+  local dir="${PROVISA_HOME}/extensions/protocols"
+  local file="${dir}/docker-compose.protocols.yml"
+  local ports="" env=""
+  # $1 host/container port, $2 env var name (its value is the port)
+  _proto() {
+    ports="${ports}      - \"${1}:${1}\""$'\n'
+    env="${env}      ${2}: \"${1}\""$'\n'
+  }
+  [ "${PROVISA_PGWIRE_PORT:-0}" != 0 ] && _proto "$PROVISA_PGWIRE_PORT" PROVISA_PGWIRE_PORT
+  [ "${PROVISA_BOLT_PORT:-0}" != 0 ] && _proto "$PROVISA_BOLT_PORT" PROVISA_BOLT_PORT
+  [ "${GRPC_PORT:-0}" != 0 ] && _proto "$GRPC_PORT" GRPC_PORT
+  if [ "${PROVISA_MCP_PORT:-0}" != 0 ]; then
+    _proto "$PROVISA_MCP_PORT" PROVISA_MCP_PORT
+    # MCP must bind 0.0.0.0 to be reachable from outside the container; role picks
+    # the query identity (defaults set by the deploy env).
+    env="${env}      PROVISA_MCP_HOST: \"0.0.0.0\""$'\n'
+    env="${env}      PROVISA_MCP_ROLE: \"${PROVISA_MCP_ROLE:-admin}\""$'\n'
+  fi
+
+  if [ -z "$ports" ]; then
+    rm -f "$file" 2>/dev/null || true
+    return
+  fi
+
+  mkdir -p "$dir"
+  {
+    printf '# Auto-generated by first-launch.sh — opt-in wire protocols.\n'
+    printf 'services:\n  provisa:\n    ports:\n%s    environment:\n%s' "$ports" "$env"
+  } > "$file"
+  ok "Protocol overlay written: ${file}"
+}
+
 # ── Ask hostname ──────────────────────────────────────────────────────────────
 ask_hostname() {
   local default
@@ -305,27 +414,45 @@ install_systemd() {
   chmod 600 "$env_file"
   for var in PROVISA_IDP FIREBASE_PROJECT_ID FIREBASE_SERVICE_ACCOUNT_KEY \
              KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
-             OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET; do
+             OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET \
+             PROVISA_PGWIRE_PORT PROVISA_BOLT_PORT PROVISA_MCP_PORT \
+             PROVISA_MCP_HOST PROVISA_MCP_ROLE GRPC_PORT; do
     if [ -n "${!var:-}" ]; then
       printf '%s=%s\n' "$var" "${!var}" >> "$env_file"
     fi
   done
+  # $USER is not exported under the GCE metadata runner / systemd-run; resolve it.
+  local run_user; run_user="$(id -un)"
+  # System Docker runs as its own systemd service — order after it and skip the
+  # rootless XDG_RUNTIME_DIR (only meaningful for the bundled per-user daemon).
+  local after="network-online.target" wants="network-online.target" xdg_line=""
+  if [ "$DOCKER_MODE" = system ]; then
+    after="network-online.target docker.service"
+    wants="network-online.target docker.service"
+  else
+    xdg_line="Environment=XDG_RUNTIME_DIR=${PROVISA_HOME}/run"
+  fi
   cat > "$unit" <<UNIT
 [Unit]
 Description=Provisa Data Platform
-After=network-online.target
-Wants=network-online.target
+After=${after}
+Wants=${wants}
 
 [Service]
-Type=simple
-User=${USER}
-Environment=DOCKER_HOST=unix://${BUNDLED_SOCKET}
-Environment=XDG_RUNTIME_DIR=${PROVISA_HOME}/run
+# oneshot + RemainAfterExit: \`provisa start\` brings the stack up detached
+# (compose up -d for the Docker tier, background uvicorn for native) and returns.
+# With Type=simple systemd would treat that return as the service exiting and fire
+# ExecStop, tearing the stack down. oneshot keeps the unit active after ExecStart
+# returns, so ExecStop runs only on an explicit stop/restart.
+Type=oneshot
+RemainAfterExit=yes
+User=${run_user}
+Environment=DOCKER_HOST=unix://${DOCKER_SOCKET}
+${xdg_line}
 EnvironmentFile=-${env_file}
-ExecStart=${LOCAL_BIN}/provisa start --foreground
+ExecStart=${LOCAL_BIN}/provisa start
 ExecStop=${LOCAL_BIN}/provisa stop
-Restart=on-failure
-RestartSec=10
+TimeoutStartSec=300
 
 [Install]
 WantedBy=multi-user.target
@@ -508,7 +635,7 @@ hostname: ${hostname}
 api_port: ${api_port}
 runtime: ${runtime}
 ${img_src_line}
-docker_host: "unix://${BUNDLED_SOCKET}"
+docker_host: "unix://${DOCKER_SOCKET}"
 project_dir: "${COMPOSE_DIR}"
 federation_workers: ${TRINO_WORKERS}
 # Deployment (REQ-972..979): parity with the desktop wizard.
@@ -537,7 +664,7 @@ hostname: ${hostname}
 api_port: ${api_port}
 runtime: ${runtime}
 ${img_src_line}
-docker_host: "unix://${BUNDLED_SOCKET}"
+docker_host: "unix://${DOCKER_SOCKET}"
 project_dir: "${COMPOSE_DIR}"
 federation_workers: ${TRINO_WORKERS}
 
@@ -563,8 +690,8 @@ install_cli() {
   for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
     [ -f "$rc" ] || continue
     if ! grep -q "PROVISA_DOCKER_HOST" "$rc" 2>/dev/null; then
-      printf '\n# Provisa bundled Docker runtime\nexport DOCKER_HOST="%s"\n' \
-        "unix://${BUNDLED_SOCKET}" >> "$rc"
+      printf '\n# Provisa Docker runtime\nexport DOCKER_HOST="%s"\n' \
+        "unix://${DOCKER_SOCKET}" >> "$rc"
     fi
   done
 
@@ -673,6 +800,8 @@ main() {
 
   ask_ram_budget
   load_images
+  load_trino_plugins
+  write_protocol_overlay
   write_config
   install_cli
 
