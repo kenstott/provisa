@@ -280,6 +280,25 @@ load_images() {
   ok "Loaded ${count} images."
 }
 
+# ── Stage compose out of the AppImage into a persistent, writable location ─────
+# The AppImage self-mounts at /tmp/.mount_ProvisXXXX — read-only AND ephemeral
+# (the mount vanishes when this first-launch process exits, and its path changes
+# every launch). But `provisa start` runs later under systemd, long after the
+# AppImage is gone, and resolves compose files from project_dir. Recording the
+# mount path there leaves the daemon with a dangling directory. It is also
+# read-only, so load_trino_plugins cannot extract into compose/trino/plugins.
+# Copy the whole compose tree into ${PROVISA_HOME}/compose once and repoint
+# COMPOSE_DIR at it: plugin extraction, project_dir, and the systemd service all
+# then reference a stable path that outlives the AppImage.
+stage_compose() {
+  local dest="${PROVISA_HOME}/compose"
+  info "Staging compose files to ${dest}..."
+  mkdir -p "$dest"
+  cp -a "${COMPOSE_DIR}/." "$dest/"
+  COMPOSE_DIR="$dest"
+  ok "Compose staged to ${COMPOSE_DIR}."
+}
+
 # ── Acquire Trino custom-connector plugins ────────────────────────────────────
 # The slim AppImage ships compose/trino WITHOUT plugins/ (build-appimage.sh excludes
 # it to stay under GitHub's 2 GB asset limit). The custom connectors (trino-file,
@@ -800,6 +819,7 @@ main() {
 
   ask_ram_budget
   load_images
+  stage_compose
   load_trino_plugins
   write_protocol_overlay
   write_config
