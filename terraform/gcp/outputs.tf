@@ -1,16 +1,21 @@
+output "shared_ip" {
+  description = "The single shared NetLB IP fronting every protocol port (REQ-1253). Point cloud.provisa.dev and *.provisa.dev here (grey-cloud / DNS-only)."
+  value       = google_compute_address.shared.address
+}
+
 output "api_endpoint" {
   description = "HTTPS API load balancer URL (REQ-1227: TLS on every endpoint; self-signed cert)"
-  value       = "https://${google_compute_address.protocol["api"].address}:${local.protocols.api.port}"
+  value       = "https://${google_compute_address.shared.address}:${local.protocols.api.port}"
 }
 
 output "ui_endpoint" {
   description = "Web UI load balancer URL (HTTPS; self-signed cert)"
-  value       = "https://${google_compute_address.protocol["ui"].address}:${local.protocols.ui.port}"
+  value       = "https://${google_compute_address.shared.address}:${local.protocols.ui.port}"
 }
 
 output "protocol_endpoints" {
-  description = "host:port for every exposed protocol NetLB (api, ui, flight, and any enabled pgwire/bolt/mcp/grpc)"
-  value       = { for k, v in local.enabled_protocols : k => "${google_compute_address.protocol[k].address}:${v.port}" }
+  description = "host:port for every exposed protocol on the shared NetLB IP (api, ui, flight, and any enabled pgwire/bolt/mcp/grpc)"
+  value       = { for k, v in local.enabled_protocols : k => "${google_compute_address.shared.address}:${v.port}" }
 }
 
 output "primary_ip" {
