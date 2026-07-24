@@ -211,6 +211,63 @@ def test_resolve_superuser_config_none_when_unconfigured():
     assert resolve_superuser_config({"username": "root"}) is None  # missing password
 
 
+# --- REQ-1259: lazy resolver re-resolves when auth is reconfigured at runtime -----
+
+
+def _resolver_settings(provider):
+    return {
+        "provider": provider,
+        "mapping_rules": [],
+        "default_role": "analyst",
+        "db_pool": None,
+        "admin_pool": None,
+        "assignments_source": "claims",
+        "default_assignments": [],
+        "multitenancy": False,
+        "default_org_id": "root",
+        "superuser": None,
+        "bootstrap_superadmin": False,
+    }
+
+
+def _make_resolver_app(holder, gen, monkeypatch):
+    monkeypatch.setattr(AuthMiddleware, "_current_generation", lambda self: gen["v"])
+    app = FastAPI()
+    app.add_middleware(
+        AuthMiddleware, config_resolver=lambda: _resolver_settings(holder["provider"])
+    )
+
+    @app.get("/test")
+    async def _test_route(request: Request):
+        return {"user_id": request.state.identity.user_id, "role": request.state.role}
+
+    return app
+
+
+def test_resolver_reresolves_on_generation_bump(monkeypatch):
+    """A server that boots unsecured and is later switched to a real provider enforces
+    auth on the next request — the cached resolution invalidates when the generation
+    advances (REQ-1259 runtime reconfigure / PROVISA_IDP boot deferral)."""
+    holder: dict[str, AuthProvider | None] = {"provider": None}
+    gen = {"v": 0}
+    client = TestClient(_make_resolver_app(holder, gen, monkeypatch))
+
+    # Boots unsecured: no provider, username is the role.
+    assert client.get("/test").json()["user_id"] == "admin"
+
+    # Reconfigure to a real provider WITHOUT bumping the generation: still cached (unsecured).
+    holder["provider"] = MockProvider()
+    assert client.get("/test").status_code == 200
+    assert client.get("/test").json()["user_id"] == "admin"
+
+    # Bump the generation: the middleware re-resolves and now enforces the provider.
+    gen["v"] += 1
+    assert client.get("/test").status_code == 401  # missing token now rejected
+    resp = client.get("/test", headers={"Authorization": "Bearer valid-token"})
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == "user1"
+
+
 def test_check_superuser_blank_config_never_matches():
     from provisa.auth.superuser import check_superuser
 
