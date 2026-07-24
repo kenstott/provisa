@@ -311,12 +311,44 @@ def contract_server():
         asyncio.run(drop_org_schema(_ORG))
 
 
-@pytest.fixture(
-    params=[RestSqlAdapter, PgwireAdapter, BoltAdapter, FlightAdapter, GrpcAdapter, GraphqlAdapter],
-    ids=["rest_sql", "pgwire", "bolt", "flight", "grpc", "graphql"],
-)
+# The complete set of governed consumption transports. The ratchet below pins this to the
+# surfaces the server actually exposes, so adding a served transport without a contract
+# adapter fails loud rather than silently narrowing the parity guarantee.
+_ADAPTERS = [RestSqlAdapter, PgwireAdapter, BoltAdapter, FlightAdapter, GrpcAdapter, GraphqlAdapter]
+
+
+@pytest.fixture(params=_ADAPTERS, ids=[a.name for a in _ADAPTERS])
 def adapter(request, contract_server) -> TransportAdapter:
     return request.param(contract_server)
+
+
+# --------------------------------------------------------------------------- #
+# Contract 0 — ratchet: every governed surface the server exposes is covered.
+# --------------------------------------------------------------------------- #
+def test_every_governed_surface_has_a_contract_adapter(contract_server):
+    """The parity guarantee is only as wide as this harness's adapter set. If the server
+    starts a governed wire surface that no adapter reads, the equivalence/visibility contracts
+    above never run against it — an RLS-holds-over-REST-but-leaks-over-<new surface> gap that
+    green per-file coverage would hide. This ratchet derives the exposed surfaces from the live
+    server (its bound ports + the always-on HTTP surfaces) and asserts each is covered, so a new
+    transport cannot ship without either an adapter or a deliberate edit here.
+    """
+    exposed = {"rest_sql", "graphql"}  # both always served over the HTTP port
+    if contract_server.pgwire_port:
+        exposed.add("pgwire")
+    if contract_server.bolt_port:
+        exposed.add("bolt")
+    if contract_server.flight_port:
+        exposed.add("flight")
+    if contract_server.grpc_port:
+        exposed.add("grpc")
+
+    covered = {a.name for a in _ADAPTERS}
+    uncovered = exposed - covered
+    assert not uncovered, (
+        f"governed surfaces exposed by the server with no transport-contract adapter: "
+        f"{sorted(uncovered)} — add a TransportAdapter so parity/governance is asserted there"
+    )
 
 
 # --------------------------------------------------------------------------- #
