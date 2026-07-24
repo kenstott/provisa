@@ -138,8 +138,17 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
         except httpx.ConnectError:
             return HTMLResponse("API unavailable", status_code=502)
 
+    # The API is reachable to the browser only through this proxy's own origin.
+    # FastAPI's trailing-slash and other redirects emit an absolute Location on the
+    # internal host (http://provisa:8000/...), which the browser cannot resolve —
+    # the fetch dies as "Failed to fetch". Rewrite it back to a path on our origin.
+    resp_headers = dict(upstream.headers)
+    location = resp_headers.get("location")
+    if location and location.startswith(API_BASE_URL):
+        resp_headers["location"] = location[len(API_BASE_URL) :] or "/"
+
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,
-        headers=dict(upstream.headers),
+        headers=resp_headers,
     )

@@ -135,6 +135,30 @@ jobs:
         with:
           platforms: arm64
 
+      # The provisa/provisa:local image serves the React SPA from static/ (Dockerfile
+      # COPY static/ ./static/). A clean checkout ships static/ empty, so without this
+      # step the provisa-ui container returns 503 "UI not bundled". Build the SPA into
+      # static/ before docker build. Mirrors the wheel job's UI toolchain.
+      - name: Set up Python (mkdocs)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node 20 (vite build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Install docs-site build deps (mkdocs)
+        run: pip install mkdocs-material pymdown-extensions
+
+      - name: Build UI SPA into static/
+        run: |
+          ( cd provisa-ui && npm ci && npm run build )
+          cp -r provisa-ui/dist/. static/
+
       - name: Pull core images and build zaychik
         run: |
           mkdir -p images
@@ -189,6 +213,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # The provisa/provisa:local image serves the React SPA from static/ (Dockerfile
+      # COPY static/ ./static/). A clean checkout ships static/ empty, so without this
+      # step the provisa-ui container returns 503 "UI not bundled". Build the SPA into
+      # static/ before docker build. Mirrors the wheel job's UI toolchain.
+      - name: Set up Python (mkdocs)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node 20 (vite build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Install docs-site build deps (mkdocs)
+        run: pip install mkdocs-material pymdown-extensions
+
+      - name: Build UI SPA into static/
+        run: |
+          ( cd provisa-ui && npm ci && npm run build )
+          cp -r provisa-ui/dist/. static/
 
       - name: Pull core images (amd64), build zaychik and provisa
         run: |

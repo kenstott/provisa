@@ -15,6 +15,13 @@ services:
       PG_DATABASE: "${CONFIG_DB_NAME:-provisa}"
       PG_USER: "${CONFIG_DB_USER:-provisa}"
       PG_PASSWORD: "${CONFIG_DB_PASSWORD:-provisa}"
+      # Control-plane SQLAlchemy URIs — the single chokepoint that reads the DB
+      # connection (REQ-837). PLATFORM_DATABASE_URL has no fallback and the app
+      # aborts at startup without it; the tenant default points at localhost, which
+      # is wrong inside the container network. Build both from the PG_* vars above so
+      # they track the same postgres service (parity with the Helm deployment).
+      TENANT_DATABASE_URL: "postgresql+asyncpg://${CONFIG_DB_USER:-provisa}:${CONFIG_DB_PASSWORD:-provisa}@${CONFIG_DB_HOST:-postgres}:${CONFIG_DB_PORT:-5432}/${CONFIG_DB_NAME:-provisa}"
+      PLATFORM_DATABASE_URL: "postgresql+asyncpg://${CONFIG_DB_USER:-provisa}:${CONFIG_DB_PASSWORD:-provisa}@${CONFIG_DB_HOST:-postgres}:${CONFIG_DB_PORT:-5432}/${CONFIG_DB_NAME:-provisa}"
       TRINO_HOST: trino
       TRINO_PORT: 8080
       TRINO_FLIGHT_PORT: 8480

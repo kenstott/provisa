@@ -11805,3 +11805,287 @@ DIRECT routes (catalog, schema metadata, govdata, admin endpoints) and all non-E
 **Code:** `provisa/executor/`, `provisa/graphql/`
 
 **Tests:** `tests/integration/test_catalog_integration.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/governance-core.spec.ts`
+
+## 7. Result Delivery
+
+### REQ-1191 · Large Result Redirect & CTAS {#REQ-1191}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+HTTP-addressable local materialization. Extend the existing local_dir file:// materialization to an http:// addressable serve endpoint (e.g. /data/redirect-file/<name>) so locally-materialized redirect results are downloadable over HTTP by a client, not only via desktop file:// paths.
+
+**Use case:** HTTP-addressable local materialization generalizes the Trino "engine writes the file, client receives only a URL" property to the embedded/no-object-store case, enabling web clients and remote consumers to retrieve materialized results.
+
+**Code:** `provisa/executor/redirect.py`
+
+**Tests:** —
+
+### REQ-1192 · Large Result Redirect & CTAS {#REQ-1192}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** constraint
+
+Per-username access scoping on served redirect files. Only the user who owns (created) a materialized redirect file may retrieve it. Authorization is derived from the requesting identity/bearer token per request, consistent with Provisa's stateless, token-derived governance.
+
+**Use case:** Per-username access scoping ensures users cannot retrieve redirect results materialized by other users, maintaining data isolation and governance.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1193 · Large Result Redirect & CTAS {#REQ-1193}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Age-based reaping of local redirect files. Locally-materialized files are reaped after they exceed a maximum age (TTL). The S3 path already has cleanup scheduling; the local path needs an equivalent TTL reaper for long-running instances.
+
+**Use case:** TTL-based reaping prevents indefinite disk usage accumulation from materialized redirect files on long-running embedded or on-premise deployments.
+
+**Code:** `provisa/executor/redirect.py`
+
+**Tests:** —
+
+### REQ-1194 · Large Result Redirect & CTAS {#REQ-1194}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+Extend engine-native ctas_redirect beyond Trino to all object-store-capable engines. Databricks uses INSERT OVERWRITE DIRECTORY / CTAS to external volume; Snowflake uses COPY INTO <stage> FROM (query); ClickHouse uses INSERT INTO FUNCTION s3(...) SELECT ...; DuckDB uses COPY (query) TO 's3://...' via httpfs. Each engine implements its native result-to-object-store write and returns only the resulting URI; Provisa stays out of the data path.
+
+**Use case:** Engine-native CTAS to object stores removes Provisa from the materialization data path, enabling large result handling to scale with engine resources and object-store throughput rather than Provisa memory/bandwidth.
+
+**Code:** `provisa/federation/backend.py`
+
+**Tests:** —
+
+### REQ-1195 · Large Result Redirect & CTAS {#REQ-1195}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** constraint
+
+Sink-tier selection rule. ctas_redirect targets the engine's native object-store sink when a reachable object store is configured (PROVISA_REDIRECT_ENDPOINT + credentials); otherwise it falls back to Provisa's local_dir + HTTP-serve ([REQ-1191](#REQ-1191)). For DuckDB, this fallback is a deployment gap (no guaranteed bucket), not a capability gap — configuring an object store promotes it to the native path. PostgreSQL core COPY cannot target object storage (extension required), so PG stays on the local/host-file tier absent an extension.
+
+**Use case:** Sink-tier selection ensures redirect results use the highest-fidelity, most scalable path available given the engine and deployment configuration.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1196 · Large Result Redirect & CTAS {#REQ-1196}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** constraint
+
+Design decision — no Provisa-side byte-metering (Arrow buffer counting) and no compile-time cartesian product-budget control. Once materialization is engine-native, a cartesian/large-result blowup is bounded by the engine's own resource governors, the existing wall-time timeout, and engine-native CTAS, with Provisa never in the data path. The embedded in-process engine is desktop-dev / single-tenant only, so its lack of isolation is acceptable. The existing default row cap (100 rows unless full_results capability) remains the primary cheap safeguard against accidental full pulls.
+
+**Use case:** Deferring cartesian blowup control to engine-side governors (memory, CPU, concurrency limits) and timeouts keeps the Provisa result path stateless and avoids redundant metering. The default row cap provides sufficient protection for typical usage patterns.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1197 · JSON:API Pagination {#REQ-1197}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+JSON:API total_count (meta.total field for pagination) is computed by pushing a COUNT(*) aggregate down to the federated engine, not by materializing the full matching result set in Python and counting rows. Implementation wraps the governed count SELECT in `SELECT COUNT(*) AS total FROM (<compiled select>) AS _provisa_count`, routes it through the single governance pipeline (_govern_and_route_compiled + _execute_plan) so RLS/masking bind to the inner base tables, and reads the single scalar row.
+
+**Use case:** Pushing COUNT(*) to the engine avoids materializing large result sets in the API process and ensures RLS/masking rules bind correctly to base tables before aggregation. Part of the streaming initiative Phase 4 (cap/fix inherently-buffered transport formats).
+
+**Code:** `provisa/api/jsonapi/generator.py`
+
+**Tests:** `tests/integration/test_jsonapi_integration.py`, `tests/unit/test_jsonapi.py`
+
+## 8. Deployment & Infrastructure
+
+### REQ-1198 · VM Cloud Deployment {#REQ-1198}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+VM cloud deploy runs rootful system Docker (Docker CE from Docker's official apt repo) with docker-compose-plugin for Compose v2, selected via PROVISA_DOCKER_MODE=system env var.
+
+**Use case:** Single-tenant VM is the isolation boundary; rootless daemon refuses to run as root; CLI requires docker compose v2.
+
+**Code:** `packaging/linux/first-launch.sh`, `scripts/provisa`
+
+**Tests:** —
+
+### REQ-1199 · VM Cloud Deployment {#REQ-1199}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+Trino custom-connector jars ship as separate release asset provisa-trino-plugins-<version>.tar.gz; first-launch.sh extracts them into compose/trino/plugins/ so docker-compose.core.yml bind-mounts resolve.
+
+**Use case:** Slim AppImage stays under GitHub's 2 GB limit; without jars Trino crash-loops on startup ("No service providers of type io.trino.spi.Plugin").
+
+**Code:** `packaging/linux/first-launch.sh`, `terraform/gcp`
+
+**Tests:** —
+
+### REQ-1200 · VM Cloud Deployment {#REQ-1200}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+
+docker-compose.app.yml sets control-plane SQLAlchemy URIs TENANT_DATABASE_URL and PLATFORM_DATABASE_URL on the provisa service, built from PG_* vars for parity with Helm.
+
+**Use case:** Ensures database connectivity within the container network; aligns VM and Kubernetes deployment patterns.
+
+**Code:** `docker-compose.app.yml`, `docker-compose.core.yml`
+
+**Tests:** —
+
+### REQ-1201 · VM Cloud Deployment {#REQ-1201}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+PLATFORM_DATABASE_URL has no fallback; app aborts at startup without it. TENANT_DATABASE_URL defaults to localhost.
+
+**Use case:** [REQ-837](#REQ-837) compliance; enforces explicit platform DB configuration and prevents silent misconfiguration inside container network.
+
+**Code:** `docker-compose.app.yml`
+
+**Tests:** —
+
+### REQ-1202 · VM Cloud Deployment {#REQ-1202}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+GCP VM systemd unit for the stack is Type=oneshot with RemainAfterExit=yes.
+
+**Use case:** Ensures stack runs once at boot and persists in running state until explicit stop or reboot.
+
+**Code:** `terraform/gcp`
+
+**Tests:** —
+
+## 7. Result Delivery
+
+### REQ-1203 · Large Result Redirect & CTAS {#REQ-1203}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** constraint
+
+Design decision — large-result redirect/materialize is an IR-level directive on the governed query plan (`_Plan.materialize` carrying a `provisa.executor.redirect.Delivery`), set by the one pipeline planners when a caller passes `deliver=`. The single execution terminal `_execute_plan` runs the shared sink terminal `provisa.executor.redirect.run_materialize` when the plan carries a materialize directive, returning a delivery handle on `QueryResult.redirect`. Planner forces ENGINE lowering when delivery is requested, ensuring the plan always carries engine-physical CTAS SQL. Sink-tier selection is centralized in `run_materialize` ([REQ-1195](#REQ-1195)), replacing the former transport-local CTAS branch; every transport that executes through the one pipeline now inherits redirect capability.
+
+**Use case:** Centralizing redirect through the one pipeline ensures uniform sink selection and result handling across all transports (HTTP /data, GraphQL, pgwire, Arrow Flight), eliminating per-transport CTAS branches while maintaining engine-native materialization when available.
+
+**Code:** `provisa/pgwire/_pipeline.py`, `provisa/executor/redirect.py`
+
+**Tests:** —
+
+### REQ-1204 · Large Result Redirect & CTAS {#REQ-1204}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Buffered transports (GraphQL, JSON:API, Bolt) surface materialize/CTAS handles via protocol-native side-channels; streaming transports (pgwire streaming, Flight SQL, airport) opt out (deliver=None). Callers request materialization via transport-specific headers/metadata, translated to the shared _Plan.materialize IR directive by provisa.executor.redirect.delivery_from_request(...).
+
+**Use case:** Protocol-native side-channels preserve result data in response bodies while surfacing redirect handles separately, enabling async materialization for buffered transports while streaming transports skip materialization.
+
+**Code:** `provisa/executor/redirect.py`
+
+**Tests:** —
+
+## 8. Deployment & Infrastructure
+
+### REQ-1205 · Multi-Protocol Exposure (GCP) {#REQ-1205}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+GCP VM cloud deployment exposes each Provisa wire protocol through its own GCP External TCP passthrough NetLB (static IP + regional TCP backend service + HTTP-or-TCP health check + forwarding rule + instance-group named_port), driven data-driven from a single local.protocols map in terraform/gcp. Adding a protocol requires one row in the map.
+
+**Use case:** Data-driven protocol exposure allows adding new wire protocols to GCP deployments with a single config entry, avoiding per-protocol boilerplate NetLB resource duplication.
+
+**Code:** `terraform/gcp`
+
+**Tests:** —
+
+### REQ-1206 · Multi-Protocol Exposure (GCP) {#REQ-1206}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+
+Terraform GCP interview booleans enable_pgwire, enable_bolt, enable_mcp, enable_grpc (all default true) and mcp_role (default admin) control which optional wire-protocol listeners are started on the instance. API (port 8000, HTTP /health probe), Arrow Flight (port 8815), and Web UI (port 3000) are always exposed; pgwire (5439), Bolt (7687), MCP (8009), and gRPC (50051) are opt-in via interview flags.
+
+**Use case:** Boolean interview flags give operators fine-grained control over which protocols are exposed on a deployed instance without modifying terraform code.
+
+**Code:** `terraform/gcp`
+
+**Tests:** —
+
+### REQ-1207 · Multi-Protocol Exposure (GCP) {#REQ-1207}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+Terraform base_startup script exports enabled wire-protocol listener environment variables to the instance (PROVISA_PGWIRE_PORT, PROVISA_BOLT_PORT, PROVISA_MCP_PORT, PROVISA_MCP_HOST, PROVISA_MCP_ROLE, GRPC_PORT) based on which protocols are enabled via interview booleans.
+
+**Use case:** Exporting protocol configuration as environment variables allows first-launch.sh and the application to discover which protocols are enabled at startup time.
+
+**Code:** `terraform/gcp`
+
+**Tests:** —
+
+### REQ-1208 · Multi-Protocol Exposure (GCP) {#REQ-1208}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+first-launch.sh persists enabled wire-protocol listener environment variables into the systemd EnvironmentFile (~/.provisa/systemd/provisa.env) and generates an extension compose overlay (~/.provisa/extensions/protocols/docker-compose.protocols.yml) that publishes each enabled container port 1:1 to the host and sets the listener environment variables for each enabled protocol.
+
+**Use case:** Persisting protocol configuration into systemd EnvironmentFile and generating a protocol-specific compose overlay ensures that enabled protocols remain configured across service restarts and are isolated from the base application compose file.
+
+**Code:** `packaging/linux/first-launch.sh`
+
+**Tests:** —
+
+### REQ-1209 · Multi-Protocol Exposure (GCP) {#REQ-1209}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+scripts/provisa auto-includes every ~/.provisa/extensions/*/docker-compose.*.yml file during `provisa start`, so protocol overlays generated by first-launch.sh are automatically composed with the base stack without requiring manual docker-compose -f inclusion.
+
+**Use case:** Auto-inclusion allows the extension mechanism to work transparently; operators do not need to manually add compose files to the start command.
+
+**Code:** `scripts/provisa`
+
+**Tests:** —
+
+### REQ-1210 · Multi-Protocol Exposure (GCP) {#REQ-1210}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** constraint
+
+gRPC wire protocol listener only serves once a proto schema has been registered (state.proto_files populated). On a demo or fresh cluster with no registered protos, the gRPC NetLB backend remains unhealthy per its health check. This is expected behavior; the NetLB does not recover until a proto is registered.
+
+**Use case:** Gating gRPC service availability on proto registration ensures the protocol cannot serve partial or incomplete schema state; failure to register a proto keeps the protocol unhealthy as designed, signaling to operators that configuration is needed.
+
+**Code:** `provisa/grpc`, `terraform/gcp`
+
+**Tests:** —
+
+### REQ-1211 · Linux AppImage Deployment {#REQ-1211}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+
+Linux AppImage deployments must stage the docker-compose tree out of the AppImage's self-mount into a persistent, writable location (${PROVISA_HOME}/compose) during first-launch and record project_dir there, as the AppImage mount (/tmp/.mount_Provis*) is read-only and ephemeral.
+
+**Use case:** The AppImage mount is read-only, blocking Trino plugin extraction and other write operations; it is also ephemeral and vanishes when the AppImage process exits, causing the systemd `provisa start` daemon to lose its compose files on restart.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1212 · Docker Image Build {#REQ-1212}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+
+The provisa/provisa:local core Docker image must have the built React SPA present in static/ at image-build time; CI core-image jobs must run the vite build into static/ before `docker build`.
+
+**Use case:** Without the UI bundle in the image, the provisa-ui container serves HTTP 503 "UI not bundled", making Provisa inaccessible via the web interface.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1213 · VM Cloud Deployment {#REQ-1213}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+GCP VM startup-script writes /etc/apt/apt.conf.d/99provisa-resilient before the first apt-get update, setting Acquire::http::Timeout=30, Acquire::https::Timeout=30, Acquire::Retries=3, Acquire::http::Pipeline-Depth=0 to prevent indefinite CLOSE-WAIT hangs when Canonical mirrors half-close sockets mid-response.
+
+**Use case:** apt's default HTTP pipelining wedges forever (no timeout) on half-closed mirror sockets; under set -euo pipefail, hung apt-get update never errors and blocks the entire node boot indefinitely. Configuring timeouts and disabling pipelining makes apt deterministic on first-launch.
+
+**Code:** `terraform/gcp/main.tf`
+
+**Tests:** —

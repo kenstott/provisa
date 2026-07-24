@@ -34380,3 +34380,283 @@
     Given a cartesian product that would produce 1M rows
     When executed against an engine with memory/timeout governors
     Then the engine terminates the query and Provisa never materializes the full result
+- id: REQ-1197
+  status: complete
+  group: 7. Result Delivery
+  category: JSON:API Pagination
+  priority: MUST
+  type: behavioral
+  description: JSON:API total_count (meta.total field for pagination) is computed by pushing a COUNT(*) aggregate down to the federated engine, not by materializing the full matching result set in Python and counting rows. Implementation wraps the governed count SELECT in `SELECT COUNT(*) AS total FROM (<compiled select>) AS _provisa_count`, routes it through the single governance pipeline (_govern_and_route_compiled + _execute_plan) so RLS/masking bind to the inner base tables, and reads the single scalar row.
+  use_case: Pushing COUNT(*) to the engine avoids materializing large result sets in the API process and ensures RLS/masking rules bind correctly to base tables before aggregation. Part of the streaming initiative Phase 4 (cap/fix inherently-buffered transport formats).
+  code:
+    - provisa/api/jsonapi/generator.py
+  tests:
+    - tests/integration/test_jsonapi_integration.py
+    - tests/unit/test_jsonapi.py
+  since: "2026-07"
+  scenario: |
+    Given a registered table with RLS rules applied
+    When a JSON:API paginated query requests total_count
+    Then a COUNT(*) aggregate is pushed to the federated engine
+    And the governing rules are applied to base tables before counting
+    And Provisa receives a single scalar row with the total
+    And no full result set is materialized in Python
+  e2e: true
+  e2e_reason: COUNT(*) push-down behavior is only verifiable end-to-end through the API transport with actual governance rules applied and result materialization monitored.
+- id: REQ-1198
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: VM Cloud Deployment
+  priority: MUST
+  type: infrastructure
+  description: VM cloud deploy runs rootful system Docker (Docker CE from Docker's official apt repo) with docker-compose-plugin for Compose v2, selected via PROVISA_DOCKER_MODE=system env var.
+  use_case: Single-tenant VM is the isolation boundary; rootless daemon refuses to run as root; CLI requires docker compose v2.
+  code:
+    - packaging/linux/first-launch.sh
+    - scripts/provisa
+  since: "2026-07"
+- id: REQ-1199
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: VM Cloud Deployment
+  priority: MUST
+  type: infrastructure
+  description: Trino custom-connector jars ship as separate release asset provisa-trino-plugins-<version>.tar.gz; first-launch.sh extracts them into compose/trino/plugins/ so docker-compose.core.yml bind-mounts resolve.
+  use_case: Slim AppImage stays under GitHub's 2 GB limit; without jars Trino crash-loops on startup ("No service providers of type io.trino.spi.Plugin").
+  code:
+    - packaging/linux/first-launch.sh
+    - terraform/gcp
+  since: "2026-07"
+- id: REQ-1200
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: VM Cloud Deployment
+  priority: MUST
+  type: structural
+  description: docker-compose.app.yml sets control-plane SQLAlchemy URIs TENANT_DATABASE_URL and PLATFORM_DATABASE_URL on the provisa service, built from PG_* vars for parity with Helm.
+  use_case: Ensures database connectivity within the container network; aligns VM and Kubernetes deployment patterns.
+  code:
+    - docker-compose.app.yml
+    - docker-compose.core.yml
+  since: "2026-07"
+- id: REQ-1201
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: VM Cloud Deployment
+  priority: MUST
+  type: infrastructure
+  description: PLATFORM_DATABASE_URL has no fallback; app aborts at startup without it. TENANT_DATABASE_URL defaults to localhost.
+  use_case: REQ-837 compliance; enforces explicit platform DB configuration and prevents silent misconfiguration inside container network.
+  code:
+    - docker-compose.app.yml
+  since: "2026-07"
+- id: REQ-1202
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: VM Cloud Deployment
+  priority: MUST
+  type: infrastructure
+  description: GCP VM systemd unit for the stack is Type=oneshot with RemainAfterExit=yes.
+  use_case: Ensures stack runs once at boot and persists in running state until explicit stop or reboot.
+  code:
+    - terraform/gcp
+  since: "2026-07"
+- id: REQ-1203
+  status: complete
+  group: "7. Result Delivery"
+  category: Large Result Redirect & CTAS
+  priority: SHOULD
+  type: constraint
+  description: Design decision — large-result redirect/materialize is an IR-level directive on the governed query plan (`_Plan.materialize` carrying a `provisa.executor.redirect.Delivery`), set by the one pipeline planners when a caller passes `deliver=`. The single execution terminal `_execute_plan` runs the shared sink terminal `provisa.executor.redirect.run_materialize` when the plan carries a materialize directive, returning a delivery handle on `QueryResult.redirect`. Planner forces ENGINE lowering when delivery is requested, ensuring the plan always carries engine-physical CTAS SQL. Sink-tier selection is centralized in `run_materialize` (REQ-1195), replacing the former transport-local CTAS branch; every transport that executes through the one pipeline now inherits redirect capability.
+  use_case: Centralizing redirect through the one pipeline ensures uniform sink selection and result handling across all transports (HTTP /data, GraphQL, pgwire, Arrow Flight), eliminating per-transport CTAS branches while maintaining engine-native materialization when available.
+  code:
+    - provisa/pgwire/_pipeline.py
+    - provisa/executor/redirect.py
+  since: "2026-07"
+  scenario: |
+    Given a caller requests large-result delivery via deliver=
+    When the one-pipeline planners (_govern_and_route or _govern_and_route_compiled) process the query
+    Then a _Plan.materialize directive is set carrying sink-tier configuration
+    And _execute_plan detects the directive and calls run_materialize
+    And run_materialize selects the appropriate sink (engine-native CTAS or local fallback) per REQ-1195
+    And the delivery handle is returned on QueryResult.redirect
+- id: REQ-1204
+  status: proposed
+  group: "7. Result Delivery"
+  category: Large Result Redirect & CTAS
+  priority: SHOULD
+  type: behavioral
+  description: Buffered transports (GraphQL, JSON:API, Bolt) surface materialize/CTAS handles via protocol-native side-channels; streaming transports (pgwire streaming, Flight SQL, airport) opt out (deliver=None). Callers request materialization via transport-specific headers/metadata, translated to the shared _Plan.materialize IR directive by provisa.executor.redirect.delivery_from_request(...).
+  use_case: Protocol-native side-channels preserve result data in response bodies while surfacing redirect handles separately, enabling async materialization for buffered transports while streaming transports skip materialization.
+  code:
+    - provisa/executor/redirect.py
+  target: "2026-Q3"
+  scenario: |
+    Given a JSON:API caller sends X-Provisa-Redirect / X-Provisa-Redirect-Format / X-Provisa-Redirect-Threshold headers
+    When the engine materializes the result
+    Then the handle is surfaced in document top-level meta.redirect with data: null
+    Given a Bolt caller sends RUN transaction metadata (provisa_redirect / provisa_redirect_format / provisa_redirect_threshold)
+    When the engine materializes the result
+    Then the handle is surfaced in trailing PULL SUCCESS metadata redirect key, with zero records streamed
+    Given a streaming transport (pgwire, Flight SQL, airport) attempts materialization
+    When delivery_from_request is called
+    Then deliver=None silently opts out
+- id: REQ-1205
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Multi-Protocol Exposure (GCP)
+  priority: MUST
+  type: infrastructure
+  description: GCP VM cloud deployment exposes each Provisa wire protocol through its own GCP External TCP passthrough NetLB (static IP + regional TCP backend service + HTTP-or-TCP health check + forwarding rule + instance-group named_port), driven data-driven from a single local.protocols map in terraform/gcp. Adding a protocol requires one row in the map.
+  use_case: Data-driven protocol exposure allows adding new wire protocols to GCP deployments with a single config entry, avoiding per-protocol boilerplate NetLB resource duplication.
+  code:
+    - terraform/gcp
+  since: "2026-07"
+  scenario: |
+    Given a configured protocol entry in local.protocols (pgwire, bolt, mcp, grpc)
+    When terraform apply is run
+    Then a dedicated External TCP NetLB is created with static IP and named instance group port
+    And the NetLB exposes the protocol on its fixed client-expected port
+- id: REQ-1206
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Multi-Protocol Exposure (GCP)
+  priority: MUST
+  type: structural
+  description: Terraform GCP interview booleans enable_pgwire, enable_bolt, enable_mcp, enable_grpc (all default true) and mcp_role (default admin) control which optional wire-protocol listeners are started on the instance. API (port 8000, HTTP /health probe), Arrow Flight (port 8815), and Web UI (port 3000) are always exposed; pgwire (5439), Bolt (7687), MCP (8009), and gRPC (50051) are opt-in via interview flags.
+  use_case: Boolean interview flags give operators fine-grained control over which protocols are exposed on a deployed instance without modifying terraform code.
+  code:
+    - terraform/gcp
+  since: "2026-07"
+  scenario: |
+    Given enable_pgwire=false in terraform interview
+    When the instance starts
+    Then the pgwire listener is not started
+    And no NetLB forwards to pgwire port 5439
+    Given enable_pgwire=true (default) in terraform interview
+    When the instance starts
+    Then the pgwire listener is started on port 5439
+    And a NetLB forwards traffic to port 5439
+- id: REQ-1207
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Multi-Protocol Exposure (GCP)
+  priority: MUST
+  type: infrastructure
+  description: Terraform base_startup script exports enabled wire-protocol listener environment variables to the instance (PROVISA_PGWIRE_PORT, PROVISA_BOLT_PORT, PROVISA_MCP_PORT, PROVISA_MCP_HOST, PROVISA_MCP_ROLE, GRPC_PORT) based on which protocols are enabled via interview booleans.
+  use_case: Exporting protocol configuration as environment variables allows first-launch.sh and the application to discover which protocols are enabled at startup time.
+  code:
+    - terraform/gcp
+  since: "2026-07"
+  scenario: |
+    Given enable_pgwire=true and enable_bolt=false in terraform interview
+    When terraform base_startup runs
+    Then PROVISA_PGWIRE_PORT=5439 is exported
+    And PROVISA_BOLT_PORT is not set or empty
+- id: REQ-1208
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Multi-Protocol Exposure (GCP)
+  priority: MUST
+  type: infrastructure
+  description: first-launch.sh persists enabled wire-protocol listener environment variables into the systemd EnvironmentFile (~/.provisa/systemd/provisa.env) and generates an extension compose overlay (~/.provisa/extensions/protocols/docker-compose.protocols.yml) that publishes each enabled container port 1:1 to the host and sets the listener environment variables for each enabled protocol.
+  use_case: Persisting protocol configuration into systemd EnvironmentFile and generating a protocol-specific compose overlay ensures that enabled protocols remain configured across service restarts and are isolated from the base application compose file.
+  code:
+    - packaging/linux/first-launch.sh
+  since: "2026-07"
+  scenario: |
+    Given PROVISA_PGWIRE_PORT=5439 and PROVISA_BOLT_PORT unset from terraform base_startup
+    When first-launch.sh runs
+    Then PROVISA_PGWIRE_PORT=5439 is appended to ~/.provisa/systemd/provisa.env
+    And ~/.provisa/extensions/protocols/docker-compose.protocols.yml is generated
+    And the overlay includes port 5439:5439 mapping for pgwire
+    And the overlay does not include a port mapping for Bolt
+- id: REQ-1209
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Multi-Protocol Exposure (GCP)
+  priority: MUST
+  type: infrastructure
+  description: scripts/provisa auto-includes every ~/.provisa/extensions/*/docker-compose.*.yml file during `provisa start`, so protocol overlays generated by first-launch.sh are automatically composed with the base stack without requiring manual docker-compose -f inclusion.
+  use_case: Auto-inclusion allows the extension mechanism to work transparently; operators do not need to manually add compose files to the start command.
+  code:
+    - scripts/provisa
+  since: "2026-07"
+  scenario: |
+    Given ~/.provisa/extensions/protocols/docker-compose.protocols.yml exists and defines port 5439:5439 for pgwire
+    When `provisa start` is invoked
+    Then the protocols overlay is automatically included
+    And the pgwire container port 5439 is published to the host as 5439
+- id: REQ-1210
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Multi-Protocol Exposure (GCP)
+  priority: SHOULD
+  type: constraint
+  description: gRPC wire protocol listener only serves once a proto schema has been registered (state.proto_files populated). On a demo or fresh cluster with no registered protos, the gRPC NetLB backend remains unhealthy per its health check. This is expected behavior; the NetLB does not recover until a proto is registered.
+  use_case: Gating gRPC service availability on proto registration ensures the protocol cannot serve partial or incomplete schema state; failure to register a proto keeps the protocol unhealthy as designed, signaling to operators that configuration is needed.
+  code:
+    - provisa/grpc
+    - terraform/gcp
+  since: "2026-07"
+  scenario: |
+    Given a GCP instance with enable_grpc=true (default) and no registered protos
+    When the instance starts and the gRPC listener begins accepting health check probes
+    Then the listener responds unhealthy (probe fails) until a proto is registered
+    Given a proto schema is registered via the registry API
+    When subsequent health check probes are sent
+    Then the listener responds healthy
+- id: REQ-1211
+  status: accepted
+  group: "8. Deployment & Infrastructure"
+  category: Linux AppImage Deployment
+  priority: MUST
+  type: constraint
+  description: >-
+    Linux AppImage deployments must stage the docker-compose tree out of the AppImage's self-mount into a persistent, writable location (${PROVISA_HOME}/compose) during first-launch and record project_dir there, as the AppImage mount (/tmp/.mount_Provis*) is read-only and ephemeral.
+  use_case: >-
+    The AppImage mount is read-only, blocking Trino plugin extraction and other write operations; it is also ephemeral and vanishes when the AppImage process exits, causing the systemd `provisa start` daemon to lose its compose files on restart.
+  target: "2026-Q3"
+  scenario: |
+    Given a Linux AppImage deployment is launched for the first time
+    When first-launch.sh executes
+    Then the docker-compose tree is staged from the AppImage mount to ${PROVISA_HOME}/compose
+    And project_dir is recorded in configuration
+    And subsequent `provisa start` invocations find the compose files in the persistent location
+    And plugin extraction succeeds on persistent writable storage
+- id: REQ-1212
+  status: accepted
+  group: "8. Deployment & Infrastructure"
+  category: Docker Image Build
+  priority: MUST
+  type: constraint
+  description: >-
+    The provisa/provisa:local core Docker image must have the built React SPA present in static/ at image-build time; CI core-image jobs must run the vite build into static/ before `docker build`.
+  use_case: >-
+    Without the UI bundle in the image, the provisa-ui container serves HTTP 503 "UI not bundled", making Provisa inaccessible via the web interface.
+  target: "2026-Q3"
+  scenario: |
+    Given a CI core-image job is triggered
+    When the job builds the Docker image
+    Then it first runs `npm run build` in provisa-ui to generate static/
+    And the docker build command includes the populated static/ directory
+    When the provisa-ui container is deployed and starts
+    Then the React SPA is available and HTTP 200 is served on the web interface port
+    And the UI is not unavailable with HTTP 503
+- id: REQ-1213
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: VM Cloud Deployment
+  priority: MUST
+  type: infrastructure
+  description: GCP VM startup-script writes /etc/apt/apt.conf.d/99provisa-resilient before the first apt-get update, setting Acquire::http::Timeout=30, Acquire::https::Timeout=30, Acquire::Retries=3, Acquire::http::Pipeline-Depth=0 to prevent indefinite CLOSE-WAIT hangs when Canonical mirrors half-close sockets mid-response.
+  use_case: apt's default HTTP pipelining wedges forever (no timeout) on half-closed mirror sockets; under set -euo pipefail, hung apt-get update never errors and blocks the entire node boot indefinitely. Configuring timeouts and disabling pipelining makes apt deterministic on first-launch.
+  code:
+    - terraform/gcp/main.tf
+  since: "2026-07"
+  scenario: |
+    Given a GCP VM instance is created with Provisa terraform/gcp configuration
+    When the base_startup script executes before the first apt-get update
+    Then /etc/apt/apt.conf.d/99provisa-resilient is written with Acquire::http::Timeout=30, Acquire::https::Timeout=30, Acquire::Retries=3, Acquire::http::Pipeline-Depth=0
+    And subsequent apt-get update commands respect the timeout and retry settings
+    And the node boot completes deterministically without indefinite CLOSE-WAIT hangs

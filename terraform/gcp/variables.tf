@@ -148,6 +148,43 @@ variable "labels" {
   default     = {}
 }
 
+# ── Protocol surfaces (each gates a firewall rule + NetLB + container listener) ──
+# API (8000), Arrow Flight (8815), and the UI (3000) are always exposed. The
+# following are opt-in wire protocols Provisa can serve over the same federated
+# catalog; enabling one publishes its port on the provisa container, opens the
+# firewall, and adds a passthrough NetLB forwarding rule. Ports are fixed to each
+# protocol's client-expected default (psql 5439, Neo4j Bolt 7687, MCP 8009,
+# gRPC 50051). Default on for a fully exercisable test cluster.
+variable "enable_pgwire" {
+  description = "Expose the Postgres wire protocol (port 5439) — DBeaver/psql over the federated catalog."
+  type        = bool
+  default     = true
+}
+
+variable "enable_bolt" {
+  description = "Expose the Neo4j Bolt protocol (port 7687) — Neo4j Browser/Bloom, Cypher over the graph."
+  type        = bool
+  default     = true
+}
+
+variable "enable_mcp" {
+  description = "Expose the MCP server (port 8009, REQ-1008) for agent/tool access."
+  type        = bool
+  default     = true
+}
+
+variable "enable_grpc" {
+  description = "Expose the gRPC API (port 50051). Only serves once a proto schema is registered."
+  type        = bool
+  default     = true
+}
+
+variable "mcp_role" {
+  description = "Role the MCP server runs queries as when enable_mcp=true."
+  type        = string
+  default     = "admin"
+}
+
 # ── Deployment choices (parity with the desktop installer wizard, REQ-972..979) ─
 variable "federation_engine" {
   description = "Federation engine PROVISA_ENGINE: 'trino' (bundled cluster, default), 'duckdb', or 'sqlalchemy' (external engine — set engine_url)."

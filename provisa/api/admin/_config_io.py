@@ -28,7 +28,10 @@ def config_path() -> Path:
 
 
 def write_config(path: Path, cfg: dict) -> None:  # REQ-164
-    backup = path.with_suffix(".yaml.bak")
-    backup.write_text(path.read_text())
+    # First-run setup creates the config for the first time — there is nothing to
+    # back up and the config dir may not exist yet. Only snapshot an existing file.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        path.with_suffix(".yaml.bak").write_text(path.read_text())
     with open(path, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
