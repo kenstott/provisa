@@ -190,9 +190,12 @@ esac
 if [[ "$_run_warehouse" == "1" ]]; then
   echo "== lane: warehouse (cloud DW creds from .env) =="
   # Own process so the warehouse creds live ONLY here — every cloud-DW e2e is skipif-gated on its
-  # provider env, so it skips cleanly when a cred is absent. Snowflake/ClickHouse have no creds in
-  # .env and skip; Databricks needs DATABRICKS_TLS_CA_FILE (a CA bundle incl. the corporate proxy
-  # root) to clear TLS interception; Synapse is skipped unless SYNAPSE_* is set.
+  # provider env, so it skips cleanly when a cred is absent. With the current .env: Snowflake,
+  # Databricks (source), BigQuery, Fabric identity, and SharePoint creds ARE present and RUN;
+  # Databricks bulk/external-link + Fabric + Synapse paths skip without R2/ADLS staging creds
+  # (or SYNAPSE_*); ClickHouse skips without CLICKHOUSE_HOST. Cloud-DW e2es hit live SaaS
+  # endpoints, so an occasional TLS reset / Graph-auth error is external transience, not a code
+  # defect — re-run the single lane to confirm.
   ( _load_warehouse_creds
     COVERAGE_FILE=.coverage.warehouse pytest \
       tests/integration/test_snowflake_source_e2e.py \
