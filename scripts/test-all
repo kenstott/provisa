@@ -76,12 +76,19 @@ _load_llm_creds() {
   set +a
 }
 
-COV_ARGS=(--cov=provisa --cov-report= -p no:cacheprovider)
+COV_ARGS=(--cov=provisa --cov-report= -p no:cacheprovider -ra)
 rm -f .coverage .coverage.*
 
 # A lane's test failures must NOT abort the script (set -e) — every lane still needs to
 # run and the final `coverage combine` must always execute. Each pytest records its
 # non-zero exit into `rc`; the script exits non-zero at the end if any lane failed.
+#
+# `-ra` makes every lane print a reason for every skip/xfail at the end of its run. A skip
+# is a defect, never a pass (docs/arch requirements + team rule): without the reason in the
+# log, each rerun re-discovers "why did N tests skip?" from scratch and guesses. -ra turns
+# the run log itself into the permanent, greppable record of exactly which tests skipped and
+# why — so a skip can be driven to zero from evidence, not re-theorized. Placed in COV_ARGS
+# so ALL lanes inherit it (do not add per-lane).
 rc=0
 
 # pytest-cov auto-combines each run's parallel data into its COVERAGE_FILE at session

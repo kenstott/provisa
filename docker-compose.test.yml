@@ -185,6 +185,34 @@ services:
       retries: 30
       start_period: 90s
 
+  # Direct driver source (REQ-986): the test process reaches ClickHouse over clickhouse-connect HTTP
+  # at localhost:${CLICKHOUSE_PORT}, the same client family the ClickHouse federation engine uses.
+  # No Trino catalog involved, so the host-published port is the actual data path (not just seeding).
+  clickhouse:
+    restart: unless-stopped
+    image: clickhouse/clickhouse-server:24.3
+    ports:
+      - "${CLICKHOUSE_PORT:-8123}:8123"
+    # The stock image ships default-user.xml restricting `default` to 127.0.0.1/::1, so a
+    # host-published connection (arriving via the docker gateway, a non-loopback IP) is rejected
+    # with AUTHENTICATION_FAILED. Providing CLICKHOUSE_USER/PASSWORD makes the entrypoint rewrite
+    # the default user to allow any network (<ip>::/0</ip>) with this password — conftest exports
+    # the matching CLICKHOUSE_PASSWORD so the test client authenticates.
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: provisa
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
   # Reached via the DuckDB firebird COMMUNITY EXTENSION (REQ-899), not a Trino connector and not a
   # direct driver — DuckDBFirebirdConnector ATTACHes it in place from an in-process DuckDB connection.
   # ${FIREBIRD_PORT} is host-published for both the in-process DuckDB ATTACH and seeding via

@@ -121,6 +121,7 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_oracle": ["oracle"],
     "requires_singlestore": ["singlestore"],
     "requires_cassandra": ["cassandra"],
+    "requires_clickhouse": ["clickhouse"],
     "requires_firebird": ["firebird"],
     "requires_exasol": ["exasol"],
     "requires_splunk": ["splunk"],
@@ -161,6 +162,7 @@ _HEAVY_MARKERS = frozenset(
         "requires_tidb",
         "requires_mariadb",
         "requires_cassandra",
+        "requires_clickhouse",
         "requires_firebird",
         "requires_singlestore",
         "requires_exasol",
@@ -198,6 +200,7 @@ _ITEST_PORT_ENV = [
     "ORACLE_PORT",
     "SINGLESTORE_PORT",
     "CASSANDRA_PORT",
+    "CLICKHOUSE_PORT",
     "FIREBIRD_PORT",
     "EXASOL_PORT",
     "SPLUNK_MGMT_PORT",
@@ -244,6 +247,12 @@ def _allocate_itest_ports() -> None:
     os.environ.setdefault("PG_USER", "provisa")
     os.environ.setdefault("PG_PASSWORD", "provisa")
     os.environ.setdefault("PG_DATABASE", "provisa")
+    # ClickHouse is a direct-driver source: the test client reads it over HTTP at
+    # localhost:${CLICKHOUSE_PORT}. Export the host + the credential the compose service is
+    # configured with (docker-compose.test.yml sets default/provisa so the default user is
+    # reachable off-loopback) so the requires_clickhouse e2e runs instead of skipping.
+    os.environ.setdefault("CLICKHOUSE_HOST", "localhost")
+    os.environ.setdefault("CLICKHOUSE_PASSWORD", "provisa")
     os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
     _minio = f"localhost:{os.environ['MINIO_PORT']}"
     os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://{_minio}"

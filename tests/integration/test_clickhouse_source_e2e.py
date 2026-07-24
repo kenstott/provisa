@@ -8,9 +8,10 @@
 
 Registers ClickHouse through the REAL pool path (``SourcePool.add`` → registry ``create_driver`` →
 ``configure`` → ``connect`` over clickhouse-connect HTTP → ``execute``) and reads a live table — the
-same client family the ClickHouse federation engine uses. Requires a reachable ClickHouse server
-(CLICKHOUSE_HOST[/PORT/USER/PASSWORD]); skipped otherwise (CI-safe). ClickHouse-native Arrow reads for
-the embedded (chdb) engine are covered in tests/unit/test_native_arrow_transport.py.
+same client family the ClickHouse federation engine uses. The ``requires_clickhouse`` marker makes
+``tests/conftest.py`` provision a ClickHouse server (docker-compose.test.yml) per-test and export
+CLICKHOUSE_HOST/PORT, so this runs on every isolated run — no external creds. ClickHouse-native
+Arrow reads for the embedded (chdb) engine are covered in tests/unit/test_native_arrow_transport.py.
 """
 
 from __future__ import annotations
@@ -19,14 +20,11 @@ import os
 
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_clickhouse]
 
 pytest.importorskip("clickhouse_connect", reason="clickhouse-connect required")
 
 _HOST = os.environ.get("CLICKHOUSE_HOST")
-pytestmark.append(
-    pytest.mark.skipif(not _HOST, reason="ClickHouse server not set (CLICKHOUSE_HOST)")
-)
 
 from provisa.executor.pool import SourcePool  # noqa: E402
 
