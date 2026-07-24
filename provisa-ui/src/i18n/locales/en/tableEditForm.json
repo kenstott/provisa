@@ -177,6 +177,8 @@
     "freshnessProbePlaceholder": "SELECT MAX(id) FROM …",
     "columnHeader": "Column",
     "pkHeader": "PK",
+    "dataTypeHeader": "Data Type",
+    "dataTypePlaceholder": "unknown — set type",
     "sqlAliasHeader": "SQL Alias",
     "descriptionHeader": "Description",
     "visibleToHeader": "Visible To (Read)",

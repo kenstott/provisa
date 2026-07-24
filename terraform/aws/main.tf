@@ -161,9 +161,12 @@ resource "aws_iam_role_policy" "s3_appimage" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["s3:GetObject"]
-      Resource = "arn:aws:s3:::${var.appimage_s3_bucket}/${var.appimage_s3_key}"
+      Effect = "Allow"
+      Action = ["s3:GetObject"]
+      Resource = [
+        "arn:aws:s3:::${var.appimage_s3_bucket}/${var.appimage_s3_key}",
+        "arn:aws:s3:::${var.appimage_s3_bucket}/${local.images_key}",
+      ]
     }]
   })
 }
@@ -192,13 +195,23 @@ locals {
 
   appimage_url = "s3://${var.appimage_s3_bucket}/${var.appimage_s3_key}"
 
+  # Core-images zip lives in the same S3 directory as the AppImage. dirname of a
+  # bare key (no slash) is ".", so keep appimage_s3_key prefixed (default: releases/).
+  images_zip = "provisa-core-images-amd64-${var.provisa_version}.zip"
+  images_key = "${dirname(var.appimage_s3_key)}/${local.images_zip}"
+
   base_user_data = <<-SHELL
     #!/bin/bash
     set -euo pipefail
     apt-get update -qq
-    apt-get install -y -qq awscli fuse
+    apt-get install -y -qq awscli fuse unzip
     aws s3 cp ${local.appimage_url} /opt/Provisa.AppImage
     chmod +x /opt/Provisa.AppImage
+    # Stage the amd64 core-images zip beside the AppImage. first-launch searches cwd
+    # for provisa-core-images-amd64-$PROVISA_VERSION.zip and docker-loads it locally
+    # (airgap path), so we cd /opt before launching below.
+    aws s3 cp s3://${var.appimage_s3_bucket}/${local.images_key} /opt/${local.images_zip}
+    export PROVISA_VERSION="${var.provisa_version}"
     # Deployment choices (parity with the desktop wizard, REQ-972..979). The Linux
     # first-launch reads these env vars in --non-interactive mode.
     export PROVISA_ENGINE="${var.federation_engine}"
@@ -207,6 +220,7 @@ locals {
     export PROVISA_OBS_MODE="${var.obs_mode}"
     export PROVISA_OTLP_ENDPOINT="${var.otlp_endpoint}"
     export PROVISA_INSTALL_DEMO="${var.install_demo ? "y" : "n"}"
+    cd /opt
   SHELL
 
   ssh_key_args = var.key_pair != "" ? "key_name = \"${var.key_pair}\"" : ""

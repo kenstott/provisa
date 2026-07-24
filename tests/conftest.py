@@ -471,14 +471,20 @@ def _wait_for_trino(request):  # pyright: ignore
 
     A pure ``tests/unit`` session touches no external service, so the wait is
     skipped when every collected item lives under tests/unit — otherwise a unit
-    run with no Trino would block 6 minutes and then error at setup. Any item
-    outside tests/unit (integration/features/e2e) keeps the wait engaged.
+    run with no Trino would block 6 minutes and then error at setup. The
+    ``tests/mvmvp`` suite self-provisions its own isolated Postgres stack (via
+    docker-compose.mvmvp.yml) and never touches the shared Trino, so it is
+    exempt on the same basis. Any item outside those roots
+    (integration/features/e2e against the shared stack) keeps the wait engaged.
     """
     if os.environ.get("PROVISA_SKIP_TRINO_WAIT"):
         return
-    unit_root = os.path.join(os.path.dirname(__file__), "unit") + os.sep
+    here = os.path.dirname(__file__)
+    self_provisioned = tuple(
+        os.path.join(here, sub) + os.sep for sub in ("unit", "mvmvp")
+    )
     if request.session.items and all(
-        str(item.path).startswith(unit_root) for item in request.session.items
+        str(item.path).startswith(self_provisioned) for item in request.session.items
     ):
         return
     host = os.environ.get("TRINO_HOST", "localhost")

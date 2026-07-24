@@ -56,7 +56,6 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     domain_id   TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
     schema_name TEXT NOT NULL,
     table_name  TEXT NOT NULL,
-    governance  TEXT NOT NULL DEFAULT 'pre-approved',
     alias       TEXT,
     description TEXT,
     cache_ttl   INTEGER,
@@ -74,7 +73,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
     mv_bitemporal_mode TEXT,  -- REQ-1162: NULL | 'snapshot' | 'delta' (append-only time travel)
-    mv_bitemporal_key JSONB,  -- REQ-1162: business key columns (required for delta)
+    mv_bitemporal_key JSONB,  -- REQ-1162: entity key columns (required for delta)
     mv_persist TEXT NOT NULL DEFAULT 'replace',  -- REQ-965: replace | append | upsert
     mv_primary_key JSONB,  -- REQ-970: row identity (required for upsert / incremental)
     mv_incremental BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-969: incremental maintenance
@@ -166,8 +165,6 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_aggregates BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_group_by BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS live JSONB;
-    ALTER TABLE registered_tables DROP CONSTRAINT IF EXISTS registered_tables_governance_check;
-    ALTER TABLE registered_tables ALTER COLUMN governance SET DEFAULT 'pre-approved';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -258,7 +255,7 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     join_pattern    JSONB,          -- {left_table, left_column, right_table, right_column, join_type}
     custom_sql      TEXT,           -- custom SELECT for the MV
     expose_in_sdl   BOOLEAN NOT NULL DEFAULT FALSE,
-    sdl_config      JSONB,          -- {domain_id, governance, columns}
+    sdl_config      JSONB,          -- {domain_id, columns}
     status          TEXT NOT NULL DEFAULT 'stale'
                     CHECK (status IN ('fresh', 'stale', 'refreshing', 'disabled')),
     last_refresh_at TIMESTAMPTZ,

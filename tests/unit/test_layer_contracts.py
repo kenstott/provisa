@@ -150,7 +150,6 @@ def _build_minimal_ctx():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},

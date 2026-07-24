@@ -64,7 +64,6 @@ def _tbl(i: int, sid: str, tname: str, cols: list[str]) -> dict:
         "domain_id": "sales",
         "schema_name": "main",
         "table_name": tname,
-        "governance": "pre-approved",
         "columns": [{"column_name": c, "visible_to": ["admin"]} for c in cols],
     }
 

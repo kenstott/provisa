@@ -124,7 +124,9 @@ export const TOUR_STEPS: TourStep[] = [
       "<li><strong>Streaming</strong> — Kafka</li>" +
       "<li><strong>Enterprise SaaS</strong> — SharePoint, Splunk · plus government data subscriptions</li>" +
       "</ul>" +
-      "Pick one, fill the connection, Save.",
+      "Pick one, fill the connection, Save. " +
+      "The list isn't fixed — the native federation engines are <strong>extensible</strong>: declare a " +
+      "custom Postgres FDW or DuckDB extension in config and Provisa reaches a new source type, no code.",
     clickBefore: SOURCES_ADD,
     clickAfterNext: SOURCES_ADD,
   },

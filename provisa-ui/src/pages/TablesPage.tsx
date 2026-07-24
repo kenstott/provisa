@@ -370,6 +370,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           maskPrecision: c.maskPrecision || undefined,
           alias: c.alias || undefined,
           description: c.description || undefined,
+          dataType: c.dataType || undefined, // REQ-846: steward type override (metadata only)
           nativeFilterType: c.nativeFilterType || undefined,
           isPrimaryKey: c.isPrimaryKey || undefined,
           isForeignKey: c.isForeignKey || undefined,

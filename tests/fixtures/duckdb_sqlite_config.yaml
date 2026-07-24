@@ -34,7 +34,6 @@ tables:
     table: inquiries
     schema: default
     domain_id: shelter
-    governance: pre-approved
     columns:
       - name: pet_id
         data_type: integer

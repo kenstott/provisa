@@ -38,7 +38,6 @@ def _build(extra_tables=None):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
@@ -52,7 +51,6 @@ def _build(extra_tables=None):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},

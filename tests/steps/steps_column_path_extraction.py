@@ -66,7 +66,6 @@ def _make_path_schema_input() -> SchemaInput:
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "events",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {
@@ -110,7 +109,6 @@ def _make_routed_schema_input(source_id: str, source_type: str, table_name: str)
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": table_name,
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {

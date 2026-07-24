@@ -169,7 +169,6 @@ _PGW_TABLES = [
         "domain_id": _PGW_SCHEMA,
         "schema_name": _PGW_SCHEMA,
         "table_name": _PGW_TABLE,
-        "governance": "pre-approved",
         "columns": [
             {"column_name": "id", "visible_to": []},
             {"column_name": "amount", "visible_to": []},

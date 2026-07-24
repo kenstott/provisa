@@ -79,6 +79,33 @@ variable "gcs_object" {
   default     = "releases/Provisa.AppImage"
 }
 
+variable "provisa_version" {
+  description = <<-EOT
+    Provisa release version (e.g. v0.1.0-alpha.271). Must match the AppImage build.
+    The node stages the matching core-images zip (provisa-core-images-amd64-<version>.zip)
+    from the same GCS directory as gcs_object, and exports PROVISA_VERSION so first-launch
+    finds it locally (airgap path) instead of downloading from the GitHub release.
+  EOT
+  type        = string
+}
+
+variable "github_repo" {
+  description = "GitHub repo (owner/name) to pull release assets from when stage_from_github=true."
+  type        = string
+  default     = "kenstott/provisa"
+}
+
+variable "stage_from_github" {
+  description = <<-EOT
+    When true, Terraform downloads the AppImage + core-images zip for provisa_version
+    from the GitHub release and uploads them to gcs_bucket before the VMs boot.
+    Requires authenticated `gh` and `gcloud`/`gsutil` on the machine running Terraform.
+    Set false to manage the bucket objects yourself.
+  EOT
+  type        = bool
+  default     = true
+}
+
 variable "ssh_public_key" {
   description = "SSH public key for admin access (format: 'user:ssh-rsa ...'). Leave blank to disable SSH."
   type        = string
@@ -89,6 +116,30 @@ variable "admin_cidr" {
   description = "CIDR allowed SSH access. Leave blank to disable SSH."
   type        = string
   default     = ""
+}
+
+# ── Auth (parity with the desktop installer wizard, REQ-972..979) ──────────────
+variable "auth_provider" {
+  description = "Identity provider PROVISA_IDP: 'none' (unsecured), 'firebase', 'basic', 'keycloak', 'oauth', or 'oidc'."
+  type        = string
+  default     = "none"
+  validation {
+    condition     = contains(["none", "firebase", "basic", "keycloak", "oauth", "oidc"], var.auth_provider)
+    error_message = "auth_provider must be one of: none, firebase, basic, keycloak, oauth, oidc."
+  }
+}
+
+variable "firebase_project_id" {
+  description = "Firebase project ID when auth_provider=firebase."
+  type        = string
+  default     = ""
+}
+
+variable "firebase_service_account_key" {
+  description = "Firebase service-account JSON (or blank to use ADC on the node) when auth_provider=firebase."
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "labels" {

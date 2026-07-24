@@ -25,7 +25,7 @@ from provisa.mv.modeling import (
 
 
 def test_entity_requires_key():
-    with pytest.raises(ValueError, match="business key"):
+    with pytest.raises(ValueError, match="entity key"):
         Entity(name="Customer", source="raw.customers", key=())
 
 

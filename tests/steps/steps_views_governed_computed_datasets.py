@@ -107,7 +107,6 @@ def _dataset_def(kind: str) -> dict:
         "schema_name": "public",
         "table_name": "secured_dataset",
         "kind": kind,
-        "governance": "pre-approved",
         "columns": _COLUMNS,
     }
 

@@ -18,10 +18,12 @@ import pytest
 from provisa.core.models import Source, SourceType
 from provisa.federation.clickhouse_connectors import (
     ClickHouseCsvConnector,
+    ClickHouseHudiConnector,
     ClickHouseMongoConnector,
     ClickHouseMysqlConnector,
     ClickHouseParquetConnector,
     ClickHousePostgresConnector,
+    ClickHouseSqliteConnector,
 )
 from provisa.federation.connector_base import Mechanism
 from provisa.federation.engine import build_clickhouse_engine
@@ -79,6 +81,33 @@ def test_mysql_database_engine_ddl():
     ddl = d["attach_ddl"][0]
     assert "ENGINE = MySQL('my:3306', 'stock', 'u', 'p')" in ddl
     assert d["local_schema"] == "ch_inv"
+
+
+def test_sqlite_database_engine_ddl_from_path():  # REQ-1178
+    d = ClickHouseSqliteConnector().details(_src("app", SourceType.sqlite, path="/data/app.db"))
+    assert d["attach_ddl"] == [
+        'CREATE DATABASE IF NOT EXISTS "ch_app" ENGINE = SQLite(\'/data/app.db\')'
+    ]
+    assert d["local_schema"] == "ch_app"
+    assert ClickHouseSqliteConnector().mechanism is Mechanism.ATTACH_RW
+
+
+def test_sqlite_without_path_fails_loud():  # REQ-1178
+    with pytest.raises(ValueError, match="no path"):
+        ClickHouseSqliteConnector().details(_src("app", SourceType.sqlite))
+
+
+def test_hudi_lakehouse_engine_ddl_zero_copy():  # REQ-1178
+    d = ClickHouseHudiConnector().details(
+        _src("lake", SourceType.hudi, path="s3://bucket/hudi_tbl",
+             federation_hints={"aws_key": "AK", "aws_secret": "SK"})
+    )
+    assert d == {
+        "engine_clause": "Hudi('s3://bucket/hudi_tbl', 'AK', 'SK')",
+        "infer": True, "validate": True,
+    }
+    assert ClickHouseHudiConnector().mechanism is Mechanism.SCAN
+    assert ClickHouseHudiConnector().reads_in_place is True
 
 
 # ---- per-table TABLE engine (mongo needs columns; files infer) ---------------
@@ -144,7 +173,7 @@ def test_engine_reaches_the_five_source_types_and_is_clickhouse_native():
     eng = build_clickhouse_engine()
     assert eng.name == "clickhouse"
     assert eng.native_store == "clickhouse"
-    for t in ("postgresql", "mysql", "mongodb", "csv", "parquet"):
+    for t in ("postgresql", "mysql", "sqlite", "mongodb", "csv", "parquet", "hudi"):
         assert eng.reachable(t)
 
 

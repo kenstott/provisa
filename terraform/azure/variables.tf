@@ -80,6 +80,16 @@ variable "appimage_blob" {
   default     = "Provisa.AppImage"
 }
 
+variable "provisa_version" {
+  description = <<-EOT
+    Provisa release version (e.g. v0.1.0-alpha.271). Must match the AppImage build.
+    The node stages the matching core-images zip (provisa-core-images-amd64-<version>.zip)
+    from the same blob container as appimage_blob, and exports PROVISA_VERSION so first-launch
+    finds it locally (airgap path) instead of downloading from the GitHub release.
+  EOT
+  type        = string
+}
+
 variable "admin_username" {
   description = "Admin username for SSH access"
   type        = string

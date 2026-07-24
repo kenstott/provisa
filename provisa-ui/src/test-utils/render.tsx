@@ -13,28 +13,34 @@ import { render, type RenderOptions } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { I18nextProvider } from "react-i18next";
 import { MockedProvider } from "@apollo/client/testing/react";
+import type { MockedResponse } from "@apollo/client/testing";
 import { theme } from "../theme/theme";
 import i18n from "../i18n";
 
 // Wraps components in the same MantineProvider + i18n runtime the app uses so
 // component tests exercise real theming and translated strings (REQ-1016). The
-// empty MockedProvider satisfies Apollo hooks (e.g. the REQ-1143 refresh-policy
-// preview) that need a client in context; unmocked operations simply never resolve.
-function AllProviders({ children }: { children: ReactNode }) {
-  return (
-    <MockedProvider mocks={[]}>
-      <MantineProvider theme={theme} defaultColorScheme="dark">
-        <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
-      </MantineProvider>
-    </MockedProvider>
-  );
+// MockedProvider satisfies Apollo hooks (e.g. the REQ-1143 refresh-policy
+// preview) that need a client in context; unmocked operations simply never
+// resolve. Callers that assert on a hook's data pass `mocks` so the real hook
+// resolves through Apollo rather than needing a leak-prone module mock.
+function makeWrapper(mocks: readonly MockedResponse[]) {
+  return function AllProviders({ children }: { children: ReactNode }) {
+    return (
+      <MockedProvider mocks={mocks}>
+        <MantineProvider theme={theme} defaultColorScheme="dark">
+          <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
+        </MantineProvider>
+      </MockedProvider>
+    );
+  };
 }
 
 export function renderWithProviders(
   ui: ReactElement,
-  options?: Omit<RenderOptions, "wrapper">,
+  options?: Omit<RenderOptions, "wrapper"> & { mocks?: readonly MockedResponse[] },
 ) {
-  return render(ui, { wrapper: AllProviders, ...options });
+  const { mocks = [], ...renderOptions } = options ?? {};
+  return render(ui, { wrapper: makeWrapper(mocks), ...renderOptions });
 }
 
 export * from "@testing-library/react";

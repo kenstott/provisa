@@ -63,7 +63,6 @@ def _si() -> SchemaInput:
         "domain_id": "sales",
         "schema_name": "main",
         "table_name": "customers",
-        "governance": "pre-approved",
         "columns": [
             {"column_name": c, "visible_to": ["admin"]} for c in ("id", "first_name", "state")
         ],
@@ -74,7 +73,6 @@ def _si() -> SchemaInput:
         "domain_id": "sales",
         "schema_name": "main",
         "table_name": "orders_api",
-        "governance": "pre-approved",
         "columns": [
             {"column_name": c, "visible_to": ["admin"]} for c in ("id", "customer_id", "amount")
         ],

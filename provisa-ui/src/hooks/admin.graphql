@@ -19,6 +19,7 @@ fragment ColumnFields on TableColumnType {
   alias
   computedSqlAlias
   description
+  dataType
   nativeFilterType
   isPrimaryKey
   isForeignKey

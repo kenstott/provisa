@@ -48,7 +48,6 @@ def _registered_table(shared_data):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "enable_aggregates": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -187,7 +186,6 @@ def _role_without_aggregations(shared_data):
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             # Table-level aggregates auto-detection is enabled; gating must be per-role.
             "enable_aggregates": True,
             "columns": [

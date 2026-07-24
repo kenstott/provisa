@@ -268,7 +268,7 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
 ) -> dict[str, GraphQLField]:
     """Build Subscription root fields.
 
-    Includes pre-approved tables that have a watermark column set (polling-based)
+    Includes registered tables that have a watermark column set (polling-based)
     or whose source supports native CDC (postgresql, mongodb, kafka, debezium).
     Tables in `tables` are already filtered by role visibility.
 

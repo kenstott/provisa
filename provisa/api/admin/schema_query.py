@@ -487,88 +487,7 @@ class Query:  # REQ-021, REQ-042
 
         For OpenAPI sources: derives columns from the operation's response schema + params.
         """
-        from provisa.api.app import state
-
-        source_type = state.source_types.get(source_id, "")
-        if source_type == "govdata":
-            return await _govdata_columns(source_id, schema_name, table_name, None)
-        if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
-            from provisa.openapi.mapper import parse_spec
-            from provisa.openapi.register import _schema_to_columns
-
-            spec = state.openapi_specs[source_id]["spec"]
-            queries, _ = parse_spec(spec)
-            q = next((q for q in queries if q.operation_id == table_name), None)
-            if q is None:
-                return []
-            cols = _schema_to_columns(q.response_schema)
-            if (
-                not cols
-                and not q.path_params
-                and (q.response_schema or {}).get("additionalProperties")
-            ):
-                cols = await _dynamic_openapi_columns(state.openapi_specs[source_id]["base_url"], q)
-            existing = {c["name"] for c in cols}
-            for p in q.path_params:
-                nf_name = f"_nf_{p['name']}"
-                if nf_name not in existing:
-                    cols.append(
-                        {
-                            "name": nf_name,
-                            "type": p.get("type", "string"),
-                            "native_filter_type": "path_param",
-                        }
-                    )
-            for p in q.query_params:
-                nf_name = f"_nf_{p['name']}"
-                if nf_name not in existing:
-                    cols.append(
-                        {
-                            "name": nf_name,
-                            "type": p.get("type", "string"),
-                            "native_filter_type": "query_param",
-                        }
-                    )
-            return [
-                AvailableColumnType(
-                    name=c["name"],
-                    data_type=c["type"],
-                    comment=c.get("description"),
-                    native_filter_type=c.get("native_filter_type"),
-                )
-                for c in cols
-            ]
-        catalog = source_to_catalog(source_id)
-        cols_meta: list[AvailableColumnType] = []
-        with discovery_fallback(
-            f"engine column metadata for {source_id!r}.{schema_name}.{table_name}"
-        ):
-            # PK columns + column metadata vithe engine terminal (information_schema).
-            pk_res = await state.federation_engine.execute_engine(
-                f"SELECT kcu.column_name "
-                f'FROM "{catalog}".information_schema.table_constraints tc '
-                f'JOIN "{catalog}".information_schema.key_column_usage kcu '
-                f"  ON tc.constraint_name = kcu.constraint_name "
-                f"  AND tc.table_schema = kcu.table_schema "
-                f"  AND tc.table_name = kcu.table_name "
-                f"WHERE tc.table_schema = '{schema_name}' AND tc.table_name = '{table_name}' "
-                f"  AND tc.constraint_type = 'PRIMARY KEY'"
-            )
-            pk_cols = {row[0] for row in pk_res.rows}
-            col_res = await state.federation_engine.execute_engine(
-                f"SELECT column_name, data_type, comment "
-                f'FROM "{catalog}".information_schema.columns '
-                f"WHERE table_schema = '{schema_name}' "
-                f"AND table_name = '{table_name}' "
-                f"ORDER BY ordinal_position"
-            )
-            cols_meta = [
-                AvailableColumnType(
-                    name=row[0], data_type=row[1], comment=row[2], is_primary_key=row[0] in pk_cols
-                )
-                for row in col_res.rows
-            ]
-        return cols_meta
+        return await resolve_available_columns_metadata(source_id, schema_name, table_name)
 
     @strawberry.field
     async def suggest_table_alias(self, table_name: str, domain_id: str, source_id: str) -> str:
@@ -914,3 +833,91 @@ class Query:  # REQ-021, REQ-042
         except Exception as e:
             logging.getLogger(__name__).exception("generateColumnDescription failed: %s", e)
             return ""
+
+
+async def resolve_available_columns_metadata(
+    source_id: str, schema_name: str, table_name: str
+) -> list[AvailableColumnType]:
+    """Introspect a source table's columns with their data types and comments.
+
+    Source-of-truth type resolution used both by the admin ``availableColumnsMetadata`` query and by
+    registration (``_build_columns_for_input``) to guarantee every persisted column carries a
+    non-null data_type. OpenAPI sources derive columns from the operation schema + params; relational
+    sources read the engine information_schema; govdata via its adapter.
+    """
+    from provisa.api.app import state
+
+    source_type = state.source_types.get(source_id, "")
+    if source_type == "govdata":
+        return await _govdata_columns(source_id, schema_name, table_name, None)
+    if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
+        from provisa.openapi.mapper import parse_spec
+        from provisa.openapi.register import _schema_to_columns
+
+        spec = state.openapi_specs[source_id]["spec"]
+        queries, _ = parse_spec(spec)
+        q = next((q for q in queries if q.operation_id == table_name), None)
+        if q is None:
+            return []
+        cols = _schema_to_columns(q.response_schema)
+        if not cols and not q.path_params and (q.response_schema or {}).get("additionalProperties"):
+            cols = await _dynamic_openapi_columns(state.openapi_specs[source_id]["base_url"], q)
+        existing = {c["name"] for c in cols}
+        for p in q.path_params:
+            nf_name = f"_nf_{p['name']}"
+            if nf_name not in existing:
+                cols.append(
+                    {
+                        "name": nf_name,
+                        "type": p.get("type", "string"),
+                        "native_filter_type": "path_param",
+                    }
+                )
+        for p in q.query_params:
+            nf_name = f"_nf_{p['name']}"
+            if nf_name not in existing:
+                cols.append(
+                    {
+                        "name": nf_name,
+                        "type": p.get("type", "string"),
+                        "native_filter_type": "query_param",
+                    }
+                )
+        return [
+            AvailableColumnType(
+                name=c["name"],
+                data_type=c["type"],
+                comment=c.get("description"),
+                native_filter_type=c.get("native_filter_type"),
+            )
+            for c in cols
+        ]
+    catalog = source_to_catalog(source_id)
+    cols_meta: list[AvailableColumnType] = []
+    with discovery_fallback(f"engine column metadata for {source_id!r}.{schema_name}.{table_name}"):
+        # PK columns + column metadata via the engine terminal (information_schema).
+        pk_res = await state.federation_engine.execute_engine(
+            f"SELECT kcu.column_name "
+            f'FROM "{catalog}".information_schema.table_constraints tc '
+            f'JOIN "{catalog}".information_schema.key_column_usage kcu '
+            f"  ON tc.constraint_name = kcu.constraint_name "
+            f"  AND tc.table_schema = kcu.table_schema "
+            f"  AND tc.table_name = kcu.table_name "
+            f"WHERE tc.table_schema = '{schema_name}' AND tc.table_name = '{table_name}' "
+            f"  AND tc.constraint_type = 'PRIMARY KEY'"
+        )
+        pk_cols = {row[0] for row in pk_res.rows}
+        col_res = await state.federation_engine.execute_engine(
+            f"SELECT column_name, data_type, comment "
+            f'FROM "{catalog}".information_schema.columns '
+            f"WHERE table_schema = '{schema_name}' "
+            f"AND table_name = '{table_name}' "
+            f"ORDER BY ordinal_position"
+        )
+        cols_meta = [
+            AvailableColumnType(
+                name=row[0], data_type=row[1], comment=row[2], is_primary_key=row[0] in pk_cols
+            )
+            for row in col_res.rows
+        ]
+    return cols_meta

@@ -13,26 +13,39 @@
 // instance-local (a per-instance copy that diverges across instances behind a load balancer).
 
 import { describe, it, expect, vi } from "vitest";
+import type { MockedResponse } from "@apollo/client/testing";
 import { render, screen } from "../../../test-utils/render";
 import { TableEditForm } from "../TableEditForm";
+import { MaterializeStoreInfo as MATERIALIZE_STORE_INFO_QUERY } from "../../../hooks/admin.graphql";
 import type { RegisteredTable } from "../../../types/admin";
 
-// Control useMaterializeStoreInfo directly via a hoisted holder (importOriginal keeps every other
-// hook real). This is leak-immune under vmThreads — a store-info mock leaking in from another test
-// file cannot flip this test's value, and this file's mock re-applies when it runs.
-const storeHolder = vi.hoisted(() => ({ info: null as unknown }));
-vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../hooks/useAdminQueries")>();
+// Drive useMaterializeStoreInfo through the REAL Apollo hook via a MockedProvider result rather than
+// mocking the hook module. A module mock (vi.mock) is not leak-immune under `pool: 'vmThreads'` +
+// `fileParallelism: false`: a sibling test file that renders TableEditForm loads MaterializedViewPanels
+// into the shared VM module cache with the real hook already bound, so this file's vi.mock cannot
+// re-bind it and the warning silently never renders. Feeding the query result exercises the real code
+// path end-to-end and is order-independent.
+function storeMock(instanceLocalStore: boolean | null): MockedResponse {
   return {
-    ...actual,
-    useMaterializeStoreInfo: () => ({
-      materializeStoreInfo: storeHolder.info,
-      loading: false,
-      error: undefined,
-      refetch: vi.fn(),
-    }),
+    request: { query: MATERIALIZE_STORE_INFO_QUERY },
+    result: {
+      data: {
+        materializeStoreInfo:
+          instanceLocalStore === null
+            ? null
+            : {
+                __typename: "MaterializeStoreInfo",
+                engineName: "duckdb",
+                storeRef: instanceLocalStore ? "duckdb:///x.duckdb" : "postgresql://h/db",
+                mvCount: 0,
+                instanceLocalStore,
+              },
+      },
+    },
+    // cache-and-network refetches; supply the value for every re-request in a render.
+    maxUsageCount: Number.POSITIVE_INFINITY,
   };
-});
+}
 
 function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   return {
@@ -109,45 +122,29 @@ function formEl(table: RegisteredTable) {
   );
 }
 
-function setStore(instanceLocalStore: boolean | null) {
-  storeHolder.info =
-    instanceLocalStore === null
-      ? null
-      : {
-          engineName: "duckdb",
-          storeRef: instanceLocalStore ? "duckdb:///x.duckdb" : "postgresql://h/db",
-          mvCount: 0,
-          instanceLocalStore,
-        };
-}
-
 describe("TableEditForm — MV store consistency (REQ-879)", () => {
   it("no longer renders a consistency selector", () => {
-    setStore(null);
-    render(formEl(makeTable()));
+    render(formEl(makeTable()), { mocks: [storeMock(null)] });
     expect(screen.queryByTestId("mv-consistency")).toBeNull();
   });
 
   it("shows no local-store warning when store info is unresolved", () => {
-    setStore(null);
-    render(formEl(makeTable()));
+    render(formEl(makeTable()), { mocks: [storeMock(null)] });
     expect(screen.queryByTestId("mv-local-store-warning")).toBeNull();
   });
 
-  it("warns when the resolved materialization store is instance-local", () => {
-    setStore(true);
-    render(formEl(makeTable()));
-    expect(screen.getByTestId("mv-local-store-warning")).toBeInTheDocument();
+  it("warns when the resolved materialization store is instance-local", async () => {
+    render(formEl(makeTable()), { mocks: [storeMock(true)] });
+    expect(await screen.findByTestId("mv-local-store-warning")).toBeInTheDocument();
   });
 
   it("does not warn when the resolved store is shared", () => {
-    setStore(false);
-    render(formEl(makeTable()));
+    render(formEl(makeTable()), { mocks: [storeMock(false)] });
     expect(screen.queryByTestId("mv-local-store-warning")).toBeNull();
   });
 
   it("hides MV controls entirely when the table is not materialized", () => {
-    render(formEl(makeTable({ materialize: false })));
+    render(formEl(makeTable({ materialize: false })), { mocks: [storeMock(null)] });
     expect(screen.queryByTestId("mv-persist")).toBeNull();
   });
 });

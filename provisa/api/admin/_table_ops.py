@@ -195,7 +195,54 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
         except Exception as e:
             return [], MutationResult(success=False, message=f"Schema discovery failed: {e}")
         discovered_models = _build_column_models(
-            [_ColInput(name=d["name"], visible_to=[]) for d in discovered]
+            [_ColInput(name=d["name"], data_type=d.get("type"), visible_to=[]) for d in discovered]
         )
         columns = merge_discovered_columns(columns, discovered_models)
+        _err = await _ensure_source_column_types(input, columns)
+        if _err is not None:
+            return [], _err
+    else:
+        # Plain (relational / API) registration: the caller may hand us columns with no data_type.
+        # Guarantee every persisted column carries a non-null type by introspecting the source; a
+        # column whose type still can't be resolved is a hard failure, never a null/fallback type.
+        _err = await _ensure_source_column_types(input, columns)
+        if _err is not None:
+            return [], _err
     return columns, None
+
+
+async def _ensure_source_column_types(input, columns) -> "MutationResult | None":
+    """Fill any missing column data_type from the source's introspected metadata (REQ-846).
+
+    Every registered column must carry a resolved, non-null type — the SQL catalog and the modeling
+    UI both depend on it. Types are resolved once here at registration and persist thereafter. A
+    column whose type cannot be resolved from the source is refused (loud failure), never defaulted.
+    """
+    from provisa.api.admin.types import MutationResult
+
+    missing = [c for c in columns if getattr(c, "data_type", None) in (None, "")]
+    if not missing:
+        return None
+    from provisa.api.admin.schema_query import resolve_available_columns_metadata
+
+    meta = await resolve_available_columns_metadata(
+        input.source_id, input.schema_name, input.table_name
+    )
+    type_by_name = {m.name: m.data_type for m in meta if m.data_type}
+    unresolved: list[str] = []
+    for c in missing:
+        resolved = type_by_name.get(c.name)
+        if resolved:
+            c.data_type = resolved
+        else:
+            unresolved.append(c.name)
+    if unresolved:
+        return MutationResult(
+            success=False,
+            message=(
+                "Cannot register: no data type could be resolved from the source for "
+                f"column(s): {', '.join(unresolved)}. Introspect the table (Discover schema) "
+                "or set a Data Type for each before registering."
+            ),
+        )
+    return None

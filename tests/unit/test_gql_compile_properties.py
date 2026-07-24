@@ -154,7 +154,6 @@ def _o2m_ctx() -> CompilationContext:
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "customers",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},
@@ -166,7 +165,6 @@ def _o2m_ctx() -> CompilationContext:
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": "orders",
-            "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
