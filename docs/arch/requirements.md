@@ -12599,3 +12599,29 @@ All protocol surfaces (API port 8000, UI port 3000, Arrow Flight 8815, pgwire 54
 **Code:** —
 
 **Tests:** —
+
+### REQ-1254 · Cloud Load Balancing {#REQ-1254}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+Web UI must be published on host port 443 across all cloud Terraform deployments (GCP, AWS, Azure). The UI container continues listening on port 3000 with TLS; docker-compose publishes ${UI_PORT}:3000 with UI_PORT set to 443 in cloud environments. first-launch.sh persists UI_PORT into the systemd EnvironmentFile so provisa start picks it up.
+
+**Use case:** The .dev gTLD is HSTS-preloaded in browsers, forcing http to https:443. Publishing the UI on port 443 allows cloud.provisa.dev and {org}.provisa.dev URLs to resolve without a port suffix, composing with the single shared passthrough LB ([REQ-1253](#REQ-1253)) which forwards all ports to the backend node preserving destination port.
+
+**Code:** `first-launch.sh`, `terraform/gcp/main.tf`, `terraform/aws/main.tf`, `terraform/azure/main.tf`, `docker-compose.yml`
+
+**Tests:** —
+
+## 3. Multi-tenancy & Organization
+
+### REQ-1255 · Org Membership {#REQ-1255}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+During self-service org creation ([REQ-1249](#REQ-1249)), a Firebase user is offered an opt-in checkbox or toggle to seed the newly created org with the pre-federated demo configuration, including demo sources (GraphQL, OpenAPI petstore) and sample data tables with pre-registered relationships and governance policies.
+
+**Use case:** Reduces time-to-value for new orgs by providing immediate hands-on federation examples without requiring manual source registration or data import. Users can explore Provisa's query composition, relationship discovery, and governance features against real federated sources in seconds.
+
+**Code:** `provisa/api/auth_router.py`, `provisa/api/admin/orgs_router.py`, `provisa/core/schema_admin.py`, `provisa/demo/`
+
+**Tests:** —

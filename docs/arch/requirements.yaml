@@ -35732,3 +35732,59 @@
     All protocol surfaces (API port 8000, UI port 3000, Arrow Flight 8815, pgwire 5439, Bolt 7687, MCP 8009, gRPC 50051) must be fronted by a single shared external passthrough load-balancer endpoint per cloud provider, not one LB per protocol. This is required by the subdomain-as-org model (REQ-1233): {org}.provisa.dev must resolve to one A record and reach every protocol by preserving the destination port to the backend node.
   use_case: >-
     Enables the subdomain-as-org identity model where a single DNS name and IP address serve all protocols. Cloud-specific realizations: GCP uses a backend-service passthrough NLB forwarding rule with all_ports=true on one static IP; AWS uses a single Network Load Balancer with one listener/target-group per protocol port sharing the NLB's endpoint; Azure uses a single Standard Load Balancer with one LB rule per protocol port on a single frontend public IP. Backend liveness is gated by the API HTTPS /health probe. Refs: REQ-1233, REQ-1239, REQ-1240, REQ-1227.
+- id: REQ-1254
+  status: complete
+  group: "8. Deployment & Infrastructure"
+  category: Cloud Load Balancing
+  priority: MUST
+  type: infrastructure
+  since: "2026-07"
+  description: >-
+    Web UI must be published on host port 443 across all cloud Terraform deployments (GCP, AWS, Azure). The UI container continues listening on port 3000 with TLS; docker-compose publishes ${UI_PORT}:3000 with UI_PORT set to 443 in cloud environments. first-launch.sh persists UI_PORT into the systemd EnvironmentFile so provisa start picks it up.
+  use_case: >-
+    The .dev gTLD is HSTS-preloaded in browsers, forcing http to https:443. Publishing the UI on port 443 allows cloud.provisa.dev and {org}.provisa.dev URLs to resolve without a port suffix, composing with the single shared passthrough LB (REQ-1253) which forwards all ports to the backend node preserving destination port.
+  code:
+    - first-launch.sh
+    - terraform/gcp/main.tf
+    - terraform/aws/main.tf
+    - terraform/azure/main.tf
+    - docker-compose.yml
+  scenario: |
+    Given a cloud deployment of Provisa on GCP/AWS/Azure
+    When cloud Terraform applies with UI_PORT=443 in the EnvironmentFile
+    Then the web UI is reachable at https://cloud.provisa.dev (port 443) or https://{org}.provisa.dev (port 443)
+    And the UI container continues listening on localhost:3000 with TLS
+    And no port suffix is required in the URL due to HSTS enforcement
+  related:
+    - REQ-1253
+    - REQ-1227
+- id: REQ-1255
+  status: proposed
+  group: "3. Multi-tenancy & Organization"
+  category: Org Membership
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    During self-service org creation (REQ-1249), a Firebase user is offered an opt-in checkbox or toggle
+    to seed the newly created org with the pre-federated demo configuration, including demo sources (GraphQL,
+    OpenAPI petstore) and sample data tables with pre-registered relationships and governance policies.
+  use_case: >-
+    Reduces time-to-value for new orgs by providing immediate hands-on federation examples without requiring
+    manual source registration or data import. Users can explore Provisa's query composition, relationship discovery,
+    and governance features against real federated sources in seconds.
+  code:
+    - provisa/api/auth_router.py
+    - provisa/api/admin/orgs_router.py
+    - provisa/core/schema_admin.py
+    - provisa/demo/
+  relates_to:
+    - REQ-1249
+    - REQ-960
+  scenario: |
+    Given a Firebase user without an org invite during signup
+    When they select "Create New Org" and see a checkbox "Seed with demo configuration"
+    Then org creation proceeds with an optional flag to invoke the demo seeding logic
+    And if checked, _seed_built_in_sources() and _seed_ops_pg() run scoped to the new org_id
+    And the new org is immediately populated with demo GraphQL/OpenAPI sources, sample tables, and governance rules
+    And the user is logged into the fully-seeded org
