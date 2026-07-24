@@ -612,7 +612,7 @@ class TestJSONAPIPaginationHTTP:
 
         # integration: mock-justified — pipeline execution is an external boundary;
         # real generator+serializer run against the stub rows below.
-        async def _fake_govern(sql, role_id, exec_params, state):
+        async def _fake_govern(sql, role_id, exec_params, state, deliver=None):
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -621,6 +621,7 @@ class TestJSONAPIPaginationHTTP:
 
         async def _fake_execute(plan, state):
             result = MagicMock()
+            result.redirect = None  # non-materialized: real QueryResult.redirect defaults None
             if getattr(plan, "_is_count", False):
                 result.rows = [[len(stub_rows)]]  # engine-side COUNT(*) → single scalar row
             else:
@@ -664,7 +665,7 @@ class TestJSONAPIPaginationHTTP:
             {"id": 2, "region": "EU", "amount": 20.0, "created_at": "2026-01-02"},
         ]
 
-        async def _fake_govern(sql, role_id, exec_params, state):
+        async def _fake_govern(sql, role_id, exec_params, state, deliver=None):
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -673,6 +674,7 @@ class TestJSONAPIPaginationHTTP:
 
         async def _fake_execute(plan, state):
             result = MagicMock()
+            result.redirect = None  # non-materialized: real QueryResult.redirect defaults None
             if getattr(plan, "_is_count", False):
                 result.rows = [[len(stub_rows)]]  # engine-side COUNT(*) → single scalar row
             else:
@@ -721,7 +723,7 @@ class TestJSONAPIPaginationHTTP:
         # REQ-257: response Content-Type is application/vnd.api+json
         stub_rows = [{"id": 1, "region": "US", "amount": 10.0, "created_at": "2026-01-01"}]
 
-        async def _fake_govern(sql, role_id, exec_params, state):
+        async def _fake_govern(sql, role_id, exec_params, state, deliver=None):
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -730,6 +732,7 @@ class TestJSONAPIPaginationHTTP:
 
         async def _fake_execute(plan, state):
             result = MagicMock()
+            result.redirect = None  # non-materialized: real QueryResult.redirect defaults None
             if getattr(plan, "_is_count", False):
                 result.rows = [[len(stub_rows)]]  # engine-side COUNT(*) → single scalar row
             else:
@@ -801,7 +804,7 @@ class TestJSONAPIPaginationHTTP:
             {"id": 2, "region": "EU", "amount": 20.0, "created_at": "2026-01-02"},
         ]
 
-        async def _fake_govern(sql, role_id, exec_params, state):
+        async def _fake_govern(sql, role_id, exec_params, state, deliver=None):
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -810,6 +813,7 @@ class TestJSONAPIPaginationHTTP:
 
         async def _fake_execute(plan, state):
             result = MagicMock()
+            result.redirect = None  # non-materialized: real QueryResult.redirect defaults None
             if getattr(plan, "_is_count", False):
                 result.rows = [[len(stub_rows)]]  # engine-side COUNT(*) → single scalar row
             else:
