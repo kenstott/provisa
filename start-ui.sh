@@ -202,6 +202,16 @@ if [ -f "$SCRIPT_DIR/pyproject.toml" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
   fi
 fi
 
+# The firebase provider needs the firebase-admin SDK (the [firebase] extra, not a
+# base dependency). Without it, _load_and_build → FirebaseAuthProvider raises
+# ImportError and the backend never boots. Install it on demand for the firebase lane.
+if [ "$IDP" = "firebase" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
+  if ! "$SCRIPT_DIR/.venv/bin/python" -c "import firebase_admin" 2>/dev/null; then
+    echo "Installing firebase-admin for the firebase IDP lane..."
+    "$SCRIPT_DIR/.venv/bin/pip" install -e "$SCRIPT_DIR[firebase]" -q
+  fi
+fi
+
 # Kill any stale processes on our ports
 lsof -i :8001 -P -t 2>/dev/null | xargs kill 2>/dev/null || true
 lsof -i :3000 -P -t 2>/dev/null | xargs kill 2>/dev/null || true

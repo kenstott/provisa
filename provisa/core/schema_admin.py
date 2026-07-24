@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -103,6 +104,20 @@ local_users = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# REQ-1259: single-administrator bootstrap (limited Firebase/IdP mode). A fixed single-row
+# lock (id always 1) that atomically records which authenticated user_id claimed the sole
+# super-admin slot. The first login INSERTs id=1 (first writer wins the race — see
+# AuthMiddleware bootstrap gate); every later, unrecorded user is denied. No multi-org, no
+# second admin. The row IS the claim; the CheckConstraint forbids a second slot.
+superadmin_bootstrap = Table(
+    "superadmin_bootstrap",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("user_id", Text, nullable=False),
+    Column("claimed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("id = 1", name="superadmin_bootstrap_singleton"),
+)
+
 org_invites = Table(
     "org_invites",
     metadata,
@@ -145,7 +160,14 @@ tenant_config = Table(
 # The org/user/invite registry. ``tenants``/``tenant_config`` are bootstrapped
 # separately by the billing module (``platform`` PG schema), so they are excluded
 # here to avoid creating a duplicate copy in the default schema.
-REGISTRY_TABLES = [orgs, user_profiles, user_org_memberships, local_users, org_invites]
+REGISTRY_TABLES = [
+    orgs,
+    user_profiles,
+    user_org_memberships,
+    local_users,
+    org_invites,
+    superadmin_bootstrap,
+]
 
 
 async def init_registry_schema(db: "Database") -> None:  # REQ-696

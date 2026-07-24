@@ -12675,3 +12675,17 @@ Helm chart cert provisioning must be a values.yaml toggle: supply an existing TL
 **Code:** `charts/provisa/templates/tls-secret.yaml`, `charts/provisa/templates/certificate.yaml`, `charts/provisa/values.yaml`
 
 **Tests:** —
+
+## 9. Testing & QA
+
+### REQ-1260 · Test Infrastructure {#REQ-1260}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+
+Linux-only RLIMIT_AS memory-bounded streaming tests (test_streaming_memory_bounded_e2e.py) run on macOS via Docker in the "linux-mem" lane of scripts/test-all. The lane auto-enables when host is macOS and docker CLI is present, boots a real PostgreSQL in a Linux container, and provides external connectivity via PROVISA_MEM_TEST_DSN.
+
+**Use case:** Allows memory-bounded test suite to run on macOS development machines without manual Docker setup, ensuring streaming correctness under memory constraints is verified across platforms.
+
+**Code:** `scripts/test-all`, `docker/mem-lane.Dockerfile`, `scripts/_mem-lane-entrypoint.sh`, `tests/integration/test_streaming_memory_bounded_e2e.py`, `tests/conftest.py`, `tests/integration/conftest.py`
+
+**Tests:** `tests/integration/test_streaming_memory_bounded_e2e.py`

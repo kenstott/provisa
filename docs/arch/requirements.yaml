@@ -35875,3 +35875,31 @@
     Then cert-manager creates a Certificate resource
     And the issued TLS cert is automatically mounted into provisa and provisa-ui containers
     And the user is logged into the fully-seeded org
+- id: REQ-1260
+  status: complete
+  group: "9. Testing & QA"
+  category: Test Infrastructure
+  priority: SHOULD
+  type: infrastructure
+  since: "2026-07"
+  description: >-
+    Linux-only RLIMIT_AS memory-bounded streaming tests (test_streaming_memory_bounded_e2e.py) run on macOS via Docker in the "linux-mem" lane of scripts/test-all. The lane auto-enables when host is macOS and docker CLI is present, boots a real PostgreSQL in a Linux container, and provides external connectivity via PROVISA_MEM_TEST_DSN.
+  use_case: >-
+    Allows memory-bounded test suite to run on macOS development machines without manual Docker setup, ensuring streaming correctness under memory constraints is verified across platforms.
+  code:
+    - scripts/test-all
+    - docker/mem-lane.Dockerfile
+    - scripts/_mem-lane-entrypoint.sh
+    - tests/integration/test_streaming_memory_bounded_e2e.py
+    - tests/conftest.py
+    - tests/integration/conftest.py
+  tests:
+    - tests/integration/test_streaming_memory_bounded_e2e.py
+  scenario: |
+    Given a macOS host with Docker CLI present
+    When scripts/test-all is run
+    Then the linux-mem lane auto-enables
+    And a Linux container is booted with PostgreSQL
+    And the streaming tests run inside the container pointing to PROVISA_MEM_TEST_DSN
+    And test environment disables isolated-stack provisioning (PYTEST_NO_DOCKER=1) and Trino wait (PROVISA_SKIP_TRINO_WAIT=1)
+    And on Linux hosts the lane is a no-op (core lane already runs tests natively)

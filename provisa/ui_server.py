@@ -23,6 +23,7 @@ SPA deep-link refreshes (e.g. /admin/overview) resolve correctly.
 
 # Requirements: REQ-057, REQ-058, REQ-559
 
+import json
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -95,6 +96,36 @@ def is_spa_navigation(method: str, headers: Mapping[str, str]) -> bool:  # REQ-1
     dest = headers.get("sec-fetch-dest")
     return dest == "document" or (
         dest is None and method == "GET" and "text/html" in headers.get("accept", "")
+    )
+
+
+@app.get("/firebase-config.js")
+async def firebase_config() -> Response:  # REQ-1259
+    # The SPA's Firebase web config (public client keys — apiKey/authDomain/projectId)
+    # is injected at runtime from the node's environment, so a single built image
+    # serves any Firebase project: the deploy (terraform -> first-launch) sets the
+    # VITE_FIREBASE_* env on this UI container. index.html loads this before the app
+    # bundle, exposing window.__PROVISA_FIREBASE__ for lib/firebase.ts.
+    #
+    # When the deployment is not Firebase-backed (basic/none), the vars are absent and
+    # this emits null — the login page never imports lib/firebase in that case, so null
+    # is the configured-off state, not a hidden error. All three must be present
+    # together; a partial set is a misconfiguration and yields null rather than a
+    # broken initializeApp.
+    api_key = os.environ.get("VITE_FIREBASE_API_KEY", "")
+    auth_domain = os.environ.get("VITE_FIREBASE_AUTH_DOMAIN", "")
+    project_id = os.environ.get("VITE_FIREBASE_PROJECT_ID", "")
+    if api_key and auth_domain and project_id:
+        cfg = json.dumps(
+            {"apiKey": api_key, "authDomain": auth_domain, "projectId": project_id}
+        )
+        body = f"window.__PROVISA_FIREBASE__ = {cfg};"
+    else:
+        body = "window.__PROVISA_FIREBASE__ = null;"
+    return Response(
+        content=body,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
     )
 
 

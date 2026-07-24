@@ -9,6 +9,11 @@
     <meta name="theme-color" content="#1F2933" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Provisa</title>
+    <!-- Runtime Firebase web config (REQ-1259). ui_server serves this from the node
+         env so one built image serves any Firebase project; sets window.__PROVISA_FIREBASE__
+         before the app bundle. A 404 in dev (no ui_server) is harmless — lib/firebase.ts
+         then falls back to the VITE_FIREBASE_* build-time env. -->
+    <script src="/firebase-config.js"></script>
     <script>
       // Set the Mantine color-scheme attribute before first paint to avoid a
       // light/dark flash (REQ-1011). Mirrors @mantine/core's ColorSchemeScript

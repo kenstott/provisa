@@ -8,23 +8,48 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider, signInWithPopup, type Auth } from "firebase/auth";
 
-const firebaseConfig = {
-  apiKey: (import.meta as unknown as Record<string, Record<string, string>>).env
-    .VITE_FIREBASE_API_KEY,
-  authDomain: (import.meta as unknown as Record<string, Record<string, string>>).env
-    .VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: (import.meta as unknown as Record<string, Record<string, string>>).env
-    .VITE_FIREBASE_PROJECT_ID,
-};
+type FirebaseWebConfig = { apiKey: string; authDomain: string; projectId: string };
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const auth = getAuth(app);
+// The web config source: runtime-injected first, build-time env second (REQ-1259).
+// In a cloud deploy ui_server serves /firebase-config.js from the node env, which
+// index.html loads before the app bundle — so one built image serves any Firebase
+// project. Local dev builds instead bake VITE_FIREBASE_* at vite build time.
+function resolveFirebaseConfig(): FirebaseWebConfig {
+  const injected = (
+    window as unknown as { __PROVISA_FIREBASE__?: FirebaseWebConfig | null }
+  ).__PROVISA_FIREBASE__;
+  if (injected) return injected;
+
+  const env = (import.meta as unknown as Record<string, Record<string, string>>).env;
+  const apiKey = env.VITE_FIREBASE_API_KEY;
+  const authDomain = env.VITE_FIREBASE_AUTH_DOMAIN;
+  const projectId = env.VITE_FIREBASE_PROJECT_ID;
+  if (!apiKey || !authDomain || !projectId) {
+    throw new Error(
+      "Firebase web config missing: the server did not inject /firebase-config.js " +
+        "and VITE_FIREBASE_* was not built in.",
+    );
+  }
+  return { apiKey, authDomain, projectId };
+}
+
 const provider = new GoogleAuthProvider();
+let cachedAuth: Auth | null = null;
+
+// Lazily initialize so a missing config surfaces to the sign-in caller (LoginPage
+// catches it and shows the error) rather than throwing at module import.
+function firebaseAuth(): Auth {
+  if (cachedAuth) return cachedAuth;
+  const config = resolveFirebaseConfig();
+  const app: FirebaseApp = getApps().length === 0 ? initializeApp(config) : getApps()[0];
+  cachedAuth = getAuth(app);
+  return cachedAuth;
+}
 
 export async function signInWithGoogle(): Promise<string> {
-  const result = await signInWithPopup(auth, provider);
+  const result = await signInWithPopup(firebaseAuth(), provider);
   return result.user.getIdToken();
 }

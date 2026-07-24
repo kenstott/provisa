@@ -508,6 +508,13 @@ services:
       PROVISA_TLS_CERT: "/app/certs/provisa.crt"
       PROVISA_TLS_KEY: "/app/certs/provisa.key"
       PROVISA_MCP_TLS: "1"
+      # REQ-1259: forward the IdP selection + Firebase backend vars into the API
+      # container so setup_router._auto_configure_idp wires the provider. Interpolated
+      # (not baked) so the secret service-account key stays in the 600 systemd env_file
+      # (${PROVISA_HOME}/provisa.env) that \`provisa start\` runs under.
+      PROVISA_IDP: "\${PROVISA_IDP:-}"
+      FIREBASE_PROJECT_ID: "\${FIREBASE_PROJECT_ID:-}"
+      FIREBASE_SERVICE_ACCOUNT_KEY: "\${FIREBASE_SERVICE_ACCOUNT_KEY:-}"
   provisa-ui:
     command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key"]
     volumes:
@@ -516,6 +523,11 @@ services:
       # REQ-1227: the API now serves TLS on 8000, so the UI's reverse-proxy hop
       # must use https — a plaintext http:// hop to a TLS port dies with ReadError.
       PROVISA_API_URL: "https://provisa:8000"
+      # REQ-1259: the SPA's Firebase web config (public client keys) — ui_server
+      # serves these at /firebase-config.js so the login page's Google sign-in works.
+      VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
+      VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"
+      VITE_FIREBASE_PROJECT_ID: "\${VITE_FIREBASE_PROJECT_ID:-}"
 YAML
   ok "Node overlay written: ${file}"
 }
@@ -572,6 +584,11 @@ services:
       TRINO_FLIGHT_PORT: "8480"
       FLIGHT_PORT: "8815"
       PROVISA_OTEL_S3_ENDPOINT: "http://${PRIMARY_IP}:9000"
+      # REQ-1259: forward the IdP selection + Firebase backend vars into the API
+      # container (the secondary auto-configures the same provider as the primary).
+      PROVISA_IDP: "\${PROVISA_IDP:-}"
+      FIREBASE_PROJECT_ID: "\${FIREBASE_PROJECT_ID:-}"
+      FIREBASE_SERVICE_ACCOUNT_KEY: "\${FIREBASE_SERVICE_ACCOUNT_KEY:-}"
   provisa-ui:
     restart: unless-stopped
     image: provisa/provisa:local
@@ -584,6 +601,11 @@ services:
       # REQ-1227: the API now serves TLS on 8000, so the UI's reverse-proxy hop
       # must use https — a plaintext http:// hop to a TLS port dies with ReadError.
       PROVISA_API_URL: "https://provisa:8000"
+      # REQ-1259: the SPA's Firebase web config (public client keys), served at
+      # /firebase-config.js so the login page's Google sign-in works.
+      VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
+      VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"
+      VITE_FIREBASE_PROJECT_ID: "\${VITE_FIREBASE_PROJECT_ID:-}"
     depends_on:
       - provisa
 YAML
@@ -637,6 +659,7 @@ install_systemd() {
   : > "$env_file"
   chmod 600 "$env_file"
   for var in PROVISA_IDP FIREBASE_PROJECT_ID FIREBASE_SERVICE_ACCOUNT_KEY \
+             VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
              KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
              OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET \
              PROVISA_PGWIRE_PORT PROVISA_BOLT_PORT PROVISA_MCP_PORT \

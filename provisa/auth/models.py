@@ -48,6 +48,10 @@ class RoleAssignment:  # REQ-120
 class AuthProvider(ABC):  # REQ-120
     """Abstract base for authentication providers."""
 
+    # Stable provider identifier (e.g. "firebase", "basic"), set by each concrete
+    # provider. Recorded on user_profiles; a missing one is a wiring bug.
+    provider_name: str
+
     @property
     def auth_scheme(self) -> str:
         return "bearer"

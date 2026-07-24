@@ -567,6 +567,198 @@ class TestRoleMapping:
 
 
 # ---------------------------------------------------------------------------
+# REQ-1259 — Single-administrator bootstrap (limited Firebase/IdP mode)
+# ---------------------------------------------------------------------------
+
+
+class _FirebaseLikeProvider(AuthProvider):
+    """Provider that maps opaque tokens → user_ids, standing in for Firebase."""
+
+    provider_name = "firebase"
+
+    def __init__(self, token_to_user: dict[str, str]) -> None:
+        self._map = token_to_user
+
+    async def validate_token(self, token: str) -> AuthIdentity:
+        user_id = self._map.get(token)
+        if user_id is None:
+            raise ValueError("Invalid token")
+        return AuthIdentity(
+            user_id=user_id,
+            email=f"{user_id}@example.com",
+            display_name=user_id,
+            roles=[],
+            raw_claims={"sub": user_id},
+        )
+
+
+def _make_admin_db(db_file: str):
+    """Build a real platform control-plane Database over a temp SQLite file.
+
+    The registry schema is created with a synchronous engine so DDL never touches
+    the async engine's event loop; the async Database then connects lazily inside
+    the TestClient's loop, avoiding cross-loop engine binding."""
+    from sqlalchemy import create_engine as _sa_sync_engine
+
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import REGISTRY_TABLES, metadata
+
+    sync_engine = _sa_sync_engine(f"sqlite:///{db_file}")
+    with sync_engine.begin() as conn:
+        metadata.create_all(conn, tables=REGISTRY_TABLES)
+    sync_engine.dispose()
+
+    engine = create_engine_from_url(f"sqlite+aiosqlite:///{db_file}")
+    return Database(engine, name="admin")
+
+
+def _make_bootstrap_app(provider: AuthProvider, admin_db) -> Starlette:
+    routes = [Route("/echo", _echo_identity)]
+    app = Starlette(routes=routes)
+    app.add_middleware(
+        AuthMiddleware,
+        provider=provider,
+        admin_pool=admin_db,
+        assignments_source="provisa",
+        default_assignments=[],
+        bootstrap_superadmin=True,
+        multitenancy=False,
+        default_org_id="root",
+    )
+    return app
+
+
+class TestSingleAdminBootstrap:
+    def test_first_user_becomes_super_admin(self, tmp_path):
+        # REQ-1259: the first authenticated Firebase user claims the sole admin slot.
+        admin_db = _make_admin_db(str(tmp_path / "admin.db"))
+        provider = _FirebaseLikeProvider({"tok-alice": "alice"})
+        app = _make_bootstrap_app(provider, admin_db)
+        client = TestClient(app, raise_server_exceptions=True)
+
+        resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
+        assert resp.status_code == 200
+        assert resp.json()["role"] == "admin", (
+            "REQ-1259: first user must resolve to admin role"
+        )
+
+    def test_second_different_user_is_denied(self, tmp_path):
+        # REQ-1259: once the slot is claimed, a different user is denied (403).
+        admin_db = _make_admin_db(str(tmp_path / "admin.db"))
+        provider = _FirebaseLikeProvider({"tok-alice": "alice", "tok-bob": "bob"})
+        app = _make_bootstrap_app(provider, admin_db)
+        client = TestClient(app, raise_server_exceptions=True)
+
+        first = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
+        assert first.status_code == 200
+
+        second = client.get("/echo", headers={"Authorization": "Bearer tok-bob"})
+        assert second.status_code == 403, "REQ-1259: second user must be denied"
+        assert "single administrator" in second.json()["detail"]
+
+    def test_first_user_reauth_still_admin(self, tmp_path):
+        # REQ-1259: the claiming user keeps admin on every subsequent login.
+        admin_db = _make_admin_db(str(tmp_path / "admin.db"))
+        provider = _FirebaseLikeProvider({"tok-alice": "alice", "tok-bob": "bob"})
+        app = _make_bootstrap_app(provider, admin_db)
+        client = TestClient(app, raise_server_exceptions=True)
+
+        assert client.get("/echo", headers={"Authorization": "Bearer tok-alice"}).status_code == 200
+        # A different user is rejected between the claimant's logins.
+        assert client.get("/echo", headers={"Authorization": "Bearer tok-bob"}).status_code == 403
+        again = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
+        assert again.status_code == 200
+        assert again.json()["role"] == "admin"
+
+
+class TestFirebaseBootstrapRealWiring:
+    """Exercise the REAL wiring path — wire_auth → build_auth_provider →
+    the concrete FirebaseAuthProvider → the bootstrap gate — rather than a
+    hand-built middleware with a mock provider. Only the firebase-admin SDK's
+    network call (verify_id_token) is patched; the token→identity→gate flow and
+    the config→middleware wiring are real."""
+
+    def _patch_firebase(self, monkeypatch, token_claims: dict) -> None:
+        pytest.importorskip("firebase_admin")
+        import provisa.auth.providers.firebase as fb
+
+        if not getattr(fb, "_HAS_FIREBASE", False):
+            pytest.skip("firebase-admin not installed")
+        # A truthy _apps makes FirebaseAuthProvider.__init__ skip initialize_app
+        # (no service-account key / ADC lookup needed for the test).
+        monkeypatch.setattr(fb.firebase_admin, "_apps", {"default": object()}, raising=False)
+
+        def _verify(token: str) -> dict:
+            if token not in token_claims:
+                raise ValueError("Invalid token")
+            return token_claims[token]
+
+        monkeypatch.setattr(fb.firebase_auth, "verify_id_token", _verify, raising=False)
+
+    def _wire(self, admin_db):
+        from fastapi import FastAPI
+
+        from provisa.auth.wiring import wire_auth
+
+        app = FastAPI()
+        app.add_route("/echo", _echo_identity)
+
+        # REQ-1259 config exactly as _auto_configure_idp / run_setup write it for firebase.
+        auth_config = {
+            "provider": "firebase",
+            "assignments_source": "provisa",
+            "default_assignments": [],
+            "bootstrap_superadmin": True,
+            "firebase": {"project_id": "demo-project"},
+        }
+        wire_auth(app, auth_config, db_pool=None, admin_pool=admin_db)
+        return app
+
+    def test_real_provider_first_admin_second_denied(self, monkeypatch, tmp_path):
+        self._patch_firebase(
+            monkeypatch,
+            {
+                "tok-alice": {"uid": "alice", "email": "alice@example.com", "name": "Alice"},
+                "tok-bob": {"uid": "bob", "email": "bob@example.com", "name": "Bob"},
+            },
+        )
+        admin_db = _make_admin_db(str(tmp_path / "admin.db"))
+        client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
+
+        first = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
+        assert first.status_code == 200
+        assert first.json() == {"user_id": "alice", "role": "admin"}
+
+        second = client.get("/echo", headers={"Authorization": "Bearer tok-bob"})
+        assert second.status_code == 403
+        assert "single administrator" in second.json()["detail"]
+
+    def test_real_provider_invalid_token_401(self, monkeypatch, tmp_path):
+        self._patch_firebase(monkeypatch, {"tok-alice": {"uid": "alice"}})
+        admin_db = _make_admin_db(str(tmp_path / "admin.db"))
+        client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
+        resp = client.get("/echo", headers={"Authorization": "Bearer garbage"})
+        assert resp.status_code == 401
+
+    def test_real_provider_records_profile(self, monkeypatch, tmp_path):
+        # The claimant is persisted to user_profiles with provider="firebase".
+        self._patch_firebase(
+            monkeypatch, {"tok-alice": {"uid": "alice", "email": "alice@example.com", "name": "Alice"}}
+        )
+        db_file = str(tmp_path / "admin.db")
+        admin_db = _make_admin_db(db_file)
+        client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
+        assert client.get("/echo", headers={"Authorization": "Bearer tok-alice"}).status_code == 200
+
+        import sqlite3
+
+        rows = sqlite3.connect(db_file).execute(
+            "SELECT user_id, provider FROM user_profiles"
+        ).fetchall()
+        assert ("alice", "firebase") in rows
+
+
+# ---------------------------------------------------------------------------
 # REQ-121, REQ-122, REQ-123 — Provider interface contracts (no live IdP)
 # ---------------------------------------------------------------------------
 

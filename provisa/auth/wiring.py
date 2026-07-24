@@ -109,6 +109,7 @@ def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
         "multitenancy": multitenancy,
         "default_org_id": default_org_id,
         "superuser": None,
+        "bootstrap_superadmin": False,
     }
     if auth_config is None:
         return {**base, "provider": None}
@@ -129,6 +130,7 @@ def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
         "assignments_source": auth_config.get("assignments_source", "claims"),
         "default_assignments": auth_config.get("default_assignments", []),
         "superuser": resolve_superuser_config(auth_config.get("superuser")),
+        "bootstrap_superadmin": auth_config.get("bootstrap_superadmin", False),
     }
 
 
@@ -185,6 +187,7 @@ def wire_auth(
         multitenancy=multitenancy,
         default_org_id=default_org_id,
         superuser=resolve_superuser_config(auth_config.get("superuser")),
+        bootstrap_superadmin=auth_config.get("bootstrap_superadmin", False),
     )
 
     # Mount simple auth login route when provider=simple

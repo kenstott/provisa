@@ -162,6 +162,23 @@ variable "firebase_service_account_key" {
   sensitive   = true
 }
 
+# The SPA reads these public client keys at runtime (ui_server serves them at
+# /firebase-config.js) so one built image serves any Firebase project. Get them from
+# the Firebase console → Project settings → your web app's config, or via
+#   curl "https://firebase.googleapis.com/v1beta1/projects/<id>/webApps/<appId>/config"
+# apiKey/authDomain are public (client-side) values, not secrets.
+variable "firebase_web_api_key" {
+  description = "Firebase web app apiKey (VITE_FIREBASE_API_KEY) when auth_provider=firebase."
+  type        = string
+  default     = ""
+}
+
+variable "firebase_web_auth_domain" {
+  description = "Firebase web app authDomain (VITE_FIREBASE_AUTH_DOMAIN), e.g. <project>.firebaseapp.com."
+  type        = string
+  default     = ""
+}
+
 variable "labels" {
   description = "Additional labels applied to all resources"
   type        = map(string)

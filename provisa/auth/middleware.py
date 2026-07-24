@@ -26,10 +26,14 @@ from starlette.responses import JSONResponse
 from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
 from provisa.auth.superuser import check_superuser
-from provisa.core.schema_admin import user_org_memberships, user_profiles
+from provisa.core.schema_admin import (
+    superadmin_bootstrap,
+    user_org_memberships,
+    user_profiles,
+)
 from provisa.core.schema_org import user_role_assignments
 
-# Requirements: REQ-120, REQ-125, REQ-273
+# Requirements: REQ-120, REQ-125, REQ-273, REQ-1259
 
 # Liveness/readiness probes (/live, /ready) return a static status with no data and must be
 # reachable by unauthenticated orchestrators (k8s, load balancers) — same as /health.
@@ -61,6 +65,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         multitenancy: bool = False,
         default_org_id: str = "root",
         superuser: dict | None = None,
+        bootstrap_superadmin: bool = False,
         config_resolver=None,
     ) -> None:
         super().__init__(app)
@@ -76,6 +81,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         self._multitenancy = multitenancy
         self._default_org_id = default_org_id
         self._superuser = superuser
+        self._bootstrap_superadmin = bootstrap_superadmin
         # Lazy wiring: when the middleware is installed at create_app (before the lifespan has loaded
         # auth_config and the control-plane pools), config_resolver returns the settings from live
         # ``state`` on the first request. None → settings above are already final (test/eager path).
@@ -102,7 +108,30 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             self._multitenancy = s["multitenancy"]
             self._default_org_id = s["default_org_id"]
             self._superuser = s["superuser"]
+            self._bootstrap_superadmin = s["bootstrap_superadmin"]
             self._resolved = True
+
+    async def _upsert_profile(self, identity: AuthIdentity) -> None:
+        """Record last-seen identity in user_profiles (platform control plane).
+
+        provider_name is part of the AuthProvider contract; a missing one is a
+        wiring bug, not something to mask with an "unknown" audit record."""
+        assert self._admin_pool is not None
+        assert self._provider is not None
+        provider_name = self._provider.provider_name
+        async with self._admin_pool.acquire() as conn:
+            await conn.upsert(
+                user_profiles,
+                {
+                    "user_id": identity.user_id,
+                    "email": identity.email,
+                    "display_name": identity.display_name,
+                    "provider": provider_name,
+                    "last_seen": func.now(),
+                },
+                index_elements=["user_id"],
+                update_columns=["email", "display_name", "provider", "last_seen"],
+            )
 
     async def dispatch(self, request: Request, call_next):  # REQ-486
         if request.url.path in _SKIP_PATHS:
@@ -177,6 +206,38 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 content={"detail": "Invalid or expired token"},
             )
 
+        # REQ-1259: single-administrator bootstrap (limited IdP mode). The first
+        # authenticated user atomically claims the sole super-admin slot and is granted
+        # admin; every subsequent, unclaimed user is denied (single-org, no second admin).
+        # Runs after token validation (the identity is proven) and before assignment
+        # resolution (it short-circuits, like the superuser path). Requires the platform
+        # control plane for the singleton lock.
+        if self._bootstrap_superadmin and self._admin_pool is not None:
+            async with self._admin_pool.acquire() as conn:
+                # First writer wins: upsert with DO NOTHING on the fixed id=1 row, then read
+                # back the winning user_id. Concurrent first-logins race on the INSERT; only
+                # one lands, and this returns whoever claimed the slot.
+                claimed_user_id = await conn.upsert_returning(
+                    superadmin_bootstrap,
+                    {"id": 1, "user_id": identity.user_id},
+                    index_elements=["id"],
+                    update_columns=[],
+                    returning="user_id",
+                )
+            if claimed_user_id != identity.user_id:
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": "Registration closed: this deployment permits a single administrator"
+                    },
+                )
+            await self._upsert_profile(identity)
+            request.state.identity = identity
+            request.state.role = "admin"
+            request.state.assignments = [RoleAssignment(role_id="admin", domain_id="*")]
+            request.state.active_org_id = self._default_org_id
+            return await call_next(request)
+
         if self._assignments_source == "provisa" and self._db_pool is not None:
             async with self._db_pool.acquire() as conn:
                 result = await conn.execute_core(
@@ -218,28 +279,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
 
         # Fire-and-forget upsert of user_profiles (platform control plane)
         if self._admin_pool is not None:
-            _admin_pool = self._admin_pool
-
-            # provider_name is part of the AuthProvider contract; a missing one is a
-            # wiring bug, not something to mask with an "unknown" audit record.
-            provider_name = self._provider.provider_name
-
-            async def _upsert():
-                async with _admin_pool.acquire() as conn:
-                    await conn.upsert(
-                        user_profiles,
-                        {
-                            "user_id": identity.user_id,
-                            "email": identity.email,
-                            "display_name": identity.display_name,
-                            "provider": provider_name,
-                            "last_seen": func.now(),
-                        },
-                        index_elements=["user_id"],
-                        update_columns=["email", "display_name", "provider", "last_seen"],
-                    )
-
-            asyncio.ensure_future(_upsert())
+            asyncio.ensure_future(self._upsert_profile(identity))
 
         # Resolve active org
         if not self._multitenancy:

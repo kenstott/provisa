@@ -48,17 +48,25 @@ async def _auto_configure_idp(provider: str, pool) -> None:
     auth_section: dict = {
         "provider": provider,
         "assignments_source": "provisa",
-        "default_assignments": [{"role_id": "admin", "domain_id": "*"}],
     }
 
     if provider == "firebase":
+        # REQ-1259: limited Firebase mode — the first authenticated user becomes the sole
+        # super-admin and every later user is denied. No blanket admin default_assignments
+        # (that would make every Firebase user admin); the bootstrap gate grants the first.
+        auth_section["bootstrap_superadmin"] = True
+        auth_section["default_assignments"] = []
         project_id = os.environ.get("FIREBASE_PROJECT_ID", "")
         if project_id:
             auth_section["firebase"] = {
                 "project_id": project_id,
                 "service_account_key": "${env:FIREBASE_SERVICE_ACCOUNT_KEY:-}",
             }
-    elif provider == "basic" and pool:
+    else:
+        # basic and every other IdP: the configured principal is the admin.
+        auth_section["default_assignments"] = [{"role_id": "admin", "domain_id": "*"}]
+
+    if provider == "basic" and pool:
         async with pool.acquire() as conn:
             count_result = await conn.execute_core(select(func.count()).select_from(local_users))
             count = count_result.scalar()
@@ -208,6 +216,10 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         project_id = body.firebase_project_id or os.environ.get("FIREBASE_PROJECT_ID", "")
         if not project_id:
             raise HTTPException(status_code=400, detail="firebase_project_id required")
+        # REQ-1259: limited Firebase mode — first user → sole super-admin, rest denied.
+        # Drop the blanket admin default (it would admit every Firebase user).
+        auth_section["bootstrap_superadmin"] = True
+        auth_section["default_assignments"] = []
         auth_section["firebase"] = {
             "project_id": project_id,
             "service_account_key": "${env:FIREBASE_SERVICE_ACCOUNT_KEY:-}",
