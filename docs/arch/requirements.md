@@ -12053,3 +12053,39 @@ gRPC wire protocol listener only serves once a proto schema has been registered 
 **Code:** `provisa/grpc`, `terraform/gcp`
 
 **Tests:** —
+
+### REQ-1211 · Linux AppImage Deployment {#REQ-1211}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+
+Linux AppImage deployments must stage the docker-compose tree out of the AppImage's self-mount into a persistent, writable location (${PROVISA_HOME}/compose) during first-launch and record project_dir there, as the AppImage mount (/tmp/.mount_Provis*) is read-only and ephemeral.
+
+**Use case:** The AppImage mount is read-only, blocking Trino plugin extraction and other write operations; it is also ephemeral and vanishes when the AppImage process exits, causing the systemd `provisa start` daemon to lose its compose files on restart.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1212 · Docker Image Build {#REQ-1212}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+
+The provisa/provisa:local core Docker image must have the built React SPA present in static/ at image-build time; CI core-image jobs must run the vite build into static/ before `docker build`.
+
+**Use case:** Without the UI bundle in the image, the provisa-ui container serves HTTP 503 "UI not bundled", making Provisa inaccessible via the web interface.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1213 · VM Cloud Deployment {#REQ-1213}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+GCP VM startup-script writes /etc/apt/apt.conf.d/99provisa-resilient before the first apt-get update, setting Acquire::http::Timeout=30, Acquire::https::Timeout=30, Acquire::Retries=3, Acquire::http::Pipeline-Depth=0 to prevent indefinite CLOSE-WAIT hangs when Canonical mirrors half-close sockets mid-response.
+
+**Use case:** apt's default HTTP pipelining wedges forever (no timeout) on half-closed mirror sockets; under set -euo pipefail, hung apt-get update never errors and blocks the entire node boot indefinitely. Configuring timeouts and disabling pipelining makes apt deterministic on first-launch.
+
+**Code:** `terraform/gcp/main.tf`
+
+**Tests:** —
