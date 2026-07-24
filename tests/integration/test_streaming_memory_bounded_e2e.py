@@ -20,6 +20,7 @@ cap would not discriminate. On darwin the test skips with a reason (never a sile
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
 import sys
 import tempfile
 from typing import Any
@@ -28,7 +29,12 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-pgserver = pytest.importorskip("pgserver")
+# The linux-mem Docker lane provisions a real PostgreSQL and passes its DSN via
+# PROVISA_MEM_TEST_DSN (Apple Silicon can neither run pgserver's bundled binaries under
+# amd64 emulation nor install a linux/arm64 pgserver wheel — there is none). With an
+# external DSN the embedded pgserver is not needed, so only require it otherwise.
+_EXTERNAL_DSN = os.environ.get("PROVISA_MEM_TEST_DSN")
+pgserver = None if _EXTERNAL_DSN else pytest.importorskip("pgserver")
 pytest.importorskip("psycopg2")
 pytest.importorskip("adbc_driver_postgresql")
 
@@ -234,9 +240,13 @@ linux_only = pytest.mark.skipif(
 def big_pg():
     import psycopg2
 
-    base = tempfile.mkdtemp(prefix="provisa_stream_mem_")
-    server = pgserver.get_server(base)
-    dsn = server.get_uri()
+    if _EXTERNAL_DSN:
+        dsn = _EXTERNAL_DSN
+    else:
+        assert pgserver is not None  # importorskip guaranteed it when no external DSN
+        base = tempfile.mkdtemp(prefix="provisa_stream_mem_")
+        server = pgserver.get_server(base)
+        dsn = server.get_uri()
     con = psycopg2.connect(dsn)
     con.autocommit = True
     cur = con.cursor()

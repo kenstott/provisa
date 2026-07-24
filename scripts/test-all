@@ -152,6 +152,23 @@ if [[ "${TEST_ALL_PACKAGING:-}" == "1" ]]; then
   COVERAGE_FILE=.coverage.packaging pytest -o addopts="" -m packaging "${COV_ARGS[@]}" "$@" || rc=1
 fi
 
+# linux-mem lane: the RLIMIT_AS memory-bounded tests @linux_only-skip on macOS (Darwin ignores
+# RLIMIT_AS for the large arena maps). On a macOS host, run them for real inside an arm64-native
+# Linux container against a real PostgreSQL. On Linux the default/core lane already ran them
+# natively, so the script no-ops there. auto: run when host is macOS + docker present; 1 forces
+# on; 0 forces off. No .coverage.<lane> — the container's /repo paths don't map to the host tree,
+# and Linux CI already covers these code paths.
+_run_linux_mem=0
+case "${TEST_ALL_LINUX_MEM:-auto}" in
+  1) _run_linux_mem=1 ;;
+  0) _run_linux_mem=0 ;;
+  *) [[ "$(uname -s)" == "Darwin" ]] && command -v docker >/dev/null 2>&1 && _run_linux_mem=1 || true ;;
+esac
+if [[ "$_run_linux_mem" == "1" ]]; then
+  echo "== lane: linux-mem (RLIMIT_AS memory tests in Linux container) =="
+  bash "$(dirname "$0")/run-linux-mem-lane.sh" "$@" || rc=1
+fi
+
 # auto: run the warehouse lane when .env has creds; 1 forces it on; 0 forces it off.
 _run_warehouse=0
 case "${TEST_ALL_WAREHOUSE:-auto}" in
