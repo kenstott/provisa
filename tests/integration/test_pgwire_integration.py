@@ -157,7 +157,7 @@ class TestPgwireAuth:
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
             patch("provisa.api.app.state", state),
-            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _noop),
+            patch("provisa.pgwire._pipeline.govern_pgwire_plan", _noop),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -199,7 +199,7 @@ class TestPgwireAuth:
 
         with (
             patch("provisa.api.app.state", state),
-            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _echo_role),
+            patch("provisa.pgwire._pipeline.govern_pgwire_plan", _echo_role),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -462,7 +462,7 @@ class TestPgwireParameterizedQueries:
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
             patch("provisa.api.app.state", state),
-            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
+            patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -492,7 +492,7 @@ class TestPgwireParameterizedQueries:
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
             patch("provisa.api.app.state", state),
-            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
+            patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -522,7 +522,7 @@ class TestPgwireParameterizedQueries:
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
             patch("provisa.api.app.state", state),
-            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
+            patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -550,7 +550,7 @@ class TestPgwireParameterizedQueries:
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
             patch("provisa.api.app.state", state),
-            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
+            patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -587,7 +587,7 @@ class TestPgwireParameterizedQueries:
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
             patch("provisa.api.app.state", state),
-            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
+            patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -800,7 +800,7 @@ class TestPgwireTLS:
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
             patch("provisa.api.app.state", state),
-            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _one),
+            patch("provisa.pgwire._pipeline.govern_pgwire_plan", _one),
         ):
             # asyncpg with ssl=False should connect normally (server replies N to SSL)
             conn = await asyncpg.connect(
@@ -890,7 +890,7 @@ class TestPgwireTLS:
             with (
                 patch("provisa.auth.providers.simple._provider_instance", provider),
                 patch("provisa.api.app.state", state),
-                patch("provisa.pgwire._pipeline.execute_pgwire_sql", _one),
+                patch("provisa.pgwire._pipeline.govern_pgwire_plan", _one),
             ):
                 conn = await asyncpg.connect(
                     host="127.0.0.1",

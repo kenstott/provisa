@@ -11,6 +11,7 @@
 import os
 import socket
 import subprocess
+import sys
 import time
 
 import asyncpg
@@ -750,7 +751,6 @@ def provisa_server():
     # its Flight bind would clash with an already-bound in-process server and silently fail (HTTP
     # comes up, Flight never binds). A dedicated free port makes the live-server Flight isolation-safe.
     _flight_port = _free_port()
-    venv_python = os.path.join(_REPO_ROOT, ".venv", "bin", "uvicorn")
     # Provision the fallback server against the isolated test config, NOT the shipped demo config
     # (config/provisa.yaml). The demo config declares sources like `pet-store-pg` that aren't
     # provisioned in the isolated stack, so its default-source lookup KeyErrors and every /data/sql
@@ -766,7 +766,7 @@ def provisa_server():
         **_server_coverage_env(),
     }
     proc = subprocess.Popen(
-        [venv_python, "main:app", "--host", "0.0.0.0", f"--port={_port}"],
+        [sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", f"--port={_port}"],
         cwd=_REPO_ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
