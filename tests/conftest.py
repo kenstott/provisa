@@ -248,6 +248,9 @@ def _allocate_itest_ports() -> None:
     _minio = f"localhost:{os.environ['MINIO_PORT']}"
     os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://{_minio}"
     os.environ["MINIO_ENDPOINT"] = _minio  # host-side minio clients (e.g. infra bdd)
+    # Redirect/result-spill S3 path (test_redirect_encryption_minio) reads this; wire it to the
+    # isolated stack's minio so the encryption round-trip runs instead of skipping on :9000.
+    os.environ["PROVISA_REDIRECT_ENDPOINT"] = f"http://{_minio}"
     # Host-side kafka clients read these; point them at the isolated broker's port.
     _kafka = f"localhost:{os.environ['KAFKA_HOST_PORT']}"
     os.environ["KAFKA_BOOTSTRAP"] = _kafka

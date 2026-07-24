@@ -38,6 +38,7 @@ async def view_id():
     from provisa.api.app import state
     from provisa.core.schema_org import registered_tables
 
+    assert state.tenant_db is not None
     async with state.tenant_db.acquire() as conn:
         res = await conn.execute_core(
             insert(registered_tables)
@@ -46,7 +47,6 @@ async def view_id():
                 domain_id="sales-analytics",
                 schema_name="sales-analytics",
                 table_name="_profile_test_view",
-                governance="pre-approved",
                 view_sql="SELECT id, amount FROM orders",
             )
             .returning(registered_tables.c.id)
@@ -55,6 +55,7 @@ async def view_id():
 
     yield new_id
 
+    assert state.tenant_db is not None
     async with state.tenant_db.acquire() as conn:
         await conn.execute_core(delete(registered_tables).where(registered_tables.c.id == new_id))
 
@@ -109,6 +110,7 @@ class TestGovernedPipeline:
         from provisa.api.app import state
         from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
+        assert client is not None  # fixture drives app lifespan → populates `state`
         plan = await _govern_and_route("SELECT id, amount FROM orders", "admin")
         result = await _execute_plan(plan, state)
         assert result.column_names == ["id", "amount"]
@@ -116,5 +118,6 @@ class TestGovernedPipeline:
     async def test_unknown_role_rejected(self, client):
         from provisa.pgwire._pipeline import _govern_and_route
 
+        assert client is not None  # fixture drives app lifespan → populates `state`
         with pytest.raises(PermissionError):
             await _govern_and_route("SELECT 1", "no_such_role")

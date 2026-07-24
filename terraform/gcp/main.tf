@@ -276,7 +276,7 @@ locals {
     # persists UI_PORT into the systemd EnvironmentFile so `provisa start`'s compose
     # interpolation picks it up.
     export UI_PORT=${local.protocols.ui.port}
-%{~if var.tls_cert_pem != "" && var.tls_key_pem != ""~}
+%{ if var.tls_cert_pem != "" && var.tls_key_pem != "" }
     # Operator-supplied wildcard TLS cert (REQ-1239). Written here and adopted by
     # first-launch's ensure_tls_certs via PROVISA_TLS_CERT/KEY, which fans it out to
     # every listener. base64 sidesteps PEM newline/quoting hazards in the metadata heredoc.
@@ -286,7 +286,7 @@ locals {
     chmod 600 /etc/provisa/tls/node.key
     export PROVISA_TLS_CERT=/etc/provisa/tls/node.crt
     export PROVISA_TLS_KEY=/etc/provisa/tls/node.key
-%{~endif~}
+%{ endif }
     cd /opt
   SHELL
 
