@@ -51,6 +51,14 @@ def _make_app(provider=None, mapping_rules=None, default_role="analyst", superus
     async def _health():
         return {"status": "ok"}
 
+    @app.get("/auth/provider-type")
+    async def _provider_type():
+        return {"provider": "firebase"}
+
+    @app.get("/setup/status")
+    async def _setup_status():
+        return {"needs_setup": False}
+
     @app.get("/test")
     async def _test_route(request: Request):
         return {
@@ -118,6 +126,23 @@ def test_health_skips_auth():
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+
+
+def test_provider_type_skips_auth():
+    # REQ-1259: the login page fetches /auth/provider-type BEFORE the user has a token,
+    # to choose the sign-in UI. It must bypass the bearer gate even when auth is enforced.
+    app = _make_app(provider=MockProvider())
+    client = TestClient(app)
+    resp = client.get("/auth/provider-type")
+    assert resp.status_code == 200
+    assert resp.json()["provider"] == "firebase"
+
+
+def test_setup_status_skips_auth():
+    app = _make_app(provider=MockProvider())
+    client = TestClient(app)
+    resp = client.get("/setup/status")
+    assert resp.status_code == 200
 
 
 def test_malformed_auth_header():

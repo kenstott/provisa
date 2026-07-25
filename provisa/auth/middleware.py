@@ -45,6 +45,10 @@ _SKIP_PATHS = {
     "/data/openapi/redoc",
     "/data/openapi/openapi.json",
     "/auth/login",
+    # REQ-1259: the login page fetches this BEFORE the user has a token, to decide which
+    # sign-in UI to render (firebase Google button vs. basic form). It only reveals the
+    # configured provider name — public info — so it must bypass the bearer gate.
+    "/auth/provider-type",
     "/setup/status",
 }
 
