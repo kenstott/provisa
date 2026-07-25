@@ -95,7 +95,7 @@ _FIREBASE_SIGN_IN_PROVIDERS = [
 
 
 @given("Firebase is configured as the auth provider")
-def firebase_configured_as_auth_provider(shared_data: dict) -> None:
+def firebase_configured_as_auth_provider(shared_data: dict, monkeypatch) -> None:
     """Configure Firebase as the authentication provider using firebase-admin SDK.
 
     In production Provisa calls ``firebase_admin.initialize_app()`` with a
@@ -148,10 +148,13 @@ def firebase_configured_as_auth_provider(shared_data: dict) -> None:
     # Attach ``auth`` sub-module onto the top-level fake.
     fake_firebase_admin.auth = fake_firebase_admin_auth
 
-    # Inject into sys.modules so imports resolve to our fakes.
-    sys.modules["firebase_admin"] = fake_firebase_admin
-    sys.modules["firebase_admin.auth"] = fake_firebase_admin_auth
-    sys.modules["firebase_admin.credentials"] = fake_credentials
+    # Inject into sys.modules so imports resolve to our fakes. Use monkeypatch.setitem so the REAL
+    # firebase_admin is restored at scenario teardown — a bare sys.modules[...] = fake leaked the fake
+    # for the rest of the session and broke later real-firebase_admin tests (test_auth_providers.py
+    # importorskip got the fake, AttributeError: no InvalidIdTokenError) as an isolation failure.
+    monkeypatch.setitem(sys.modules, "firebase_admin", fake_firebase_admin)
+    monkeypatch.setitem(sys.modules, "firebase_admin.auth", fake_firebase_admin_auth)
+    monkeypatch.setitem(sys.modules, "firebase_admin.credentials", fake_credentials)
 
     # Simulate ``initialize_app`` being called at startup (as Provisa does
     # when loading the Firebase provider from config).
