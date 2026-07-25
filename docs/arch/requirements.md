@@ -12696,9 +12696,9 @@ Linux-only RLIMIT_AS memory-bounded streaming tests (test_streaming_memory_bound
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Any user may sign up, create their own organization/workspace, and invite teammates. Authentication onboarding follows standard SaaS flow: sign up → verify → create org → invite → land in product, with per-org roles replacing the single-admin appliance bootstrap model.
+Self-service multi-tenant onboarding with four coupled workstreams: (1) sign-up → create-org → become-org-admin workflow where any authenticated user creates a new organization (org_<id> PG schema + role_<id>), specifying zero or more allowed email domains that will auto-join via domain matching, and becomes its admin, replacing the single-admin bootstrap gate; (2) split super-admin roles into platform-scoped (tenant/org/user/billing/provisioning management, zero standing data access) and org-scoped (data plane: sources, model, members, secrets within one org_<id>), with cross-plane data access requiring audited, time-boxed break-glass elevation; (3) request-to-join by known org identifier (org name or GUID), reusing the approval queue pattern from creation_requests; (4) domain-based auto-join where a user's verified email domain is matched against an organization's allowed-domains list captured at org creation, automatically joining the user to the org if a match is found. Deferred to future release: admin-initiated clickable invite links (org_invites accept flow).
 
-**Use case:** Enables multi-tenant usage where each organization manages its own users and roles, eliminating the bootstrap constraint (first Google user becomes sole admin, others 403).
+**Use case:** Enables SaaS multi-tenant usage where each organization manages its own users, data sources, and semantic model independently. Platform operators cannot accidentally/intentionally leak org data — control-plane and data-plane admin roles are separated by design, preventing the code conflation in provisa/api/admin/schema_common.py:134 and schema_query.py:223. Request-to-join by org identifier provides a self-service alternative to admin-initiated invites, reducing operational overhead. Replaces [REQ-1266](#REQ-1266) single-admin bootstrap (mutually exclusive at runtime).
 
 **Code:** —
 

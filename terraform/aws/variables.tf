@@ -121,6 +121,18 @@ variable "auth_provider" {
   }
 }
 
+variable "multitenancy" {
+  description = "Enable multitenant onboarding (first user = platform superadmin; later users join orgs via invite). false = single-administrator bootstrap (REQ-1266)."
+  type        = bool
+  default     = false
+}
+
+variable "azure_tenant_id" {
+  description = "Restrict Firebase Microsoft (Azure AD/Entra) sign-in to this tenant directory ID. Empty = 'common' (any tenant + personal Microsoft accounts, e.g. outlook.com)."
+  type        = string
+  default     = ""
+}
+
 variable "firebase_project_id" {
   description = "Firebase project ID when auth_provider=firebase."
   type        = string
@@ -132,6 +144,22 @@ variable "firebase_service_account_key" {
   type        = string
   default     = ""
   sensitive   = true
+}
+
+# The SPA reads these public client keys at runtime (ui_server serves them at
+# /firebase-config.js) so one built image serves any Firebase project. Get them from
+# the Firebase console → Project settings → your web app's config. apiKey/authDomain
+# are public (client-side) values, not secrets.
+variable "firebase_web_api_key" {
+  description = "Firebase web app apiKey (VITE_FIREBASE_API_KEY) when auth_provider=firebase."
+  type        = string
+  default     = ""
+}
+
+variable "firebase_web_auth_domain" {
+  description = "Firebase web app authDomain (VITE_FIREBASE_AUTH_DOMAIN), e.g. <project>.firebaseapp.com."
+  type        = string
+  default     = ""
 }
 
 variable "tags" {

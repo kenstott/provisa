@@ -50,10 +50,18 @@ async def _auto_configure_idp(provider: str, pool) -> None:
         "assignments_source": "provisa",
     }
 
+    # PROVISA_MULTITENANCY promotes the deployment from single-admin bootstrap to multitenant
+    # onboarding: the first authenticated user still claims the platform superadmin slot, but later
+    # identities are admitted (not denied) and join an org by redeeming an invite. Off by default so
+    # desktop/native firebase stays the single-administrator REQ-1266 mode.
+    multitenant = os.environ.get("PROVISA_MULTITENANCY", "").lower() in ("1", "true", "yes")
+
     if provider == "firebase":
         # REQ-1266: limited Firebase mode — the first authenticated user becomes the sole
         # super-admin and every later user is denied. No blanket admin default_assignments
         # (that would make every Firebase user admin); the bootstrap gate grants the first.
+        # With PROVISA_MULTITENANCY the bootstrap gate keeps granting the first superadmin but stops
+        # denying later users (middleware), enabling the invite-based multitenant onboarding flow.
         auth_section["bootstrap_superadmin"] = True
         auth_section["default_assignments"] = []
         project_id = os.environ.get("FIREBASE_PROJECT_ID", "")
@@ -86,6 +94,9 @@ async def _auto_configure_idp(provider: str, pool) -> None:
                 )
 
     cfg["auth"] = auth_section
+    # multitenancy is a top-level config field (models.py), not part of the auth section.
+    if multitenant:
+        cfg["multitenancy"] = True
     write_config(cfg_path, cfg)
     from provisa.api.app import _load_and_build
 

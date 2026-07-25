@@ -10,8 +10,13 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { ReactElement } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { render, screen, fireEvent, waitFor } from '../test-utils/render';
 import { LoginPage } from '../pages/LoginPage';
+
+// LoginPage calls useNavigate; the shared render wrapper has no Router, so provide one here.
+const renderLogin = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
 vi.mock('../api/admin', () => ({
   fetchProviderType: vi.fn().mockResolvedValue(null),
@@ -39,7 +44,7 @@ describe('LoginPage', () => {
   // ── authDisabled mode ──────────────────────────────────────────────────────
 
   it('renders "Authentication not configured" when authDisabled is true', () => {
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled />);
 
     expect(screen.getByRole('heading', { name: 'Login' })).toBeInTheDocument();
     expect(screen.getByText('Authentication not configured')).toBeInTheDocument();
@@ -49,7 +54,7 @@ describe('LoginPage', () => {
   // ── Form rendering ─────────────────────────────────────────────────────────
 
   it('renders login form with username, password fields and submit button', async () => {
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
 
     expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
     expect(screen.getByLabelText('Username')).toBeInTheDocument();
@@ -58,13 +63,13 @@ describe('LoginPage', () => {
   });
 
   it('password field has type="password"', async () => {
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
 
     expect(await screen.findByLabelText('Password')).toHaveAttribute('type', 'password');
   });
 
   it('username field has autocomplete="username"', async () => {
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
 
     expect(await screen.findByLabelText('Username')).toHaveAttribute('autocomplete', 'username');
   });
@@ -77,7 +82,7 @@ describe('LoginPage', () => {
       json: async () => ({ access_token: 'my-test-token' }),
     } as Response);
 
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
 
     fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
@@ -94,7 +99,7 @@ describe('LoginPage', () => {
       json: async () => ({ access_token: 'stored-token' }),
     } as Response);
 
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
 
     fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
@@ -115,7 +120,7 @@ describe('LoginPage', () => {
       json: async () => ({ detail: 'Invalid credentials' }),
     } as Response);
 
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
 
     fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'wrong' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'bad' } });
@@ -135,7 +140,7 @@ describe('LoginPage', () => {
       json: async () => ({ detail: 'Forbidden' }),
     } as Response);
 
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
 
     fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'u' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'p' } });
@@ -156,7 +161,7 @@ describe('LoginPage', () => {
     });
     vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(pendingFetch);
 
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
 
     fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
@@ -173,7 +178,7 @@ describe('LoginPage', () => {
   // ── Input binding ──────────────────────────────────────────────────────────
 
   it('updates username and password fields as user types', async () => {
-    render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
 
     const userInput = await screen.findByLabelText('Username');
     const passInput = screen.getByLabelText('Password');

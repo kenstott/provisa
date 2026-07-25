@@ -13,7 +13,7 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Alert, Button, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { fetchProviderType, registerAccount, fetchInviteInfo } from "../api/admin";
+import { fetchProviderType, registerAccount, fetchInviteInfo, redeemInvite } from "../api/admin";
 import type { InviteInfo } from "../api/admin";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
@@ -124,13 +124,25 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     }
   };
 
-  const handleFirebaseLogin = async () => {
+  const handleFirebaseLogin = async (idp: "google" | "github" | "microsoft") => {
     setError(null);
     setLoading(true);
     try {
-      const { signInWithGoogle } = await import("../lib/firebase");
-      const idToken = await signInWithGoogle();
+      const firebase = await import("../lib/firebase");
+      const idToken =
+        idp === "github"
+          ? await firebase.signInWithGithub()
+          : idp === "microsoft"
+            ? await firebase.signInWithMicrosoft()
+            : await firebase.signInWithGoogle();
       localStorage.setItem("provisa_token", idToken);
+      // A bearer identity has no /register step, so an ?invite= link is redeemed here — after the
+      // token is stored (authFetch attaches it) and before navigating — to add org membership + the
+      // invite's role. This is how a GitHub-authed user becomes the first admin of an invited org.
+      const inviteToken = new URLSearchParams(window.location.search).get("invite");
+      if (inviteToken) {
+        await redeemInvite(inviteToken);
+      }
       onLoginSuccess(idToken);
       // Leave /login now that a token exists, or the /login route keeps rendering this page.
       navigate("/", { replace: true });
@@ -150,9 +162,31 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
             {error}
           </Alert>
         )}
-        <Button data-testid="firebase-signin-button" onClick={handleFirebaseLogin} disabled={loading}>
-          {loading ? t("loginPage.signingIn") : t("loginPage.signInWithGoogle")}
-        </Button>
+        <Stack gap="sm" style={{ maxWidth: 320 }}>
+          <Button
+            data-testid="firebase-signin-button"
+            onClick={() => handleFirebaseLogin("google")}
+            disabled={loading}
+          >
+            {loading ? t("loginPage.signingIn") : t("loginPage.signInWithGoogle")}
+          </Button>
+          <Button
+            variant="default"
+            data-testid="firebase-signin-github-button"
+            onClick={() => handleFirebaseLogin("github")}
+            disabled={loading}
+          >
+            {loading ? t("loginPage.signingIn") : t("loginPage.signInWithGithub")}
+          </Button>
+          <Button
+            variant="default"
+            data-testid="firebase-signin-microsoft-button"
+            onClick={() => handleFirebaseLogin("microsoft")}
+            disabled={loading}
+          >
+            {loading ? t("loginPage.signingIn") : t("loginPage.signInWithMicrosoft")}
+          </Button>
+        </Stack>
       </div>
     );
   }

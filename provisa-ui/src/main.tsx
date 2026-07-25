@@ -37,20 +37,33 @@ const colorSchemeManager = localStorageColorSchemeManager({
   key: 'provisa-color-scheme',
 })
 
-createRoot(document.getElementById('root')!).render(
-  <MantineProvider
-    theme={theme}
-    defaultColorScheme="dark"
-    colorSchemeManager={colorSchemeManager}
-  >
-    <I18nextProvider i18n={i18n}>
-      <Notifications />
-      <App />
-    </I18nextProvider>
-  </MantineProvider>,
-)
+// REQ-1266: block the first render until the Firebase bearer is settled so the dashboard's
+// initial queries never fire against a stale/expired localStorage token (the boot-time race
+// that 401'd every call on reload of an hour-old session). installFirebaseTokenSync resolves
+// as soon as the first token state settles — a fresh token written, or cleared when signed
+// out / refresh rejected — and no-ops (resolves immediately) on non-firebase deploys. The
+// Firebase SDK is dynamically imported so it stays in its own chunk, loaded only here.
+async function bootstrap() {
+  const firebase = await import('./lib/firebase.ts')
+  await firebase.installFirebaseTokenSync()
 
-// Dismiss the pre-React convergence-splash once the app has mounted and painted its
-// first frame. The splash enforces its own minimum display time + fade, so this only
-// signals readiness.
-requestAnimationFrame(() => requestAnimationFrame(() => window.__provisaHideSplash?.()))
+  createRoot(document.getElementById('root')!).render(
+    <MantineProvider
+      theme={theme}
+      defaultColorScheme="dark"
+      colorSchemeManager={colorSchemeManager}
+    >
+      <I18nextProvider i18n={i18n}>
+        <Notifications />
+        <App />
+      </I18nextProvider>
+    </MantineProvider>,
+  )
+
+  // Dismiss the pre-React convergence-splash once the app has mounted and painted its
+  // first frame. The splash enforces its own minimum display time + fade, so this only
+  // signals readiness.
+  requestAnimationFrame(() => requestAnimationFrame(() => window.__provisaHideSplash?.()))
+}
+
+void bootstrap()

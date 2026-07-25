@@ -11,7 +11,10 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import {
   getAuth,
+  GithubAuthProvider,
   GoogleAuthProvider,
+  OAuthProvider,
+  onIdTokenChanged,
   signInWithPopup,
   signOut as fbSignOut,
   type Auth,
@@ -53,7 +56,53 @@ function resolveFirebaseConfig(): FirebaseWebConfig {
   return { apiKey, authDomain, projectId };
 }
 
-const provider = new GoogleAuthProvider();
+const googleProvider = new GoogleAuthProvider();
+// Request the profile + email scopes explicitly so the Firebase ID token carries
+// name/email/picture claims the backend reads into AuthIdentity (firebase.py). Google
+// grants these by default, but naming them keeps the consent screen honest about what
+// Provisa reads and matches the GitHub provider below, which must ask for email.
+googleProvider.addScope("profile");
+googleProvider.addScope("email");
+// Force the Google account chooser on every sign-in. Without prompt=select_account
+// Google silently reuses the single active browser session and never asks which
+// account to use — wrong for a shared machine and for the bootstrap super-admin
+// capture, where the operator must deliberately pick the identity that claims the
+// slot. This makes "which account?" the explicit first step of the auth flow.
+googleProvider.setCustomParameters({ prompt: "select_account" });
+
+const githubProvider = new GithubAuthProvider();
+// read:user + user:email so the token carries the GitHub display name and a verified
+// email even when the user keeps their email private — without user:email GitHub omits
+// it and the backend gets a nameless/emailless identity.
+githubProvider.addScope("read:user");
+githubProvider.addScope("user:email");
+// allow_signup=false keeps the OAuth screen on the "authorize" step; prompt=consent so
+// the operator explicitly picks/authorizes an account rather than silent reuse.
+githubProvider.setCustomParameters({ prompt: "consent" });
+
+// Microsoft (Azure AD / Entra ID) via Firebase's generic OAuth provider. Enable the
+// Microsoft sign-in method in the Firebase console with the Azure app registration's
+// Application (client) ID + secret; the ID token Firebase mints is the same shape as
+// Google/GitHub, so the backend (firebase.py) reads name/email identically. openid +
+// email + profile so the token carries the claims AuthIdentity needs.
+const microsoftProvider = new OAuthProvider("microsoft.com");
+microsoftProvider.addScope("openid");
+microsoftProvider.addScope("email");
+microsoftProvider.addScope("profile");
+// prompt=select_account forces the account chooser (parity with Google) so the operator
+// deliberately picks the identity — right for shared machines and superadmin capture.
+// tenant defaults to "common" (any Entra tenant + personal accounts); set VITE_AZURE_TENANT
+// to a tenant ID to restrict sign-in to one org's directory.
+microsoftProvider.setCustomParameters(
+  ((import.meta as unknown as Record<string, Record<string, string>>).env.VITE_AZURE_TENANT
+    ? {
+        prompt: "select_account",
+        tenant: (import.meta as unknown as Record<string, Record<string, string>>).env
+          .VITE_AZURE_TENANT,
+      }
+    : { prompt: "select_account" }) as Record<string, string>,
+);
+
 let cachedAuth: Auth | null = null;
 
 // Lazily initialize so a missing config surfaces to the sign-in caller (LoginPage
@@ -67,8 +116,63 @@ function firebaseAuth(): Auth {
 }
 
 export async function signInWithGoogle(): Promise<string> {
-  const result = await signInWithPopup(firebaseAuth(), provider);
+  const result = await signInWithPopup(firebaseAuth(), googleProvider);
   return result.user.getIdToken();
+}
+
+export async function signInWithGithub(): Promise<string> {
+  const result = await signInWithPopup(firebaseAuth(), githubProvider);
+  return result.user.getIdToken();
+}
+
+export async function signInWithMicrosoft(): Promise<string> {
+  const result = await signInWithPopup(firebaseAuth(), microsoftProvider);
+  return result.user.getIdToken();
+}
+
+// REQ-1266: Firebase ID tokens expire after ~1h. The SDK rotates the token internally,
+// but authFetch/apolloClient read a static copy from localStorage, so without this the
+// stored bearer goes stale and every request 401s an hour after sign-in (and on any
+// reload of an older session). onIdTokenChanged fires on registration with the restored
+// user, then on each background refresh and on sign-out — mirror the live token into
+// localStorage each time so the interceptors always send a valid bearer.
+//
+// The returned promise resolves once the FIRST token state is settled (fresh token written,
+// or cleared when signed out / refresh rejected). main.tsx awaits it before rendering so the
+// dashboard's initial queries never fire against a stale/expired localStorage token — the
+// boot-time race that 401'd every call on reload of an hour-old session. No-op (resolves
+// immediately) on non-firebase deploys.
+export function installFirebaseTokenSync(): Promise<void> {
+  if (!hasFirebaseConfig()) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const settle = () => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    };
+    onIdTokenChanged(firebaseAuth(), (user) => {
+      if (user) {
+        // getIdToken() returns the cached token, transparently refreshing if it is expired or
+        // near expiry, so this always writes a currently-valid token.
+        user
+          .getIdToken()
+          .then((idToken) => localStorage.setItem("provisa_token", idToken))
+          .catch((err) => {
+            // A rejected refresh (revoked/disabled session) is a legitimate signed-out state,
+            // not a bug to swallow: surface it, clear the dead bearer, and let boot proceed to
+            // the login page rather than hanging render forever.
+            console.error("Firebase token refresh failed:", err);
+            localStorage.removeItem("provisa_token");
+          })
+          .finally(settle);
+      } else {
+        localStorage.removeItem("provisa_token");
+        settle();
+      }
+    });
+  });
 }
 
 // Tear down the Firebase session so a later sign-in shows the Google account chooser

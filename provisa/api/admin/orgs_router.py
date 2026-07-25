@@ -91,11 +91,18 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
 
     from provisa.core.org_provisioning import provision_org
 
+    # created_by records the superadmin who provisioned the org (audit + org-ownership lineage).
+    # None in dev/no-auth mode where there is no authenticated identity.
+    identity = getattr(request.state, "identity", None)
+    created_by = getattr(identity, "user_id", None) if identity is not None else None
+    if created_by == "anonymous":
+        created_by = None
+
     # orgs registry -> platform control plane; org schema -> tenant control plane.
     async with _admin_pool().acquire() as conn:
         result = await conn.execute_core(
             orgs.insert()
-            .values(id=body.id, name=body.name)
+            .values(id=body.id, name=body.name, created_by=created_by)
             .returning(orgs.c.id, orgs.c.name, orgs.c.created_by, orgs.c.created_at)
         )
         row = result.fetchone()

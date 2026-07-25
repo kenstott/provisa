@@ -300,8 +300,19 @@ locals {
     "UI_PORT=${local.protocols.ui.port}",
     var.enable_mcp ? "PROVISA_MCP_HOST=0.0.0.0 PROVISA_MCP_ROLE='${var.mcp_role}'" : "",
     "PROVISA_IDP='${var.auth_provider}'",
+    # Multitenant onboarding: first user = platform superadmin, later users admitted and join an
+    # org via invite (REQ-1266). _auto_configure_idp writes multitenancy:true into the config.
+    "PROVISA_MULTITENANCY='${var.multitenancy ? "true" : "false"}'",
     "FIREBASE_PROJECT_ID='${var.firebase_project_id}'",
     "FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'",
+    # SPA Firebase web config (public client keys), served at /firebase-config.js so one built
+    # image serves any project; login page's Google/GitHub/Microsoft sign-in inits against it.
+    "VITE_FIREBASE_API_KEY='${var.firebase_web_api_key}'",
+    "VITE_FIREBASE_AUTH_DOMAIN='${var.firebase_web_auth_domain}'",
+    "VITE_FIREBASE_PROJECT_ID='${var.firebase_project_id}'",
+    # Restrict Microsoft (Azure AD/Entra) sign-in to one tenant. Empty = 'common' (any tenant +
+    # personal Microsoft accounts, e.g. outlook.com). Read by firebase.ts's microsoftProvider.
+    "VITE_AZURE_TENANT='${var.azure_tenant_id}'",
     var.tls_cert_pem != "" && var.tls_key_pem != "" ? "PROVISA_TLS_CERT=/etc/provisa/tls/node.crt PROVISA_TLS_KEY=/etc/provisa/tls/node.key" : "",
   ]))
 

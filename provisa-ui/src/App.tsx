@@ -33,6 +33,7 @@ const ViewsPage = lazy(() => import("./pages/ViewsPage").then((m) => ({ default:
 const RequestsPage = lazy(() => import("./pages/RequestsPage").then((m) => ({ default: m.RequestsPage })));
 const DocsPage = lazy(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
 const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
+const LandingPage = lazy(() => import("./pages/LandingPage").then((m) => ({ default: m.LandingPage })));
 const GraphPage = lazy(() => import("./pages/GraphPage").then((m) => ({ default: m.GraphPage })));
 const SqlPage = lazy(() => import("./pages/SqlPage").then((m) => ({ default: m.SqlPage })));
 const SetupPage = lazy(() => import("./pages/SetupPage").then((m) => ({ default: m.SetupPage })));
@@ -136,6 +137,11 @@ function App() {
   // each Explore surface is instant instead of blocking on a lazy chunk load.
   useEffect(() => prefetchPageChunksOnIdle(), []);
 
+  // Read on every render (handleLoginSuccess bumps authVersion → re-render → re-read) so the
+  // public/shell split flips the moment a token is stored. Signed-out visitors get the
+  // standalone LandingPage instead of the app chrome (REQ-1266).
+  const token = localStorage.getItem("provisa_token");
+
   return (
     <BrowserRouter>
       <ApolloProvider client={client}>
@@ -152,6 +158,14 @@ function App() {
               <Routes>
                 <Route path="*" element={
                   <SetupPage onSetupComplete={() => { setNeedsSetup(false); }} />
+                } />
+              </Routes>
+            </Suspense>
+          ) : authEnabled && !token ? (
+            <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
+              <Routes>
+                <Route path="*" element={
+                  <LandingPage onLoginSuccess={handleLoginSuccess} authDisabled={!authEnabled} />
                 } />
               </Routes>
             </Suspense>

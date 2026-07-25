@@ -246,6 +246,12 @@ code:not(pre code) {
 .lockin em { color: var(--accent); font-style: normal; font-weight: 600; }
 @media (max-width: 560px) { .lockin { flex-direction: column; gap: 14px; } }
 
+/* Intro header above the lock-in cards — leads the group with the vendor-leverage claim. */
+.lockin-intro { margin-top: 56px; }
+.lockin-intro h2 { margin: 6px 0 12px; }
+.lockin-intro .section-sub { max-width: 820px; }
+.lockin-intro em { color: var(--accent); font-style: normal; font-weight: 600; }
+
 /* Data-lake callout — mirrors .lockin, keyed to the primary accent. */
 .lake {
   display: flex; gap: 20px; align-items: flex-start; margin-top: 34px;

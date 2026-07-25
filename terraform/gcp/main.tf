@@ -224,6 +224,10 @@ locals {
     # server reads these at runtime, so first-launch persists them into the
     # systemd unit's EnvironmentFile.
     export PROVISA_IDP="${var.auth_provider}"
+    # Multitenant onboarding: first user = platform superadmin, later users admitted and join an org
+    # via invite redemption. Off = single-administrator bootstrap (REQ-1266). Consumed by
+    # _auto_configure_idp, which writes multitenancy:true into the persisted config.
+    export PROVISA_MULTITENANCY="${var.multitenancy ? "true" : "false"}"
     export FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'
     # REQ-1266: the SPA's Firebase web config (public client keys). first-launch
@@ -233,6 +237,10 @@ locals {
     export VITE_FIREBASE_API_KEY="${var.firebase_web_api_key}"
     export VITE_FIREBASE_AUTH_DOMAIN="${var.firebase_web_auth_domain}"
     export VITE_FIREBASE_PROJECT_ID="${var.firebase_project_id}"
+    # Restrict Microsoft (Azure AD / Entra ID) sign-in to a single tenant directory. Empty
+    # = "common" (any tenant + personal accounts). Forwarded to the UI as VITE_AZURE_TENANT,
+    # read by firebase.ts's microsoftProvider.
+    export VITE_AZURE_TENANT="${var.azure_tenant_id}"
     # Opt-in wire-protocol listeners (pgwire/bolt/mcp/grpc). first-launch persists
     # these into the systemd EnvironmentFile and its protocol overlay publishes the
     # matching container ports; the NetLB above fronts each one.
@@ -244,7 +252,7 @@ locals {
     # persists UI_PORT into the systemd EnvironmentFile so `provisa start`'s compose
     # interpolation picks it up.
     export UI_PORT=${local.protocols.ui.port}
-    %{ if var.tls_cert_pem != "" && var.tls_key_pem != "" }
+    %{if var.tls_cert_pem != "" && var.tls_key_pem != ""}
     # Operator-supplied wildcard TLS cert (REQ-1239). Written here and adopted by
     # first-launch's ensure_tls_certs via PROVISA_TLS_CERT/KEY, which fans it out to
     # every listener. base64 sidesteps PEM newline/quoting hazards in the metadata heredoc.
@@ -254,7 +262,7 @@ locals {
     chmod 600 /etc/provisa/tls/node.key
     export PROVISA_TLS_CERT=/etc/provisa/tls/node.crt
     export PROVISA_TLS_KEY=/etc/provisa/tls/node.key
-    %{ endif }
+    %{endif}
     cd /opt
   SHELL
 

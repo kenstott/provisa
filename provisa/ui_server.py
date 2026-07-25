@@ -116,9 +116,13 @@ async def firebase_config() -> Response:  # REQ-1266
     auth_domain = os.environ.get("VITE_FIREBASE_AUTH_DOMAIN", "")
     project_id = os.environ.get("VITE_FIREBASE_PROJECT_ID", "")
     if api_key and auth_domain and project_id:
-        cfg = json.dumps(
-            {"apiKey": api_key, "authDomain": auth_domain, "projectId": project_id}
-        )
+        cfg_dict = {"apiKey": api_key, "authDomain": auth_domain, "projectId": project_id}
+        # Optional Microsoft (Azure AD/Entra) tenant restriction; injected at runtime so the
+        # prebuilt image need not bake it. Absent => firebase.ts uses "common".
+        azure_tenant = os.environ.get("VITE_AZURE_TENANT", "")
+        if azure_tenant:
+            cfg_dict["azureTenant"] = azure_tenant
+        cfg = json.dumps(cfg_dict)
         body = f"window.__PROVISA_FIREBASE__ = {cfg};"
     else:
         body = "window.__PROVISA_FIREBASE__ = null;"

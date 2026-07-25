@@ -62,6 +62,29 @@ roles:
   - admin
   domain_access:
   - '*'
+# org_admin: full administrative power WITHIN a single org, deliberately WITHOUT the global
+# 'admin'/'superadmin' capability (which bypass every capability + org check). Isolation comes from
+# active-org + membership confinement (middleware), so a tenant's first admin administers only its org.
+- id: org_admin
+  capabilities:
+  - source_registration
+  - table_registration
+  - create_relationship
+  - access_config
+  - query_development
+  - approve_view
+  - approve_relationship
+  - create_view
+  - column_grant
+  - user_management
+  - masking_config
+  - view_governance
+  - full_results
+  - usage
+  - ad_hoc_query
+  - write
+  domain_access:
+  - '*'
 - id: analyst
   capabilities:
   - query_development

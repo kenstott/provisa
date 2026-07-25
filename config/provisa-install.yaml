@@ -136,6 +136,31 @@ roles:
   domain_access:
   - '*'
   id: admin
+# org_admin: full administrative power WITHIN a single org, deliberately WITHOUT the global
+# 'admin'/'superadmin' capability. Those two bypass every capability + org check (capabilities.py),
+# which would let the holder reach superadmin platform endpoints (orgs_router) and other tenants.
+# org_admin instead relies on active-org + membership confinement (middleware) for isolation, so a
+# tenant's first admin can register sources/tables/roles and invite members but never escape its org.
+- capabilities:
+  - source_registration
+  - table_registration
+  - create_relationship
+  - access_config
+  - query_development
+  - approve_view
+  - approve_relationship
+  - create_view
+  - column_grant
+  - user_management
+  - masking_config
+  - view_governance
+  - full_results
+  - usage
+  - ad_hoc_query
+  - write
+  domain_access:
+  - '*'
+  id: org_admin
 - capabilities:
   - query_development
   domain_access:

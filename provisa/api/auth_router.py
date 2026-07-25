@@ -16,12 +16,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, insert, select, update
 
 from provisa.core.schema_admin import local_users, org_invites, orgs, user_org_memberships
-from provisa.core.schema_org import roles
+from provisa.core.schema_org import roles, user_role_assignments
 
 if TYPE_CHECKING:
     pass
@@ -77,15 +77,10 @@ async def me(request: Request):
         )
         org_rows = [dict(r._mapping) for r in result.fetchall()]
 
-    # The auth middleware always resolves active_org_id for an authenticated identity;
-    # a missing value is a wiring bug, not a reason to silently grant the 'root' org.
+    # active_org_id is None only for a just-authenticated user with no org membership yet (mid-
+    # onboarding, before redeem-invite). That is a legitimate state on this platform-plane endpoint —
+    # /me reports null active org + empty memberships so the UI can route to invite redemption.
     active_org_id = getattr(request.state, "active_org_id", None)
-    if active_org_id is None:
-        from fastapi import HTTPException
-
-        raise HTTPException(
-            status_code=500, detail="active_org_id not resolved for authenticated user"
-        )
     return {
         "user_id": identity.user_id,
         "email": identity.email,
@@ -245,4 +240,82 @@ async def register(body: RegisterRequest):
                 .where(org_invites.c.token == body.invite_token)
                 .values(used_at=func.now(), used_by=user_id)
             )
+            # The invite's granted role lives in the tenant control plane (user_role_assignments),
+            # not the platform plane above. Without this the invitee gets org MEMBERSHIP but no role,
+            # so the capability layer sees an identity with zero assignments — an org with an admin
+            # who cannot administer it. The invite always carries role_id (schema_admin.org_invites).
+            tenant_db = state.tenant_db
+            assert tenant_db is not None
+            async with tenant_db.acquire() as tconn:
+                await tconn.upsert(
+                    user_role_assignments,
+                    {"user_id": user_id, "role_id": invite["role_id"], "domain_id": "*"},
+                    index_elements=["user_id", "role_id", "domain_id"],
+                    update_columns=[],
+                )
     return {"user_id": user_id, "username": body.username}
+
+
+class RedeemInviteRequest(BaseModel):
+    token: str
+
+
+@router.post("/redeem-invite")  # REQ-516
+async def redeem_invite(body: RedeemInviteRequest, request: Request):
+    """Redeem an org invite for an ALREADY-authenticated bearer user (Firebase/OIDC).
+
+    /register consumes invites for the basic provider (username+password created in the same call).
+    A bearer identity has no /register step — it arrives with a valid token from the IdP and a
+    ?invite= link — so this is the redemption path for it: add org membership (platform plane) and
+    the invite's role assignment (tenant plane), then burn the invite. Idempotent per (user, org).
+    """
+    from provisa.api.app import state
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required to redeem an invite")
+    user_id = identity.user_id
+
+    import datetime
+    from datetime import timezone
+
+    now = datetime.datetime.now(tz=timezone.utc)
+
+    admin_db = state.admin_db
+    assert admin_db is not None
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(
+                org_invites.c.org_id,
+                org_invites.c.role_id,
+                org_invites.c.expires_at,
+                org_invites.c.used_at,
+            ).where(org_invites.c.token == body.token)
+        )
+        fetched = result.fetchone()
+        invite = dict(fetched._mapping) if fetched is not None else None
+        if invite is None or invite["used_at"] is not None or invite["expires_at"] < now:
+            raise HTTPException(status_code=400, detail="Invalid or expired invite token")
+        await conn.upsert(
+            user_org_memberships,
+            {"user_id": user_id, "org_id": invite["org_id"]},
+            index_elements=["user_id", "org_id"],
+            update_columns=[],
+        )
+        await conn.execute_core(
+            update(org_invites)
+            .where(org_invites.c.token == body.token)
+            .values(used_at=func.now(), used_by=user_id)
+        )
+
+    # Role assignment lives in the tenant control plane (see /register for the same split).
+    tenant_db = state.tenant_db
+    assert tenant_db is not None
+    async with tenant_db.acquire() as tconn:
+        await tconn.upsert(
+            user_role_assignments,
+            {"user_id": user_id, "role_id": invite["role_id"], "domain_id": "*"},
+            index_elements=["user_id", "role_id", "domain_id"],
+            update_columns=[],
+        )
+    return {"user_id": user_id, "org_id": invite["org_id"], "role_id": invite["role_id"]}

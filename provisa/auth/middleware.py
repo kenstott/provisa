@@ -53,6 +53,20 @@ _SKIP_PATHS = {
 }
 
 
+def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
+    """Render resolved (role_id, domain_id) pairs into identity.roles claim strings.
+
+    Enforcement (_resolved_capabilities, /auth/me, resolve_assignments) reads
+    identity.roles, so whichever source produced the assignments — bootstrap grant,
+    DB user_role_assignments (provisa mode), or IdP claims — must be mirrored back
+    into identity.roles for the capability layer to see it. '*' domain collapses to a
+    bare role_id, matching resolve_assignments' inverse parse (role_id[:domain_id]).
+    """
+    return [
+        a.role_id if a.domain_id == "*" else f"{a.role_id}:{a.domain_id}" for a in assignments
+    ]
+
+
 class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
     """Extract and validate Bearer tokens, resolve identity to role."""
 
@@ -194,9 +208,11 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                     )
                 su_identity = check_superuser(su_username, su_password, self._superuser)
                 if su_identity is not None:
+                    su_assignments = [RoleAssignment(role_id="admin", domain_id="*")]
+                    su_identity.roles = _assignments_to_claims(su_assignments)
                     request.state.identity = su_identity
                     request.state.role = "admin"
-                    request.state.assignments = [RoleAssignment(role_id="admin", domain_id="*")]
+                    request.state.assignments = su_assignments
                     request.state.active_org_id = self._default_org_id
                     return await call_next(request)
 
@@ -243,18 +259,28 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                     returning="user_id",
                 )
             if claimed_user_id != identity.user_id:
-                return JSONResponse(
-                    status_code=403,
-                    content={
-                        "detail": "Registration closed: this deployment permits a single administrator"
-                    },
-                )
-            await self._upsert_profile(identity)
-            request.state.identity = identity
-            request.state.role = "admin"
-            request.state.assignments = [RoleAssignment(role_id="admin", domain_id="*")]
-            request.state.active_org_id = self._default_org_id
-            return await call_next(request)
+                # Single-tenant bootstrap: exactly one administrator, so every later identity is
+                # denied. Multitenant bootstrap: the first user is the platform superadmin, but later
+                # identities are NOT rejected — they authenticate with no default grant and join an
+                # org by redeeming an invite (/auth/redeem-invite). So fall through to normal
+                # assignment resolution instead of 403 when multitenancy is on.
+                if not self._multitenancy:
+                    return JSONResponse(
+                        status_code=403,
+                        content={
+                            "detail": "Registration closed: this deployment permits a single administrator"
+                        },
+                    )
+                # else: not the superadmin claimant — continue to DB-assignment resolution below.
+            else:
+                await self._upsert_profile(identity)
+                boot_assignments = [RoleAssignment(role_id="admin", domain_id="*")]
+                identity.roles = _assignments_to_claims(boot_assignments)
+                request.state.identity = identity
+                request.state.role = "admin"
+                request.state.assignments = boot_assignments
+                request.state.active_org_id = self._default_org_id
+                return await call_next(request)
 
         if self._assignments_source == "provisa" and self._db_pool is not None:
             async with self._db_pool.acquire() as conn:
@@ -303,32 +329,51 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         if not self._multitenancy:
             active_org_id = self._default_org_id
         else:
-            if identity.active_org_id:
-                active_org_id = identity.active_org_id
-            else:
-                header_org = request.headers.get("x-org-id")
-                if header_org:
-                    active_org_id = header_org
-                elif self._admin_pool is not None:
-                    async with self._admin_pool.acquire() as conn:
-                        result = await conn.execute_core(
-                            select(user_org_memberships.c.org_id).where(
-                                user_org_memberships.c.user_id == identity.user_id
-                            )
+            # Platform admins (global admin/superadmin) may act in any org — org CRUD runs on the
+            # platform plane, not a tenant's active-org schema. Everyone else is confined to an org
+            # they belong to: a client-supplied X-Org-Id (or token active_org claim) naming a
+            # non-member org is rejected, not silently honored, or it becomes a cross-tenant escape.
+            is_platform_admin = bool({a.role_id for a in assignments} & {"admin", "superadmin"})
+            member_org_ids: list[str] = []
+            if self._admin_pool is not None:
+                async with self._admin_pool.acquire() as conn:
+                    result = await conn.execute_core(
+                        select(user_org_memberships.c.org_id).where(
+                            user_org_memberships.c.user_id == identity.user_id
                         )
-                        org_rows = [dict(r._mapping) for r in result.fetchall()]
-                    if len(org_rows) == 1:
-                        active_org_id = org_rows[0]["org_id"]
-                    else:
-                        return JSONResponse(
-                            status_code=401,
-                            content={"detail": "Org selection required"},
-                        )
+                    )
+                    member_org_ids = [dict(r._mapping)["org_id"] for r in result.fetchall()]
+
+            # Platform-plane auth endpoints must work for a just-authenticated user who has no
+            # membership yet: /auth/redeem-invite CREATES the first membership, /auth/me reports zero
+            # orgs, /setup + /admin/orgs run superadmin onboarding. They touch no tenant data, so an
+            # unresolved (None) active org is correct there rather than the tenant-path 401.
+            platform_plane = request.url.path.startswith(("/auth/", "/setup", "/admin/orgs"))
+            requested_org = identity.active_org_id or request.headers.get("x-org-id")
+            if requested_org is not None:
+                if is_platform_admin or requested_org in member_org_ids:
+                    active_org_id = requested_org
                 else:
                     return JSONResponse(
-                        status_code=401,
-                        content={"detail": "Org selection required"},
+                        status_code=403,
+                        content={"detail": f"Not a member of org {requested_org!r}"},
                     )
+            elif len(member_org_ids) == 1:
+                active_org_id = member_org_ids[0]
+            elif platform_plane:
+                active_org_id = None
+            else:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Org selection required"},
+                )
+
+        # Canonicalize identity.roles from the resolved assignments so the capability layer
+        # (_resolved_capabilities/require_capability), /auth/me, and every downstream reader
+        # see the same roles regardless of source. In "provisa" mode this is what surfaces
+        # DB user_role_assignments to enforcement — a bearer token (e.g. Firebase) carries no
+        # roles claim, so without this a DB-granted org role would never be enforced.
+        identity.roles = _assignments_to_claims(assignments)
 
         request.state.identity = identity
         request.state.role = role

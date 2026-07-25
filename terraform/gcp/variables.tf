@@ -128,6 +128,18 @@ variable "auth_provider" {
   }
 }
 
+variable "multitenancy" {
+  description = "Enable multitenant onboarding (first user = platform superadmin; later users join orgs via invite). false = single-administrator bootstrap (REQ-1266)."
+  type        = bool
+  default     = false
+}
+
+variable "azure_tenant_id" {
+  description = "Restrict Firebase Microsoft (Azure AD/Entra) sign-in to this tenant directory ID. Empty = 'common' (any tenant + personal accounts)."
+  type        = string
+  default     = ""
+}
+
 variable "firebase_project_id" {
   description = "Firebase project ID when auth_provider=firebase."
   type        = string

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Provisa — The active semantic layer</title>
+  <title>Provisa — The Active Semantic Layer (TASL)</title>
   <meta name="description" content="A single governed API over 46 heterogeneous data sources. Query with GraphQL, Cypher, or SQL; reach it over pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, or an MCP server. Governance is on the path, not bolted on." />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 
-  <meta property="og:title" content="Provisa — The active semantic layer" />
+  <meta property="og:title" content="Provisa — The Active Semantic Layer (TASL)" />
   <meta property="og:description" content="One governed API over 46 data sources. GraphQL, Cypher, and SQL over pgwire, Bolt, gRPC, REST, Arrow Flight, and JDBC — governance compiled into every query plan." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://provisa.dev" />
@@ -50,7 +50,7 @@
     <section class="hero">
       <div class="container hero-inner">
         <span class="hero-badge"><span class="hero-badge-dot"></span>In preview — general availability coming soon</span>
-        <p class="eyebrow">The active semantic layer</p>
+        <p class="eyebrow">The Active Semantic Layer (TASL)</p>
         <h1>Connect your databases.<br />Query with any API or protocol in 5 minutes.</h1>
         <p class="lead">
           Query <strong>46 heterogeneous data sources</strong> with
@@ -61,7 +61,7 @@
           through federation; single-source reads and writes route direct to the
           driver, transactional and sub-100ms. Reach it over <strong>pgwire, Bolt,
           Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, or an MCP server</strong>
-          — the same governed schema, every way in.
+          — the same governed schema, every way in, one governed way out.
         </p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#download">Download</a>
@@ -314,7 +314,7 @@
           </p>
           <ul class="ticks">
             <li>SQLite control plane + embedded DuckDB engine — no Docker, no daemon</li>
-            <li>Bring your own engine: point at any Trino with one env var</li>
+            <li>Bring your own engine: Trino, Databricks, Snowflake, Postgres, ClickHouse, Oracle — whatever works, one env var</li>
             <li>Reproducible and hash-pinned; passes the same CVE gate as every wheel</li>
           </ul>
         </div>
@@ -329,6 +329,17 @@
 <span class="c-cmd">export</span> TRINO_PORT=8080
 <span class="c-cmd">provisa</span> run</code></pre>
         </div>
+      </div>
+
+      <div class="container lockin-intro">
+        <p class="eyebrow">Vendor leverage</p>
+        <h2>Locked-in ecosystems become replaceable execution engines.</h2>
+        <p class="section-sub">
+          Provisa gives you leverage over your vendors. It front-ends your disparate
+          systems so your semantics live with <em>you</em>, not your vendors — turning
+          locked-in ecosystems into replaceable execution engines you can swap without
+          rewriting a query or a policy.
+        </p>
       </div>
 
       <div class="container lockin">
@@ -445,6 +456,24 @@
             and land its output into a real source table, not just the internal store.
             True data migrations may still call for imperative scripts outside Provisa —
             the model promotes cleanly; the heavy data movement is yours to run.
+          </p>
+        </div>
+      </div>
+
+      <div class="container lockin">
+        <div class="lockin-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
+          </svg>
+        </div>
+        <div>
+          <h3>The economic takeaway — you set the compute bill</h3>
+          <p>
+            Pair semantic governance with intelligent query routing and the value shifts
+            from just <em>managing access</em> to actively optimizing compute economics.
+            Provisa becomes a single point of leverage to optimize execution speed,
+            minimize network egress, and dictate exactly how much you pay vendor compute
+            engines on any given query.
           </p>
         </div>
       </div>

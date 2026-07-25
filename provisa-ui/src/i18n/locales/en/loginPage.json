@@ -5,6 +5,8 @@
     "loading": "Loading...",
     "signInTitle": "Sign In",
     "signInWithGoogle": "Sign in with Google",
+    "signInWithGithub": "Sign in with GitHub",
+    "signInWithMicrosoft": "Sign in with Microsoft",
     "signingIn": "Signing in...",
     "createAccountTitle": "Create Account",
     "username": "Username",

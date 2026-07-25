@@ -1038,6 +1038,23 @@ export async function fetchInviteInfo(token: string): Promise<InviteInfo> {
   return res.json();
 }
 
+// Redeem an invite for the CURRENT bearer-authenticated user (Firebase/OIDC). The global
+// authFetch wrapper attaches the just-stored provisa_token as the bearer, so no header is set here.
+export async function redeemInvite(
+  token: string,
+): Promise<{ user_id: string; org_id: string; role_id: string }> {
+  const res = await fetch(`/auth/redeem-invite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `Redeem invite failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function reloadQueryEngineCatalog(
   catalog = "otel",
 ): Promise<{ success: boolean; errors: string[] }> {

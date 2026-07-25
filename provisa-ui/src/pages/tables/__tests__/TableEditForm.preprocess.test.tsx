@@ -13,6 +13,15 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "../../../test-utils/render";
+
+// vmThreads shares the module registry across test files, so a neighbor's partial
+// vi.mock("../../../api/admin") (e.g. table-description-autofill's) can leak in and drop
+// fetchIrTypes, which TableEditForm calls on mount. Declare a complete pass-through mock so
+// this file always sees the real api/admin exports regardless of run order.
+vi.mock("../../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/admin")>()),
+}));
+
 import { TableEditForm } from "../TableEditForm";
 import type { RegisteredTable } from "../../../types/admin";
 import i18n from "../../../i18n";
