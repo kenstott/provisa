@@ -27,11 +27,12 @@ Runs live in the warehouse lane
 -------------------------------
 The Sheets API is enabled for the GCP project referenced by GOOGLE_APPLICATION_CREDENTIALS /
 GOOGLE_CLOUD_PROJECT (in .env), and the key_file service-account secret is accepted by the DuckDB
-gsheets extension, so this test runs end to end: it creates a real throwaway sheet, seeds 3 rows,
-reads them back through the REAL connector DDL, and deletes the sheet. scripts/test-all sets
-PROVISA_GSHEETS_LIVE=1 in the warehouse lane (where the GOOGLE_ creds load) so it executes there
-every run. `_ensure_sheets_api_enabled()` below still performs a live probe and skips with evidence
-if the API is ever disabled again project-side — a guard, not the expected path.
+gsheets extension, so this test runs end to end against a DURABLE fixture sheet: the service account
+has zero Drive storage quota (a non-Workspace SA cannot own Drive files, so spreadsheets.create is a
+hard 403), therefore it reads an existing sheet owned by a real Drive user and shared with the SA as
+reader — header id,name + the _WIDGETS rows — through the REAL connector DDL. The fixture id is
+GSHEETS_TEST_SHEET_ID (.env). scripts/test-all sets PROVISA_GSHEETS_LIVE=1 in the warehouse lane
+(where the GOOGLE_ creds load) so it executes there every run.
 """
 
 from __future__ import annotations
@@ -40,7 +41,6 @@ import json
 import os
 import subprocess
 import sys
-import uuid
 
 import pytest
 
@@ -76,83 +76,18 @@ pytestmark.append(
     )
 )
 
-_SHEETS_SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file",
-]
+# ids are non-numeric on purpose: DuckDB read_gsheet type-infers numeric-looking cells to DOUBLE
+# regardless of the sheet's TEXT cell format (empirically: stringValue "1" -> column DOUBLE 1.0),
+# so a "1"/"2"/"3" id would read back as "1.0" and never round-trip. Text ids read as VARCHAR.
+_WIDGETS = [("w1", "Widget A"), ("w2", "Widget B"), ("w3", "Widget C")]
 
-_WIDGETS = [("1", "Widget A"), ("2", "Widget B"), ("3", "Widget C")]
-
-
-def _access_token() -> str:
-    from google.auth.transport.requests import Request
-    from google.oauth2 import service_account
-
-    creds = service_account.Credentials.from_service_account_file(
-        _CREDS_PATH, scopes=_SHEETS_SCOPES
-    )
-    creds.refresh(Request())
-    return creds.token
-
-
-def _ensure_sheets_api_enabled(token: str) -> None:
-    """Live probe matching evidence point 2/3 in the module docstring: skip (documented last
-    resort, not a dodge — see docstring) if the Sheets API is disabled for the calling project."""
-    import requests
-
-    r = requests.post(
-        "https://sheets.googleapis.com/v4/spreadsheets",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"properties": {"title": f"provisa_gsheets_e2e_probe_{uuid.uuid4().hex[:8]}"}},
-        timeout=30,
-    )
-    if r.status_code == 403 and "SERVICE_DISABLED" in r.text:
-        pytest.skip(
-            "Google Sheets API is disabled for the GCP project backing "
-            f"GOOGLE_APPLICATION_CREDENTIALS ({_PROJECT}); service account lacks "
-            "serviceusage.services.enable to fix it from here. Evidence: "
-            f"HTTP {r.status_code} {r.text[:300]}"
-        )
-    r.raise_for_status()
-    sheet_id = r.json()["spreadsheetId"]
-    _delete_sheet(token, sheet_id)  # probe sheet — not the seeded test sheet, clean up immediately
-
-
-def _create_test_sheet(token: str) -> str:
-    import requests
-
-    r = requests.post(
-        "https://sheets.googleapis.com/v4/spreadsheets",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"properties": {"title": f"provisa_gsheets_e2e_{uuid.uuid4().hex[:8]}"}},
-        timeout=30,
-    )
-    r.raise_for_status()
-    return r.json()["spreadsheetId"]
-
-
-def _seed_sheet(token: str, sheet_id: str) -> None:
-    import requests
-
-    values = [["id", "name"], *[[wid, name] for wid, name in _WIDGETS]]
-    r = requests.put(
-        f"https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/Sheet1!A1:B4",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        params={"valueInputOption": "RAW"},
-        json={"values": values},
-        timeout=30,
-    )
-    r.raise_for_status()
-
-
-def _delete_sheet(token: str, sheet_id: str) -> None:
-    import requests
-
-    requests.delete(
-        f"https://www.googleapis.com/drive/v3/files/{sheet_id}",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=30,
-    )  # best-effort cleanup — a throwaway file left behind is not a test failure
+# REQ-1097: the service account backing GOOGLE_APPLICATION_CREDENTIALS has ZERO Drive storage quota
+# — a service account on a non-Workspace GCP project cannot own Drive files, so spreadsheets.create
+# returns 403 storageQuotaExceeded and it can never seed a throwaway sheet. The product path is READ
+# (DuckDBGsheetsConnector reads an existing sheet live via the gsheets extension), so this test reads
+# a DURABLE fixture: a sheet owned by a real Drive user, shared with the SA as reader, holding a
+# header row (id,name) + the _WIDGETS rows. Its id is GSHEETS_TEST_SHEET_ID (loaded from .env).
+_FIXTURE_SHEET_ID = os.environ.get("GSHEETS_TEST_SHEET_ID", "")
 
 
 def test_google_sheets_read_through_duckdb_engine():
@@ -171,43 +106,40 @@ def test_google_sheets_read_through_duckdb_engine():
     # a gsheets extension that accepts a key_file service-account secret) to run it live.
     if not os.environ.get("PROVISA_GSHEETS_LIVE"):
         pytest.skip("set PROVISA_GSHEETS_LIVE=1 to run the live DuckDB gsheets read (see docstring)")
-
-    token = _access_token()
-    _ensure_sheets_api_enabled(token)  # skips with evidence if the API is disabled (see docstring)
-
-    sheet_id = _create_test_sheet(token)
-    try:
-        _seed_sheet(token, sheet_id)
-
-        src = Source(
-            id="gsheets_itest",
-            type=SourceType.google_sheets,
-            federation_hints={"spreadsheet_id": sheet_id},
+    if not _FIXTURE_SHEET_ID:
+        pytest.skip(
+            "GSHEETS_TEST_SHEET_ID not set — provision a Drive sheet (header id,name + Widget A/B/C) "
+            "shared with the service account as reader; the SA has 0 Drive quota and cannot self-seed"
         )
-        details = DuckDBGsheetsConnector().details(src)  # pure — assert the real DDL shape
-        assert "read_gsheet(" in details["view_ddl"]
-        assert sheet_id in details["view_ddl"]
 
-        try:
-            out = subprocess.run(
-                [sys.executable, "-c", _DUCKDB_READ_SCRIPT, sheet_id, src.id, _CREDS_PATH],
-                capture_output=True,
-                text=True,
-                timeout=90,
-                check=True,
-            )
-        except subprocess.TimeoutExpired:
-            pytest.fail(
-                "DuckDB gsheets read_gsheet hung >90s — the gsheets extension did not accept the "
-                "service-account key_file secret non-interactively"
-            )
-        except subprocess.CalledProcessError as e:
-            pytest.fail(f"DuckDB gsheets read failed: {e.stderr.strip()[-400:]}")
+    sheet_id = _FIXTURE_SHEET_ID
+    src = Source(
+        id="gsheets_itest",
+        type=SourceType.google_sheets,
+        federation_hints={"spreadsheet_id": sheet_id},
+    )
+    details = DuckDBGsheetsConnector().details(src)  # pure — assert the real DDL shape
+    assert "read_gsheet(" in details["view_ddl"]
+    assert sheet_id in details["view_ddl"]
 
-        result = [tuple(r) for r in json.loads(out.stdout.strip().splitlines()[-1])]
-        assert result == list(_WIDGETS)
-    finally:
-        _delete_sheet(token, sheet_id)
+    try:
+        out = subprocess.run(
+            [sys.executable, "-c", _DUCKDB_READ_SCRIPT, sheet_id, src.id, _CREDS_PATH],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=True,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(
+            "DuckDB gsheets read_gsheet hung >90s — the gsheets extension did not accept the "
+            "service-account key_file secret non-interactively"
+        )
+    except subprocess.CalledProcessError as e:
+        pytest.fail(f"DuckDB gsheets read failed: {e.stderr.strip()[-400:]}")
+
+    result = [tuple(r) for r in json.loads(out.stdout.strip().splitlines()[-1])]
+    assert result == list(_WIDGETS)
 
 
 if __name__ == "__main__":
