@@ -53,7 +53,7 @@ interface AuthContextValue extends AuthState {
   selectDomain: (domain: string | null) => void;
   selectOrg: (orgId: string | null) => void;
   devMode: boolean;
-  // Runtime auth-enforcement flag from /setup/status (REQ-1259). Drives the login gate
+  // Runtime auth-enforcement flag from /setup/status (REQ-1267). Drives the login gate
   // and logout affordance instead of a build-time constant.
   authEnabled: boolean;
 }
@@ -107,7 +107,7 @@ export function AuthProvider({
       } catch {
         // /auth/me failed. On an unsecured deploy that means dev mode (full admin). When auth
         // IS enforced, a failure here is an unauthenticated caller — never grant dev admin;
-        // RequireAuth redirects to /login before any admin content renders (REQ-1259).
+        // RequireAuth redirects to /login before any admin content renders (REQ-1267).
         isDev = !authEnabled;
       }
 

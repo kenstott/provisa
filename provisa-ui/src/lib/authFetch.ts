@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1259: on an auth-enforced deploy (firebase/basic) the bearer token lives in
+// REQ-1267: on an auth-enforced deploy (firebase/basic) the bearer token lives in
 // localStorage and must ride on EVERY same-origin request. The Apollo link already adds it
 // for GraphQL, but the ~100 REST fetch() call sites (api/*.ts, pages, hooks) did not — so
 // /auth/me and every REST-backed feature 401'd, leaving the client in a broken half-authed

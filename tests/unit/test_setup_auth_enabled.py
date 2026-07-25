@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 39a85e27-4389-46c5-b7e1-650a73aa2479
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -7,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1259: /setup/status exposes a runtime auth_enabled flag so the SPA's login
+"""REQ-1267: /setup/status exposes a runtime auth_enabled flag so the SPA's login
 gate keys off the server's configured provider, not a build-time VITE_AUTH_ENABLED."""
 
 from __future__ import annotations

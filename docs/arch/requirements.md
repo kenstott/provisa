@@ -12689,3 +12689,89 @@ Linux-only RLIMIT_AS memory-bounded streaming tests (test_streaming_memory_bound
 **Code:** `scripts/test-all`, `docker/mem-lane.Dockerfile`, `scripts/_mem-lane-entrypoint.sh`, `tests/integration/test_streaming_memory_bounded_e2e.py`, `tests/conftest.py`, `tests/integration/conftest.py`
 
 **Tests:** `tests/integration/test_streaming_memory_bounded_e2e.py`
+
+## 2. Authentication & Identity
+
+### REQ-1261 · Multi-Tenant Onboarding {#REQ-1261}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Any user may sign up, create their own organization/workspace, and invite teammates. Authentication onboarding follows standard SaaS flow: sign up → verify → create org → invite → land in product, with per-org roles replacing the single-admin appliance bootstrap model.
+
+**Use case:** Enables multi-tenant usage where each organization manages its own users and roles, eliminating the bootstrap constraint (first Google user becomes sole admin, others 403).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1262 · Multi-Method Authentication {#REQ-1262}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Login page surfaces multiple simultaneous authentication providers (Google, GitHub, email/password), advertised by the server as a list. Recommended architecture: Firebase-native multi-method (all yield a Firebase ID token validated by one provider) plus optional server-issued JWT provider, with Firebase account-linking ensuring one account per email.
+
+**Use case:** Provides user choice for signup/login and reduces vendor lock-in by supporting multiple identity providers on a single login surface.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1263 · API Token Management {#REQ-1263}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access (pgwire/Postgres, Bolt/Neo4j, Arrow Flight, gRPC, MCP). Tokens are user-generated in the UI, stored hashed with owner + org + scopes/role + expiry + last-used. Every protocol resolves tokens to AuthIdentity via a single AuthProvider.validate_token method, reusing the central identity provider and enforcing per-org scope.
+
+**Use case:** Allows programmatic clients (Python/Node scripts, BI tools, ETL pipelines) to authenticate against all Provisa protocols using the same role/scope model as browser auth, eliminating the need for separate credential management per client type.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1264 · Platform Admin Break-Glass Access {#REQ-1264}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
+
+Platform super-admin is a seeded local break-glass account (username + bcrypt password via simple auth provider), created at install with an installation-generated random password. Password is not static (never admin/admin) and is surfaced via Terraform output or GCP cloud-init console log, never persisted in config. First login enforces password rotation. This account is SSO-independent and works when Firebase/OAuth is broken — the exclusive recovery/emergency access path for platform operators.
+
+**Use case:** Ensures platform operators can always access the system for emergency recovery and initial setup, independent of external identity provider availability or misconfiguration. Seeded local admin provides break-glass access without relying on Firebase/OAuth uptime.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1265 · Helm Auth Configuration {#REQ-1265}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+
+Helm chart deployment MUST NOT require Firebase. Operator specifies auth provider at install time via values.yaml (OIDC issuer URL, SAML metadata, LDAP server, or local break-glass). Provisa configures AuthProvider accordingly, decoupled from cloud Firebase bootstrap path. Enterprise identity providers (corporate OIDC/SAML/LDAP) are the primary target, not Google-only sign-in.
+
+**Use case:** Helm chart deployments target enterprises whose identity infrastructure is internal (OIDC/SAML/LDAP), not Google. Auth provider configuration at install time enables enterprises to integrate their own identity systems directly without external dependency or admin UI manipulation.
+
+**Code:** `charts/provisa/values.yaml`, `provisa/auth/provider.py`
+
+**Tests:** —
+
+### REQ-1266 · Cloud Appliance Bootstrap {#REQ-1266}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Firebase single-admin bootstrap is an optional convenience for cloud-appliance deployments (GCP cloud-init / Terraform). First Google-signed-in user becomes sole initial admin. This path is NOT required or supported by Helm/enterprise deployments and is NOT a fallback if OIDC/SAML/LDAP is misconfigured. Supersedes informal "[REQ-1259](#REQ-1259)" label; that requirement concerns TLS certificates, not authentication.
+
+**Use case:** Cloud appliance deployments targeting individual users or small teams on GCP provide fastest time-to-value: zero auth config required, sign in with Google, immediate product access. Enterprises use Helm with their own OIDC/SAML/LDAP ([REQ-1265](#REQ-1265)) instead.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1267 · Runtime Auth-Enforcement Gate {#REQ-1267}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A single built image/wheel serves unsecured (demo/none), basic, or firebase/IdP deployments and can switch enforcement at runtime WITHOUT a process restart or rebuild. The API exposes /setup/status with auth_enabled flag and /auth/provider-type (returns "firebase"|"basic"|null) — both reachable before authentication. Auth middleware uses lazy provider resolver for deferred IdP boot and runtime reconfiguration. SPA login gate is driven by runtime signals, not build-time flags. This requirement supersedes the informal "[REQ-1259](#REQ-1259)" label used in auth-enforcement-gate code; the actual [REQ-1259](#REQ-1259) is Helm TLS certificate provisioning (unrelated).
+
+**Use case:** Enables a single production binary to serve multiple deployment scenarios (unsecured demo, enterprise IdP, basic auth) and dynamically switch authentication enforcement at runtime, eliminating build-per-deployment overhead and supporting auth migration without downtime.
+
+**Code:** —
+
+**Tests:** —

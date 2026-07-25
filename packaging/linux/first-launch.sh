@@ -508,7 +508,7 @@ services:
       PROVISA_TLS_CERT: "/app/certs/provisa.crt"
       PROVISA_TLS_KEY: "/app/certs/provisa.key"
       PROVISA_MCP_TLS: "1"
-      # REQ-1259: forward the IdP selection + Firebase backend vars into the API
+      # REQ-1266: forward the IdP selection + Firebase backend vars into the API
       # container so setup_router._auto_configure_idp wires the provider. Interpolated
       # (not baked) so the secret service-account key stays in the 600 systemd env_file
       # (${PROVISA_HOME}/provisa.env) that \`provisa start\` runs under.
@@ -523,7 +523,7 @@ services:
       # REQ-1227: the API now serves TLS on 8000, so the UI's reverse-proxy hop
       # must use https — a plaintext http:// hop to a TLS port dies with ReadError.
       PROVISA_API_URL: "https://provisa:8000"
-      # REQ-1259: the SPA's Firebase web config (public client keys) — ui_server
+      # REQ-1266: the SPA's Firebase web config (public client keys) — ui_server
       # serves these at /firebase-config.js so the login page's Google sign-in works.
       VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
       VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"
@@ -584,7 +584,7 @@ services:
       TRINO_FLIGHT_PORT: "8480"
       FLIGHT_PORT: "8815"
       PROVISA_OTEL_S3_ENDPOINT: "http://${PRIMARY_IP}:9000"
-      # REQ-1259: forward the IdP selection + Firebase backend vars into the API
+      # REQ-1266: forward the IdP selection + Firebase backend vars into the API
       # container (the secondary auto-configures the same provider as the primary).
       PROVISA_IDP: "\${PROVISA_IDP:-}"
       FIREBASE_PROJECT_ID: "\${FIREBASE_PROJECT_ID:-}"
@@ -601,7 +601,7 @@ services:
       # REQ-1227: the API now serves TLS on 8000, so the UI's reverse-proxy hop
       # must use https — a plaintext http:// hop to a TLS port dies with ReadError.
       PROVISA_API_URL: "https://provisa:8000"
-      # REQ-1259: the SPA's Firebase web config (public client keys), served at
+      # REQ-1266: the SPA's Firebase web config (public client keys), served at
       # /firebase-config.js so the login page's Google sign-in works.
       VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
       VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"

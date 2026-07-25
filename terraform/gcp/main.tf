@@ -226,7 +226,7 @@ locals {
     export PROVISA_IDP="${var.auth_provider}"
     export FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'
-    # REQ-1259: the SPA's Firebase web config (public client keys). first-launch
+    # REQ-1266: the SPA's Firebase web config (public client keys). first-launch
     # persists these into the systemd EnvironmentFile and forwards them into the
     # provisa-ui container, which serves them at /firebase-config.js so the login
     # page's Google sign-in initializes against this Firebase project.

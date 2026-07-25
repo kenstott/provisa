@@ -51,7 +51,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
     }
 
     if provider == "firebase":
-        # REQ-1259: limited Firebase mode — the first authenticated user becomes the sole
+        # REQ-1266: limited Firebase mode — the first authenticated user becomes the sole
         # super-admin and every later user is denied. No blanket admin default_assignments
         # (that would make every Firebase user admin); the bootstrap gate grants the first.
         auth_section["bootstrap_superadmin"] = True
@@ -95,7 +95,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
 def _auth_enabled(auth_cfg) -> bool:
     # auth is enforced when a real provider is configured. The SPA's login gate keys off
     # this runtime flag rather than a build-time VITE_AUTH_ENABLED, so a single image serves
-    # both unsecured (demo/none) and firebase/basic deploys without a rebuild (REQ-1259).
+    # both unsecured (demo/none) and firebase/basic deploys without a rebuild (REQ-1267).
     provider = auth_cfg.get("provider") if isinstance(auth_cfg, dict) else None
     return bool(provider and provider != "none")
 
@@ -224,7 +224,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         project_id = body.firebase_project_id or os.environ.get("FIREBASE_PROJECT_ID", "")
         if not project_id:
             raise HTTPException(status_code=400, detail="firebase_project_id required")
-        # REQ-1259: limited Firebase mode — first user → sole super-admin, rest denied.
+        # REQ-1266: limited Firebase mode — first user → sole super-admin, rest denied.
         # Drop the blanket admin default (it would admit every Firebase user).
         auth_section["bootstrap_superadmin"] = True
         auth_section["default_assignments"] = []
