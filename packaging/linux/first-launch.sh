@@ -594,7 +594,12 @@ services:
     image: provisa/provisa:local
     command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key"]
     ports:
-      - "3000:3000"
+      # Publish on the deployment's UI port (scripts/provisa exports UI_PORT from
+      # config.yaml ui_port), matching the primary's ${UI_PORT}:3000. Cloud sets
+      # ui_port: 443 and the shared TCP LB forwards ALL ports to every node, so a
+      # secondary that only bound :3000 refuses the LB's :443 traffic (the browser
+      # sees ERR_CONNECTION_REFUSED on round-robined asset requests).
+      - "\${UI_PORT:-3000}:3000"
     volumes:
       - ${CERT_DIR}:/app/certs:ro
     environment:
