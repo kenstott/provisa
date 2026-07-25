@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import { createRoot } from 'react-dom/client'
+// Install the same-origin bearer-token fetch interceptor before anything issues a request.
+import { installAuthFetch } from './lib/authFetch.ts'
 // Mantine styles must load before app CSS so local overrides win the cascade.
 import '@mantine/core/styles.css'
 import '@mantine/dates/styles.css'
@@ -29,6 +31,8 @@ declare global {
 }
 
 // Key must match the inline anti-flash script in index.html.
+installAuthFetch()
+
 const colorSchemeManager = localStorageColorSchemeManager({
   key: 'provisa-color-scheme',
 })

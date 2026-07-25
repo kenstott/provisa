@@ -73,7 +73,9 @@ cache:
 discovery:
   sample_size: 20
   min_confidence: 0.7
-  api_key: ${env:ANTHROPIC_API_KEY}
+  # Empty default so a keyless install boots (AI discovery stays off) instead of the API
+  # crashing at startup when ANTHROPIC_API_KEY is unset (secret resolution raises KeyError).
+  api_key: ${env:ANTHROPIC_API_KEY:-}
 observability:
   endpoint: ''
   service_name: provisa

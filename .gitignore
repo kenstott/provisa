@@ -21,6 +21,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# The Python lib/ rule above also swallows the UI source dir; keep it tracked.
+!provisa-ui/src/lib/
+!provisa-ui/src/lib/**
 lib64/
 parts/
 sdist/

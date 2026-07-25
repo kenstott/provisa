@@ -10,6 +10,7 @@
 
 import { useState, useEffect } from "react";
 import type { FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { Alert, Button, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { fetchProviderType, registerAccount, fetchInviteInfo } from "../api/admin";
@@ -24,6 +25,7 @@ interface LoginPageProps {
 
 export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [provider, setProvider] = useState<string | null>(null);
   const [providerLoading, setProviderLoading] = useState(true);
 
@@ -91,6 +93,8 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     localStorage.setItem("provisa_token", data.access_token);
     setLoading(false);
     onLoginSuccess(data.access_token);
+    // Leave /login now that a token exists, or the /login route keeps rendering this page.
+    navigate("/", { replace: true });
   };
 
   const handleRegister = async (e: FormEvent) => {
@@ -128,6 +132,8 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       const idToken = await signInWithGoogle();
       localStorage.setItem("provisa_token", idToken);
       onLoginSuccess(idToken);
+      // Leave /login now that a token exists, or the /login route keeps rendering this page.
+      navigate("/", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : t("loginPage.firebaseSignInFailed"));
     } finally {
