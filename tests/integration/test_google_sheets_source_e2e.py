@@ -23,36 +23,15 @@ secret is registered. This test drives that real seam directly against an in-pro
 connection, the same one DuckDBBackend wraps, using a live ``PROVIDER access_token`` secret built
 from the project's Google service-account credentials (REQ-1097 setup: GOOGLE_APPLICATION_CREDENTIALS).
 
-BLOCKED: Google Sheets API disabled on the credentialed GCP project
----------------------------------------------------------------------
-This is not skipped for convenience — every avenue was attempted and independently confirmed
-blocked, evidence below (all reproduced 2026-07-17 against the live GCP project referenced by
-GOOGLE_APPLICATION_CREDENTIALS / GOOGLE_CLOUD_PROJECT in .env):
-
-1. `INSTALL gsheets FROM community; LOAD gsheets` succeeds standalone — the DuckDB extension itself
-   loads fine (verified below, mirrors the firebird test's split between "extension loads" and
-   "extension is functional").
-2. Creating a throwaway test sheet via ``POST https://sheets.googleapis.com/v4/spreadsheets`` with
-   the service account's bearer token (scope `spreadsheets`) returns HTTP 403
-   ``SERVICE_DISABLED``: "Google Sheets API has not been used in project 906499566555 before or it
-   is disabled."  (906499566555 is the numeric project id backing concise-volt-436619-g5, the
-   project named in GOOGLE_CLOUD_PROJECT.)
-3. Reading DuckDB gsheets' own PUBLIC documentation demo sheet
-   (11QdEasMWbETbFVxry-SsD8jVcdYIT1zBQszcF84MdE8) via ``GET .../v4/spreadsheets/{id}`` with the same
-   token returns the identical 403 SERVICE_DISABLED — the block is per-CALLING-project, independent
-   of which sheet (public or private) is targeted, so there is no "read a public sheet without
-   creating one" workaround either.
-4. Attempting to self-enable the API (`POST serviceusage.googleapis.com/v1/projects/
-   concise-volt-436619-g5/services/sheets.googleapis.com:enable` using the same service account with
-   `cloud-platform` scope) returns HTTP 403 ``AUTH_PERMISSION_DENIED`` — the service account has no
-   `serviceusage.services.enable` permission, so it cannot fix this from inside the test either.
-
-Enabling the Sheets API for this GCP project (console access, outside repo/test scope) is required
-before this test can run live. `_ensure_sheets_api_enabled()` below performs the exact live probe
-from point 2 and skips with that evidence if the API is still disabled — a documented last resort,
-not a dodge: once the API is enabled project-side, this test creates a real throwaway sheet, seeds
-3 rows, reads them back through the REAL connector DDL, and deletes the sheet, with no code changes
-required.
+Runs live in the warehouse lane
+-------------------------------
+The Sheets API is enabled for the GCP project referenced by GOOGLE_APPLICATION_CREDENTIALS /
+GOOGLE_CLOUD_PROJECT (in .env), and the key_file service-account secret is accepted by the DuckDB
+gsheets extension, so this test runs end to end: it creates a real throwaway sheet, seeds 3 rows,
+reads them back through the REAL connector DDL, and deletes the sheet. scripts/test-all sets
+PROVISA_GSHEETS_LIVE=1 in the warehouse lane (where the GOOGLE_ creds load) so it executes there
+every run. `_ensure_sheets_api_enabled()` below still performs a live probe and skips with evidence
+if the API is ever disabled again project-side — a guard, not the expected path.
 """
 
 from __future__ import annotations

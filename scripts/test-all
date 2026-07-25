@@ -49,6 +49,11 @@ _load_warehouse_creds() {
   [[ -n "${SP_CLIENT_SECRET:-}" ]] && export SHAREPOINT_CLIENT_SECRET="$SP_CLIENT_SECRET"
   [[ -n "${SP_CERT_PATH:-}"    ]] && export SHAREPOINT_CERT_PATH="$(cd "$(dirname "$SP_CERT_PATH")" && pwd)/$(basename "$SP_CERT_PATH")"
   [[ -n "${SP_CERT_PASSWORD:-}" ]] && export SHAREPOINT_CERT_PASSWORD="$SP_CERT_PASSWORD"
+  # Google Sheets API is enabled for the credentialed project and the key_file secret works, so the
+  # live DuckDB gsheets read must RUN here, not skip on its opt-in. GOOGLE_APPLICATION_CREDENTIALS /
+  # GOOGLE_CLOUD_PROJECT load via the GOOGLE_ prefix above; flip the PROVISA_GSHEETS_LIVE opt-in so
+  # test_google_sheets_source_e2e reads a real seeded sheet instead of phantom-skipping.
+  export PROVISA_GSHEETS_LIVE=1
 }
 
 # Auto-enable the warehouse lane whenever .env carries provider creds, so cloud-DW testing ALWAYS
