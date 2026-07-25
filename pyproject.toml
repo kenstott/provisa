@@ -153,6 +153,10 @@ dev = [
     # Declared so `uv sync` installs them and the driver tests run instead of skipping.
     "aiomysql",
     "oracledb",
+    # REQ-1259: the Firebase auth-provider unit tests (test_auth_providers.py TestFirebaseProvider)
+    # importorskip("firebase_admin.auth"); declared here so the test env always has it and those
+    # tests RUN instead of skipping. Same rationale as the direct-driver libs above.
+    "firebase-admin",
 ]
 
 [build-system]

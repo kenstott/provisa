@@ -29,6 +29,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import cast
 
@@ -75,7 +76,7 @@ def shared_data() -> dict:
 
 
 @pytest_asyncio.fixture
-async def audit_pool():
+async def audit_pool(shared_data):
     # REQ-613 writes/reads the append-only audit log against the REAL core Postgres the itest stack
     # provisions (tests/conftest.py _CORE_SERVICES → "postgres"; PG_* exported by _allocate_itest_ports
     # at import). The only run that has no Postgres is a PYTEST_NO_DOCKER quick-unit run — the same
@@ -97,6 +98,13 @@ async def audit_pool():
     # unqualified INSERT/SELECT in the when/then steps must resolve against that same schema.
     db = Database(engine, name="test", search_path=f"org_{org_id}, public")
     await init_audit_schema(db, org_id=org_id)
+    # The when/then steps are SYNC pytest-bdd steps that must drive asyncpg coroutines. asyncpg
+    # connections are bound to the loop that created the engine (this fixture runs on pytest-asyncio's
+    # session loop). `asyncio.get_event_loop()` from a sync step does NOT reliably return that loop on
+    # 3.12 (RuntimeError: no current event loop once a prior test consumes it), and asyncio.run() would
+    # build a *different* loop → "attached to a different loop". Stash THIS loop so the sync steps run
+    # every coroutine on the one the pool lives on — deterministic in isolation and in the full suite.
+    shared_data["_audit_loop"] = asyncio.get_running_loop()
     try:
         yield db
     finally:
@@ -799,8 +807,6 @@ def given_any_query_touching_domain_asset(shared_data):
 
 @when("the query is executed")
 def when_the_query_is_executed(shared_data, audit_pool):
-    import asyncio
-
     async def _do_log():
         await log_query(
             audit_pool,
@@ -815,7 +821,7 @@ def when_the_query_is_executed(shared_data, audit_pool):
             encryption=NullEncryption(),  # REQ-689: query text stored encrypted; NullEncryption in test
         )
 
-    asyncio.get_event_loop().run_until_complete(_do_log())
+    shared_data["_audit_loop"].run_until_complete(_do_log())
     shared_data["expected_query_hash"] = hashlib.sha256(
         shared_data["query_text"].encode()
     ).hexdigest()
@@ -824,8 +830,6 @@ def when_the_query_is_executed(shared_data, audit_pool):
 
 @then("it is logged in the append-only query_audit_log with all required fields")
 def then_logged_in_append_only_audit_log(shared_data, audit_pool):
-    import asyncio
-
     assert shared_data.get("query_executed"), "When step must have executed the query"
 
     async def _verify():
@@ -897,7 +901,7 @@ def then_logged_in_append_only_audit_log(shared_data, audit_pool):
                 "Index idx_audit_user_time (user_id, logged_at) must exist"
             )
 
-    asyncio.get_event_loop().run_until_complete(_verify())
+    shared_data["_audit_loop"].run_until_complete(_verify())
 
 
 # Nothing to append - all steps for REQ-001 already exist in the file.
