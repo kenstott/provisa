@@ -9,9 +9,26 @@
 // permission from the copyright holder.
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, type Auth } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut as fbSignOut,
+  type Auth,
+} from "firebase/auth";
 
 type FirebaseWebConfig = { apiKey: string; authDomain: string; projectId: string };
+
+// True only on a firebase deploy (config injected at runtime or baked at build time).
+// Used to decide whether there is a Firebase session to tear down on logout.
+function hasFirebaseConfig(): boolean {
+  const injected = (
+    window as unknown as { __PROVISA_FIREBASE__?: FirebaseWebConfig | null }
+  ).__PROVISA_FIREBASE__;
+  if (injected) return true;
+  const env = (import.meta as unknown as Record<string, Record<string, string>>).env;
+  return Boolean(env.VITE_FIREBASE_API_KEY && env.VITE_FIREBASE_AUTH_DOMAIN && env.VITE_FIREBASE_PROJECT_ID);
+}
 
 // The web config source: runtime-injected first, build-time env second (REQ-1259).
 // In a cloud deploy ui_server serves /firebase-config.js from the node env, which
@@ -52,4 +69,12 @@ function firebaseAuth(): Auth {
 export async function signInWithGoogle(): Promise<string> {
   const result = await signInWithPopup(firebaseAuth(), provider);
   return result.user.getIdToken();
+}
+
+// Tear down the Firebase session so a later sign-in shows the Google account chooser
+// instead of silently reusing the persisted account. No-op on basic/none deploys (no
+// firebase config), so logout stays safe for every provider.
+export async function signOutFirebase(): Promise<void> {
+  if (!hasFirebaseConfig()) return;
+  await fbSignOut(firebaseAuth());
 }

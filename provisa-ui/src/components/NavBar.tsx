@@ -182,7 +182,11 @@ export function NavBar() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [pinnedGroup]);
 
-  function handleLogout() {
+  async function handleLogout() {
+    // Clear the Firebase session too, or signInWithPopup silently reuses the persisted
+    // Google account on the next login and never offers the account chooser.
+    const { signOutFirebase } = await import("../lib/firebase");
+    await signOutFirebase();
     localStorage.removeItem("provisa_token");
     localStorage.removeItem("provisa_org");
     navigate("/login");
