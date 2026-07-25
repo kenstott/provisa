@@ -11,7 +11,7 @@
 export interface SetupStatus {
   needs_setup: boolean;
   demo_mode: boolean;
-  // Runtime auth-enforcement flag (REQ-1259): true when the server has a real auth
+  // Runtime auth-enforcement flag (REQ-1267): true when the server has a real auth
   // provider configured. The SPA's login gate keys off this, not build-time VITE_AUTH_ENABLED,
   // so one image serves unsecured and firebase/basic deploys alike.
   auth_enabled: boolean;

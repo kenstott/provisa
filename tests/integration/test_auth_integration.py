@@ -567,7 +567,7 @@ class TestRoleMapping:
 
 
 # ---------------------------------------------------------------------------
-# REQ-1259 — Single-administrator bootstrap (limited Firebase/IdP mode)
+# REQ-1266 — Single-administrator bootstrap (limited Firebase/IdP mode)
 # ---------------------------------------------------------------------------
 
 
@@ -630,7 +630,7 @@ def _make_bootstrap_app(provider: AuthProvider, admin_db) -> Starlette:
 
 class TestSingleAdminBootstrap:
     def test_first_user_becomes_super_admin(self, tmp_path):
-        # REQ-1259: the first authenticated Firebase user claims the sole admin slot.
+        # REQ-1266: the first authenticated Firebase user claims the sole admin slot.
         admin_db = _make_admin_db(str(tmp_path / "admin.db"))
         provider = _FirebaseLikeProvider({"tok-alice": "alice"})
         app = _make_bootstrap_app(provider, admin_db)
@@ -639,11 +639,11 @@ class TestSingleAdminBootstrap:
         resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
         assert resp.status_code == 200
         assert resp.json()["role"] == "admin", (
-            "REQ-1259: first user must resolve to admin role"
+            "REQ-1266: first user must resolve to admin role"
         )
 
     def test_second_different_user_is_denied(self, tmp_path):
-        # REQ-1259: once the slot is claimed, a different user is denied (403).
+        # REQ-1266: once the slot is claimed, a different user is denied (403).
         admin_db = _make_admin_db(str(tmp_path / "admin.db"))
         provider = _FirebaseLikeProvider({"tok-alice": "alice", "tok-bob": "bob"})
         app = _make_bootstrap_app(provider, admin_db)
@@ -653,11 +653,11 @@ class TestSingleAdminBootstrap:
         assert first.status_code == 200
 
         second = client.get("/echo", headers={"Authorization": "Bearer tok-bob"})
-        assert second.status_code == 403, "REQ-1259: second user must be denied"
+        assert second.status_code == 403, "REQ-1266: second user must be denied"
         assert "single administrator" in second.json()["detail"]
 
     def test_first_user_reauth_still_admin(self, tmp_path):
-        # REQ-1259: the claiming user keeps admin on every subsequent login.
+        # REQ-1266: the claiming user keeps admin on every subsequent login.
         admin_db = _make_admin_db(str(tmp_path / "admin.db"))
         provider = _FirebaseLikeProvider({"tok-alice": "alice", "tok-bob": "bob"})
         app = _make_bootstrap_app(provider, admin_db)
@@ -703,7 +703,7 @@ class TestFirebaseBootstrapRealWiring:
         app = FastAPI()
         app.add_route("/echo", _echo_identity)
 
-        # REQ-1259 config exactly as _auto_configure_idp / run_setup write it for firebase.
+        # REQ-1266 config exactly as _auto_configure_idp / run_setup write it for firebase.
         auth_config = {
             "provider": "firebase",
             "assignments_source": "provisa",

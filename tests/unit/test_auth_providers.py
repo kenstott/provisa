@@ -274,7 +274,7 @@ class TestFirebaseProvider:
         assert identity.roles == []
 
     async def test_invalid_token_maps_to_valueerror(self, monkeypatch):
-        """REQ-1259: firebase raises its own InvalidIdTokenError; the provider must re-raise as
+        """REQ-1266: firebase raises its own InvalidIdTokenError; the provider must re-raise as
         ValueError so the auth middleware returns 401, not a 500 (which leaked before the fix)."""
         import pytest
         from provisa.auth.providers import firebase as fb_mod

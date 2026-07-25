@@ -5,7 +5,7 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY vendor/ ./vendor/
 # [firebase] pulls firebase-admin — the container is the single artifact for cloud deploys where
-# Firebase is a first-class IdP (REQ-1259). Without it FirebaseAuthProvider raises ImportError and
+# Firebase is a first-class IdP (REQ-1266). Without it FirebaseAuthProvider raises ImportError and
 # every authenticated request 500s. The desktop wheel keeps firebase optional; the image bakes it in.
 RUN pip install --no-cache-dir '.[firebase]'
 

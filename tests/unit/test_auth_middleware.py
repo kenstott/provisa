@@ -129,7 +129,7 @@ def test_health_skips_auth():
 
 
 def test_provider_type_skips_auth():
-    # REQ-1259: the login page fetches /auth/provider-type BEFORE the user has a token,
+    # REQ-1267: the login page fetches /auth/provider-type BEFORE the user has a token,
     # to choose the sign-in UI. It must bypass the bearer gate even when auth is enforced.
     app = _make_app(provider=MockProvider())
     client = TestClient(app)
@@ -236,7 +236,7 @@ def test_resolve_superuser_config_none_when_unconfigured():
     assert resolve_superuser_config({"username": "root"}) is None  # missing password
 
 
-# --- REQ-1259: lazy resolver re-resolves when auth is reconfigured at runtime -----
+# --- REQ-1267: lazy resolver re-resolves when auth is reconfigured at runtime -----
 
 
 def _resolver_settings(provider):
@@ -272,7 +272,7 @@ def _make_resolver_app(holder, gen, monkeypatch):
 def test_resolver_reresolves_on_generation_bump(monkeypatch):
     """A server that boots unsecured and is later switched to a real provider enforces
     auth on the next request — the cached resolution invalidates when the generation
-    advances (REQ-1259 runtime reconfigure / PROVISA_IDP boot deferral)."""
+    advances (REQ-1267 runtime reconfigure / PROVISA_IDP boot deferral)."""
     holder: dict[str, AuthProvider | None] = {"provider": None}
     gen = {"v": 0}
     client = TestClient(_make_resolver_app(holder, gen, monkeypatch))

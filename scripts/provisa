@@ -405,7 +405,13 @@ cmd_start() {
     mkdir -p "$LOG_DIR"
 
     local scale_arg=""
-    if [ "${FED_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
+    # trino-worker exists only in the core compose (primary). A secondary runs the
+    # app tier only (compose-secondary.yml defines provisa + provisa-ui, no
+    # trino-worker), so passing --scale trino-worker there makes `docker compose up`
+    # abort with "no such service" and start nothing — the node's config still lists
+    # federation_workers for symmetry, but the workers register with the primary
+    # coordinator, not here.
+    if [ "$ROLE_CFG" != "secondary" ] && [ "${FED_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
         scale_arg="--scale trino-worker=${FED_WORKERS}"
         info "Starting ${FED_WORKERS} query worker(s)..."
     fi

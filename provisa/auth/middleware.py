@@ -33,7 +33,7 @@ from provisa.core.schema_admin import (
 )
 from provisa.core.schema_org import user_role_assignments
 
-# Requirements: REQ-120, REQ-125, REQ-273, REQ-1259
+# Requirements: REQ-120, REQ-125, REQ-273, REQ-1267
 
 # Liveness/readiness probes (/live, /ready) return a static status with no data and must be
 # reachable by unauthenticated orchestrators (k8s, load balancers) — same as /health.
@@ -45,7 +45,7 @@ _SKIP_PATHS = {
     "/data/openapi/redoc",
     "/data/openapi/openapi.json",
     "/auth/login",
-    # REQ-1259: the login page fetches this BEFORE the user has a token, to decide which
+    # REQ-1267: the login page fetches this BEFORE the user has a token, to decide which
     # sign-in UI to render (firebase Google button vs. basic form). It only reveals the
     # configured provider name — public info — so it must bypass the bearer gate.
     "/auth/provider-type",
@@ -94,7 +94,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         # Generation of auth_config this middleware last resolved against. -1 = never resolved; the
         # resolver path re-resolves whenever state.auth_reconfig_generation advances (runtime auth
         # (re)configure — setup wizard / PROVISA_IDP boot deferral), so a server that starts unsecured
-        # and later becomes firebase enforces without a process restart (REQ-1259).
+        # and later becomes firebase enforces without a process restart (REQ-1267).
         self._resolved_generation = -1
         self._resolve_lock = asyncio.Lock()
 
@@ -224,7 +224,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 content={"detail": "Invalid or expired token"},
             )
 
-        # REQ-1259: single-administrator bootstrap (limited IdP mode). The first
+        # REQ-1266: single-administrator bootstrap (limited IdP mode). The first
         # authenticated user atomically claims the sole super-admin slot and is granted
         # admin; every subsequent, unclaimed user is denied (single-org, no second admin).
         # Runs after token validation (the identity is proven) and before assignment

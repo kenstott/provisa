@@ -169,7 +169,7 @@ class AppState:
     # Bumped every time _load_and_build resolves auth_config. The lazily-resolving AuthMiddleware
     # (config_resolver path) caches its provider on first request; comparing this generation lets it
     # re-resolve when auth is (re)configured at runtime — e.g. the setup wizard or a PROVISA_IDP boot
-    # deferral turns an unsecured server into a firebase one without a process restart (REQ-1259).
+    # deferral turns an unsecured server into a firebase one without a process restart (REQ-1267).
     auth_reconfig_generation: int = 0
     auth_middleware_active: bool = False  # True only when wire_auth installed AuthMiddleware
     redis_url: str | None = None  # resolved Redis URL (REDIS_URL env or cache.redis_url)
@@ -716,7 +716,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         _log.exception("Startup failed during _load_and_build")
         raise
 
-    # REQ-1259: when PROVISA_IDP names an identity provider (e.g. firebase from the GCP/installer
+    # REQ-1267: when PROVISA_IDP names an identity provider (e.g. firebase from the GCP/installer
     # deploy) but the loaded config carries no auth section, configure it now — BEFORE any request
     # reaches the middleware — so the server enforces auth from its first request instead of serving
     # an unsecured admin window until the UI happens to call /setup/status.

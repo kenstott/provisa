@@ -104,7 +104,7 @@ local_users = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
-# REQ-1259: single-administrator bootstrap (limited Firebase/IdP mode). A fixed single-row
+# REQ-1266: single-administrator bootstrap (limited Firebase/IdP mode). A fixed single-row
 # lock (id always 1) that atomically records which authenticated user_id claimed the sole
 # super-admin slot. The first login INSERTs id=1 (first writer wins the race — see
 # AuthMiddleware bootstrap gate); every later, unrecorded user is denied. No multi-org, no

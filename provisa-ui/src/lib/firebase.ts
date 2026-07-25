@@ -30,7 +30,7 @@ function hasFirebaseConfig(): boolean {
   return Boolean(env.VITE_FIREBASE_API_KEY && env.VITE_FIREBASE_AUTH_DOMAIN && env.VITE_FIREBASE_PROJECT_ID);
 }
 
-// The web config source: runtime-injected first, build-time env second (REQ-1259).
+// The web config source: runtime-injected first, build-time env second (REQ-1266).
 // In a cloud deploy ui_server serves /firebase-config.js from the node env, which
 // index.html loads before the app bundle — so one built image serves any Firebase
 // project. Local dev builds instead bake VITE_FIREBASE_* at vite build time.

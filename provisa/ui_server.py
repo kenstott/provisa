@@ -100,7 +100,7 @@ def is_spa_navigation(method: str, headers: Mapping[str, str]) -> bool:  # REQ-1
 
 
 @app.get("/firebase-config.js")
-async def firebase_config() -> Response:  # REQ-1259
+async def firebase_config() -> Response:  # REQ-1266
     # The SPA's Firebase web config (public client keys — apiKey/authDomain/projectId)
     # is injected at runtime from the node's environment, so a single built image
     # serves any Firebase project: the deploy (terraform -> first-launch) sets the

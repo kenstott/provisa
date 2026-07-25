@@ -35903,3 +35903,186 @@
     And the streaming tests run inside the container pointing to PROVISA_MEM_TEST_DSN
     And test environment disables isolated-stack provisioning (PYTEST_NO_DOCKER=1) and Trino wait (PROVISA_SKIP_TRINO_WAIT=1)
     And on Linux hosts the lane is a no-op (core lane already runs tests natively)
+- id: REQ-1261
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Multi-Tenant Onboarding
+  priority: MUST
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Any user may sign up, create their own organization/workspace, and invite teammates. Authentication onboarding follows standard SaaS flow: sign up → verify → create org → invite → land in product, with per-org roles replacing the single-admin appliance bootstrap model.
+  use_case: >-
+    Enables multi-tenant usage where each organization manages its own users and roles, eliminating the bootstrap constraint (first Google user becomes sole admin, others 403).
+  scenario: |
+    Given a new user navigating to the login page
+    When the user signs up with email/password or OAuth
+    Then they verify their account
+    And create a new organization
+    And invite teammates
+    And land in the product as an org member with a default role
+    When another user is invited to the org
+    Then they see only the invited org in their workspace selector
+    And can only access resources scoped to that org
+- id: REQ-1262
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Multi-Method Authentication
+  priority: MUST
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Login page surfaces multiple simultaneous authentication providers (Google, GitHub, email/password), advertised by the server as a list. Recommended architecture: Firebase-native multi-method (all yield a Firebase ID token validated by one provider) plus optional server-issued JWT provider, with Firebase account-linking ensuring one account per email.
+  use_case: >-
+    Provides user choice for signup/login and reduces vendor lock-in by supporting multiple identity providers on a single login surface.
+  scenario: |
+    Given a login page with multiple providers enabled on the server
+    When the server advertises available providers
+    Then the login page renders N sign-in surfaces (Google, GitHub, email/password)
+    When a user signs in via one provider
+    Then they receive a Firebase ID token (or server JWT) validated by the provider
+    When the same user signs in again via a different provider linked to the same email
+    Then they are logged into the existing account (Firebase account-linking)
+    And their org membership and roles are preserved
+- id: REQ-1263
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: API Token Management
+  priority: MUST
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access (pgwire/Postgres, Bolt/Neo4j, Arrow Flight, gRPC, MCP). Tokens are user-generated in the UI, stored hashed with owner + org + scopes/role + expiry + last-used. Every protocol resolves tokens to AuthIdentity via a single AuthProvider.validate_token method, reusing the central identity provider and enforcing per-org scope.
+  use_case: >-
+    Allows programmatic clients (Python/Node scripts, BI tools, ETL pipelines) to authenticate against all Provisa protocols using the same role/scope model as browser auth, eliminating the need for separate credential management per client type.
+  scenario: |
+    Given a user logged into the Provisa UI
+    When the user creates a Personal Access Token in the settings
+    Then the token is generated and displayed once
+    And stored hashed in the database with owner, org, role, and expiry
+    When a pgwire/Bolt/Flight/gRPC client sends the token in a request
+    Then the server calls AuthProvider.validate_token(token)
+    And resolves it to the same AuthIdentity as browser auth
+    And enforces the token's org scope and role
+    When the token expires
+    Then subsequent calls are rejected with 401 Unauthorized
+    When the user revokes the token
+    Then all subsequent calls are rejected immediately
+- id: REQ-1264
+  status: accepted
+  group: "2. Authentication & Identity"
+  category: Platform Admin Break-Glass Access
+  priority: MUST
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Platform super-admin is a seeded local break-glass account (username + bcrypt password via simple auth provider), created at install with an installation-generated random password. Password is not static (never admin/admin) and is surfaced via Terraform output or GCP cloud-init console log, never persisted in config. First login enforces password rotation. This account is SSO-independent and works when Firebase/OAuth is broken — the exclusive recovery/emergency access path for platform operators.
+  use_case: >-
+    Ensures platform operators can always access the system for emergency recovery and initial setup, independent of external identity provider availability or misconfiguration. Seeded local admin provides break-glass access without relying on Firebase/OAuth uptime.
+  scenario: |
+    Given a fresh Provisa deployment
+    When the installer generates a platform-admin account
+    Then a random password is generated and logged to Terraform output or cloud-init console
+    And the password is NOT written to any config file or documentation
+    And the account is created with username platform-admin using bcrypt hashing
+    When an operator logs in with the platform-admin account for the first time
+    Then the system enforces password rotation before granting full access
+    When Firebase or all OAuth providers are offline
+    Then the operator can still authenticate via the local break-glass account
+    And regain platform access to diagnose and restore the identity provider
+  related_reqs:
+    - REQ-1261
+    - REQ-1262
+- id: REQ-1265
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Helm Auth Configuration
+  priority: MUST
+  type: infrastructure
+  target: "2026-Q4"
+  description: >-
+    Helm chart deployment MUST NOT require Firebase. Operator specifies auth provider at install time via values.yaml (OIDC issuer URL, SAML metadata, LDAP server, or local break-glass). Provisa configures AuthProvider accordingly, decoupled from cloud Firebase bootstrap path. Enterprise identity providers (corporate OIDC/SAML/LDAP) are the primary target, not Google-only sign-in.
+  use_case: >-
+    Helm chart deployments target enterprises whose identity infrastructure is internal (OIDC/SAML/LDAP), not Google. Auth provider configuration at install time enables enterprises to integrate their own identity systems directly without external dependency or admin UI manipulation.
+  code:
+    - charts/provisa/values.yaml
+    - provisa/auth/provider.py
+  scenario: |
+    Given a Helm deployment targeting an enterprise
+    When the operator sets values.yaml with auth.provider: oidc, auth.oidc.issuerUrl, auth.oidc.clientId, etc
+    Then Provisa initializes an OIDC AuthProvider using those values
+    And users authenticate via the enterprise OIDC server
+    When the operator sets auth.provider: saml with auth.saml.metadataUrl
+    Then Provisa initializes a SAML AuthProvider
+    When the operator sets auth.provider: ldap with auth.ldap.server, auth.ldap.baseDn, etc
+    Then Provisa initializes an LDAP AuthProvider
+    And Firebase is NOT required, consulted, or initialized
+    When the operator sets auth.provider: local (break-glass only)
+    Then only the platform-admin break-glass account (REQ-1264) is available
+  related_reqs:
+    - REQ-1259
+    - REQ-1261
+    - REQ-1262
+    - REQ-1263
+    - REQ-1264
+- id: REQ-1266
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Cloud Appliance Bootstrap
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Firebase single-admin bootstrap is an optional convenience for cloud-appliance deployments (GCP cloud-init / Terraform). First Google-signed-in user becomes sole initial admin. This path is NOT required or supported by Helm/enterprise deployments and is NOT a fallback if OIDC/SAML/LDAP is misconfigured. Supersedes informal "REQ-1259" label; that requirement concerns TLS certificates, not authentication.
+  use_case: >-
+    Cloud appliance deployments targeting individual users or small teams on GCP provide fastest time-to-value: zero auth config required, sign in with Google, immediate product access. Enterprises use Helm with their own OIDC/SAML/LDAP (REQ-1265) instead.
+  scenario: |
+    Given a GCP cloud-init-deployed Provisa instance with no auth provider configured
+    When the first user navigates to the login page
+    Then Google Sign-In is the only option
+    When they sign in with their Google account
+    Then they become the platform admin and org owner
+    When a second user attempts to sign in
+    Then they receive 403 Forbidden (single-admin model)
+    When the operator invites the second user via email
+    Then the second user can sign in and is assigned a role by the first admin
+    When the operator configures a Helm chart with auth.provider: oidc
+    Then the Firebase bootstrap path is NOT used and is superseded by OIDC (REQ-1265)
+  related_reqs:
+    - REQ-1261
+    - REQ-1262
+    - REQ-1264
+- id: REQ-1267
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Runtime Auth-Enforcement Gate
+  priority: MUST
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    A single built image/wheel serves unsecured (demo/none), basic, or firebase/IdP deployments and can switch enforcement at runtime WITHOUT a process restart or rebuild. The API exposes /setup/status with auth_enabled flag and /auth/provider-type (returns "firebase"|"basic"|null) — both reachable before authentication. Auth middleware uses lazy provider resolver for deferred IdP boot and runtime reconfiguration. SPA login gate is driven by runtime signals, not build-time flags. This requirement supersedes the informal "REQ-1259" label used in auth-enforcement-gate code; the actual REQ-1259 is Helm TLS certificate provisioning (unrelated).
+  use_case: >-
+    Enables a single production binary to serve multiple deployment scenarios (unsecured demo, enterprise IdP, basic auth) and dynamically switch authentication enforcement at runtime, eliminating build-per-deployment overhead and supporting auth migration without downtime.
+  scenario: |
+    Given a Provisa deployment with no auth configured (demo mode)
+    When /setup/status is called by an unauthenticated SPA
+    Then it returns {"auth_enabled": false}
+    And /auth/provider-type returns null
+    And the SPA renders no login UI, allows immediate access
+    When PROVISA_IDP environment is set to firebase
+    Then the auth middleware defers IdP initialization
+    And on next request, provider resolves lazily
+    And /auth/provider-type returns "firebase"
+    And /setup/status returns {"auth_enabled": true}
+    And the SPA re-renders with Google Sign-In UI
+    When auth configuration is updated at runtime via admin panel
+    Then RequireAuth redirects unauthenticated users to /login
+    And authFetch attaches bearer token to same-origin REST
+    And the system enforces the new auth scheme without restart
+    When server switches from unsecured to firebase mode
+    Then existing sessions remain valid during transition
+    And new sessions use the firebase provider
+  related_reqs:
+    - REQ-120
+    - REQ-1265
+    - REQ-1266
