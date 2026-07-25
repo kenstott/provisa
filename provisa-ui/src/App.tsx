@@ -12,7 +12,7 @@ import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { ApolloProvider } from "@apollo/client/react";
 import { client } from "./apolloClient";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { DomainFilterProvider } from "./context/DomainFilterContext";
 import { NavBar } from "./components/NavBar";
 import { CapabilityGate } from "./components/CapabilityGate";
@@ -65,8 +65,6 @@ function prefetchPageChunksOnIdle(): () => void {
   return () => cancel(handle as number);
 }
 
-const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
-
 function NotAuthorized() {
   return <div className="page">You do not have permission to view this page.</div>;
 }
@@ -102,8 +100,9 @@ function TourAutoStart({ demoMode }: { demoMode: boolean }) {
 /** Redirects to /login when auth is enabled and no token is present. */
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const { authEnabled } = useAuth();
   const token = localStorage.getItem("provisa_token");
-  if (AUTH_ENABLED && !token && location.pathname !== "/login") {
+  if (authEnabled && !token && location.pathname !== "/login") {
     return <Navigate to="/login" replace />;
   }
   return <>{children}</>;
@@ -117,13 +116,15 @@ function App() {
   const [setupChecked, setSetupChecked] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSetupStatus()
-      .then(({ needs_setup, demo_mode }) => {
+      .then(({ needs_setup, demo_mode, auth_enabled }) => {
         setNeedsSetup(needs_setup);
         setDemoMode(demo_mode);
+        setAuthEnabled(auth_enabled);
         setSetupChecked(true);
       })
       .catch((err: unknown) => {
@@ -138,7 +139,7 @@ function App() {
   return (
     <BrowserRouter>
       <ApolloProvider client={client}>
-        <AuthProvider>
+        <AuthProvider authEnabled={authEnabled}>
           {setupError ? (
             <div className="page">
               <p>Could not reach the Provisa API.</p>
@@ -169,7 +170,7 @@ function App() {
                     element={
                       <LoginPage
                         onLoginSuccess={handleLoginSuccess}
-                        authDisabled={!AUTH_ENABLED}
+                        authDisabled={!authEnabled}
                       />
                     }
                   />
@@ -178,7 +179,7 @@ function App() {
                     element={
                       <LoginPage
                         onLoginSuccess={handleLoginSuccess}
-                        authDisabled={!AUTH_ENABLED}
+                        authDisabled={!authEnabled}
                       />
                     }
                   />

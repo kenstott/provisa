@@ -23,7 +23,6 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import type { Capability } from "../types/auth";
 
-const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
 
 interface DropdownItem {
   to: string;
@@ -142,7 +141,7 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
-  const { displayName, email, devMode } = useAuth();
+  const { displayName, email, devMode, authEnabled } = useAuth();
   const { startTour, canResume } = useTour();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -357,7 +356,7 @@ export function NavBar() {
                     {t("navBar.settings")}
                   </Menu.Item>
                 </CapabilityGate>
-                {AUTH_ENABLED && (
+                {authEnabled && (
                   <Menu.Item color="red" onClick={handleLogout}>
                     {t("navBar.logout")}
                   </Menu.Item>

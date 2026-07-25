@@ -92,6 +92,14 @@ async def _auto_configure_idp(provider: str, pool) -> None:
     await _load_and_build(str(cfg_path))
 
 
+def _auth_enabled(auth_cfg) -> bool:
+    # auth is enforced when a real provider is configured. The SPA's login gate keys off
+    # this runtime flag rather than a build-time VITE_AUTH_ENABLED, so a single image serves
+    # both unsecured (demo/none) and firebase/basic deploys without a rebuild (REQ-1259).
+    provider = auth_cfg.get("provider") if isinstance(auth_cfg, dict) else None
+    return bool(provider and provider != "none")
+
+
 @router.get("/status")
 async def setup_status():  # REQ-539
     from provisa.api.app import state
@@ -103,21 +111,21 @@ async def setup_status():  # REQ-539
     if _is_demo():
         if idp and state.admin_db:
             await _auto_configure_idp(idp, state.admin_db)
-            return {"needs_setup": False, "demo_mode": True}
+            return {"needs_setup": False, "demo_mode": True, "auth_enabled": True}
         cfg = read_config()
         auth_cfg = cfg.get("auth")
         if not auth_cfg:
-            return {"needs_setup": True, "demo_mode": True}
-        return {"needs_setup": False, "demo_mode": True}
+            return {"needs_setup": True, "demo_mode": True, "auth_enabled": False}
+        return {"needs_setup": False, "demo_mode": True, "auth_enabled": _auth_enabled(auth_cfg)}
 
     if idp and state.admin_db:
         await _auto_configure_idp(idp, state.admin_db)
-        return {"needs_setup": False, "demo_mode": False}
+        return {"needs_setup": False, "demo_mode": False, "auth_enabled": True}
 
     cfg = read_config()
     auth_cfg = cfg.get("auth")
     if not auth_cfg:
-        return {"needs_setup": True, "demo_mode": False}
+        return {"needs_setup": True, "demo_mode": False, "auth_enabled": False}
 
     provider = auth_cfg.get("provider") if isinstance(auth_cfg, dict) else None
     if provider == "basic" and state.admin_db:
@@ -125,9 +133,9 @@ async def setup_status():  # REQ-539
             count_result = await conn.execute_core(select(func.count()).select_from(local_users))
             count = count_result.scalar()
         if count == 0:
-            return {"needs_setup": True, "demo_mode": False}
+            return {"needs_setup": True, "demo_mode": False, "auth_enabled": True}
 
-    return {"needs_setup": False, "demo_mode": False}
+    return {"needs_setup": False, "demo_mode": False, "auth_enabled": _auth_enabled(auth_cfg)}
 
 
 class SetupRequest(BaseModel):

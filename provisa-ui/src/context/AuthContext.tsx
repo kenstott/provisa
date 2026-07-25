@@ -53,11 +53,20 @@ interface AuthContextValue extends AuthState {
   selectDomain: (domain: string | null) => void;
   selectOrg: (orgId: string | null) => void;
   devMode: boolean;
+  // Runtime auth-enforcement flag from /setup/status (REQ-1259). Drives the login gate
+  // and logout affordance instead of a build-time constant.
+  authEnabled: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({
+  children,
+  authEnabled,
+}: {
+  children: ReactNode;
+  authEnabled: boolean;
+}) {
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [assignments, setAssignments] = useState<RoleAssignment[]>([]);
   const [selectedRole, setSelectedRole] = useState<Role | "all">("all");
@@ -96,7 +105,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSelectedOrg(me.org_memberships[0].org_id);
         }
       } catch {
-        isDev = true;
+        // /auth/me failed. On an unsecured deploy that means dev mode (full admin). When auth
+        // IS enforced, a failure here is an unauthenticated caller — never grant dev admin;
+        // RequireAuth redirects to /login before any admin content renders (REQ-1259).
+        isDev = !authEnabled;
       }
 
       try {
@@ -149,8 +161,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     init().finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount to bootstrap auth state
-  }, []);
+    // Re-bootstrap when the runtime auth-enforcement flag resolves (starts false, flips true
+    // once /setup/status returns) so the dev-mode fallback keys off the settled value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- other setters are stable; gate on authEnabled
+  }, [authEnabled]);
 
   const availableDomains = useMemo(() => {
     const roleFilter = selectedRole === "all" ? null : (selectedRole as Role).id;
@@ -212,6 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userId,
         email,
         displayName,
+        authEnabled,
       }}
     >
       {children}
