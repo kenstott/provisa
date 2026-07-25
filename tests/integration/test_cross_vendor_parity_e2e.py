@@ -110,7 +110,7 @@ def _col(n: str, d: str = "varchar", nl: bool = True) -> ColumnMetadata:
     return ColumnMetadata(column_name=n, data_type=d, is_nullable=nl)
 
 
-def _schema_input(source_id: str, source_type: str, catalog: str | None) -> SchemaInput:
+def _schema_input(source_id: str, source_type: str, catalog: str | None, schema: str = _SCHEMA) -> SchemaInput:
     kw: dict[str, Any] = {}
     if catalog is not None:
         kw["source_catalogs"] = {source_id: catalog}
@@ -120,7 +120,7 @@ def _schema_input(source_id: str, source_type: str, catalog: str | None) -> Sche
                 "id": 1,
                 "source_id": source_id,
                 "domain_id": "sales",
-                "schema_name": _SCHEMA,
+                "schema_name": schema,
                 "table_name": _TABLE,
                 "columns": [
                     {"column_name": c, "visible_to": ["admin"]}
@@ -159,9 +159,13 @@ class Lane:
     source_id: str = ""
     catalog: str | None = None
     extra_env: tuple[str, ...] = field(default_factory=tuple)
+    # Physical schema the golden rows are seeded into. Warehouses that share a real
+    # database (BigQuery, Fabric) seed an isolated schema and DROP ... CASCADE it, so the
+    # compiled query must address THAT schema, not the semantic default `public`.
+    schema: str = _SCHEMA
 
     def compile_governed(self) -> str:
-        si = _schema_input(self.source_id, self.source_type, self.catalog)
+        si = _schema_input(self.source_id, self.source_type, self.catalog, self.schema)
         ctx = build_context(si)
         compiled = compile_query(
             parse_query(generate_schema(si), "{ orders { id region amount } }", {}), ctx
@@ -361,6 +365,7 @@ _BIGQUERY = Lane(
     seed=_bq_seed,
     fetch=lambda rt, sql: rt.run_arrow(sql).to_pylist(),
     teardown=_bq_teardown,
+    schema=_BQ_DS,  # isolated, droppable dataset in the shared BQ project
 )
 
 
@@ -409,6 +414,7 @@ _FABRIC = Lane(
     seed=_fab_seed,
     fetch=lambda rt, sql: rt.run_arrow(sql).to_pylist(),
     teardown=_fab_teardown,
+    schema=_FAB_SCH,  # isolated, droppable schema in the shared Fabric warehouse
 )
 
 
