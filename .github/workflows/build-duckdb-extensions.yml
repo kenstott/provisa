@@ -71,6 +71,9 @@ jobs:
       # gh release upload only ADDS assets — never flips draft/prerelease.
       - name: Attach to draft release
         if: startsWith(github.ref, 'refs/tags/')
+        # Force bash: the windows-x64 leg defaults to pwsh, which can't parse the
+        # bash line-continuation / set -euo pipefail below.
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
