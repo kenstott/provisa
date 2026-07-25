@@ -147,10 +147,13 @@ class TestRoutingDecisions:
         assert decision.route == Route.ENGINE
         assert decision.source_id is None
 
-    def test_snowflake_without_direct_driver_routes_trino(self):
-        """Snowflake without a registered direct driver routes to Trino."""
-        if has_driver("snowflake"):
-            pytest.skip("Snowflake direct driver is installed — test not applicable")
+    def test_snowflake_without_direct_driver_routes_trino(self, monkeypatch):
+        """Snowflake without a registered direct driver routes to Trino. Force the no-driver branch
+        deterministically — patch the has_driver symbol decide_route actually calls — so the test
+        exercises the intended path whether or not the snowflake driver is installed here."""
+        import provisa.transpiler.router as router
+
+        monkeypatch.setattr(router, "has_driver", lambda *_: False)
         decision = decide_route({"sf-warehouse"}, _TYPES, _DIALECTS)
         assert decision.route == Route.ENGINE
 
