@@ -53,7 +53,19 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
             firebase_admin.initialize_app(cred, {"projectId": project_id})  # type: ignore[union-attr]
 
     async def validate_token(self, token: str) -> AuthIdentity:  # REQ-120, REQ-121
-        decoded = firebase_auth.verify_id_token(token)  # type: ignore[union-attr]
+        # The middleware maps ValueError/PyJWTError to 401 and lets everything else propagate as
+        # 500 (infra/misconfig). firebase-admin raises its own typed errors: the token-validation
+        # ones (malformed/expired/revoked/disabled user) are client faults → re-raise as ValueError
+        # so the caller gets 401; CertificateFetchError (JWKS fetch failure) and the rest propagate.
+        try:
+            decoded = firebase_auth.verify_id_token(token)  # type: ignore[union-attr]
+        except (
+            firebase_auth.InvalidIdTokenError,  # type: ignore[union-attr]
+            firebase_auth.ExpiredIdTokenError,  # type: ignore[union-attr]
+            firebase_auth.RevokedIdTokenError,  # type: ignore[union-attr]
+            firebase_auth.UserDisabledError,  # type: ignore[union-attr]
+        ) as e:
+            raise ValueError(str(e)) from e
         return AuthIdentity(
             user_id=decoded["uid"],
             email=decoded.get("email"),

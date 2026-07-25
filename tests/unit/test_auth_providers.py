@@ -273,6 +273,54 @@ class TestFirebaseProvider:
         assert identity.email is None
         assert identity.roles == []
 
+    async def test_invalid_token_maps_to_valueerror(self, monkeypatch):
+        """REQ-1259: firebase raises its own InvalidIdTokenError; the provider must re-raise as
+        ValueError so the auth middleware returns 401, not a 500 (which leaked before the fix)."""
+        import pytest
+        from provisa.auth.providers import firebase as fb_mod
+        from provisa.auth.providers.firebase import FirebaseAuthProvider
+
+        firebase_auth = pytest.importorskip("firebase_admin.auth")
+
+        class _Auth:
+            InvalidIdTokenError = firebase_auth.InvalidIdTokenError
+            ExpiredIdTokenError = firebase_auth.ExpiredIdTokenError
+            RevokedIdTokenError = firebase_auth.RevokedIdTokenError
+            UserDisabledError = firebase_auth.UserDisabledError
+
+            def verify_id_token(self, token):
+                raise firebase_auth.InvalidIdTokenError("Wrong number of segments in token")
+
+        provider = FirebaseAuthProvider.__new__(FirebaseAuthProvider)
+        monkeypatch.setattr(fb_mod, "firebase_auth", _Auth())
+        with pytest.raises(ValueError):
+            await provider.validate_token("not-a-real-token")
+
+    async def test_cert_fetch_error_propagates(self, monkeypatch):
+        """Infra failure (JWKS/cert fetch) is NOT a client fault — it must propagate (500), not 401."""
+        import pytest
+        from provisa.auth.providers import firebase as fb_mod
+        from provisa.auth.providers.firebase import FirebaseAuthProvider
+
+        firebase_auth = pytest.importorskip("firebase_admin.auth")
+
+        class _Boom(Exception):
+            pass
+
+        class _Auth:
+            InvalidIdTokenError = firebase_auth.InvalidIdTokenError
+            ExpiredIdTokenError = firebase_auth.ExpiredIdTokenError
+            RevokedIdTokenError = firebase_auth.RevokedIdTokenError
+            UserDisabledError = firebase_auth.UserDisabledError
+
+            def verify_id_token(self, token):
+                raise _Boom("cert fetch failed")
+
+        provider = FirebaseAuthProvider.__new__(FirebaseAuthProvider)
+        monkeypatch.setattr(fb_mod, "firebase_auth", _Auth())
+        with pytest.raises(_Boom):
+            await provider.validate_token("t")
+
 
 class TestOAuthProvider:
     """REQ-123: generic OIDC — discovery → JWKS → JWT; configurable role claim."""
