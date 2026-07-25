@@ -95,48 +95,8 @@ resource "google_service_account" "provisa" {
   display_name = "Provisa Node"
 }
 
-resource "google_storage_bucket_iam_member" "appimage_reader" {
-  bucket = var.gcs_bucket
-  role   = "roles/storage.objectViewer"
-  member = "serviceAccount:${google_service_account.provisa.email}"
-}
-
-# ── Stage release artifacts from GitHub → GCS ─────────────────────────────────
-# Pulls the AppImage + core-images zip for var.provisa_version from the GitHub
-# release and uploads them to the bucket the VMs read at boot. Requires `gh` and
-# `gsutil` authenticated on the machine running Terraform. Disable with
-# stage_from_github=false to manage the objects yourself.
-
-resource "null_resource" "stage_artifacts" {
-  count = var.stage_from_github ? 1 : 0
-
-  triggers = {
-    version = var.provisa_version
-    bucket  = var.gcs_bucket
-    object  = var.gcs_object
-    images  = local.images_object
-    plugins = local.plugins_object
-  }
-
-  provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]
-    command     = <<-EOT
-      set -euo pipefail
-      tmp="$(mktemp -d)"
-      trap 'rm -rf "$tmp"' EXIT
-      gh release download "${var.provisa_version}" --repo "${var.github_repo}" \
-        --pattern "Provisa-${var.provisa_version}-linux-x86_64.AppImage" \
-        --pattern "${local.images_zip}" \
-        --pattern "${local.plugins_tarball}" -D "$tmp"
-      gsutil cp "$tmp/Provisa-${var.provisa_version}-linux-x86_64.AppImage" \
-        "gs://${var.gcs_bucket}/${var.gcs_object}"
-      gsutil cp "$tmp/${local.images_zip}" \
-        "gs://${var.gcs_bucket}/${local.images_object}"
-      gsutil cp "$tmp/${local.plugins_tarball}" \
-        "gs://${var.gcs_bucket}/${local.plugins_object}"
-    EOT
-  }
-}
+# Release artifacts are pulled by each VM directly from the public GitHub release
+# at boot (see base_startup) — no GCS staging, no bucket IAM, no residential hop.
 
 # ── Locals ─────────────────────────────────────────────────────────────────────
 
@@ -155,17 +115,14 @@ locals {
 
   all_labels = merge(var.labels, { project = "provisa" })
 
-  # Core-images zip lives in the same GCS directory as the AppImage. dirname of a
-  # bare object (no slash) is ".", so keep gcs_object prefixed (default: releases/).
-  images_zip    = "provisa-core-images-amd64-${var.provisa_version}.zip"
-  images_object = "${dirname(var.gcs_object)}/${local.images_zip}"
+  # Release asset filenames. The VM curls these straight from the public GitHub
+  # release at boot (see base_startup) — no GCS staging hop.
+  images_zip = "provisa-core-images-amd64-${var.provisa_version}.zip"
 
   # Trino custom-connector jars ride a separate release asset (the slim AppImage
   # excludes trino/plugins/ to stay under GitHub's 2 GB limit). first-launch's
-  # load_trino_plugins searches cwd (/opt) for this tarball, so stage it to GCS
-  # beside the AppImage — the VM has GCS read but no GitHub auth.
+  # load_trino_plugins searches cwd (/opt) for this tarball, so the VM lands it there.
   plugins_tarball = "provisa-trino-plugins-${var.provisa_version}.tar.gz"
-  plugins_object  = "${dirname(var.gcs_object)}/${local.plugins_tarball}"
 
   # ── Protocol surface ─────────────────────────────────────────────────────────
   # One row per externally-reachable protocol. `enabled` gates the whole chain:
@@ -234,17 +191,21 @@ locals {
     apt-get update -qq
     apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
     systemctl enable --now docker
-    gsutil cp gs://${var.gcs_bucket}/${var.gcs_object} /opt/Provisa.AppImage
+    # Pull the three linux release assets straight from the public GitHub release
+    # (repo is public — no token, no GCS staging hop; the transfer is GitHub CDN →
+    # this in-region VM). --retry bounds transient CDN blips so a reboot doesn't brick.
+    gh_base="https://github.com/${var.github_repo}/releases/download/${var.provisa_version}"
+    curl -fSL --retry 5 --retry-all-errors "$gh_base/Provisa-${var.provisa_version}-linux-x86_64.AppImage" -o /opt/Provisa.AppImage
     chmod +x /opt/Provisa.AppImage
-    # Stage the amd64 core-images zip beside the AppImage. first-launch searches cwd
-    # for provisa-core-images-amd64-$PROVISA_VERSION.zip and docker-loads it locally
+    # Core-images zip beside the AppImage. first-launch searches cwd for
+    # provisa-core-images-amd64-$PROVISA_VERSION.zip and docker-loads it locally
     # (airgap path), so we cd /opt before launching below.
-    gsutil cp gs://${var.gcs_bucket}/${local.images_object} /opt/${local.images_zip}
-    # Trino plugins tarball, staged beside the AppImage. first-launch's
-    # load_trino_plugins finds it via cwd (we cd /opt below) and extracts it into
-    # compose/trino/plugins/ so the bind-mounts resolve (else Trino crash-loops:
-    # "No service providers of type io.trino.spi.Plugin").
-    gsutil cp gs://${var.gcs_bucket}/${local.plugins_object} /opt/${local.plugins_tarball}
+    curl -fSL --retry 5 --retry-all-errors "$gh_base/${local.images_zip}" -o /opt/${local.images_zip}
+    # Trino plugins tarball beside the AppImage. first-launch's load_trino_plugins
+    # finds it via cwd (we cd /opt below) and extracts it into compose/trino/plugins/
+    # so the bind-mounts resolve (else Trino crash-loops: "No service providers of
+    # type io.trino.spi.Plugin").
+    curl -fSL --retry 5 --retry-all-errors "$gh_base/${local.plugins_tarball}" -o /opt/${local.plugins_tarball}
     # The metadata script runner executes as root with no HOME; first-launch.sh
     # needs it for ~/.provisa and ~/.local/bin under `set -u`.
     export HOME=/root
@@ -331,8 +292,6 @@ resource "google_compute_instance" "primary" {
   zone         = var.zone
   tags         = ["provisa-node"]
   labels       = merge(local.all_labels, { role = "primary" })
-
-  depends_on = [null_resource.stage_artifacts]
 
   boot_disk {
     initialize_params {

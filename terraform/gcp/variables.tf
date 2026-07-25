@@ -68,42 +68,21 @@ variable "network_cidr" {
   default     = "10.0.0.0/16"
 }
 
-variable "gcs_bucket" {
-  description = "GCS bucket containing the Provisa AppImage"
-  type        = string
-}
-
-variable "gcs_object" {
-  description = "Object path within the GCS bucket"
-  type        = string
-  default     = "releases/Provisa.AppImage"
-}
-
 variable "provisa_version" {
   description = <<-EOT
-    Provisa release version (e.g. v0.1.0-alpha.271). Must match the AppImage build.
-    The node stages the matching core-images zip (provisa-core-images-amd64-<version>.zip)
-    from the same GCS directory as gcs_object, and exports PROVISA_VERSION so first-launch
-    finds it locally (airgap path) instead of downloading from the GitHub release.
+    Provisa release version (e.g. v0.1.0-alpha.271). Must match a published GitHub
+    release. Each VM curls the matching AppImage, core-images zip
+    (provisa-core-images-amd64-<version>.zip) and trino-plugins tarball directly
+    from that release at boot, and exports PROVISA_VERSION so first-launch finds
+    them locally in /opt (airgap load path).
   EOT
   type        = string
 }
 
 variable "github_repo" {
-  description = "GitHub repo (owner/name) to pull release assets from when stage_from_github=true."
+  description = "Public GitHub repo (owner/name) the VMs curl release assets from at boot."
   type        = string
   default     = "kenstott/provisa"
-}
-
-variable "stage_from_github" {
-  description = <<-EOT
-    When true, Terraform downloads the AppImage + core-images zip for provisa_version
-    from the GitHub release and uploads them to gcs_bucket before the VMs boot.
-    Requires authenticated `gh` and `gcloud`/`gsutil` on the machine running Terraform.
-    Set false to manage the bucket objects yourself.
-  EOT
-  type        = bool
-  default     = true
 }
 
 variable "ssh_public_key" {
