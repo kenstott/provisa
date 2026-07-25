@@ -30,7 +30,6 @@ Covers:
 from __future__ import annotations
 
 import os
-import urllib.parse
 from typing import cast
 
 import pytest
@@ -77,23 +76,26 @@ def shared_data() -> dict:
 
 @pytest_asyncio.fixture
 async def audit_pool():
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-    dsn = os.getenv(
-        "PROVISA_TEST_DSN",
-        "postgresql://postgres:postgres@localhost:5432/postgres",
-    )
-    parsed = urllib.parse.urlparse(dsn)
+    # REQ-613 writes/reads the append-only audit log against the REAL core Postgres the itest stack
+    # provisions (tests/conftest.py _CORE_SERVICES → "postgres"; PG_* exported by _allocate_itest_ports
+    # at import). The only run that has no Postgres is a PYTEST_NO_DOCKER quick-unit run — the same
+    # signal conftest uses to decide whether it provisioned services (conftest.py:285). That is the
+    # sole legitimate external-absence case; every default/e2e lane provisions docker, so this scenario
+    # RUNS live there instead of skipping on the never-set PROVISA_INTEGRATION flag.
+    if os.getenv("PYTEST_NO_DOCKER"):
+        pytest.skip("no docker stack (PYTEST_NO_DOCKER) — REQ-613 audit log needs the core Postgres")
     org_id = "default"
     engine = create_engine(
-        host=parsed.hostname or "localhost",
-        port=parsed.port or 5432,
-        database=(parsed.path or "/postgres").lstrip("/"),
-        user=parsed.username or "postgres",
-        password=parsed.password or "postgres",
+        host=os.environ["PG_HOST"],
+        port=int(os.environ["PG_PORT"]),
+        database=os.environ["PG_DATABASE"],
+        user=os.environ["PG_USER"],
+        password=os.environ["PG_PASSWORD"],
     )
-    # search_path is applied on every acquire (Database SET search_path shim).
-    db = Database(engine, name="test", search_path=f"provisa_{org_id}, public")
+    # search_path is applied on every acquire (Database SET search_path shim). init_audit_schema
+    # creates query_audit_log in schema org_<org_id> (provisa/audit/query_log.py schema_name), so the
+    # unqualified INSERT/SELECT in the when/then steps must resolve against that same schema.
+    db = Database(engine, name="test", search_path=f"org_{org_id}, public")
     await init_audit_schema(db, org_id=org_id)
     try:
         yield db
@@ -776,6 +778,7 @@ def then_rejected_if_join_not_registered(shared_data):
 import hashlib  # noqa: E402
 
 from provisa.audit.query_log import log_query  # noqa: E402
+from provisa.encryption import NullEncryption  # noqa: E402
 
 
 @given("any query touching a domain asset")
@@ -785,7 +788,8 @@ def given_any_query_touching_domain_asset(shared_data):
     shared_data["query_text"] = "SELECT id, email FROM public.customers"
     shared_data["table_ids"] = ["customers"]
     shared_data["source"] = "graphql"
-    shared_data["tenant_id"] = "tenant-001"
+    # query_audit_log.tenant_id is UUID-typed (schema_org); seed a valid UUID, not a slug.
+    shared_data["tenant_id"] = "00000000-0000-0000-0000-000000000001"
     shared_data["status_code"] = 200
     shared_data["duration_ms"] = 42
 
@@ -808,6 +812,7 @@ def when_the_query_is_executed(shared_data, audit_pool):
             source=shared_data["source"],
             status_code=shared_data["status_code"],
             duration_ms=shared_data["duration_ms"],
+            encryption=NullEncryption(),  # REQ-689: query text stored encrypted; NullEncryption in test
         )
 
     asyncio.get_event_loop().run_until_complete(_do_log())
