@@ -81,6 +81,22 @@ class NativeEngineBackend(EngineBackend):
         config = getattr(state, "config", None)
         if config is None or self._runtime is None:
             return
+
+        # REQ-1266: the native engines share ONE process-wide runtime (self._runtime lives on the
+        # global federation engine), and their physical-catalog / raw-attach aliases are derived
+        # bare from source.id — they are NOT org-namespaced. Two orgs seeding identical source ids
+        # would collide into one attach. Multi-org isolation on the shared coordinator is
+        # implemented for the Trino tier (org-prefixed CREATE CATALOG); the native tier is single-
+        # org only. Rather than silently serve another org's rows, refuse a non-default org here.
+        from provisa.api.org_runtime import current_org
+
+        _active_org = current_org.get()
+        if _active_org is not None and _active_org != getattr(state, "org_id", None):
+            raise RuntimeError(
+                f"native federation engine {self.engine.name!r} is single-org; org "
+                f"{_active_org!r} requires the Trino tier for per-org catalog isolation (REQ-1266)"
+            )
+
         sources = {s.id: s for s in config.sources}
 
         def _rs(v: Any) -> Any:

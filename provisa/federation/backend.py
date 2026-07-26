@@ -147,13 +147,21 @@ class EngineBackend:
 
     # -- source lifecycle ------------------------------------------------------
 
-    def register_source(self, state: Any, source: Any, resolved_password: str) -> None:
-        """Native engines attach lazily at query time — nothing to provision here."""
+    def register_source(
+        self, state: Any, source: Any, resolved_password: str, catalog_name: str | None = None
+    ) -> None:
+        """Native engines attach lazily at query time — nothing to provision here.
 
-    def drop_source(self, state: Any, source_id: str) -> None:
+        ``catalog_name`` (REQ-1266) is the org-prefixed physical catalog name; native engines
+        attach by source id at query time and ignore it (the ATTACH-alias namespacing lives in
+        the native runtime), but the seam signature stays uniform across backends."""
+
+    def drop_source(self, state: Any, source_id: str, catalog_name: str | None = None) -> None:
         """No dynamic catalog to drop."""
 
-    def analyze(self, state: Any, source: Any, tables: list) -> None:
+    def analyze(
+        self, state: Any, source: Any, tables: list, catalog_name: str | None = None
+    ) -> None:
         """Native engines gather statistics implicitly or not at all."""
 
     # -- connections -----------------------------------------------------------
@@ -456,23 +464,31 @@ class TrinoBackend(EngineBackend):
 
     # -- source lifecycle ------------------------------------------------------
 
-    def register_source(self, state: Any, source: Any, resolved_password: str) -> None:
+    def register_source(
+        self, state: Any, source: Any, resolved_password: str, catalog_name: str | None = None
+    ) -> None:
         if state.engine_conn is not None:
             from provisa.core import catalog
 
-            catalog.create_catalog(state.engine_conn, source, resolved_password)
+            catalog.create_catalog(
+                state.engine_conn, source, resolved_password, catalog_name=catalog_name
+            )
 
-    def drop_source(self, state: Any, source_id: str) -> None:
+    def drop_source(self, state: Any, source_id: str, catalog_name: str | None = None) -> None:
         if state.engine_conn is not None:
             from provisa.core import catalog
 
-            catalog.drop_catalog(state.engine_conn, source_id)
+            catalog.drop_catalog(state.engine_conn, source_id, catalog_name=catalog_name)
 
-    def analyze(self, state: Any, source: Any, tables: list) -> None:
+    def analyze(
+        self, state: Any, source: Any, tables: list, catalog_name: str | None = None
+    ) -> None:
         if state.engine_conn is not None:
             from provisa.core import catalog
 
-            catalog.analyze_source_tables(state.engine_conn, source, tables)
+            catalog.analyze_source_tables(
+                state.engine_conn, source, tables, catalog_name=catalog_name
+            )
 
     # -- connections -----------------------------------------------------------
 
@@ -507,11 +523,10 @@ class TrinoBackend(EngineBackend):
         import trino.exceptions
 
         from provisa.compiler.introspect import introspect_column_types
-        from provisa.compiler.naming import source_to_catalog
 
         try:
             return introspect_column_types(
-                conn, source_to_catalog(source.id), schema_name, table_name
+                conn, state.catalog_for(source.id), schema_name, table_name
             )
         except trino.exceptions.Error as exc:
             # REQ-636/REQ-251 contract: introspection is best-effort type enrichment. A source

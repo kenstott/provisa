@@ -245,18 +245,25 @@ async def _replace_mode_cleanup(
     await conn.execute_core(_delete(tracked_webhooks))
 
 
-async def _upsert_sources(  # REQ-012, REQ-250
+async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266
     conn: "Connection",
     engine: Any,
     config: ProvisaConfig,
+    catalog_names: dict[str, str] | None = None,
 ) -> None:
     for src in config.sources:
         await source_repo.upsert(conn, src)
         # Provision the source on the bound engine through the abstraction (the engine makes a
         # catalog; native engines attach lazily). No direct the engine reference here.
+        # REQ-1266: catalog_names supplies the org-prefixed physical catalog name for a non-default
+        # org so the source attaches under its own namespace, not the default org's.
         if engine is not None:
             try:
-                engine.register_source(src, resolve_secrets(src.password))
+                engine.register_source(
+                    src,
+                    resolve_secrets(src.password),
+                    catalog_name=(catalog_names or {}).get(src.id),
+                )
             except Exception:
                 pass  # register_source / catalog.create_catalog already log warnings
 
@@ -671,11 +678,12 @@ async def _upsert_relationships(
             pass  # referenced table not yet registered (dynamic source); retried after source registration
 
 
-async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
+async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-1266
     config: ProvisaConfig,
     conn: "Connection",
     engine: Any = None,
     replace: bool = False,
+    catalog_names: dict[str, str] | None = None,
 ) -> None:
     """Upsert full config into PG within caller's transaction scope.
 
@@ -694,7 +702,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
         await _replace_mode_cleanup(conn, config)
 
     # 1. Sources
-    await _upsert_sources(conn, engine, config)
+    await _upsert_sources(conn, engine, config, catalog_names=catalog_names)
 
     # 2. Domains
     if domain_policy.single_domain():
@@ -959,11 +967,12 @@ async def _validate_existing_domains(conn: "Connection", default_domain: str) ->
         )
 
 
-async def load_config(  # REQ-012, REQ-016, REQ-250
+async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266
     config: ProvisaConfig,
     pg_conn: "Connection",
     engine: Any = None,
     replace: bool = False,
+    catalog_names: dict[str, str] | None = None,
 ) -> None:
     """Upsert full config into PG within a transaction. Idempotent.
 
@@ -971,9 +980,16 @@ async def load_config(  # REQ-012, REQ-016, REQ-250
     attach) and supplies engine-native column types — the ONLY engine touchpoint, so no
     the engine connection is passed here. Pass replace=True to delete all metadata not in the
     new config first (full replace semantics — use for install simulation / clean reloads).
+
+    ``catalog_names`` (REQ-1266) maps source_id → the physical engine-catalog name to register
+    under. Supplied per-org (org-prefixed) so a non-default org's sources attach under their own
+    catalogs instead of colliding with the default org in the shared coordinator. ``None`` on the
+    default-org/startup path → each source registers under its bare name (unchanged behavior).
     """
     async with pg_conn.transaction():
-        await _load_config_in_txn(config, pg_conn, engine, replace=replace)
+        await _load_config_in_txn(
+            config, pg_conn, engine, replace=replace, catalog_names=catalog_names
+        )
 
 
 async def load_config_from_yaml(  # REQ-012, REQ-016, REQ-250

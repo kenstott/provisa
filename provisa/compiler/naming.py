@@ -158,6 +158,20 @@ def source_to_catalog(source_id: str) -> str:  # REQ-471
     return source_id.replace("-", "_")
 
 
+def org_prefixed_catalog(org_id: str, base_catalog: str, *, default_org: str) -> str:  # REQ-1266
+    """Namespace an org-scoped source's engine catalog so two orgs seeded with
+    identical source ids don't collide in the one global engine catalog namespace.
+
+    The bootstrap/default org keeps bare names, so single-org deployments and every
+    existing ``source_to_catalog`` call site stay byte-identical; any other org gets
+    an ``org_<id>__`` prefix. System catalogs (provisa-admin/otel) and fixed-warehouse
+    catalogs (BigQuery/Fabric/Synapse — one physical catalog shared across orgs) are
+    NOT org-scoped and must never be passed here."""
+    if org_id == default_org:
+        return base_catalog
+    return f"org_{org_id}__{base_catalog}"
+
+
 # REQ-195: Hasura v2 / DDN literals map to internal presets.
 #   hasura-default  → snake_case   graphql-default → camelCase
 #   graphql (DDN namingConvention) → camelCase

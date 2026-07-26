@@ -91,13 +91,19 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
 
 
 def create_catalog(
-    conn: trino.dbapi.Connection, source: Source, resolved_password: str
-) -> None:  # REQ-012, REQ-250, REQ-251
+    conn: trino.dbapi.Connection,
+    source: Source,
+    resolved_password: str,
+    catalog_name: str | None = None,
+) -> None:  # REQ-012, REQ-250, REQ-251, REQ-1266
     """Create a Trino dynamic catalog for a registered source.
 
     Skips creation if the catalog already exists (e.g., from static catalog properties).
+
+    ``catalog_name`` (REQ-1266) is the org-prefixed physical catalog name; when omitted
+    the bare per-source name is used (default-org / single-org behavior).
     """
-    catalog_name = _to_catalog_name(source.id)
+    catalog_name = catalog_name or _to_catalog_name(source.id)
 
     # Skip if catalog already exists
     if catalog_exists(conn, catalog_name):
@@ -164,17 +170,20 @@ def create_kafka_catalog(conn: trino.dbapi.Connection, kafka_source: dict) -> No
         log.warning("Kafka catalog creation failed for %s: %s", catalog_name, e)
 
 
-def analyze_source_tables(  # REQ-636
+def analyze_source_tables(  # REQ-636, REQ-1266
     conn: trino.dbapi.Connection,
     source: "Source",
     tables: list,
+    catalog_name: str | None = None,
 ) -> None:
     """Run ANALYZE on each registered table for a source.
 
     Errors are logged and swallowed — connector may not support ANALYZE,
     and registration must not fail because of it.
+
+    ``catalog_name`` (REQ-1266): org-prefixed physical catalog; bare name when omitted.
     """
-    catalog_name = _to_catalog_name(source.id)
+    catalog_name = catalog_name or _to_catalog_name(source.id)
     cur = conn.cursor()
     for tbl in tables:
         if tbl.source_id != source.id:
@@ -192,9 +201,12 @@ def analyze_source_tables(  # REQ-636
             log.debug("ANALYZE %s.%s.%s skipped: %s", catalog_name, schema, table, e)
 
 
-def drop_catalog(conn: trino.dbapi.Connection, source_id: str) -> None:  # REQ-012
-    """Drop a Trino dynamic catalog."""
-    catalog_name = _to_catalog_name(source_id)
+def drop_catalog(
+    conn: trino.dbapi.Connection, source_id: str, catalog_name: str | None = None
+) -> None:  # REQ-012, REQ-1266
+    """Drop a Trino dynamic catalog. ``catalog_name`` (REQ-1266): org-prefixed physical
+    catalog; bare name when omitted."""
+    catalog_name = catalog_name or _to_catalog_name(source_id)
     sql = f"DROP CATALOG IF EXISTS {catalog_name}"
     cur = conn.cursor()
     cur.execute(sql)

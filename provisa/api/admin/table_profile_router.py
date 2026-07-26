@@ -19,7 +19,6 @@ from fastapi import APIRouter, Header, HTTPException
 from sqlalchemy import select
 
 from provisa.api.app import state
-from provisa.compiler.naming import source_to_catalog
 from provisa.core.schema_org import registered_tables
 
 if TYPE_CHECKING:
@@ -80,7 +79,7 @@ async def profile_table(
         return {"columns": res.column_names, "rows": rows, "rowCount": len(rows)}
 
     view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
-    catalog = view_catalog if source_id == "__provisa__" else source_to_catalog(source_id)
+    catalog = view_catalog if source_id == "__provisa__" else state.catalog_for(source_id)
     fqn = f'"{catalog}"."{schema_name}"."{table_name}"'
     # Try TABLESAMPLE first; fall back to plain LIMIT if unsupported
     sql = f"SELECT * FROM {fqn} TABLESAMPLE BERNOULLI ({_TABLESAMPLE_PCT}) LIMIT {_SAMPLE_LIMIT}"
@@ -93,7 +92,7 @@ async def profile_table(
         if "TABLESAMPLE" in sql:
             # Retry without TABLESAMPLE
             try:
-                fqn = f'"{source_to_catalog(source_id)}"."{schema_name}"."{table_name}"'
+                fqn = f'"{state.catalog_for(source_id)}"."{schema_name}"."{table_name}"'
                 res = await engine.execute_engine(f"SELECT * FROM {fqn} LIMIT {_SAMPLE_LIMIT}")
                 raw_rows = res.rows
                 columns = res.column_names

@@ -8,8 +8,6 @@
     "npm": ">=10.9.0"
   },
   "scripts": {
-    "copy-docs": "node scripts/copy-docs.mjs",
-    "predev": "node scripts/copy-docs.mjs",
     "dev": "vite",
     "generate-schema": "tsx scripts/generate-schema.ts",
     "screenshots": "npx tsx scripts/capture-screenshots.ts",

@@ -65,13 +65,33 @@ export async function fetchOrgs(): Promise<Org[]> {
   return res.json();
 }
 
-export async function createOrg(id: string, name: string): Promise<Org> {
+export interface OrgProvisioning {
+  id: string;
+  name: string;
+  provisioning_state: "provisioning" | "ready" | "failed";
+  provisioning_error?: string | null;
+}
+
+export async function createOrg(
+  id: string,
+  name: string,
+  includeDemo = false,
+): Promise<OrgProvisioning> {
   const res = await fetch(`${API_BASE}/admin/orgs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, name }),
+    body: JSON.stringify({ id, name, include_demo: includeDemo }),
   });
-  if (!res.ok) throw new Error(`createOrg failed: ${res.status}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `createOrg failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchOrgStatus(orgId: string): Promise<OrgProvisioning> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/status`);
+  if (!res.ok) throw new Error(`fetchOrgStatus failed: ${res.status}`);
   return res.json();
 }
 

@@ -232,18 +232,26 @@ class EngineRuntime:  # REQ-825, REQ-840
 
     # -- source lifecycle (REQ-825/840): registration/analyze through the abstraction --------
 
-    def register_source(self, source: Any, resolved_password: str) -> None:
+    def register_source(
+        self, source: Any, resolved_password: str, catalog_name: str | None = None
+    ) -> None:
         """Provision a registered source ON THE BOUND ENGINE (the engine creates a dynamic catalog;
-        native engines attach lazily). The only place source→engine provisioning happens."""
-        self._backend.register_source(self._state, source, resolved_password)
+        native engines attach lazily). The only place source→engine provisioning happens.
 
-    def drop_source(self, source_id: str) -> None:
-        """Deprovision a source on the bound engine."""
-        self._backend.drop_source(self._state, source_id)
+        ``catalog_name`` (REQ-1266) is the physical catalog name to register under — supplied,
+        org-prefixed, for a non-default org so identically-named sources across orgs never collide.
+        ``None`` → the engine derives the bare name from ``source.id`` (default-org behavior)."""
+        self._backend.register_source(self._state, source, resolved_password, catalog_name)
 
-    def analyze(self, source: Any, tables: list) -> None:
-        """Refresh engine statistics for a source's tables (best-effort, behind the seam)."""
-        self._backend.analyze(self._state, source, tables)
+    def drop_source(self, source_id: str, catalog_name: str | None = None) -> None:
+        """Deprovision a source on the bound engine. ``catalog_name`` (REQ-1266): the org-prefixed
+        physical catalog to drop; ``None`` → bare name from ``source_id``."""
+        self._backend.drop_source(self._state, source_id, catalog_name)
+
+    def analyze(self, source: Any, tables: list, catalog_name: str | None = None) -> None:
+        """Refresh engine statistics for a source's tables (best-effort, behind the seam).
+        ``catalog_name`` (REQ-1266): the org-prefixed physical catalog; ``None`` → bare."""
+        self._backend.analyze(self._state, source, tables, catalog_name)
 
     # -- engine lifecycle (REQ-825/840): boot / watchdog / reload / readiness through the seam --
 

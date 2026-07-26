@@ -35,6 +35,21 @@ from provisa.core.schema_org import user_role_assignments
 
 # Requirements: REQ-120, REQ-125, REQ-273, REQ-1267
 
+
+def _requested_org_from_host(request: Request) -> str | None:
+    """REQ-1276: derive the active org from the request Host subdomain. `acme.provisa.org` → org
+    `acme`. The control-plane host `cloud.provisa.*` (leftmost label ``cloud``) carries no org
+    subdomain — its org comes only from an explicit ``x-org-provisa`` header. Apex/bare hosts
+    (``provisa.org``, ``localhost``, an IP) have no org subdomain → None. This is the sole org
+    source under multitenancy; there is no token-claim / ``x-org-id`` fallback (no-fallback rule)."""
+    host = request.headers.get("host", "").split(":")[0].strip().lower()
+    labels = host.split(".") if host else []
+    if labels[:1] == ["cloud"]:
+        return request.headers.get("x-org-provisa")
+    if len(labels) >= 3:
+        return labels[0]
+    return None
+
 # Liveness/readiness probes (/live, /ready) return a static status with no data and must be
 # reachable by unauthenticated orchestrators (k8s, load balancers) — same as /health.
 _SKIP_PATHS = {
@@ -349,7 +364,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             # orgs, /setup + /admin/orgs run superadmin onboarding. They touch no tenant data, so an
             # unresolved (None) active org is correct there rather than the tenant-path 401.
             platform_plane = request.url.path.startswith(("/auth/", "/setup", "/admin/orgs"))
-            requested_org = identity.active_org_id or request.headers.get("x-org-id")
+            requested_org = _requested_org_from_host(request)
             if requested_org is not None:
                 if is_platform_admin or requested_org in member_org_ids:
                     active_org_id = requested_org

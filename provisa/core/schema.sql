@@ -587,6 +587,26 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-1266: org_admin is a system-provided template role seeded into EVERY org schema
+-- (schema.sql runs per-org via init_schema) AND the boot/default-org schema. It is the
+-- FK target for user_role_assignments granted to a self-service org creator / invitee, and
+-- populates the process-global state.roles["org_admin"] so its capabilities resolve for any
+-- org. org_admin is org-SCOPED admin: it manages members/invites/sources/governance WITHIN
+-- its org (confinement comes from membership + active_org_id + per-schema assignments), and
+-- deliberately EXCLUDES the platform-bypass 'admin'/'superadmin' capabilities. org_id = NULL
+-- marks it a system role (identical caps in every org; non-editable via roles_router).
+INSERT INTO roles (id, capabilities, domain_access, org_id)
+VALUES (
+    'org_admin',
+    '["source_registration","table_registration","create_relationship","create_view",
+      "approve_view","approve_relationship","access_config","user_management",
+      "masking_config","column_grant","view_governance","query_development",
+      "full_results","write","usage"]'::jsonb,
+    '["*"]'::jsonb,
+    NULL
+)
+ON CONFLICT (id) DO NOTHING;
+
 -- Org invite tokens live in the platform control plane (schema_admin.org_invites),
 -- not per-org here.
 

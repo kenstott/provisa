@@ -37,6 +37,7 @@ const LandingPage = lazy(() => import("./pages/LandingPage").then((m) => ({ defa
 const GraphPage = lazy(() => import("./pages/GraphPage").then((m) => ({ default: m.GraphPage })));
 const SqlPage = lazy(() => import("./pages/SqlPage").then((m) => ({ default: m.SqlPage })));
 const SetupPage = lazy(() => import("./pages/SetupPage").then((m) => ({ default: m.SetupPage })));
+const OnboardOrgPage = lazy(() => import("./pages/OnboardOrgPage").then((m) => ({ default: m.OnboardOrgPage })));
 const SchemaExplorer = lazy(() => import("./pages/SchemaExplorer").then((m) => ({ default: m.SchemaExplorer })));
 const NlPage = lazy(() => import("./pages/NlPage").then((m) => ({ default: m.NlPage })));
 const GrpcPage = lazy(() => import("./pages/GrpcPage").then((m) => ({ default: m.GrpcPage })));
@@ -109,6 +110,24 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * REQ-1266: gates the app shell behind org membership. An authenticated user with no org
+ * memberships is routed to self-service org creation; everyone else falls through to the shell.
+ * Waits for the AuthProvider bootstrap (loading) so the gate keys off the settled membership set.
+ */
+function OnboardGate({ children }: { children: React.ReactNode }) {
+  const { orgMemberships, loading, authEnabled } = useAuth();
+  const token = localStorage.getItem("provisa_token");
+  if (authEnabled && token && !loading && orgMemberships.length === 0) {
+    return (
+      <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
+        <OnboardOrgPage />
+      </Suspense>
+    );
+  }
+  return <>{children}</>;
+}
+
 function App() {
   const [, setAuthVersion] = useState(0);
   const handleLoginSuccess = useCallback(() => {
@@ -170,6 +189,7 @@ function App() {
               </Routes>
             </Suspense>
           ) : (
+            <OnboardGate>
             <DomainFilterProvider>
               <RequireAuth>
                 <TourProvider>
@@ -382,6 +402,7 @@ function App() {
                 </TourProvider>
               </RequireAuth>
             </DomainFilterProvider>
+            </OnboardGate>
           )}
       </AuthProvider>
     </ApolloProvider>

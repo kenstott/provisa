@@ -39,6 +39,7 @@ from provisa.api.app_loaders import (
     _apply_server_and_engine_config,
     _build_and_register_schemas,
     _build_source_pools_and_enums,
+    _populate_source_catalog_names,
     _init_ingest_engines,
     _init_meta_rls,
     _load_graphql_remote_sources_from_db,
@@ -87,6 +88,13 @@ from provisa.core.schema_org import (
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
+from provisa.api.org_runtime import (
+    OrgRegistry,
+    OrgRuntime,
+    current_org,
+    reset_current_org,
+    set_current_org,
+)
 from provisa.compiler.mask_inject import MaskingRules
 from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
 from provisa.api.admin.db_queries import (
@@ -119,7 +127,6 @@ class AppState:
     # ``tenant_db`` is the per-org/tenant control plane (schema-scoped);
     # ``admin_db`` is the global platform control plane (orgs/users/invites/
     # billing), backed by its own SQLAlchemy URI.
-    tenant_db: Database | None = None
     admin_db: Database | None = None
     engine_conn: Any | None = None  # engine terminal connection; owned by the engine backend
     engine_conn_kwargs: dict = {}  # kwargs used to create engine_conn (for reconnect)
@@ -127,7 +134,6 @@ class AppState:
     # __init__ (never None); the engine is the reference engine. Typed Any to avoid the runtime import.
     federation_engine: Any = None
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
-    schemas: dict[str, graphql.GraphQLSchema] = {}  # role_id → GraphQLSchema
     schema_build_cache: dict = {}  # raw data for on-demand domain-filtered schema building
     schema_version: int = (
         0  # bumped on every _rebuild_schemas; used by clients for cache invalidation
@@ -135,15 +141,6 @@ class AppState:
     schema_boot_id: str = (
         ""  # random UUID set at startup; combined with schema_version for cache keys
     )
-    contexts: dict[str, CompilationContext] = {}  # role_id → CompilationContext
-    rls_contexts: dict[str, RLSContext] = {}  # role_id → RLSContext
-    roles: dict[str, dict] = {}  # role_id → role dict
-    source_pools: SourcePool = SourcePool()
-    source_types: dict[str, str] = {}  # source_id → source_type
-    source_catalogs: dict[str, str] = {}  # source_id → the engine catalog name
-    source_dialects: dict[str, str] = {}  # source_id → sqlglot dialect
-    source_dsns: dict[str, str] = {}  # source_id → "host:port/database" (physical colocation key)
-    masking_rules: MaskingRules = {}  # (table_id, role_id) → {col: (rule, dtype)}
     response_cache_store: CacheStore = NoopCacheStore()
     response_cache_default_ttl: int = 300
     # REQ-1008: server-lifetime MCP catalog search index (DuckDB VSS HNSW), built lazily on first
@@ -163,7 +160,6 @@ class AppState:
     # REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a request-level
     # as-of (X-Provisa-As-Of) can overlay an as-of reconstruction over each one's append log.
     bitemporal_view_reads: dict = {}  # view_table_name → (mv_ref, BitemporalSpec)
-    source_cache: dict[str, dict] = {}  # source_id → {cache_enabled, cache_ttl}
     table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
     auth_config: dict | None = None  # auth section from provisa.yaml
     # Bumped every time _load_and_build resolves auth_config. The lazily-resolving AuthMiddleware
@@ -193,20 +189,6 @@ class AppState:
     apq_ttl: int = 86400  # REQ-289: APQ cache TTL (apq.ttl config / PROVISA_APQ_TTL env)
     live_engine: Any | None = None  # Phase AM: LiveEngine instance
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
-    source_federation_hints: dict[
-        str, dict[str, str]
-    ] = {}  # source_id → the engine session props (AL3)
-    source_allowed_domains: dict[
-        str, list[str]
-    ] = {}  # source_id → allowed domain ids (empty = unrestricted)
-    # REQ-263, REQ-264, REQ-265: full table+column dicts (with visible_to) for every registered
-    # table, populated once at schema-load time and reused by the raw-SQL governance path
-    # (pgwire / Flight SQL / airport).  build_governance_context requires this list to derive
-    # visible_columns and all_columns; an empty list silently skips column governance.
-    tables: list[dict] = []  # populated by _rebuild_schemas from _fetch_tables
-    # REQ-1132: resolved user-defined relationships (int source/target table ids), published for the
-    # raw-SQL governance path so build_governance_context can compute 1-hop meta row scoping.
-    relationships: list[dict] = []
     engine_session_hints: dict[
         str, str
     ] = {}  # FTE session properties injected into every the engine query
@@ -273,6 +255,132 @@ class AppState:
         from provisa.federation.runtime import EngineRuntime
 
         self.federation_engine = EngineRuntime(build_engine(), self)
+
+        # REQ-1266: per-request multi-org data plane. The routed maps below (source
+        # pools, roles, compiled schemas/contexts, catalog names, masking, …) live on
+        # a per-org OrgRuntime; the properties resolve the ContextVar-selected runtime,
+        # defaulting to the default-org runtime when unset (startup / background boot /
+        # single-org tests). The default runtime is registered here so build-time writes
+        # (which run before any request sets the ContextVar) always have a target.
+        self.org_registry = OrgRegistry()
+        self.org_registry.set(self.org_id, OrgRuntime(org_id=self.org_id))
+
+    # --- Per-request org routing (REQ-1266) -----------------------------------
+    def _active_runtime(self) -> OrgRuntime:
+        """The OrgRuntime for the current request's org, or the default-org runtime
+        when no org is bound. Never fabricates a runtime for an unbuilt org — a
+        tenant-data path with an unbuilt selected org is a routing defect that the
+        entrypoint must have caught (see require_current_org)."""
+        org_id = current_org.get() or self.org_id
+        rt = self.org_registry.get(org_id)
+        if rt is None:
+            rt = self.org_registry.get(self.org_id)
+            assert rt is not None, "default-org runtime missing — AppState not initialized"
+        return rt
+
+    @property
+    def tenant_db(self) -> Database | None:
+        return self._active_runtime().tenant_db
+
+    @tenant_db.setter
+    def tenant_db(self, value: Database | None) -> None:
+        self._active_runtime().tenant_db = value
+
+    @property
+    def source_pools(self) -> SourcePool:
+        return self._active_runtime().source_pools
+
+    @source_pools.setter
+    def source_pools(self, value: SourcePool) -> None:
+        self._active_runtime().source_pools = value
+
+    @property
+    def source_types(self) -> dict[str, str]:
+        return self._active_runtime().source_types
+
+    @property
+    def source_dialects(self) -> dict[str, str]:
+        return self._active_runtime().source_dialects
+
+    @property
+    def source_dsns(self) -> dict[str, str]:
+        return self._active_runtime().source_dsns
+
+    @property
+    def source_catalogs(self) -> dict[str, str]:
+        return self._active_runtime().source_catalogs
+
+    def catalog_for(self, source_id: str) -> str:
+        """Physical engine catalog name for ``source_id`` under the current request's org
+        (REQ-1266). Consults the ContextVar-selected runtime's ``source_catalogs`` — the
+        only correct source of the org-prefixed name. Raises when the source is unknown to
+        the active org: a bare ``source_to_catalog`` fallback here would silently resolve to
+        the DEFAULT org's physical catalog (cross-org data leak), so there is no fallback."""
+        catalogs = self._active_runtime().source_catalogs
+        catalog = catalogs.get(source_id)
+        if catalog is None:
+            raise KeyError(
+                f"source {source_id!r} has no catalog in org "
+                f"{current_org.get() or self.org_id!r} — source not registered for this org"
+            )
+        return catalog
+
+    @property
+    def source_cache(self) -> dict[str, dict]:
+        return self._active_runtime().source_cache
+
+    @property
+    def source_allowed_domains(self) -> dict[str, list[str]]:
+        return self._active_runtime().source_allowed_domains
+
+    @property
+    def source_federation_hints(self) -> dict[str, dict[str, str]]:
+        return self._active_runtime().source_federation_hints
+
+    @property
+    def roles(self) -> dict[str, dict]:
+        return self._active_runtime().roles
+
+    @property
+    def schemas(self) -> dict[str, graphql.GraphQLSchema]:
+        return self._active_runtime().schemas
+
+    @property
+    def contexts(self) -> dict[str, CompilationContext]:
+        return self._active_runtime().contexts
+
+    @property
+    def rls_contexts(self) -> dict[str, RLSContext]:
+        return self._active_runtime().rls_contexts
+
+    @property
+    def masking_rules(self) -> MaskingRules:
+        return self._active_runtime().masking_rules
+
+    @masking_rules.setter
+    def masking_rules(self, value: MaskingRules) -> None:
+        self._active_runtime().masking_rules = value
+
+    @property
+    def tables(self) -> list[dict]:
+        # REQ-263/264/265: full table+column dicts (with visible_to) for every registered
+        # table, populated once per org at schema-load time; the raw-SQL governance path
+        # (pgwire / Flight SQL / airport) derives visible_columns/all_columns from it.
+        return self._active_runtime().tables
+
+    @tables.setter
+    def tables(self, value: list[dict]) -> None:
+        self._active_runtime().tables = value
+
+    @property
+    def relationships(self) -> list[dict]:
+        # REQ-1132: resolved user-defined relationships (int source/target table ids),
+        # published for the raw-SQL governance path's 1-hop meta row scoping.
+        return self._active_runtime().relationships
+
+    @relationships.setter
+    def relationships(self, value: list[dict]) -> None:
+        self._active_runtime().relationships = value
 
 
 state = AppState()
@@ -434,6 +542,11 @@ async def _load_and_build(
             "true",
             "yes",
         )
+        # Populate the org-prefixed catalog-name map FIRST so load_config's physical registration
+        # AND column introspection resolve each source under the name the compiler later emits
+        # (state.catalog_for). build_org_runtime does the same before its load_config; the default
+        # path must too, else introspect_columns → catalog_for raises KeyError (REQ-1266). Idempotent.
+        _populate_source_catalog_names(config)
         await load_config(config, conn, state.federation_engine, replace=_replace_mode)
 
     _mark("load_config")
@@ -497,6 +610,125 @@ async def _load_and_build(
         state.hot_manager = hot_mgr
 
     _mark("hot_tables")
+
+
+async def _read_seeded_demo(org_id: str) -> bool:  # REQ-1266
+    """Whether ``org_id`` was seeded with the shared demo config, read from the admin plane.
+
+    The org registry is in-memory with no TTL, so after a process restart the per-request router
+    must rebuild an org's runtime on first access. This tells it whether to reload the demo sources
+    (demo org) or leave the schema empty (non-demo org) — no default, the row is authoritative."""
+    from sqlalchemy import select as _select
+
+    from provisa.core.schema_admin import orgs as _orgs
+
+    assert state.admin_db is not None
+    async with state.admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            _select(_orgs.c.seeded_demo).where(_orgs.c.id == org_id)
+        )
+        row = result.fetchone()
+    if row is None:
+        raise KeyError(f"org {org_id!r} not found in the admin plane — cannot route a request to it")
+    return bool(row[0])
+
+
+async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
+    """Get the org's data-plane runtime, building it (once, under the registry lock) on a miss.
+
+    The single seam every entrypoint (HTTP middleware AND the pgwire/bolt/flight/gRPC/MCP protocol
+    servers) uses to lazily materialize an org's runtime before binding ``current_org``. The
+    registry is in-memory with no TTL, so first access after a process restart rebuilds; whether to
+    reload the demo sources is read authoritatively from the admin plane (no default)."""
+
+    async def _builder(oid: str) -> OrgRuntime:
+        include_demo = await _read_seeded_demo(oid)
+        return await build_org_runtime(oid, include_demo=include_demo)
+
+    return await state.org_registry.get_or_build(org_id, _builder)
+
+
+async def build_org_runtime(org_id: str, *, include_demo: bool = False) -> OrgRuntime:  # REQ-1266
+    """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
+
+    Registers an empty :class:`OrgRuntime` FIRST so the ``AppState`` property shims route every
+    build-time ``state.X`` write into it, binds the ``current_org`` ContextVar, then replays the
+    per-org subset of the startup build against that runtime: tenant plane (a ``Database`` scoped
+    to ``org_<id>`` + ``schema.sql`` + audit schema), the built-in source rows, optionally the demo
+    config (its sources land under org-prefixed engine catalogs — REQ-1266), the direct source
+    pools, PK resolution, and the per-role compiled schemas.
+
+    Genuinely-global state (``admin_db``, ``federation_engine``, auth/cache/encryption config,
+    ``state.config``, ``state.org_id``) is owned by :func:`_load_and_build` and reused as-is — this
+    never re-runs it and never mutates ``state.org_id`` (the default/bootstrap org). For the
+    default org itself, startup builds the runtime directly through the shims; calling this again
+    for the default org is a safe rebuild.
+    """
+    from provisa.api.startup_seed import _seed_built_in_sources, _resolve_pk_from_sources
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.database import create_engine_from_url
+    from provisa.core.db import init_schema
+    from provisa.audit.query_log import init_audit_schema
+
+    rt = OrgRuntime(org_id=org_id)
+    state.org_registry.set(org_id, rt)
+    token = set_current_org(org_id)
+    try:
+        # Tenant plane for THIS org: its own Database scoped to org_<id>. The platform/admin plane
+        # (state.admin_db) is global and already up — never rebuilt here.
+        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        cp = load_control_plane(config_path)
+        tenant_engine = create_engine_from_url(
+            cp.resolved_tenant_url(), pool_size=cp.pool_max, max_overflow=cp.max_overflow
+        )
+        state.tenant_db = Database(tenant_engine, name="org", search_path=f"org_{org_id}")
+
+        schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
+        if not schema_sql_path.exists():
+            raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
+        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
+        await init_audit_schema(state.tenant_db, org_id=org_id)
+
+        host, port, database, username, _pw = cp.tenant_parts()
+        assert database, "control_plane.tenant_url must specify a database"
+        await _seed_built_in_sources(host or "", port, database, username or "", org_id=org_id)
+        state.source_dsns["provisa-admin"] = f"{host}:{port}/{database}"
+
+        # Demo orgs load the same config the default org runs; its sources are namespaced under
+        # org-prefixed engine catalogs (source_catalogs), so identically-named demo sources across
+        # orgs never collide in the shared coordinator's catalog namespace.
+        config = state.config if include_demo else None
+        if config is not None:
+            assert state.tenant_db is not None
+            # Populate the org-prefixed catalog-name map FIRST so physical registration inside
+            # load_config attaches each source under the org's own catalog name (not the bare,
+            # default-org name) — the cross-org collision guard (REQ-1266).
+            _populate_source_catalog_names(config)
+            async with state.tenant_db.acquire() as conn:
+                await load_config(
+                    config,
+                    conn,
+                    state.federation_engine,
+                    replace=False,
+                    catalog_names=rt.source_catalogs,
+                )
+            await _build_source_pools_and_enums(config)
+            await _resolve_pk_from_sources()
+
+        await _rebuild_schemas()
+
+        # REQ-1266: wire this org's MV event loop onto the shared scheduler so its materialized
+        # views refresh on their own cadence. Job ids are org-suffixed and each fire binds
+        # current_org (register_runtime reads the bound org), so a second org never clobbers the
+        # first's jobs. Best-effort — a missing scheduler (tests, engine not connected) skips it.
+        scheduler = getattr(state, "_scheduler", None)
+        if scheduler is not None:
+            from provisa.events.app_wiring import wire_event_loop
+
+            await wire_event_loop(scheduler, state=state, log=logging.getLogger(__name__))
+    finally:
+        reset_current_org(token)
+    return rt
 
 
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
@@ -886,6 +1118,34 @@ def create_app() -> FastAPI:
     from provisa.security.high_security import HighSecurityMiddleware
 
     app.add_middleware(HighSecurityMiddleware, state=state)
+
+    # REQ-1266: per-request org routing. Added BEFORE wire_auth so AuthMiddleware (added later →
+    # outermost → runs first) has already resolved request.state.active_org_id when this runs. Binds
+    # the current_org ContextVar for the selected org and lazily builds its data-plane runtime on a
+    # miss (e.g. after a process restart — the registry is in-memory, no TTL). Only engages under
+    # multitenancy; single-org deployments never bind a non-default org.
+    if state.multitenancy:
+        from starlette.middleware.base import BaseHTTPMiddleware as _OrgBaseHTTPMiddleware
+
+        class _OrgRoutingMiddleware(_OrgBaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                active_org = getattr(request.state, "active_org_id", None)
+                # No org bound (unauthenticated, or a default-org request): the AppState shims resolve
+                # the default-org runtime. Never fabricate a non-default org here.
+                if active_org is None or active_org == state.org_id:
+                    return await call_next(request)
+                # Keep existing tenant cache-key call sites (which read request.state.tenant_id)
+                # pointed at the same id space as the org router.
+                request.state.tenant_id = active_org
+
+                await ensure_org_runtime(active_org)
+                token = set_current_org(active_org)
+                try:
+                    return await call_next(request)
+                finally:
+                    reset_current_org(token)
+
+        app.add_middleware(_OrgRoutingMiddleware)
 
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth

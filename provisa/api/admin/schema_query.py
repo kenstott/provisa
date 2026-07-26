@@ -32,7 +32,6 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
-from provisa.compiler.naming import source_to_catalog
 from provisa.core.repositories import rls as rls_repo
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.api.admin._config_io import config_path as _config_path, read_config
@@ -368,7 +367,7 @@ class Query:  # REQ-021, REQ-042
         # registry (REQ-947), not a parallel map: unreachable ⇒ no engine schemas.
         if not state.federation_engine.engine.reachable(source_type):
             return []
-        catalog = source_to_catalog(source_id)
+        catalog = state.catalog_for(source_id)
         schemas: list[str] = []
         with discovery_fallback(f"engine schemata for {source_id!r}"):
             res = await state.federation_engine.execute_engine(
@@ -415,7 +414,7 @@ class Query:  # REQ-021, REQ-042
         # the engine fallback
         from provisa.api.admin.introspect import PROVISA_INTERNAL_TABLES
 
-        catalog = source_to_catalog(source_id)
+        catalog = state.catalog_for(source_id)
         skip = PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
         tables: list[AvailableTableType] = []
         with discovery_fallback(f"engine tables for {source_id!r}"):
@@ -467,7 +466,7 @@ class Query:  # REQ-021, REQ-042
         if source_type == "govdata":
             cols = await _govdata_columns(source_id, schema_name, table_name, None)
             return [c.name for c in cols]
-        catalog = source_to_catalog(source_id)
+        catalog = state.catalog_for(source_id)
         columns: list[str] = []
         with discovery_fallback(f"engine columns for {source_id!r}.{schema_name}.{table_name}"):
             res = await state.federation_engine.execute_engine(
@@ -892,7 +891,7 @@ async def resolve_available_columns_metadata(
             )
             for c in cols
         ]
-    catalog = source_to_catalog(source_id)
+    catalog = state.catalog_for(source_id)
     cols_meta: list[AvailableColumnType] = []
     with discovery_fallback(f"engine column metadata for {source_id!r}.{schema_name}.{table_name}"):
         # PK columns + column metadata via the engine terminal (information_schema).

@@ -439,16 +439,21 @@ async def _init_control_planes(
     # Every backend identifies a database (a PG database name, a SQLite file path, …).
     # Host/user are backend-specific and validated at connect time, not asserted here.
     assert database, "control_plane.tenant_url must specify a database"
-    return host, port, database, username
+    return host or "", port, database, username or ""
 
 
 async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
-    pg_host: str, pg_port: int, pg_database: str, pg_user: str
+    pg_host: str, pg_port: int, pg_database: str, pg_user: str, org_id: str | None = None
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __provisa__ source rows; seed meta domain and ops; compute clusters.
 
     The provisa-admin source is the control-plane self-catalog; its ``type``/``dialect`` follow the
-    control plane's actual backend (``postgresql`` for PG, ``sqlite`` for the file-based demo)."""
+    control plane's actual backend (``postgresql`` for PG, ``sqlite`` for the file-based demo).
+
+    ``org_id`` scopes the seeded meta/ops domain rows to the org being built (REQ-1266). It defaults
+    to ``state.org_id`` (the default/bootstrap org) for the single-org startup path; the per-org
+    builder passes the new org's id so meta/ops belong to that org, not the default."""
+    eff_org = org_id or state.org_id
     assert state.tenant_db is not None
     cp_dialect = state.tenant_db.dialect
     from provisa.federation.engine import configured_engine_endpoint
@@ -517,9 +522,9 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             index_elements=["id"],
             update_columns=[],
         )
-        await _seed_meta_domain(_conn, org_id=state.org_id)
+        await _seed_meta_domain(_conn, org_id=eff_org)
         await _seed_ops_pg(_conn)
-        await _seed_ops_domain(_conn, org_id=state.org_id)  # REQ-884
+        await _seed_ops_domain(_conn, org_id=eff_org)  # REQ-884
         await _seed_meta_relationships(_conn)
         needs_clusters = (
             await _conn.execute_core(

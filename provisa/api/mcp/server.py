@@ -32,6 +32,8 @@ from contextvars import ContextVar
 from typing import Any
 
 from provisa.api.mcp import tools
+from provisa.api.org_resolve import OrgResolutionError
+from provisa.api.org_runtime import reset_current_org, set_current_org
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +65,32 @@ async def _resolve_token_role_async(token: str, state: Any) -> str:
         # configured default_role is rejected rather than escalated.
         raise PermissionError("token matched no role and no default_role is configured")
     return resolve_role(identity, auth_config.get("role_mapping", []), default_role)
+
+
+async def _resolve_token_org_async(token: str, state: Any) -> str | None:
+    """Resolve the org a remote MCP session binds from its bearer token (REQ-1266).
+
+    Returns None for single-org deployments (leave ``current_org`` unset → default runtime).
+    Under multitenancy, validates the token and maps its subject to an org via the shared
+    membership rule (:func:`resolve_session_org`); raises on an unresolvable principal.
+    """
+    if not getattr(state, "multitenancy", False):
+        return None
+    from provisa.api.org_resolve import resolve_session_org
+    from provisa.auth.wiring import build_auth_provider
+
+    auth_config = getattr(state, "auth_config", None)
+    if not auth_config:
+        raise PermissionError("MCP OAuth requested but no auth config is loaded")
+    provider = build_auth_provider(auth_config)
+    identity = await provider.validate_token(token)
+    is_platform_admin = bool(set(getattr(identity, "roles", []) or []) & {"admin", "superadmin"})
+    return await resolve_session_org(
+        state,
+        user_id=getattr(identity, "user_id", None),
+        is_platform_admin=is_platform_admin,
+        requested_org=getattr(identity, "active_org_id", None),
+    )
 
 
 def resolve_token_role(token: str, state: Any) -> str:
@@ -227,15 +255,30 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             return
         try:
             role = await _resolve_token_role_async(token, state)
+            org_id = await _resolve_token_org_async(token, state)
         except (PermissionError, ValueError) as exc:
             # Token present but rejected (bad/expired token, or no mapped role) — fail closed.
             await _send_401(send, str(exc))
             return
+        except OrgResolutionError as exc:
+            # Authenticated but not resolvable to one permitted org — fail closed, no default.
+            await _send_401(send, str(exc))
+            return
         reset = _request_role.set(role)
+        # REQ-1266: bind the org's data-plane runtime for the request so the tools' state.X reads
+        # route to it. None (single-org / default) leaves current_org unset → default runtime.
+        org_token = None
+        if org_id is not None:
+            from provisa.api.app import ensure_org_runtime
+
+            await ensure_org_runtime(org_id)
+            org_token = set_current_org(org_id)
         try:
             await app(scope, receive, send)
         finally:
             _request_role.reset(reset)
+            if org_token is not None:
+                reset_current_org(org_token)
 
     return _middleware
 

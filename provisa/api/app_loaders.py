@@ -175,22 +175,27 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
             state.kafka_table_physical[gql_table_name] = physical_table
 
 
-async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-012, REQ-221
-    """Build direct source connection pools, register websocket/rss sources, and fetch enum types."""
-    from provisa.api.app import state
-    from provisa.executor.drivers.registry import has_driver
-    from provisa.transpiler.router import VIRTUAL_SOURCES
-    from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
+def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, REQ-1266
+    """Populate the org-scoped engine-catalog name map (+ source types/dialects/cache/hints).
 
-    # Seed system source catalogs
+    Split out of :func:`_build_source_pools_and_enums` so it can run BEFORE ``load_config``: the
+    physical catalog registration (``engine.register_source`` → ``catalog.create_catalog``) must
+    write each source under the SAME name the compiler later emits, and that name lives in
+    ``state.source_catalogs``. Registering first and populating the map second would attach a
+    non-default org's source under the bare (default-org) catalog name — a cross-org collision in
+    the one shared coordinator's catalog namespace. Idempotent; safe to call again from
+    :func:`_build_source_pools_and_enums`.
+    """
+    from provisa.api.app import state
+    import os
+
+    # Seed system source catalogs (never org-prefixed — one physical catalog shared across orgs).
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")
     state.source_catalogs["provisa-otel"] = "otel"
 
     # A fixed-catalog warehouse (BigQuery project.dataset.table; Fabric/Synapse database.schema.table)
     # pins EVERY source's catalog to the one warehouse catalog — the runtime lands/attaches, and the
     # governed query reads, at exactly <catalog>.<schema>.<table>.
-    import os
-
     _fixed_catalog = None
     _engine = getattr(state, "federation_engine", None)
     _engine_name = getattr(getattr(_engine, "engine", None), "name", "")
@@ -201,6 +206,16 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
     elif _engine_name == "synapse":
         _fixed_catalog = os.environ.get("SYNAPSE_DATABASE")
 
+    # REQ-1266: the org currently being built (default/bootstrap org when the ContextVar is
+    # unset — the startup path). Org-scoped catalogs get an org_<id>__ prefix for non-default
+    # orgs so identically-named demo sources in different orgs don't collide; the default org
+    # keeps bare names. state.org_id is the bootstrap/default org (the one kept un-prefixed).
+    from provisa.api.org_runtime import current_org
+    from provisa.compiler.naming import org_prefixed_catalog
+
+    _building_org = current_org.get() or state.org_id
+    _default_org = state.org_id
+
     for src in config.sources:
         state.source_types[src.id] = src.type.value
         _pg_cat = (
@@ -208,7 +223,11 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
             if src.type.value == "postgresql"
             else (src.database or source_to_catalog(src.id))
         )
-        state.source_catalogs[src.id] = _fixed_catalog or _pg_cat
+        # Fixed-warehouse catalogs pin every source to one physical catalog (not org-scoped);
+        # otherwise namespace the org-scoped catalog for non-default orgs.
+        state.source_catalogs[src.id] = _fixed_catalog or org_prefixed_catalog(
+            _building_org, _pg_cat, default_org=_default_org
+        )
         state.source_dialects[src.id] = src.dialect or ""
         state.source_cache[src.id] = {
             "cache_enabled": src.cache_enabled,
@@ -218,6 +237,20 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
             state.source_federation_hints[src.id] = dict(src.federation_hints)
         if src.allowed_domains:
             state.source_allowed_domains[src.id] = list(src.allowed_domains)
+
+
+async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-012, REQ-221
+    """Build direct source connection pools, register websocket/rss sources, and fetch enum types."""
+    from provisa.api.app import state
+    from provisa.executor.drivers.registry import has_driver
+    from provisa.transpiler.router import VIRTUAL_SOURCES
+    from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
+
+    # Catalog names + source types must exist before pools/domains read them (idempotent — also
+    # run before load_config so physical registration uses the org-prefixed name).
+    _populate_source_catalog_names(config)
+
+    for src in config.sources:
         # Engine-attached sources (file-based sqlite, NoSQL, lake) are reached only through the
         # engine's ATTACH — they have no network direct pool. Attempting one builds an invalid DSN
         # (e.g. sqlite has a file ``path``, not host/port) and would leave the source routable-as-

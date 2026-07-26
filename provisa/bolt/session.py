@@ -51,6 +51,11 @@ class BoltSession:
         self.bolt_version = bolt_version
         self.state = State.AUTHENTICATION
         self.user_id: str | None = None
+        # REQ-1266: the org this session's queries route to. Resolved once, lazily, at the first RUN
+        # (auth identity is settled by then) and bound around execution via current_org. None → the
+        # default-org runtime (single-org deployments).
+        self.org_id: str | None = None
+        self._org_resolved: bool = False
         # All role_ids the authenticated user holds; each surfaces as a "provisa_<role>" database.
         self.roles: list[str] = []
         # Active role for the current tx/run, chosen via the Bolt `db` field. Defaults to roles[0].
@@ -249,6 +254,30 @@ class BoltSession:
         self.state = State.READY
         self.send_success({})
 
+    async def _ensure_org(self) -> None:
+        """Resolve+build this session's org runtime once (REQ-1266).
+
+        Bolt has no org-request channel, so the org is derived purely from the authenticated
+        principal's membership (single membership auto-selects; platform admin → default runtime;
+        ambiguity raises — no silent cross-tenant default). Runs on the event loop, so a plain
+        set/reset around handle_run's execution binds it (no thread hop, unlike pgwire)."""
+        if self._org_resolved:
+            return
+        from provisa.api.app import ensure_org_runtime, state as app_state
+        from provisa.api.org_resolve import resolve_session_org
+
+        is_platform_admin = bool(set(self.roles) & {"admin", "superadmin"})
+        org_id = await resolve_session_org(
+            app_state,
+            user_id=self.user_id,
+            is_platform_admin=is_platform_admin,
+            requested_org=None,
+        )
+        if org_id is not None:
+            await ensure_org_runtime(org_id)
+        self.org_id = org_id
+        self._org_resolved = True
+
     async def handle_run(self, fields: list[Any]) -> None:
         cypher: str = fields[0] if fields else ""
         parameters: dict = fields[1] if len(fields) > 1 and isinstance(fields[1], dict) else {}
@@ -285,6 +314,16 @@ class BoltSession:
 
         role_id, include_ops = resolved
 
+        # REQ-1266: resolve this session's org (once) and bind it around execution so every
+        # state.X read below routes to the org's runtime. Ambiguous membership fails the RUN.
+        from provisa.api.org_resolve import OrgResolutionError
+
+        try:
+            await self._ensure_org()
+        except OrgResolutionError as exc:
+            self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
+            return
+
         # REQ-1194/REQ-1195: a caller requests materialization via Bolt transaction metadata — the
         # side-channel that rides RUN's `extra` map without touching the record stream. The handle is
         # surfaced in the trailing PULL SUCCESS metadata.
@@ -299,6 +338,9 @@ class BoltSession:
             role=role_id,
         )
 
+        from provisa.api.org_runtime import reset_current_org, set_current_org
+
+        _org_token = set_current_org(self.org_id) if self.org_id is not None else None
         try:
             columns, rows, redirect = await _execute_cypher(
                 cypher,
@@ -320,6 +362,9 @@ class BoltSession:
             )
             self.send_failure("Neo.ClientError.Statement.SyntaxError", str(exc))
             return
+        finally:
+            if _org_token is not None:
+                reset_current_org(_org_token)
 
         self._result_columns = columns
         self._result_rows = rows

@@ -376,6 +376,7 @@ def register_runtime(
     tick_seconds: int = 5,
     lease_seconds: int = 60,
     seed: bool = True,
+    org_id: str | None = None,
 ) -> None:
     """Register the event-loop jobs on the embedded scheduler (APScheduler): one tick (drain all
     processors' pending work), one reaper (reclaim stale leases), and each POLL node's own interval
@@ -384,34 +385,67 @@ def register_runtime(
 
     ``seed`` controls the one-shot boot-create (seed every source's first land + drain the DAG). True
     at boot; False on a RE-wire (e.g. after a runtime MV create) so poll jobs get (re)registered
-    WITHOUT re-landing every source. Re-registration is idempotent (replace_existing throughout)."""
+    WITHOUT re-landing every source. Re-registration is idempotent (replace_existing throughout).
+
+    REQ-1266: ``org_id`` (non-default org) namespaces every job id (``events:tick:org_<id>`` …) so a
+    second org's wiring never clobbers the first's under ``replace_existing``, and binds the org's
+    ``current_org`` ContextVar for the duration of each fire so any routed ``state.X`` read inside a
+    processor resolves that org's runtime. ``None`` (single-org / default org) keeps the bare ids and
+    binds nothing — behavior identical to before multi-org."""
     from apscheduler.triggers.interval import IntervalTrigger
 
+    suffix = f":org_{org_id}" if org_id else ""
+
+    def _bind():  # REQ-1266: bind this org on the scheduler thread for one fire; None → no-op
+        if org_id is None:
+            return None
+        from provisa.api.org_runtime import set_current_org
+
+        return set_current_org(org_id)
+
+    def _unbind(tok) -> None:
+        if tok is not None:
+            from provisa.api.org_runtime import reset_current_org
+
+            reset_current_org(tok)
+
     async def _tick() -> None:
-        await supervisor.tick(db, processors)
+        tok = _bind()
+        try:
+            await supervisor.tick(db, processors)
+        finally:
+            _unbind(tok)
 
     async def _reap() -> None:
-        await supervisor.reap(db, lease_seconds=lease_seconds)
+        tok = _bind()
+        try:
+            await supervisor.reap(db, lease_seconds=lease_seconds)
+        finally:
+            _unbind(tok)
 
     async def _boot() -> None:
         # Design: replicas are BUILT at boot, then REFRESHED by events. Seed each source's first land
         # and drain the DAG so every replica (and its MVs) exists; the poll/push jobs keep them fresh.
-        await boot_create(db, specs)
-        await supervisor.drain(db, processors)
+        tok = _bind()
+        try:
+            await boot_create(db, specs)
+            await supervisor.drain(db, processors)
+        finally:
+            _unbind(tok)
 
     if seed:
         # One-shot: run once as soon as the scheduler starts (no trigger = immediate single fire).
-        scheduler.add_job(_boot, id="events:boot", replace_existing=True)
+        scheduler.add_job(_boot, id=f"events:boot{suffix}", replace_existing=True)
     scheduler.add_job(
         _tick,
         trigger=IntervalTrigger(seconds=tick_seconds),
-        id="events:tick",
+        id=f"events:tick{suffix}",
         replace_existing=True,
     )
     scheduler.add_job(
         _reap,
         trigger=IntervalTrigger(seconds=lease_seconds),
-        id="events:reaper",
+        id=f"events:reaper{suffix}",
         replace_existing=True,
     )
     by_node = {p.node: p for p in processors}
@@ -421,7 +455,10 @@ def register_runtime(
         if spec.poll_seconds is None or spec.probe_factory is None:
             continue  # a poll node with no cadence/probe is driven only by upstream events
         by_node[spec.node].register_poll_job(
-            scheduler, seconds=spec.poll_seconds, probe_factory=spec.probe_factory
+            scheduler,
+            seconds=spec.poll_seconds,
+            probe_factory=spec.probe_factory,
+            org_id=org_id,
         )
 
 

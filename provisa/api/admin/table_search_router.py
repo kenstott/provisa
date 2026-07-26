@@ -46,7 +46,7 @@ async def _candidates_live(
 ) -> list[TableCandidate]:  # REQ-464
     """Fetch candidates live from native introspection + the engine (cache-miss path)."""
     from provisa.api.admin.introspect import native_tables
-    from provisa.api.admin.schema import _get_pool, source_to_catalog
+    from provisa.api.admin.schema import _get_pool
 
     source_type = state.source_types.get(source_id, "")
     pool = await _get_pool()
@@ -64,7 +64,7 @@ async def _candidates_live(
             raw_tables = None
 
     if raw_tables is None:
-        catalog = source_to_catalog(source_id)
+        catalog = state.catalog_for(source_id)
         try:
             res = await state.federation_engine.execute_engine(
                 f'SELECT table_name FROM "{catalog}".information_schema.tables '
@@ -85,9 +85,7 @@ async def _candidates_live(
         ]
 
     # Enrich with column names (best-effort)
-    from provisa.api.admin.schema import source_to_catalog
-
-    catalog = source_to_catalog(source_id)
+    catalog = state.catalog_for(source_id)
     for c in candidates:
         try:
             res = await state.federation_engine.execute_engine(

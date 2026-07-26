@@ -122,9 +122,7 @@ async def index_source(
 
     if schemas is None:
         # the engine fallback for schema list
-        from provisa.api.admin.schema import source_to_catalog
-
-        catalog = source_to_catalog(source_id)
+        catalog = state.catalog_for(source_id)
         try:
             res = await engine.execute_engine(
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
@@ -145,9 +143,7 @@ async def index_source(
             tables = None
 
         if tables is None:
-            from provisa.api.admin.schema import source_to_catalog
-
-            catalog = source_to_catalog(source_id)
+            catalog = state.catalog_for(source_id)
             try:
                 res = await engine.execute_engine(
                     f'SELECT table_name FROM "{catalog}".information_schema.tables '
@@ -176,9 +172,7 @@ async def index_source(
             ]
 
         # Enrich with column names from the engine
-        from provisa.api.admin.schema import source_to_catalog
-
-        catalog = source_to_catalog(source_id)
+        catalog = state.catalog_for(source_id)
         for cached in tables_with_cols:
             try:
                 res = await engine.execute_engine(

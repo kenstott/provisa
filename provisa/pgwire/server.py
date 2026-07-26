@@ -51,6 +51,43 @@ log = logging.getLogger(__name__)
 _loop: asyncio.AbstractEventLoop | None = None
 _loop_lock = threading.Lock()
 
+
+async def _run_with_org(org_id: str | None, coro):  # REQ-1266
+    """Await ``coro`` on the event loop with ``current_org`` bound to ``org_id``.
+
+    pgwire governs/executes on the main loop via run_coroutine_threadsafe; the ContextVar set on the
+    socketserver worker thread does NOT propagate into that loop-side coroutine, so the org must be
+    bound inside it. ``None`` (single-org / default) awaits unbound → the default-org runtime."""
+    if org_id is None:
+        return await coro
+    from provisa.api.org_runtime import reset_current_org, set_current_org
+
+    token = set_current_org(org_id)
+    try:
+        return await coro
+    finally:
+        reset_current_org(token)
+
+
+async def _resolve_and_build_org(state_, identity) -> str | None:  # REQ-1266
+    """Resolve the org for an authenticated pgwire identity and materialize its runtime.
+
+    Runs on the main event loop (membership lookup + build touch loop-bound DB handles). Returns the
+    org id to bind on the session, or None for a single-org deployment / default-org principal."""
+    from provisa.api.app import ensure_org_runtime
+    from provisa.api.org_resolve import resolve_session_org
+
+    is_platform_admin = bool(set(getattr(identity, "roles", []) or []) & {"admin", "superadmin"})
+    org_id = await resolve_session_org(
+        state_,
+        user_id=getattr(identity, "user_id", None),
+        is_platform_admin=is_platform_admin,
+        requested_org=getattr(identity, "active_org_id", None),
+    )
+    if org_id is not None:
+        await ensure_org_runtime(org_id)
+    return org_id
+
 _TXN_TAG_RE = re.compile(
     r"^\s*(SET|BEGIN|START\s+TRANSACTION|COMMIT|ROLLBACK|DISCARD|RESET|DEALLOCATE|SAVEPOINT|RELEASE)\b",
     re.IGNORECASE,
@@ -243,6 +280,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
     def __init__(self) -> None:
         super().__init__()
         self.role_id: str | None = None
+        # REQ-1266: the org this session is bound to (multitenant OIDC sessions only). None → the
+        # single-org default runtime (trust/simple modes, or a platform admin with no single org).
+        self.org_id: str | None = None
 
     def cursor(self):
         return None
@@ -258,6 +298,21 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         return None
 
     def execute_sql(self, sql: str, params=None) -> ProvisaQueryResult:
+        # REQ-1266: bind this session's org on the worker thread so the sync state.X reads below
+        # (answer/INTERCEPT, execute_engine_sync, source_pools) route to its runtime. The loop-side
+        # governance/execute coroutines are separately bound via _run_with_org (ContextVars do not
+        # cross the run_coroutine_threadsafe boundary). None → default runtime (no bind).
+        if self.org_id is None:
+            return self._execute_sql_bound(sql, params)
+        from provisa.api.org_runtime import reset_current_org, set_current_org
+
+        token = set_current_org(self.org_id)
+        try:
+            return self._execute_sql_bound(sql, params)
+        finally:
+            reset_current_org(token)
+
+    def _execute_sql_bound(self, sql: str, params=None) -> ProvisaQueryResult:
         from provisa.pgwire.catalog import answer, classify
 
         stripped = _substitute_params(sql.strip(), params)
@@ -296,7 +351,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # the loop). DIRECT/admin/govdata routes are async-native and materialize via the loop.
         try:
             governed = asyncio.run_coroutine_threadsafe(
-                govern_pgwire_plan(stripped, self.role_id), loop
+                _run_with_org(self.org_id, govern_pgwire_plan(stripped, self.role_id)), loop
             ).result(timeout=120)
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
@@ -340,7 +395,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 )
             elif isinstance(governed, _Plan):
                 result = asyncio.run_coroutine_threadsafe(
-                    _execute_plan(governed), loop
+                    _run_with_org(self.org_id, _execute_plan(governed)), loop
                 ).result(timeout=120)
             else:
                 result = governed  # registered-function call: bounded, already materialized
@@ -557,6 +612,29 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             auth_config.get("role_mapping", []),
             auth_config.get("default_role", "analyst"),
         )
+        # REQ-1266: bind the session to the identity's org (multitenant) so its queries route to that
+        # org's data-plane runtime. Resolution + build run on the main loop (loop-bound DB handles);
+        # an unresolvable principal fails the connection rather than silently landing on the default.
+        import provisa.pgwire.server as _m
+
+        _state = _m.state
+        if _state is None:
+            from provisa.api.app import state as _state  # type: ignore[assignment]
+        if getattr(_state, "multitenancy", False):
+            from provisa.api.org_resolve import OrgResolutionError
+
+            with _loop_lock:
+                loop = _loop
+            if loop is None:
+                self._send_pg_error("FATAL", "08004", "pgwire event loop not available")
+                return
+            try:
+                ctx.session.org_id = asyncio.run_coroutine_threadsafe(  # type: ignore[attr-defined]
+                    _resolve_and_build_org(_state, identity), loop
+                ).result(timeout=60)
+            except OrgResolutionError as exc:
+                self._send_pg_error("FATAL", "28000", f"org selection failed: {exc}")
+                return
         ctx.session.role_id = role  # type: ignore[attr-defined]
         self.send_authentication_ok()
         self.handle_post_auth(ctx)
@@ -643,6 +721,23 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self.send_ready_for_query(ctx)
             return
 
+        # REQ-1266: bind the session's org on this worker thread so the DDL/COPY handlers' sync
+        # state.X reads route to its runtime (SELECT re-binds inside execute_sql; nesting is safe).
+        _org_id = ctx.session.org_id  # type: ignore[attr-defined]
+        _org_token = None
+        if _org_id is not None:
+            from provisa.api.org_runtime import set_current_org
+
+            _org_token = set_current_org(_org_id)
+        try:
+            self._process_query_stmts(ctx, stmts)
+        finally:
+            if _org_token is not None:
+                from provisa.api.org_runtime import reset_current_org
+
+                reset_current_org(_org_token)
+
+    def _process_query_stmts(self, ctx: BVContext, stmts: list[str]) -> None:
         for stmt in stmts:
             if _COPY_RE.match(stmt):
                 from provisa.pgwire.copy_handler import CopyHandler
@@ -673,9 +768,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                     ctx.mark_error()
                     break
                 try:
-                    tag = asyncio.run_coroutine_threadsafe(run_ctas(stmt, role), _ctas_loop).result(
-                        timeout=120
-                    )
+                    tag = asyncio.run_coroutine_threadsafe(
+                        _run_with_org(ctx.session.org_id, run_ctas(stmt, role)),  # type: ignore[attr-defined]
+                        _ctas_loop,
+                    ).result(timeout=120)
                     self.send_command_complete(f"{tag}\x00")
                 except PermissionError as exc:
                     self._send_pg_error("ERROR", "42501", str(exc))

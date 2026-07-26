@@ -1,0 +1,16 @@
+{
+  "onboardOrg": {
+    "title": "Create your organization",
+    "subtitle": "You're not a member of any organization yet. Create one to get started.",
+    "orgIdLabel": "Organization ID",
+    "orgIdDesc": "Lowercase letters, numbers, and underscores. Used internally and cannot be changed.",
+    "orgNameLabel": "Organization name",
+    "includeDemoLabel": "Include demo data",
+    "includeDemoDesc": "Seed the new organization with sample sources so you can explore right away.",
+    "createButton": "Create organization",
+    "provisioning": "Provisioning your organization. This can take a moment...",
+    "createFailed": "Could not create the organization",
+    "provisionFailed": "Provisioning failed",
+    "provisionTimeout": "Provisioning did not complete in time"
+  }
+}

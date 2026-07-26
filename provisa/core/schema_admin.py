@@ -50,6 +50,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    false,
     func,
     select,
     true,
@@ -68,6 +69,16 @@ orgs = Table(
     Column("name", Text, nullable=False),
     Column("created_by", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-1266: async provisioning lifecycle. server_default="ready" keeps every pre-existing
+    # org queryable (V1 re-runs create_all, no migration); a self-service create inserts
+    # "provisioning" and a background task flips it to "ready" or "failed" (+ provisioning_error,
+    # persisted not swallowed).
+    Column("provisioning_state", Text, nullable=False, server_default="ready"),
+    Column("provisioning_error", Text),
+    # REQ-1266: whether this org was seeded with the shared demo config. The per-request org
+    # router reads it to rebuild the org's data-plane runtime after a process restart (registry
+    # is in-memory, no TTL) — a demo org reloads the demo sources, an empty org stays empty.
+    Column("seeded_demo", Boolean, nullable=False, server_default=false()),
 )
 
 user_profiles = Table(

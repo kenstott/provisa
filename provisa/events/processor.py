@@ -205,20 +205,42 @@ class TableProcessor(ABC):
 
     # -- ingestion patterns (common; a node uses one by its change_signal) -----
     def register_poll_job(
-        self, scheduler: Any, *, seconds: int, probe_factory: Callable[[], injector.Probe]
+        self,
+        scheduler: Any,
+        *,
+        seconds: int,
+        probe_factory: Callable[[], injector.Probe],
+        org_id: str | None = None,
     ) -> None:
         """POLL pattern (ttl/probe/ttl_probe): register an interval job on the embedded scheduler
         (APScheduler) that runs the injector action at the node's cadence. ``probe_factory`` yields a
-        fresh probe per fire. One job per node, replace-existing (idempotent re-register)."""
+        fresh probe per fire. One job per node, replace-existing (idempotent re-register).
+
+        REQ-1266: ``org_id`` (non-default org) namespaces the job id and binds the org's
+        ``current_org`` ContextVar for the fire, so a per-org poll never clobbers another org's job
+        and its injector resolves the right runtime. ``None`` keeps the bare id and binds nothing."""
         from apscheduler.triggers.interval import IntervalTrigger
 
+        suffix = f":org_{org_id}" if org_id else ""
+
         async def _fire() -> None:
-            await self.inject(probe_factory())
+            tok = None
+            if org_id is not None:
+                from provisa.api.org_runtime import set_current_org
+
+                tok = set_current_org(org_id)
+            try:
+                await self.inject(probe_factory())
+            finally:
+                if tok is not None:
+                    from provisa.api.org_runtime import reset_current_org
+
+                    reset_current_org(tok)
 
         scheduler.add_job(
             _fire,
             trigger=IntervalTrigger(seconds=seconds),
-            id=f"poll:{self.node}",
+            id=f"poll:{self.node}{suffix}",
             replace_existing=True,
         )
 

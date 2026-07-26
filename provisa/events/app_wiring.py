@@ -375,7 +375,19 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create
         # job: replicas are BUILT at boot (that job lands every source + fans out to its MVs), then
         # REFRESHED by the poll/push events.
-        register_runtime(scheduler, db=db, processors=processors, specs=specs, seed=seed)
+        # REQ-1266: a non-default org wires under the org bound by build_org_runtime — its job ids get
+        # an org suffix and each fire binds current_org. The default org (ContextVar unset) → None →
+        # bare ids, unchanged single-org behavior. db/processors already carry this org's tenant plane.
+        from provisa.api.org_runtime import current_org
+
+        register_runtime(
+            scheduler,
+            db=db,
+            processors=processors,
+            specs=specs,
+            seed=seed,
+            org_id=current_org.get(None),
+        )
         log.info(
             "event loop wired: %d node(s) on the scheduler (boot-create + refresh scheduled)",
             len(processors),

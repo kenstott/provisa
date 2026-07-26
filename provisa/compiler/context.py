@@ -197,7 +197,8 @@ def _register_relationship_joins(
             field_name=tgt_info.field_name,
             type_name=tgt_info.type_name,
             source_id=tgt_info.source_id,
-            catalog_name=source_to_catalog(tgt_info.source_id),
+            catalog_name=(si.source_catalogs or {}).get(tgt_info.source_id)
+            or source_to_catalog(tgt_info.source_id),
             schema_name=tgt_info.schema_name,
             table_name=_tgt_physical_name,
             domain_id=tgt_info.domain_id,
@@ -210,7 +211,8 @@ def _register_relationship_joins(
             si,
             src_id,
             rel["source_column"],
-            catalog=source_to_catalog(src_info.source_id),
+            catalog=(si.source_catalogs or {}).get(src_info.source_id)
+            or source_to_catalog(src_info.source_id),
             schema=src_info.schema_name,
             table=src_info.table_name,
         )
@@ -218,7 +220,8 @@ def _register_relationship_joins(
             si,
             tgt_id,
             rel["target_column"],
-            catalog=source_to_catalog(tgt_info.source_id),
+            catalog=(si.source_catalogs or {}).get(tgt_info.source_id)
+            or source_to_catalog(tgt_info.source_id),
             schema=tgt_info.schema_name,
             table=tgt_info.table_name,
         )

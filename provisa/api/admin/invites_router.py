@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete as _delete, select
 
 from provisa.core.database import Database
-from provisa.core.schema_admin import org_invites, orgs
+from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
 
 router = APIRouter(prefix="/admin/invites", tags=["admin"])
 
@@ -30,6 +30,35 @@ def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParamet
 
     assert state.admin_db is not None
     return state.admin_db
+
+
+async def _require_org_admin(request: Request, org_id: str) -> None:  # REQ-1266
+    """Raise 403 unless the caller may issue invites for ``org_id``: a platform admin
+    (superadmin/admin — any org), or the org_admin of exactly this org. org_admin authority
+    is confined to the org the caller is currently acting in (active_org_id) and backed by an
+    admin-plane membership row. Dev/no-auth (anonymous) is allowed, matching _require_superadmin."""
+    from provisa.api.app import state as _app_state
+    from provisa.api.admin.capabilities import _resolved_capabilities
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
+        return  # dev mode — no auth configured
+    caps = _resolved_capabilities(identity, _app_state)
+    if "superadmin" in caps or "admin" in caps:
+        return  # platform admin acts in any org
+    role_claims = {c.split(":")[0] for c in getattr(identity, "roles", [])}
+    active_org = getattr(request.state, "active_org_id", None)
+    if "org_admin" not in role_claims or active_org != org_id:
+        raise HTTPException(status_code=403, detail=f"org_admin of {org_id} required")
+    async with _pool(request).acquire() as conn:
+        result = await conn.execute_core(
+            select(user_org_memberships.c.org_id).where(
+                user_org_memberships.c.user_id == identity.user_id,
+                user_org_memberships.c.org_id == org_id,
+            )
+        )
+        if result.fetchone() is None:
+            raise HTTPException(status_code=403, detail=f"Not a member of {org_id}")
 
 
 class CreateInviteBody(BaseModel):
@@ -49,6 +78,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     # Audit attribution must be a real user — never fall back to "system".
     if identity is None:
         raise HTTPException(status_code=401, detail="Authentication required")
+    await _require_org_admin(request, body.org_id)
     created_by = identity.user_id
     # token and expiry are computed app-side (portable) rather than via
     # PG-specific server-side UUID/interval defaults — the platform control
@@ -82,37 +112,63 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     return dict(row._mapping)
 
 
+async def _administered_org_scope(request: Request) -> str | None:  # REQ-1266
+    """Return None if the caller is a platform admin (sees all invites), or the single org_id
+    the caller administers (org_admin, scoped to active_org_id). Raise 403 otherwise. Dev/no-auth
+    returns None (sees all)."""
+    from provisa.api.app import state as _app_state
+    from provisa.api.admin.capabilities import _resolved_capabilities
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
+        return None  # dev mode
+    caps = _resolved_capabilities(identity, _app_state)
+    if "superadmin" in caps or "admin" in caps:
+        return None  # platform admin: all orgs
+    role_claims = {c.split(":")[0] for c in getattr(identity, "roles", [])}
+    active_org = getattr(request.state, "active_org_id", None)
+    if "org_admin" not in role_claims or active_org is None:
+        raise HTTPException(status_code=403, detail="org_admin required")
+    return active_org
+
+
 @router.get("/")
 async def list_invites(request: Request):  # REQ-516
+    scope_org = await _administered_org_scope(request)
     pool = _pool(request)
-    async with pool.acquire() as conn:
-        result = await conn.execute_core(
-            select(
-                org_invites.c.token,
-                org_invites.c.org_id,
-                orgs.c.name.label("org_name"),
-                org_invites.c.role_id,
-                org_invites.c.created_by,
-                org_invites.c.expires_at,
-                org_invites.c.used_at,
-                org_invites.c.used_by,
-            )
-            .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
-            .order_by(org_invites.c.expires_at.desc())
+    stmt = (
+        select(
+            org_invites.c.token,
+            org_invites.c.org_id,
+            orgs.c.name.label("org_name"),
+            org_invites.c.role_id,
+            org_invites.c.created_by,
+            org_invites.c.expires_at,
+            org_invites.c.used_at,
+            org_invites.c.used_by,
         )
+        .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
+        .order_by(org_invites.c.expires_at.desc())
+    )
+    if scope_org is not None:
+        stmt = stmt.where(org_invites.c.org_id == scope_org)
+    async with pool.acquire() as conn:
+        result = await conn.execute_core(stmt)
         rows = result.fetchall()
     return [dict(r._mapping) for r in rows]
 
 
 @router.delete("/{token}")
 async def revoke_invite(token: str, request: Request):  # REQ-516
+    scope_org = await _administered_org_scope(request)
     pool = _pool(request)
+    stmt = _delete(org_invites).where(
+        org_invites.c.token == token, org_invites.c.used_at.is_(None)
+    )
+    if scope_org is not None:
+        stmt = stmt.where(org_invites.c.org_id == scope_org)
     async with pool.acquire() as conn:
-        result = await conn.execute_core(
-            _delete(org_invites)
-            .where(org_invites.c.token == token, org_invites.c.used_at.is_(None))
-            .returning(org_invites.c.token)
-        )
+        result = await conn.execute_core(stmt.returning(org_invites.c.token))
         row = result.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Invite not found or already used")

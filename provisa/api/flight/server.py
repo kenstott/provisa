@@ -62,6 +62,22 @@ _CYPHER_PREFIX = re.compile(
 )
 
 
+async def _run_with_org(org_id: str | None, coro):
+    """Bind ``current_org`` inside a loop coroutine (REQ-1266).
+
+    ``run_coroutine_threadsafe`` does NOT carry the flight worker thread's ContextVar into the
+    main-loop coroutine, so the org must be re-bound here, on the loop, around the awaited work."""
+    if org_id is None:
+        return await coro
+    from provisa.api.org_runtime import reset_current_org, set_current_org
+
+    token = set_current_org(org_id)
+    try:
+        return await coro
+    finally:
+        reset_current_org(token)
+
+
 def _is_sql(query: str) -> bool:
     return bool(_SQL_PREFIX.match(query))
 
@@ -124,6 +140,42 @@ class ProvisaFlightServer(
         self._main_loop = main_loop or asyncio.get_event_loop()
         # Keep a local loop for non-pool async work.
         self._loop = asyncio.new_event_loop()
+
+    # ------------------------------------------------------------------
+    # Per-org routing (REQ-1266)
+    # ------------------------------------------------------------------
+
+    def _run_on_loop(self, coro, *, timeout: float | None = None):
+        """Dispatch *coro* to the main loop with the worker thread's active org bound inside it.
+
+        Reads ``current_org`` on THIS (flight worker) thread — where the caller has bound it — and
+        re-binds it inside the loop coroutine, since ``run_coroutine_threadsafe`` won't carry it."""
+        from provisa.api.org_runtime import current_org
+
+        org_id = current_org.get(None)
+        fut = asyncio.run_coroutine_threadsafe(_run_with_org(org_id, coro), self._main_loop)
+        return fut.result(timeout=timeout) if timeout is not None else fut.result()
+
+    def _resolve_and_bind_org(self, request: dict[str, object]):
+        """Resolve the org from the ticket and bind it on this worker thread; return the reset token.
+
+        Flight authenticates no user principal (the handshake carries only a role), so the org is
+        taken from an explicit ``org`` in the ticket. Under multitenancy it is REQUIRED — a missing
+        org raises rather than silently binding the default (no cross-tenant default). Single-org
+        deployments return ``None`` and leave the ContextVar unset (default runtime)."""
+        if not getattr(self._state, "multitenancy", False):
+            return None
+        org_id = request.get("org")
+        if not org_id or not isinstance(org_id, str):
+            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                "org is required under multitenancy"
+            )
+        from provisa.api.app import ensure_org_runtime
+        from provisa.api.org_runtime import set_current_org
+
+        # Build the org runtime (idempotent) on the main loop, then bind it on this thread.
+        asyncio.run_coroutine_threadsafe(ensure_org_runtime(org_id), self._main_loop).result()
+        return set_current_org(org_id)
 
     # ------------------------------------------------------------------
     # Flight SQL handshake
@@ -251,6 +303,23 @@ class ProvisaFlightServer(
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise flight.FlightServerError(f"Invalid ticket: {e}") from e  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+        # REQ-1266: bind the ticket's org on this worker thread so every self._state.X read (here and
+        # in the nested helpers) resolves the org's runtime; _run_on_loop re-binds it inside each
+        # dispatched loop coroutine. reset in finally below.
+        _org_token = self._resolve_and_bind_org(request)
+        try:
+            return self._do_get_inner(request, ticket)
+        finally:
+            if _org_token is not None:
+                from provisa.api.org_runtime import reset_current_org
+
+                reset_current_org(_org_token)
+
+    def _do_get_inner(
+        self,
+        request: dict[str, object],
+        ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         query_text = request.get("query", "")
         ticket_type = "sql" if _is_sql(str(query_text)) else "graphql"
         with _tracer.start_as_current_span("flight.do_get") as span:
@@ -488,12 +557,11 @@ class ProvisaFlightServer(
         resolved_params = [params.get(name) for name in ordered_params]
 
         try:
-            plan = asyncio.run_coroutine_threadsafe(
+            plan = self._run_on_loop(
                 _govern_and_route_compiled(
                     semantic_sql, role_id, exec_params=resolved_params or None, state=self._state
-                ),
-                self._main_loop,
-            ).result()
+                )
+            )
         except PermissionError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         except ValueError as exc:
@@ -607,10 +675,9 @@ class ProvisaFlightServer(
 
         # REQ-1156: a `SELECT fn(...)` naming a registered command invokes it through the single
         # governed executor, matching pgwire/MCP — otherwise commands are dark over Flight SQL.
-        fn_result = asyncio.run_coroutine_threadsafe(
-            maybe_invoke_registered_function(sql, role_id, self._state),
-            self._main_loop,
-        ).result()
+        fn_result = self._run_on_loop(
+            maybe_invoke_registered_function(sql, role_id, self._state)
+        )
         if fn_result is not None:
             columns = [
                 ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
@@ -620,10 +687,7 @@ class ProvisaFlightServer(
             return self._license_stream(table, role_id)  # REQ-1137
 
         try:
-            plan = asyncio.run_coroutine_threadsafe(
-                govern_batch_final_plan(sql, role_id, self._state),
-                self._main_loop,
-            ).result()
+            plan = self._run_on_loop(govern_batch_final_plan(sql, role_id, self._state))
         except PermissionError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         except ValueError as exc:
@@ -660,15 +724,14 @@ class ProvisaFlightServer(
                 )
                 arrow_schema, batch_gen = arrow_batches_from_rows(stream)
                 return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
-            result = asyncio.run_coroutine_threadsafe(
+            result = self._run_on_loop(
                 self._state.federation_engine.execute_native(
                     self._state.source_pools,
                     plan.source_id,
                     plan.sql,
                     plan.exec_params or [],
-                ),
-                self._main_loop,
-            ).result()
+                )
+            )
             columns = [
                 ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
                 for c in result.column_names
@@ -691,10 +754,9 @@ class ProvisaFlightServer(
         _, _, _, _, compiled, _, _ = self._compile_query(ticket_bytes)
 
         try:
-            plan = asyncio.run_coroutine_threadsafe(
-                _govern_and_route_compiled(compiled.sql, role_id, state=self._state),
-                self._main_loop,
-            ).result()
+            plan = self._run_on_loop(
+                _govern_and_route_compiled(compiled.sql, role_id, state=self._state)
+            )
         except PermissionError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         except ValueError as exc:
@@ -702,15 +764,14 @@ class ProvisaFlightServer(
 
         require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
         if plan.route == Route.DIRECT:
-            result = asyncio.run_coroutine_threadsafe(
+            result = self._run_on_loop(
                 self._state.federation_engine.execute_native(
                     self._state.source_pools,
                     plan.source_id,
                     plan.sql,
                     plan.exec_params or compiled.params,
-                ),
-                self._main_loop,
-            ).result()
+                )
+            )
             table = rows_to_arrow_table(result.rows, compiled.columns)
             return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 

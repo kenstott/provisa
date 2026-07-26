@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 /* eslint-disable react-refresh/only-export-components -- context Provider + hook colocated by design */
-import { createContext, useContext, useState, useEffect, useMemo } from "react";
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
 import type { ReactNode } from "react";
 import type { Capability, Role, RoleAssignment, AuthState, OrgMembership } from "../types/auth";
 import { fetchMe } from "../api/admin";
@@ -52,6 +52,9 @@ interface AuthContextValue extends AuthState {
   availableDomains: string[];
   selectDomain: (domain: string | null) => void;
   selectOrg: (orgId: string | null) => void;
+  // Re-run the identity bootstrap (fetchMe + roles/domains). REQ-1266: after self-service org
+  // creation the new membership must be reflected without a full page reload.
+  refresh: () => Promise<void>;
   devMode: boolean;
   // Runtime auth-enforcement flag from /setup/status (REQ-1267). Drives the login gate
   // and logout affordance instead of a build-time constant.
@@ -85,8 +88,8 @@ export function AuthProvider({
   const { refetch: refetchRoles } = useRoles();
   const { refetch: refetchDomains } = useDomains();
 
-  useEffect(() => {
-    async function init() {
+  const bootstrap = useCallback(async () => {
+    {
       let allRoles: Role[] = [];
       let isDev: boolean;
       let userAssignments: RoleAssignment[] = [];
@@ -159,12 +162,32 @@ export function AuthProvider({
         if (match) setSelectedRole(match);
       }
     }
-
-    init().finally(() => setLoading(false));
-    // Re-bootstrap when the runtime auth-enforcement flag resolves (starts false, flips true
-    // once /setup/status returns) so the dev-mode fallback keys off the settled value.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- other setters are stable; gate on authEnabled
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setters are stable; gate on authEnabled
   }, [authEnabled]);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      await bootstrap();
+    } finally {
+      setLoading(false);
+    }
+  }, [bootstrap]);
+
+  useEffect(() => {
+    // Re-bootstrap when the runtime auth-enforcement flag resolves (starts false, flips true
+    // once /setup/status returns) so the dev-mode fallback keys off the settled value. setLoading
+    // runs only after the awaited bootstrap, never synchronously in the effect body.
+    let cancelled = false;
+    async function run() {
+      await bootstrap();
+      if (!cancelled) setLoading(false);
+    }
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrap]);
 
   const availableDomains = useMemo(() => {
     const roleFilter = selectedRole === "all" ? null : (selectedRole as Role).id;
@@ -223,6 +246,7 @@ export function AuthProvider({
         activeOrgId,
         orgMemberships,
         selectOrg,
+        refresh,
         userId,
         email,
         displayName,

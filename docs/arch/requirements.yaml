@@ -36113,3 +36113,202 @@
     - REQ-120
     - REQ-1265
     - REQ-1266
+- id: REQ-1268
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Per-Request Multi-Org Data Plane
+  priority: MUST
+  type: structural
+  description: >-
+    OrgRuntime dataclass encapsulates a single org's slice of AppState; OrgRegistry holds dict[org_id, OrgRuntime] + per-org asyncio.Lock for safe double-checked builds with no TTL. current_org ContextVar selects the active org; AppState property shims resolve the ContextVar-selected runtime or default to the default-org runtime when unset. require_current_org() raises when unset (no silent fallback).
+  use_case: >-
+    Enables request-scoped multi-org isolation: each request runs against its designated org's isolated state, catalogs, and connection pools without global state mutation or cross-org leakage.
+  code:
+    - provisa/app_state.py
+    - provisa/multitenancy/org_runtime.py
+  tests:
+    - tests/unit/test_org_runtime.py
+  since: "2026-07"
+- id: REQ-1269
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Org-Prefixed Catalog Naming
+  priority: MUST
+  type: constraint
+  description: >-
+    org_prefixed_catalog(org_id, base, *, default_org) returns bare base name for default org, else org_{id}__{base}. System/fixed-warehouse catalogs are never prefixed. Prevents cross-org catalog name collisions when multiple orgs share the same demo source IDs.
+  use_case: >-
+    Avoids catalog name collisions in shared orchestrator environments (e.g., pooled Trino) when multiple orgs instantiate identical demo sources.
+  code:
+    - provisa/multitenancy/catalog_naming.py
+  tests:
+    - tests/unit/test_org_isolation.py
+  since: "2026-07"
+- id: REQ-1270
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: HTTP Org-Routing Middleware
+  priority: MUST
+  type: behavioral
+  description: >-
+    OrgRoutingMiddleware routes each HTTP request to the active org's runtime, built on-demand from persisted seeded_demo config, gated on multitenancy feature flag. Resolves current_org ContextVar before handlers execute.
+  use_case: >-
+    Ensures every request executes within its designated org's isolated AppState, enforcing tenant isolation at the HTTP boundary.
+  code:
+    - provisa/middleware/org_routing.py
+  tests:
+    - tests/unit/test_org_isolation.py
+  scenario: |
+    Given multitenancy is enabled
+    When an HTTP request arrives with org_id in the routing context
+    Then OrgRoutingMiddleware resolves the org's OrgRuntime
+    And current_org ContextVar is set before handlers execute
+    When a handler accesses AppState properties
+    Then they resolve via ContextVar-selected org's runtime
+    When the request completes
+    Then current_org ContextVar is cleaned up
+  since: "2026-07"
+- id: REQ-1271
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Self-Service Org Creation
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Any authenticated (non-anonymous) user may POST /admin/orgs and becomes org_admin; anonymous requests rejected 401 under auth. Membership is granted synchronously in the admin plane; org_admin role assignment in the tenant plane granted asynchronously after schema provisioning.
+  use_case: >-
+    Enables users to self-provision new orgs without platform admin intervention, supporting multi-org SaaS workflows.
+  code:
+    - provisa/api/admin/orgs_router.py
+  scenario: |
+    Given an authenticated user
+    When they POST /admin/orgs with {org_id, org_name, include_demo}
+    Then they immediately receive provisioning_state: "provisioning"
+    And an async task begins provisioning the org schema
+    When the async task completes successfully
+    Then provisioning_state transitions to "ready"
+    When an anonymous user attempts POST /admin/orgs
+    Then they receive 401 Unauthorized
+  since: "2026-07"
+  type: behavioral
+- id: REQ-1272
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Async Org Provisioning
+  priority: MUST
+  type: behavioral
+  description: >-
+    POST /admin/orgs returns immediately with provisioning_state="provisioning"; a background task executes provision_org + build_org_runtime + grant_org_role, then updates provisioning_state to "ready" (or "failed"+provisioning_error). orgs table gains provisioning_state, provisioning_error, seeded_demo columns. Errors are persisted, not swallowed.
+  use_case: >-
+    Decouples org creation from slow provisioning operations (schema build, connection pool initialization), enabling responsive UI feedback during multi-org onboarding.
+  code:
+    - provisa/api/admin/orgs_router.py
+    - provisa/multitenancy/org_provisioning.py
+  tests:
+    - tests/integration/test_create_org_onboarding.py
+  scenario: |
+    Given a user creates a new org
+    When the POST /admin/orgs response is sent with provisioning_state: "provisioning"
+    Then a background task runs provision_org + build_org_runtime
+    And the user can poll GET /admin/orgs/{id}/status
+    When provisioning completes
+    Then provisioning_state updates to "ready" atomically
+    When provisioning fails
+    Then provisioning_state updates to "failed"
+    And provisioning_error is persisted with the error details
+  since: "2026-07"
+- id: REQ-1273
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Org Readiness Notification Seam
+  priority: MAY
+  type: behavioral
+  description: >-
+    notify_org_ready(org_id, user_id) stub called when async provisioning completes; currently logs only. Defers email implementation; reserved for future notification channels (email, in-app, webhooks).
+  use_case: >-
+    Provides a seam to inject notifications (email, dashboard alerts) once an org is ready for use, supporting future multi-channel notification infrastructure.
+  code:
+    - provisa/multitenancy/org_provisioning.py
+  scenario: |
+    Given an org has completed async provisioning successfully
+    When provisioning_state updates to "ready"
+    Then notify_org_ready(org_id, creator_user_id) is called
+    And the function logs the notification event
+    When future notification backends are implemented
+    Then this seam can be extended to emit email/in-app/webhook notifications
+  since: "2026-07"
+- id: REQ-1274
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Org Admin Authorization Fix
+  priority: MUST
+  type: constraint
+  description: >-
+    _require_org_admin authorization handler allows platform admins any org, confines org_admin to their active_org_id (backed by admin-plane membership row), allows dev/no-auth, rejects all else. Closes authz hole in create_invite/list_invites/revoke_invite endpoints.
+  use_case: >-
+    Prevents org admins from inviting users to orgs they do not own, enforcing multi-org isolation boundary at the authorization layer.
+  code:
+    - provisa/api/admin/auth.py
+    - provisa/api/admin/invites_router.py
+  tests:
+    - tests/unit/test_tenant_isolation_contract.py
+  since: "2026-07"
+- id: REQ-1275
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: UI Onboarding Flow
+  priority: SHOULD
+  type: ui
+  description: >-
+    Member-less authenticated user (authEnabled && token && orgMemberships.length===0) is gated to OnboardOrgPage. Form accepts org_id, org_name, include_demo checkbox, submits to POST /admin/orgs, polls provisioning status until ready/failed, binds org to localStorage (provisa_org), calls selectOrg, refreshes identity via AuthContext.refresh(), then SPA-navigates to /query. AuthContext now exposes refresh() method.
+  use_case: >-
+    Guides newly authenticated users with no org membership through self-service org creation and onboarding, automating post-signup navigation and org binding.
+  code:
+    - provisa-ui/src/pages/OnboardOrgPage.tsx
+    - provisa-ui/src/context/AuthContext.tsx
+  scenario: |
+    Given a user authenticated via Firebase with no org memberships
+    When they load the app
+    Then they are routed to OnboardOrgPage
+    When they submit the org creation form
+    Then provisioning begins and status polling starts
+    When provisioning completes (status: "ready")
+    Then the org is bound to localStorage
+    And AuthContext.refresh() fetches updated identity with org membership
+    And the user is navigated to /query
+  since: "2026-07"
+  type: ui
+  e2e: true
+  e2e_reason: >-
+    Org creation, provisioning poll, and post-onboarding navigation require full stack: backend provisioning, identity refresh, and SPA routing integration.
+- id: REQ-1276
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Subdomain-based Org Resolution
+  priority: MUST
+  type: behavioral
+  description: >-
+    HTTP request org is authoritative from Host subdomain (leftmost label of acme.provisa.org → org acme), except control-plane host cloud.provisa.* which requires explicit x-org-provisa header. Apex/bare hosts (provisa.org, localhost) resolve to no org (None). Subdomain/header replaces prior active_org token claim and x-org-id header. Membership validation unchanged: org not in user's orgs is rejected 403 (unless user is platform admin).
+  use_case: >-
+    Establishes Host subdomain as the authoritative org identity source across HTTP transports, enabling transparent multi-org routing without requiring org claims in tokens or API headers. Exception for control-plane preserves bootstrap and cross-org admin access patterns.
+  code:
+    - provisa/auth/middleware.py
+  tests:
+    - tests/unit/test_auth_middleware_multitenancy.py
+  scenario: |
+    Given a request to subdomain host acme.provisa.org
+    When the Host header is parsed
+    Then the leftmost label (acme) is resolved as the active org
+    Given a request to control-plane host cloud.provisa.dev
+    When x-org-provisa header is present with value "acme"
+    Then the header value determines the active org
+    When x-org-provisa header is absent
+    Then the active org is None
+    Given a request to apex host provisa.org or localhost
+    When the Host header is parsed
+    Then the active org is None
+    Given an authenticated user not a member of the resolved org
+    And the user is not a platform admin
+    When an API request is made
+    Then the request is rejected with 403 Forbidden
+  since: "2026-07"

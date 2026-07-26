@@ -77,6 +77,26 @@ class ProvisaServicer:  # REQ-045, REQ-143
         self._pb2 = pb2_module
         self._pb2_grpc = pb2_grpc_module
 
+    async def _bind_org(self, metadata: dict):
+        """Resolve+build the RPC's org from ``x-provisa-org`` metadata and bind it (REQ-1266).
+
+        gRPC authenticates no user principal (only a role in metadata), so the org is taken from
+        ``x-provisa-org``. Under multitenancy it is REQUIRED — a missing org raises ``ValueError``
+        (the caller aborts) rather than silently binding the default. Returns the reset token, or
+        None for single-org deployments (ContextVar left unset → default runtime). Handlers run on
+        the grpc.aio loop in a per-RPC task, so a plain set/reset isolates the binding."""
+        if not getattr(self._state, "multitenancy", False):
+            return None
+        raw = metadata.get("x-provisa-org")
+        org_id = raw.decode() if isinstance(raw, bytes) else raw
+        if not org_id:
+            raise ValueError("Missing x-provisa-org metadata")
+        from provisa.api.app import ensure_org_runtime
+        from provisa.api.org_runtime import set_current_org
+
+        await ensure_org_runtime(org_id)
+        return set_current_org(org_id)
+
     def __getattr__(self, name: str):
         """Dynamically resolve RPC handler methods like QueryOrders, InsertOrders."""
         if name.startswith("Query"):
@@ -158,30 +178,41 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
             return
-        state = self._state
-        fn = (
-            getattr(state, "tracked_functions", {}).get(cmd_name)
-            or getattr(state, "tracked_webhooks", {}).get(cmd_name)
-            if cmd_name
-            else None
-        )
-        if fn is None or cmd_name is None:
-            await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {cmd_name!r}")
-            return
-        args = {
-            a_name: getattr(request, a_name)
-            for arg in (fn.get("arguments") or [])
-            if (a_name := arg.get("name"))
-        }
         try:
-            rows = await invoke_tracked_function(cmd_name, args, state, role_id)
-        except PermissionError as exc:
-            await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            _org_token = await self._bind_org(metadata)  # REQ-1266
+        except ValueError as exc:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
-        self._emit_license_nag(context)  # REQ-1137
-        if fn.get("kind") == "mutation":
-            return self._pb2.MutationResponse(affected_rows=len(rows))
-        return self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
+        try:
+            state = self._state
+            fn = (
+                getattr(state, "tracked_functions", {}).get(cmd_name)
+                or getattr(state, "tracked_webhooks", {}).get(cmd_name)
+                if cmd_name
+                else None
+            )
+            if fn is None or cmd_name is None:
+                await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {cmd_name!r}")
+                return
+            args = {
+                a_name: getattr(request, a_name)
+                for arg in (fn.get("arguments") or [])
+                if (a_name := arg.get("name"))
+            }
+            try:
+                rows = await invoke_tracked_function(cmd_name, args, state, role_id)
+            except PermissionError as exc:
+                await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+                return
+            self._emit_license_nag(context)  # REQ-1137
+            if fn.get("kind") == "mutation":
+                return self._pb2.MutationResponse(affected_rows=len(rows))
+            return self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
+        finally:
+            if _org_token is not None:
+                from provisa.api.org_runtime import reset_current_org
+
+                reset_current_org(_org_token)
 
     async def _handle_call_command(self, request, context):
         """Invoke a registered command (tracked function) via the one governed executor (REQ-1156).
@@ -197,21 +228,34 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
             return
-        state = self._state
-        if request.name not in getattr(state, "tracked_functions", {}):
-            await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {request.name!r}")
+        try:
+            _org_token = await self._bind_org(metadata)  # REQ-1266
+        except ValueError as exc:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
-            args = json.loads(request.args_json) if request.args_json else {}
-        except json.JSONDecodeError as exc:
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"args_json not valid JSON: {exc}")
-            return
-        try:
-            rows = await invoke_tracked_function(request.name, args, state, role_id)
-        except PermissionError as exc:
-            await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
-            return
-        return self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
+            state = self._state
+            if request.name not in getattr(state, "tracked_functions", {}):
+                await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {request.name!r}")
+                return
+            try:
+                args = json.loads(request.args_json) if request.args_json else {}
+            except json.JSONDecodeError as exc:
+                await context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT, f"args_json not valid JSON: {exc}"
+                )
+                return
+            try:
+                rows = await invoke_tracked_function(request.name, args, state, role_id)
+            except PermissionError as exc:
+                await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+                return
+            return self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
+        finally:
+            if _org_token is not None:
+                from provisa.api.org_runtime import reset_current_org
+
+                reset_current_org(_org_token)
 
     async def _handle_insert(self, request, context, type_name: str):
         """Stub handler for insert RPCs."""
@@ -220,8 +264,33 @@ class ProvisaServicer:  # REQ-045, REQ-143
     async def _handle_query(self, request, context, type_name: str, field_name: str):
         """Lower a proto query request directly to the IR (a semantic SELECT), then run the shared
         governance → routing → physical pipeline — the same path SQL and Cypher use. gRPC never
-        round-trips through GraphQL (query language → IR → governed IR → plan → physical)."""
+        round-trips through GraphQL (query language → IR → governed IR → plan → physical).
 
+        REQ-1266: resolve+bind the RPC's org (x-provisa-org) before routing; the body runs bound so
+        every state.X read resolves the org's runtime. The reset is in finally around the stream."""
+        # Use await context.abort() directly rather than raising AbortError, which
+        # can cause "Abort error has been replaced!" in gRPC aio async generators.
+        metadata = dict(context.invocation_metadata())
+        role_id = metadata.get("x-provisa-role")
+        if not role_id:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+            return
+        try:
+            _org_token = await self._bind_org(metadata)
+        except ValueError as exc:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+            return
+        try:
+            async for _m in self._handle_query_bound(request, context, type_name, role_id):
+                yield _m
+        finally:
+            if _org_token is not None:
+                from provisa.api.org_runtime import reset_current_org
+
+                reset_current_org(_org_token)
+
+    async def _handle_query_bound(self, request, context, type_name: str, role_id: str):
+        """The routing+execution body of _handle_query, run with the RPC's org already bound."""
         import asyncio
 
         from provisa.grpc.query_ir import grpc_table_to_semantic_sql
@@ -232,13 +301,6 @@ class ProvisaServicer:  # REQ-045, REQ-143
         )
         from provisa.transpiler.router import Route
 
-        # Use await context.abort() directly rather than raising AbortError, which
-        # can cause "Abort error has been replaced!" in gRPC aio async generators.
-        metadata = dict(context.invocation_metadata())
-        role_id = metadata.get("x-provisa-role")
-        if not role_id:
-            await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
-            return
         state = self._state
 
         if role_id not in state.contexts:

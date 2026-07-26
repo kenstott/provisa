@@ -9,7 +9,8 @@
 # permission from the copyright holder.
 
 """AuthMiddleware multitenancy paths: assignment→identity.roles mirroring, X-Org-Id
-membership enforcement, and the REQ-1266 bootstrap fall-through under multitenancy."""
+membership enforcement, the REQ-1266 bootstrap fall-through under multitenancy,
+and REQ-1276 Host subdomain-based org resolution."""
 
 from __future__ import annotations
 
@@ -150,47 +151,8 @@ def test_empty_db_rows_fall_back_to_default_assignments():
     assert resp.json()["roles"] == ["viewer"]
 
 
-# --- X-Org-Id membership enforcement -------------------------------------------
-
-
-def test_x_org_id_non_member_rejected():
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]})
-    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
-    resp = TestClient(app).get("/test", headers={**_auth("u1"), "X-Org-Id": "evilcorp"})
-    assert resp.status_code == 403
-    assert "evilcorp" in resp.json()["detail"]
-
-
-def test_x_org_id_member_honored():
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]})
-    admin = _Pool(
-        rows_by_table={"user_org_memberships": [{"org_id": "acme"}, {"org_id": "beta"}]}
-    )
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
-    resp = TestClient(app).get("/test", headers={**_auth("u1"), "X-Org-Id": "beta"})
-    assert resp.status_code == 200
-    assert resp.json()["active_org_id"] == "beta"
-
-
-def test_platform_admin_bypasses_membership_for_any_org():
-    # A global admin may act in any org even with zero membership rows.
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
-    admin = _Pool(rows_by_table={"user_org_memberships": []})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
-    resp = TestClient(app).get("/test", headers={**_auth("root"), "X-Org-Id": "anyorg"})
-    assert resp.status_code == 200
-    assert resp.json()["active_org_id"] == "anyorg"
-
-
 def test_no_org_selection_required_on_tenant_path():
-    # Member of two orgs, no X-Org-Id, non-platform path → must choose.
+    # Member of two orgs, no subdomain org, non-platform path → must choose.
     db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]})
     admin = _Pool(
         rows_by_table={"user_org_memberships": [{"org_id": "acme"}, {"org_id": "beta"}]}
@@ -263,3 +225,114 @@ def test_bootstrap_second_user_falls_through_when_multitenant():
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["org_admin"]
     assert resp.json()["active_org_id"] == "acme"
+
+
+# --- REQ-1276 Host subdomain-based org resolution ------
+
+
+def test_subdomain_host_resolves_org():
+    # REQ-1276: acme.provisa.org → org "acme"
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(
+        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    )
+    resp = TestClient(app, base_url="http://acme.provisa.org").get("/test", headers=_auth("u1"))
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] == "acme"
+
+
+def test_apex_host_resolves_to_none():
+    # REQ-1276: provisa.org → no org (None)
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(
+        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    )
+    resp = TestClient(app, base_url="http://provisa.org").get("/auth/me", headers=_auth("u1"))
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] is None
+
+
+def test_localhost_resolves_to_none():
+    # REQ-1276: localhost → no org (None)
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(
+        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    )
+    resp = TestClient(app, base_url="http://localhost:3000").get("/auth/me", headers=_auth("u1"))
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] is None
+
+
+def test_control_plane_host_cloud_uses_x_org_provisa_header():
+    # REQ-1276: cloud.provisa.dev requires x-org-provisa header for org
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(
+        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    )
+    resp = TestClient(app, base_url="http://cloud.provisa.dev").get(
+        "/test",
+        headers={**_auth("u1"), "x-org-provisa": "acme"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] == "acme"
+
+
+def test_control_plane_host_cloud_without_header_resolves_to_none():
+    # REQ-1276: cloud.provisa.dev with no header → None (platform-plane auth allowed)
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(
+        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    )
+    resp = TestClient(app, base_url="http://cloud.provisa.dev").get("/auth/me", headers=_auth("u1"))
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] is None
+
+
+def test_subdomain_non_member_rejected_req1276():
+    # REQ-1276: user not a member of org from subdomain → 403
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(
+        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    )
+    resp = TestClient(app, base_url="http://evil.provisa.org").get(
+        "/test",
+        headers=_auth("u1"),
+    )
+    assert resp.status_code == 403
+    assert "evil" in resp.json()["detail"]
+
+
+def test_control_plane_host_with_non_member_org_header_rejected():
+    # REQ-1276: x-org-provisa header with non-member org → 403
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(
+        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    )
+    resp = TestClient(app, base_url="http://cloud.provisa.dev").get(
+        "/test",
+        headers={**_auth("u1"), "x-org-provisa": "evil"},
+    )
+    assert resp.status_code == 403
+    assert "evil" in resp.json()["detail"]
+
+
+def test_platform_admin_with_subdomain_org_allowed_req1276():
+    # REQ-1276: platform admin acts in any org via subdomain
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(
+        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    )
+    resp = TestClient(app, base_url="http://anyorg.provisa.org").get(
+        "/test",
+        headers=_auth("root"),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] == "anyorg"

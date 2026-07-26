@@ -32,7 +32,6 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
-from provisa.compiler.naming import source_to_catalog
 from provisa.core.repositories import rls as rls_repo
 from provisa.federation.strategy import engine_attaches
 from provisa.api.admin._config_io import config_path as _config_path, read_config
@@ -1318,7 +1317,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         analyzed: list[str] = []
         errors: list[str] = []
-        source_catalog = source_to_catalog(source_id)
+        source_catalog = state.catalog_for(source_id)
 
         for row in rows:
             full_name = f"{source_catalog}.{row.schema_name}.{row.table_name}"

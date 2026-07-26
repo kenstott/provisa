@@ -1,0 +1,37 @@
+# REQ-1266: two-org live-Trino isolation fixture. The source host is the compose-INTERNAL
+# service name `postgres` (port 5432), which the Trino coordinator resolves on the shared
+# network — so a dynamically-created, org-prefixed catalog (org_<id>__sales_pg) is reachable
+# from Trino. The pytest-host direct-driver pool cannot reach `postgres` and fails silently
+# (tolerate_startup_failure in _build_source_pools_and_enums); this test asserts through the
+# ENGINE terminal only, never the direct pool, so no host-side DB reachability is required.
+sources:
+  - id: sales-pg
+    type: postgresql
+    host: postgres
+    port: 5432
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD}
+
+domains:
+  - id: sales-analytics
+    description: Sales operational and analytical data
+
+tables:
+  - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
+    table: orders
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [admin]
+      - name: amount
+        visible_to: [admin]
+
+roles:
+  - id: admin
+    capabilities:
+      - query_development
+      - admin
+    domain_access: ["*"]

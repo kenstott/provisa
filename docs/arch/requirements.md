@@ -12775,3 +12775,113 @@ A single built image/wheel serves unsecured (demo/none), basic, or firebase/IdP 
 **Code:** —
 
 **Tests:** —
+
+## 3. Multi-tenancy & Organization
+
+### REQ-1268 · Per-Request Multi-Org Data Plane {#REQ-1268}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+
+OrgRuntime dataclass encapsulates a single org's slice of AppState; OrgRegistry holds dict[org_id, OrgRuntime] + per-org asyncio.Lock for safe double-checked builds with no TTL. current_org ContextVar selects the active org; AppState property shims resolve the ContextVar-selected runtime or default to the default-org runtime when unset. require_current_org() raises when unset (no silent fallback).
+
+**Use case:** Enables request-scoped multi-org isolation: each request runs against its designated org's isolated state, catalogs, and connection pools without global state mutation or cross-org leakage.
+
+**Code:** `provisa/app_state.py`, `provisa/multitenancy/org_runtime.py`
+
+**Tests:** `tests/unit/test_org_runtime.py`
+
+### REQ-1269 · Org-Prefixed Catalog Naming {#REQ-1269}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+org_prefixed_catalog(org_id, base, *, default_org) returns bare base name for default org, else org_{id}__{base}. System/fixed-warehouse catalogs are never prefixed. Prevents cross-org catalog name collisions when multiple orgs share the same demo source IDs.
+
+**Use case:** Avoids catalog name collisions in shared orchestrator environments (e.g., pooled Trino) when multiple orgs instantiate identical demo sources.
+
+**Code:** `provisa/multitenancy/catalog_naming.py`
+
+**Tests:** `tests/unit/test_org_isolation.py`
+
+### REQ-1270 · HTTP Org-Routing Middleware {#REQ-1270}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+OrgRoutingMiddleware routes each HTTP request to the active org's runtime, built on-demand from persisted seeded_demo config, gated on multitenancy feature flag. Resolves current_org ContextVar before handlers execute.
+
+**Use case:** Ensures every request executes within its designated org's isolated AppState, enforcing tenant isolation at the HTTP boundary.
+
+**Code:** `provisa/middleware/org_routing.py`
+
+**Tests:** `tests/unit/test_org_isolation.py`
+
+### REQ-1271 · Self-Service Org Creation {#REQ-1271}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Any authenticated (non-anonymous) user may POST /admin/orgs and becomes org_admin; anonymous requests rejected 401 under auth. Membership is granted synchronously in the admin plane; org_admin role assignment in the tenant plane granted asynchronously after schema provisioning.
+
+**Use case:** Enables users to self-provision new orgs without platform admin intervention, supporting multi-org SaaS workflows.
+
+**Code:** `provisa/api/admin/orgs_router.py`
+
+**Tests:** —
+
+### REQ-1272 · Async Org Provisioning {#REQ-1272}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+POST /admin/orgs returns immediately with provisioning_state="provisioning"; a background task executes provision_org + build_org_runtime + grant_org_role, then updates provisioning_state to "ready" (or "failed"+provisioning_error). orgs table gains provisioning_state, provisioning_error, seeded_demo columns. Errors are persisted, not swallowed.
+
+**Use case:** Decouples org creation from slow provisioning operations (schema build, connection pool initialization), enabling responsive UI feedback during multi-org onboarding.
+
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/multitenancy/org_provisioning.py`
+
+**Tests:** `tests/integration/test_create_org_onboarding.py`
+
+### REQ-1273 · Org Readiness Notification Seam {#REQ-1273}
+
+**Status:** ✅ complete · **Priority:** MAY · **Type:** behavioral
+
+notify_org_ready(org_id, user_id) stub called when async provisioning completes; currently logs only. Defers email implementation; reserved for future notification channels (email, in-app, webhooks).
+
+**Use case:** Provides a seam to inject notifications (email, dashboard alerts) once an org is ready for use, supporting future multi-channel notification infrastructure.
+
+**Code:** `provisa/multitenancy/org_provisioning.py`
+
+**Tests:** —
+
+### REQ-1274 · Org Admin Authorization Fix {#REQ-1274}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+_require_org_admin authorization handler allows platform admins any org, confines org_admin to their active_org_id (backed by admin-plane membership row), allows dev/no-auth, rejects all else. Closes authz hole in create_invite/list_invites/revoke_invite endpoints.
+
+**Use case:** Prevents org admins from inviting users to orgs they do not own, enforcing multi-org isolation boundary at the authorization layer.
+
+**Code:** `provisa/api/admin/auth.py`, `provisa/api/admin/invites_router.py`
+
+**Tests:** `tests/unit/test_tenant_isolation_contract.py`
+
+### REQ-1275 · UI Onboarding Flow {#REQ-1275}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Member-less authenticated user (authEnabled && token && orgMemberships.length===0) is gated to OnboardOrgPage. Form accepts org_id, org_name, include_demo checkbox, submits to POST /admin/orgs, polls provisioning status until ready/failed, binds org to localStorage (provisa_org), calls selectOrg, refreshes identity via AuthContext.refresh(), then SPA-navigates to /query. AuthContext now exposes refresh() method.
+
+**Use case:** Guides newly authenticated users with no org membership through self-service org creation and onboarding, automating post-signup navigation and org binding.
+
+**Code:** `provisa-ui/src/pages/OnboardOrgPage.tsx`, `provisa-ui/src/context/AuthContext.tsx`
+
+**Tests:** —
+
+### REQ-1276 · Subdomain-based Org Resolution {#REQ-1276}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+HTTP request org is authoritative from Host subdomain (leftmost label of acme.provisa.org → org acme), except control-plane host cloud.provisa.* which requires explicit x-org-provisa header. Apex/bare hosts (provisa.org, localhost) resolve to no org (None). Subdomain/header replaces prior active_org token claim and x-org-id header. Membership validation unchanged: org not in user's orgs is rejected 403 (unless user is platform admin).
+
+**Use case:** Establishes Host subdomain as the authoritative org identity source across HTTP transports, enabling transparent multi-org routing without requiring org claims in tokens or API headers. Exception for control-plane preserves bootstrap and cross-org admin access patterns.
+
+**Code:** `provisa/auth/middleware.py`
+
+**Tests:** `tests/unit/test_auth_middleware_multitenancy.py`
