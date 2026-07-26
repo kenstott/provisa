@@ -43,6 +43,13 @@ def _resolved_capabilities(identity, state) -> set[str]:
     for assignment_claim in getattr(identity, "roles", []):
         claim = assignment_claim.strip()
         role_id = claim.split(":")[0] if ":" in claim else claim
+        # admin/superadmin are platform-bypass keywords, not `roles` rows (schema.sql seeds only
+        # org_admin and deliberately excludes them). The bootstrap superadmin and the HTTP-Basic
+        # superuser are granted role "admin" with no matching state.roles entry, so a plain
+        # roles.get() lookup yields nothing and every admin gate 403s. A claim of admin/superadmin
+        # IS the capability — surface it directly so _require_superadmin/require_capability resolve.
+        if role_id in ("admin", "superadmin"):
+            caps.add(role_id)
         role = roles.get(role_id) or {}
         for c in role.get("capabilities") or []:
             caps.add(c)

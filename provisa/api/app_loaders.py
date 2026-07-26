@@ -1029,10 +1029,25 @@ _META_TABLES = [
     "tracked_functions",
 ]
 
+# Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped
+# by the `tenant_id`-based policy. The other three in _META_TABLES are deliberately excluded:
+# `roles_domain_access` is a VIEW (ALTER TABLE ... ENABLE ROW LEVEL SECURITY errors on it), and
+# `tracked_webhooks`/`tracked_functions` have no `tenant_id` (the policy's tenant_id reference
+# would fail). All three are isolated TRANSITIVELY via their FK to a scoped parent in the app
+# layer (meta_rls.py:37-39), so they need no Postgres policy.
+_RLS_TENANT_TABLES = [
+    "registered_tables",
+    "table_columns",
+    "domains",
+    "relationships",
+    "rls_rules",
+    "roles",
+]
+
 
 async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
-    """Enable Postgres RLS on all _META_TABLES. Called only when multitenancy=True."""
-    for tbl in _META_TABLES:
+    """Enable Postgres RLS on the tenant_id-bearing meta tables. Called only when multitenancy=True."""
+    for tbl in _RLS_TENANT_TABLES:
         await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
         await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
         await conn.execute(

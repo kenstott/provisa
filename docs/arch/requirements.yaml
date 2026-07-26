@@ -36312,3 +36312,27 @@
     When an API request is made
     Then the request is rejected with 403 Forbidden
   since: "2026-07"
+- id: REQ-1277
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Member-less User Onboarding
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A newly authenticated user belonging to zero orgs is offered three onboarding paths: (1) join an existing org by entering its org id, (2) create a new org (existing behavior), or (3) auto-redirect to join if an existing org's id matches the user's email domain.
+  use_case: >-
+    Extends REQ-1266 by providing member-less users flexibility beyond org creation alone, reducing friction for users wanting to join existing teams or leveraging email domain matching for automatic org discovery.
+  target: "2026-Q4"
+  scenario: |
+    Given a user authenticated with zero org memberships
+    When they are presented the onboarding page
+    Then they see three options: join by org id, create new org, and auto-detect by email domain
+    When they enter an org id
+    Then they are added to that org and redirected to the workspace
+    When they select create new org
+    Then the org creation flow proceeds (REQ-1266 behavior)
+    When an org exists with id matching their email domain
+    Then they are automatically redirected to join that org
+  e2e: true
+  e2e_reason: >-
+    Org joining, discovery logic, and post-onboarding routing require full end-to-end verification across authentication, org lookup, and UI navigation.

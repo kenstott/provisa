@@ -189,7 +189,11 @@ export function NavBar() {
     await signOutFirebase();
     localStorage.removeItem("provisa_token");
     localStorage.removeItem("provisa_org");
-    navigate("/login");
+    // Full document load, not navigate(): App reads the token only on an authVersion bump (login
+    // path), so an in-app navigate would keep the shell mounted and render /login inside the
+    // navbar. A hard load re-reads the token-less localStorage into the public LandingPage branch
+    // and drops the Apollo/auth state built for the signed-in session.
+    window.location.assign("/");
   }
 
   const displayedGroupId = pinnedGroup ?? routeGroup;

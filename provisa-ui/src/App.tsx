@@ -116,9 +116,15 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
  * Waits for the AuthProvider bootstrap (loading) so the gate keys off the settled membership set.
  */
 function OnboardGate({ children }: { children: React.ReactNode }) {
-  const { orgMemberships, loading, authEnabled } = useAuth();
+  const { orgMemberships, assignments, loading, authEnabled } = useAuth();
   const token = localStorage.getItem("provisa_token");
-  if (authEnabled && token && !loading && orgMemberships.length === 0) {
+  // A platform superadmin holds admin caps but zero org memberships — the onboarding flow is for
+  // tenant users who must join/create an org, not the platform operator. Let admin/superadmin
+  // (resolved from /auth/me assignments) through to the shell instead of trapping them here.
+  const isPlatformAdmin = assignments.some(
+    (a) => a.role_id === "admin" || a.role_id === "superadmin",
+  );
+  if (authEnabled && token && !loading && orgMemberships.length === 0 && !isPlatformAdmin) {
     return (
       <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
         <OnboardOrgPage />

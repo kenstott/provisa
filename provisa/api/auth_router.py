@@ -59,9 +59,16 @@ async def me(request: Request):
             "assignments": [{"role_id": rid, "domain_id": "*"} for rid in sorted(all_role_ids)],
         }
 
+    # admin/superadmin are platform bypass keywords, not tenant `roles` rows, so they are absent
+    # from all_role_ids — but a bootstrap superadmin's ONLY assignment is `admin`. Keep the bypass
+    # roles alongside real tenant roles so the platform superadmin surfaces to the UI (otherwise
+    # /me returns []: the onboarding gate then traps the superadmin, who has 0 org memberships).
+    _PLATFORM_BYPASS = {"admin", "superadmin"}
     raw = resolve_assignments(identity)
     assignments = [
-        {"role_id": a.role_id, "domain_id": a.domain_id} for a in raw if a.role_id in all_role_ids
+        {"role_id": a.role_id, "domain_id": a.domain_id}
+        for a in raw
+        if a.role_id in all_role_ids or a.role_id in _PLATFORM_BYPASS
     ]
 
     # user_org_memberships/orgs live in the platform control plane.

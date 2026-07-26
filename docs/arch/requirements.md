@@ -12885,3 +12885,17 @@ HTTP request org is authoritative from Host subdomain (leftmost label of acme.pr
 **Code:** `provisa/auth/middleware.py`
 
 **Tests:** `tests/unit/test_auth_middleware_multitenancy.py`
+
+## 2. Authentication & Identity
+
+### REQ-1277 · Member-less User Onboarding {#REQ-1277}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A newly authenticated user belonging to zero orgs is offered three onboarding paths: (1) join an existing org by entering its org id, (2) create a new org (existing behavior), or (3) auto-redirect to join if an existing org's id matches the user's email domain.
+
+**Use case:** Extends [REQ-1266](#REQ-1266) by providing member-less users flexibility beyond org creation alone, reducing friction for users wanting to join existing teams or leveraging email domain matching for automatic org discovery.
+
+**Code:** —
+
+**Tests:** —
