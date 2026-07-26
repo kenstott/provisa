@@ -2,7 +2,14 @@
 APPDIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 SENTINEL="${HOME}/.provisa/.first-launch-complete"
 
-if [ ! -f "$SENTINEL" ]; then
+# The sentinel records the version that last completed first-launch. Terraform bumps
+# provisa_version and GCE re-runs this startup-script on every reset; a version change
+# must re-provision (reload images, restage compose, recreate the stack), not skip on
+# the sentinel's mere presence — a version-independent guard silently strands every
+# upgrade on the previously-loaded images. Same version → fast path (skip).
+BAKED_VERSION="$(cat "${APPDIR}/VERSION" 2>/dev/null || true)"
+RECORDED_VERSION="$(cat "$SENTINEL" 2>/dev/null || true)"
+if [ ! -f "$SENTINEL" ] || [ "$BAKED_VERSION" != "$RECORDED_VERSION" ]; then
   "${APPDIR}/first-launch.sh" "$@"
 fi
 

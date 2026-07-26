@@ -233,9 +233,15 @@ start_docker() {
 # gzipped `docker save` tarballs (registry images + zaychik + provisa app).
 load_images() {
   local staged="${PROVISA_HOME}/images"
+  local marker="${staged}/.version"
   mkdir -p "$staged"
 
-  if ! ls "${staged}"/*.tar.gz >/dev/null 2>&1; then
+  # Re-extract when staging is empty OR holds a different version's tarballs. A reset
+  # that bumps PROVISA_VERSION must replace the airgap images, not reload the stale
+  # ones already sitting here (the tarball names are version-independent, so a plain
+  # presence check would silently load the old build forever).
+  local staged_version=""; [ -f "$marker" ] && staged_version="$(cat "$marker")"
+  if ! ls "${staged}"/*.tar.gz >/dev/null 2>&1 || [ "$staged_version" != "$PROVISA_VERSION" ]; then
     if ! command -v unzip >/dev/null 2>&1; then
       err "unzip is required to extract the core images. Install it (e.g. apt-get install unzip) and re-run."
       exit 1
@@ -258,7 +264,9 @@ load_images() {
       exit 1
     fi
     info "Extracting core images..."
+    rm -f "${staged}"/*.tar.gz
     ( cd "$staged" && unzip -o -q "$src" )
+    printf '%s' "$PROVISA_VERSION" > "$marker"
     [ "$src" = "${PROVISA_HOME}/${zip}" ] && rm -f "$src"
   fi
 
@@ -710,7 +718,12 @@ TimeoutStartSec=300
 WantedBy=multi-user.target
 UNIT
   systemctl daemon-reload
-  systemctl enable --now provisa
+  systemctl enable provisa
+  # restart, not `enable --now`: on a version-change re-provision the stack is already
+  # up from boot (WantedBy=multi-user.target), so `--now` is a no-op and the old
+  # containers keep running on the previous image. restart forces `provisa stop`+`start`
+  # (compose down+up) under the EnvironmentFile, recreating from the freshly-loaded image.
+  systemctl restart provisa
   ok "systemd unit installed and started: ${unit}"
 }
 
@@ -1036,7 +1049,7 @@ main() {
       install_systemd
     fi
 
-    touch "$SENTINEL"
+    printf '%s' "$PROVISA_VERSION" > "$SENTINEL"
     ok "First-launch setup complete (native — no Docker)."
 
     if [ "$NON_INTERACTIVE" = true ]; then
@@ -1074,7 +1087,7 @@ main() {
     install_systemd
   fi
 
-  touch "$SENTINEL"
+  printf '%s' "$PROVISA_VERSION" > "$SENTINEL"
   ok "First-launch setup complete."
 
   if [ "$NON_INTERACTIVE" = true ]; then
