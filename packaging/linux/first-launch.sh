@@ -523,6 +523,11 @@ services:
       PROVISA_IDP: "\${PROVISA_IDP:-}"
       FIREBASE_PROJECT_ID: "\${FIREBASE_PROJECT_ID:-}"
       FIREBASE_SERVICE_ACCOUNT_KEY: "\${FIREBASE_SERVICE_ACCOUNT_KEY:-}"
+      # REQ-1266: multitenant onboarding gate. setup_router._auto_configure_idp reads
+      # PROVISA_MULTITENANCY at first config to promote the deployment from single-admin
+      # bootstrap to invite-based multi-org. Absent/empty (enterprise default) keeps the
+      # single-administrator REQ-1266 mode. Interpolated from the 600 systemd env_file.
+      PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:-}"
   provisa-ui:
     command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key"]
     volumes:
@@ -671,12 +676,21 @@ install_systemd() {
   local env_file="${PROVISA_HOME}/provisa.env"
   : > "$env_file"
   chmod 600 "$env_file"
+  # CONFIG_DB_* / PROVISA_EXTERNAL_CONTROL_DB: external control-plane database mode
+  # (terraform/gcp-saas — Cloud SQL). docker-compose.app.yml interpolates PG_* /
+  # PLATFORM_DATABASE_URL / TENANT_DATABASE_URL from CONFIG_DB_*, so persisting them
+  # here points the coordinator's control plane at the managed DB instead of the
+  # bundled postgres. Absent (enterprise), the compose defaults resolve to the
+  # in-stack postgres service.
   for var in PROVISA_IDP FIREBASE_PROJECT_ID FIREBASE_SERVICE_ACCOUNT_KEY \
              VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
              KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
              OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET \
              PROVISA_PGWIRE_PORT PROVISA_BOLT_PORT PROVISA_MCP_PORT \
-             PROVISA_MCP_HOST PROVISA_MCP_ROLE GRPC_PORT; do
+             PROVISA_MCP_HOST PROVISA_MCP_ROLE GRPC_PORT \
+             PROVISA_MULTITENANCY \
+             PROVISA_EXTERNAL_CONTROL_DB \
+             CONFIG_DB_HOST CONFIG_DB_PORT CONFIG_DB_NAME CONFIG_DB_USER CONFIG_DB_PASSWORD; do
     if [ -n "${!var:-}" ]; then
       printf '%s=%s\n' "$var" "${!var}" >> "$env_file"
     fi

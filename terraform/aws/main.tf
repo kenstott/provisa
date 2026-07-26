@@ -222,10 +222,10 @@ locals {
     # server reads these at runtime, so first-launch persists them into the
     # systemd unit's EnvironmentFile.
     export PROVISA_IDP="${var.auth_provider}"
-    # Multitenant onboarding: first user = platform superadmin, later users admitted and join an org
-    # via invite redemption. Off = single-administrator bootstrap (REQ-1266). Consumed by
-    # _auto_configure_idp, which writes multitenancy:true into the persisted config.
-    export PROVISA_MULTITENANCY="${var.multitenancy ? "true" : "false"}"
+    # Enterprise module: single-tenant, single-administrator bootstrap (REQ-1266).
+    # The first user claims the sole admin; there is no per-org onboarding here. The
+    # multitenant SaaS control plane lives in the separate terraform/gcp-saas module.
+    export PROVISA_MULTITENANCY="false"
     export FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'
     # REQ-1266: the SPA's Firebase web config (public client keys). first-launch

@@ -36336,3 +36336,32 @@
   e2e: true
   e2e_reason: >-
     Org joining, discovery logic, and post-onboarding routing require full end-to-end verification across authentication, org lookup, and UI navigation.
+- id: REQ-1278
+  status: complete
+  group: "4. Deployment & Infrastructure"
+  category: Enterprise Deployment Tenancy Enforcement
+  priority: MUST
+  type: infrastructure
+  description: >-
+    Enterprise deployment modules (terraform/gcp, terraform/aws, terraform/azure) enforce single-tenancy. The multitenancy variable is removed; PROVISA_MULTITENANCY is hardcoded to false. Single administrator bootstrap is required (REQ-1266).
+  use_case: >-
+    Clarifies deployment architecture: enterprise customers deploy isolated single-tenant instances with hardcoded tenancy model, eliminating multitenancy configuration surface and reducing operational risk.
+  code:
+    - terraform/gcp/main.tf
+    - terraform/aws/main.tf
+    - terraform/azure/main.tf
+  since: "2026-07"
+- id: REQ-1279
+  status: complete
+  group: "4. Deployment & Infrastructure"
+  category: SaaS Multi-tenant Deployment Module
+  priority: MUST
+  type: infrastructure
+  description: >-
+    New terraform/gcp-saas module enables fully-automated multi-tenant SaaS deployments. Multitenancy is forced true (not a variable). Architecture includes Cloud SQL managed control plane (private IP via Private Service Access), single Trino coordinator (n2-standard-4, DB offloaded) fronting raw-TCP protocol listeners behind a shared passthrough NLB, and autoscaled Spot worker MIG (region instance group manager, min=0 scale-to-zero → max). Supporting app change: packaging/linux/first-launch.sh persists CONFIG_DB_* and PROVISA_EXTERNAL_CONTROL_DB into systemd EnvironmentFile allowlist so the coordinator's control plane points at the external Cloud SQL.
+  use_case: >-
+    Enables Provisa SaaS operation with automated, cost-optimized infrastructure supporting multiple tenants on shared compute and isolated control planes, following docs/deployment/gcp-saas-infra-plan.md.
+  code:
+    - terraform/gcp-saas/main.tf
+    - packaging/linux/first-launch.sh
+  since: "2026-07"

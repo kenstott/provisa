@@ -300,9 +300,9 @@ locals {
     "UI_PORT=${local.protocols.ui.port}",
     var.enable_mcp ? "PROVISA_MCP_HOST=0.0.0.0 PROVISA_MCP_ROLE='${var.mcp_role}'" : "",
     "PROVISA_IDP='${var.auth_provider}'",
-    # Multitenant onboarding: first user = platform superadmin, later users admitted and join an
-    # org via invite (REQ-1266). _auto_configure_idp writes multitenancy:true into the config.
-    "PROVISA_MULTITENANCY='${var.multitenancy ? "true" : "false"}'",
+    # Enterprise module: single-tenant, single-administrator bootstrap (REQ-1266).
+    # Multitenant onboarding lives in the separate terraform/gcp-saas module.
+    "PROVISA_MULTITENANCY='false'",
     "FIREBASE_PROJECT_ID='${var.firebase_project_id}'",
     "FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'",
     # SPA Firebase web config (public client keys), served at /firebase-config.js so one built
