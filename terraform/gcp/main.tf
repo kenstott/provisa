@@ -109,6 +109,12 @@ locals {
     "n2-highmem-8"   = 64
     "n2-highmem-16"  = 128
     "n2-highmem-32"  = 256
+    "e2-small"       = 2
+    "e2-medium"      = 4
+    "e2-standard-2"  = 8
+    "e2-standard-4"  = 16
+    "e2-standard-8"  = 32
+    "e2-highmem-16"  = 128
   }
   effective_ram        = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.machine_ram, var.machine_type, 32)
   effective_worker_ram = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.machine_ram, var.worker_machine_type, 128)
@@ -339,6 +345,11 @@ resource "google_compute_instance" "secondary" {
   zone         = var.zone
   tags         = ["provisa-node"]
   labels       = merge(local.all_labels, { role = "secondary" })
+
+  # Stateless app-tier node — a machine_type downgrade needs GCE to stop the VM.
+  # No data lives here (postgres/minio/redis are on the primary), so the boot disk
+  # can be resized in place without loss.
+  allow_stopping_for_update = true
 
   boot_disk {
     initialize_params {
