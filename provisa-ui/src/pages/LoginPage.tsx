@@ -153,6 +153,34 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     }
   };
 
+  const handleFirebaseEmail = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (mode === "register" && password !== confirmPassword) {
+      setError(t("loginPage.passwordsDoNotMatch"));
+      return;
+    }
+    setLoading(true);
+    try {
+      const firebase = await import("../lib/firebase");
+      const idToken =
+        mode === "register"
+          ? await firebase.registerWithEmailPassword(regEmail, password)
+          : await firebase.signInWithEmailPassword(regEmail, password);
+      localStorage.setItem("provisa_token", idToken);
+      const inviteToken = new URLSearchParams(window.location.search).get("invite");
+      if (inviteToken) {
+        await redeemInvite(inviteToken);
+      }
+      onLoginSuccess(idToken);
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("loginPage.firebaseSignInFailed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (provider === "firebase") {
     return (
       <div className="page">
@@ -186,6 +214,57 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
           >
             {loading ? t("loginPage.signingIn") : t("loginPage.signInWithMicrosoft")}
           </Button>
+          <Text c="dimmed" size="sm" ta="center">
+            {t("loginPage.orDivider")}
+          </Text>
+          <form onSubmit={handleFirebaseEmail}>
+            <Stack gap="sm">
+              <TextInput
+                type="email"
+                label={t("loginPage.email")}
+                data-testid="firebase-email-input"
+                value={regEmail}
+                onChange={(e) => setRegEmail(e.currentTarget.value)}
+                required
+              />
+              <PasswordInput
+                label={t("loginPage.password")}
+                data-testid="firebase-password-input"
+                value={password}
+                onChange={(e) => setPassword(e.currentTarget.value)}
+                required
+              />
+              {mode === "register" && (
+                <PasswordInput
+                  label={t("loginPage.confirmPassword")}
+                  data-testid="firebase-confirm-password-input"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+                  required
+                />
+              )}
+              <Button type="submit" data-testid="firebase-email-submit" disabled={loading}>
+                {loading
+                  ? t("loginPage.signingIn")
+                  : mode === "register"
+                    ? t("loginPage.createAccount")
+                    : t("loginPage.signInWithEmail")}
+              </Button>
+              <Button
+                variant="subtle"
+                size="compact-sm"
+                data-testid="firebase-email-toggle"
+                onClick={() => {
+                  setError(null);
+                  setMode(mode === "register" ? "login" : "register");
+                }}
+              >
+                {mode === "register"
+                  ? t("loginPage.haveAccountSignIn")
+                  : t("loginPage.needAccountRegister")}
+              </Button>
+            </Stack>
+          </form>
         </Stack>
       </div>
     );

@@ -53,6 +53,7 @@ function makeAuthValue(overrides: {
     selectedDomain: null,
     selectRole: overrides.selectRole ?? vi.fn(),
     selectDomain: vi.fn(),
+    refresh: vi.fn(),
     availableRoles,
     availableDomains: [],
     assignments: [],

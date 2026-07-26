@@ -16,6 +16,8 @@ import {
   OAuthProvider,
   onIdTokenChanged,
   signInWithPopup,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signOut as fbSignOut,
   type Auth,
 } from "firebase/auth";
@@ -127,6 +129,20 @@ export async function signInWithGithub(): Promise<string> {
 
 export async function signInWithMicrosoft(): Promise<string> {
   const result = await signInWithPopup(firebaseAuth(), microsoftProvider);
+  return result.user.getIdToken();
+}
+
+// Firebase Email/Password sign-in — the "local" auth method (self-hosted look, but
+// credentials live in the Firebase Identity Platform user pool, not local_users). The
+// ID token Firebase mints is the same shape as the social providers, so the backend
+// (firebase.py) reads name/email identically.
+export async function signInWithEmailPassword(email: string, password: string): Promise<string> {
+  const result = await signInWithEmailAndPassword(firebaseAuth(), email, password);
+  return result.user.getIdToken();
+}
+
+export async function registerWithEmailPassword(email: string, password: string): Promise<string> {
+  const result = await createUserWithEmailAndPassword(firebaseAuth(), email, password);
   return result.user.getIdToken();
 }
 
