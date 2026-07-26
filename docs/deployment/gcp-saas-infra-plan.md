@@ -1,8 +1,8 @@
 # GCP SaaS Infra Plan — Cloud SQL variant
 
 Multi-tenant, on-demand deployment of Provisa. Distinct from the enterprise module
-([terraform/gcp/](../../terraform/gcp/)), which is a fixed single-tenant N-node cluster
-with postgres in the coordinator's compose stack. Pricing basis: [pricing-plan.md](../pricing/pricing-plan.md).
+([terraform/gcp/](https://github.com/kenstott/provisa/blob/main/terraform/gcp/)), which is a fixed single-tenant N-node cluster
+with postgres in the coordinator's compose stack. Pricing basis: the pricing plan.
 
 ## Model
 
@@ -22,7 +22,7 @@ Four layers, each with a different scaling law and warmth:
 Raw-TCP protocols (pgwire 5439, bolt 7687, Flight 8815, gRPC 50051, MCP 8009) need a
 persistent listener, so the coordinator is the reachable endpoint behind a regional
 external passthrough NLB (all-ports, one shared IP — same pattern as enterprise
-[main.tf:375-429](../../terraform/gcp/main.tf#L375-L429)). Workers are not in the LB.
+[main.tf:375-429](https://github.com/kenstott/provisa/blob/main/terraform/gcp/main.tf#L375-L429)). Workers are not in the LB.
 The Cloud Run site front-door sits off to the side of the NLB: HTTP visitors hit Cloud
 Run directly (its own managed HTTPS), TCP clients hit the NLB → coordinator.
 
@@ -47,8 +47,8 @@ committed-use discount (~37% off) since they run 24/7.
 
 ## Service placement — can every service be provisioned here?
 
-Yes. Every service in the stack ([docker-compose.core.yml](../../docker-compose.core.yml) +
-[docker-compose.app.yml](../../docker-compose.app.yml)) maps to one of the three layers,
+Yes. Every service in the stack ([docker-compose.core.yml](https://github.com/kenstott/provisa/blob/main/docker-compose.core.yml) +
+[docker-compose.app.yml](https://github.com/kenstott/provisa/blob/main/docker-compose.app.yml)) maps to one of the three layers,
 with optional managed swaps for the stateful singletons.
 
 | Service | Enterprise home | SaaS placement | Managed swap (optional) |
@@ -92,20 +92,20 @@ is required for Cloud SQL private IP on the provisa VPC.
 ## Required app change
 
 Coordinator needs an external-DB mode. Today only `ROLE=secondary` skips bundled
-postgres and rewrites the DB URLs ([first-launch.sh:275](../../packaging/linux/first-launch.sh#L275),
-[first-launch.sh:582-588](../../packaging/linux/first-launch.sh#L582-L588)). The change:
+postgres and rewrites the DB URLs ([first-launch.sh:275](https://github.com/kenstott/provisa/blob/main/packaging/linux/first-launch.sh#L275),
+[first-launch.sh:582-588](https://github.com/kenstott/provisa/blob/main/packaging/linux/first-launch.sh#L582-L588)). The change:
 key the existing `skip_pattern` + URL-rewrite on an env toggle
 (e.g. `PROVISA_EXTERNAL_CONTROL_DB=1` with `CONFIG_DB_HOST`/`CONFIG_DB_PASSWORD`) so a
 coordinator can drop the `postgres`/`pgbouncer` services and point
 `PLATFORM_DATABASE_URL`/`TENANT_DATABASE_URL` at Cloud SQL. The compose app tier already
-reads `CONFIG_DB_*` ([docker-compose.app.yml:13-24](../../docker-compose.app.yml#L13-L24));
+reads `CONFIG_DB_*` ([docker-compose.app.yml:13-24](https://github.com/kenstott/provisa/blob/main/docker-compose.app.yml#L13-L24));
 the blocker is the `depends_on: postgres` and first-launch keying the skip on `ROLE`.
 
 ## Coordinator scaling (the one vertical bottleneck)
 
 The Trino coordinator is the single non-autoscaling layer — a query planner is a
 single-writer coordination point, so it scales up, not out. But its heap is pinned at
-JVM launch (`-Xmx8G`, [trino/etc/jvm.config:2](../../trino/etc/jvm.config#L2)), so **there
+JVM launch (`-Xmx8G`, [trino/etc/jvm.config:2](https://github.com/kenstott/provisa/blob/main/trino/etc/jvm.config#L2)), so **there
 is no live vertical resize**: adding RAM does nothing until the JVM restarts with a higher
 `-Xmx`, and a restart drops every TCP connection and in-flight query. GCE machine_type
 resize needs a stop/start (same drop); GKE VPA / in-place resize can grow CPU live but not
@@ -114,14 +114,14 @@ automate the rare resize as a graceful failover — never a live resize.
 
 **1. Make the coordinator memory-light (highest leverage).** Flip
 `node-scheduler.include-coordinator=false` in the SaaS coordinator config (enterprise ships
-`=true`, [trino/etc/config.properties:2](../../trino/etc/config.properties#L2)). Today the
+`=true`, [trino/etc/config.properties:2](https://github.com/kenstott/provisa/blob/main/trino/etc/config.properties#L2)). Today the
 coordinator also runs scan tasks, which is what makes it memory-hungry; turned off, it only
 plans + coordinates + streams results and memory pressure moves onto the **autoscaling Spot
 workers**, which already scale automatically.
 
 **2. Spill intermediate data off-heap (already configured).** `retry-policy=TASK` +
-filesystem exchange ([config.properties:9-11](../../trino/etc/config.properties#L9-L11),
-[exchange-manager.properties](../../trino/etc/exchange-manager.properties)) spools shuffle
+filesystem exchange ([config.properties:9-11](https://github.com/kenstott/provisa/blob/main/trino/etc/config.properties#L9-L11),
+[exchange-manager.properties](https://github.com/kenstott/provisa/blob/main/trino/etc/exchange-manager.properties)) spools shuffle
 data to minio/GCS instead of coordinator heap. Keep it; it is the spill valve that keeps a
 big query from blowing the coordinator.
 
@@ -141,7 +141,7 @@ coordinator, and cuts the NLB/DNS over. Seconds of connect interruption, not a l
 
 - **Idle, zero customers:** ~$163/mo running, or **~$2/mo** absolute min (stopped
   Cloud SQL storage + stateless coordinator at MIG min=0; wake on first hit via a
-  $0-idle Cloud Run signup shim). See [pricing-plan.md](../pricing/pricing-plan.md).
+  $0-idle Cloud Run signup shim). See the pricing plan.
 - **Per active cluster-hour:** ~$0.08 Spot compute + egress; priced at ~78% margin.
 - **Cold start:** covered by a per-resume minimum when `worker_min_nodes=0`.
 
@@ -154,4 +154,4 @@ coordinator, and cuts the NLB/DNS over. Seconds of connect interruption, not a l
 - Cloud SQL connection pooling: decide Cloud SQL built-in vs PgBouncer sidecar under
   many-tenant connection fan-out.
 - Subdomain-per-org TLS: wildcard `*.provisa.dev` cert on every listener
-  ([variables.tf:100-118](../../terraform/gcp/variables.tf#L100-L118)) already covers this.
+  ([variables.tf:100-118](https://github.com/kenstott/provisa/blob/main/terraform/gcp/variables.tf#L100-L118)) already covers this.
