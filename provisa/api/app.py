@@ -298,17 +298,33 @@ class AppState:
     def source_types(self) -> dict[str, str]:
         return self._active_runtime().source_types
 
+    @source_types.setter
+    def source_types(self, value: dict[str, str]) -> None:
+        self._active_runtime().source_types = value
+
     @property
     def source_dialects(self) -> dict[str, str]:
         return self._active_runtime().source_dialects
+
+    @source_dialects.setter
+    def source_dialects(self, value: dict[str, str]) -> None:
+        self._active_runtime().source_dialects = value
 
     @property
     def source_dsns(self) -> dict[str, str]:
         return self._active_runtime().source_dsns
 
+    @source_dsns.setter
+    def source_dsns(self, value: dict[str, str]) -> None:
+        self._active_runtime().source_dsns = value
+
     @property
     def source_catalogs(self) -> dict[str, str]:
         return self._active_runtime().source_catalogs
+
+    @source_catalogs.setter
+    def source_catalogs(self, value: dict[str, str]) -> None:
+        self._active_runtime().source_catalogs = value
 
     def catalog_for(self, source_id: str) -> str:
         """Physical engine catalog name for ``source_id`` under the current request's org
@@ -329,29 +345,57 @@ class AppState:
     def source_cache(self) -> dict[str, dict]:
         return self._active_runtime().source_cache
 
+    @source_cache.setter
+    def source_cache(self, value: dict[str, dict]) -> None:
+        self._active_runtime().source_cache = value
+
     @property
     def source_allowed_domains(self) -> dict[str, list[str]]:
         return self._active_runtime().source_allowed_domains
+
+    @source_allowed_domains.setter
+    def source_allowed_domains(self, value: dict[str, list[str]]) -> None:
+        self._active_runtime().source_allowed_domains = value
 
     @property
     def source_federation_hints(self) -> dict[str, dict[str, str]]:
         return self._active_runtime().source_federation_hints
 
+    @source_federation_hints.setter
+    def source_federation_hints(self, value: dict[str, dict[str, str]]) -> None:
+        self._active_runtime().source_federation_hints = value
+
     @property
     def roles(self) -> dict[str, dict]:
         return self._active_runtime().roles
+
+    @roles.setter
+    def roles(self, value: dict[str, dict]) -> None:
+        self._active_runtime().roles = value
 
     @property
     def schemas(self) -> dict[str, graphql.GraphQLSchema]:
         return self._active_runtime().schemas
 
+    @schemas.setter
+    def schemas(self, value: dict[str, graphql.GraphQLSchema]) -> None:
+        self._active_runtime().schemas = value
+
     @property
     def contexts(self) -> dict[str, CompilationContext]:
         return self._active_runtime().contexts
 
+    @contexts.setter
+    def contexts(self, value: dict[str, CompilationContext]) -> None:
+        self._active_runtime().contexts = value
+
     @property
     def rls_contexts(self) -> dict[str, RLSContext]:
         return self._active_runtime().rls_contexts
+
+    @rls_contexts.setter
+    def rls_contexts(self, value: dict[str, RLSContext]) -> None:
+        self._active_runtime().rls_contexts = value
 
     @property
     def masking_rules(self) -> MaskingRules:

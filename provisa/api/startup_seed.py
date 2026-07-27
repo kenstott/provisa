@@ -419,7 +419,10 @@ async def _init_control_planes(
     )
     state.tenant_db = Database(tenant_engine, name="org", search_path=f"org_{org_id}")
     state.admin_db = await bring_up_platform(
-        cp.resolved_platform_url(), pool_size=cp.pool_max, pool_min=cp.pool_min
+        cp.resolved_platform_url(),
+        pool_size=cp.pool_max,
+        pool_min=cp.pool_min,
+        org_id=org_id,
     )
 
     # schema.sql ships in the wheel (pyproject package-data). It is REQUIRED: the PG path runs it

@@ -12,7 +12,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
 import type { ReactNode } from "react";
 import type { Capability, Role, RoleAssignment, AuthState, OrgMembership } from "../types/auth";
-import { fetchMe } from "../api/admin";
+import { AuthMeError, fetchMe } from "../api/admin";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 
 const DEFAULT_ADMIN_ROLE: Role = {
@@ -55,6 +55,10 @@ interface AuthContextValue extends AuthState {
   // Re-run the identity bootstrap (fetchMe + roles/domains). REQ-1266: after self-service org
   // creation the new membership must be reflected without a full page reload.
   refresh: () => Promise<void>;
+  // REQ-1286: HTTP status of the last /auth/me failure (0 = the request never reached the server),
+  // null when the identity resolved. The onboarding gate routes on this: 401/403 means the session
+  // is not valid, anything else means the deployment is broken — two different screens.
+  identityErrorStatus: number | null;
   devMode: boolean;
   // Runtime auth-enforcement flag from /setup/status (REQ-1267). Drives the login gate
   // and logout affordance instead of a build-time constant.
@@ -83,6 +87,7 @@ export function AuthProvider({
   );
   const [orgMemberships, setOrgMemberships] = useState<OrgMembership[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [identityErrorStatus, setIdentityErrorStatus] = useState<number | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [givenName, setGivenName] = useState<string | null>(null);
@@ -102,6 +107,7 @@ export function AuthProvider({
         userAssignments = me.assignments;
         setOrgMemberships(me.org_memberships);
         setUserId(me.user_id);
+        setIdentityErrorStatus(null);
         setEmail(me.email ?? null);
         setDisplayName(me.display_name ?? null);
         setGivenName(me.given_name ?? null);
@@ -111,11 +117,14 @@ export function AuthProvider({
         } else if (me.org_memberships.length === 1 && !localStorage.getItem("provisa_org")) {
           setSelectedOrg(me.org_memberships[0].org_id);
         }
-      } catch {
+      } catch (e) {
         // /auth/me failed. On an unsecured deploy that means dev mode (full admin). When auth
         // IS enforced, a failure here is an unauthenticated caller — never grant dev admin;
         // RequireAuth redirects to /login before any admin content renders (REQ-1267).
         isDev = !authEnabled;
+        // REQ-1286: keep WHY it failed. A 5xx is the deployment failing, not an access decision,
+        // and must not be reported to the user as "this account has no access".
+        setIdentityErrorStatus(e instanceof AuthMeError ? e.status : 0);
         // Clear any prior identity so a session that dies mid-app (token expired / account
         // removed) resolves to userId=null — the signal OnboardGate uses to treat the stored
         // token as a dead session rather than a live, member-less onboarding state.
@@ -260,6 +269,7 @@ export function AuthProvider({
         orgMemberships,
         selectOrg,
         refresh,
+        identityErrorStatus,
         userId,
         email,
         displayName,

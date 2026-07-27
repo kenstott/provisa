@@ -152,6 +152,11 @@ org_invites = Table(
     Column("token", Text, primary_key=True),
     Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
     Column("role_id", Text),  # cross-model ref -> org.roles
+    # REQ-1287: the invitee's email, when the inviter addressed the invite to a person rather than
+    # minting a shareable link. Nullable because a link invite is addressed to nobody. This is what
+    # lets a just-authenticated user with no membership be TOLD they have a pending invitation
+    # instead of having to already possess the token.
+    Column("email", Text),
     Column("created_by", Text, nullable=False),
     Column("expires_at", DateTime(timezone=True), nullable=False),
     Column("used_at", DateTime(timezone=True)),
@@ -198,21 +203,27 @@ REGISTRY_TABLES = [
 ]
 
 
-async def init_registry_schema(db: "Database") -> None:  # REQ-696
+async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696, REQ-1286
     """Create the platform registry tables on the platform control-plane engine.
 
     Uses portable SQLAlchemy metadata (dialect-appropriate DDL) so the platform
     control plane can be backed by any SQLAlchemy URI, not just PostgreSQL. The
     tenant control plane keeps its raw ``schema.sql`` bootstrap (PostgreSQL).
 
-    Seeds the default ``root`` org (the on-prem/single-tenant namespace), which
-    was previously seeded by ``schema.sql`` when the registry lived per-org."""
+    Seeds the default org (the on-prem/single-tenant namespace), which was previously
+    seeded by ``schema.sql`` when the registry lived per-org. REQ-1286: *org_id* is the
+    control plane's resolved org id — the same value that names the tenant schema
+    ``org_<id>``. Seeding a different literal here strands the registry row on an org
+    whose schema does not exist, and every org-runtime resolution for it then fails."""
     async with db.engine.begin() as conn:
         await conn.run_sync(lambda sc: metadata.create_all(sc, tables=REGISTRY_TABLES))
     async with db.acquire() as conn:
-        result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == "root"))
+        result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if result.scalar() is None:
-            # Insert-if-absent (DO NOTHING): seed the default root org idempotently.
+            # Insert-if-absent (DO NOTHING): seed the default org idempotently.
             await conn.upsert(
-                orgs, {"id": "root", "name": "Enterprise"}, index_elements=["id"], update_columns=[]
+                orgs,
+                {"id": org_id, "name": "Enterprise"},
+                index_elements=["id"],
+                update_columns=[],
             )

@@ -61,8 +61,11 @@ async def me(request: Request):
             "email": None,
             "display_name": uid,
             "dev_mode": True,
-            "active_org_id": "root",
-            "org_memberships": [{"org_id": "root", "org_name": "Enterprise"}],
+            # REQ-1286: the dev principal's org is the control plane's resolved org_id — the same
+            # value that names the org_<id> tenant schema. A literal here names an org whose
+            # schema was never created, and every runtime resolution for it fails.
+            "active_org_id": state.org_id,
+            "org_memberships": [{"org_id": state.org_id, "org_name": "Enterprise"}],
             "assignments": [{"role_id": rid, "domain_id": "*"} for rid in sorted(all_role_ids)],
         }
 
@@ -129,6 +132,61 @@ async def provider_type():
         else getattr(auth_cfg, "provider", None)
     )
     return {"provider": provider}
+
+
+@router.get("/my-invites")
+async def my_invites(request: Request):  # REQ-1287
+    """Pending invitations addressed to the caller's email.
+
+    Onboarding asks three separate questions — do you have an account, do you have an invitation,
+    do you have a membership — and before this endpoint the middle one was unanswerable: an invited
+    user who arrived without their token looked identical to a stranger, so the UI could only offer
+    "create an org". Returns [] for a link-only invite (email is null) or a dev principal with no
+    email; the caller then falls through to org creation or pasting a token.
+    """
+    import datetime
+    from datetime import timezone
+
+    from provisa.api.app import state
+
+    identity = getattr(request.state, "identity", None)
+    email = getattr(identity, "email", None) if identity is not None else None
+    if not email:
+        return {"invites": []}
+
+    admin_db = state.admin_db
+    assert admin_db is not None
+    now = datetime.datetime.now(tz=timezone.utc)
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(
+                org_invites.c.token,
+                org_invites.c.org_id,
+                orgs.c.name.label("org_name"),
+                org_invites.c.role_id,
+                org_invites.c.expires_at,
+            )
+            .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
+            .where(
+                func.lower(org_invites.c.email) == email.strip().lower(),
+                org_invites.c.used_at.is_(None),
+                org_invites.c.expires_at > now,
+            )
+            .order_by(org_invites.c.expires_at)
+        )
+        rows = [dict(r._mapping) for r in result.fetchall()]
+    return {
+        "invites": [
+            {
+                "token": r["token"],
+                "org_id": r["org_id"],
+                "org_name": r["org_name"],
+                "role_id": r["role_id"],
+                "expires_at": r["expires_at"].isoformat(),
+            }
+            for r in rows
+        ]
+    }
 
 
 @router.get("/invite/{token}")

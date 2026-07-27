@@ -12800,7 +12800,7 @@ org_prefixed_catalog(org_id, base, *, default_org) returns bare base name for de
 
 **Code:** `provisa/multitenancy/catalog_naming.py`
 
-**Tests:** `tests/unit/test_org_isolation.py`
+**Tests:** `tests/unit/test_org_isolation.py`, `tests/integration/test_org_auto_join.py`
 
 ### REQ-1270 · HTTP Org-Routing Middleware {#REQ-1270}
 
@@ -13003,3 +13003,15 @@ Organizations may enable an "auto-join" flag with a configured default role (e.g
 **Code:** `provisa/api/auth_router.py`, `provisa/core/schema_admin.py`
 
 **Tests:** `tests/integration/test_redeem_invite.py`
+
+### REQ-1286 · Identity Resolution {#REQ-1286}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+The default org ID has a single source of truth from the control plane's resolved org_id (the value that names the tenant schema org_<id>). config.default_org_id is None by default and only overrides when explicitly set; if neither resolves, the system raises rather than guessing. Unresolved-identity states (server error, network failure, auth failure) must be distinguished from resolved identities with zero org memberships — the UI must not collapse failed /auth/me into "no account access".
+
+**Use case:** Three divergent literals ("root" in config, "default" in control plane, "root" hardcoded in registry seed) caused active_org_id to name an org whose org_<id> schema was never created, leading to /auth/me 500 errors and false "no account access" reports. A single source of truth prevents org ID aliasing. Distinguishing error states from empty memberships ensures the UI routes users forward (to OnboardOrgPage for org creation/join) instead of dead-ending with a generic access-denied message.
+
+**Code:** `provisa/auth/wiring.py`, `provisa/core/models.py`, `provisa/core/schema_admin.py`, `provisa/core/control_plane.py`, `provisa/api/startup_seed.py`, `provisa/api/auth_router.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/i18n/locales/en/onboardGate.json`
+
+**Tests:** `tests/unit/test_default_org_id_resolution.py`, `provisa-ui/src/__tests__/OnboardGate.test.tsx`

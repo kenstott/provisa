@@ -862,14 +862,18 @@ class TestReq592OrgToTenantMapping:
         assert "orgs" in schema_admin.metadata.tables
         assert schema_admin.orgs in schema_admin.REGISTRY_TABLES
 
-    def test_init_registry_seeds_root_org(self):
-        # REQ-592 — init_registry_schema seeds the default 'root' org.
+    def test_init_registry_seeds_the_control_plane_org(self):
+        # REQ-592/REQ-1270 — the default org row is seeded under the caller's org_id (the value
+        # that also names the org_<id> tenant schema), never a hardcoded literal.
         import inspect
 
         from provisa.core import schema_admin
 
+        sig = inspect.signature(schema_admin.init_registry_schema)
+        assert "org_id" in sig.parameters
         src = inspect.getsource(schema_admin.init_registry_schema)
-        assert "root" in src and "Enterprise" in src
+        assert '"id": org_id' in src and "Enterprise" in src
+        assert '"root"' not in src
 
     def test_platform_metadata_defines_user_org_memberships(self):
         # REQ-592

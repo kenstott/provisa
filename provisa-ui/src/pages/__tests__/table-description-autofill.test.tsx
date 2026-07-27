@@ -51,8 +51,11 @@ vi.mock("../../components/admin/FilterInput", () => ({
   FilterInput: () => null,
 }));
 
-// Only the REST helpers (fetch(), not GraphQL) remain imperative in TablesPage.
-vi.mock("../../api/admin", () => ({
+// Only the REST helpers (fetch(), not GraphQL) remain imperative in TablesPage. Spread the real
+// module: vmThreads + fileParallelism:false share one module registry, so a replace-everything
+// factory here leaks into other files' TableEditForm renders and drops exports they need.
+vi.mock("../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/admin")>()),
   fetchSettings: vi.fn().mockResolvedValue({
     redirect: { enabled: false, threshold: 10000, default_format: "json", ttl: 3600 },
     sampling: { default_sample_size: 1000 },

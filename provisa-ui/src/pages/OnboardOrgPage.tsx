@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -29,7 +29,8 @@ import {
   Title,
 } from "@mantine/core";
 import { PartyPopper, ShieldCheck, UserPlus } from "lucide-react";
-import { createOrg, fetchOrgStatus, redeemInvite } from "../api/admin";
+import type { PendingInvite } from "../api/admin";
+import { createOrg, fetchMyInvites, fetchOrgStatus, redeemInvite } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 
 // REQ-1266: a member-less authenticated user either self-creates an org OR joins an existing one
@@ -50,6 +51,41 @@ export function OnboardOrgPage() {
   const [invite, setInvite] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"form" | "provisioning" | "joining" | "welcome">("form");
+  // REQ-1287: an invited user should be TOLD they were invited, not asked to produce a token they
+  // may never have kept. Invites addressed to this identity's email are offered as one-click joins;
+  // the token field stays for link invites, which are addressed to nobody.
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMyInvites()
+      .then((invites) => {
+        if (cancelled) return;
+        setPendingInvites(invites);
+      })
+      .catch(() => {
+        // A failed lookup must not block org creation — the token field still works. Nothing to
+        // show, so leave the list empty rather than reporting an error the user cannot act on.
+        if (!cancelled) setPendingInvites([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const acceptInvite = async (token: string) => {
+    setError(null);
+    setPhase("joining");
+    try {
+      const { org_id } = await redeemInvite(token);
+      selectOrg(org_id);
+      await refresh();
+      navigate("/query");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
+      setPhase("form");
+    }
+  };
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -189,6 +225,33 @@ export function OnboardOrgPage() {
         </Stack>
       ) : (
         <Stack gap="lg">
+          {pendingInvites.length > 0 && (
+            <Alert
+              variant="light"
+              color="blue"
+              icon={<UserPlus size={18} />}
+              title={t("onboardOrg.pendingInvitesTitle")}
+              data-testid="onboard-pending-invites"
+            >
+              <Stack gap="sm">
+                <Text size="sm">{t("onboardOrg.pendingInvitesBody")}</Text>
+                {pendingInvites.map((inv) => (
+                  <Group key={inv.token} justify="space-between" wrap="nowrap">
+                    <Text size="sm" fw={500}>
+                      {inv.org_name}
+                    </Text>
+                    <Button
+                      size="xs"
+                      data-testid={`onboard-accept-invite-${inv.org_id}`}
+                      onClick={() => void acceptInvite(inv.token)}
+                    >
+                      {t("onboardOrg.acceptInvite")}
+                    </Button>
+                  </Group>
+                ))}
+              </Stack>
+            </Alert>
+          )}
           <SegmentedControl
             fullWidth
             data-testid="onboard-org-mode"

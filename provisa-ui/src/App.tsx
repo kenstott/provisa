@@ -18,6 +18,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { DomainFilterProvider } from "./context/DomainFilterContext";
 import { NavBar } from "./components/NavBar";
 import { CapabilityGate } from "./components/CapabilityGate";
+import { OnboardGate } from "./components/OnboardGate";
 import { fetchSetupStatus } from "./api/setup";
 import { TourProvider, useTour, hasSeenTour } from "./tour/useTour";
 import "./App.css";
@@ -39,7 +40,6 @@ const LandingPage = lazy(() => import("./pages/LandingPage").then((m) => ({ defa
 const GraphPage = lazy(() => import("./pages/GraphPage").then((m) => ({ default: m.GraphPage })));
 const SqlPage = lazy(() => import("./pages/SqlPage").then((m) => ({ default: m.SqlPage })));
 const SetupPage = lazy(() => import("./pages/SetupPage").then((m) => ({ default: m.SetupPage })));
-const OnboardOrgPage = lazy(() => import("./pages/OnboardOrgPage").then((m) => ({ default: m.OnboardOrgPage })));
 const TeamPage = lazy(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
 const SchemaExplorer = lazy(() => import("./pages/SchemaExplorer").then((m) => ({ default: m.SchemaExplorer })));
 const NlPage = lazy(() => import("./pages/NlPage").then((m) => ({ default: m.NlPage })));
@@ -109,65 +109,6 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem("provisa_token");
   if (authEnabled && !token && location.pathname !== "/login") {
     return <Navigate to="/login" replace />;
-  }
-  return <>{children}</>;
-}
-
-/**
- * REQ-1266: gates the app shell behind org membership. An authenticated user with no org
- * memberships is routed to self-service org creation; everyone else falls through to the shell.
- * Waits for the AuthProvider bootstrap (loading) so the gate keys off the settled membership set.
- */
-function OnboardGate({
-  children,
-  onSessionExpired,
-}: {
-  children: React.ReactNode;
-  onSessionExpired: () => void;
-}) {
-  const { t } = useTranslation();
-  const { orgMemberships, assignments, loading, authEnabled, userId } = useAuth();
-  const token = localStorage.getItem("provisa_token");
-  // A stored token that /auth/me rejected (userId never resolved under enforced auth) is a dead
-  // session — an expired credential, or an authenticated identity that has NOT been granted access
-  // to this deployment. Presence of the token string alone is NOT proof of a live session; only a
-  // resolved identity is. Surface an explicit message with a manual "back to sign in" action
-  // instead of silently wiping the token and bouncing to the landing screen — a silent return to
-  // sign-in reads as "sign-in failed for no reason" (REQ-1266/REQ-1267).
-  const deadSession = authEnabled && !!token && !loading && !userId;
-  if (deadSession) {
-    return (
-      <Box maw={480} mx="auto" my={80} data-testid="no-account">
-        <Stack gap="md">
-          <Title order={2}>{t("onboardGate.noAccountTitle")}</Title>
-          <Text c="dimmed">{t("onboardGate.noAccountBody")}</Text>
-          <Group>
-            <Button
-              data-testid="no-account-signin"
-              onClick={() => {
-                localStorage.removeItem("provisa_token");
-                onSessionExpired();
-              }}
-            >
-              {t("onboardGate.backToSignIn")}
-            </Button>
-          </Group>
-        </Stack>
-      </Box>
-    );
-  }
-  // A platform superadmin holds admin caps but zero org memberships — the onboarding flow is for
-  // tenant users who must join/create an org, not the platform operator. Let admin/superadmin
-  // (resolved from /auth/me assignments) through to the shell instead of trapping them here.
-  const isPlatformAdmin = assignments.some(
-    (a) => a.role_id === "admin" || a.role_id === "superadmin",
-  );
-  if (authEnabled && token && !loading && userId && orgMemberships.length === 0 && !isPlatformAdmin) {
-    return (
-      <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
-        <OnboardOrgPage />
-      </Suspense>
-    );
   }
   return <>{children}</>;
 }

@@ -12,6 +12,21 @@ import type { Role, RoleAssignment, OrgMembership } from "../types/auth";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
+/**
+ * REQ-1286: a failed /auth/me carries WHY it failed. 401/403 is "this session is not valid" —
+ * sign in again. Anything else (5xx, network) is the deployment failing, and reporting that as
+ * "no account access" sends the user to ask an administrator for an invitation they already have.
+ * status is 0 when the request never reached the server.
+ */
+export class AuthMeError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(`auth/me failed: ${status}`);
+    this.name = "AuthMeError";
+    this.status = status;
+  }
+}
+
 export async function fetchMe(): Promise<{
   user_id: string;
   email: string | null;
@@ -23,8 +38,13 @@ export async function fetchMe(): Promise<{
   org_memberships: OrgMembership[];
   assignments: RoleAssignment[];
 }> {
-  const res = await fetch("/auth/me");
-  if (!res.ok) throw new Error("auth/me failed");
+  let res: Response;
+  try {
+    res = await fetch("/auth/me");
+  } catch {
+    throw new AuthMeError(0);
+  }
+  if (!res.ok) throw new AuthMeError(res.status);
   return res.json();
 }
 
@@ -1086,6 +1106,9 @@ export async function createInvite(
   orgId: string,
   roleId?: string,
   expiresInDays = 7,
+  // REQ-1287: addressing the invite to an email is what lets the invitee be told they have a
+  // pending invitation on first sign-in. Omit for a shareable link.
+  email?: string,
 ): Promise<OrgInvite> {
   const res = await fetch(`${API_BASE}/admin/invites`, {
     method: "POST",
@@ -1094,6 +1117,7 @@ export async function createInvite(
       org_id: orgId,
       role_id: roleId ?? null,
       expires_in_days: expiresInDays,
+      email: email ?? null,
     }),
   });
   if (!res.ok) throw new Error(`createInvite failed: ${res.status}`);
@@ -1116,6 +1140,26 @@ export async function fetchInviteInfo(token: string): Promise<InviteInfo> {
 
 // Redeem an invite for the CURRENT bearer-authenticated user (Firebase/OIDC). The global
 // authFetch wrapper attaches the just-stored provisa_token as the bearer, so no header is set here.
+export interface PendingInvite {
+  token: string;
+  org_id: string;
+  org_name: string;
+  role_id: string | null;
+  expires_at: string;
+}
+
+/**
+ * REQ-1287: invitations addressed to the signed-in user's email that are still open. Onboarding
+ * uses this to answer "do you have an invitation?" without the user needing to already hold the
+ * token — an invited person who arrives via the front door otherwise looks like a stranger.
+ */
+export async function fetchMyInvites(): Promise<PendingInvite[]> {
+  const res = await fetch("/auth/my-invites");
+  if (!res.ok) throw new Error(`my-invites failed: ${res.status}`);
+  const data = await res.json();
+  return data.invites;
+}
+
 export async function redeemInvite(
   token: string,
 ): Promise<{ user_id: string; org_id: string; role_id: string }> {

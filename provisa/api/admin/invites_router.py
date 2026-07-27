@@ -65,6 +65,9 @@ class CreateInviteBody(BaseModel):
     org_id: str
     role_id: str | None = None
     expires_in_days: int = 7
+    # REQ-1287: address the invite to a person so GET /auth/my-invites can surface it to them on
+    # first sign-in. Omit for a shareable link invite.
+    email: str | None = None
 
 
 @router.post("/")
@@ -97,6 +100,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
                 token=token,
                 org_id=body.org_id,
                 role_id=body.role_id,
+                email=body.email.strip().lower() if body.email else None,
                 created_by=created_by,
                 expires_at=expires_at,
             )
@@ -104,6 +108,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
                 org_invites.c.token,
                 org_invites.c.org_id,
                 org_invites.c.role_id,
+                org_invites.c.email,
                 org_invites.c.created_by,
                 org_invites.c.expires_at,
             )
@@ -162,9 +167,7 @@ async def list_invites(request: Request):  # REQ-516
 async def revoke_invite(token: str, request: Request):  # REQ-516
     scope_org = await _administered_org_scope(request)
     pool = _pool(request)
-    stmt = _delete(org_invites).where(
-        org_invites.c.token == token, org_invites.c.used_at.is_(None)
-    )
+    stmt = _delete(org_invites).where(org_invites.c.token == token, org_invites.c.used_at.is_(None))
     if scope_org is not None:
         stmt = stmt.where(org_invites.c.org_id == scope_org)
     async with pool.acquire() as conn:

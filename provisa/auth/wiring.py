@@ -82,6 +82,29 @@ def build_auth_provider(
     raise ValueError(f"Unknown auth provider: {provider_name!r}")
 
 
+def _resolve_default_org_id(cfg) -> str:  # REQ-1286
+    """The org an authenticated user is bound to when no other org applies.
+
+    ONE source of truth: the control plane's resolved ``org_id`` (``state.org_id``, set by
+    ``_init_control_planes``), which is also what names the tenant schema ``org_<id>`` and the
+    registry's default org row. ``config.default_org_id`` overrides it only when explicitly set.
+    Before the control planes come up ``state.org_id`` is absent — the middleware resolves its
+    settings lazily on the first request, by which point the lifespan has run, so an absent value
+    there is a real misconfiguration and must raise rather than resolve to a guessed literal."""
+    from provisa.api.app import state
+
+    explicit = getattr(cfg, "default_org_id", None) if cfg else None
+    if explicit:
+        return explicit
+    org_id = getattr(state, "org_id", None)
+    if not org_id:
+        raise RuntimeError(
+            "default org id unresolved: control-plane org_id is unset and no explicit "
+            "config.default_org_id was provided"
+        )
+    return org_id
+
+
 def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
     """Resolve AuthMiddleware settings from live app ``state``.
 
@@ -98,7 +121,7 @@ def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
     auth_config = getattr(state, "auth_config", None)
     cfg = getattr(state, "config", None)
     multitenancy = getattr(cfg, "multitenancy", False) if cfg else False
-    default_org_id = getattr(cfg, "default_org_id", "root") if cfg else "root"
+    default_org_id = _resolve_default_org_id(cfg)
     base = {
         "mapping_rules": [],
         "default_role": "analyst",
@@ -169,7 +192,7 @@ def wire_auth(
 
     cfg = getattr(_app_state, "config", None)
     multitenancy = getattr(cfg, "multitenancy", False) if cfg else False
-    default_org_id = getattr(cfg, "default_org_id", "root") if cfg else "root"
+    default_org_id = _resolve_default_org_id(cfg)
 
     _app_state.auth_middleware_active = True
 

@@ -56,7 +56,10 @@ vi.mock("../../hooks/useCapability", () => ({
 
 const runSql = vi.fn().mockResolvedValue({ columns: ["id"], rows: [{ id: 1 }] });
 const nlToSql = vi.fn().mockResolvedValue({ sql: "select 1", attempts: 1 });
-vi.mock("../../api/admin", () => ({
+// Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
+// replace-everything factory here leaks into other files and drops exports they need.
+vi.mock("../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/admin")>()),
   runSql: (...a: unknown[]) => runSql(...a),
   nlToSql: (...a: unknown[]) => nlToSql(...a),
 }));

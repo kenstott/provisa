@@ -22,14 +22,19 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import init_registry_schema
 
 
-async def bring_up_platform(url: str, *, pool_size: int, pool_min: int) -> Database:
+async def bring_up_platform(
+    url: str, *, pool_size: int, pool_min: int, org_id: str
+) -> Database:
     """Build the platform-plane ``Database`` from *url* and initialise its schema
-    (org/user/invite registry + SaaS billing). Unscoped — no ``search_path``."""
+    (org/user/invite registry + SaaS billing). Unscoped — no ``search_path``.
+
+    *org_id* is the control plane's resolved org id; the registry's default org row is
+    seeded under it so the row and the ``org_<id>`` tenant schema always agree (REQ-1286)."""
     db = Database(
         create_engine_from_url(url, pool_size=pool_size, max_overflow=max(pool_size - pool_min, 0)),
         name="platform",
     )
-    await init_registry_schema(db)
+    await init_registry_schema(db, org_id)
     from provisa.api.billing.tenant_db import init_billing_schema
 
     await init_billing_schema(db)

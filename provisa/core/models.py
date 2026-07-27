@@ -1097,7 +1097,10 @@ class ProvisaConfig(BaseModel):
     exchange_spool_s3_region: str = "us-east-1"
     exchange_spool_s3_access_key: str = ""
     exchange_spool_s3_secret_key: str = ""
-    default_org_id: str = "root"
+    # REQ-1286: unset means "the control plane's org_id" — resolved at wiring time. A separate
+    # literal default here would let active_org_id name an org whose org_<id> schema was never
+    # created, and every runtime resolution for it fails.
+    default_org_id: str | None = None
     sources: list[Source]
     domains: list[Domain]
     naming: NamingConfig = Field(default_factory=NamingConfig)

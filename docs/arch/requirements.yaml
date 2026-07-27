@@ -37613,3 +37613,94 @@
     rationale: Auto-join with email domain scoping is standard in multi-tenant SaaS (Slack Teams, GitHub
       org auto-add). Provisa offers comparable convenience while maintaining email-rule-based governance
       control.
+- id: REQ-1286
+  status: complete
+  group: 2. Authentication & Identity
+  category: Identity Resolution
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: The default org ID has a single source of truth from the control plane's resolved org_id
+    (the value that names the tenant schema org_<id>). config.default_org_id is None by default and only
+    overrides when explicitly set; if neither resolves, the system raises rather than guessing. Unresolved-identity
+    states (server error, network failure, auth failure) must be distinguished from resolved identities with
+    zero org memberships — the UI must not collapse failed /auth/me into "no account access".
+  use_case: >-
+    Three divergent literals ("root" in config, "default" in control plane, "root" hardcoded in registry
+    seed) caused active_org_id to name an org whose org_<id> schema was never created, leading to /auth/me
+    500 errors and false "no account access" reports. A single source of truth prevents org ID aliasing.
+    Distinguishing error states from empty memberships ensures the UI routes users forward (to OnboardOrgPage
+    for org creation/join) instead of dead-ending with a generic access-denied message.
+  code:
+  - provisa/auth/wiring.py
+  - provisa/core/models.py
+  - provisa/core/schema_admin.py
+  - provisa/core/control_plane.py
+  - provisa/api/startup_seed.py
+  - provisa/api/auth_router.py
+  - provisa-ui/src/api/admin.ts
+  - provisa-ui/src/context/AuthContext.tsx
+  - provisa-ui/src/App.tsx
+  - provisa-ui/src/i18n/locales/en/onboardGate.json
+  tests:
+  - tests/unit/test_default_org_id_resolution.py
+  - provisa-ui/src/__tests__/OnboardGate.test.tsx
+  scenario: |
+    Given a Provisa instance with no config.default_org_id set
+    When the control plane resolves an org_id from deployment context
+    Then that org_id is the canonical identifier for the tenant schema org_<id>
+    And /auth/me reports state.org_id from the control plane, not a literal fallback
+
+    Given a Provisa instance with both control plane org_id and config.default_org_id set
+    When an authenticated user calls /auth/me
+    Then config.default_org_id takes precedence (explicit override)
+
+    Given neither control plane nor config.default_org_id resolves
+    When the system starts
+    Then it raises an error rather than guessing a default
+
+    Given a /auth/me request that fails at the server (5xx error)
+    When the UI receives the response
+    Then OnboardGate renders a "can't reach Provisa / retry" screen distinct from the login screen
+    And does not report the failure as an access decision
+
+    Given an identity that successfully resolves with zero org memberships
+    When the user first signs in
+    Then OnboardGate routes to OnboardOrgPage (create/join org)
+    And does not render the "access denied" screen
+  e2e: true
+  e2e_reason: Identity resolution correctness and error-state routing are only verifiable through a full
+    authentication flow with real server response codes and UI navigation.
+  competitive_position:
+    status: ahead
+    rationale: Explicit single source of truth for default org ID and precise error-state handling (distinguishing
+      server failure from access denial) prevents silent data model mismatches and improves UX during onboarding
+      and transient failures. Competitors like Hasura typically collapse all /auth failures into generic
+      "unauthorized" without differentiating network/server errors from auth denials.
+- id: REQ-1287
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Org Invitations
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Onboarding independently answers three questions: whether the user has a Provisa account,
+    whether they have a pending org invitation, and whether they have org membership. Addressed
+    invitations store the invitee's email in the org_invites table, enabling the UI to surface
+    one-click accepts; link invites remain shareable without email.
+  use_case: >-
+    Users with pending org invitations can directly accept them on arrival without providing an
+    invite token. The onboarding flow correctly distinguishes between account creation, org
+    invitation acceptance, and org membership scenarios.
+  code:
+    - provisa/core/schema_admin.py
+    - provisa/api/auth_router.py
+    - provisa-ui/src/pages/OnboardOrgPage.tsx
+  tests:
+    - tests/integration/test_redeem_invite.py
+  since: "2026-07"
+  scenario: |
+    Given an invited user arrives at the onboarding page without an invite token
+    When their identity email matches an open, unexpired org invitation
+    Then the UI displays the invitation and offers one-click accept
+    And failed my-invites lookup does not block org creation

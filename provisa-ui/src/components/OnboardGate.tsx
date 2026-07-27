@@ -1,0 +1,117 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 4e7c9a02-1b6d-4f38-8a55-c0d3e7b91f24
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+import { lazy, Suspense } from "react";
+import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
+import { useAuth } from "../context/AuthContext";
+
+const OnboardOrgPage = lazy(() =>
+  import("../pages/OnboardOrgPage").then((m) => ({ default: m.OnboardOrgPage })),
+);
+
+/**
+ * REQ-1266: gates the app shell behind org membership. An authenticated user with no org
+ * memberships is routed to self-service org creation; everyone else falls through to the shell.
+ * Waits for the AuthProvider bootstrap (loading) so the gate keys off the settled membership set.
+ */
+export function OnboardGate({
+  children,
+  onSessionExpired,
+}: {
+  children: ReactNode;
+  onSessionExpired: () => void;
+}) {
+  const { t } = useTranslation();
+  const { orgMemberships, assignments, loading, authEnabled, userId, identityErrorStatus, refresh } =
+    useAuth();
+  const token = localStorage.getItem("provisa_token");
+  // REQ-1286: an unresolved identity has two causes that must NOT share a screen.
+  //
+  //   /auth/me returned 5xx (or never reached the server) -> the deployment is failing. Telling
+  //   the user their account lacks access is a false statement about an access decision that was
+  //   never made, and it sends them to ask an administrator for an invitation that would not help.
+  //
+  //   /auth/me returned 401/403 -> the credential is genuinely not accepted: expired, or an
+  //   identity this deployment has not granted access to. Only THIS is an access answer.
+  //
+  // Presence of the token string alone is never proof of a live session; only a resolved identity
+  // is (REQ-1266/REQ-1267).
+  const unresolved = authEnabled && !!token && !loading && !userId;
+  const serverFailed =
+    unresolved &&
+    identityErrorStatus !== null &&
+    identityErrorStatus !== 401 &&
+    identityErrorStatus !== 403;
+  if (serverFailed) {
+    return (
+      <Box maw={480} mx="auto" my={80} data-testid="identity-unavailable">
+        <Stack gap="md">
+          <Title order={2}>{t("onboardGate.unavailableTitle")}</Title>
+          <Text c="dimmed">{t("onboardGate.unavailableBody")}</Text>
+          <Group>
+            <Button data-testid="identity-unavailable-retry" onClick={() => void refresh()}>
+              {t("onboardGate.retry")}
+            </Button>
+          </Group>
+        </Stack>
+      </Box>
+    );
+  }
+  if (unresolved) {
+    return (
+      <Box maw={480} mx="auto" my={80} data-testid="no-account">
+        <Stack gap="md">
+          <Title order={2}>{t("onboardGate.noAccountTitle")}</Title>
+          <Text c="dimmed">{t("onboardGate.noAccountBody")}</Text>
+          <Group>
+            <Button
+              data-testid="no-account-signin"
+              onClick={() => {
+                localStorage.removeItem("provisa_token");
+                onSessionExpired();
+              }}
+            >
+              {t("onboardGate.backToSignIn")}
+            </Button>
+          </Group>
+        </Stack>
+      </Box>
+    );
+  }
+  // A platform superadmin holds admin caps but zero org memberships — the onboarding flow is for
+  // tenant users who must join/create an org, not the platform operator. Let admin/superadmin
+  // (resolved from /auth/me assignments) through to the shell instead of trapping them here.
+  const isPlatformAdmin = assignments.some(
+    (a) => a.role_id === "admin" || a.role_id === "superadmin",
+  );
+  if (
+    authEnabled &&
+    token &&
+    !loading &&
+    userId &&
+    orgMemberships.length === 0 &&
+    !isPlatformAdmin
+  ) {
+    return (
+      <Suspense
+        fallback={
+          <div className="page">
+            <p>Loading...</p>
+          </div>
+        }
+      >
+        <OnboardOrgPage />
+      </Suspense>
+    );
+  }
+  return <>{children}</>;
+}

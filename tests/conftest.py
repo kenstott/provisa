@@ -678,7 +678,7 @@ async def graphql_client(docker_postgres):
 
     admin_engine = create_engine_from_url(os.environ["PLATFORM_DATABASE_URL"], pool_size=3)
     admin_db = Database(admin_engine, name="platform")
-    await init_registry_schema(admin_db)
+    await init_registry_schema(admin_db, "root")
     app_mod.state.admin_db = admin_db
 
     transport = ASGITransport(app=the_app)

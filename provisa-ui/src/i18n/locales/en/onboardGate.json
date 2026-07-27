@@ -1,7 +1,10 @@
 {
   "onboardGate": {
-    "noAccountTitle": "No account access",
-    "noAccountBody": "You're signed in, but this account hasn't been granted access to this deployment — or your session has expired. Ask an administrator for an invitation, then sign in again.",
-    "backToSignIn": "Back to sign in"
+    "noAccountTitle": "Sign in again",
+    "noAccountBody": "Your identity provider signed you in, but Provisa didn't accept the session — it has expired, or this identity has no Provisa account yet. Sign in again to create one. If you were invited to an organization, use your invitation link after signing in.",
+    "backToSignIn": "Back to sign in",
+    "unavailableTitle": "Can't reach Provisa",
+    "unavailableBody": "Provisa couldn't confirm who you are because the server didn't respond. This is not a problem with your account. Try again in a moment.",
+    "retry": "Try again"
   }
 }

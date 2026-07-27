@@ -230,6 +230,9 @@ class TestReq890OidcAuth:
             "default_role": "viewer",
         }
         fake_state.auth_middleware_active = True
+        # Single-org deployment: without this the MagicMock attribute is truthy, so the handler
+        # takes the multitenant org-resolution branch and fails the connection on a missing loop.
+        fake_state.multitenancy = False
         return fake_state
 
     def test_valid_token_accepted_and_mapped_to_role(self):

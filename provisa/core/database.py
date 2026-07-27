@@ -92,6 +92,11 @@ class Capabilities:
     rules: bool
     returning: bool
     schemas: bool
+    # SAVEPOINT / nested-transaction support. PostgreSQL poisons the whole transaction
+    # when a statement raises, so an INSERT whose unique violation we intend to catch must be
+    # isolated in a savepoint. DuckDB's parser has no SAVEPOINT at all, and it does not abort the
+    # surrounding transaction on error, so the nested scope is both unsupported and unnecessary.
+    savepoints: bool
 
     def enter_org_sql(self, schema: str) -> str | None:
         """The statement that scopes a connection to ``schema`` (org namespace),
@@ -119,6 +124,7 @@ class Capabilities:
                 rules=True,
                 returning=True,
                 schemas=True,
+                savepoints=True,
             )
         if d == "sqlite":
             return cls(
@@ -129,6 +135,7 @@ class Capabilities:
                 rules=False,
                 returning=True,
                 schemas=False,
+                savepoints=True,
             )
         if d in ("mysql", "mariadb"):
             return cls(
@@ -139,6 +146,7 @@ class Capabilities:
                 rules=False,
                 returning=False,
                 schemas=True,
+                savepoints=True,
             )
         if d == "duckdb":
             # An embedded DuckDB file used as a materialization store (REQ-989): schema-capable,
@@ -151,6 +159,7 @@ class Capabilities:
                 rules=False,
                 returning=True,
                 schemas=True,
+                savepoints=False,
             )
         if d == "oracle":
             return cls(
@@ -161,6 +170,7 @@ class Capabilities:
                 rules=False,
                 returning=True,
                 schemas=True,
+                savepoints=True,
             )
         return cls(
             d,
@@ -170,6 +180,7 @@ class Capabilities:
             rules=False,
             returning=False,
             schemas=False,
+            savepoints=False,
         )
 
 
@@ -516,9 +527,16 @@ class Connection:
         # the connection in a failed state and the next statement (e.g. upsert_returning's SELECT)
         # would raise InFailedSQLTransactionError. begin_nested auto-begins the outer txn if none is
         # active; rolling back the savepoint keeps the connection usable.
+        insert_stmt = apply_meta_tenant_guard(_insert(table).values(**values))
         try:
-            async with self._ac.begin_nested():
-                await self._ac.execute(apply_meta_tenant_guard(_insert(table).values(**values)))
+            if self.capabilities.savepoints:
+                async with self._ac.begin_nested():
+                    await self._ac.execute(insert_stmt)
+            else:
+                # No savepoint support (DuckDB has no SAVEPOINT keyword). Safe because these
+                # backends do not abort the surrounding transaction when a statement raises, so
+                # the caught IntegrityError leaves the connection usable without a nested scope.
+                await self._ac.execute(insert_stmt)
         except IntegrityError:
             # Lost an insert race with a concurrent writer — fall back to the update.
             if set_map:
