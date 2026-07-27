@@ -104,6 +104,17 @@ def planes(monkeypatch):
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
 
+    # REQ-1266: redeem-invite/register bind the INVITED org's data-plane runtime (ensure_org_runtime)
+    # to obtain a tenant_db search_path-scoped to that org's schema, then grant the role there. The
+    # full runtime build is an integration concern the invited org already exercises at provisioning;
+    # here the tenant schema IS the org's schema, so resolve the runtime to a stub carrying tenant_db.
+    from types import SimpleNamespace
+
+    async def _org_runtime(_org_id: str):
+        return SimpleNamespace(tenant_db=tenant_db)
+
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
+
     yield admin_db, tenant_db, sync_engine
 
     with sync_engine.begin() as conn:

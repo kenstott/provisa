@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, insert, select, update
 
 from provisa.core.schema_admin import local_users, org_invites, orgs, user_org_memberships
-from provisa.core.schema_org import roles, user_role_assignments
+from provisa.core.schema_org import roles
 
 if TYPE_CHECKING:
     pass
@@ -251,15 +251,15 @@ async def register(body: RegisterRequest):
             # not the platform plane above. Without this the invitee gets org MEMBERSHIP but no role,
             # so the capability layer sees an identity with zero assignments — an org with an admin
             # who cannot administer it. The invite always carries role_id (schema_admin.org_invites).
-            tenant_db = state.tenant_db
-            assert tenant_db is not None
-            async with tenant_db.acquire() as tconn:
-                await tconn.upsert(
-                    user_role_assignments,
-                    {"user_id": user_id, "role_id": invite["role_id"], "domain_id": "*"},
-                    index_elements=["user_id", "role_id", "domain_id"],
-                    update_columns=[],
-                )
+            # It MUST land in the INVITED org's schema: this platform-plane request leaves current_org
+            # unset, so state.tenant_db would resolve the DEFAULT org. Bind the invited org's runtime
+            # (its tenant_db is search_path-scoped to org_<id>).
+            from provisa.api.app import ensure_org_runtime
+            from provisa.core.org_membership import grant_org_role
+
+            rt = await ensure_org_runtime(invite["org_id"])
+            assert rt.tenant_db is not None
+            await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
     return {"user_id": user_id, "username": body.username}
 
 
@@ -315,14 +315,13 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
             .values(used_at=func.now(), used_by=user_id)
         )
 
-    # Role assignment lives in the tenant control plane (see /register for the same split).
-    tenant_db = state.tenant_db
-    assert tenant_db is not None
-    async with tenant_db.acquire() as tconn:
-        await tconn.upsert(
-            user_role_assignments,
-            {"user_id": user_id, "role_id": invite["role_id"], "domain_id": "*"},
-            index_elements=["user_id", "role_id", "domain_id"],
-            update_columns=[],
-        )
+    # Role assignment is tenant-plane (see /register for the same split) and must land in the
+    # INVITED org's schema. This platform-plane request leaves current_org unset, so state.tenant_db
+    # would resolve the DEFAULT org — bind the invited org's runtime (tenant_db scoped to org_<id>).
+    from provisa.api.app import ensure_org_runtime
+    from provisa.core.org_membership import grant_org_role
+
+    rt = await ensure_org_runtime(invite["org_id"])
+    assert rt.tenant_db is not None
+    await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
     return {"user_id": user_id, "org_id": invite["org_id"], "role_id": invite["role_id"]}

@@ -14,11 +14,24 @@ and REQ-1276 Host subdomain-based org resolution."""
 
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.models import AuthIdentity, AuthProvider
+
+
+@pytest.fixture(autouse=True)
+def _stub_org_runtime(monkeypatch):
+    """REQ-1266: for a non-default org member the middleware re-reads assignments from that org's
+    schema, pre-building its data-plane runtime via ensure_org_runtime. That build is an integration
+    concern (needs the real admin plane); here the fake db_pool ignores the bound org, so stub it."""
+
+    async def _noop(_org_id: str):
+        return None
+
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _noop, raising=False)
 
 
 class _Provider(AuthProvider):

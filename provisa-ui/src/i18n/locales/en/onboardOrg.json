@@ -1,7 +1,14 @@
 {
   "onboardOrg": {
-    "title": "Create your organization",
-    "subtitle": "You're not a member of any organization yet. Create one to get started.",
+    "title": "Get started",
+    "subtitle": "You're not a member of any organization yet. Create one, or join an existing one with an invite.",
+    "modeCreate": "Create an organization",
+    "modeJoin": "Join with an invite",
+    "inviteLabel": "Invite code",
+    "inviteDesc": "Paste the invite code an organization admin sent you.",
+    "joinButton": "Join organization",
+    "joinFailed": "Could not join the organization",
+    "joining": "Joining the organization...",
     "orgIdLabel": "Organization ID",
     "orgIdDesc": "Lowercase letters, numbers, and underscores. Used internally and cannot be changed.",
     "orgNameLabel": "Organization name",

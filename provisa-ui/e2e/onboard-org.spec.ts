@@ -93,3 +93,56 @@ test("member-less user onboards a new org with demo data and is routed into the 
   expect(createBody).toEqual({ id: ORG_ID, name: "Carol Co", include_demo: true });
   expect(await page.evaluate(() => localStorage.getItem("provisa_org"))).toBe(ORG_ID);
 });
+
+test("member-less user joins an existing org with an invite code and is routed in", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("provisa_token", "tok-dave");
+  });
+
+  await page.route("**/setup/status", (route) =>
+    route.fulfill({ json: { needs_setup: false, demo_mode: false, auth_enabled: true } }),
+  );
+  await page.route("**/firebase-config.js", (route) =>
+    route.fulfill({ body: "", contentType: "application/javascript" }),
+  );
+
+  let joined = false;
+  await page.route("**/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        user_id: "dave",
+        email: "dave@example.com",
+        display_name: "Dave",
+        dev_mode: false,
+        active_org_id: joined ? ORG_ID : null,
+        org_memberships: joined ? [{ org_id: ORG_ID, org_name: "Carol Co" }] : [],
+        assignments: joined ? [{ role_id: "org_admin", domain_id: "*" }] : [],
+      },
+    }),
+  );
+  await page.route("**/admin/graphql", (route) =>
+    route.fulfill({ json: { data: { roles: [], domains: [] } } }),
+  );
+
+  let redeemBody: Record<string, unknown> | null = null;
+  await page.route("**/auth/redeem-invite", (route) => {
+    redeemBody = route.request().postDataJSON();
+    joined = true;
+    return route.fulfill({ json: { user_id: "dave", org_id: ORG_ID, role_id: "org_admin" } });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByTestId("onboard-org-mode")).toBeVisible();
+  await page.getByText("Join with an invite").click();
+  await page.getByTestId("onboard-org-invite").fill("invite-tok-xyz");
+  await page.getByTestId("onboard-org-join-submit").click();
+
+  await page.waitForURL("**/query");
+  await expect(page.getByTestId("onboard-org-page")).toHaveCount(0);
+
+  expect(redeemBody).toEqual({ token: "invite-tok-xyz" });
+  expect(await page.evaluate(() => localStorage.getItem("provisa_org"))).toBe(ORG_ID);
+});

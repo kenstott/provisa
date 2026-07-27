@@ -12,24 +12,38 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Alert, Box, Button, Checkbox, Loader, Stack, Text, TextInput, Title } from "@mantine/core";
-import { createOrg, fetchOrgStatus } from "../api/admin";
+import {
+  Alert,
+  Box,
+  Button,
+  Checkbox,
+  Loader,
+  SegmentedControl,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { createOrg, fetchOrgStatus, redeemInvite } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 
-// REQ-1266: a member-less authenticated user self-creates an org. Create returns immediately with
-// provisioning_state="provisioning"; we poll /status until ready/failed, then bind the new org,
-// refetch identity (so the new membership clears the onboarding gate), and route into the app.
+// REQ-1266: a member-less authenticated user either self-creates an org OR joins an existing one
+// with an invite code. Create returns immediately with provisioning_state="provisioning"; we poll
+// /status until ready/failed. Join redeems the invite (server grants membership synchronously).
+// Both then refetch identity (so the new membership clears the onboarding gate) and route in.
 export function OnboardOrgPage() {
   const { t } = useTranslation();
   const { selectOrg, refresh } = useAuth();
   const navigate = useNavigate();
+  const [mode, setMode] = useState<"create" | "join">("create");
   const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [includeDemo, setIncludeDemo] = useState(false);
+  const [invite, setInvite] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [phase, setPhase] = useState<"form" | "provisioning">("form");
+  const [phase, setPhase] = useState<"form" | "provisioning" | "joining">("form");
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setPhase("provisioning");
@@ -55,6 +69,21 @@ export function OnboardOrgPage() {
     }
   };
 
+  const handleJoin = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setPhase("joining");
+    try {
+      const { org_id } = await redeemInvite(invite.trim());
+      selectOrg(org_id);
+      await refresh();
+      navigate("/query");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
+      setPhase("form");
+    }
+  };
+
   return (
     <Box maw={480} mx="auto" my={80} data-testid="onboard-org-page">
       <Title order={2}>{t("onboardOrg.title")}</Title>
@@ -67,44 +96,89 @@ export function OnboardOrgPage() {
           <Loader />
           <Text>{t("onboardOrg.provisioning")}</Text>
         </Stack>
+      ) : phase === "joining" ? (
+        <Stack gap="md" align="center" data-testid="onboard-org-joining">
+          <Loader />
+          <Text>{t("onboardOrg.joining")}</Text>
+        </Stack>
       ) : (
-        <form onSubmit={handleSubmit}>
-          <Stack gap="md">
-            <TextInput
-              id="onboard-org-id"
-              data-testid="onboard-org-id"
-              label={t("onboardOrg.orgIdLabel")}
-              description={t("onboardOrg.orgIdDesc")}
-              value={id}
-              onChange={(e) => setId(e.currentTarget.value)}
-              required
-              pattern="[A-Za-z_][A-Za-z0-9_]*"
-            />
-            <TextInput
-              id="onboard-org-name"
-              data-testid="onboard-org-name"
-              label={t("onboardOrg.orgNameLabel")}
-              value={name}
-              onChange={(e) => setName(e.currentTarget.value)}
-              required
-            />
-            <Checkbox
-              data-testid="onboard-org-demo"
-              label={t("onboardOrg.includeDemoLabel")}
-              description={t("onboardOrg.includeDemoDesc")}
-              checked={includeDemo}
-              onChange={(e) => setIncludeDemo(e.currentTarget.checked)}
-            />
-            {error && (
-              <Alert variant="light" color="red" data-testid="onboard-org-error">
-                {error}
-              </Alert>
-            )}
-            <Button type="submit" data-testid="onboard-org-submit">
-              {t("onboardOrg.createButton")}
-            </Button>
-          </Stack>
-        </form>
+        <Stack gap="lg">
+          <SegmentedControl
+            fullWidth
+            data-testid="onboard-org-mode"
+            value={mode}
+            onChange={(v) => {
+              setMode(v as "create" | "join");
+              setError(null);
+            }}
+            data={[
+              { label: t("onboardOrg.modeCreate"), value: "create" },
+              { label: t("onboardOrg.modeJoin"), value: "join" },
+            ]}
+          />
+
+          {mode === "create" ? (
+            <form onSubmit={handleCreate}>
+              <Stack gap="md">
+                <TextInput
+                  id="onboard-org-id"
+                  data-testid="onboard-org-id"
+                  label={t("onboardOrg.orgIdLabel")}
+                  description={t("onboardOrg.orgIdDesc")}
+                  value={id}
+                  onChange={(e) => setId(e.currentTarget.value)}
+                  required
+                  pattern="[A-Za-z_][A-Za-z0-9_]*"
+                />
+                <TextInput
+                  id="onboard-org-name"
+                  data-testid="onboard-org-name"
+                  label={t("onboardOrg.orgNameLabel")}
+                  value={name}
+                  onChange={(e) => setName(e.currentTarget.value)}
+                  required
+                />
+                <Checkbox
+                  data-testid="onboard-org-demo"
+                  label={t("onboardOrg.includeDemoLabel")}
+                  description={t("onboardOrg.includeDemoDesc")}
+                  checked={includeDemo}
+                  onChange={(e) => setIncludeDemo(e.currentTarget.checked)}
+                />
+                {error && (
+                  <Alert variant="light" color="red" data-testid="onboard-org-error">
+                    {error}
+                  </Alert>
+                )}
+                <Button type="submit" data-testid="onboard-org-submit">
+                  {t("onboardOrg.createButton")}
+                </Button>
+              </Stack>
+            </form>
+          ) : (
+            <form onSubmit={handleJoin}>
+              <Stack gap="md">
+                <TextInput
+                  id="onboard-org-invite"
+                  data-testid="onboard-org-invite"
+                  label={t("onboardOrg.inviteLabel")}
+                  description={t("onboardOrg.inviteDesc")}
+                  value={invite}
+                  onChange={(e) => setInvite(e.currentTarget.value)}
+                  required
+                />
+                {error && (
+                  <Alert variant="light" color="red" data-testid="onboard-org-error">
+                    {error}
+                  </Alert>
+                )}
+                <Button type="submit" data-testid="onboard-org-join-submit">
+                  {t("onboardOrg.joinButton")}
+                </Button>
+              </Stack>
+            </form>
+          )}
+        </Stack>
       )}
     </Box>
   );

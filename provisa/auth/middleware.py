@@ -180,6 +180,30 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 update_columns=["email", "display_name", "provider", "last_seen"],
             )
 
+    async def _read_assignments(self, identity: AuthIdentity) -> list[RoleAssignment]:
+        """Read the user's role assignments from the tenant control plane scoped to the currently
+        bound org — the ``current_org`` ContextVar selects which ``org_<id>`` schema the db_pool
+        shim resolves to (unset → default org). ``user_role_assignments`` is tenant-plane, so a
+        member's grant is only visible when this runs with THEIR org bound. Applies configured
+        default_assignments only when the user has no explicit rows."""
+        assert self._db_pool is not None
+        async with self._db_pool.acquire() as conn:
+            result = await conn.execute_core(
+                select(
+                    user_role_assignments.c.role_id,
+                    user_role_assignments.c.domain_id,
+                ).where(user_role_assignments.c.user_id == identity.user_id)
+            )
+            rows = [dict(r._mapping) for r in result.fetchall()]
+        if rows:
+            return [RoleAssignment(role_id=r["role_id"], domain_id=r["domain_id"]) for r in rows]
+        if self._default_assignments:
+            return [
+                RoleAssignment(role_id=a["role_id"], domain_id=a.get("domain_id", "*"))
+                for a in self._default_assignments
+            ]
+        return []
+
     async def dispatch(self, request: Request, call_next):  # REQ-486
         if request.url.path in _SKIP_PATHS:
             return await call_next(request)
@@ -297,58 +321,28 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 request.state.active_org_id = self._default_org_id
                 return await call_next(request)
 
+        # Platform-plane assignment read (default-org schema — the db_pool shim resolves the default
+        # runtime while current_org is unset). For a default-org member this IS their assignment set;
+        # for a member of a NON-default org it is empty, since user_role_assignments is tenant-plane
+        # and their grant lives in the org_<id> schema. It still tells us whether the user is a
+        # platform admin (admin/superadmin), which the org gate below needs before an org is bound.
         if self._assignments_source == "provisa" and self._db_pool is not None:
-            async with self._db_pool.acquire() as conn:
-                result = await conn.execute_core(
-                    select(
-                        user_role_assignments.c.role_id,
-                        user_role_assignments.c.domain_id,
-                    ).where(user_role_assignments.c.user_id == identity.user_id)
-                )
-                rows = [dict(r._mapping) for r in result.fetchall()]
-            if rows:
-                assignments = [
-                    RoleAssignment(role_id=r["role_id"], domain_id=r["domain_id"]) for r in rows
-                ]
-            elif self._default_assignments:
-                assignments = [
-                    RoleAssignment(role_id=a["role_id"], domain_id=a.get("domain_id", "*"))
-                    for a in self._default_assignments
-                ]
-            else:
-                assignments = []
+            platform_assignments = await self._read_assignments(identity)
         else:
-            assignments = resolve_assignments(identity)
-
-        role = resolve_role(identity, self._mapping_rules, self._default_role)
-
-        # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
-        # honors it only when the authenticated user is actually assigned that role — a bare
-        # client-supplied role is never trusted. With a single assignment the default stands.
-        requested_role = request.headers.get("x-provisa-role")
-        if requested_role:
-            assigned_role_ids = {a.role_id for a in assignments}
-            if requested_role in assigned_role_ids:
-                role = requested_role
-            else:
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": f"Role {requested_role!r} is not assigned to this user"},
-                )
-
-        # Fire-and-forget upsert of user_profiles (platform control plane)
-        if self._admin_pool is not None:
-            asyncio.ensure_future(self._upsert_profile(identity))
+            platform_assignments = resolve_assignments(identity)
 
         # Resolve active org
         if not self._multitenancy:
             active_org_id = self._default_org_id
+            assignments = platform_assignments
         else:
             # Platform admins (global admin/superadmin) may act in any org — org CRUD runs on the
             # platform plane, not a tenant's active-org schema. Everyone else is confined to an org
             # they belong to: a client-supplied X-Org-Id (or token active_org claim) naming a
             # non-member org is rejected, not silently honored, or it becomes a cross-tenant escape.
-            is_platform_admin = bool({a.role_id for a in assignments} & {"admin", "superadmin"})
+            is_platform_admin = bool(
+                {a.role_id for a in platform_assignments} & {"admin", "superadmin"}
+            )
             member_org_ids: list[str] = []
             if self._admin_pool is not None:
                 async with self._admin_pool.acquire() as conn:
@@ -382,6 +376,49 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                     status_code=401,
                     content={"detail": "Org selection required"},
                 )
+
+            # Tenant-plane assignments. A member's role assignment lives in their org's OWN schema,
+            # so bind that org and read it there (the default-org read above sees no such row). A
+            # platform admin instead carries admin/superadmin into every org — keep the platform set.
+            # The default org's own members already have their rows from the platform read.
+            if (
+                not is_platform_admin
+                and self._assignments_source == "provisa"
+                and self._db_pool is not None
+                and active_org_id is not None
+                and active_org_id != self._default_org_id
+            ):
+                from provisa.api.app import ensure_org_runtime
+                from provisa.api.org_runtime import reset_current_org, set_current_org
+
+                await ensure_org_runtime(active_org_id)
+                org_token = set_current_org(active_org_id)
+                try:
+                    assignments = await self._read_assignments(identity)
+                finally:
+                    reset_current_org(org_token)
+            else:
+                assignments = platform_assignments
+
+        role = resolve_role(identity, self._mapping_rules, self._default_role)
+
+        # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
+        # honors it only when the authenticated user is actually assigned that role — a bare
+        # client-supplied role is never trusted. With a single assignment the default stands.
+        requested_role = request.headers.get("x-provisa-role")
+        if requested_role:
+            assigned_role_ids = {a.role_id for a in assignments}
+            if requested_role in assigned_role_ids:
+                role = requested_role
+            else:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": f"Role {requested_role!r} is not assigned to this user"},
+                )
+
+        # Fire-and-forget upsert of user_profiles (platform control plane)
+        if self._admin_pool is not None:
+            asyncio.ensure_future(self._upsert_profile(identity))
 
         # Canonicalize identity.roles from the resolved assignments so the capability layer
         # (_resolved_capabilities/require_capability), /auth/me, and every downstream reader

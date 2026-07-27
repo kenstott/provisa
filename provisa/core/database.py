@@ -492,6 +492,8 @@ class Connection:
         )
         from sqlalchemy.exc import IntegrityError
 
+        from provisa.core.meta_rls import apply_meta_tenant_guard
+
         cols = (
             update_columns
             if update_columns is not None
@@ -509,12 +511,19 @@ class Connection:
             exists = await self.execute_core(_select(literal(1)).select_from(table).where(where))
             if exists.fetchone() is not None:
                 return  # DO NOTHING — row already present
+        # Isolate the INSERT in a SAVEPOINT: on PostgreSQL a unique-violation aborts the whole
+        # surrounding transaction, so without the nested scope the caught IntegrityError would leave
+        # the connection in a failed state and the next statement (e.g. upsert_returning's SELECT)
+        # would raise InFailedSQLTransactionError. begin_nested auto-begins the outer txn if none is
+        # active; rolling back the savepoint keeps the connection usable.
         try:
-            await self.execute_core(_insert(table).values(**values))
+            async with self._ac.begin_nested():
+                await self._ac.execute(apply_meta_tenant_guard(_insert(table).values(**values)))
         except IntegrityError:
             # Lost an insert race with a concurrent writer — fall back to the update.
             if set_map:
                 await self.execute_core(_update(table).where(where).values(**set_map))
+        await self._commit_if_autocommit()
 
     async def upsert_returning(
         self,
