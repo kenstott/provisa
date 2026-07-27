@@ -8,11 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
+import { fetchBootstrapStatus } from "../api/admin";
 
 const OnboardOrgPage = lazy(() =>
   import("../pages/OnboardOrgPage").then((m) => ({ default: m.OnboardOrgPage })),
@@ -62,6 +63,51 @@ export function OnboardGate({
     localStorage.removeItem("provisa_token");
     onSessionExpired();
   }, [credentialRejected, onSessionExpired]);
+
+  // REQ-1292: an unclaimed platform-admin slot outranks org onboarding. A browser that still holds
+  // a valid credential would otherwise skip the sign-in page entirely — the only place the
+  // first-login disclosure (REQ-1288) renders — and land on "create an organization" on a
+  // deployment that has no administrator at all. Drop the credential and send them back through
+  // sign-in, where they are told what claiming means before they pick a provider and claim it.
+  // null = the answer is still in flight; nothing may be decided on it yet.
+  const [slotUnclaimed, setSlotUnclaimed] = useState<boolean | null>(null);
+  const [slotError, setSlotError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!authEnabled || !userId) return;
+    let cancelled = false;
+    fetchBootstrapStatus()
+      .then((unclaimed) => {
+        if (!cancelled) setSlotUnclaimed(unclaimed);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setSlotError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authEnabled, userId]);
+  const firstLoginPending = authEnabled && !!userId && slotUnclaimed === true;
+  useEffect(() => {
+    if (!firstLoginPending) return;
+    localStorage.removeItem("provisa_token");
+    onSessionExpired();
+  }, [firstLoginPending, onSessionExpired]);
+
+  if (slotError) {
+    return (
+      <Box maw={480} mx="auto" my={80} data-testid="identity-unavailable">
+        <Stack gap="md">
+          <Title order={2}>{t("onboardGate.unavailableTitle")}</Title>
+          <Text c="dimmed">{slotError}</Text>
+          <Group>
+            <Button data-testid="identity-unavailable-retry" onClick={() => void refresh()}>
+              {t("onboardGate.retry")}
+            </Button>
+          </Group>
+        </Stack>
+      </Box>
+    );
+  }
   if (serverFailed) {
     return (
       <Box maw={480} mx="auto" my={80} data-testid="identity-unavailable">
@@ -81,6 +127,19 @@ export function OnboardGate({
     // The effect above has already cleared the token and asked App to re-render the sign-in page;
     // render nothing rather than flashing a panel the user cannot act on.
     return null;
+  }
+  if (firstLoginPending) {
+    // The effect above cleared the credential and asked App to re-render sign-in, where the
+    // first-login disclosure lives. Render nothing rather than flashing org onboarding.
+    return null;
+  }
+  if (authEnabled && userId && slotUnclaimed === null) {
+    // The admin-slot answer decides which screen this is; do not guess it.
+    return (
+      <div className="page">
+        <p>Loading...</p>
+      </div>
+    );
   }
   // A platform superadmin holds admin caps but zero org memberships — the onboarding flow is for
   // tenant users who must join/create an org, not the platform operator. Let admin/superadmin

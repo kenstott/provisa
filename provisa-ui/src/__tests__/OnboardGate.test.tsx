@@ -25,7 +25,7 @@ import { AuthProvider, useAuth } from '../context/AuthContext';
 
 vi.mock('../api/admin', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/admin')>();
-  return { ...actual, fetchMe: vi.fn() };
+  return { ...actual, fetchMe: vi.fn(), fetchBootstrapStatus: vi.fn() };
 });
 vi.mock('../hooks/useAdminQueries', () => ({
   useRoles: () => ({ refetch: vi.fn().mockResolvedValue({ data: { roles: [] } }) }),
@@ -35,8 +35,9 @@ vi.mock('../pages/OnboardOrgPage', () => ({
   OnboardOrgPage: () => <div data-testid="onboard-org-page" />,
 }));
 
-import { AuthMeError, fetchMe } from '../api/admin';
+import { AuthMeError, fetchBootstrapStatus, fetchMe } from '../api/admin';
 const mockFetchMe = vi.mocked(fetchMe);
+const mockBootstrapStatus = vi.mocked(fetchBootstrapStatus);
 
 type Identity = {
   userId: string;
@@ -71,6 +72,10 @@ function renderGate(onSessionExpired: () => void = vi.fn()) {
 describe('OnboardGate', () => {
   beforeEach(() => {
     mockFetchMe.mockReset();
+    mockBootstrapStatus.mockReset();
+    // Default for these cases: the deployment already has a platform administrator, so the
+    // first-login path (REQ-1292) is not what is under test here.
+    mockBootstrapStatus.mockResolvedValue(false);
     localStorage.setItem('provisa_token', 'tok');
   });
 
@@ -155,6 +160,8 @@ function SignInHarness({ children }: { children: React.ReactNode }) {
 describe('identity refresh after sign-in (REQ-1291)', () => {
   beforeEach(() => {
     mockFetchMe.mockReset();
+    mockBootstrapStatus.mockReset();
+    mockBootstrapStatus.mockResolvedValue(false);
     localStorage.clear();
   });
 
@@ -227,5 +234,79 @@ describe('identity refresh after sign-in (REQ-1291)', () => {
 
     resolveSecond(identity({ userId: 'u1', assignments: [{ role_id: 'admin', domain_id: '*' }] }));
     await waitFor(() => expect(screen.getByTestId('app-shell')).toBeInTheDocument());
+  });
+});
+
+// REQ-1292: the reported scenario. The control plane was wiped, so the deployment has no
+// administrator (`/auth/bootstrap-status` -> unclaimed), but the browser still holds a Firebase
+// credential that verifies. "Token present" is therefore not proof the deployment has an
+// administrator: the SPA skipped sign-in — the only place the first-login disclosure (REQ-1288)
+// renders — and a hard refresh at /query landed on "create an organization". An unclaimed
+// platform-admin slot outranks org onboarding.
+describe('unclaimed platform-admin slot outranks org onboarding (REQ-1292)', () => {
+  beforeEach(() => {
+    mockFetchMe.mockReset();
+    mockBootstrapStatus.mockReset();
+    localStorage.setItem('provisa_token', 'stale-but-valid');
+  });
+
+  it('sends a token-holding user back to sign-in instead of org onboarding', async () => {
+    const onSessionExpired = vi.fn();
+    resolvesTo({ userId: 'u1' }); // valid credential, zero memberships — yesterday: "Get started"
+    mockBootstrapStatus.mockResolvedValue(true);
+
+    renderGate(onSessionExpired);
+
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
+    expect(localStorage.getItem('provisa_token')).toBeNull();
+    expect(screen.queryByTestId('onboard-org-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+  });
+
+  it('sends a token-holding platform admin back to sign-in too', async () => {
+    // Assignments resolved from a stale identity do not administer THIS deployment: its admin slot
+    // is still unclaimed. Falling through to the shell would hide that from the operator.
+    const onSessionExpired = vi.fn();
+    resolvesTo({ userId: 'u1', assignments: [{ role_id: 'admin', domain_id: '*' }] });
+    mockBootstrapStatus.mockResolvedValue(true);
+
+    renderGate(onSessionExpired);
+
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
+    expect(localStorage.getItem('provisa_token')).toBeNull();
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+  });
+
+  it('decides nothing while the slot answer is still in flight', async () => {
+    const onSessionExpired = vi.fn();
+    resolvesTo({ userId: 'u1' });
+    let resolveSlot: (unclaimed: boolean) => void = () => {};
+    mockBootstrapStatus.mockImplementation(
+      () => new Promise((resolve) => { resolveSlot = resolve; }),
+    );
+
+    renderGate(onSessionExpired);
+
+    await waitFor(() => expect(mockBootstrapStatus).toHaveBeenCalled());
+    expect(screen.queryByTestId('onboard-org-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(onSessionExpired).not.toHaveBeenCalled();
+    expect(localStorage.getItem('provisa_token')).toBe('stale-but-valid');
+
+    // Claimed after all -> today's behavior, unchanged.
+    resolveSlot(false);
+    expect(await screen.findByTestId('onboard-org-page')).toBeInTheDocument();
+    expect(localStorage.getItem('provisa_token')).toBe('stale-but-valid');
+    expect(onSessionExpired).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a failed slot check instead of guessing which screen this is', async () => {
+    resolvesTo({ userId: 'u1' });
+    mockBootstrapStatus.mockRejectedValue(new Error('bootstrap-status 503'));
+
+    renderGate();
+
+    expect(await screen.findByTestId('identity-unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('onboard-org-page')).not.toBeInTheDocument();
   });
 });
