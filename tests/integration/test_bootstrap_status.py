@@ -79,13 +79,47 @@ def admin_plane(monkeypatch):
     sync_engine.dispose()
 
 
-def _get() -> dict:
+def _make_app() -> FastAPI:
+    """Auth router behind a stub that sets ``request.state.identity`` from an X-Test-User header.
+
+    REQ-1290: /auth/claim-bootstrap reads its caller off ``request.state.identity``, which
+    AuthMiddleware sets; the stub sets the same attribute so the endpoint's own logic is under test.
+    Header-driven so one TestClient (one event loop, one async engine binding) can act as several
+    callers — a second TestClient would rebind the pool to a new loop."""
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    from provisa.auth.models import AuthIdentity
+
     app = FastAPI()
     app.include_router(auth_router)
-    with TestClient(app) as client:
-        resp = client.get("/auth/bootstrap-status")
+
+    async def _inject(request, call_next):
+        user_id = request.headers.get("x-test-user")
+        if user_id is not None:
+            request.state.identity = AuthIdentity(
+                user_id=user_id, email=None, display_name=None, roles=[], raw_claims={}
+            )
+        return await call_next(request)
+
+    app.add_middleware(BaseHTTPMiddleware, dispatch=_inject)
+    return app
+
+
+def _claim(client: TestClient, user_id: str | None):
+    """POST /auth/claim-bootstrap as ``user_id`` (None = an unauthenticated caller)."""
+    headers = {} if user_id is None else {"X-Test-User": user_id}
+    return client.post("/auth/claim-bootstrap", headers=headers)
+
+
+def _status(client: TestClient) -> dict:
+    resp = client.get("/auth/bootstrap-status")
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+def _get() -> dict:
+    with TestClient(_make_app()) as client:
+        return _status(client)
 
 
 def test_reports_unclaimed_while_the_admin_slot_is_empty(admin_plane):
@@ -112,3 +146,56 @@ def test_a_deployment_without_bootstrap_mode_never_claims_anything(admin_plane):
         "with bootstrap off nobody is promoted by signing in, so there is nothing to warn about "
         "even though the table is empty"
     )
+
+
+# REQ-1290 — claiming the slot is an explicit POST, never a side effect of authenticating.
+
+
+def test_claiming_an_unclaimed_slot_takes_it_and_closes_the_notice(admin_plane):
+    _, set_bootstrap = admin_plane
+    set_bootstrap(True)
+    with TestClient(_make_app()) as client:
+        resp = _claim(client, "alice")
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"claimed": True, "claimed_by": "alice"}
+        assert _status(client) == {"unclaimed": False}, (
+            "the first-login notice must stop showing the moment the slot is taken"
+        )
+
+
+def test_a_second_claimant_loses_the_race_and_the_holder_stands(admin_plane):
+    _, set_bootstrap = admin_plane
+    set_bootstrap(True)
+    with TestClient(_make_app()) as client:
+        assert _claim(client, "alice").json()["claimed"] is True
+        resp = _claim(client, "bob")
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"claimed": False, "claimed_by": "alice"}, (
+            "first writer wins on the singleton row — a later claim reads back the holder, never "
+            "displaces them"
+        )
+
+
+def test_reclaiming_by_the_holder_is_idempotent(admin_plane):
+    _, set_bootstrap = admin_plane
+    set_bootstrap(True)
+    with TestClient(_make_app()) as client:
+        assert _claim(client, "alice").json()["claimed"] is True
+        assert _claim(client, "alice").json() == {"claimed": True, "claimed_by": "alice"}
+
+
+def test_claiming_is_404_when_the_deployment_has_no_bootstrap_slot(admin_plane):
+    _, set_bootstrap = admin_plane
+    set_bootstrap(False)
+    with TestClient(_make_app()) as client:
+        resp = _claim(client, "alice")
+    assert resp.status_code == 404, resp.text
+
+
+def test_claiming_without_a_credential_is_401(admin_plane):
+    _, set_bootstrap = admin_plane
+    set_bootstrap(True)
+    with TestClient(_make_app()) as client:
+        resp = _claim(client, None)
+        assert resp.status_code == 401, resp.text
+        assert _status(client) == {"unclaimed": True}, "a rejected claim must leave the slot open"

@@ -628,10 +628,26 @@ def _make_bootstrap_app(provider: AuthProvider, admin_db) -> Starlette:
     return app
 
 
+def _claim_slot(db_file: str, user_id: str) -> None:
+    """Record ``user_id`` as the holder of the sole platform-admin slot.
+
+    REQ-1290: the middleware reads this row and never writes it — claiming is the explicit
+    POST /auth/claim-bootstrap the first-login page makes after the user picks a provider. These
+    tests therefore seed the claim rather than expecting a request to produce one."""
+    import sqlite3
+
+    conn = sqlite3.connect(db_file)
+    conn.execute("INSERT INTO superadmin_bootstrap (id, user_id) VALUES (1, ?)", (user_id,))
+    conn.commit()
+    conn.close()
+
+
 class TestSingleAdminBootstrap:
-    def test_first_user_becomes_super_admin(self, tmp_path):
-        # REQ-1266: the first authenticated Firebase user claims the sole admin slot.
-        admin_db = _make_admin_db(str(tmp_path / "admin.db"))
+    def test_claimant_resolves_to_admin(self, tmp_path):
+        # REQ-1266: whoever holds the sole admin slot resolves to the admin role on every request.
+        db_file = str(tmp_path / "admin.db")
+        admin_db = _make_admin_db(db_file)
+        _claim_slot(db_file, "alice")
         provider = _FirebaseLikeProvider({"tok-alice": "alice"})
         app = _make_bootstrap_app(provider, admin_db)
         client = TestClient(app, raise_server_exceptions=True)
@@ -639,12 +655,14 @@ class TestSingleAdminBootstrap:
         resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
         assert resp.status_code == 200
         assert resp.json()["role"] == "admin", (
-            "REQ-1266: first user must resolve to admin role"
+            "REQ-1266: the claimant must resolve to admin role"
         )
 
     def test_second_different_user_is_denied(self, tmp_path):
         # REQ-1266: once the slot is claimed, a different user is denied (403).
-        admin_db = _make_admin_db(str(tmp_path / "admin.db"))
+        db_file = str(tmp_path / "admin.db")
+        admin_db = _make_admin_db(db_file)
+        _claim_slot(db_file, "alice")
         provider = _FirebaseLikeProvider({"tok-alice": "alice", "tok-bob": "bob"})
         app = _make_bootstrap_app(provider, admin_db)
         client = TestClient(app, raise_server_exceptions=True)
@@ -656,9 +674,11 @@ class TestSingleAdminBootstrap:
         assert second.status_code == 403, "REQ-1266: second user must be denied"
         assert "single administrator" in second.json()["detail"]
 
-    def test_first_user_reauth_still_admin(self, tmp_path):
+    def test_claimant_reauth_still_admin(self, tmp_path):
         # REQ-1266: the claiming user keeps admin on every subsequent login.
-        admin_db = _make_admin_db(str(tmp_path / "admin.db"))
+        db_file = str(tmp_path / "admin.db")
+        admin_db = _make_admin_db(db_file)
+        _claim_slot(db_file, "alice")
         provider = _FirebaseLikeProvider({"tok-alice": "alice", "tok-bob": "bob"})
         app = _make_bootstrap_app(provider, admin_db)
         client = TestClient(app, raise_server_exceptions=True)
@@ -669,6 +689,26 @@ class TestSingleAdminBootstrap:
         again = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
         assert again.status_code == 200
         assert again.json()["role"] == "admin"
+
+    def test_authenticating_never_claims_the_slot(self, tmp_path):
+        # REQ-1290: this is the defect that reached production. Claiming inside the middleware made
+        # platform admin a side effect of holding a token, so a browser refresh took the slot before
+        # the first-login disclosure (REQ-1288) could render.
+        import sqlite3
+
+        db_file = str(tmp_path / "admin.db")
+        admin_db = _make_admin_db(db_file)
+        provider = _FirebaseLikeProvider({"tok-alice": "alice"})
+        client = TestClient(_make_bootstrap_app(provider, admin_db), raise_server_exceptions=True)
+
+        resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
+        assert resp.status_code == 200, (
+            "an unclaimed slot is not 'registration closed' — POST /auth/claim-bootstrap has to be "
+            "reachable by an authenticated caller or the slot could never be claimed"
+        )
+        assert resp.json()["role"] != "admin", "authenticating alone must not confer admin"
+        rows = sqlite3.connect(db_file).execute("SELECT user_id FROM superadmin_bootstrap").fetchall()
+        assert rows == [], "the middleware must never write the slot"
 
 
 class TestFirebaseBootstrapRealWiring:
@@ -722,7 +762,9 @@ class TestFirebaseBootstrapRealWiring:
                 "tok-bob": {"uid": "bob", "email": "bob@example.com", "name": "Bob"},
             },
         )
-        admin_db = _make_admin_db(str(tmp_path / "admin.db"))
+        db_file = str(tmp_path / "admin.db")
+        admin_db = _make_admin_db(db_file)
+        _claim_slot(db_file, "alice")  # REQ-1290: the claim is explicit, never a request side effect
         client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
 
         first = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
@@ -747,6 +789,7 @@ class TestFirebaseBootstrapRealWiring:
         )
         db_file = str(tmp_path / "admin.db")
         admin_db = _make_admin_db(db_file)
+        _claim_slot(db_file, "alice")  # REQ-1290: the claim is explicit, never a request side effect
         client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
         assert client.get("/echo", headers={"Authorization": "Bearer tok-alice"}).status_code == 200
 

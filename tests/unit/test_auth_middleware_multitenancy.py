@@ -52,6 +52,9 @@ class _Row:
     def __init__(self, mapping: dict) -> None:
         self._mapping = mapping
 
+    def __getitem__(self, idx: int):
+        return list(self._mapping.values())[idx]
+
 
 class _Result:
     def __init__(self, rows: list[dict]) -> None:
@@ -60,10 +63,13 @@ class _Result:
     def fetchall(self):
         return self._rows
 
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
 
 class _Conn:
     """Fake pooled connection. execute_core returns preconfigured rows keyed by the
-    queried table name; upsert_returning returns the bootstrap claimant."""
+    queried table name; the superadmin_bootstrap row is whoever already holds the slot."""
 
     def __init__(self, pool: "_Pool") -> None:
         self._pool = pool
@@ -76,13 +82,21 @@ class _Conn:
 
     async def execute_core(self, stmt):
         table = stmt.get_final_froms()[0].name
+        # REQ-1290: the middleware READS this table and never writes it, so the claimant is just
+        # another preconfigured row — an unclaimed deployment is the empty list.
+        if table == "superadmin_bootstrap":
+            claimant = self._pool.claimant
+            return _Result([{"user_id": claimant}] if claimant is not None else [])
         return _Result(self._pool.rows_by_table.get(table, []))
 
     async def upsert(self, *a, **k):
         return None
 
     async def upsert_returning(self, *a, **k):
-        return self._pool.claimant
+        raise AssertionError(
+            "REQ-1290: the middleware must never claim the platform-admin slot — claiming is an "
+            "explicit POST /auth/claim-bootstrap from the first-login page"
+        )
 
 
 class _Pool:
@@ -203,7 +217,7 @@ def test_member_less_user_blocked_on_tenant_plane():
 # --- REQ-1266 bootstrap fall-through under multitenancy ------------------------
 
 
-def test_bootstrap_first_user_claims_superadmin():
+def test_bootstrap_claimant_is_granted_admin():
     admin = _Pool(rows_by_table={"user_org_memberships": []}, claimant="first")
     app = _make_app(
         bootstrap_superadmin=True, admin_pool=admin, multitenancy=True
@@ -211,6 +225,25 @@ def test_bootstrap_first_user_claims_superadmin():
     resp = TestClient(app).get("/test", headers=_auth("first"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["admin"]
+
+
+def test_an_unclaimed_slot_is_not_taken_by_merely_authenticating():
+    # REQ-1290: this is the defect that reached production. Claiming on any authenticated request
+    # meant a browser holding a still-valid token took platform admin on a page refresh, before the
+    # first-login disclosure (REQ-1288) could render. _Conn.upsert_returning now fails the test if
+    # the middleware writes the slot at all.
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]}, claimant=None)
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
+    app = _make_app(
+        bootstrap_superadmin=True,
+        admin_pool=admin,
+        db_pool=db,
+        assignments_source="provisa",
+        multitenancy=True,
+    )
+    resp = TestClient(app).get("/test", headers=_auth("passer-by"))
+    assert resp.status_code == 200
+    assert resp.json()["roles"] == ["analyst"], "authenticating must not confer admin"
 
 
 def test_bootstrap_second_user_403_when_single_tenant():

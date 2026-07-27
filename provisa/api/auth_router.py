@@ -166,6 +166,43 @@ async def bootstrap_status():  # REQ-1288
     return {"unclaimed": not claimed}
 
 
+@router.post("/claim-bootstrap")
+async def claim_bootstrap(request: Request):  # REQ-1290
+    """Claim the sole platform-admin slot for the caller. Deliberate, never a side effect.
+
+    The middleware used to claim this while validating any bearer token, so a browser that still
+    held a valid credential took platform admin on a page refresh — the first-login disclosure
+    (REQ-1288) never got a chance to render. Only the first-login page calls this, and only after
+    the user picks a provider on the page that says what claiming means.
+
+    First writer wins on the fixed id=1 row: concurrent callers race the INSERT, one lands, and
+    everybody reads back whoever won.
+    """
+    from provisa.api.app import state
+
+    auth_cfg = getattr(state, "auth_config", None)
+    if auth_cfg is None or not auth_cfg.get("bootstrap_superadmin", False):
+        raise HTTPException(status_code=404, detail="Bootstrap claiming is not enabled")
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Bootstrap mode needs the platform plane for its singleton lock — the middleware asserts the
+    # same. A missing admin_db here is a wiring fault, not a state to paper over.
+    admin_db = state.admin_db
+    assert admin_db is not None
+    async with admin_db.acquire() as conn:
+        claimed_user_id = await conn.upsert_returning(
+            superadmin_bootstrap,
+            {"id": 1, "user_id": identity.user_id},
+            index_elements=["id"],
+            update_columns=[],
+            returning="user_id",
+        )
+    return {"claimed": claimed_user_id == identity.user_id, "claimed_by": claimed_user_id}
+
+
 @router.get("/my-invites")
 async def my_invites(request: Request):  # REQ-1287
     """Pending invitations addressed to the caller's email.

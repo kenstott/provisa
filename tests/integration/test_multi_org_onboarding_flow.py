@@ -158,6 +158,11 @@ def planes(monkeypatch):
     monkeypatch.setattr(
         app_state, "config", types.SimpleNamespace(auth={"provider": "basic"}), raising=False
     )
+    # REQ-1290: /auth/claim-bootstrap resolves the bootstrap flag from state.auth_config — the same
+    # dict wiring.py hands the middleware — so the endpoint and the middleware can never disagree.
+    monkeypatch.setattr(
+        app_state, "auth_config", {"provider": "basic", "bootstrap_superadmin": True}, raising=False
+    )
 
     # Stub the Part-1 data-plane build + physical provisioning: this test pins the control plane.
     # build_org_runtime returns the org's tenant Database so grant_org_role lands the org_admin
@@ -232,7 +237,11 @@ def _poll_ready(client: TestClient, org_id: str, headers: dict[str, str]) -> dic
 def test_full_multi_org_onboarding_lifecycle(planes):
     admin_db, tenant_db, sync_engine = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
-        # 1. person 1 claims the sole platform superadmin on their first authenticated request.
+        # 1. person 1 claims the sole platform superadmin — REQ-1290: by explicitly posting to
+        # /auth/claim-bootstrap from the first-login page, never as a side effect of authenticating.
+        claim = client.post("/auth/claim-bootstrap", headers={**_basic("super1"), "host": _CONTROL_HOST})
+        assert claim.status_code == 200, claim.text
+        assert claim.json() == {"claimed": True, "claimed_by": "super1"}
         who = client.get("/whoami", headers={**_basic("super1"), "host": _CONTROL_HOST})
         assert who.status_code == 200, who.text
         assert who.json()["roles"] == ["admin"]
@@ -334,9 +343,19 @@ def test_second_user_cannot_claim_superadmin(planes):
     # defaulted to an org, never granted admin). That contrast is the singleton guarantee.
     admin_db, tenant_db, _ = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
+        claimed = client.post(
+            "/auth/claim-bootstrap", headers={**_basic("super1"), "host": _CONTROL_HOST}
+        )
+        assert claimed.json()["claimed"] is True
         first = client.get("/whoami", headers={**_basic("super1"), "host": _CONTROL_HOST})
         assert first.status_code == 200, first.text
         assert first.json()["roles"] == ["admin"]
+        # REQ-1290: person 2's own claim attempt loses the singleton race — it never displaces the
+        # holder, and posting it confers nothing.
+        losing = client.post(
+            "/auth/claim-bootstrap", headers={**_basic("user2"), "host": _CONTROL_HOST}
+        )
+        assert losing.json() == {"claimed": False, "claimed_by": "super1"}
         second = client.get("/whoami", headers={**_basic("user2"), "host": _CONTROL_HOST})
     assert second.status_code == 401, second.text
     assert second.json()["detail"] == "Org selection required"

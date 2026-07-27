@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import {
   fetchProviderType,
   fetchBootstrapStatus,
+  claimBootstrap,
   registerAccount,
   fetchInviteInfo,
   redeemInvite,
@@ -106,6 +107,11 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     }
     const data = await resp.json();
     localStorage.setItem("provisa_token", data.access_token);
+    // REQ-1290: same explicit claim as the Firebase paths — the server never claims the
+    // platform-admin slot on its own, so signing in from the first-login page is what takes it.
+    if (firstLogin) {
+      await claimBootstrap();
+    }
     setLoading(false);
     onLoginSuccess(data.access_token);
     // Leave /login now that a token exists, or the /login route keeps rendering this page.
@@ -151,6 +157,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
             ? await firebase.signInWithMicrosoft()
             : await firebase.signInWithGoogle();
       localStorage.setItem("provisa_token", idToken);
+      // REQ-1290: this click IS the consent the first-login notice asked for, so claim the
+      // platform-admin slot here. The server never claims it on its own, which is why a refresh
+      // with a still-valid token can no longer take it before this page has been seen.
+      if (firstLogin) {
+        await claimBootstrap();
+      }
       // A bearer identity has no /register step, so an ?invite= link is redeemed here — after the
       // token is stored (authFetch attaches it) and before navigating — to add org membership + the
       // invite's role. This is how a GitHub-authed user becomes the first admin of an invited org.
@@ -183,6 +195,11 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
           ? await firebase.registerWithEmailPassword(regEmail, password)
           : await firebase.signInWithEmailPassword(regEmail, password);
       localStorage.setItem("provisa_token", idToken);
+      // REQ-1290: same explicit claim as the provider buttons — submitting this form on the
+      // first-login page is the deliberate act that takes the platform-admin slot.
+      if (firstLogin) {
+        await claimBootstrap();
+      }
       const inviteToken = new URLSearchParams(window.location.search).get("invite");
       if (inviteToken) {
         await redeemInvite(inviteToken);

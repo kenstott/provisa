@@ -290,24 +290,29 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         # resolution (it short-circuits, like the superuser path). Requires the platform
         # control plane for the singleton lock.
         if self._bootstrap_superadmin and self._admin_pool is not None:
+            # REQ-1290: READ the slot, never claim it. Claiming here made platform admin a side
+            # effect of any authenticated request, so a browser holding a still-valid token took the
+            # slot on a page refresh — before the first-login disclosure (REQ-1288) could render.
+            # The claim is now an explicit act: POST /auth/claim-bootstrap, which the first-login
+            # page calls only after the user picks a provider on that page.
             async with self._admin_pool.acquire() as conn:
-                # First writer wins: upsert with DO NOTHING on the fixed id=1 row, then read
-                # back the winning user_id. Concurrent first-logins race on the INSERT; only
-                # one lands, and this returns whoever claimed the slot.
-                claimed_user_id = await conn.upsert_returning(
-                    superadmin_bootstrap,
-                    {"id": 1, "user_id": identity.user_id},
-                    index_elements=["id"],
-                    update_columns=[],
-                    returning="user_id",
+                result = await conn.execute_core(
+                    select(superadmin_bootstrap.c.user_id).where(superadmin_bootstrap.c.id == 1)
                 )
+                row = result.fetchone()
+            claimed_user_id = row[0] if row is not None else None
             if claimed_user_id != identity.user_id:
                 # Single-tenant bootstrap: exactly one administrator, so every later identity is
                 # denied. Multitenant bootstrap: the first user is the platform superadmin, but later
                 # identities are NOT rejected — they authenticate with no default grant and join an
                 # org by redeeming an invite (/auth/redeem-invite). So fall through to normal
                 # assignment resolution instead of 403 when multitenancy is on.
-                if not self._multitenancy:
+                #
+                # REQ-1290: an UNCLAIMED slot is never "registration closed" — the claim now happens
+                # over POST /auth/claim-bootstrap, which needs an authenticated request to get
+                # through this middleware. 403 here would make the slot unclaimable forever on a
+                # single-tenant deployment. The caller falls through with no bootstrap grant.
+                if not self._multitenancy and claimed_user_id is not None:
                     return JSONResponse(
                         status_code=403,
                         content={

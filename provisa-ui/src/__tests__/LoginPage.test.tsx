@@ -26,12 +26,26 @@ vi.mock('../api/admin', async (importOriginal) => ({
   // Stubbed rather than left real: it fetches on mount, and these tests queue single-use
   // global-fetch responses for the login POST that a stray call would consume.
   fetchBootstrapStatus: vi.fn().mockResolvedValue(false),
+  // REQ-1290: the claim is a real POST; stub it so these tests can assert whether the page issues
+  // it, without a network call consuming a queued global-fetch response.
+  claimBootstrap: vi.fn().mockResolvedValue(true),
   registerAccount: vi.fn(),
 }));
 
-import { fetchProviderType, fetchBootstrapStatus } from '../api/admin';
+// The Firebase sign-in paths import this lazily; stub it so a provider click resolves to a token
+// without an SDK or network.
+vi.mock('../lib/firebase', () => ({
+  signInWithGoogle: vi.fn().mockResolvedValue('firebase-id-token'),
+  signInWithGithub: vi.fn(),
+  signInWithMicrosoft: vi.fn(),
+  signInWithEmailPassword: vi.fn(),
+  registerWithEmailPassword: vi.fn(),
+}));
+
+import { fetchProviderType, fetchBootstrapStatus, claimBootstrap } from '../api/admin';
 const mockFetchProviderType = vi.mocked(fetchProviderType);
 const mockFetchBootstrapStatus = vi.mocked(fetchBootstrapStatus);
+const mockClaimBootstrap = vi.mocked(claimBootstrap);
 
 describe('LoginPage', () => {
   const onLoginSuccess = vi.fn();
@@ -44,6 +58,8 @@ describe('LoginPage', () => {
     // Re-apply the mocks after restoreAllMocks
     mockFetchProviderType.mockResolvedValue(null);
     mockFetchBootstrapStatus.mockResolvedValue(false);
+    mockClaimBootstrap.mockReset();
+    mockClaimBootstrap.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -226,6 +242,49 @@ describe('LoginPage', () => {
     // An unreachable probe must not decide which sign-in UI renders.
     expect(await screen.findByTestId('firebase-signin-button')).toBeInTheDocument();
     expect(screen.queryByTestId('first-login-notice')).not.toBeInTheDocument();
+  });
+
+  // ── Claiming the platform-admin slot (REQ-1290) ────────────────────────────
+
+  it('claims the platform-admin slot when a provider is chosen on the first-login page', async () => {
+    // The server no longer claims the slot while validating a token, so this click is the
+    // deliberate act the notice asked for — without it the deployment stays unadministered.
+    mockFetchBootstrapStatus.mockResolvedValue(true);
+    mockFetchProviderType.mockResolvedValue('firebase');
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    fireEvent.click(await screen.findByTestId('firebase-signin-button'));
+
+    await waitFor(() => expect(mockClaimBootstrap).toHaveBeenCalled());
+    expect(onLoginSuccess).toHaveBeenCalledWith('firebase-id-token');
+  });
+
+  it('does not claim when the slot is already held', async () => {
+    mockFetchProviderType.mockResolvedValue('firebase');
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    fireEvent.click(await screen.findByTestId('firebase-signin-button'));
+
+    await waitFor(() => expect(onLoginSuccess).toHaveBeenCalled());
+    expect(mockClaimBootstrap).not.toHaveBeenCalled();
+  });
+
+  it('claims from the basic-auth form on the first-login page too', async () => {
+    mockFetchBootstrapStatus.mockResolvedValue(true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ access_token: 'basic-token' }),
+    } as Response);
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
+
+    await waitFor(() => expect(mockClaimBootstrap).toHaveBeenCalled());
   });
 
   // ── Input binding ──────────────────────────────────────────────────────────

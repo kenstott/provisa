@@ -73,6 +73,17 @@ export async function fetchProviderType(): Promise<string | null> {
   return data.provider ?? null;
 }
 
+// REQ-1290: claim the sole platform-admin slot for the signed-in caller. Called ONLY from the
+// first-login page, immediately after the user picks a provider on the page that told them what
+// claiming means. The server no longer claims it while validating a token, so a refresh with a
+// still-valid credential cannot take platform admin behind the user's back.
+export async function claimBootstrap(): Promise<boolean> {
+  const res = await fetch("/auth/claim-bootstrap", { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to claim platform admin: ${res.status}`);
+  const data = await res.json();
+  return data.claimed === true;
+}
+
 // REQ-1288: is the sole platform-admin slot still unclaimed? The login page asks before the user
 // picks a provider, so that whoever signs in first is told they are about to become the platform
 // admin rather than discovering it afterwards. Unauthenticated, like /auth/provider-type.
