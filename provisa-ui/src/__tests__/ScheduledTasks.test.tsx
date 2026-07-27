@@ -21,19 +21,16 @@ const toggleSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 
 let mockTasks: unknown[] = [];
 
-vi.mock("../hooks/useAdminQueries", () => ({
+// Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
+// replace-everything factory here leaks into other files. In particular a stubbed
+// useMaterializeStoreInfo would win over the real Apollo hook that
+// TableEditForm.consistency drives through MockedProvider.
+vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
   useScheduledTasks: () => ({ scheduledTasks: mockTasks, loading: false }),
   useToggleScheduledTask: () => ({ toggleScheduledTask: toggleSpy }),
   useCreateScheduledTask: () => ({ createScheduledTask: createSpy }),
   useDeleteScheduledTask: () => ({ deleteScheduledTask: deleteSpy }),
-  // Keep the module mock complete so it can't leak an undefined hook into form-rendering tests
-  // (vmThreads + fileParallelism:false share one module context).
-  useMaterializeStoreInfo: () => ({
-    materializeStoreInfo: null,
-    loading: false,
-    error: undefined,
-    refetch: vi.fn(),
-  }),
 }));
 
 vi.mock("../api/actions", () => ({

@@ -24,6 +24,7 @@ from provisa.core.schema_admin import (
     local_users,
     org_invites,
     orgs,
+    superadmin_bootstrap,
     user_org_memberships,
     user_profiles,
 )
@@ -132,6 +133,39 @@ async def provider_type():
         else getattr(auth_cfg, "provider", None)
     )
     return {"provider": provider}
+
+
+@router.get("/bootstrap-status")
+async def bootstrap_status():  # REQ-1288
+    """Whether the sole platform-admin slot is still unclaimed.
+
+    The bootstrap grant (REQ-1266) is silent: the first identity to authenticate becomes the
+    platform admin as a side effect of signing in, with no warning and no way to see it coming.
+    The login page reads this BEFORE any credential exists so it can say so up front. Public for
+    the same reason /auth/provider-type is — it reveals only that a deployment is uninitialized.
+    """
+    from provisa.api.app import state
+
+    cfg = getattr(state, "config", None)
+    auth_cfg = getattr(cfg, "auth", None) if cfg else None
+    if auth_cfg is None:
+        return {"unclaimed": False}
+    enabled = (
+        auth_cfg.get("bootstrap_superadmin", False)
+        if isinstance(auth_cfg, dict)
+        else getattr(auth_cfg, "bootstrap_superadmin", False)
+    )
+    if not enabled:
+        return {"unclaimed": False}
+
+    # Bootstrap mode needs the platform plane for its singleton lock — the middleware asserts the
+    # same. A missing admin_db here is a wiring fault, not a state to paper over.
+    admin_db = state.admin_db
+    assert admin_db is not None
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(select(superadmin_bootstrap.c.user_id).limit(1))
+        claimed = result.fetchone() is not None
+    return {"unclaimed": not claimed}
 
 
 @router.get("/my-invites")

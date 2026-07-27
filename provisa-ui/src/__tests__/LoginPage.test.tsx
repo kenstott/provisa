@@ -18,13 +18,20 @@ import { LoginPage } from '../pages/LoginPage';
 // LoginPage calls useNavigate; the shared render wrapper has no Router, so provide one here.
 const renderLogin = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
-vi.mock('../api/admin', () => ({
+// Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
+// replace-everything factory here leaks into other files and drops exports they need.
+vi.mock('../api/admin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/admin')>()),
   fetchProviderType: vi.fn().mockResolvedValue(null),
+  // Stubbed rather than left real: it fetches on mount, and these tests queue single-use
+  // global-fetch responses for the login POST that a stray call would consume.
+  fetchBootstrapStatus: vi.fn().mockResolvedValue(false),
   registerAccount: vi.fn(),
 }));
 
-import { fetchProviderType } from '../api/admin';
+import { fetchProviderType, fetchBootstrapStatus } from '../api/admin';
 const mockFetchProviderType = vi.mocked(fetchProviderType);
+const mockFetchBootstrapStatus = vi.mocked(fetchBootstrapStatus);
 
 describe('LoginPage', () => {
   const onLoginSuccess = vi.fn();
@@ -32,9 +39,11 @@ describe('LoginPage', () => {
   beforeEach(() => {
     onLoginSuccess.mockReset();
     mockFetchProviderType.mockResolvedValue(null);
+    mockFetchBootstrapStatus.mockResolvedValue(false);
     vi.restoreAllMocks();
-    // Re-apply the mock after restoreAllMocks
+    // Re-apply the mocks after restoreAllMocks
     mockFetchProviderType.mockResolvedValue(null);
+    mockFetchBootstrapStatus.mockResolvedValue(false);
   });
 
   afterEach(() => {
@@ -173,6 +182,50 @@ describe('LoginPage', () => {
 
     // Resolve so we don't leave the test hanging
     resolveRequest({ ok: true, json: async () => ({ access_token: 'tok' }) } as Response);
+  });
+
+  // ── First-login platform-admin notice (REQ-1288) ───────────────────────────
+
+  it('warns that signing in first claims platform admin, and still offers the providers', async () => {
+    mockFetchBootstrapStatus.mockResolvedValue(true);
+    mockFetchProviderType.mockResolvedValue('firebase');
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    expect(await screen.findByTestId('first-login-notice')).toHaveTextContent(
+      /platform administrator/i,
+    );
+    // The warning precedes the choice rather than replacing it — the user still signs in here.
+    expect(screen.getByTestId('firebase-signin-button')).toBeInTheDocument();
+  });
+
+  it('shows the notice on the basic-auth form too', async () => {
+    mockFetchBootstrapStatus.mockResolvedValue(true);
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    expect(await screen.findByTestId('first-login-notice')).toBeInTheDocument();
+    expect(screen.getByLabelText('Username')).toBeInTheDocument();
+  });
+
+  it('stays silent once the platform-admin slot is claimed', async () => {
+    mockFetchProviderType.mockResolvedValue('firebase');
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    expect(await screen.findByTestId('firebase-signin-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('first-login-notice')).not.toBeInTheDocument();
+  });
+
+  it('renders the sign-in page normally when the bootstrap probe fails', async () => {
+    mockFetchProviderType.mockResolvedValue('firebase');
+    mockFetchBootstrapStatus.mockRejectedValue(new Error('boom'));
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    // An unreachable probe must not decide which sign-in UI renders.
+    expect(await screen.findByTestId('firebase-signin-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('first-login-notice')).not.toBeInTheDocument();
   });
 
   // ── Input binding ──────────────────────────────────────────────────────────

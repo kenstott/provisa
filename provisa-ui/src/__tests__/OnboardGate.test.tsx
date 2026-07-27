@@ -43,9 +43,9 @@ function auth(overrides: AuthOverrides) {
   } as unknown as ReturnType<typeof useAuth>;
 }
 
-function renderGate() {
+function renderGate(onSessionExpired: () => void = vi.fn()) {
   return render(
-    <OnboardGate onSessionExpired={vi.fn()}>
+    <OnboardGate onSessionExpired={onSessionExpired}>
       <div data-testid="app-shell" />
     </OnboardGate>,
   );
@@ -70,11 +70,18 @@ describe('OnboardGate', () => {
     expect(screen.getByTestId('identity-unavailable')).toBeInTheDocument();
   });
 
-  it('shows the sign-in-again screen only when the credential was rejected', () => {
-    mockUseAuth.mockReturnValue(auth({ userId: null, identityErrorStatus: 401 }));
-    renderGate();
-    expect(screen.getByTestId('no-account')).toBeInTheDocument();
+  // REQ-1289: a rejected credential is not a destination. There is nothing to decide on a "no
+  // access" panel, and on a deployment with no administrator yet its advice — ask an administrator
+  // for an invitation — names somebody who does not exist. Drop the stale token and go to sign-in.
+  it.each([401, 403])('sends a rejected credential (%i) back to sign-in, not a dead end', (status) => {
+    const onSessionExpired = vi.fn();
+    mockUseAuth.mockReturnValue(auth({ userId: null, identityErrorStatus: status }));
+    renderGate(onSessionExpired);
+    expect(onSessionExpired).toHaveBeenCalled();
+    expect(localStorage.getItem('provisa_token')).toBeNull();
+    expect(screen.queryByTestId('no-account')).not.toBeInTheDocument();
     expect(screen.queryByTestId('identity-unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
   });
 
   it('routes a resolved identity with no org memberships to org onboarding', async () => {

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
@@ -51,6 +51,17 @@ export function OnboardGate({
     identityErrorStatus !== null &&
     identityErrorStatus !== 401 &&
     identityErrorStatus !== 403;
+  // REQ-1289: a credential this deployment will not accept is not a destination. The token is
+  // stale — expired, or from before this deployment knew this identity — and nothing the user can
+  // do on a "no access" panel changes that, so drop it and put them back on sign-in where they can
+  // authenticate or create an account. The old panel stranded them and told them to ask an
+  // administrator who, on a deployment whose admin slot is still unclaimed, does not exist.
+  const credentialRejected = unresolved && !serverFailed;
+  useEffect(() => {
+    if (!credentialRejected) return;
+    localStorage.removeItem("provisa_token");
+    onSessionExpired();
+  }, [credentialRejected, onSessionExpired]);
   if (serverFailed) {
     return (
       <Box maw={480} mx="auto" my={80} data-testid="identity-unavailable">
@@ -67,25 +78,9 @@ export function OnboardGate({
     );
   }
   if (unresolved) {
-    return (
-      <Box maw={480} mx="auto" my={80} data-testid="no-account">
-        <Stack gap="md">
-          <Title order={2}>{t("onboardGate.noAccountTitle")}</Title>
-          <Text c="dimmed">{t("onboardGate.noAccountBody")}</Text>
-          <Group>
-            <Button
-              data-testid="no-account-signin"
-              onClick={() => {
-                localStorage.removeItem("provisa_token");
-                onSessionExpired();
-              }}
-            >
-              {t("onboardGate.backToSignIn")}
-            </Button>
-          </Group>
-        </Stack>
-      </Box>
-    );
+    // The effect above has already cleared the token and asked App to re-render the sign-in page;
+    // render nothing rather than flashing a panel the user cannot act on.
+    return null;
   }
   // A platform superadmin holds admin caps but zero org memberships — the onboarding flow is for
   // tenant users who must join/create an org, not the platform operator. Let admin/superadmin

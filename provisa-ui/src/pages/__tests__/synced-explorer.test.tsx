@@ -70,17 +70,14 @@ vi.mock("graphiql-explorer", () => ({
 // Mock the admin-queries hooks so importing QueryPage doesn't pull the real
 // `.graphql` document module (Vitest's SSR transform can't parse it). The
 // explorer logic under test doesn't depend on domains.
-vi.mock("../../hooks/useAdminQueries", () => ({
+// Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
+// replace-everything factory here leaks into other files. In particular a stubbed
+// useMaterializeStoreInfo would win over the real Apollo hook that
+// TableEditForm.consistency drives through MockedProvider.
+vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useDomains: () => ({ domains: [], loading: false, refetch: vi.fn() }),
   useCompileQuery: () => ({ compileQuery: vi.fn().mockResolvedValue({ queries: [] }), loading: false }),
-  // Keep the module mock complete so it can't leak an undefined hook into form-rendering tests
-  // (vmThreads + fileParallelism:false share one module context).
-  useMaterializeStoreInfo: () => ({
-    materializeStoreInfo: null,
-    loading: false,
-    error: undefined,
-    refetch: vi.fn(),
-  }),
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────────

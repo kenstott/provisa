@@ -26,7 +26,12 @@ vi.mock("../../context/DomainFilterContext", () => ({
   }),
 }));
 
-vi.mock("../../hooks/useAdminQueries", () => ({
+// Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
+// replace-everything factory here leaks into other files. In particular a stubbed
+// useMaterializeStoreInfo would win over the real Apollo hook that
+// TableEditForm.consistency drives through MockedProvider.
+vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useRoles: () => ({ roles: [], loading: false, refetch: vi.fn() }),
   useRLSRules: () => ({ rlsRules: [], loading: false, refetch: vi.fn() }),
   useTables: () => ({ tables: [], loading: false, refetch: vi.fn() }),
@@ -35,13 +40,6 @@ vi.mock("../../hooks/useAdminQueries", () => ({
   useDeleteRole: () => ({ deleteRole: vi.fn(), loading: false }),
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: vi.fn(), loading: false }),
-  // Keep the module mock complete so it can't leak an undefined hook into other tests.
-  useMaterializeStoreInfo: () => ({
-    materializeStoreInfo: null,
-    loading: false,
-    error: undefined,
-    refetch: vi.fn(),
-  }),
 }));
 
 import { SecurityPage } from "../SecurityPage";

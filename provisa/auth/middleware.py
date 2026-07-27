@@ -64,6 +64,10 @@ _SKIP_PATHS = {
     # sign-in UI to render (firebase Google button vs. basic form). It only reveals the
     # configured provider name — public info — so it must bypass the bearer gate.
     "/auth/provider-type",
+    # REQ-1288: the login page states "you will become the platform admin" BEFORE the user picks a
+    # provider, so this must answer without a token. It reveals only that a deployment is
+    # uninitialized — the same class of public fact as the provider name above.
+    "/auth/bootstrap-status",
     "/setup/status",
 }
 

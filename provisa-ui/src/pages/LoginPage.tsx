@@ -13,7 +13,13 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Alert, Button, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { fetchProviderType, registerAccount, fetchInviteInfo, redeemInvite } from "../api/admin";
+import {
+  fetchProviderType,
+  fetchBootstrapStatus,
+  registerAccount,
+  fetchInviteInfo,
+  redeemInvite,
+} from "../api/admin";
 import type { InviteInfo } from "../api/admin";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
@@ -28,6 +34,9 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   const navigate = useNavigate();
   const [provider, setProvider] = useState<string | null>(null);
   const [providerLoading, setProviderLoading] = useState(true);
+  // REQ-1288: the first identity to authenticate silently becomes the platform admin. Say so
+  // before any provider is picked, so signing in is a decision rather than a surprise.
+  const [firstLogin, setFirstLogin] = useState(false);
 
   const [mode, setMode] = useState<"login" | "register">(() =>
     new URLSearchParams(window.location.search).get("invite") ? "register" : "login",
@@ -47,6 +56,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       .then(setProvider)
       .catch(() => setProvider(null))
       .finally(() => setProviderLoading(false));
+
+    // Kept independent of the provider fetch: a failure here must not decide which sign-in UI
+    // renders. The banner is an added warning, so its absence degrades to today's behavior.
+    fetchBootstrapStatus()
+      .then(setFirstLogin)
+      .catch(() => setFirstLogin(false));
 
     const params = new URLSearchParams(window.location.search);
     const token = params.get("invite");
@@ -181,10 +196,19 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     }
   };
 
+  const firstLoginNotice = firstLogin ? (
+    <Alert color="blue" mb="md" title={t("loginPage.firstLoginTitle")} data-testid="first-login-notice">
+      {t("loginPage.firstLoginBody")}
+    </Alert>
+  ) : null;
+
   if (provider === "firebase") {
     return (
       <div className="page">
-        <Title order={2}>{t("loginPage.signInTitle")}</Title>
+        <Title order={2}>
+          {firstLogin ? t("loginPage.firstLoginHeading") : t("loginPage.signInTitle")}
+        </Title>
+        {firstLoginNotice}
         {error && (
           <Alert color="red" mb="md" data-testid="login-error">
             {error}
@@ -365,7 +389,10 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
 
   return (
     <div className="page">
-      <Title order={2}>{t("loginPage.loginTitle")}</Title>
+      <Title order={2}>
+        {firstLogin ? t("loginPage.firstLoginHeading") : t("loginPage.loginTitle")}
+      </Title>
+      {firstLoginNotice}
       <form onSubmit={handleBasicLogin} style={{ maxWidth: 360 }}>
         <Stack gap="md">
           <TextInput

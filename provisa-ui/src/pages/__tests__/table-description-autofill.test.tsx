@@ -137,7 +137,12 @@ const purgeCacheByTable = vi.fn().mockResolvedValue(mutationOk());
 const invalidateFileSource = vi.fn().mockResolvedValue(mutationOk());
 const deployViewToDb = vi.fn().mockResolvedValue(mutationOk());
 
-vi.mock("../../hooks/useAdminQueries", () => ({
+// Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
+// replace-everything factory here leaks into other files. In particular a stubbed
+// useMaterializeStoreInfo would win over the real Apollo hook that
+// TableEditForm.consistency drives through MockedProvider.
+vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useTables: () => ({ tables: EMPTY_TABLES, loading: false, refetch: refetchTables }),
   useSources: () => ({ sources: sourcesData, loading: false, refetch: refetchSources }),
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: refetchDomains }),
@@ -161,12 +166,6 @@ vi.mock("../../hooks/useAdminQueries", () => ({
   // TableEditForm (rendered on edit) uses these; include them so the module mock is complete and a
   // vmThreads cross-file leak (fileParallelism:false shares one context) can't break later tests.
   useRefreshPolicyPreview: () => async () => null,
-  useMaterializeStoreInfo: () => ({
-    materializeStoreInfo: null,
-    loading: false,
-    error: undefined,
-    refetch: vi.fn(),
-  }),
   usePurgeCacheByTable: () => ({ purgeCacheByTable, loading: false }),
   useInvalidateFileSource: () => ({ invalidateFileSource, loading: false }),
   useDeployViewToDb: () => ({ deployViewToDb, loading: false }),

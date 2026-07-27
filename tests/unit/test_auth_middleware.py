@@ -55,6 +55,10 @@ def _make_app(provider=None, mapping_rules=None, default_role="analyst", superus
     async def _provider_type():
         return {"provider": "firebase"}
 
+    @app.get("/auth/bootstrap-status")
+    async def _bootstrap_status():
+        return {"unclaimed": True}
+
     @app.get("/setup/status")
     async def _setup_status():
         return {"needs_setup": False}
@@ -136,6 +140,16 @@ def test_provider_type_skips_auth():
     resp = client.get("/auth/provider-type")
     assert resp.status_code == 200
     assert resp.json()["provider"] == "firebase"
+
+
+def test_bootstrap_status_skips_auth():
+    # REQ-1288: the login page asks whether the platform-admin slot is unclaimed BEFORE the user
+    # picks a provider — the whole point is to warn them before they hold a credential.
+    app = _make_app(provider=MockProvider())
+    client = TestClient(app)
+    resp = client.get("/auth/bootstrap-status")
+    assert resp.status_code == 200
+    assert resp.json()["unclaimed"] is True
 
 
 def test_setup_status_skips_auth():

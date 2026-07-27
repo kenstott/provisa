@@ -73,6 +73,16 @@ export async function fetchProviderType(): Promise<string | null> {
   return data.provider ?? null;
 }
 
+// REQ-1288: is the sole platform-admin slot still unclaimed? The login page asks before the user
+// picks a provider, so that whoever signs in first is told they are about to become the platform
+// admin rather than discovering it afterwards. Unauthenticated, like /auth/provider-type.
+export async function fetchBootstrapStatus(): Promise<boolean> {
+  const res = await fetch("/auth/bootstrap-status");
+  if (!res.ok) throw new Error(`Failed to read bootstrap status: ${res.status}`);
+  const data = await res.json();
+  return data.unclaimed === true;
+}
+
 export async function registerAccount(body: {
   username: string;
   password: string;

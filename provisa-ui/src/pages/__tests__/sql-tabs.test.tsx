@@ -64,21 +64,18 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   nlToSql: (...a: unknown[]) => nlToSql(...a),
 }));
 
-vi.mock("../../hooks/useAdminQueries", () => ({
+// Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
+// replace-everything factory here leaks into other files. In particular a stubbed
+// useMaterializeStoreInfo would win over the real Apollo hook that
+// TableEditForm.consistency drives through MockedProvider.
+vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useRoles: () => ({ roles: [{ id: "admin" }], loading: false, refetch: vi.fn() }),
   useDomains: () => ({ domains: [], loading: false, refetch: vi.fn() }),
   useTables: () => ({ tables: [], loading: false, refetch: vi.fn() }),
   useRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
   useRegisterTable: () => ({ registerTable: vi.fn(), loading: false }),
   useUpdateTable: () => ({ updateTable: vi.fn(), loading: false }),
-  // Keep the module mock complete so it can't leak an undefined hook into form-rendering tests
-  // (vmThreads + fileParallelism:false share one module context).
-  useMaterializeStoreInfo: () => ({
-    materializeStoreInfo: null,
-    loading: false,
-    error: undefined,
-    refetch: vi.fn(),
-  }),
 }));
 
 import { SqlPage } from "../SqlPage";
