@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -65,10 +66,33 @@ class CreateOrgBody(BaseModel):
     id: str
     name: str
     include_demo: bool = False
+    # REQ-1268: optional regex an invitee's email must match to join (e.g. "@acme\\.com$").
+    email_rule: str | None = None
+    # REQ-1269: when true, any user whose email matches email_rule auto-joins with auto_join_role.
+    auto_join: bool = False
+    auto_join_role: str | None = None
 
 
 class RenameOrgBody(BaseModel):
     name: str
+
+
+class OrgPolicyBody(BaseModel):
+    # REQ-1268/REQ-1269: join policy an org admin may edit after creation.
+    email_rule: str | None = None
+    auto_join: bool = False
+    auto_join_role: str | None = None
+
+
+def _validate_org_policy(email_rule: str | None, auto_join: bool, auto_join_role: str | None) -> None:
+    """Reject an uncompilable email rule (REQ-1268) or auto_join without a role (REQ-1269)."""
+    if email_rule is not None:
+        try:
+            re.compile(email_rule)
+        except re.error as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid email rule: {exc}") from exc
+    if auto_join and not auto_join_role:
+        raise HTTPException(status_code=400, detail="auto_join requires auto_join_role")
 
 
 class AddMemberBody(BaseModel):
@@ -145,6 +169,8 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
     if identity is not None and created_by is None:
         raise HTTPException(status_code=401, detail="Authentication required to create an org")
 
+    _validate_org_policy(body.email_rule, body.auto_join, body.auto_join_role)
+
     # Register the org immediately as "provisioning" and grant the creator membership synchronously
     # (admin plane) so they own it at once; the schema + data plane build in the background task.
     async with _admin_pool().acquire() as conn:
@@ -159,6 +185,9 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
                 created_by=created_by,
                 provisioning_state="provisioning",
                 seeded_demo=body.include_demo,
+                email_rule=body.email_rule,
+                auto_join=body.auto_join,
+                auto_join_role=body.auto_join_role,
             )
             .returning(orgs.c.id, orgs.c.name, orgs.c.created_by, orgs.c.provisioning_state)
         )
@@ -216,6 +245,30 @@ async def rename_org(org_id: str, body: RenameOrgBody, request: Request):  # REQ
             .where(orgs.c.id == org_id)
             .values(name=body.name)
             .returning(orgs.c.id, orgs.c.name, orgs.c.created_by, orgs.c.created_at)
+        )
+        row = result.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Org not found")
+    return dict(row._mapping)
+
+
+@router.patch("/{org_id}/settings")
+async def update_org_settings(org_id: str, body: OrgPolicyBody, request: Request):  # REQ-1268/1269
+    """Edit an org's join policy (email rule + auto-join). Org admin of this org, or platform admin."""
+    from provisa.api.admin.invites_router import _require_org_admin
+
+    await _require_org_admin(request, org_id)
+    _validate_org_policy(body.email_rule, body.auto_join, body.auto_join_role)
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            update(orgs)
+            .where(orgs.c.id == org_id)
+            .values(
+                email_rule=body.email_rule,
+                auto_join=body.auto_join,
+                auto_join_role=body.auto_join_role,
+            )
+            .returning(orgs.c.id, orgs.c.email_rule, orgs.c.auto_join, orgs.c.auto_join_role)
         )
         row = result.fetchone()
     if row is None:

@@ -12899,3 +12899,107 @@ A newly authenticated user belonging to zero orgs is offered three onboarding pa
 **Code:** —
 
 **Tests:** —
+
+## 4. Deployment & Infrastructure
+
+### REQ-1278 · Enterprise Deployment Tenancy Enforcement {#REQ-1278}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+Enterprise deployment modules (terraform/gcp, terraform/aws, terraform/azure) enforce single-tenancy. The multitenancy variable is removed; PROVISA_MULTITENANCY is hardcoded to false. Single administrator bootstrap is required ([REQ-1266](#REQ-1266)).
+
+**Use case:** Clarifies deployment architecture: enterprise customers deploy isolated single-tenant instances with hardcoded tenancy model, eliminating multitenancy configuration surface and reducing operational risk.
+
+**Code:** `terraform/gcp/main.tf`, `terraform/aws/main.tf`, `terraform/azure/main.tf`
+
+**Tests:** —
+
+### REQ-1279 · SaaS Multi-tenant Deployment Module {#REQ-1279}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+New terraform/gcp-saas module enables fully-automated multi-tenant SaaS deployments. Multitenancy is forced true (not a variable). Architecture includes Cloud SQL managed control plane (private IP via Private Service Access), single Trino coordinator (n2-standard-4, DB offloaded) fronting raw-TCP protocol listeners behind a shared passthrough NLB, and autoscaled Spot worker MIG (region instance group manager, min=0 scale-to-zero → max). Supporting app change: packaging/linux/first-launch.sh persists CONFIG_DB_* and PROVISA_EXTERNAL_CONTROL_DB into systemd EnvironmentFile allowlist so the coordinator's control plane points at the external Cloud SQL.
+
+**Use case:** Enables Provisa SaaS operation with automated, cost-optimized infrastructure supporting multiple tenants on shared compute and isolated control planes, following docs/deployment/gcp-saas-infra-plan.md.
+
+**Code:** `terraform/gcp-saas/main.tf`, `packaging/linux/first-launch.sh`
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1280 · Commercial Positioning {#REQ-1280}
+
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** infrastructure
+
+Provisa SaaS bills on two metered SKUs mapped to the existing gcp-saas topology ([REQ-1279](#REQ-1279)): (1) Serving lane — the "active-hour" SKU at $3.25/active-hr, metering warm coordinator uptime (the always-on Trino planner + persistent-protocol listeners: pgwire/bolt/Flight/gRPC/MCP). Any hour the endpoint is active bills a full hour. Margin ~87–97%. (2) Analytical lane — the "worker-hour" SKU at $2.50/worker-hr, metering Spot worker MIG uptime per query, scale-to-zero between queries. Margin ~97% Spot / ~89% on-demand. Egress is a cost-recovery passthrough across both lanes at Hasura parity ($0.13/GB vs $0.12 cost); only result bytes leaving GCP are Provisa's cost (source-cloud egress bills the source owner).
+
+**Use case:** A customer buys either or both SKUs. Splitting the SKU captures both markets; a single unit misprices one (active-hour framing underprices analytical compute ~8x; worker-hour framing cannot express a warm always-on endpoint).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1281 · SaaS Billing {#REQ-1281}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Gap: today provisa/api/billing/ ([REQ-1075](#REQ-1075), Lemon Squeezy) bills flat plan tiers via source_limit only — there is no usage meter, so neither metered SKU in [REQ-1280](#REQ-1280) can actually bill by the hour. Need: emit usage records for (a) active-hours from warm-coordinator uptime and (b) worker-hours from Spot MIG uptime per query, plus per-resume cold-start minimums, and feed them into metered billing.
+
+**Use case:** Enables per-hour billing model defined in [REQ-1280](#REQ-1280) by instrumenting the serving and analytical lanes to emit metered usage records that drive actual customer charges based on infrastructure uptime, not flat plan tiers.
+
+**Code:** —
+
+**Tests:** —
+
+## 3. Multi-tenancy & Organization
+
+### REQ-1282 · Post-provisioning Welcome Screen {#REQ-1282}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+After an org reaches provisioning_state=ready, OnboardOrgPage renders a welcome phase displaying: (a) org is ready, (b) creator is org administrator, (c) invitation guidance with link to /team, (d) role management guidance with link to /security/roles, and navigation buttons: Invite teammates, Manage roles, Go to workspace.
+
+**Use case:** Provides clear post-provisioning feedback and guidance for newly created orgs, establishing org_admin identity and reducing friction to inviting team members and configuring roles.
+
+**Code:** `provisa-ui/src/pages/OnboardOrgPage.tsx`, `provisa-ui/src/context/AuthContext.tsx`
+
+**Tests:** —
+
+### REQ-1283 · Org-admin Team Management {#REQ-1283}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Org-admin Team page (/team) gated on user_management capability (held by org_admin template role); allows org_admin to create/copy/revoke invite links scoped to active org and choose role for each invitee on redemption. Backed by org-admin-scoped endpoints POST/GET/DELETE /admin/invites ([REQ-1274](#REQ-1274)). NavBar exposes "Team" link gated on user_management.
+
+**Use case:** Enables org_admin self-service team member invitation with role assignment, decoupling member provisioning from superadmin-only /admin/orgs tab and supporting decentralized org administration.
+
+**Code:** `provisa-ui/src/pages/TeamPage.tsx`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/i18n/locales/en/team.json`, `provisa-ui/src/i18n/locales/en/navBar.json`
+
+**Tests:** —
+
+## 2. Authentication & Identity
+
+### REQ-1284 · Organization Access Control {#REQ-1284}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Organizations can define an optional email-address rule (regex pattern) for membership. When a user redeems an invite to join that organization, the server validates the authenticated user's email against the rule. If the email does not match, the join is rejected. Organizations with no rule accept any email.
+
+**Use case:** Organizations need to restrict membership to users with company email addresses (e.g., @acme.com) or other domain-based rules to ensure data governance and compliance within trusted user pools.
+
+**Code:** `provisa/api/auth_router.py`, `provisa/core/schema_admin.py`
+
+**Tests:** `tests/integration/test_redeem_invite.py`
+
+### REQ-1285 · Organization Access Control {#REQ-1285}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Organizations may enable an "auto-join" flag with a configured default role (e.g., a low-privilege read-only role like "analyst"). When auto-join is enabled, any newly authenticated user whose email matches the org's email rule (or any user if no email rule exists) is automatically granted membership in that org with the default role — no explicit invite needed. When auto-join is disabled (the default), joining requires an explicit invite. Auto-join depends on the org email-rule feature ([REQ-1284](#REQ-1284)) to scope which accounts may self-join.
+
+**Use case:** Auto-join reduces friction for domain-scoped organizations by eliminating the need for explicit invites when email-based membership rules already verify eligibility. Users matching the email rule gain immediate access with a safe default role, speeding time-to-first-query.
+
+**Code:** `provisa/api/auth_router.py`, `provisa/core/schema_admin.py`
+
+**Tests:** `tests/integration/test_redeem_invite.py`

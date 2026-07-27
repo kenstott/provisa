@@ -20,15 +20,36 @@ the same pair, so it lives here once.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
-from provisa.core.schema_admin import user_org_memberships
+from sqlalchemy import select
+
+from provisa.core.schema_admin import orgs, user_org_memberships
 from provisa.core.schema_org import user_role_assignments
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
 log = logging.getLogger(__name__)
+
+
+def email_matches_rule(email: str | None, rule: str | None) -> bool:
+    """Whether ``email`` satisfies an org's ``email_rule`` regex (REQ-1268).
+
+    A NULL rule imposes no restriction (any email matches, including a missing one). A non-NULL rule
+    requires a non-empty email that the regex finds within — an authenticated identity with no email
+    can never satisfy a rule. The rule is validated as compilable at org-creation time, so a stored
+    rule compiles here; re.error is still guarded so a hand-edited bad rule fails closed (no match).
+    """
+    if rule is None:
+        return True
+    if not email:
+        return False
+    try:
+        return re.search(rule, email) is not None
+    except re.error:
+        return False
 
 
 async def grant_membership(admin_db: "Database", user_id: str, org_id: str) -> None:
@@ -71,6 +92,29 @@ async def grant_org_admin(
     assignment (tenant plane, scoped to the org's schema)."""
     await grant_membership(admin_db, user_id, org_id)
     await grant_org_role(tenant_db, user_id, "org_admin")
+
+
+async def resolve_auto_join_orgs(
+    admin_db: "Database", email: str | None
+) -> list[tuple[str, str]]:
+    """Return ``(org_id, auto_join_role)`` for every auto-join org whose email rule ``email`` matches.
+
+    REQ-1269. Reads the admin plane only (no tenant-schema access): the caller grants the tenant
+    role once it has bound the org's runtime. An auto_join org with no auto_join_role is skipped —
+    membership without a role would leave the user with no capabilities in the org.
+    """
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(orgs.c.id, orgs.c.email_rule, orgs.c.auto_join_role).where(
+                orgs.c.auto_join == True  # noqa: E712 — SQLAlchemy boolean column comparison
+            )
+        )
+        rows = [dict(r._mapping) for r in result.fetchall()]
+    return [
+        (r["id"], r["auto_join_role"])
+        for r in rows
+        if r["auto_join_role"] and email_matches_rule(email, r["email_rule"])
+    ]
 
 
 def notify_org_ready(org_id: str, user_id: str) -> None:  # REQ-1266

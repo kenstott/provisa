@@ -85,6 +85,8 @@ export function AuthProvider({
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [givenName, setGivenName] = useState<string | null>(null);
+  const [familyName, setFamilyName] = useState<string | null>(null);
   const { refetch: refetchRoles } = useRoles();
   const { refetch: refetchDomains } = useDomains();
 
@@ -102,6 +104,8 @@ export function AuthProvider({
         setUserId(me.user_id);
         setEmail(me.email ?? null);
         setDisplayName(me.display_name ?? null);
+        setGivenName(me.given_name ?? null);
+        setFamilyName(me.family_name ?? null);
         if (me.active_org_id && !localStorage.getItem("provisa_org")) {
           setSelectedOrg(me.active_org_id);
         } else if (me.org_memberships.length === 1 && !localStorage.getItem("provisa_org")) {
@@ -112,6 +116,15 @@ export function AuthProvider({
         // IS enforced, a failure here is an unauthenticated caller — never grant dev admin;
         // RequireAuth redirects to /login before any admin content renders (REQ-1267).
         isDev = !authEnabled;
+        // Clear any prior identity so a session that dies mid-app (token expired / account
+        // removed) resolves to userId=null — the signal OnboardGate uses to treat the stored
+        // token as a dead session rather than a live, member-less onboarding state.
+        setUserId(null);
+        setOrgMemberships([]);
+        setEmail(null);
+        setDisplayName(null);
+        setGivenName(null);
+        setFamilyName(null);
       }
 
       try {
@@ -250,6 +263,8 @@ export function AuthProvider({
         userId,
         email,
         displayName,
+        givenName,
+        familyName,
         authEnabled,
       }}
     >

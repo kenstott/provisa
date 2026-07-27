@@ -261,6 +261,9 @@ export function NavBar() {
           <NavLink to="/relationships" data-tour="nav-relationships">
             {t("navBar.relationships")}
           </NavLink>
+          <CapabilityGate capability="user_management">
+            <NavLink to="/team" data-tour="nav-team">{t("navBar.team")}</NavLink>
+          </CapabilityGate>
           {NAV_GROUPS.map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (

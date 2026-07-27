@@ -353,6 +353,36 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                     )
                     member_org_ids = [dict(r._mapping)["org_id"] for r in result.fetchall()]
 
+            # REQ-1269: auto-join. A just-authenticated user who belongs to no org yet is granted
+            # membership + the default role of every auto-join org whose email rule matches — no
+            # invite needed. Runs only while member_org_ids is empty (the common member case skips
+            # the lookup entirely) and only for a real identity (never the anonymous dev principal).
+            if (
+                not member_org_ids
+                and not is_platform_admin
+                and self._admin_pool is not None
+                and identity.user_id != "anonymous"
+            ):
+                from provisa.api.app import ensure_org_runtime
+                from provisa.api.org_runtime import reset_current_org, set_current_org
+                from provisa.core.org_membership import (
+                    grant_membership,
+                    grant_org_role,
+                    resolve_auto_join_orgs,
+                )
+
+                auto = await resolve_auto_join_orgs(self._admin_pool, identity.email)
+                for auto_org_id, auto_role in auto:
+                    await grant_membership(self._admin_pool, identity.user_id, auto_org_id)
+                    rt = await ensure_org_runtime(auto_org_id)
+                    if rt.tenant_db is not None:
+                        org_token = set_current_org(auto_org_id)
+                        try:
+                            await grant_org_role(rt.tenant_db, identity.user_id, auto_role)
+                        finally:
+                            reset_current_org(org_token)
+                    member_org_ids.append(auto_org_id)
+
             # Platform-plane auth endpoints must work for a just-authenticated user who has no
             # membership yet: /auth/redeem-invite CREATES the first membership, /auth/me reports zero
             # orgs, /setup + /admin/orgs run superadmin onboarding. They touch no tenant data, so an

@@ -1,0 +1,7 @@
+{
+  "onboardGate": {
+    "noAccountTitle": "No account access",
+    "noAccountBody": "You're signed in, but this account hasn't been granted access to this deployment — or your session has expired. Ask an administrator for an invitation, then sign in again.",
+    "backToSignIn": "Back to sign in"
+  }
+}

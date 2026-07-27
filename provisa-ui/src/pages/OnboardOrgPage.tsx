@@ -17,13 +17,18 @@ import {
   Box,
   Button,
   Checkbox,
+  Divider,
+  Group,
+  List,
   Loader,
   SegmentedControl,
   Stack,
   Text,
   TextInput,
+  ThemeIcon,
   Title,
 } from "@mantine/core";
+import { PartyPopper, ShieldCheck, UserPlus } from "lucide-react";
 import { createOrg, fetchOrgStatus, redeemInvite } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 
@@ -39,16 +44,23 @@ export function OnboardOrgPage() {
   const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [includeDemo, setIncludeDemo] = useState(false);
+  const [emailRule, setEmailRule] = useState("");
+  const [autoJoin, setAutoJoin] = useState(false);
+  const [autoJoinRole, setAutoJoinRole] = useState("");
   const [invite, setInvite] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [phase, setPhase] = useState<"form" | "provisioning" | "joining">("form");
+  const [phase, setPhase] = useState<"form" | "provisioning" | "joining" | "welcome">("form");
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setPhase("provisioning");
     try {
-      const created = await createOrg(id, name, includeDemo);
+      const created = await createOrg(id, name, includeDemo, {
+        emailRule: emailRule.trim() || null,
+        autoJoin,
+        autoJoinRole: autoJoinRole.trim() || null,
+      });
       let state = created.provisioning_state;
       // Bounded poll — the background provisioning task flips the row.
       for (let i = 0; i < 300 && state === "provisioning"; i++) {
@@ -60,9 +72,11 @@ export function OnboardOrgPage() {
         }
       }
       if (state !== "ready") throw new Error(t("onboardOrg.provisionTimeout"));
+      // Bind the new org + refresh identity so the org_admin grant resolves BEFORE the welcome
+      // screen offers links into /team (user_management) and /security/roles (access_config).
       selectOrg(id);
       await refresh();
-      navigate("/query");
+      setPhase("welcome");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
       setPhase("form");
@@ -83,6 +97,78 @@ export function OnboardOrgPage() {
       setPhase("form");
     }
   };
+
+  if (phase === "welcome") {
+    return (
+      <Box maw={560} mx="auto" my={80} data-testid="onboard-org-welcome">
+        <Stack gap="lg">
+          <Group gap="sm">
+            <ThemeIcon size="xl" radius="xl" color="green" variant="light">
+              <PartyPopper size={22} />
+            </ThemeIcon>
+            <div>
+              <Title order={2}>{t("onboardOrg.welcomeTitle", { name })}</Title>
+              <Text c="dimmed" size="sm">
+                {t("onboardOrg.welcomeAdmin")}
+              </Text>
+            </div>
+          </Group>
+
+          <Divider />
+
+          <Group gap="sm" align="flex-start" wrap="nowrap">
+            <ThemeIcon size="lg" radius="md" variant="light">
+              <UserPlus size={18} />
+            </ThemeIcon>
+            <div>
+              <Text fw={600}>{t("onboardOrg.welcomeInviteHeading")}</Text>
+              <Text c="dimmed" size="sm">
+                {t("onboardOrg.welcomeInviteBody")}
+              </Text>
+            </div>
+          </Group>
+
+          <Group gap="sm" align="flex-start" wrap="nowrap">
+            <ThemeIcon size="lg" radius="md" variant="light">
+              <ShieldCheck size={18} />
+            </ThemeIcon>
+            <div>
+              <Text fw={600}>{t("onboardOrg.welcomeGrantHeading")}</Text>
+              <Text c="dimmed" size="sm">
+                {t("onboardOrg.welcomeGrantBody")}
+              </Text>
+              <List size="sm" c="dimmed" mt={4}>
+                <List.Item>{t("onboardOrg.welcomeGrantStep1")}</List.Item>
+                <List.Item>{t("onboardOrg.welcomeGrantStep2")}</List.Item>
+              </List>
+            </div>
+          </Group>
+
+          <Divider />
+
+          <Group>
+            <Button data-testid="onboard-welcome-invite" onClick={() => navigate("/team")}>
+              {t("onboardOrg.welcomeInviteButton")}
+            </Button>
+            <Button
+              variant="default"
+              data-testid="onboard-welcome-roles"
+              onClick={() => navigate("/security/roles")}
+            >
+              {t("onboardOrg.welcomeRolesButton")}
+            </Button>
+            <Button
+              variant="subtle"
+              data-testid="onboard-welcome-continue"
+              onClick={() => navigate("/query")}
+            >
+              {t("onboardOrg.welcomeContinueButton")}
+            </Button>
+          </Group>
+        </Stack>
+      </Box>
+    );
+  }
 
   return (
     <Box maw={480} mx="auto" my={80} data-testid="onboard-org-page">
@@ -145,6 +231,34 @@ export function OnboardOrgPage() {
                   checked={includeDemo}
                   onChange={(e) => setIncludeDemo(e.currentTarget.checked)}
                 />
+                <TextInput
+                  id="onboard-org-email-rule"
+                  data-testid="onboard-org-email-rule"
+                  label={t("onboardOrg.emailRuleLabel")}
+                  description={t("onboardOrg.emailRuleDesc")}
+                  placeholder="@acme\.com$"
+                  value={emailRule}
+                  onChange={(e) => setEmailRule(e.currentTarget.value)}
+                />
+                <Checkbox
+                  data-testid="onboard-org-auto-join"
+                  label={t("onboardOrg.autoJoinLabel")}
+                  description={t("onboardOrg.autoJoinDesc")}
+                  checked={autoJoin}
+                  onChange={(e) => setAutoJoin(e.currentTarget.checked)}
+                />
+                {autoJoin && (
+                  <TextInput
+                    id="onboard-org-auto-join-role"
+                    data-testid="onboard-org-auto-join-role"
+                    label={t("onboardOrg.autoJoinRoleLabel")}
+                    description={t("onboardOrg.autoJoinRoleDesc")}
+                    placeholder="analyst"
+                    value={autoJoinRole}
+                    onChange={(e) => setAutoJoinRole(e.currentTarget.value)}
+                    required
+                  />
+                )}
                 {error && (
                   <Alert variant="light" color="red" data-testid="onboard-org-error">
                     {error}

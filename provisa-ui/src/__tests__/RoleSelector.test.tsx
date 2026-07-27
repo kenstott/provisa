@@ -66,6 +66,8 @@ function makeAuthValue(overrides: {
     userId: null,
     email: null,
     displayName: null,
+    givenName: null,
+    familyName: null,
     authEnabled: false,
   };
 }

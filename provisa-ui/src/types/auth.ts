@@ -72,4 +72,6 @@ export interface AuthState {
   userId: string | null;
   email: string | null;
   displayName: string | null;
+  givenName: string | null;
+  familyName: string | null;
 }

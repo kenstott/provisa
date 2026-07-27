@@ -20,7 +20,14 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, insert, select, update
 
-from provisa.core.schema_admin import local_users, org_invites, orgs, user_org_memberships
+from provisa.core.schema_admin import (
+    local_users,
+    org_invites,
+    orgs,
+    user_org_memberships,
+    user_profiles,
+)
+from provisa.core.org_membership import email_matches_rule
 from provisa.core.schema_org import roles
 
 if TYPE_CHECKING:
@@ -71,7 +78,7 @@ async def me(request: Request):
         if a.role_id in all_role_ids or a.role_id in _PLATFORM_BYPASS
     ]
 
-    # user_org_memberships/orgs live in the platform control plane.
+    # user_org_memberships/orgs/user_profiles live in the platform control plane.
     admin_db = state.admin_db
     assert admin_db is not None
     async with admin_db.acquire() as conn:
@@ -83,6 +90,13 @@ async def me(request: Request):
             .where(user_org_memberships.c.user_id == identity.user_id)
         )
         org_rows = [dict(r._mapping) for r in result.fetchall()]
+        # given_name/family_name are user-owned (PATCH /auth/profile), not carried by the IdP token.
+        prof_result = await conn.execute_core(
+            select(user_profiles.c.given_name, user_profiles.c.family_name).where(
+                user_profiles.c.user_id == identity.user_id
+            )
+        )
+        prof = prof_result.fetchone()
 
     # active_org_id is None only for a just-authenticated user with no org membership yet (mid-
     # onboarding, before redeem-invite). That is a legitimate state on this platform-plane endpoint —
@@ -94,6 +108,8 @@ async def me(request: Request):
         "display_name": identity.display_name,
         "dev_mode": False,
         "active_org_id": active_org_id,
+        "given_name": prof.given_name if prof is not None else None,
+        "family_name": prof.family_name if prof is not None else None,
         "org_memberships": [{"org_id": r["org_id"], "org_name": r["org_name"]} for r in org_rows],
         "assignments": assignments,
     }
@@ -297,12 +313,23 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
                 org_invites.c.role_id,
                 org_invites.c.expires_at,
                 org_invites.c.used_at,
-            ).where(org_invites.c.token == body.token)
+                orgs.c.email_rule,
+            )
+            .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
+            .where(org_invites.c.token == body.token)
         )
         fetched = result.fetchone()
         invite = dict(fetched._mapping) if fetched is not None else None
         if invite is None or invite["used_at"] is not None or invite["expires_at"] < now:
             raise HTTPException(status_code=400, detail="Invalid or expired invite token")
+        # REQ-1268: an org email rule gates who may join, even with a valid invite — the invited
+        # address and the authenticated address can differ. Reject a mismatch (or a missing email
+        # when a rule is set) rather than granting membership the org's policy forbids.
+        if not email_matches_rule(identity.email, invite["email_rule"]):
+            raise HTTPException(
+                status_code=403,
+                detail="Your email address is not permitted to join this organization",
+            )
         await conn.upsert(
             user_org_memberships,
             {"user_id": user_id, "org_id": invite["org_id"]},
@@ -325,3 +352,44 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
     assert rt.tenant_db is not None
     await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
     return {"user_id": user_id, "org_id": invite["org_id"], "role_id": invite["role_id"]}
+
+
+class ProfileUpdate(BaseModel):
+    given_name: str | None = None
+    family_name: str | None = None
+
+
+@router.patch("/profile")  # REQ-1266
+async def update_profile(body: ProfileUpdate, request: Request):
+    """Update the authenticated user's own first/last name (user_profiles, platform plane).
+
+    display_name/email mirror the IdP token and are read-only here; given_name/family_name have
+    no IdP source (Firebase/OIDC tokens carry no first/last split) so the user supplies them. The
+    profile row already exists — _upsert_profile writes it on every authenticated request — so this
+    updates in place. An empty string clears the field (stored as NULL); whitespace is trimmed.
+    """
+    from provisa.api.app import state
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    def _norm(v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        return s or None
+
+    admin_db = state.admin_db
+    assert admin_db is not None
+    async with admin_db.acquire() as conn:
+        await conn.execute_core(
+            update(user_profiles)
+            .where(user_profiles.c.user_id == identity.user_id)
+            .values(given_name=_norm(body.given_name), family_name=_norm(body.family_name))
+        )
+    return {
+        "user_id": identity.user_id,
+        "given_name": _norm(body.given_name),
+        "family_name": _norm(body.family_name),
+    }

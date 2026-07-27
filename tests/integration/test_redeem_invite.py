@@ -41,7 +41,7 @@ from provisa.auth.middleware import AuthMiddleware
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
-from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
+from provisa.core.schema_admin import org_invites, orgs, user_org_memberships, user_profiles
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
@@ -229,4 +229,34 @@ def test_redeem_requires_authentication(planes):
     admin_db, tenant_db, _ = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         resp = client.post("/auth/redeem-invite", json={"token": _TOKEN})
+    assert resp.status_code == 401
+
+
+def test_profile_update_sets_given_family_name(planes):
+    # REQ-1266: user supplies first/last (Firebase/OIDC tokens carry no split). PATCH writes them
+    # to user_profiles (platform plane); the IdP mirror (_upsert_profile) never overwrites them.
+    admin_db, tenant_db, sync_engine = planes
+    with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
+        resp = client.patch(
+            "/auth/profile",
+            json={"given_name": "  Alice  ", "family_name": ""},
+            headers={"Authorization": "Bearer tok-alice"},
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"user_id": "alice", "given_name": "Alice", "family_name": None}
+
+    prof = _q(
+        sync_engine,
+        _ADMIN_SCHEMA,
+        select(user_profiles.c.given_name, user_profiles.c.family_name).where(
+            user_profiles.c.user_id == "alice"
+        ),
+    )[0]
+    assert (prof[0], prof[1]) == ("Alice", None)
+
+
+def test_profile_update_requires_authentication(planes):
+    admin_db, tenant_db, _ = planes
+    with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
+        resp = client.patch("/auth/profile", json={"given_name": "X", "family_name": "Y"})
     assert resp.status_code == 401

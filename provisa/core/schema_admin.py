@@ -79,6 +79,17 @@ orgs = Table(
     # router reads it to rebuild the org's data-plane runtime after a process restart (registry
     # is in-memory, no TTL) — a demo org reloads the demo sources, an empty org stays empty.
     Column("seeded_demo", Boolean, nullable=False, server_default=false()),
+    # REQ-1268: optional email-address rule (a regular expression, e.g. "@acme\\.com$"). When set,
+    # a user redeeming an invite to join this org must have an authenticated email that matches, or
+    # the join is rejected. NULL means no restriction (any email may join). Validated as a
+    # compilable regex at org-creation time.
+    Column("email_rule", Text),
+    # REQ-1269: when true, a newly authenticated user whose email matches email_rule (or any user
+    # if email_rule is NULL) is auto-granted membership with auto_join_role — no invite needed.
+    # When false (default), joining requires an explicit invite. auto_join_role is the tenant-plane
+    # role granted on auto-join (e.g. a low-privilege "analyst"); it must exist in the org schema.
+    Column("auto_join", Boolean, nullable=False, server_default=false()),
+    Column("auto_join_role", Text),
 )
 
 user_profiles = Table(
@@ -87,6 +98,12 @@ user_profiles = Table(
     Column("user_id", Text, primary_key=True),
     Column("email", Text),
     Column("display_name", Text),
+    # User-owned profile details (REQ-1266). display_name/email mirror the IdP token on every
+    # request (_upsert_profile); given_name/family_name are entered by the user via PATCH
+    # /auth/profile and are NEVER overwritten by the IdP mirror (excluded from its update_columns),
+    # because Firebase/OIDC ID tokens do not carry a first/last split.
+    Column("given_name", Text),
+    Column("family_name", Text),
     Column("provider", Text),
     Column("last_seen", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

@@ -16,6 +16,8 @@ export async function fetchMe(): Promise<{
   user_id: string;
   email: string | null;
   display_name: string | null;
+  given_name: string | null;
+  family_name: string | null;
   dev_mode: boolean;
   active_org_id: string | null;
   org_memberships: OrgMembership[];
@@ -23,6 +25,24 @@ export async function fetchMe(): Promise<{
 }> {
   const res = await fetch("/auth/me");
   if (!res.ok) throw new Error("auth/me failed");
+  return res.json();
+}
+
+// REQ-1266: the user's own first/last name. display_name/email mirror the IdP and are read-only;
+// given_name/family_name have no IdP source, so the user supplies them here.
+export async function updateProfile(body: {
+  given_name: string | null;
+  family_name: string | null;
+}): Promise<{ user_id: string; given_name: string | null; family_name: string | null }> {
+  const res = await fetch("/auth/profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `updateProfile failed: ${res.status}`);
+  }
   return res.json();
 }
 
@@ -72,19 +92,55 @@ export interface OrgProvisioning {
   provisioning_error?: string | null;
 }
 
+export interface OrgJoinPolicy {
+  // REQ-1268/REQ-1269: regex an invitee's email must match; auto-join grants membership to any
+  // matching email with autoJoinRole, no invite required.
+  emailRule?: string | null;
+  autoJoin?: boolean;
+  autoJoinRole?: string | null;
+}
+
 export async function createOrg(
   id: string,
   name: string,
   includeDemo = false,
+  policy: OrgJoinPolicy = {},
 ): Promise<OrgProvisioning> {
   const res = await fetch(`${API_BASE}/admin/orgs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, name, include_demo: includeDemo }),
+    body: JSON.stringify({
+      id,
+      name,
+      include_demo: includeDemo,
+      email_rule: policy.emailRule ?? null,
+      auto_join: policy.autoJoin ?? false,
+      auto_join_role: policy.autoJoinRole ?? null,
+    }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(data.detail || `createOrg failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function updateOrgSettings(
+  orgId: string,
+  policy: OrgJoinPolicy,
+): Promise<{ id: string; email_rule: string | null; auto_join: boolean; auto_join_role: string | null }> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email_rule: policy.emailRule ?? null,
+      auto_join: policy.autoJoin ?? false,
+      auto_join_role: policy.autoJoinRole ?? null,
+    }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `updateOrgSettings failed: ${res.status}`);
   }
   return res.json();
 }

@@ -1,0 +1,24 @@
+{
+  "teamPage": {
+    "title": "Team",
+    "subtitle": "Invite people into your organization and choose the role each of them receives.",
+    "inviteHeading": "Invite a teammate",
+    "inviteHelp": "Generate an invite link, pick the role the invitee is granted, and share the link. Signing in with it makes them a member of your organization.",
+    "roleLabel": "Role",
+    "roleDesc": "The role the invitee receives on joining. Shape what each role can do in Security → Roles.",
+    "rolePlaceholder": "Select a role",
+    "generateInvite": "Create invite link",
+    "inviteCreated": "Invite link copied to clipboard: {{url}}",
+    "colToken": "Token",
+    "colRole": "Role",
+    "colExpires": "Expires",
+    "colStatus": "Status",
+    "colActions": "Actions",
+    "noInvites": "No invites yet.",
+    "usedStatus": "Used {{date}}",
+    "activeStatus": "Active",
+    "copyButton": "Copy link",
+    "copiedButton": "Copied",
+    "revokeButton": "Revoke"
+  }
+}

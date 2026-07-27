@@ -14,10 +14,27 @@
     "orgNameLabel": "Organization name",
     "includeDemoLabel": "Include demo data",
     "includeDemoDesc": "Seed the new organization with sample sources so you can explore right away.",
+    "emailRuleLabel": "Allowed email rule (optional)",
+    "emailRuleDesc": "A regular expression an invitee's email must match to join, e.g. \"@acme\\.com$\". Leave blank to allow any email.",
+    "autoJoinLabel": "Auto-join matching accounts",
+    "autoJoinDesc": "Any new account whose email matches the rule above joins automatically with the role below — no invite needed.",
+    "autoJoinRoleLabel": "Default role for auto-joined accounts",
+    "autoJoinRoleDesc": "The role granted on auto-join, e.g. a read-only \"analyst\".",
     "createButton": "Create organization",
     "provisioning": "Provisioning your organization. This can take a moment...",
     "createFailed": "Could not create the organization",
     "provisionFailed": "Provisioning failed",
-    "provisionTimeout": "Provisioning did not complete in time"
+    "provisionTimeout": "Provisioning did not complete in time",
+    "welcomeTitle": "Welcome to {{name}}!",
+    "welcomeAdmin": "Congratulations — your organization is ready and you are its administrator.",
+    "welcomeInviteHeading": "Invite others",
+    "welcomeInviteBody": "Open Team to create an invite link and choose the role each person receives when they join. Send them the link — signing in with it makes them a member of your organization.",
+    "welcomeGrantHeading": "Grant privileges",
+    "welcomeGrantBody": "Privileges come from roles. As administrator you decide what each role can do and who gets it:",
+    "welcomeGrantStep1": "In Security → Roles, create roles and pick their capabilities and domains.",
+    "welcomeGrantStep2": "In Team, choose that role when you invite someone so they receive those privileges on joining.",
+    "welcomeInviteButton": "Invite teammates",
+    "welcomeRolesButton": "Manage roles",
+    "welcomeContinueButton": "Go to workspace"
   }
 }

@@ -5,6 +5,7 @@
     "sources": "Sources",
     "tables": "Tables",
     "relationships": "Relationships",
+    "team": "Team",
     "docs": "Docs",
     "groupModel": "Model",
     "groupSecurity": "Security",

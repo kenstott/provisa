@@ -8,9 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Badge, Group, Modal, Stack, Table, Text, Title } from "@mantine/core";
+import { Badge, Button, Group, Modal, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
+import { updateProfile } from "../api/admin";
 
 interface Props {
   onClose: () => void;
@@ -18,7 +20,25 @@ interface Props {
 
 export function UserProfileModal({ onClose }: Props) {
   const { t } = useTranslation();
-  const { displayName, email, userId, devMode, availableRoles, assignments, capabilities, orgMemberships, activeOrgId } = useAuth();
+  const { displayName, email, userId, givenName, familyName, devMode, availableRoles, assignments, capabilities, orgMemberships, activeOrgId, refresh } = useAuth();
+  const [first, setFirst] = useState(givenName ?? "");
+  const [last, setLast] = useState(familyName ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const dirty = first !== (givenName ?? "") || last !== (familyName ?? "");
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateProfile({ given_name: first.trim() || null, family_name: last.trim() || null });
+      await refresh();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : t("userProfileModal.saveError"));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Modal opened onClose={onClose} title={t("userProfileModal.title")} size={560} centered data-testid="user-profile-modal">
@@ -27,6 +47,32 @@ export function UserProfileModal({ onClose }: Props) {
           <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
             {t("userProfileModal.identity")}
           </Title>
+          <Group grow gap="sm" mb="sm">
+            <TextInput
+              label={t("userProfileModal.firstName")}
+              value={first}
+              onChange={(e) => setFirst(e.currentTarget.value)}
+              data-testid="profile-first-name"
+            />
+            <TextInput
+              label={t("userProfileModal.lastName")}
+              value={last}
+              onChange={(e) => setLast(e.currentTarget.value)}
+              data-testid="profile-last-name"
+            />
+          </Group>
+          <Group justify="flex-end" mb="sm">
+            {saveError && <Text fz="0.8rem" c="var(--reject)" data-testid="profile-save-error">{saveError}</Text>}
+            <Button
+              size="xs"
+              onClick={handleSave}
+              loading={saving}
+              disabled={!dirty || saving}
+              data-testid="profile-save"
+            >
+              {saving ? t("userProfileModal.saving") : t("userProfileModal.save")}
+            </Button>
+          </Group>
           <Table withRowBorders={false} verticalSpacing={4} fz="0.85rem">
             <Table.Tbody>
               {displayName && (
