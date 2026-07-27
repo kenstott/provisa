@@ -9,8 +9,6 @@
 // permission from the copyright holder.
 
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
-import { useTranslation } from "react-i18next";
-import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { ApolloProvider } from "@apollo/client/react";
 import { client } from "./apolloClient";

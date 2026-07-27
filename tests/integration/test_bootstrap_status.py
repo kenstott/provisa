@@ -21,8 +21,6 @@ first-writer-wins upsert the middleware performs is what this reads back.
 from __future__ import annotations
 
 import os
-from types import SimpleNamespace
-
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -68,8 +66,10 @@ def admin_plane(monkeypatch):
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
 
     def set_bootstrap(enabled: bool) -> None:
+        # state.auth_config is what wiring.py hands the middleware, and therefore what decides
+        # whether signing in grants the bootstrap. The endpoint must read the same dict.
         monkeypatch.setattr(
-            app_state, "config", SimpleNamespace(auth={"bootstrap_superadmin": enabled}), raising=False
+            app_state, "auth_config", {"bootstrap_superadmin": enabled}, raising=False
         )
 
     yield sync_engine, set_bootstrap

@@ -146,16 +146,14 @@ async def bootstrap_status():  # REQ-1288
     """
     from provisa.api.app import state
 
-    cfg = getattr(state, "config", None)
-    auth_cfg = getattr(cfg, "auth", None) if cfg else None
+    # state.auth_config is the same dict the middleware resolves its own bootstrap flag from
+    # (provisa/auth/wiring.py:156) — read it there, not off state.config, so this endpoint and the
+    # grant it warns about can never disagree. None means no auth section at all: unsecured, so
+    # nobody is promoted by signing in and there is nothing to warn about.
+    auth_cfg = getattr(state, "auth_config", None)
     if auth_cfg is None:
         return {"unclaimed": False}
-    enabled = (
-        auth_cfg.get("bootstrap_superadmin", False)
-        if isinstance(auth_cfg, dict)
-        else getattr(auth_cfg, "bootstrap_superadmin", False)
-    )
-    if not enabled:
+    if not auth_cfg.get("bootstrap_superadmin", False):
         return {"unclaimed": False}
 
     # Bootstrap mode needs the platform plane for its singleton lock — the middleware asserts the
