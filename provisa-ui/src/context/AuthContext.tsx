@@ -70,9 +70,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({
   children,
   authEnabled,
+  authVersion = 0,
 }: {
   children: ReactNode;
   authEnabled: boolean;
+  // REQ-1291: bumped by App every time a token is stored or dropped. The provider outlives the
+  // login page, so without this the identity fetched at mount (none) was never revisited: a
+  // just-signed-in user stayed userId=null and OnboardGate read the fresh token as a rejected
+  // credential, cleared it, and put them back on sign-in — an unbreakable loop.
+  authVersion?: number;
 }) {
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [assignments, setAssignments] = useState<RoleAssignment[]>([]);
@@ -94,6 +100,17 @@ export function AuthProvider({
   const [familyName, setFamilyName] = useState<string | null>(null);
   const { refetch: refetchRoles } = useRoles();
   const { refetch: refetchDomains } = useDomains();
+
+  // REQ-1291: raise `loading` in the SAME render that authVersion changes, not in the effect that
+  // re-runs the bootstrap. OnboardGate is a descendant, and React runs child effects before parent
+  // effects — so an effect here is too late: the gate would already have seen the freshly stored
+  // token alongside the pre-login (null) identity, read it as a rejected credential, and deleted
+  // it. An in-flight identity fetch is `loading`, never a resolved absence of identity.
+  const [bootstrappedVersion, setBootstrappedVersion] = useState(authVersion);
+  if (bootstrappedVersion !== authVersion) {
+    setBootstrappedVersion(authVersion);
+    setLoading(true);
+  }
 
   const bootstrap = useCallback(async () => {
     {
@@ -185,7 +202,7 @@ export function AuthProvider({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setters are stable; gate on authEnabled
-  }, [authEnabled]);
+  }, [authEnabled, authVersion]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -198,8 +215,8 @@ export function AuthProvider({
 
   useEffect(() => {
     // Re-bootstrap when the runtime auth-enforcement flag resolves (starts false, flips true
-    // once /setup/status returns) so the dev-mode fallback keys off the settled value. setLoading
-    // runs only after the awaited bootstrap, never synchronously in the effect body.
+    // once /setup/status returns) so the dev-mode fallback keys off the settled value, and on
+    // every authVersion bump (REQ-1291).
     let cancelled = false;
     async function run() {
       await bootstrap();

@@ -112,7 +112,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const [, setAuthVersion] = useState(0);
+  const [authVersion, setAuthVersion] = useState(0);
   const handleLoginSuccess = useCallback(() => {
     setAuthVersion((v) => v + 1);
   }, []);
@@ -147,7 +147,10 @@ function App() {
   return (
     <BrowserRouter>
       <ApolloProvider client={client}>
-        <AuthProvider authEnabled={authEnabled}>
+        {/* REQ-1291: authVersion also reaches AuthProvider, so a sign-in refetches /auth/me.
+            Without it the identity resolved at mount (unauthenticated) stood forever, and
+            OnboardGate read the freshly stored token as a rejected credential. */}
+        <AuthProvider authEnabled={authEnabled} authVersion={authVersion}>
           {setupError ? (
             <div className="page">
               <p>Could not reach the Provisa API.</p>
