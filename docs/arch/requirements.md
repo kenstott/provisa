@@ -13184,7 +13184,7 @@ The deployment can never be left with zero platform_admins. Revoking the platfor
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-An organization can be deleted. Deletion drops the org's tenant schema, its membership and invite rows in the control plane, and its entry in the org registry, and evicts its OrgRuntime from the registry so no in-flight request resolves it. Only a platform_admin, or the org's own org_admin, may delete it. The root org cannot be deleted. Deletion is explicit and irreversible - it is never a side effect of removing the last member.
+An organization can be deleted. Deletion drops the org's tenant schema, its membership and invite rows in the control plane, and its entry in the org registry, and evicts its OrgRuntime from the registry so no in-flight request resolves it. Only a platform_admin, or the org's own org_admin, may delete it. The root org cannot be deleted. Deletion is explicit and irreversible - it is never a side effect of removing the last member. Because it is irreversible, the UI gates it behind a stern confirmation that names the org being destroyed, states plainly that its data cannot be recovered by anyone including the platform_admin, and requires the operator to type the org id to proceed - a single click must never be enough to destroy an organization.
 
 **Use case:** Self-service org creation without deletion is a one-way ratchet - abandoned orgs accumulate schemas, source pools, and runtime entries that nobody can remove through the product, and a person who creates an org by mistake has no way to undo it. Making root undeletable keeps the deployment's own working org and the platform_admin's membership from being destroyed by an ordinary org operation.
 
@@ -13203,3 +13203,27 @@ The root org is a working org, not a placeholder. The platform_admin registers a
 **Code:** `provisa/api/startup_seed.py`, `provisa/core/org_provisioning.py`
 
 **Tests:** `tests/integration/test_first_login_bootstrap_admin.py`
+
+### REQ-1302 · Authorization {#REQ-1302}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+No organization can be left with zero org_admins by an ordinary administrative act. Revoking org_admin from the last holder in an org is rejected, as is removing that holder's membership. The org is not nagged about having a single administrator - a standing warning would be invasive and a two-person org forced to invent a second administrator account produces ceremony rather than redundancy. Deleting the org is still available to its last org_admin ([REQ-1300](#REQ-1300)) - that path is a deliberate, confirmed destruction, not an accidental orphaning.
+
+**Use case:** An org whose sole administrator is revoked cannot invite anyone, cannot grant roles, and cannot delete itself - every act of administration requires the role that nobody now holds. Its members can still query, so the failure stays invisible until someone needs to change something. Refusing the last revocation removes the accidental route into that state; the unexpected-departure route is handled by platform_admin-mediated recovery ([REQ-1303](#REQ-1303)) rather than by pestering every small org.
+
+**Code:** `provisa/api/admin/roles_router.py`, `provisa/core/org_membership.py`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`
+
+### REQ-1303 · Authorization {#REQ-1303}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+When an org's administrators are unreachable, recovery runs through the platform_admin, not through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org at their own discretion; whatever verification satisfies them that the request is legitimate is a business process outside the product, not an automated check. The grant is a named operation, distinct from ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT org's audit trail so the intervention is visible to the org afterward. No per-org break-glass key is ever minted - the platform_admin already holds every capability in every org, so a customer-held token would add a permanent bearer secret without adding any recovery capability that does not already exist. Tokens of that kind belong to vendors who are cryptographically unable to recover a customer's data; Provisa is not one.
+
+**Use case:** This is the contact-the-vendor path every SaaS platform ends up with - Google Workspace, Atlassian and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for a Provisa deployment the provider is the platform_admin. The capability already exists implicitly via the platform bypass, which is the problem - recovery today would be an unlogged act indistinguishable from a platform_admin quietly reading a customer's org. Making it an explicit operation that lands in the org's own audit trail turns a silent backdoor into a recorded intervention.
+
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/api/admin/roles_router.py`, `provisa/core/org_membership.py`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`

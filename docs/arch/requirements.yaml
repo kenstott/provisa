@@ -38353,7 +38353,10 @@
     invite rows in the control plane, and its entry in the org registry, and evicts its OrgRuntime from the
     registry so no in-flight request resolves it. Only a platform_admin, or the org's own org_admin, may
     delete it. The root org cannot be deleted. Deletion is explicit and irreversible - it is never a side
-    effect of removing the last member.
+    effect of removing the last member. Because it is irreversible, the UI gates it behind a stern
+    confirmation that names the org being destroyed, states plainly that its data cannot be recovered by
+    anyone including the platform_admin, and requires the operator to type the org id to proceed - a
+    single click must never be enough to destroy an organization.
   use_case: Self-service org creation without deletion is a one-way ratchet - abandoned orgs accumulate
     schemas, source pools, and runtime entries that nobody can remove through the product, and a person who
     creates an org by mistake has no way to undo it. Making root undeletable keeps the deployment's own
@@ -38386,6 +38389,10 @@
 
     Given an org whose last member is removed
     Then the org still exists
+
+    Given an org_admin opening the delete-org control
+    Then a confirmation naming the org and stating the data cannot be recovered is shown
+    And deletion does not proceed until the org id is typed
   e2e: true
   e2e_reason: Deletion spans the control plane, the tenant schema, and the live OrgRuntime registry -
     only an end-to-end run shows that a deleted org stops resolving for requests already in flight.
@@ -38434,3 +38441,94 @@
   related_reqs:
   - REQ-1296
   - REQ-1300
+- id: REQ-1302
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: No organization can be left with zero org_admins by an ordinary administrative act.
+    Revoking org_admin from the last holder in an org is rejected, as is removing that holder's membership.
+    The org is not nagged about having a single administrator - a standing warning would be invasive and a
+    two-person org forced to invent a second administrator account produces ceremony rather than
+    redundancy. Deleting the org is still available to its last org_admin (REQ-1300) - that path is a
+    deliberate, confirmed destruction, not an accidental orphaning.
+  use_case: An org whose sole administrator is revoked cannot invite anyone, cannot grant roles, and cannot
+    delete itself - every act of administration requires the role that nobody now holds. Its members can
+    still query, so the failure stays invisible until someone needs to change something. Refusing the last
+    revocation removes the accidental route into that state; the unexpected-departure route is handled by
+    platform_admin-mediated recovery (REQ-1303) rather than by pestering every small org.
+  code:
+  - provisa/api/admin/roles_router.py
+  - provisa/core/org_membership.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given an org with exactly one org_admin
+    When any actor revokes org_admin from that holder
+    Then the request is rejected
+
+    Given an org with exactly one org_admin
+    When that holder's membership is removed
+    Then the request is rejected
+
+    Given an org with exactly one org_admin
+    When its Team page renders
+    Then no single-administrator warning is shown
+
+    Given an org with two or more org_admins
+    When one is revoked
+    Then the revocation succeeds
+  e2e: false
+  related_reqs:
+  - REQ-1299
+  - REQ-1300
+  - REQ-1303
+- id: REQ-1303
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: When an org's administrators are unreachable, recovery runs through the platform_admin, not
+    through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org at their
+    own discretion; whatever verification satisfies them that the request is legitimate is a business
+    process outside the product, not an automated check. The grant is a named operation, distinct from
+    ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT org's
+    audit trail so the intervention is visible to the org afterward. No per-org break-glass key is ever
+    minted - the platform_admin already holds every capability in every org, so a customer-held token would
+    add a permanent bearer secret without adding any recovery capability that does not already exist.
+    Tokens of that kind belong to vendors who are cryptographically unable to recover a customer's data;
+    Provisa is not one.
+  use_case: This is the contact-the-vendor path every SaaS platform ends up with - Google Workspace,
+    Atlassian and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for
+    a Provisa deployment the provider is the platform_admin. The capability already exists implicitly via
+    the platform bypass, which is the problem - recovery today would be an unlogged act indistinguishable
+    from a platform_admin quietly reading a customer's org. Making it an explicit operation that lands in
+    the org's own audit trail turns a silent backdoor into a recorded intervention.
+  code:
+  - provisa/api/admin/orgs_router.py
+  - provisa/api/admin/roles_router.py
+  - provisa/core/org_membership.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given an org whose only org_admin is unreachable
+    When a platform_admin grants org_admin to a named member of that org
+    Then that member holds org_admin
+    And an entry naming the platform_admin and the grantee is written to that org's audit trail
+
+    Given a user who is not a platform_admin
+    When they grant org_admin in an org they do not administer
+    Then the request is rejected
+
+    Given any org
+    Then no break-glass key or recovery code exists for it
+  e2e: false
+  related_reqs:
+  - REQ-1274
+  - REQ-1299
+  - REQ-1302
+
