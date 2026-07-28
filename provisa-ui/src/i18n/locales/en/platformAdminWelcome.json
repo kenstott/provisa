@@ -2,11 +2,12 @@
   "platformAdminWelcome": {
     "title": "You are the platform administrator",
     "body": "Signing in made you this deployment's platform administrator. You hold every capability here, including the org, role, and user administration surfaces — nobody else can claim it now.",
-    "inviteHeading": "Inviting other people",
-    "inviteStep1": "Open Team from the navigation bar.",
-    "inviteStep2": "Create an invitation for the organization and role you want the person to hold.",
-    "inviteStep3": "Send them the invite link. Signing in through it joins them to that organization with that role — they never become a platform administrator.",
-    "goToTeam": "Go to Team",
+    "orgHeading": "Nothing to invite anyone to yet",
+    "orgBody": "Being the platform administrator is not membership in an organization — you hold none, and none exist for anyone else to join. People are invited into an organization, so create one first.",
+    "orgStep1": "Open Organizations under Administration.",
+    "orgStep2": "Create an organization and choose whether to seed it with demo data.",
+    "orgStep3": "From that organization's Team page, invite people into it with the role you want them to hold — signing in through an invite never makes anyone a platform administrator.",
+    "goToOrgs": "Create an organization",
     "dismiss": "Got it"
   }
 }

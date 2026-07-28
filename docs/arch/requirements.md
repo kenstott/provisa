@@ -13112,9 +13112,9 @@ The tenant plane is isolated by schema (org_<id>), not row-level predicates. Adm
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** ui
 
-After claiming the platform-admin slot the user is shown a welcome modal explaining they are the platform admin and how to invite others. The flag is read once at mount and cleared when dismissed.
+After claiming the platform-admin slot the user is shown a welcome modal naming the role and directing them to create an organization. It must NOT give invite instructions — invitations are org-scoped, and a platform admin holds no org membership while the deployment holds no org. The flag is read once at mount and cleared when dismissed.
 
-**Use case:** Claiming the sole admin slot is an irreversible act that happens behind a provider redirect — the user clicks "Sign in with Google" and lands in the app with no statement of what they now are. This modal is that statement, giving the new admin the invite path so they know how to bring others in.
+**Use case:** Claiming the sole admin slot is an irreversible act that happens behind a provider redirect — the user clicks "Sign in with Google" and lands in the app with no statement of what they now are. This modal is that statement, and it gives the only next step that exists at that moment. Telling the platform admin to go invite someone conflates platform administration with org administration and names a screen with nothing on it: there is no org to invite anyone into yet.
 
 **Code:** `provisa-ui/src/components/PlatformAdminWelcomeModal.tsx`, `provisa-ui/src/App.tsx`
 

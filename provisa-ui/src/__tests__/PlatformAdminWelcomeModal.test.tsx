@@ -18,13 +18,13 @@ import {
 } from '../components/PlatformAdminWelcomeModal';
 
 // The modal calls useNavigate; the shared render wrapper has no Router, so provide one here. The
-// /team route is real so the "Go to Team" assertion is about navigation, not a mocked spy.
+// /admin/orgs route is real so the call-to-action assertion is about navigation, not a mocked spy.
 const renderModal = (ui: ReactElement) =>
   render(
     <MemoryRouter initialEntries={['/query']}>
       <Routes>
         <Route path="/query" element={ui} />
-        <Route path="/team" element={<div data-testid="team-page" />} />
+        <Route path="/admin/orgs" element={<div data-testid="orgs-page" />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -35,17 +35,21 @@ describe('PlatformAdminWelcomeModal (REQ-1294)', () => {
     vi.restoreAllMocks();
   });
 
-  it('states the new role and how to invite others after a claim', async () => {
+  it('states the new role and sends the admin to create an org, not to invite anyone', async () => {
     localStorage.setItem(CLAIMED_ADMIN_FLAG, '1');
 
     renderModal(<PlatformAdminWelcomeModal />);
 
     const modal = await screen.findByTestId('platform-admin-welcome');
     expect(modal).toHaveTextContent(/platform administrator/i);
-    // The invite path is the point of the modal — the role alone leaves the user with no next step.
-    expect(modal).toHaveTextContent(/inviting other people/i);
-    expect(modal).toHaveTextContent(/Team/);
-    expect(modal).toHaveTextContent(/invitation/i);
+    // Creating an org is the only next step that exists here — the role alone leaves the user
+    // with nothing to do.
+    expect(modal).toHaveTextContent(/create an organization/i);
+    expect(modal).toHaveTextContent(/Organizations under Administration/i);
+    // Invite instructions belong to an org admin. A platform admin holds no org and the deployment
+    // has none, so telling them to go invite someone names a screen with nothing on it.
+    expect(modal).not.toHaveTextContent(/inviting other people/i);
+    expect(modal).not.toHaveTextContent(/Open Team/i);
   });
 
   it('stays closed for an ordinary sign-in that claimed nothing', () => {
@@ -71,13 +75,13 @@ describe('PlatformAdminWelcomeModal (REQ-1294)', () => {
     expect(screen.queryByTestId('platform-admin-welcome')).not.toBeInTheDocument();
   });
 
-  it('takes the new administrator to Team, where invitations are created', async () => {
+  it('takes the new administrator to Organizations, where the first org is created', async () => {
     localStorage.setItem(CLAIMED_ADMIN_FLAG, '1');
 
     renderModal(<PlatformAdminWelcomeModal />);
-    fireEvent.click(await screen.findByTestId('platform-admin-welcome-team'));
+    fireEvent.click(await screen.findByTestId('platform-admin-welcome-orgs'));
 
-    expect(await screen.findByTestId('team-page')).toBeInTheDocument();
+    expect(await screen.findByTestId('orgs-page')).toBeInTheDocument();
     expect(localStorage.getItem(CLAIMED_ADMIN_FLAG)).toBeNull();
   });
 });
