@@ -38532,3 +38532,55 @@
   - REQ-1299
   - REQ-1302
 
+- id: REQ-1304
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: SHOULD
+  type: behavioral
+  since: 2026-07
+  description: Pressing delete on an organization downloads that org's configuration before the deletion
+    is confirmed. The download is the live config YAML built for that org (REQ-164 build_live_config_yaml,
+    resolved through the org's OrgRuntime) - its registered sources, tables, relationships, views,
+    materializations, domains, roles and grants - which is enough to recreate the org's shape later. It is
+    configuration, not data - the rows in the tenant schema are gone for good, and the confirmation
+    (REQ-1300) still says so. The download is not gated by the live_config_export opt-in - that flag exists
+    because a normalized patch cannot stay faithful to a hand-authored config file, and this is a
+    standalone snapshot, not a patch. A failure to build the config aborts the deletion rather than
+    proceeding without the snapshot.
+  use_case: Deletion is irreversible, so the moment before it is the last moment the org's structure
+    exists anywhere. An operator who deletes an org they built over months loses not just the rows but
+    every source registration, relationship and view definition that made it useful - and those are the
+    expensive part to rebuild. Handing the config back on the way out turns an irreversible act into a
+    recoverable one for everything except the data itself, which costs nothing to offer and removes most
+    of the reason to hesitate over a deletion that should happen.
+  code:
+  - provisa/api/admin/orgs_router.py
+  - provisa/api/admin/config_export.py
+  - provisa-ui/src/pages/TeamPage.tsx
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given an org_admin pressing delete on their org
+    When the confirmation is shown
+    Then that org's live config YAML has been downloaded
+    And it carries the org's sources, tables, relationships, views, domains and roles
+
+    Given a deployment with live_config_export disabled
+    When an org_admin presses delete
+    Then the config download still happens
+
+    Given an org whose live config cannot be built
+    When an org_admin presses delete
+    Then the deletion is aborted with the build failure reported
+
+    Given a platform_admin deleting another org
+    When the confirmation is shown
+    Then that org's config is downloaded, not root's
+  e2e: true
+  e2e_reason: The download is a browser-side effect of pressing delete on a live org - only an end-to-end
+    run shows the file arriving before the confirmation resolves.
+  related_reqs:
+  - REQ-164
+  - REQ-1300
+

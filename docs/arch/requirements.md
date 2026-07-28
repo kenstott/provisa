@@ -13227,3 +13227,15 @@ When an org's administrators are unreachable, recovery runs through the platform
 **Code:** `provisa/api/admin/orgs_router.py`, `provisa/api/admin/roles_router.py`, `provisa/core/org_membership.py`
 
 **Tests:** `tests/integration/test_org_lifecycle.py`
+
+### REQ-1304 · Authorization {#REQ-1304}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Pressing delete on an organization downloads that org's configuration before the deletion is confirmed. The download is the live config YAML built for that org ([REQ-164](#REQ-164) build_live_config_yaml, resolved through the org's OrgRuntime) - its registered sources, tables, relationships, views, materializations, domains, roles and grants - which is enough to recreate the org's shape later. It is configuration, not data - the rows in the tenant schema are gone for good, and the confirmation ([REQ-1300](#REQ-1300)) still says so. The download is not gated by the live_config_export opt-in - that flag exists because a normalized patch cannot stay faithful to a hand-authored config file, and this is a standalone snapshot, not a patch. A failure to build the config aborts the deletion rather than proceeding without the snapshot.
+
+**Use case:** Deletion is irreversible, so the moment before it is the last moment the org's structure exists anywhere. An operator who deletes an org they built over months loses not just the rows but every source registration, relationship and view definition that made it useful - and those are the expensive part to rebuild. Handing the config back on the way out turns an irreversible act into a recoverable one for everything except the data itself, which costs nothing to offer and removes most of the reason to hesitate over a deletion that should happen.
+
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/api/admin/config_export.py`, `provisa-ui/src/pages/TeamPage.tsx`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`
