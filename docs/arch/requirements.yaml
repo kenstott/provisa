@@ -38784,3 +38784,194 @@
   - REQ-1303
   - REQ-1305
 
+- id: REQ-1309
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: An org id is validated on creation and immutable thereafter. It must match a conservative
+    identifier pattern (lowercase letters, digits and hyphens, starting with a letter, bounded length),
+    because the value becomes both the PostgreSQL schema name org_<id> and the Host subdomain (REQ-1276) -
+    today CreateOrgBody.id is an unconstrained str whose only check is a duplicate lookup. Reserved ids are
+    rejected - root (REQ-1296), default, public, admin, information_schema, and anything beginning pg_ -
+    since each either collides with a real schema or with the deployment's own org. The id can never
+    change afterward - renaming an org changes its display name only, leaving the schema, the subdomain and
+    every bookmarked URL intact - and the rename UI states that.
+  use_case: The org id is not a label, it is a schema name and a hostname, so an unvalidated value is a
+    correctness problem before it is a security one - an id containing a quote, a dot, or mixed case
+    produces a schema that DDL cannot address or a subdomain that does not resolve, and the failure appears
+    during background provisioning rather than at the point of entry. Reserving the names is what keeps a
+    self-service creation from colliding with root or with a PostgreSQL system schema. Immutability is the
+    other half - once an org id is in DNS, in connection strings, and in the schema name, changing it is
+    not a rename but a migration.
+  code:
+  - provisa/api/admin/orgs_router.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given a create-org request whose id is not a valid identifier
+    When it is submitted
+    Then it is rejected before any row is inserted
+    And the response names the required format
+
+    Given a create-org request naming a reserved id
+    When it is submitted
+    Then it is rejected
+
+    Given an existing org id
+    When another user creates an org with the same id
+    Then it is rejected as already existing
+
+    Given an existing org
+    When its name is changed
+    Then its id, schema and subdomain are unchanged
+
+    Given any request that would change an org id
+    Then it is rejected
+  e2e: false
+  related_reqs:
+  - REQ-1271
+  - REQ-1276
+  - REQ-1296
+- id: REQ-1310
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: An invitation addressed to an email address is delivered to that address. Today
+    create_invite stores the invitee email but nothing sends anything - there is no SMTP or mail-provider
+    code in the codebase - so the only way to see an invitation is GET /auth/my-invites after signing in,
+    which requires the invited person to independently discover the deployment and create an account
+    unprompted. The message names the org, who invited them, the role they will hold, the expiry, and a
+    link that carries them into the redemption flow. Mail delivery is configured like every other backing
+    service, and tests exercise it against a local SMTP server the harness starts - the test asserts on the
+    captured message, never on a stub or a log line. A link invitation with no email address is unchanged -
+    the org_admin distributes it themselves.
+  use_case: Invitation is one of the three onboarding questions (REQ-1287) and it is the only one whose
+    answer currently depends on the invitee already knowing to look. An invite that exists in a table but
+    reaches nobody is the same as no invite for every user who was not told out of band, and it makes the
+    expiry (7 days by default) run against a clock the invitee cannot see. Testing against a real local
+    SMTP server rather than a mock is what makes the assertion meaningful - a mocked send proves the call
+    was made, not that a message a person could act on was produced.
+  code:
+  - provisa/api/admin/invites_router.py
+  - provisa/core/mail.py
+  tests:
+  - tests/integration/test_invite_delivery.py
+  scenario: |
+    Given an org_admin creating an invitation addressed to an email address
+    When the invitation is created
+    Then a message is delivered to that address
+    And it names the org, the inviter, the role and the expiry
+    And it carries a link that opens the redemption flow
+
+    Given an invitation created with no email address
+    Then no message is sent
+    And the link invitation is returned as before
+
+    Given the integration suite
+    When invitation delivery is exercised
+    Then it runs against a local SMTP server started by the harness
+    And the assertions read the captured message
+
+    Given mail delivery that fails
+    Then the invitation creation reports the failure rather than reporting success
+  e2e: false
+  related_reqs:
+  - REQ-1283
+  - REQ-1287
+- id: REQ-1311
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: SHOULD
+  type: behavioral
+  since: 2026-07
+  description: A single user may create at most 100 organizations. The cap is a backstop against runaway
+    or automated creation, not a product tier - every org provisions a schema and optionally seeds demo
+    data, and nothing currently bounds how many one account can trigger. Orgs the user has deleted
+    (REQ-1300) do not count against it. Reaching the cap returns a clear refusal naming the limit.
+  use_case: Self-service creation (REQ-1271) is open to any authenticated user, and each creation runs
+    background provisioning that builds a schema and a data-plane runtime. Without a ceiling, one account -
+    scripted, or simply confused - can consume the deployment's schema budget and provisioning capacity.
+    100 is far above any plausible legitimate use and far below the point where it becomes a resource
+    problem, which is what a backstop should be.
+  code:
+  - provisa/api/admin/orgs_router.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given a user who has created 100 orgs
+    When they create another
+    Then the request is rejected naming the limit
+
+    Given a user at the cap
+    When they delete one of their orgs
+    Then they may create another
+
+    Given a user who belongs to many orgs they did not create
+    Then those do not count against their cap
+  e2e: false
+  related_reqs:
+  - REQ-1271
+  - REQ-1300
+- id: REQ-1312
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: Deletion scrubs personal data while preserving the record that the deletion happened.
+    Deleting an org (REQ-1300) drops every tenant-scoped row and cascades the control-plane rows keyed to
+    it; what survives is the billing and usage record needed to invoice, which names the org and not a
+    person, and the platform audit entry recording the deletion. Deleting an account (REQ-1307) replaces
+    every reference to that user id - orgs.created_by, org_invites.created_by and used_by, audit
+    attributions - with an opaque tombstone token, and erases the personal attributes on user_profile
+    (name, email, avatar). References are tombstoned rather than nulled because org_invites.created_by is
+    NOT NULL and because a dangling id is worse than an explicit one - the record stays referentially
+    intact and stops identifying anyone. Audit entries are never deleted by either operation; an audit
+    trail that erases on request is not one.
+  use_case: This is the shape every SaaS platform converges on under GDPR and CCPA. Article 17(3) permits
+    retention for legal obligation and for establishing or defending legal claims, which is what keeps
+    billing records and audit trails out of the erasure - and platforms that delete audit records on
+    request fail their own security obligations doing it. Tombstoning is the published practice at GitHub
+    (the ghost user), Slack (deactivated account) and Atlassian (account anonymization) for the same reason
+    it is right here - the opaque id keeps foreign references and audit history coherent while the person
+    behind it becomes unidentifiable. Nulling would require schema changes the NOT NULL columns forbid and
+    would destroy the ability to answer who created a still-live org.
+  code:
+  - provisa/api/admin/orgs_router.py
+  - provisa/api/auth_router.py
+  - provisa/core/org_membership.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given an org with members, invites, and registered data
+    When it is deleted
+    Then every tenant-scoped row is dropped
+    And its control-plane membership and invite rows are gone
+    And its billing and usage records are retained
+    And an audit entry recording the deletion is retained
+
+    Given a user who created an org and several invitations
+    When they delete their account
+    Then every reference to their user id is replaced with an opaque tombstone
+    And their user_profile personal attributes are erased
+    And the orgs and invitations themselves still exist
+
+    Given a tombstoned user id
+    When an org's creator is displayed
+    Then it shows a deleted-user placeholder rather than a dangling identifier
+
+    Given any deletion
+    Then no audit entry is removed
+  e2e: false
+  related_reqs:
+  - REQ-1300
+  - REQ-1307
+
