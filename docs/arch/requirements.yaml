@@ -38126,11 +38126,13 @@
   type: behavioral
   since: 2026-07
   description: A claimed platform-admin slot lands the administrator in a populated deployment, not an
-    empty one. The bootstrap org id is 'root'; it is provisioned with the demo assets (registered sources,
-    tables, the ops and meta domains, relationships and views) before the first sign-in completes. The
-    claiming identity is written as a member of 'root' holding platform_admin — so they administer root as
-    well as the deployment — and 'root' is their active_org_id, so the first screen after the welcome modal
-    renders real data and a real role.
+    empty one. The bootstrap org id is 'root' and its tenant schema is org_root — this is the value the
+    control-plane resolver returns (REQ-1286), not a literal layered over it, so there is still one source
+    of truth for the default org id. It is provisioned with the demo assets (registered sources, tables,
+    the ops and meta domains, relationships and views) before the first sign-in completes. The claiming
+    identity is written as a member of 'root' holding platform_admin — so they administer root as well as
+    the deployment — and 'root' is their active_org_id, so the first screen after the welcome modal renders
+    real data and a real role.
   use_case: The first sign-in on a wiped multitenant deployment claimed the slot and then rendered "No
     roles configured" and "You do not have permission to view this page" with no tables, no ops or meta
     domain, and no demo data. Nothing in REQ-1288/1290/1292/1294 said what a freshly claimed platform admin
@@ -38147,6 +38149,8 @@
   scenario: |
     Given a wiped deployment with bootstrap mode on and the admin slot unclaimed
     Then an org with id 'root' exists
+    And its tenant schema is org_root
+    And the control-plane resolver returns 'root' as the default org id
     And 'root' carries the demo assets: registered sources, registered tables, the ops and meta domains
 
     Given the slot is unclaimed
@@ -38175,9 +38179,14 @@
   type: behavioral
   since: 2026-07
   description: 'Every org schema is seeded with exactly four default roles: platform_admin, org_admin,
-    analyst, developer. platform_admin is the deployment-wide administrator (the role the bootstrap claim
-    grants) and is the only one carrying the platform-bypass capabilities. org_admin administers a single
-    org — members, invites, sources, governance — and holds no bypass. developer builds against the data:
+    analyst, developer. These four ids are the whole vocabulary — there are no aliases. The role ids
+    ''admin'' and ''superadmin'' are retired: they exist today as both seeded role rows and as the
+    platform-bypass keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are
+    replaced by platform_admin. Existing assignments naming the retired ids are rewritten to
+    platform_admin at seed time; nothing resolves them afterward. platform_admin is the deployment-wide
+    administrator (the role the bootstrap claim grants) and is the only one carrying the platform-bypass
+    capabilities. org_admin administers a single org — members, invites, sources, governance — and holds no
+    bypass. developer builds against the data:
     query development, view and relationship authoring, full results, write. analyst reads: usage,
     ad-hoc query, query development, no authoring or governance. All four are system roles (org_id NULL,
     identical capabilities in every org) and are not editable through the roles admin surface.'
@@ -38196,6 +38205,12 @@
     Given a newly provisioned org schema
     Then roles platform_admin, org_admin, analyst and developer exist
     And each has org_id NULL
+    And no role with id 'admin' or 'superadmin' exists
+
+    Given an existing deployment carrying assignments to 'admin' or 'superadmin'
+    When the seed runs
+    Then those assignments name platform_admin
+    And the platform-bypass check recognizes platform_admin only
 
     Given the four default roles
     Then platform_admin carries the platform-bypass capabilities
@@ -38270,3 +38285,152 @@
   - REQ-1294
   - REQ-1296
   - REQ-1297
+- id: REQ-1299
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: The deployment can never be left with zero platform_admins. Revoking the platform_admin
+    role from the last holder, and deleting or disabling that holder's account, are both rejected. While
+    exactly one platform_admin exists the admin overview and the health endpoint carry a standing warning
+    naming the risk and the two-step fix (REQ-1298) — a warning, not a block, because a solo operator
+    forced to invent a second account produces ceremony rather than redundancy. Recovery when the sole
+    holder is unreachable runs at the infrastructure boundary that already exists - a grant command
+    executed on the host, plus the SSO-independent break-glass account of REQ-1264. No long-lived recovery
+    code is minted at claim time — a bearer secret conferring permanent deployment-wide administration is a
+    larger standing risk than the outage it insures against.
+  use_case: A platform_admin who revokes their own role, or an operator who deletes the only
+    administrator's account, bricks the deployment - nobody can grant the role back through the product
+    because granting it requires holding it. The failure is silent until someone needs administration.
+    Refusing the last revocation makes the invariant enforceable rather than advisory, and the standing
+    single-holder warning turns the far more likely scenario - the sole administrator becoming unreachable
+    - into something the operator was told about while they could still act.
+  code:
+  - provisa/api/admin/roles_router.py
+  - provisa/api/admin/users_router.py
+  - provisa/cli
+  tests:
+  - tests/integration/test_first_login_bootstrap_admin.py
+  scenario: |
+    Given exactly one platform_admin exists
+    When any actor revokes platform_admin from that holder
+    Then the request is rejected
+    And the holder still holds platform_admin
+
+    Given exactly one platform_admin exists
+    When any actor deletes or disables that holder's account
+    Then the request is rejected
+
+    Given exactly one platform_admin exists
+    When the admin overview renders
+    Then a standing single-administrator warning is shown
+    And it names the invite-into-root then assign path
+
+    Given two or more platform_admins exist
+    When one is revoked
+    Then the revocation succeeds
+    And the warning is not shown
+
+    Given the sole platform_admin is unreachable
+    When an operator with host access runs the platform-admin grant command
+    Then the named identity holds platform_admin
+    And no recovery code was ever minted or stored
+  e2e: false
+  related_reqs:
+  - REQ-1264
+  - REQ-1297
+  - REQ-1298
+- id: REQ-1300
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: An organization can be deleted. Deletion drops the org's tenant schema, its membership and
+    invite rows in the control plane, and its entry in the org registry, and evicts its OrgRuntime from the
+    registry so no in-flight request resolves it. Only a platform_admin, or the org's own org_admin, may
+    delete it. The root org cannot be deleted. Deletion is explicit and irreversible - it is never a side
+    effect of removing the last member.
+  use_case: Self-service org creation without deletion is a one-way ratchet - abandoned orgs accumulate
+    schemas, source pools, and runtime entries that nobody can remove through the product, and a person who
+    creates an org by mistake has no way to undo it. Making root undeletable keeps the deployment's own
+    working org and the platform_admin's membership from being destroyed by an ordinary org operation.
+  code:
+  - provisa/api/admin/orgs_router.py
+  - provisa/core/org_provisioning.py
+  - provisa/api/org_runtime.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given an org with a provisioned schema and members
+    When a platform_admin deletes it
+    Then the org_<id> schema is dropped
+    And its membership and invite rows are removed
+    And its OrgRuntime is evicted from the registry
+    And a subsequent request naming that org resolves to no org
+
+    Given an org_admin of that org
+    When they delete their own org
+    Then the deletion succeeds
+
+    Given an org_admin of a different org
+    When they delete it
+    Then the request is rejected
+
+    Given the root org
+    When any actor deletes it
+    Then the request is rejected
+
+    Given an org whose last member is removed
+    Then the org still exists
+  e2e: true
+  e2e_reason: Deletion spans the control plane, the tenant schema, and the live OrgRuntime registry -
+    only an end-to-end run shows that a deleted org stops resolving for requests already in flight.
+  related_reqs:
+  - REQ-1271
+  - REQ-1296
+- id: REQ-1301
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: SHOULD
+  type: behavioral
+  since: 2026-07
+  description: The root org is a working org, not a placeholder. The platform_admin registers and governs
+    whatever data assets they find useful there, alongside the demo assets it ships with (REQ-1296). Root
+    additionally carries a registered view over the org registry - one row per organization with its id,
+    name, provisioning state, creation time, and the contact details of each of its org_admins - so the
+    deployment's own tenancy is queryable through the same surfaces as any other dataset. The view reads
+    the control plane and is read-only; it is scoped to root and is not present in any other org.
+  use_case: A platform_admin asked "who runs org acme, and when did it appear" has no answer inside the
+    product - the org registry is control-plane state reachable only through admin endpoints, so the
+    operator drops to SQL against the admin schema. Exposing it as a registered view in root makes the
+    tenancy answerable by the query, graph, and API surfaces the platform already provides, and gives root
+    a reason to exist beyond holding the demo.
+  code:
+  - provisa/api/startup_seed.py
+  - provisa/core/org_provisioning.py
+  tests:
+  - tests/integration/test_first_login_bootstrap_admin.py
+  scenario: |
+    Given a provisioned root org
+    Then a registered view over the org registry exists in root
+    And each row carries the org id, name, provisioning state and creation time
+    And each row carries the contact details of that org's org_admins
+
+    Given a platform_admin querying root
+    When they select from the org registry view
+    Then every organization in the deployment is returned
+
+    Given any org other than root
+    Then the org registry view is not present
+
+    Given a write against the org registry view
+    Then it is rejected
+  e2e: false
+  related_reqs:
+  - REQ-1296
+  - REQ-1300
