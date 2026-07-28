@@ -38497,7 +38497,10 @@
     own discretion; whatever verification satisfies them that the request is legitimate is a business
     process outside the product, not an automated check. The grant is a named operation, distinct from
     ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT org's
-    audit trail so the intervention is visible to the org afterward. No per-org break-glass key is ever
+    audit trail so the intervention is visible to the org afterward. The same authority runs the other way -
+    a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin
+    invariant (REQ-1302), and that revocation is audited into the org's trail identically. No per-org
+    break-glass key is ever
     minted - the platform_admin already holds every capability in every org, so a customer-held token would
     add a permanent bearer secret without adding any recovery capability that does not already exist.
     Tokens of that kind belong to vendors who are cryptographically unable to recover a customer's data;
@@ -38520,8 +38523,13 @@
     Then that member holds org_admin
     And an entry naming the platform_admin and the grantee is written to that org's audit trail
 
+    Given an org with two or more org_admins
+    When a platform_admin revokes org_admin from one of them
+    Then that user no longer holds org_admin
+    And the revocation is written to that org's audit trail
+
     Given a user who is not a platform_admin
-    When they grant org_admin in an org they do not administer
+    When they grant or revoke org_admin in an org they do not administer
     Then the request is rejected
 
     Given any org
@@ -38583,4 +38591,196 @@
   related_reqs:
   - REQ-164
   - REQ-1300
+
+- id: REQ-1305
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: Removing a person from an org is an org_admin operation and it removes them from both
+    planes. Today DELETE /admin/orgs/{org_id}/members/{user_id} requires the platform bypass (the
+    _require_superadmin guard, retired by REQ-1297) so an org_admin cannot offboard anyone from their own
+    org, and it deletes only the control-plane user_org_memberships row - the tenant-plane
+    user_role_assignments row written by grant_org_role/grant_org_admin survives in org_<id>, so re-adding
+    the person silently restores the privileges they had before. Removal must be available to the org's own
+    org_admin (and to a platform_admin for any org), and must delete the membership row, every
+    user_role_assignments row for that user in that org schema, and any personal access token (REQ-1263)
+    scoped to that org for that user, in one operation. Offboarding is the mirror of the invite flow
+    (REQ-1283) and belongs on the same Team page.
+  use_case: An org_admin who can invite but cannot remove has half an administrative surface - the person
+    who leaves the company stays a member until someone with deployment-wide authority is asked to act. The
+    two-plane split makes the partial delete worse than an outright missing feature - the operator sees the
+    member disappear from the Team page and reasonably concludes the access is gone, while the role grant
+    that actually confers capability is still sitting in the tenant schema. A long-lived protocol token
+    scoped to the org is the same failure at a longer horizon, since it authenticates without a browser
+    session to invalidate.
+  code:
+  - provisa/api/admin/orgs_router.py
+  - provisa/core/org_membership.py
+  - provisa-ui/src/pages/TeamPage.tsx
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given an org_admin and a member of their org
+    When they remove that member
+    Then the user_org_memberships row is deleted
+    And every user_role_assignments row for that user in org_<id> is deleted
+    And every personal access token that user holds scoped to that org is revoked
+
+    Given a removed member who is later re-invited and redeems
+    Then they hold only the role the new invitation named
+
+    Given an org_admin of a different org
+    When they remove a member from an org they do not administer
+    Then the request is rejected
+
+    Given an ordinary member with no user_management capability
+    When they remove another member
+    Then the request is rejected
+  e2e: false
+  related_reqs:
+  - REQ-1283
+  - REQ-1297
+  - REQ-1306
+- id: REQ-1306
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: A user may leave an org on their own. Leaving performs the same two-plane removal as an
+    org_admin offboarding them (REQ-1305) and additionally suppresses auto-join (REQ-1285) for that user
+    and org, so a deliberate departure is not undone by the next sign-in matching the org's email rule. The
+    last org_admin of an org cannot leave it - the last-admin invariant (REQ-1302) applies to departure as
+    much as to revocation, and the paths out are to promote another org_admin first or to delete the org
+    (REQ-1300). If the org the user leaves is their active_org_id, the next request resolves another
+    membership; a user who leaves their only org returns to onboarding (REQ-1287) rather than to an error.
+  use_case: Membership can currently only be granted, never given up - a person invited to the wrong org,
+    or one who has finished a contract, has no way to detach themselves and must ask an administrator of an
+    org they no longer want to be in. Auto-join makes the omission self-inflicting - without an exclusion,
+    every removal is reversed on the removed person's next sign-in, so leaving would not stay done.
+  code:
+  - provisa/api/admin/orgs_router.py
+  - provisa/core/org_membership.py
+  - provisa-ui/src/components/UserProfileModal.tsx
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given a member of an org who is not its last org_admin
+    When they leave it
+    Then their membership and tenant-plane role assignments in that org are removed
+    And a later sign-in matching the org's email rule does not re-join them
+
+    Given the last org_admin of an org
+    When they leave it
+    Then the request is rejected
+    And the response names promoting another org_admin or deleting the org
+
+    Given a user leaving the org that is their active_org_id
+    And who belongs to another org
+    Then the next request resolves that other org
+
+    Given a user leaving their only org
+    Then the next sign-in lands on onboarding
+  e2e: true
+  e2e_reason: Leaving changes membership, the active org resolution, and which surface the user lands on -
+    only an end-to-end run shows the departure resolving to onboarding rather than to a broken session.
+  related_reqs:
+  - REQ-1285
+  - REQ-1302
+  - REQ-1305
+- id: REQ-1307
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: A user may delete their own Provisa account. Deletion leaves every org they belong to
+    (REQ-1306), revokes every personal access token they hold (REQ-1263), and removes their user_profile
+    record (REQ-1246) and any local_users credential row. It is refused while the user is the last
+    org_admin of any org or the last platform_admin of the deployment (REQ-1299, REQ-1302) - the response
+    names each org that blocks it, so the user knows exactly what to hand off. Deletion is irreversible and
+    carries the same stern confirmation as org deletion (REQ-1300). It does not delete the orgs the user
+    belonged to, nor any data they registered - those belong to the org, not to the person.
+  use_case: An account that can be created by signing in but never removed is a standing record of a person
+    who may have no further relationship with the deployment, and for a SaaS deployment it is also a
+    deletion request that has to be satisfiable. Refusing while the user is somebody's last administrator
+    is the same invariant as everywhere else - self-deletion must not be the back door that orphans an org
+    the other paths were built to protect.
+  code:
+  - provisa/api/auth_router.py
+  - provisa/core/org_membership.py
+  - provisa-ui/src/components/UserProfileModal.tsx
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given a user who is not the last administrator of anything
+    When they confirm account deletion
+    Then they are removed from every org they belonged to
+    And every personal access token they hold is revoked
+    And their user_profile and any local credential row are deleted
+    And their orgs and the data registered in them still exist
+
+    Given a user who is the last org_admin of an org
+    When they request account deletion
+    Then the request is rejected
+    And the response names that org
+
+    Given the last platform_admin
+    When they request account deletion
+    Then the request is rejected
+
+    Given account deletion
+    When the confirmation is shown
+    Then it states the account cannot be recovered
+  e2e: false
+  related_reqs:
+  - REQ-1246
+  - REQ-1299
+  - REQ-1306
+- id: REQ-1308
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: A user can never change their own role in an org. Changing a member's role is an org_admin
+    operation, available only to the org_admin of that org (and to a platform_admin for any org, REQ-1303),
+    and it writes the change to that org's audit trail naming who made it. This closes the loop the
+    X-Provisa-Role header opened - REQ-1295 already requires the UI to place only an ASSIGNED role in that
+    header, and this states the matching server-side rule - role assignment is an administrative act, and a
+    request that would grant its own sender a capability they were not assigned is rejected whatever
+    surface it arrives on.
+  use_case: Role selection is presented to the user as a control they operate - the role selector in the
+    NavBar - so the boundary between choosing among roles you hold and acquiring one you do not has to be
+    enforced by the server rather than by the shape of the UI. Every non-browser protocol carries the same
+    role selection over pgwire, Bolt and Flight, where no UI constrains it at all.
+  code:
+  - provisa/api/admin/roles_router.py
+  - provisa/auth/middleware.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: |
+    Given a member of an org
+    When they assign themselves a role
+    Then the request is rejected
+
+    Given an org_admin
+    When they change a member's role in their own org
+    Then the change takes effect
+    And an entry naming the org_admin, the member and the new role is written to the org's audit trail
+
+    Given a user selecting a role over any protocol
+    When the role is not assigned to them in the active org
+    Then the request is rejected
+  e2e: false
+  related_reqs:
+  - REQ-1295
+  - REQ-1303
+  - REQ-1305
 

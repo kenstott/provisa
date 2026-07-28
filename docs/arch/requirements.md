@@ -13220,7 +13220,7 @@ No organization can be left with zero org_admins by an ordinary administrative a
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-When an org's administrators are unreachable, recovery runs through the platform_admin, not through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org at their own discretion; whatever verification satisfies them that the request is legitimate is a business process outside the product, not an automated check. The grant is a named operation, distinct from ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT org's audit trail so the intervention is visible to the org afterward. No per-org break-glass key is ever minted - the platform_admin already holds every capability in every org, so a customer-held token would add a permanent bearer secret without adding any recovery capability that does not already exist. Tokens of that kind belong to vendors who are cryptographically unable to recover a customer's data; Provisa is not one.
+When an org's administrators are unreachable, recovery runs through the platform_admin, not through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org at their own discretion; whatever verification satisfies them that the request is legitimate is a business process outside the product, not an automated check. The grant is a named operation, distinct from ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT org's audit trail so the intervention is visible to the org afterward. The same authority runs the other way - a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin invariant ([REQ-1302](#REQ-1302)), and that revocation is audited into the org's trail identically. No per-org break-glass key is ever minted - the platform_admin already holds every capability in every org, so a customer-held token would add a permanent bearer secret without adding any recovery capability that does not already exist. Tokens of that kind belong to vendors who are cryptographically unable to recover a customer's data; Provisa is not one.
 
 **Use case:** This is the contact-the-vendor path every SaaS platform ends up with - Google Workspace, Atlassian and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for a Provisa deployment the provider is the platform_admin. The capability already exists implicitly via the platform bypass, which is the problem - recovery today would be an unlogged act indistinguishable from a platform_admin quietly reading a customer's org. Making it an explicit operation that lands in the org's own audit trail turns a silent backdoor into a recorded intervention.
 
@@ -13237,5 +13237,53 @@ Pressing delete on an organization downloads that org's configuration before the
 **Use case:** Deletion is irreversible, so the moment before it is the last moment the org's structure exists anywhere. An operator who deletes an org they built over months loses not just the rows but every source registration, relationship and view definition that made it useful - and those are the expensive part to rebuild. Handing the config back on the way out turns an irreversible act into a recoverable one for everything except the data itself, which costs nothing to offer and removes most of the reason to hesitate over a deletion that should happen.
 
 **Code:** `provisa/api/admin/orgs_router.py`, `provisa/api/admin/config_export.py`, `provisa-ui/src/pages/TeamPage.tsx`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`
+
+### REQ-1305 · Authorization {#REQ-1305}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Removing a person from an org is an org_admin operation and it removes them from both planes. Today DELETE /admin/orgs/{org_id}/members/{user_id} requires the platform bypass (the _require_superadmin guard, retired by [REQ-1297](#REQ-1297)) so an org_admin cannot offboard anyone from their own org, and it deletes only the control-plane user_org_memberships row - the tenant-plane user_role_assignments row written by grant_org_role/grant_org_admin survives in org_<id>, so re-adding the person silently restores the privileges they had before. Removal must be available to the org's own org_admin (and to a platform_admin for any org), and must delete the membership row, every user_role_assignments row for that user in that org schema, and any personal access token ([REQ-1263](#REQ-1263)) scoped to that org for that user, in one operation. Offboarding is the mirror of the invite flow ([REQ-1283](#REQ-1283)) and belongs on the same Team page.
+
+**Use case:** An org_admin who can invite but cannot remove has half an administrative surface - the person who leaves the company stays a member until someone with deployment-wide authority is asked to act. The two-plane split makes the partial delete worse than an outright missing feature - the operator sees the member disappear from the Team page and reasonably concludes the access is gone, while the role grant that actually confers capability is still sitting in the tenant schema. A long-lived protocol token scoped to the org is the same failure at a longer horizon, since it authenticates without a browser session to invalidate.
+
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/org_membership.py`, `provisa-ui/src/pages/TeamPage.tsx`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`
+
+### REQ-1306 · Authorization {#REQ-1306}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A user may leave an org on their own. Leaving performs the same two-plane removal as an org_admin offboarding them ([REQ-1305](#REQ-1305)) and additionally suppresses auto-join ([REQ-1285](#REQ-1285)) for that user and org, so a deliberate departure is not undone by the next sign-in matching the org's email rule. The last org_admin of an org cannot leave it - the last-admin invariant ([REQ-1302](#REQ-1302)) applies to departure as much as to revocation, and the paths out are to promote another org_admin first or to delete the org ([REQ-1300](#REQ-1300)). If the org the user leaves is their active_org_id, the next request resolves another membership; a user who leaves their only org returns to onboarding ([REQ-1287](#REQ-1287)) rather than to an error.
+
+**Use case:** Membership can currently only be granted, never given up - a person invited to the wrong org, or one who has finished a contract, has no way to detach themselves and must ask an administrator of an org they no longer want to be in. Auto-join makes the omission self-inflicting - without an exclusion, every removal is reversed on the removed person's next sign-in, so leaving would not stay done.
+
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/org_membership.py`, `provisa-ui/src/components/UserProfileModal.tsx`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`
+
+### REQ-1307 · Authorization {#REQ-1307}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A user may delete their own Provisa account. Deletion leaves every org they belong to ([REQ-1306](#REQ-1306)), revokes every personal access token they hold ([REQ-1263](#REQ-1263)), and removes their user_profile record ([REQ-1246](#REQ-1246)) and any local_users credential row. It is refused while the user is the last org_admin of any org or the last platform_admin of the deployment ([REQ-1299](#REQ-1299), [REQ-1302](#REQ-1302)) - the response names each org that blocks it, so the user knows exactly what to hand off. Deletion is irreversible and carries the same stern confirmation as org deletion ([REQ-1300](#REQ-1300)). It does not delete the orgs the user belonged to, nor any data they registered - those belong to the org, not to the person.
+
+**Use case:** An account that can be created by signing in but never removed is a standing record of a person who may have no further relationship with the deployment, and for a SaaS deployment it is also a deletion request that has to be satisfiable. Refusing while the user is somebody's last administrator is the same invariant as everywhere else - self-deletion must not be the back door that orphans an org the other paths were built to protect.
+
+**Code:** `provisa/api/auth_router.py`, `provisa/core/org_membership.py`, `provisa-ui/src/components/UserProfileModal.tsx`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`
+
+### REQ-1308 · Authorization {#REQ-1308}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A user can never change their own role in an org. Changing a member's role is an org_admin operation, available only to the org_admin of that org (and to a platform_admin for any org, [REQ-1303](#REQ-1303)), and it writes the change to that org's audit trail naming who made it. This closes the loop the X-Provisa-Role header opened - [REQ-1295](#REQ-1295) already requires the UI to place only an ASSIGNED role in that header, and this states the matching server-side rule - role assignment is an administrative act, and a request that would grant its own sender a capability they were not assigned is rejected whatever surface it arrives on.
+
+**Use case:** Role selection is presented to the user as a control they operate - the role selector in the NavBar - so the boundary between choosing among roles you hold and acquiring one you do not has to be enforced by the server rather than by the shape of the UI. Every non-browser protocol carries the same role selection over pgwire, Bolt and Flight, where no UI constrains it at all.
+
+**Code:** `provisa/api/admin/roles_router.py`, `provisa/auth/middleware.py`
 
 **Tests:** `tests/integration/test_org_lifecycle.py`
