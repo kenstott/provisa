@@ -159,6 +159,13 @@ export function TableEditForm({
           // A null preview means the engine is not yet connected (startup) — keep the persisted
           // summary rather than blanking the banner.
           if (!cancelled && summary) setLivePolicy(summary);
+        })
+        // The debounced preview outlives the form: closing the editor (or a test unmounting it)
+        // leaves this query in flight, and a rejection with no handler becomes an unhandled
+        // rejection that kills the surrounding context. Report it — the banner keeps the persisted
+        // summary, which is the same state a null preview produces.
+        .catch((err: unknown) => {
+          console.error("refreshPolicyPreview failed:", err);
         });
     }, 300);
     return () => {

@@ -1,0 +1,34 @@
+# REQ-1293: minimal demo config for the org-provisioning seed test. The source host is the
+# pytest-host-reachable Postgres (the same one the tenant plane uses), so build_org_runtime's
+# config load, source-pool build and engine registration all run for real against a live DB.
+sources:
+  - id: sales-pg
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD}
+
+domains:
+  - id: sales-analytics
+    description: Sales operational and analytical data
+
+tables:
+  - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
+    table: orders
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [admin]
+      - name: amount
+        visible_to: [admin]
+
+roles:
+  - id: admin
+    capabilities:
+      - query_development
+      - admin
+    domain_access: ["*"]

@@ -571,7 +571,9 @@ export function SecurityRlsPage() {
 
   if (loading) return <Text p="md">{t("securityPage.loadingRules")}</Text>;
 
-  const RuleFormFields = () => (
+  // A plain element, not a nested component: a component declared during render gets a new identity
+  // every pass, so React unmounts and remounts the fields (losing focus mid-typing).
+  const ruleFormFields = (
     <>
       <Group gap="sm" wrap="wrap">
         <Select
@@ -674,7 +676,7 @@ export function SecurityRlsPage() {
 
       {showRuleForm && (
         <Stack gap="sm" p="md" style={{ border: "1px solid var(--border)", borderRadius: "0.5rem" }}>
-          <RuleFormFields />
+          {ruleFormFields}
           <Group justify="flex-end">
             <ActionIcon
               variant="filled"
@@ -795,7 +797,7 @@ export function SecurityRlsPage() {
                         </Stack>
                       ) : (
                         <Stack gap="sm">
-                          <RuleFormFields />
+                          {ruleFormFields}
                           <Group justify="flex-end">
                             <ActionIcon
                               variant="subtle"

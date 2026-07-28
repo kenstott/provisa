@@ -27,7 +27,11 @@ type Source = "probing" | "online" | "offline";
 
 export function DocsPage() {
   const { t } = useTranslation();
-  const [probed, setProbed] = useState<Source>("probing");
+  // navigator.onLine === false is decided before the first paint; resolving it in the initializer
+  // keeps the probe effect from setting state synchronously on mount.
+  const [probed, setProbed] = useState<Source>(() =>
+    typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "probing",
+  );
   const [override, setOverride] = useState<"online" | "offline" | null>(null);
 
   // Probe the hosted docs once. navigator.onLine short-circuits the airgap case;
@@ -36,10 +40,7 @@ export function DocsPage() {
   // prefer online, and the manual toggle covers a stale/misrouted host.
   useEffect(() => {
     let cancelled = false;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      setProbed("offline");
-      return;
-    }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
     fetch(ONLINE_URL, { method: "HEAD", mode: "no-cors", signal: controller.signal })

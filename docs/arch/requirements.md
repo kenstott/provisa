@@ -13015,3 +13015,59 @@ The default org ID has a single source of truth from the control plane's resolve
 **Code:** `provisa/auth/wiring.py`, `provisa/core/models.py`, `provisa/core/schema_admin.py`, `provisa/core/control_plane.py`, `provisa/api/startup_seed.py`, `provisa/api/auth_router.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/i18n/locales/en/onboardGate.json`
 
 **Tests:** `tests/unit/test_default_org_id_resolution.py`, `provisa-ui/src/__tests__/OnboardGate.test.tsx`
+
+## 3. Multi-tenancy & Organization
+
+### REQ-1287 · Org Invitations {#REQ-1287}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Onboarding independently answers three questions: whether the user has a Provisa account, whether they have a pending org invitation, and whether they have org membership. Addressed invitations store the invitee's email in the org_invites table, enabling the UI to surface one-click accepts; link invites remain shareable without email.
+
+**Use case:** Users with pending org invitations can directly accept them on arrival without providing an invite token. The onboarding flow correctly distinguishes between account creation, org invitation acceptance, and org membership scenarios.
+
+**Code:** `provisa/core/schema_admin.py`, `provisa/api/auth_router.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
+
+**Tests:** `tests/integration/test_redeem_invite.py`
+
+## 2. Authentication & Identity
+
+### REQ-1288 · Platform Admin Bootstrap {#REQ-1288}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Before any superadmin exists (bootstrap_superadmin enabled and no superadmin_bootstrap row), a public GET /auth/bootstrap-status endpoint returns {"unclaimed": bool}. The login page displays a first-login notice warning that whoever signs in first becomes platform administrator, then shows provider choices. The endpoint bypasses bearer-token validation in _SKIP_PATHS.
+
+**Use case:** Transparent disclosure of the bootstrap-admin privilege grant prevents surprise superadmin escalation and ensures the first authenticator understands the security implications. The public endpoint enables the UI to probe bootstrap status independently of authentication state.
+
+**Code:** `provisa/api/auth_router.py`, `provisa/auth/middleware.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/i18n/locales/en/loginPage.json`
+
+**Tests:** `tests/integration/test_bootstrap_status.py`, `tests/unit/test_auth_middleware.py`, `provisa-ui/src/__tests__/LoginPage.test.tsx`
+
+## 3. Multi-tenancy & Organization
+
+### REQ-1289 · Onboarding {#REQ-1289}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Onboarding never dead-ends: a stored credential that the deployment rejects (/auth/me returns 401/403) is discarded by OnboardGate, which returns the user to the sign-in page to authenticate or create an account. Onboarding independently answers three orthogonal questions — does the user have a Provisa account, do they have a pending org invitation, do they have org membership — each with its own forward path. Transient server failures (5xx or unreachable) retain a separate retry screen ([REQ-1286](#REQ-1286)) and are not treated as access decisions.
+
+**Use case:** Users with stale credentials (e.g., post-password-reset, post-org-removal) must be able to re-authenticate rather than encountering a terminal "No account access" message. Platforms with an unclaimed admin slot cannot tell users "ask an administrator for an invitation," so onboarding must independently decompose the account-presence, invitation-presence, and membership-presence decisions and provide forward paths for each.
+
+**Code:** `provisa-ui/src/components/OnboardGate.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/OnboardGate.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-1290 · Authentication {#REQ-1290}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Claiming the sole platform-administrator slot is an explicit act via POST /auth/claim-bootstrap, never a side effect of authentication. AuthMiddleware only reads the superadmin_bootstrap singleton; the endpoint first-writes the id=1 row (first writer wins), returns 404 when bootstrap mode is off and 401 without identity, and reads back the holder on losing claims.
+
+**Use case:** Prevents stale credentials held by browsers from silently reactivating platform admin on page refresh before the user reads the [REQ-1288](#REQ-1288) first-login disclosure. Explicit claim ensures the user understands the implications and selects a sign-in provider on the login page after reading the disclosure.
+
+**Code:** `provisa/api/auth_router.py`, `provisa/core/schema_admin.py`
+
+**Tests:** `tests/integration/test_redeem_invite.py`

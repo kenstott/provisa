@@ -37704,3 +37704,187 @@
     When their identity email matches an open, unexpired org invitation
     Then the UI displays the invitation and offers one-click accept
     And failed my-invites lookup does not block org creation
+- id: REQ-1288
+  status: complete
+  group: 2. Authentication & Identity
+  category: Platform Admin Bootstrap
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: >-
+    Before any superadmin exists (bootstrap_superadmin enabled and no superadmin_bootstrap row),
+    a public GET /auth/bootstrap-status endpoint returns {"unclaimed": bool}. The login page displays
+    a first-login notice warning that whoever signs in first becomes platform administrator, then shows
+    provider choices. The endpoint bypasses bearer-token validation in _SKIP_PATHS.
+  use_case: >-
+    Transparent disclosure of the bootstrap-admin privilege grant prevents surprise superadmin escalation
+    and ensures the first authenticator understands the security implications. The public endpoint enables
+    the UI to probe bootstrap status independently of authentication state.
+  code:
+  - provisa/api/auth_router.py
+  - provisa/auth/middleware.py
+  - provisa-ui/src/api/admin.ts
+  - provisa-ui/src/pages/LoginPage.tsx
+  - provisa-ui/src/i18n/locales/en/loginPage.json
+  tests:
+  - tests/integration/test_bootstrap_status.py
+  - tests/unit/test_auth_middleware.py
+  - provisa-ui/src/__tests__/LoginPage.test.tsx
+  scenario: |
+    Given bootstrap_superadmin is enabled and no superadmin_bootstrap row exists
+    When a client calls GET /auth/bootstrap-status
+    Then a 200 response is returned with {"unclaimed": true}
+    And no bearer token is required
+
+    Given bootstrap_superadmin is enabled and a superadmin_bootstrap row exists
+    When a client calls GET /auth/bootstrap-status
+    Then a 200 response is returned with {"unclaimed": false}
+
+    Given an unauthenticated user navigates to the login page
+    When bootstrap status returns unclaimed=true
+    Then a notice displays above provider buttons
+    And states that the first sign-in will grant platform admin privileges
+    And provider choices render normally
+
+    Given an unauthenticated user navigates to the login page
+    When bootstrap status returns unclaimed=false
+    Then no first-login notice appears
+
+    Given the UI cannot reach the bootstrap-status endpoint (network/server error)
+    When the login page renders
+    Then provider choices still appear
+    And the failure to fetch bootstrap status does not block sign-in UI rendering
+  e2e: true
+  e2e_reason: >-
+    Bootstrap-status disclosure requires verification of unauthenticated endpoint access, login page
+    rendering conditional on bootstrap state, and integration of the status probe with the provider-type
+    UI flow — only achievable through an end-to-end authentication session.
+  related_reqs:
+  - REQ-1266
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Explicit first-login platform-admin disclosure at sign-in time (before any credential is created)
+      is unusual in multi-tenant SaaS; most platforms grant admin silently or require email verification.
+      Provisa's transparent notice prevents misconfiguration surprises and aligns with compliance-first
+      principles for self-hosted deployments.
+- id: REQ-1289
+  status: complete
+  group: "3. Multi-tenancy & Organization"
+  category: Onboarding
+  priority: MUST
+  type: behavioral
+  since: "2026-07"
+  description: >-
+    Onboarding never dead-ends: a stored credential that the deployment rejects (/auth/me returns
+    401/403) is discarded by OnboardGate, which returns the user to the sign-in page to authenticate
+    or create an account. Onboarding independently answers three orthogonal questions — does the user
+    have a Provisa account, do they have a pending org invitation, do they have org membership — each
+    with its own forward path. Transient server failures (5xx or unreachable) retain a separate retry
+    screen (REQ-1286) and are not treated as access decisions.
+  use_case: >-
+    Users with stale credentials (e.g., post-password-reset, post-org-removal) must be able to
+    re-authenticate rather than encountering a terminal "No account access" message. Platforms with an
+    unclaimed admin slot cannot tell users "ask an administrator for an invitation," so onboarding must
+    independently decompose the account-presence, invitation-presence, and membership-presence decisions
+    and provide forward paths for each.
+  code:
+    - provisa-ui/src/components/OnboardGate.tsx
+  tests:
+    - provisa-ui/src/__tests__/OnboardGate.test.tsx
+  scenario: |
+    Given an authenticated user with a stored credential
+    When /auth/me returns 401 or 403
+    Then OnboardGate discards the credential and redirects to sign-in
+    And the user can re-authenticate or create a new account
+
+    Given an unauthenticated user navigating to onboarding
+    When their identity email matches an open org invitation
+    Then the invitation is surfaced and accepted with one click
+    And they are not blocked by missing account creation
+
+    Given an unauthenticated user navigating to onboarding
+    When they have a Provisa account but no org membership
+    Then the UI offers to create or join an organization
+    And they progress forward without a "no account access" dead-end
+
+    Given an unauthenticated user navigating to onboarding
+    When /auth/me is unreachable or returns 5xx
+    Then a transient-failure retry screen appears (REQ-1286)
+    And the user is not incorrectly treated as lacking account access
+  e2e: true
+  e2e_reason: >-
+    Credential rejection, identity resolution, onboarding UI routing, and server error handling
+    are only verifiable through a live-stack round-trip from browser through API with real authentication
+    responses and UI navigation.
+  related_reqs:
+    - REQ-1286
+    - REQ-1287
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Most SaaS onboarding platforms render a terminal "access denied" message for any auth failure without
+      decomposing account-presence, invitation-acceptance, and membership-status. Provisa's orthogonal-question
+      model with forward paths for each scenario (with or without admin presence) is uncommon in cloud offerings.
+- id: REQ-1290
+  status: complete
+  group: "1. Access Governance & Security"
+  category: Authentication
+  priority: MUST
+  type: behavioral
+  since: "2026-07"
+  description: >-
+    Claiming the sole platform-administrator slot is an explicit act via POST /auth/claim-bootstrap,
+    never a side effect of authentication. AuthMiddleware only reads the superadmin_bootstrap singleton;
+    the endpoint first-writes the id=1 row (first writer wins), returns 404 when bootstrap mode is off
+    and 401 without identity, and reads back the holder on losing claims.
+  use_case: >-
+    Prevents stale credentials held by browsers from silently reactivating platform admin on page refresh
+    before the user reads the REQ-1288 first-login disclosure. Explicit claim ensures the user understands
+    the implications and selects a sign-in provider on the login page after reading the disclosure.
+  code:
+    - provisa/api/auth_router.py
+    - provisa/core/schema_admin.py
+  tests:
+    - tests/integration/test_redeem_invite.py
+  scenario: |
+    Given bootstrap mode is on and the admin slot is unclaimed
+    When an authenticated user POSTs /auth/claim-bootstrap after reading the first-login disclosure
+    Then the user's identity is written to superadmin_bootstrap.holder_id
+    And the endpoint returns 200 with the holder
+
+    Given bootstrap mode is on and another user already claimed the slot
+    When a different authenticated user POSTs /auth/claim-bootstrap
+    Then the endpoint returns 200 with the existing holder's identity
+    And the second user is not made admin
+
+    Given bootstrap mode is off
+    When a user POSTs /auth/claim-bootstrap
+    Then the endpoint returns 404
+
+    Given bootstrap mode is on and the slot is unclaimed
+    When an unauthenticated user POSTs /auth/claim-bootstrap
+    Then the endpoint returns 401
+
+    Given bootstrap mode is on and the slot is unclaimed
+    When AuthMiddleware processes an authenticated request
+    Then it only reads superadmin_bootstrap (does not write)
+    And the slot remains unclaimed even after multiple authenticated requests
+
+    Given bootstrap mode is on and the admin slot is unclaimed (single-tenant deployment)
+    Then /auth/login and onboarding do not return 403 "registration closed"
+    And the claim endpoint remains reachable to allow bootstrap slot claiming
+  e2e: true
+  e2e_reason: >-
+    Authentication state, bootstrap mode state, first-write claim semantics, endpoint routing (404/401/200),
+    and AuthMiddleware read-only enforcement are only verifiable through a live end-to-end auth flow with
+    real state changes to the superadmin_bootstrap singleton.
+  related_reqs:
+    - REQ-1288
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Most multi-tenant platforms grant platform admin implicitly (by email domain, first account, or
+      pre-seeded credentials) without requiring explicit acknowledgment. Provisa's explicit claim prevents
+      accidental admin elevation and ensures every deployment operator consciously reads the first-login
+      disclosure before becoming the sole admin.

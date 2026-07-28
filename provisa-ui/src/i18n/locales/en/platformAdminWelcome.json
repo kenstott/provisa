@@ -1,0 +1,12 @@
+{
+  "platformAdminWelcome": {
+    "title": "You are the platform administrator",
+    "body": "Signing in made you this deployment's platform administrator. You hold every capability here, including the org, role, and user administration surfaces — nobody else can claim it now.",
+    "inviteHeading": "Inviting other people",
+    "inviteStep1": "Open Team from the navigation bar.",
+    "inviteStep2": "Create an invitation for the organization and role you want the person to hold.",
+    "inviteStep3": "Send them the invite link. Signing in through it joins them to that organization with that role — they never become a platform administrator.",
+    "goToTeam": "Go to Team",
+    "dismiss": "Got it"
+  }
+}

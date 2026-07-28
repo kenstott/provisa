@@ -216,19 +216,20 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def domains(self, info: StrawberryInfo) -> list[DomainType]:  # REQ-021, REQ-042
-        active_org_id, is_admin = _resolve_admin_context(info)
+        # REQ-1293: the tenant plane is isolated BY SCHEMA — _get_pool() is the org-routed
+        # state.tenant_db bound to org_<active_org_id>, so every row reachable here already
+        # belongs to the active org. A second, row-level `domains.org_id = active_org_id`
+        # predicate was not a narrower boundary but a broken one: schema.sql runs inside EVERY
+        # org schema and stamps its seeded rows org_id='root', and create_domain never writes
+        # the column at all. For an org_admin of any org but 'root' it matched zero rows and
+        # the org's own domains vanished. _resolve_admin_context still runs: it raises when no
+        # org is bound, which is what actually keeps one org's rows away from another.
+        _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            if is_admin:
-                _res = await conn.execute_core(
-                    select(domains).where(domains.c.id != "").order_by(domains.c.id)
-                )
-            else:
-                _res = await conn.execute_core(
-                    select(domains)
-                    .where(domains.c.id != "", domains.c.org_id == active_org_id)
-                    .order_by(domains.c.id)
-                )
+            _res = await conn.execute_core(
+                select(domains).where(domains.c.id != "").order_by(domains.c.id)
+            )
             return [_domain_from_row(dict(r._mapping)) for r in _res.fetchall()]
 
     @strawberry.field

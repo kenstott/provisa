@@ -33,8 +33,11 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     exclude: ['e2e/**', 'node_modules/**'],
-    pool: 'vmThreads',
-    fileParallelism: false,
+    // 'threads' (the default) gives each test file its own module registry. Under 'vmThreads' with
+    // fileParallelism:false every file shared one registry, so a vi.mock in one file decided which
+    // version of that module EVERY file got — mocks silently applied or failed to apply depending
+    // on file order.
+    pool: 'threads',
     coverage: {
       provider: 'v8',
       reporter: ['json'],

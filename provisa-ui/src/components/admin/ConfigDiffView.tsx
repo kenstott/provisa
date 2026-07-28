@@ -30,8 +30,12 @@ interface ConfigDiffViewProps {
  */
 export function ConfigDiffView({ original, current, onCurrentChange }: ConfigDiffViewProps) {
   const host = useRef<HTMLDivElement>(null);
+  // Kept in a ref so the MergeView effect below can stay mounted across renders: writing it during
+  // render mutates a ref while React is rendering, so the write belongs in a commit-phase effect.
   const changeRef = useRef(onCurrentChange);
-  changeRef.current = onCurrentChange;
+  useEffect(() => {
+    changeRef.current = onCurrentChange;
+  });
 
   useEffect(() => {
     if (!host.current) return;

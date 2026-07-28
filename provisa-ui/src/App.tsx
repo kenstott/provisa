@@ -17,6 +17,7 @@ import { DomainFilterProvider } from "./context/DomainFilterContext";
 import { NavBar } from "./components/NavBar";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { OnboardGate } from "./components/OnboardGate";
+import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
 import { fetchSetupStatus } from "./api/setup";
 import { TourProvider, useTour, hasSeenTour } from "./tour/useTour";
 import "./App.css";
@@ -180,6 +181,9 @@ function App() {
               <RequireAuth>
                 <TourProvider>
                 <TourAutoStart demoMode={demoMode} />
+                {/* REQ-1294: the sign-in that claims the platform-admin slot lands here; this is
+                    where the user is told what they now are and how to invite anyone else. */}
+                <PlatformAdminWelcomeModal />
                 <NavBar />
                 <main>
                 <Suspense fallback={<div className="page"><p>Loading...</p></div>}>

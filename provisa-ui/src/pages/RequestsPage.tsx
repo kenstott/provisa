@@ -114,8 +114,9 @@ export function RequestsPage() {
 
   useEffect(() => {
     load(tab);
-    fetchRejectionReasons().then(setReasons).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchRejectionReasons()
+      .then(setReasons)
+      .catch((e) => setError(String(e)));
   }, [tab]);
 
   const doApprove = async (id: number) => {

@@ -14,6 +14,7 @@ import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen, fireEvent, waitFor } from '../test-utils/render';
 import { LoginPage } from '../pages/LoginPage';
+import { CLAIMED_ADMIN_FLAG } from '../components/PlatformAdminWelcomeModal';
 
 // LoginPage calls useNavigate; the shared render wrapper has no Router, so provide one here.
 const renderLogin = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -64,6 +65,7 @@ describe('LoginPage', () => {
 
   afterEach(() => {
     localStorage.removeItem('provisa_token');
+    localStorage.removeItem(CLAIMED_ADMIN_FLAG);
   });
 
   // ── authDisabled mode ──────────────────────────────────────────────────────
@@ -285,6 +287,48 @@ describe('LoginPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Login' }));
 
     await waitFor(() => expect(mockClaimBootstrap).toHaveBeenCalled());
+  });
+
+  // ── Recording the claim for the welcome modal (REQ-1294) ───────────────────
+
+  it('records a successful claim so the shell can disclose the new platform-admin role', async () => {
+    mockFetchBootstrapStatus.mockResolvedValue(true);
+    mockFetchProviderType.mockResolvedValue('firebase');
+    mockClaimBootstrap.mockResolvedValue(true);
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    fireEvent.click(await screen.findByTestId('firebase-signin-button'));
+
+    await waitFor(() =>
+      expect(localStorage.getItem(CLAIMED_ADMIN_FLAG)).toBe('1'),
+    );
+  });
+
+  it('records nothing when the server refused the claim', async () => {
+    // A refused claim means someone else holds the slot; announcing "you are now the platform
+    // administrator" would be a statement about an outcome that did not happen.
+    mockFetchBootstrapStatus.mockResolvedValue(true);
+    mockFetchProviderType.mockResolvedValue('firebase');
+    mockClaimBootstrap.mockResolvedValue(false);
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    fireEvent.click(await screen.findByTestId('firebase-signin-button'));
+
+    await waitFor(() => expect(onLoginSuccess).toHaveBeenCalled());
+    expect(localStorage.getItem(CLAIMED_ADMIN_FLAG)).toBeNull();
+  });
+
+  it('records nothing on an ordinary sign-in to an already-administered deployment', async () => {
+    mockFetchProviderType.mockResolvedValue('firebase');
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    fireEvent.click(await screen.findByTestId('firebase-signin-button'));
+
+    await waitFor(() => expect(onLoginSuccess).toHaveBeenCalled());
+    expect(localStorage.getItem(CLAIMED_ADMIN_FLAG)).toBeNull();
   });
 
   // ── Input binding ──────────────────────────────────────────────────────────

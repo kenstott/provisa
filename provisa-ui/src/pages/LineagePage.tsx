@@ -69,7 +69,9 @@ export function LineagePage(): React.ReactElement {
     params.get("sql") || params.get("focus") ? null : loadStoredGraph(),
   );
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  // A deep-link starts fetching on mount, so the page is already loading at first paint —
+  // initializing here rather than setting it inside the mount effect keeps that first render truthful.
+  const [loading, setLoading] = useState(() => Boolean(params.get("sql") || params.get("focus")));
   const [sqlHovered, setSqlHovered] = useState(false);
   const [sqlCopied, setSqlCopied] = useState(false);
   const { checkedDomains } = useDomainFilter();
@@ -100,13 +102,28 @@ export function LineagePage(): React.ReactElement {
   // graph scoped to that relation/column (the "show lineage" entry point from other pages).
   useEffect(() => {
     const focus = params.get("focus");
-    if (focus) {
-      run(() => fetchFederationGraph({ focus }));
-    } else if (params.get("sql")) {
-      run(() => fetchLineageGraph(params.get("sql") as string));
-    }
-    // run once on mount for the incoming deep-link params
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const sqlParam = params.get("sql");
+    if (!focus && !sqlParam) return;
+    let cancelled = false;
+    // Every setState here lands after the await, so mounting does not immediately re-render.
+    void (async () => {
+      try {
+        const built = focus
+          ? await fetchFederationGraph({ focus })
+          : await fetchLineageGraph(sqlParam as string);
+        if (!cancelled) setGraph(built);
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+        setGraph(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deep-link params are read once, at mount
   }, []);
 
   const cycles = graph?.cycles ?? [];

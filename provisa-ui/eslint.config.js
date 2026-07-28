@@ -69,6 +69,12 @@ export default defineConfig([
       }],
     },
   },
+  // Test helpers never take part in Vite fast refresh, so re-exporting a whole testing library
+  // alongside a render helper is not a refresh hazard there.
+  {
+    files: ['src/test-utils/**/*.{ts,tsx}', 'src/**/__tests__/**/*.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
+    rules: { 'react-refresh/only-export-components': 'off' },
+  },
   // App.tsx is the single legitimate importer of the raw client — it wires
   // <ApolloProvider client={client}>. That is provider setup, not a query/mutate.
   {

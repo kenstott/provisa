@@ -544,10 +544,13 @@ CREATE TABLE IF NOT EXISTS file_source_mtimes (
 -- The org_id columns below therefore hold a plain org identifier — no FK to
 -- orgs, which lives in a different physical database.
 
--- Add org_id to domains (nullable; existing rows stamped to 'root')
+-- Add org_id to domains. REQ-1293: this script runs inside EVERY org schema, so it cannot know
+-- which org it is running in — an earlier `UPDATE domains SET org_id = 'root'` here stamped every
+-- org's seeded domains with another org's id, and the admin read path that trusted the stamp
+-- returned nothing for any org but 'root'. The org a domain belongs to is the schema it lives in;
+-- the column is left unstamped rather than filled with a value that is wrong by construction.
 DO $$ BEGIN
     ALTER TABLE domains ADD COLUMN IF NOT EXISTS org_id TEXT;
-    UPDATE domains SET org_id = 'root' WHERE org_id IS NULL;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

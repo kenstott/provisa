@@ -34,6 +34,7 @@
     "nextPage": "Next page",
     "firstPage": "First page",
     "lastPage": "Last page",
-    "pageOf": "Page {{page}} / {{totalPages}}"
+    "pageOf": "Page {{page}} / {{totalPages}}",
+    "loadFailed": "Could not load registered tables: {{message}}"
   }
 }

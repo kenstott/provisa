@@ -22,6 +22,7 @@ import {
   redeemInvite,
 } from "../api/admin";
 import type { InviteInfo } from "../api/admin";
+import { CLAIMED_ADMIN_FLAG } from "../components/PlatformAdminWelcomeModal";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -90,6 +91,16 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     );
   }
 
+  // REQ-1294: claiming happens behind a provider redirect, and the app shell that must disclose it
+  // is a different render tree than this page. Record the claim so the shell can state, once, what
+  // this sign-in just made the user. Only a true response sets it — a claim the server refused
+  // (the slot was already taken) must not produce a "you are now the administrator" modal.
+  const claimAndRecord = async () => {
+    if (await claimBootstrap()) {
+      localStorage.setItem(CLAIMED_ADMIN_FLAG, "1");
+    }
+  };
+
   const handleBasicLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -110,7 +121,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     // REQ-1290: same explicit claim as the Firebase paths — the server never claims the
     // platform-admin slot on its own, so signing in from the first-login page is what takes it.
     if (firstLogin) {
-      await claimBootstrap();
+      await claimAndRecord();
     }
     setLoading(false);
     onLoginSuccess(data.access_token);
@@ -161,7 +172,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       // platform-admin slot here. The server never claims it on its own, which is why a refresh
       // with a still-valid token can no longer take it before this page has been seen.
       if (firstLogin) {
-        await claimBootstrap();
+        await claimAndRecord();
       }
       // A bearer identity has no /register step, so an ?invite= link is redeemed here — after the
       // token is stored (authFetch attaches it) and before navigating — to add org membership + the
@@ -198,7 +209,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       // REQ-1290: same explicit claim as the provider buttons — submitting this form on the
       // first-login page is the deliberate act that takes the platform-admin slot.
       if (firstLogin) {
-        await claimBootstrap();
+        await claimAndRecord();
       }
       const inviteToken = new URLSearchParams(window.location.search).get("invite");
       if (inviteToken) {

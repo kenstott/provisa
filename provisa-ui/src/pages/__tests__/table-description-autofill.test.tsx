@@ -13,20 +13,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // the form embeds Mantine components (REQ-1016).
 import { render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
-import { Fragment } from "react";
 
-// react-router-dom 7 ships .mjs files under a package.json without "type":"module",
-// so the vmThreads pool loads them as CommonJS and throws. TablesPage only needs
-// useNavigate/useSearchParams; stub them (and a no-op MemoryRouter) to avoid the load.
-vi.mock("react-router-dom", () => ({
-  MemoryRouter: ({ children }: { children: React.ReactNode }) => <Fragment>{children}</Fragment>,
-  useNavigate: () => vi.fn(),
-  useSearchParams: () => [new URLSearchParams(), vi.fn()],
-}));
-
+// The real router is used here: a MemoryRouter supplies useNavigate/useSearchParams with no mock
+// at all, which is one less module this file has to keep in sync with the rest of the suite.
 import { MemoryRouter } from "react-router-dom";
 
-vi.mock("../../context/DomainFilterContext", () => ({
+// Spread the real module (shared registry — see the react-router-dom mock above).
+vi.mock("../../context/DomainFilterContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../context/DomainFilterContext")>()),
   useDomainFilter: () => ({
     checkedDomains: new Set<string>(),
     domains: [],
@@ -38,7 +32,9 @@ vi.mock("../../context/DomainFilterContext", () => ({
   }),
 }));
 
-vi.mock("../../context/AuthContext", () => ({
+// Spread the real module (shared registry — see the react-router-dom mock above).
+vi.mock("../../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../context/AuthContext")>()),
   useAuth: () => ({
     role: "admin",
     selectedRoles: ["admin"],
@@ -47,7 +43,8 @@ vi.mock("../../context/AuthContext", () => ({
   }),
 }));
 
-vi.mock("../../components/admin/FilterInput", () => ({
+vi.mock("../../components/admin/FilterInput", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../components/admin/FilterInput")>()),
   FilterInput: () => null,
 }));
 

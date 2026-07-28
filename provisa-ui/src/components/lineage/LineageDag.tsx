@@ -52,8 +52,13 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
     a.download = "lineage.png";
     a.click();
   };
+  // The cytoscape effect binds this handler once; the ref keeps the latest callback without
+  // rebuilding the graph. Assign it in a commit-phase effect — a render-phase ref write mutates
+  // state while React is rendering.
   const clickRef = useRef(onNodeClick);
-  clickRef.current = onNodeClick;
+  useEffect(() => {
+    clickRef.current = onNodeClick;
+  });
 
   useEffect(() => {
     if (!containerRef.current) return;

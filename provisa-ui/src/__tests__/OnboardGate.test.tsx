@@ -27,7 +27,11 @@ vi.mock('../api/admin', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/admin')>();
   return { ...actual, fetchMe: vi.fn(), fetchBootstrapStatus: vi.fn() };
 });
-vi.mock('../hooks/useAdminQueries', () => ({
+// Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
+// replace-everything factory here leaks into other test files and strips the hooks they render
+// against (a TablesPage test saw useTables become undefined).
+vi.mock('../hooks/useAdminQueries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useAdminQueries')>()),
   useRoles: () => ({ refetch: vi.fn().mockResolvedValue({ data: { roles: [] } }) }),
   useDomains: () => ({ refetch: vi.fn().mockResolvedValue({ data: { domains: [] } }) }),
 }));

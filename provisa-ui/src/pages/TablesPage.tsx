@@ -52,7 +52,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { t: translate } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
+  const {
+    tables,
+    loading: tablesLoading,
+    error: tablesError,
+    refetch: refetchTables,
+  } = useTables();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { relationships } = useAllRelationships();
@@ -464,6 +469,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       {error && (
         <Alert color="red" mb="md" data-testid="tables-error">
           {error}
+        </Alert>
+      )}
+
+      {/* REQ-1293: a failed `tables` query previously rendered as an empty grid, which reads as
+          "this org has no registered tables" — a statement about the org's data that the failed
+          request never established. Report the failure instead of impersonating an answer. */}
+      {tablesError && (
+        <Alert color="red" mb="md" data-testid="tables-load-error">
+          {translate("tablesPage.loadFailed", { message: tablesError.message })}
         </Alert>
       )}
 
