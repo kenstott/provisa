@@ -19,13 +19,19 @@ export const CLAIMED_ADMIN_FLAG = "provisa_claimed_platform_admin";
 /**
  * REQ-1294: claiming the platform-admin slot is a one-time, irreversible act that happens behind a
  * provider redirect — the user clicks "Sign in with Google" and lands in the app with no statement
- * of what they now are or what to do next. This modal is that statement: it names the role and
- * gives the ONE next step that exists at this point — create an organization.
+ * of what they now are or what to do next. This modal is that statement, and it says exactly three
+ * things:
  *
- * It deliberately does NOT give invite instructions. Invitations are org-scoped: a person is
- * invited into an organization with a role in that organization. A freshly claimed platform admin
- * holds no membership and the deployment holds no org, so "go invite someone" names a screen with
- * nothing on it. Inviting is org-admin work, and it comes after an org exists.
+ *   1. They are this deployment's platform_admin AND the administrator of the root org (REQ-1296),
+ *      which is already seeded with the demo assets — so there is data behind this modal.
+ *   2. Backup platform_admins start with an invitation to join root, then a platform_admin role
+ *      assignment in root (REQ-1298). The bootstrap slot is single-use and never reopens, so this
+ *      is the only path to a second administrator, and a one-account deployment is a fragile one.
+ *   3. The site is now open for org creation: from the next sign-in onward people create their own
+ *      org and administer it themselves.
+ *
+ * The invite step it names is into ROOT specifically — that is platform work. Inviting people into
+ * some other org is that org's admin's job, not this user's.
  *
  * The flag is read once at mount (not on every render) and cleared when the modal is dismissed, so
  * the disclosure survives the post-claim navigation but is never shown twice.
@@ -56,27 +62,33 @@ export function PlatformAdminWelcomeModal() {
         <Text>{t("platformAdminWelcome.body")}</Text>
         <div>
           <Text fw={600} mb="xs">
-            {t("platformAdminWelcome.orgHeading")}
+            {t("platformAdminWelcome.backupHeading")}
           </Text>
-          <Text mb="xs">{t("platformAdminWelcome.orgBody")}</Text>
+          <Text mb="xs">{t("platformAdminWelcome.backupBody")}</Text>
           <List type="ordered" spacing="xs">
-            <List.Item>{t("platformAdminWelcome.orgStep1")}</List.Item>
-            <List.Item>{t("platformAdminWelcome.orgStep2")}</List.Item>
-            <List.Item>{t("platformAdminWelcome.orgStep3")}</List.Item>
+            <List.Item>{t("platformAdminWelcome.backupStep1")}</List.Item>
+            <List.Item>{t("platformAdminWelcome.backupStep2")}</List.Item>
+            <List.Item>{t("platformAdminWelcome.backupStep3")}</List.Item>
           </List>
+        </div>
+        <div>
+          <Text fw={600} mb="xs">
+            {t("platformAdminWelcome.openHeading")}
+          </Text>
+          <Text>{t("platformAdminWelcome.openBody")}</Text>
         </div>
         <Group justify="flex-end">
           <Button variant="subtle" onClick={close} data-testid="platform-admin-welcome-dismiss">
             {t("platformAdminWelcome.dismiss")}
           </Button>
           <Button
-            data-testid="platform-admin-welcome-orgs"
+            data-testid="platform-admin-welcome-team"
             onClick={() => {
               close();
-              navigate("/admin/orgs");
+              navigate("/team");
             }}
           >
-            {t("platformAdminWelcome.goToOrgs")}
+            {t("platformAdminWelcome.goToTeam")}
           </Button>
         </Group>
       </Stack>

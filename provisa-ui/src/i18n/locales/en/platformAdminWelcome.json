@@ -1,13 +1,15 @@
 {
   "platformAdminWelcome": {
     "title": "You are the platform administrator",
-    "body": "Signing in made you this deployment's platform administrator. You hold every capability here, including the org, role, and user administration surfaces — nobody else can claim it now.",
-    "orgHeading": "Nothing to invite anyone to yet",
-    "orgBody": "Being the platform administrator is not membership in an organization — you hold none, and none exist for anyone else to join. People are invited into an organization, so create one first.",
-    "orgStep1": "Open Organizations under Administration.",
-    "orgStep2": "Create an organization and choose whether to seed it with demo data.",
-    "orgStep3": "From that organization's Team page, invite people into it with the role you want them to hold — signing in through an invite never makes anyone a platform administrator.",
-    "goToOrgs": "Create an organization",
+    "body": "Signing in made you this deployment's platform_admin — you hold every capability here, and nobody else can claim the role now. You are also the administrator of the root organization, which already carries the demo sources, tables, and domains.",
+    "backupHeading": "Add a backup administrator",
+    "backupBody": "A deployment with one platform_admin is a deployment with one account standing between it and nobody being able to administer it. Adding a backup starts with an invitation to join root:",
+    "backupStep1": "Invite the person into the root organization from its Team page.",
+    "backupStep2": "They sign in and redeem the invitation, which makes them a member of root.",
+    "backupStep3": "Assign them the platform_admin role in root — that is what confers deployment-wide administration.",
+    "openHeading": "The site is now open for organizations",
+    "openBody": "From the next sign-in onward, anyone who authenticates creates their own organization. They are never made a platform administrator by signing in, and inviting people into their org is their own work as its org_admin.",
+    "goToTeam": "Invite someone to root",
     "dismiss": "Got it"
   }
 }
