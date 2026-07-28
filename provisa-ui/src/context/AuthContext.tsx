@@ -87,7 +87,7 @@ export function AuthProvider({
   const [allDomainsList, setAllDomainsList] = useState<string[]>([]);
   const [devMode, setDevMode] = useState(false);
   const [loading, setLoading] = useState(true);
-  const error: string | null = null;
+  const [error, setError] = useState<string | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<string | null>(() =>
     localStorage.getItem("provisa_org"),
   );
@@ -153,6 +153,7 @@ export function AuthProvider({
         setFamilyName(null);
       }
 
+      let rolesError: string | null = null;
       try {
         const { data } = await refetchRoles();
         // refetch returns RAW query data; the GraphQL field is camelCase `domainAccess`,
@@ -170,16 +171,27 @@ export function AuthProvider({
             allRoles = roles.filter((r) => assignedRoleIds.has(r.id));
           }
         }
-      } catch {
-        // fall through
+      } catch (e) {
+        rolesError = e instanceof Error ? e.message : String(e);
       }
 
+      // REQ-1295: the full-capability `admin` role is real ONLY where auth is not enforced — there
+      // the server grants every capability to every caller and the client mirrors that. Under
+      // enforced auth it is a fiction: the server honors X-Provisa-Role only for roles the user is
+      // assigned (provisa/auth/middleware.py), so handing an org_admin a client-side `admin` makes
+      // every subsequent request 403 "Role 'admin' is not assigned to this user" — which is exactly
+      // what a self-service org creator saw. An empty role list is reported, never papered over.
       if (allRoles.length === 0) {
-        allRoles = [DEFAULT_ADMIN_ROLE];
         if (isDev) {
+          allRoles = [DEFAULT_ADMIN_ROLE];
           userAssignments = [{ role_id: "admin", domain_id: "*" }];
+        } else if (rolesError) {
+          setError(`Could not load roles: ${rolesError}`);
+        } else if (userAssignments.length > 0) {
+          setError("Your assigned roles are not defined in this org.");
         }
       }
+      if (allRoles.length > 0) setError(null);
 
       const hasWildcard = userAssignments.some((a) => a.domain_id === "*");
       if (hasWildcard) {

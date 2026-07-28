@@ -36938,6 +36938,8 @@
   - REQ-1261
   - REQ-1262
   - REQ-1264
+  tests:
+  - tests/integration/test_org_creator_role_request.py
 - id: REQ-1267
   status: proposed
   group: 2. Authentication & Identity
@@ -37623,14 +37625,13 @@
   description: The default org ID has a single source of truth from the control plane's resolved org_id
     (the value that names the tenant schema org_<id>). config.default_org_id is None by default and only
     overrides when explicitly set; if neither resolves, the system raises rather than guessing. Unresolved-identity
-    states (server error, network failure, auth failure) must be distinguished from resolved identities with
-    zero org memberships — the UI must not collapse failed /auth/me into "no account access".
-  use_case: >-
-    Three divergent literals ("root" in config, "default" in control plane, "root" hardcoded in registry
-    seed) caused active_org_id to name an org whose org_<id> schema was never created, leading to /auth/me
-    500 errors and false "no account access" reports. A single source of truth prevents org ID aliasing.
-    Distinguishing error states from empty memberships ensures the UI routes users forward (to OnboardOrgPage
-    for org creation/join) instead of dead-ending with a generic access-denied message.
+    states (server error, network failure, auth failure) must be distinguished from resolved identities
+    with zero org memberships — the UI must not collapse failed /auth/me into "no account access".
+  use_case: Three divergent literals ("root" in config, "default" in control plane, "root" hardcoded in
+    registry seed) caused active_org_id to name an org whose org_<id> schema was never created, leading
+    to /auth/me 500 errors and false "no account access" reports. A single source of truth prevents org
+    ID aliasing. Distinguishing error states from empty memberships ensures the UI routes users forward
+    (to OnboardOrgPage for org creation/join) instead of dead-ending with a generic access-denied message.
   code:
   - provisa/auth/wiring.py
   - provisa/core/models.py
@@ -37645,65 +37646,85 @@
   tests:
   - tests/unit/test_default_org_id_resolution.py
   - provisa-ui/src/__tests__/OnboardGate.test.tsx
-  scenario: |
-    Given a Provisa instance with no config.default_org_id set
+  scenario: 'Given a Provisa instance with no config.default_org_id set
+
     When the control plane resolves an org_id from deployment context
+
     Then that org_id is the canonical identifier for the tenant schema org_<id>
+
     And /auth/me reports state.org_id from the control plane, not a literal fallback
 
+
     Given a Provisa instance with both control plane org_id and config.default_org_id set
+
     When an authenticated user calls /auth/me
+
     Then config.default_org_id takes precedence (explicit override)
 
+
     Given neither control plane nor config.default_org_id resolves
+
     When the system starts
+
     Then it raises an error rather than guessing a default
 
+
     Given a /auth/me request that fails at the server (5xx error)
+
     When the UI receives the response
-    Then OnboardGate renders a "can't reach Provisa / retry" screen distinct from the login screen
+
+    Then OnboardGate renders a "can''t reach Provisa / retry" screen distinct from the login screen
+
     And does not report the failure as an access decision
 
+
     Given an identity that successfully resolves with zero org memberships
+
     When the user first signs in
+
     Then OnboardGate routes to OnboardOrgPage (create/join org)
+
     And does not render the "access denied" screen
+
+    '
   e2e: true
   e2e_reason: Identity resolution correctness and error-state routing are only verifiable through a full
     authentication flow with real server response codes and UI navigation.
   competitive_position:
     status: ahead
     rationale: Explicit single source of truth for default org ID and precise error-state handling (distinguishing
-      server failure from access denial) prevents silent data model mismatches and improves UX during onboarding
-      and transient failures. Competitors like Hasura typically collapse all /auth failures into generic
-      "unauthorized" without differentiating network/server errors from auth denials.
+      server failure from access denial) prevents silent data model mismatches and improves UX during
+      onboarding and transient failures. Competitors like Hasura typically collapse all /auth failures
+      into generic "unauthorized" without differentiating network/server errors from auth denials.
 - id: REQ-1287
   status: complete
-  group: "3. Multi-tenancy & Organization"
+  group: 3. Multi-tenancy & Organization
   category: Org Invitations
   priority: SHOULD
   type: behavioral
-  description: >-
-    Onboarding independently answers three questions: whether the user has a Provisa account,
-    whether they have a pending org invitation, and whether they have org membership. Addressed
-    invitations store the invitee's email in the org_invites table, enabling the UI to surface
-    one-click accepts; link invites remain shareable without email.
-  use_case: >-
-    Users with pending org invitations can directly accept them on arrival without providing an
-    invite token. The onboarding flow correctly distinguishes between account creation, org
-    invitation acceptance, and org membership scenarios.
+  description: 'Onboarding independently answers three questions: whether the user has a Provisa account,
+    whether they have a pending org invitation, and whether they have org membership. Addressed invitations
+    store the invitee''s email in the org_invites table, enabling the UI to surface one-click accepts;
+    link invites remain shareable without email.'
+  use_case: Users with pending org invitations can directly accept them on arrival without providing an
+    invite token. The onboarding flow correctly distinguishes between account creation, org invitation
+    acceptance, and org membership scenarios.
   code:
-    - provisa/core/schema_admin.py
-    - provisa/api/auth_router.py
-    - provisa-ui/src/pages/OnboardOrgPage.tsx
+  - provisa/core/schema_admin.py
+  - provisa/api/auth_router.py
+  - provisa-ui/src/pages/OnboardOrgPage.tsx
   tests:
-    - tests/integration/test_redeem_invite.py
-  since: "2026-07"
-  scenario: |
-    Given an invited user arrives at the onboarding page without an invite token
+  - tests/integration/test_redeem_invite.py
+  since: 2026-07
+  scenario: 'Given an invited user arrives at the onboarding page without an invite token
+
     When their identity email matches an open, unexpired org invitation
+
     Then the UI displays the invitation and offers one-click accept
+
     And failed my-invites lookup does not block org creation
+
+    '
 - id: REQ-1288
   status: complete
   group: 2. Authentication & Identity
@@ -37711,15 +37732,13 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: >-
-    Before any superadmin exists (bootstrap_superadmin enabled and no superadmin_bootstrap row),
-    a public GET /auth/bootstrap-status endpoint returns {"unclaimed": bool}. The login page displays
+  description: 'Before any superadmin exists (bootstrap_superadmin enabled and no superadmin_bootstrap
+    row), a public GET /auth/bootstrap-status endpoint returns {"unclaimed": bool}. The login page displays
     a first-login notice warning that whoever signs in first becomes platform administrator, then shows
-    provider choices. The endpoint bypasses bearer-token validation in _SKIP_PATHS.
-  use_case: >-
-    Transparent disclosure of the bootstrap-admin privilege grant prevents surprise superadmin escalation
-    and ensures the first authenticator understands the security implications. The public endpoint enables
-    the UI to probe bootstrap status independently of authentication state.
+    provider choices. The endpoint bypasses bearer-token validation in _SKIP_PATHS.'
+  use_case: Transparent disclosure of the bootstrap-admin privilege grant prevents surprise superadmin
+    escalation and ensures the first authenticator understands the security implications. The public endpoint
+    enables the UI to probe bootstrap status independently of authentication state.
   code:
   - provisa/api/auth_router.py
   - provisa/auth/middleware.py
@@ -37730,161 +37749,360 @@
   - tests/integration/test_bootstrap_status.py
   - tests/unit/test_auth_middleware.py
   - provisa-ui/src/__tests__/LoginPage.test.tsx
-  scenario: |
-    Given bootstrap_superadmin is enabled and no superadmin_bootstrap row exists
+  scenario: 'Given bootstrap_superadmin is enabled and no superadmin_bootstrap row exists
+
     When a client calls GET /auth/bootstrap-status
+
     Then a 200 response is returned with {"unclaimed": true}
+
     And no bearer token is required
 
+
     Given bootstrap_superadmin is enabled and a superadmin_bootstrap row exists
+
     When a client calls GET /auth/bootstrap-status
+
     Then a 200 response is returned with {"unclaimed": false}
 
+
     Given an unauthenticated user navigates to the login page
+
     When bootstrap status returns unclaimed=true
+
     Then a notice displays above provider buttons
+
     And states that the first sign-in will grant platform admin privileges
+
     And provider choices render normally
 
+
     Given an unauthenticated user navigates to the login page
+
     When bootstrap status returns unclaimed=false
+
     Then no first-login notice appears
 
+
     Given the UI cannot reach the bootstrap-status endpoint (network/server error)
+
     When the login page renders
+
     Then provider choices still appear
+
     And the failure to fetch bootstrap status does not block sign-in UI rendering
+
+    '
   e2e: true
-  e2e_reason: >-
-    Bootstrap-status disclosure requires verification of unauthenticated endpoint access, login page
-    rendering conditional on bootstrap state, and integration of the status probe with the provider-type
+  e2e_reason: Bootstrap-status disclosure requires verification of unauthenticated endpoint access, login
+    page rendering conditional on bootstrap state, and integration of the status probe with the provider-type
     UI flow — only achievable through an end-to-end authentication session.
   related_reqs:
   - REQ-1266
   competitive_position:
     status: ahead
-    rationale: >-
-      Explicit first-login platform-admin disclosure at sign-in time (before any credential is created)
-      is unusual in multi-tenant SaaS; most platforms grant admin silently or require email verification.
+    rationale: Explicit first-login platform-admin disclosure at sign-in time (before any credential is
+      created) is unusual in multi-tenant SaaS; most platforms grant admin silently or require email verification.
       Provisa's transparent notice prevents misconfiguration surprises and aligns with compliance-first
       principles for self-hosted deployments.
 - id: REQ-1289
   status: complete
-  group: "3. Multi-tenancy & Organization"
+  group: 3. Multi-tenancy & Organization
   category: Onboarding
   priority: MUST
   type: behavioral
-  since: "2026-07"
-  description: >-
-    Onboarding never dead-ends: a stored credential that the deployment rejects (/auth/me returns
-    401/403) is discarded by OnboardGate, which returns the user to the sign-in page to authenticate
+  since: 2026-07
+  description: 'Onboarding never dead-ends: a stored credential that the deployment rejects (/auth/me
+    returns 401/403) is discarded by OnboardGate, which returns the user to the sign-in page to authenticate
     or create an account. Onboarding independently answers three orthogonal questions — does the user
     have a Provisa account, do they have a pending org invitation, do they have org membership — each
     with its own forward path. Transient server failures (5xx or unreachable) retain a separate retry
-    screen (REQ-1286) and are not treated as access decisions.
-  use_case: >-
-    Users with stale credentials (e.g., post-password-reset, post-org-removal) must be able to
+    screen (REQ-1286) and are not treated as access decisions.'
+  use_case: Users with stale credentials (e.g., post-password-reset, post-org-removal) must be able to
     re-authenticate rather than encountering a terminal "No account access" message. Platforms with an
     unclaimed admin slot cannot tell users "ask an administrator for an invitation," so onboarding must
     independently decompose the account-presence, invitation-presence, and membership-presence decisions
     and provide forward paths for each.
   code:
-    - provisa-ui/src/components/OnboardGate.tsx
+  - provisa-ui/src/components/OnboardGate.tsx
   tests:
-    - provisa-ui/src/__tests__/OnboardGate.test.tsx
-  scenario: |
-    Given an authenticated user with a stored credential
+  - provisa-ui/src/__tests__/OnboardGate.test.tsx
+  scenario: 'Given an authenticated user with a stored credential
+
     When /auth/me returns 401 or 403
+
     Then OnboardGate discards the credential and redirects to sign-in
+
     And the user can re-authenticate or create a new account
 
+
     Given an unauthenticated user navigating to onboarding
+
     When their identity email matches an open org invitation
+
     Then the invitation is surfaced and accepted with one click
+
     And they are not blocked by missing account creation
 
-    Given an unauthenticated user navigating to onboarding
-    When they have a Provisa account but no org membership
-    Then the UI offers to create or join an organization
-    And they progress forward without a "no account access" dead-end
 
     Given an unauthenticated user navigating to onboarding
+
+    When they have a Provisa account but no org membership
+
+    Then the UI offers to create or join an organization
+
+    And they progress forward without a "no account access" dead-end
+
+
+    Given an unauthenticated user navigating to onboarding
+
     When /auth/me is unreachable or returns 5xx
+
     Then a transient-failure retry screen appears (REQ-1286)
+
     And the user is not incorrectly treated as lacking account access
+
+    '
   e2e: true
-  e2e_reason: >-
-    Credential rejection, identity resolution, onboarding UI routing, and server error handling
+  e2e_reason: Credential rejection, identity resolution, onboarding UI routing, and server error handling
     are only verifiable through a live-stack round-trip from browser through API with real authentication
     responses and UI navigation.
   related_reqs:
-    - REQ-1286
-    - REQ-1287
+  - REQ-1286
+  - REQ-1287
   competitive_position:
     status: ahead
-    rationale: >-
-      Most SaaS onboarding platforms render a terminal "access denied" message for any auth failure without
-      decomposing account-presence, invitation-acceptance, and membership-status. Provisa's orthogonal-question
-      model with forward paths for each scenario (with or without admin presence) is uncommon in cloud offerings.
+    rationale: Most SaaS onboarding platforms render a terminal "access denied" message for any auth failure
+      without decomposing account-presence, invitation-acceptance, and membership-status. Provisa's orthogonal-question
+      model with forward paths for each scenario (with or without admin presence) is uncommon in cloud
+      offerings.
 - id: REQ-1290
   status: complete
-  group: "1. Access Governance & Security"
+  group: 1. Access Governance & Security
   category: Authentication
   priority: MUST
   type: behavioral
-  since: "2026-07"
-  description: >-
-    Claiming the sole platform-administrator slot is an explicit act via POST /auth/claim-bootstrap,
+  since: 2026-07
+  description: Claiming the sole platform-administrator slot is an explicit act via POST /auth/claim-bootstrap,
     never a side effect of authentication. AuthMiddleware only reads the superadmin_bootstrap singleton;
     the endpoint first-writes the id=1 row (first writer wins), returns 404 when bootstrap mode is off
     and 401 without identity, and reads back the holder on losing claims.
-  use_case: >-
-    Prevents stale credentials held by browsers from silently reactivating platform admin on page refresh
-    before the user reads the REQ-1288 first-login disclosure. Explicit claim ensures the user understands
-    the implications and selects a sign-in provider on the login page after reading the disclosure.
+  use_case: Prevents stale credentials held by browsers from silently reactivating platform admin on page
+    refresh before the user reads the REQ-1288 first-login disclosure. Explicit claim ensures the user
+    understands the implications and selects a sign-in provider on the login page after reading the disclosure.
   code:
-    - provisa/api/auth_router.py
-    - provisa/core/schema_admin.py
+  - provisa/api/auth_router.py
+  - provisa/core/schema_admin.py
   tests:
-    - tests/integration/test_redeem_invite.py
-  scenario: |
-    Given bootstrap mode is on and the admin slot is unclaimed
+  - tests/integration/test_redeem_invite.py
+  scenario: 'Given bootstrap mode is on and the admin slot is unclaimed
+
     When an authenticated user POSTs /auth/claim-bootstrap after reading the first-login disclosure
-    Then the user's identity is written to superadmin_bootstrap.holder_id
+
+    Then the user''s identity is written to superadmin_bootstrap.holder_id
+
     And the endpoint returns 200 with the holder
 
+
     Given bootstrap mode is on and another user already claimed the slot
+
     When a different authenticated user POSTs /auth/claim-bootstrap
-    Then the endpoint returns 200 with the existing holder's identity
+
+    Then the endpoint returns 200 with the existing holder''s identity
+
     And the second user is not made admin
 
+
     Given bootstrap mode is off
+
     When a user POSTs /auth/claim-bootstrap
+
     Then the endpoint returns 404
 
+
     Given bootstrap mode is on and the slot is unclaimed
+
     When an unauthenticated user POSTs /auth/claim-bootstrap
+
     Then the endpoint returns 401
 
+
     Given bootstrap mode is on and the slot is unclaimed
+
     When AuthMiddleware processes an authenticated request
+
     Then it only reads superadmin_bootstrap (does not write)
+
     And the slot remains unclaimed even after multiple authenticated requests
 
+
     Given bootstrap mode is on and the admin slot is unclaimed (single-tenant deployment)
+
     Then /auth/login and onboarding do not return 403 "registration closed"
+
     And the claim endpoint remains reachable to allow bootstrap slot claiming
+
+    '
   e2e: true
-  e2e_reason: >-
-    Authentication state, bootstrap mode state, first-write claim semantics, endpoint routing (404/401/200),
-    and AuthMiddleware read-only enforcement are only verifiable through a live end-to-end auth flow with
-    real state changes to the superadmin_bootstrap singleton.
+  e2e_reason: Authentication state, bootstrap mode state, first-write claim semantics, endpoint routing
+    (404/401/200), and AuthMiddleware read-only enforcement are only verifiable through a live end-to-end
+    auth flow with real state changes to the superadmin_bootstrap singleton.
   related_reqs:
-    - REQ-1288
+  - REQ-1288
   competitive_position:
     status: ahead
-    rationale: >-
-      Most multi-tenant platforms grant platform admin implicitly (by email domain, first account, or
-      pre-seeded credentials) without requiring explicit acknowledgment. Provisa's explicit claim prevents
+    rationale: Most multi-tenant platforms grant platform admin implicitly (by email domain, first account,
+      or pre-seeded credentials) without requiring explicit acknowledgment. Provisa's explicit claim prevents
       accidental admin elevation and ensures every deployment operator consciously reads the first-login
       disclosure before becoming the sole admin.
+- id: REQ-1291
+  status: complete
+  group: 1. Access Governance & Security
+  category: Authentication
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: AuthProvider takes an authVersion prop that is bumped by App whenever a token is stored or
+    dropped. The provider re-runs the identity bootstrap (fetchMe + roles/domains) when authVersion changes,
+    ensuring a just-signed-in user resolves to their real identity instead of staying at userId=null.
+  use_case: Without authVersion, a just-signed-in user remained at userId=null because the identity
+    fetched at mount was never revisited. OnboardGate then read the fresh token alongside the stale
+    (null) identity, read it as a rejected credential, deleted it, and sent the user back to sign-in — an
+    unbreakable loop.
+  code:
+  - provisa-ui/src/context/AuthContext.tsx
+  - provisa-ui/src/App.tsx
+  tests:
+  - provisa-ui/src/__tests__/OnboardGate.test.tsx
+  scenario: |
+    Given an unauthenticated user at the sign-in page
+    When they sign in and a token is stored
+    And App bumps authVersion
+    Then AuthProvider re-fetches /auth/me
+    And userId resolves to the real identity
+    And OnboardGate does not delete the fresh token
+  e2e: true
+  e2e_reason: Token storage side-effects, AuthProvider re-bootstrap, and OnboardGate routing logic are
+    only verifiable end-to-end through a full browser render cycle.
+- id: REQ-1292
+  status: complete
+  group: 1. Access Governance & Security
+  category: Authentication
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: An unclaimed platform-admin slot outranks org onboarding in the routing gate. A token-holding
+    user is dropped back to sign-in instead of org creation when the admin slot is still unclaimed.
+  use_case: A valid credential from before the admin-plane was wiped would otherwise skip sign-in entirely
+    (where the first-login disclosure renders) and land on "create an organization" on a deployment with
+    no administrator. This prevents accidental onboarding without understanding the implication of claiming
+    the sole admin slot.
+  code:
+  - provisa-ui/src/components/OnboardGate.tsx
+  - provisa/auth/middleware.py
+  tests:
+  - provisa-ui/src/__tests__/OnboardGate.test.tsx
+  scenario: |
+    Given bootstrap mode is on and the admin slot is unclaimed
+    And a user holds a valid credential
+    When the user navigates to the app
+    Then /auth/bootstrap-status returns unclaimed=true
+    And OnboardGate drops the token
+    And the user is redirected to sign-in
+    And org onboarding is not rendered
+  e2e: true
+  e2e_reason: Bootstrap status resolution, token deletion, and OnboardGate routing are only verifiable
+    through end-to-end browser navigation with real bootstrap state.
+- id: REQ-1293
+  status: complete
+  group: 1. Access Governance & Security
+  category: Data Isolation
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: The tenant plane is isolated by schema (org_<id>), not row-level predicates. Admin resolvers
+    must not additionally filter rows by org_id because rows seeded into an org schema carry org_id='root'.
+    A failed tables query must render an error, not an empty grid.
+  use_case: Schema isolation is the security boundary between tenants. A row-level org_id predicate that
+    failed for seeded rows with org_id='root' caused an org_admin of a non-root org to see vanishing domains,
+    and a failed query rendering as an empty table read as "org has no data" instead of "query failed".
+  code:
+  - provisa/api/admin/schema_query.py
+  - provisa-ui/src/pages/TablesPage.tsx
+  tests:
+  - provisa-ui/src/__tests__/TablesPageLoadError.test.tsx
+  scenario: |
+    Given a tenant-plane query in an org_<id> schema
+    When the query executes
+    Then it operates only on rows in that schema
+    And no row-level org_id filter is applied
+    And a failed query renders an error, not an empty result
+  e2e: true
+  e2e_reason: Schema routing, query failure handling, and UI error rendering are only verifiable
+    end-to-end through a request from UI to server with real schema isolation.
+- id: REQ-1294
+  status: complete
+  group: 1. Access Governance & Security
+  category: Authentication
+  priority: MUST
+  type: ui
+  since: 2026-07
+  description: After claiming the platform-admin slot the user is shown a welcome modal explaining they
+    are the platform admin and how to invite others. The flag is read once at mount and cleared when dismissed.
+  use_case: Claiming the sole admin slot is an irreversible act that happens behind a provider redirect
+    — the user clicks "Sign in with Google" and lands in the app with no statement of what they now are.
+    This modal is that statement, giving the new admin the invite path so they know how to bring others in.
+  code:
+  - provisa-ui/src/components/PlatformAdminWelcomeModal.tsx
+  - provisa-ui/src/App.tsx
+  tests:
+  - provisa-ui/src/__tests__/PlatformAdminWelcomeModal.test.tsx
+  scenario: |
+    Given a user has just claimed the platform-admin slot
+    And the CLAIMED_ADMIN_FLAG is set in localStorage
+    When the app shell renders
+    Then PlatformAdminWelcomeModal appears
+    And it explains the platform-admin role
+    And it shows the steps to invite other users
+    And clicking dismiss clears the flag
+  e2e: true
+  e2e_reason: Modal lifecycle (showing exactly once across navigations) and localStorage coordination
+    between LoginPage and the app shell are only verifiable end-to-end.
+- id: REQ-1295
+  status: complete
+  group: 1. Access Governance & Security
+  category: Authentication
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: The UI may only place an ASSIGNED role in the X-Provisa-Role header. When auth is enforced
+    and the roles query fails or yields no assigned role, AuthContext reports the error and leaves the role
+    list empty — it must never fall back to a fabricated full-capability admin role. The DEFAULT_ADMIN_ROLE
+    fallback applies only where auth is not enforced (dev mode).
+  use_case: The server honors X-Provisa-Role only for roles the user is assigned (provisa/auth/middleware.py),
+    so handing an org_admin a client-side admin role makes every subsequent request 403 "Role 'admin' is not
+    assigned to this user" — the exact failure a self-service org creator hit when a roles query failed and
+    the client fabricated a fallback.
+  code:
+  - provisa-ui/src/context/AuthContext.tsx
+  - provisa/auth/middleware.py
+  tests:
+  - provisa-ui/src/context/__tests__/AuthContext.roles.test.tsx
+  - tests/integration/test_org_creator_role_request.py
+  scenario: |
+    Given an authenticated user with assigned roles
+    When AuthContext resolves roles
+    Then only assigned roles are offered to select
+
+    Given auth is enforced
+    When the roles query fails
+    Then AuthContext reports the error
+    And the role list is empty
+    And no fallback admin role is fabricated
+
+    Given auth is NOT enforced (dev mode)
+    When the roles query fails
+    Then AuthContext offers DEFAULT_ADMIN_ROLE
+    And the error is not reported
+  e2e: true
+  e2e_reason: Role filtering, error reporting, and X-Provisa-Role header placement on requests are only
+    verifiable end-to-end through the full auth stack with real role assignments.

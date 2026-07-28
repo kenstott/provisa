@@ -12762,7 +12762,7 @@ Firebase single-admin bootstrap is an optional convenience for cloud-appliance d
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/integration/test_org_creator_role_request.py`
 
 ### REQ-1267 · Runtime Auth-Enforcement Gate {#REQ-1267}
 
@@ -13071,3 +13071,63 @@ Claiming the sole platform-administrator slot is an explicit act via POST /auth/
 **Code:** `provisa/api/auth_router.py`, `provisa/core/schema_admin.py`
 
 **Tests:** `tests/integration/test_redeem_invite.py`
+
+### REQ-1291 · Authentication {#REQ-1291}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+AuthProvider takes an authVersion prop that is bumped by App whenever a token is stored or dropped. The provider re-runs the identity bootstrap (fetchMe + roles/domains) when authVersion changes, ensuring a just-signed-in user resolves to their real identity instead of staying at userId=null.
+
+**Use case:** Without authVersion, a just-signed-in user remained at userId=null because the identity fetched at mount was never revisited. OnboardGate then read the fresh token alongside the stale (null) identity, read it as a rejected credential, deleted it, and sent the user back to sign-in — an unbreakable loop.
+
+**Code:** `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/App.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/OnboardGate.test.tsx`
+
+### REQ-1292 · Authentication {#REQ-1292}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An unclaimed platform-admin slot outranks org onboarding in the routing gate. A token-holding user is dropped back to sign-in instead of org creation when the admin slot is still unclaimed.
+
+**Use case:** A valid credential from before the admin-plane was wiped would otherwise skip sign-in entirely (where the first-login disclosure renders) and land on "create an organization" on a deployment with no administrator. This prevents accidental onboarding without understanding the implication of claiming the sole admin slot.
+
+**Code:** `provisa-ui/src/components/OnboardGate.tsx`, `provisa/auth/middleware.py`
+
+**Tests:** `provisa-ui/src/__tests__/OnboardGate.test.tsx`
+
+### REQ-1293 · Data Isolation {#REQ-1293}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+The tenant plane is isolated by schema (org_<id>), not row-level predicates. Admin resolvers must not additionally filter rows by org_id because rows seeded into an org schema carry org_id='root'. A failed tables query must render an error, not an empty grid.
+
+**Use case:** Schema isolation is the security boundary between tenants. A row-level org_id predicate that failed for seeded rows with org_id='root' caused an org_admin of a non-root org to see vanishing domains, and a failed query rendering as an empty table read as "org has no data" instead of "query failed".
+
+**Code:** `provisa/api/admin/schema_query.py`, `provisa-ui/src/pages/TablesPage.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/TablesPageLoadError.test.tsx`
+
+### REQ-1294 · Authentication {#REQ-1294}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** ui
+
+After claiming the platform-admin slot the user is shown a welcome modal explaining they are the platform admin and how to invite others. The flag is read once at mount and cleared when dismissed.
+
+**Use case:** Claiming the sole admin slot is an irreversible act that happens behind a provider redirect — the user clicks "Sign in with Google" and lands in the app with no statement of what they now are. This modal is that statement, giving the new admin the invite path so they know how to bring others in.
+
+**Code:** `provisa-ui/src/components/PlatformAdminWelcomeModal.tsx`, `provisa-ui/src/App.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/PlatformAdminWelcomeModal.test.tsx`
+
+### REQ-1295 · Authentication {#REQ-1295}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+The UI may only place an ASSIGNED role in the X-Provisa-Role header. When auth is enforced and the roles query fails or yields no assigned role, AuthContext reports the error and leaves the role list empty — it must never fall back to a fabricated full-capability admin role. The DEFAULT_ADMIN_ROLE fallback applies only where auth is not enforced (dev mode).
+
+**Use case:** The server honors X-Provisa-Role only for roles the user is assigned (provisa/auth/middleware.py), so handing an org_admin a client-side admin role makes every subsequent request 403 "Role 'admin' is not assigned to this user" — the exact failure a self-service org creator hit when a roles query failed and the client fabricated a fallback.
+
+**Code:** `provisa-ui/src/context/AuthContext.tsx`, `provisa/auth/middleware.py`
+
+**Tests:** `provisa-ui/src/context/__tests__/AuthContext.roles.test.tsx`, `tests/integration/test_org_creator_role_request.py`
