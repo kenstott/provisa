@@ -132,10 +132,23 @@ export function AuthProvider({
         setDisplayName(me.display_name ?? null);
         setGivenName(me.given_name ?? null);
         setFamilyName(me.family_name ?? null);
-        if (me.active_org_id && !localStorage.getItem("provisa_org")) {
-          setSelectedOrg(me.active_org_id);
-        } else if (me.org_memberships.length === 1 && !localStorage.getItem("provisa_org")) {
-          setSelectedOrg(me.org_memberships[0].org_id);
+        // REQ-1326: the server is the authority on which orgs this identity may act in. A stored
+        // `provisa_org` is only honoured while it names an org `/auth/me` still reports membership
+        // of; otherwise it is stale (org deleted, or left behind by a previous sign-in) and rides
+        // on every request as X-Org-Provisa, scoping the whole app to an org that is not theirs.
+        const storedOrg = localStorage.getItem("provisa_org");
+        const isMember = me.org_memberships.some((m) => m.org_id === storedOrg);
+        if (storedOrg && !isMember) {
+          localStorage.removeItem("provisa_org");
+        }
+        if (!storedOrg || !isMember) {
+          if (me.active_org_id) {
+            setSelectedOrg(me.active_org_id);
+          } else if (me.org_memberships.length === 1) {
+            setSelectedOrg(me.org_memberships[0].org_id);
+          } else {
+            setSelectedOrg(null);
+          }
         }
       } catch (e) {
         // /auth/me failed. On an unsecured deploy that means dev mode (full admin). When auth

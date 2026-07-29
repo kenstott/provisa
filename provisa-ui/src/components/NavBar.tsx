@@ -21,6 +21,7 @@ import { ColorSchemeToggle } from "../theme/ColorSchemeToggle";
 import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
+import { clearSessionState } from "../lib/session";
 import type { Capability } from "../types/auth";
 
 
@@ -188,8 +189,10 @@ export function NavBar() {
     // Google account on the next login and never offers the account chooser.
     const { signOutFirebase } = await import("../lib/firebase");
     await signOutFirebase();
-    localStorage.removeItem("provisa_token");
-    localStorage.removeItem("provisa_org");
+    // REQ-1326: sign-out clears exactly what sign-in clears — token, org, role and the persisted
+    // Apollo snapshot. Clearing a subset left provisa_role and the cached org-scoped admin data
+    // behind for the next identity.
+    clearSessionState();
     // Full document load, not navigate(): App reads the token only on an authVersion bump (login
     // path), so an in-app navigate would keep the shell mounted and render /login inside the
     // navbar. A hard load re-reads the token-less localStorage into the public LandingPage branch

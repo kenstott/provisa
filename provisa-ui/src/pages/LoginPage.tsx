@@ -23,6 +23,7 @@ import {
 } from "../api/admin";
 import type { InviteInfo } from "../api/admin";
 import { CLAIMED_ADMIN_FLAG } from "../components/PlatformAdminWelcomeModal";
+import { startSession } from "../lib/session";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -117,7 +118,8 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       return;
     }
     const data = await resp.json();
-    localStorage.setItem("provisa_token", data.access_token);
+    // REQ-1326: a sign-in starts a session, so the previous one's org/role/cache go first.
+    startSession(data.access_token);
     // REQ-1290: same explicit claim as the Firebase paths — the server never claims the
     // platform-admin slot on its own, so signing in from the first-login page is what takes it.
     if (firstLogin) {
@@ -167,7 +169,8 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
           : idp === "microsoft"
             ? await firebase.signInWithMicrosoft()
             : await firebase.signInWithGoogle();
-      localStorage.setItem("provisa_token", idToken);
+      // REQ-1326: a sign-in starts a session, so the previous one's org/role/cache go first.
+      startSession(idToken);
       // REQ-1290: this click IS the consent the first-login notice asked for, so claim the
       // platform-admin slot here. The server never claims it on its own, which is why a refresh
       // with a still-valid token can no longer take it before this page has been seen.
@@ -205,7 +208,8 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
         mode === "register"
           ? await firebase.registerWithEmailPassword(regEmail, password)
           : await firebase.signInWithEmailPassword(regEmail, password);
-      localStorage.setItem("provisa_token", idToken);
+      // REQ-1326: a sign-in starts a session, so the previous one's org/role/cache go first.
+      startSession(idToken);
       // REQ-1290: same explicit claim as the provider buttons — submitting this form on the
       // first-login page is the deliberate act that takes the platform-admin slot.
       if (firstLogin) {

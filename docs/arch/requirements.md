@@ -13461,3 +13461,55 @@ The Explore/SQL page generates SQL from semantic objects, not just table structu
 **Code:** `provisa-ui/src/pages/sql/SchemaBrowser.tsx`, `provisa-ui/src/pages/sql/JoinCanvas.tsx`, `provisa-ui/src/pages/SqlPage.tsx`
 
 **Tests:** `provisa-ui/src/pages/__tests__/metric-explore.test.tsx`, `provisa-ui/src/pages/__tests__/metric-detach.test.tsx`
+
+## 11. Frontend UI & UX
+
+### REQ-1323 · Metrics Management {#REQ-1323}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The Metrics page follows the app-wide detail-then-edit pattern with inline editing: clicking a metric row expands a read-only MetricDetailPanel below it. Clicking Edit inside the panel swaps the panel for an inline edit form in place (no modal). New Metric opens an inline creation card above the table. The delete confirmation is the only modal on the page.
+
+**Use case:** Consistent detail-then-edit UX with inline editing across all admin surfaces (metrics, sources, facts) reduces cognitive load, keeps row layout clean, and provides immediate affordance for editing without modal context switches.
+
+**Code:** `provisa-ui/src/pages/MetricsPage.tsx`, `provisa-ui/src/pages/metrics/MetricDetailPanel.tsx`
+
+**Tests:** `provisa-ui/e2e/metrics-detail-edit.spec.ts`
+
+### REQ-1324 · Metrics Management {#REQ-1324}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The metric create/edit form extends fact-as-metric-source ([REQ-1320](#REQ-1320)) to the UI through a three-picker builder: source fact table (filtered to modelingRole=fact), measure column, and aggregate function (SUM/AVG/COUNT/MIN/MAX). When the builder composes the metric, the datatype is automatically derived from the aggregate: COUNT → bigint, AVG → numeric, SUM/MIN/MAX → the measure column's dataType (fallback numeric). The Datatype field remains editable as an escape hatch. The free-text expression textarea remains the escape hatch for non-fact-sourced metrics. Metric.fromFact is string|null storing the source fact table name.
+
+**Use case:** Guided metric authoring through semantic builders with automatic datatype derivation reduces expression errors and ensures correct type inference; the editable Datatype field and expression escape hatch preserve flexibility for complex derived metrics.
+
+**Code:** `provisa-ui/src/pages/MetricsPage.tsx`, `provisa-ui/src/types/admin.ts`
+
+**Tests:** `provisa-ui/e2e/metrics-detail-edit.spec.ts`
+
+## 2. Authentication & Identity
+
+### REQ-1325 · Firebase Configuration {#REQ-1325}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+
+Local development serves a static provisa-ui/public/firebase-config.js stub setting window.__PROVISA_FIREBASE__ = null (the configured-off state). In cloud deployments, ui_server.py's explicit route shadows the static file. This eliminates the unconditional 404 for /firebase-config.js on every page load in vite dev.
+
+**Use case:** Eliminates a noisy 404 in the development console for every page load when Firebase is not configured in local dev, improving developer experience and reducing noise in browser DevTools. Extends [REQ-1266](#REQ-1266) Firebase bootstrap support by providing a fallback configuration in local dev.
+
+**Code:** `provisa-ui/public/firebase-config.js`, `provisa/ui_server.py`
+
+**Tests:** —
+
+### REQ-1326 · Session Management {#REQ-1326}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Client state scoped to one signed-in session (localStorage keys provisa_token, provisa_org, provisa_role, and persisted Apollo snapshot apollo-cache / admin-schema-version) must be cleared when a session starts and when it ends. Additionally, a persisted provisa_org is honored only while /auth/me still reports membership of that org; otherwise it is discarded and the active org falls to active_org_id, else sole membership, else none.
+
+**Use case:** After the control plane was wiped, a fresh sign-in that claimed the platform-admin slot showed no rights until a logout/login cycle. The server wrote both planes and answered 200 to every request; the stale provisa_org from the previous session named a deleted org and rode on every request as X-Org-Provisa. Session state isolation prevents stale org membership from deleted orgs causing unauthorized access.
+
+**Code:** `provisa-ui/src/lib/session.ts`, `provisa-ui/src/apolloClient.ts`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/context/AuthContext.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/SessionIsolation.test.tsx`
