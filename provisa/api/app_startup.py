@@ -322,15 +322,18 @@ async def _start_servers(_log: logging.Logger) -> None:
 
     _evaluate_licensing(_log)  # REQ-1135–1139: offline trial/license check + shell banner
 
-    if state.proto_files:
+    if state.wire_proto:
         try:
             import tempfile
             from provisa.grpc.schema_gen import compile_proto
             from provisa.grpc.server import start_grpc_server
 
-            first_proto = next(iter(state.proto_files.values()))
+            # state.wire_proto is the UNION of every role's surface (app_loaders builds it). A
+            # per-role proto would make the served descriptor depend on dict order and leave the
+            # roles it omits unservable; governance is enforced per RPC from state.contexts[role],
+            # never by which fields the wire descriptor happens to declare.
             grpc_output_dir = tempfile.mkdtemp(prefix="provisa_grpc_")
-            pb2_path, pb2_grpc_path = compile_proto(first_proto, grpc_output_dir)
+            pb2_path, pb2_grpc_path = compile_proto(state.wire_proto, grpc_output_dir)
             grpc_port = int(
                 os.environ.get("GRPC_PORT", str(state.server_cfg.get("grpc_port", 50051)))
             )

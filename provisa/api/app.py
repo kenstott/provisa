@@ -156,6 +156,9 @@ class AppState:
     mv_registry: MVRegistry = MVRegistry()
     _mv_refresh_task: asyncio.Task | None = None
     proto_files: dict[str, str] = {}  # role_id → .proto content
+    # The one SERVED wire descriptor: union of every role's surface (see
+    # app_loaders._build_and_register_schemas). Governance is per-request, not per-descriptor.
+    wire_proto: str | None = None
     table_path_maps: dict[
         str, dict[str, dict]
     ] = {}  # role_id → {gql_field_name → {schema_name, table_name, domain_id}}
