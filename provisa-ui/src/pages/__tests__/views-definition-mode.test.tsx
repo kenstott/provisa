@@ -39,7 +39,7 @@ const METRICS: Metric[] = [
     description: null,
     aiContext: null,
     visibleTo: ["*"],
-    fromFact: false,
+    fromFact: null,
   },
 ];
 

@@ -36,6 +36,10 @@
     "lastPage": "Last page",
     "pageOf": "Page {{page}} / {{totalPages}}",
     "loadFailed": "Could not load registered tables: {{message}}",
-    "editViewDefinitionTitle": "Edit view definition"
+    "editViewDefinitionTitle": "Edit view definition",
+    "modelingRole": {
+      "fact": "fact",
+      "dimension": "dimension"
+    }
   }
 }

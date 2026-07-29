@@ -10,6 +10,23 @@
     "colDescription": "Description",
     "colAiContext": "AI Context",
     "fromFact": "from fact",
+    "builderFact": "Source fact",
+    "builderMeasure": "Measure",
+    "builderAgg": "Aggregate",
+    "builderNoFacts": "No fact tables registered yet",
+    "detail": {
+      "handAuthored": "hand-authored",
+      "noDependents": "none",
+      "field": {
+        "expression": "Expression",
+        "datatype": "Datatype",
+        "description": "Description",
+        "aiContext": "AI Context",
+        "sourceFact": "Source fact",
+        "visibleTo": "Visible to",
+        "dependentViews": "Dependent metric views"
+      }
+    },
     "createTitle": "New Metric",
     "editTitle": "Edit Metric",
     "fieldName": "Name",
@@ -18,6 +35,7 @@
     "fieldExpressionPlaceholder": "e.g. SUM(orders.amount)",
     "fieldDatatype": "Datatype",
     "fieldDatatypePlaceholder": "e.g. numeric",
+    "fieldDatatypeDerived": "Derived from the aggregate when built from a fact measure",
     "fieldDescription": "Description",
     "fieldAiContext": "AI Context",
     "fieldAiContextPlaceholder": "Hints for AI-assisted query generation",

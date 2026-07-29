@@ -12,7 +12,7 @@ import { useState, useEffect, Fragment, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Network, ArrowUp, ArrowDown, ArrowUpDown, Layers, X } from "lucide-react";
-import { ActionIcon, Alert, Button, Group, Modal, Table, Text, Title } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Group, Modal, Table, Text, Title } from "@mantine/core";
 import { ErdModal } from "../components/erd/ErdModal";
 import { fetchSettings, profileTable } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
@@ -757,7 +757,21 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
                       title={t.description || undefined}
                     >
-                      {t.alias || t.tableName}
+                      <Group gap="0.35rem" wrap="nowrap">
+                        {t.alias || t.tableName}
+                        {/* REQ-1320: star-schema role is metadata on the registration itself —
+                            the badge derives live from it, so it can never drift from the def. */}
+                        {t.modelingRole && (
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color={t.modelingRole === "fact" ? "grape" : "teal"}
+                            data-testid={`tables-modeling-role-${t.tableName}`}
+                          >
+                            {translate(`tablesPage.modelingRole.${t.modelingRole}`)}
+                          </Badge>
+                        )}
+                      </Group>
                     </Table.Td>
                     <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                       {NAMING_CONVENTIONS.find((nc) => nc.value === (t.gqlNamingConvention ?? ""))

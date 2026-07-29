@@ -182,8 +182,8 @@ export interface ViewMetricsSpec {
   filters: string[];
 }
 
-// REQ-1317: a registered semantic metric. `fromFact` marks metrics auto-derived
-// from a fact registration (read-only provenance badge in the UI).
+// REQ-1317: a registered semantic metric. `fromFact` names the source fact when the
+// metric was auto-derived from a fact registration (REQ-1320); null for hand-authored.
 export interface Metric {
   name: string;
   expression: string;
@@ -191,7 +191,7 @@ export interface Metric {
   description: string | null;
   aiContext: string | null;
   visibleTo: string[];
-  fromFact: boolean;
+  fromFact: string | null;
 }
 
 export interface Relationship {
