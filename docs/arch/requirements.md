@@ -13371,3 +13371,93 @@ An org whose provisioning failed is recoverable, not abandoned. Background provi
 **Code:** `provisa/api/admin/orgs_router.py`
 
 **Tests:** `tests/integration/test_org_lifecycle.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1316 · Semantic Interchange (Apache Ossie) {#REQ-1316}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Provisa interoperates with Apache Ossie (incubating; formerly Open Semantic Interchange) via a boundary converter, not internal adoption. Export renders the governed model as Ossie YAML - Table to dataset (source = federated catalog.schema.table, primary/unique keys from column config and UniqueConstraint), Column to field (expression = column reference, dialect ANSI_SQL), Relationship to relationship (from/to datasets plus column lists). The CANONICAL export surface is a live endpoint that derives the document from the governed model on every read ([REQ-1321](#REQ-1321) - the interchange artifact is generated from the operating declaration, so it cannot be stale); *.ossie.yaml file download is the secondary form. Note the standard defines only the file format, not a service protocol - the live endpoint is Provisa's delivery of the standard's document, not a compliance requirement. Import ingests an Ossie semantic model (e.g. produced by the dbt or Snowflake converters) and materializes proposed Provisa tables and relationships for onboarding - it ingests definitions, never data. UI surface - export is reachable from the Model area (endpoint URL plus download); import is an upload flow that lands as a review screen of the proposed tables and relationships, which the modeler accepts or trims before anything registers - imported definitions never bypass registration review. Internal vocabulary is never renamed to Ossie's - the spec is a pre-0.2.0 draft that self-declares breaking changes, so coupling is confined to the adapter. If Provisa later adds a metrics object it adopts the Ossie metric shape natively (name, per-dialect aggregate expression, datatype, ai_context) so export of that slice is lossless. Governance, RLS, lineage, and graph semantics stay internal; they may ride an optional `provisa` custom_extensions slot for round-trip fidelity but interop never depends on other tools reading it.
+
+**Use case:** Ossie is the vendor-neutral semantic-metadata standard backed by Snowflake, Databricks, dbt Labs, Salesforce, and 50+ others, and its dataset/field/relationship/metric structure maps nearly one-to-one onto Provisa's Table/Column/Relationship model. Export lets every BI and AI tool converging on the standard consume Provisa's federated catalog; import bootstraps onboarding from ecosystems that already maintain semantic models, instead of hand-registering tables.
+
+**Code:** `provisa/core/models.py`
+
+**Tests:** —
+
+### REQ-1317 · Semantic Metrics {#REQ-1317}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Provisa has a first-class Metric object - a named, governed aggregate definition with no grain of its own. Shape follows Apache Ossie's metric natively (name, aggregate ANSI-SQL expression, datatype, description, ai_context) plus Provisa governance fields (role visibility, steward/version, same pattern as tables). Dataset binding is implicit through the field references inside the expression, with relationship-derived joins when an expansion spans datasets. A metric query (metric plus a requested dimension set) is expanded by the compiler into GROUP BY SQL inside the single settled query pipeline - metrics are a compile-time expansion, never a second pipeline. Metrics appear in the UI as a third Model-nav item beside Views and Commands.
+
+**Use case:** A metric is neither a derived column (which has per-row grain) nor a view (which has fixed grain) - it is an aggregate definition whose grain is bound at query time, the concept every semantic layer since BusinessObjects has converged on. Defining it once, governed, gives every consumer the same formula for "net revenue" instead of each dashboard, agent, and view re-implementing it. Adopting Ossie's shape from birth makes interchange ([REQ-1316](#REQ-1316)) lossless for the metric slice with no translation layer.
+
+**Code:** `provisa/core/models.py`
+
+**Tests:** —
+
+### REQ-1318 · Views (Governed Computed Datasets) {#REQ-1318}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Views may be defined from metrics. Table gains view_metrics {metrics, dimensions, filters}, mutually exclusive with view_sql, validated at parse - one view concept, two definition forms, no separate view type. A view_metrics view closes the metric's open grain at definition time; the compiler generates its SQL, and the view regenerates whenever a referenced metric changes, so it cannot drift from the business definition by construction. Free-hand view_sql may also reference metrics inline via metric('name'), expanded at compile time with a lineage edge to the Metric object, giving hand-written views the same recompile-on-change property when they reference rather than re-implement. All definition forms use the existing materialization, refresh, debounce, and live-delivery machinery unchanged, since downstream code keys off "table with a definition". UI surface - the existing Views page gains a definition-mode toggle (SQL editor vs metric/dimension picker); views do not split into a new nav item.
+
+**Use case:** Column lineage already tracks which columns feed a free-hand view, but it cannot see definitional duplication - a hand-written SUM that re-implements net revenue keeps computing the old formula after the business definition changes, and every lineage edge it has is still valid. Referencing the metric instead of copying its formula turns that silent drift into an automatic recompile. Composing a metric with dimensions is also simply the fastest way to make a correct governed view.
+
+**Code:** `provisa/core/models.py`, `provisa/lineage/columns.py`
+
+**Tests:** —
+
+### REQ-1319 · Semantic Metrics {#REQ-1319}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+Every query surface projects metrics through one compiler expansion plus that protocol's native addressing and metadata idiom - the definition (description, ai_context) travels with the value everywhere, with no copies. SQL/pgwire: a reserved metrics schema where each metric is a relation whose selected/grouped columns are the dimension choice, description surfaced via pg_description. GraphQL: a metrics block inside the _aggregate root field ([REQ-653](#REQ-653)) with the definition in introspection docs. Bolt/Cypher: a provisa.metric() procedure, plus Metric nodes in the federated graph with DERIVES_FROM edges to columns and REFERENCES edges from consuming views, making metric lineage navigable in Neo4j Browser/Bloom. Arrow Flight: metric flight descriptors returning Arrow tables. gRPC: a metric-reference node in the query IR. MCP: list_metrics and query_metric tools carrying ai_context, so agents select governed meanings instead of composing aggregation SQL. NL: the schema matcher resolves metric vocabulary directly to metric plus dimensions. Streaming: view_metrics + materialize + Kafka sink yields push-on-change metrics from existing machinery. Observability: metric evaluations traced and exportable as OTel metrics.
+
+**Use case:** Structural aggregates (sum/avg/count) tell a consumer what is summable; metrics tell it what is meaningful. Projecting one governed definition into each protocol's own metadata channel - pg catalog comments, GraphQL docstrings, graph properties, MCP tool descriptions - means a DBeaver user, a dashboard, and an AI agent all read the same meaning of net revenue from the surface they already use, and hallucinated formulas become structurally impossible for agents that query metrics by name.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/nl/schema_matcher.py`, `provisa/grpc/query_ir.py`
+
+**Tests:** —
+
+### REQ-1320 · Semantic Metrics {#REQ-1320}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The entity/fact modeling roles ([REQ-1164](#REQ-1164)) are retained after lowering and projected into every surface, instead of being discarded at registration. The spec stays attached to the artifacts it generates - same one-source principle as view_metrics - so downstream consumers see "dimension with SCD2 history" and "fact at grain X", not plain tables. Projections: Ossie export emits role-faithful fact/dimension datasets and flags time dimensions via dimension.is_time ([REQ-1316](#REQ-1316)); each measure declared in a fact spec auto-registers a Metric object ([REQ-1317](#REQ-1317)) whose valid grouping dimensions derive from the entity attributes reachable over the fact's FK relationships; MCP and NL receive the star shape (facts, dimensions, join edges) as grounding context and the NL matcher biases join paths fact-to-dimension; the federated graph labels nodes :Fact/:Dimension so Bloom renders the star; GraphQL introspection docs and pg_description carry role and SCD mode, and enable_aggregates defaults on for facts. The lowering itself stays pure - roles are metadata carried alongside, never a change to what is generated.
+
+**Use case:** [REQ-1164](#REQ-1164) captures star/vault semantics at authoring time and evaporates them before any consumer can use them - downstream surfaces see undifferentiated tables. Retaining the role turns guesswork into derivation everywhere it matters. "Which groupings are valid for this measure" becomes computable, agents get the schema-shape context that makes generated queries correct, BI tools that infer star roles read them from the catalog instead of guessing, and the Ossie export preserves the fact/dimension distinction the standard itself is built around. This is the entity-taxonomy layer BusinessObjects universes carried and Ossie lacks - held internally, projected outward where expressible.
+
+**Code:** `provisa/mv/modeling.py`
+
+**Tests:** `tests/unit/test_modeling.py`
+
+## 0. Architecture & Design Principles
+
+### REQ-1321 · Data-Model-Driven Estate {#REQ-1321}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+
+GOVERNING PRINCIPLE - declarative from source to consumer, and the declaration is the entire basis of platform operation. The unbroken declarative chain (source registration -> conformed entity/fact [REQ-1164](#REQ-1164)/[REQ-1320](#REQ-1320) -> metric [REQ-1317](#REQ-1317) -> view/materialization [REQ-1318](#REQ-1318) -> surface projection [REQ-1319](#REQ-1319) -> interchange [REQ-1316](#REQ-1316)) is not documentation of the system; it is the system's only input. Every operational behavior - queries compiled, MVs built, lineage recorded, protocol schemas served, definitions exported - is DERIVED from the declaration, so the model cannot disagree with operation: there is no second artifact to drift against. Metadata-as-description can lie; metadata-as-execution cannot. COROLLARY (the testable invariant): any feature that introduces operational behavior not derived from the declaration violates the architecture. New capabilities extend the declarable model and derive their runtime from it; they never add side-channel configuration, hand-maintained artifacts, or behavior the declaration does not determine. Generalizes [REQ-964](#REQ-964)'s data-model-driven estate from materialization to the full source-to-consumer span.
+
+**Use case:** Every hop being a spec that GENERATES the next artifact (never merely describes it) yields three properties no seam-ful stack has - lineage total and exact by construction rather than reconstructed by parsing; impact analysis as graph traversal ending at actual consumers (a GraphQL field, an MCP tool, a Kafka topic); regeneration replacing stewardship, since a definition change recompiles everything downstream because downstream was generated in the first place. Competitors cannot retrofit this - their runtimes predate their catalogs, so their metadata describes from the outside. Stating the principle gives future requirements and reviews an invariant to test against.
+
+**Code:** `provisa/core/models.py`
+
+**Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1322 · Semantic Metrics {#REQ-1322}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** ui
+
+The Explore/SQL page generates SQL from semantic objects, not just table structure. (1) Role-aware browser - the SchemaBrowser groups by Metrics / Facts / Dimensions ([REQ-1317](#REQ-1317)/[REQ-1320](#REQ-1320) metadata); facts and dimensions render distinctly on the JoinCanvas and FK edges between them pre-draw along the star. (2) Metric-driven generation - dragging a metric onto the canvas surfaces its valid dimension set (entity attributes reachable over the fact's relationships, derived per [REQ-1320](#REQ-1320)) as selectable groupings, and the canvas emits semantic SQL against the reserved metrics schema ([REQ-1319](#REQ-1319)), e.g. SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month. The UI never reimplements join or aggregation generation - the server's compiler expansion is the single generator ([REQ-1321](#REQ-1321)); the canvas generates the ask, the pipeline generates the plan. (3) Round trip to definition - the generated query lands in the editor, editable as ordinary SQL, and the ViewModal gains save-as-metric-view, persisting the selection as a view_metrics definition ([REQ-1318](#REQ-1318)) instead of frozen SQL text. (4) Semantic SQL is the artifact; the physical expansion is a VIEW of it - a read-only preview pane (same gesture as EXPLAIN) shows the compiler-derived physical SQL for trust and debugging, and derived output is never the editable master ([REQ-1321](#REQ-1321)). Expanding the metric into the editor is an explicit detach action and a ONE-WAY TRIP: the query becomes free-hand SQL, the metric link is visibly severed, and there is no re-ingestion of edited physical SQL back into metric references - de-compiling hand-edited SQL is not attempted, ever.
+
+**Use case:** The JoinCanvas already generates SELECT/JOIN SQL from dragged tables and registered relationships, but it can only express structure - nothing tells it which tables are facts, which columns are measures, or which groupings are valid. With roles and metrics in the model, the guided field-well experience a BI tool maintains in its own separate modeling layer falls out of metadata the platform already operates on, and the saved artifact stays live against the metric definition rather than drifting as frozen SQL.
+
+**Code:** `provisa-ui/src/pages/SqlPage.tsx`, `provisa-ui/src/pages/sql/JoinCanvas.tsx`, `provisa-ui/src/pages/sql/SchemaBrowser.tsx`, `provisa-ui/src/pages/sql/ViewModal.tsx`
+
+**Tests:** —
