@@ -32,6 +32,7 @@ const AdminPage = lazy(() => import("./pages/AdminPage").then((m) => ({ default:
 const CommandsPage = lazy(() => import("./pages/CommandsPage").then((m) => ({ default: m.CommandsPage })));
 const LineagePage = lazy(() => import("./pages/LineagePage").then((m) => ({ default: m.LineagePage }))); // REQ-1160/1161
 const ViewsPage = lazy(() => import("./pages/ViewsPage").then((m) => ({ default: m.ViewsPage })));
+const MetricsPage = lazy(() => import("./pages/MetricsPage").then((m) => ({ default: m.MetricsPage })));
 const RequestsPage = lazy(() => import("./pages/RequestsPage").then((m) => ({ default: m.RequestsPage })));
 const DocsPage = lazy(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
 const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
@@ -336,6 +337,14 @@ function App() {
                     element={
                       <CapabilityGate capability="table_registration" fallback={<NotAuthorized />}>
                         <ViewsPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/metrics"
+                    element={
+                      <CapabilityGate capability="table_registration" fallback={<NotAuthorized />}>
+                        <MetricsPage />
                       </CapabilityGate>
                     }
                   />

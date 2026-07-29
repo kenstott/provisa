@@ -138,8 +138,9 @@ async def register_table(
     )
     from provisa.api.admin.capabilities import require_capability
 
-    if input.view_sql:
-        # view registration: create_view or query_development suffice
+    if input.view_sql or input.view_metrics is not None:
+        # view registration (free-hand SQL or REQ-1318 metric-composed spec):
+        # create_view or query_development suffice
         from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
         from provisa.api.app import state as _cap_state
 
@@ -153,6 +154,8 @@ async def register_table(
                 return await _queue_creation_request(info, "view", "create_view", input)
         # REQ-1140: a materialized view publishes only over approved relationships; the gate either
         # auto-creates them (rights) or queues them + the view and blocks (returns a queued result).
+        # A metric-composed view (view_metrics) joins ONLY through registered relationships by
+        # construction (generate_view_metrics_sql), so the gate applies to free-hand SQL alone.
         gate_result = await _apply_mv_relationship_gate(info, input)
         if gate_result is not None:
             return gate_result
@@ -195,9 +198,23 @@ async def register_table(
         validate_preprocess(input.mv_preprocess)
     except ValueError as _pp_err:
         return MutationResult(success=False, message=str(_pp_err))
-    model = _table_model_from_input(input, columns, presets, alias)
+    try:
+        model = _table_model_from_input(input, columns, presets, alias)
+    except ValueError as _map_err:  # REQ-1318: view_sql+view_metrics conflict / invalid spec
+        return MutationResult(success=False, message=str(_map_err))
+    _effective_view_sql = input.view_sql
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
+        if model.view_metrics is not None:
+            # REQ-1318: compile the spec into the view SELECT against the live registries —
+            # the generated SQL persists in view_sql and flows everywhere free-hand SQL does.
+            from provisa.api.admin._metric_views import compile_view_metrics_sql
+
+            try:
+                model.view_sql = await compile_view_metrics_sql(_conn, model.view_metrics)
+            except ValueError as _vm_err:
+                return MutationResult(success=False, message=str(_vm_err))
+            _effective_view_sql = model.view_sql
         _conflict = await _domain_table_conflict(
             _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, alias
         )
@@ -275,10 +292,10 @@ async def register_table(
                     input.table_name,
                 )
 
-    if input.view_sql and input.materialize:
+    if _effective_view_sql and input.materialize:
         _sync_view_mv(
             input.table_name,
-            input.view_sql,
+            _effective_view_sql,
             input.mv_refresh_interval,
             input.change_signal,
             consistency=input.mv_consistency,  # REQ-879
@@ -309,7 +326,7 @@ async def register_table(
 
     # A newly-created materialized view is materialized immediately and its refresh job registered, so
     # it lands FRESH instead of STALE-until-restart (the event loop otherwise wires only at boot).
-    if input.view_sql and input.materialize:
+    if _effective_view_sql and input.materialize:
         from provisa.api.admin.schema_common import activate_view_mv
 
         await activate_view_mv(input.table_name)

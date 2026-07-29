@@ -448,6 +448,16 @@ class AppState:
     def relationships(self, value: list[dict]) -> None:
         self._active_runtime().relationships = value
 
+    @property
+    def metrics(self) -> dict[str, Any]:
+        # REQ-1317: config-declared metric registry (name → Metric), published for the
+        # raw-SQL path's `metrics.<name>` query expansion (before governance).
+        return self._active_runtime().metrics
+
+    @metrics.setter
+    def metrics(self, value: dict[str, Any]) -> None:
+        self._active_runtime().metrics = value
+
 
 state = AppState()
 
@@ -984,6 +994,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # REQ-1132: publish the resolved relationship registry alongside tables so the raw-SQL
     # governance path can compute 1-hop meta row scoping.
     state.relationships = relationships
+    # REQ-1317: publish the config-declared metric registry alongside tables so the raw-SQL
+    # path can expand `metrics.<name>` queries into governed aggregates. Config absent (bare
+    # rebuild before any config load) legitimately means no metrics are declared.
+    _cfg = getattr(state, "config", None)
+    state.metrics = {m.name: m for m in _cfg.metrics} if _cfg is not None else {}
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {
@@ -1349,6 +1364,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.settings_router import router as settings_router
 
     app.include_router(settings_router)
+    from provisa.api.admin.ossie_router import router as ossie_router  # REQ-1316, REQ-1321
+
+    app.include_router(ossie_router)
     from provisa.api.admin.security_router import router as security_router
 
     app.include_router(security_router)

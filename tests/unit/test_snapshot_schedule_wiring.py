@@ -46,6 +46,8 @@ def _table_input(**overrides):
         data_product=False,
         enable_aggregates=False,
         enable_group_by=False,
+        modeling_role=None,  # REQ-1320
+        modeling_history=None,  # REQ-1320
         live=None,
         unique_constraints=[],
     )

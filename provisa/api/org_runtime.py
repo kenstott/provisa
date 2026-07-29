@@ -93,6 +93,9 @@ class OrgRuntime:
     # Raw-SQL governance inputs (published once per org at schema-load time).
     tables: list[dict] = field(default_factory=list)
     relationships: list[dict] = field(default_factory=list)
+    # REQ-1317: config-declared metric registry (name → Metric), published alongside tables
+    # so the raw-SQL path can expand `metrics.<name>` queries before governance.
+    metrics: dict[str, Any] = field(default_factory=dict)
 
 
 class OrgRegistry:

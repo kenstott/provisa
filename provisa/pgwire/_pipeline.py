@@ -311,6 +311,31 @@ async def _govern_and_route(
     if _localized:
         normalized_sql = _parsed_input.sql(dialect="postgres")
 
+    # REQ-1317: expand queries against the reserved `metrics` schema (metrics.<name>) into the
+    # real grouped aggregate over the underlying semantic tables BEFORE governance, so RLS and
+    # masking apply to the real columns the metric reads. Mirrors the inline-command localization
+    # stage above: rewrite the tree, then re-serialize normalized_sql from it.
+    from provisa.compiler.metric_expand import expand_metric_query
+
+    _metric_registry = getattr(state, "metrics", {})
+    if _metric_registry:
+        _metric_tables = {
+            t["table_name"]: {
+                "id": t["id"],
+                "columns": [c["column_name"] for c in t.get("columns", [])],
+            }
+            for t in getattr(state, "tables", [])
+        }
+        _expanded = expand_metric_query(
+            _parsed_input,
+            _metric_registry,
+            _metric_tables,
+            getattr(state, "relationships", []),
+        )
+        if _expanded is not None:
+            _parsed_input = _expanded
+            normalized_sql = _parsed_input.sql(dialect="postgres")
+
     _reject_physical_source_refs(_parsed_input, state)
     _reject_view_writes(_parsed_input, state)  # REQ-1157: view/MV-backed relations are query-only
 

@@ -52,9 +52,14 @@ _TABLE_KEYS = frozenset(
         "enable_aggregates",
         "enable_group_by",
         "unique_constraints",  # REQ-1093
+        "modeling_role",  # REQ-1320
+        "modeling_history",  # REQ-1320
     }
 )
 _COLUMN_KEYS = frozenset({"name", "description", "visible_to"})
+_METRIC_KEYS = frozenset(  # REQ-1317, REQ-1319, REQ-1320
+    {"name", "expression", "datatype", "description", "ai_context", "visible_to", "from_fact"}
+)
 _REL_KEYS = frozenset(
     {
         "id",
@@ -133,6 +138,7 @@ async def build_live_config() -> dict:
     credentials are preserved; internal meta/ops and unassigned-domain entities are excluded."""
     from provisa.api.admin.schema_helpers import _get_pool
     from provisa.core.repositories import domain as domain_repo
+    from provisa.core.repositories import metric as metric_repo
     from provisa.core.repositories import relationship as rel_repo
     from provisa.core.repositories import rls as rls_repo
     from provisa.core.repositories import role as role_repo
@@ -146,6 +152,7 @@ async def build_live_config() -> dict:
         roles = await role_repo.list_all(conn)
         rls = await rls_repo.list_all(conn)
         domains = await domain_repo.list_all(conn)
+        metric_rows = await metric_repo.list_all(conn)  # REQ-1317
 
     def _internal_domain(d: Any) -> bool:
         return not d or str(d) in _INTERNAL_DOMAINS
@@ -196,6 +203,9 @@ async def build_live_config() -> dict:
         _project(d, _DOMAIN_KEYS, id_to_name=id_to_name)
         for d in domains
         if not _internal_domain(d.get("id"))
+    ]
+    base["metrics"] = [  # REQ-1317
+        _project(m, _METRIC_KEYS, id_to_name=id_to_name) for m in metric_rows
     ]
     return _plain(base)
 

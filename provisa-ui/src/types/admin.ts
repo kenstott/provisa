@@ -169,6 +169,20 @@ export interface RegisteredTable {
   enableGroupBy: boolean;
   canDeployToDb: boolean;
   live: LiveDeliveryConfig | null;
+  modelingRole?: "fact" | "dimension" | null; // REQ-1322: star-schema role for the Explore browser
+  modelingHistory?: unknown; // REQ-1322: server-owned modeling audit trail (shape not consumed by UI)
+}
+
+// REQ-1317: a registered semantic metric. `fromFact` marks metrics auto-derived
+// from a fact registration (read-only provenance badge in the UI).
+export interface Metric {
+  name: string;
+  expression: string;
+  datatype: string | null;
+  description: string | null;
+  aiContext: string | null;
+  visibleTo: string[];
+  fromFact: boolean;
 }
 
 export interface Relationship {

@@ -211,6 +211,35 @@ def build_mcp_server(state: Any):
         """
         return await tools.search_catalog(state, _role(role), query, k=k)
 
+    @mcp.tool()
+    async def list_metrics(role: str | None = None) -> list[dict]:
+        """List governed metric definitions — agents select meanings by name instead of
+        composing aggregation SQL (REQ-1319).
+
+        Each entry carries name, description, ai_context (definition text written for AI
+        consumers), datatype, and from_fact. Follow up with query_metric to evaluate one
+        at a chosen grain.
+        """
+        return tools.list_metrics(state, _role(role))
+
+    @mcp.tool()
+    async def query_metric(
+        metric: str,
+        dimensions: list[str] | None = None,
+        filters: str | None = None,
+        role: str | None = None,
+    ) -> list[dict]:
+        """Query a governed metric grouped by caller-chosen dimensions (REQ-1319).
+
+        Selects the metric's governed meaning by name from the reserved ``metrics``
+        schema instead of composing aggregation SQL. Empty dimensions returns a single
+        grand-total row. ``filters`` is a raw boolean SQL condition; the governed
+        pipeline validates it.
+        """
+        return await tools.query_metric(
+            state, _role(role), metric, dimensions or [], filters=filters
+        )
+
     return mcp
 
 

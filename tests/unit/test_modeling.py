@@ -131,6 +131,61 @@ def test_measureless_fact_is_a_key_set_no_group_by():
     assert reg["view_sql"] == 'SELECT "order_id", "customer_id" FROM "raw"."orders"'
 
 
+# ── modeling roles + auto-registered metrics (REQ-1320) ──────────────────────
+
+
+def test_entity_registration_emits_dimension_role():
+    reg = entity_registration(Entity(name="Customer", source="raw.customers", key=("id",)))
+    assert reg["modeling_role"] == "dimension"
+    assert "modeling_history" not in reg  # history="none" → no history metadata
+
+
+def test_entity_registration_emits_history_mode():
+    scd2 = entity_registration(Entity(name="C", source="s", key=("id",), history="scd2"))
+    snap = entity_registration(Entity(name="C", source="s", key=("id",), history="snapshot"))
+    assert scd2["modeling_history"] == "scd2"
+    assert snap["modeling_history"] == "snapshot"
+
+
+def test_fact_registration_emits_fact_role_and_metrics():
+    reg = fact_registration(
+        Fact(
+            name="Sales",
+            source="raw.orders",
+            grain=("order_id",),
+            measures=(Measure("amount", "sum"), Measure("qty", "avg")),
+        )
+    )
+    assert reg["modeling_role"] == "fact"
+    # each measure → a governed metric over the fact's registered table name (semantic ref)
+    assert reg["metrics"] == [
+        {
+            "name": "sales_amount_sum",
+            "expression": "SUM(Sales.amount)",
+            "datatype": None,
+            "from_fact": "Sales",
+        },
+        {
+            "name": "sales_qty_avg",
+            "expression": "AVG(Sales.qty)",
+            "datatype": None,
+            "from_fact": "Sales",
+        },
+    ]
+
+
+def test_fact_metric_names_are_snake_case():
+    reg = fact_registration(
+        Fact(name="WebSales", source="raw.web_orders", grain=("id",), measures=(Measure("amount"),))
+    )
+    assert [m["name"] for m in reg["metrics"]] == ["web_sales_amount_sum"]
+
+
+def test_measureless_fact_registers_no_metrics():
+    reg = fact_registration(Fact(name="OrderCustomer", source="raw.orders", grain=("order_id",)))
+    assert reg["metrics"] == []
+
+
 # ── the generated SQL actually runs (behavioral) ─────────────────────────────
 
 

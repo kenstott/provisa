@@ -8,14 +8,14 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { ActionIcon, ScrollArea, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { ChevronRight, ChevronDown, Table2, Columns3, Info } from "lucide-react";
+import { ChevronRight, ChevronDown, Table2, Columns3, Info, Sigma } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { normalizeDomain } from "./sqlHelpers";
+import { normalizeDomain, groupModelingTables } from "./sqlHelpers";
 import { DOMAIN_PAGE_SIZE } from "./types";
 import type { TopTab } from "./types";
-import type { Domain } from "../../types/admin";
+import type { Domain, Metric } from "../../types/admin";
 import type { RegisteredTable } from "../../types/admin";
 
 interface SchemaBrowserProps {
@@ -31,6 +31,54 @@ interface SchemaBrowserProps {
   toggleDomain: (d: string) => void;
   toggleTable: (t: string) => void;
   setDomainPages: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  metrics: Metric[]; // REQ-1322
+  tables: RegisteredTable[]; // REQ-1322: full set for Facts/Dimensions groups
+}
+
+// REQ-1322: a compact table row inside the Facts/Dimensions modeling groups.
+// Tables also stay in their domain groups — these rows only insert/drag.
+function ModelingTableRow({
+  tbl,
+  topTab,
+  insertAtCursor,
+  group,
+}: {
+  tbl: RegisteredTable;
+  topTab: TopTab;
+  insertAtCursor: (text: string) => void;
+  group: string;
+}) {
+  const { t } = useTranslation();
+  const ref = `"${normalizeDomain(tbl.domainId || tbl.schemaName)}"."${tbl.alias || tbl.tableName}"`;
+  return (
+    <UnstyledButton
+      onClick={() => insertAtCursor(ref)}
+      draggable={topTab === "canvas"}
+      onDragStart={
+        topTab === "canvas"
+          ? (e) => e.dataTransfer.setData("tableName", tbl.tableName)
+          : undefined
+      }
+      data-testid={`schema-${group}-table-${tbl.tableName}`}
+      title={topTab === "canvas" ? t("schemaBrowser.dragToCanvas") : t("schemaBrowser.insertTableReference")}
+      style={{
+        width: "100%",
+        textAlign: "left",
+        cursor: topTab === "canvas" ? "grab" : "pointer",
+        padding: "0.18rem 0.5rem 0.18rem 1.5rem",
+        display: "flex",
+        alignItems: "center",
+        gap: "0.3rem",
+        color: "var(--text)",
+        fontSize: "0.75rem",
+      }}
+    >
+      <Table2 size={9} aria-hidden style={{ flexShrink: 0, color: "var(--primary)" }} />
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {tbl.alias || tbl.tableName}
+      </span>
+    </UnstyledButton>
+  );
 }
 
 export function SchemaBrowser({
@@ -46,8 +94,25 @@ export function SchemaBrowser({
   toggleDomain,
   toggleTable,
   setDomainPages,
+  metrics,
+  tables,
 }: SchemaBrowserProps) {
   const { t } = useTranslation();
+  // REQ-1322: role-aware top-level groups (Metrics / Facts / Dimensions).
+  const { facts, dimensions } = useMemo(() => groupModelingTables(tables), [tables]);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["metrics"]));
+  const toggleGroup = (g: string) =>
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g);
+      else next.add(g);
+      return next;
+    });
+  const modelingGroups: { id: "metrics" | "facts" | "dimensions"; label: string }[] = [
+    { id: "metrics", label: t("schemaBrowser.groupMetrics") },
+    { id: "facts", label: t("schemaBrowser.groupFacts") },
+    { id: "dimensions", label: t("schemaBrowser.groupDimensions") },
+  ];
   return (
     <div
       style={{
@@ -93,10 +158,144 @@ export function SchemaBrowser({
       >
         <ScrollArea style={{ width: 210, height: "100%" }} type="auto" offsetScrollbars>
           <div style={{ padding: "0.5rem 0" }}>
+            {/* REQ-1322: Metrics / Facts / Dimensions modeling groups */}
+            {modelingGroups.map(({ id, label }) => {
+              const open = openGroups.has(id);
+              const empty =
+                id === "metrics"
+                  ? metrics.length === 0
+                  : id === "facts"
+                    ? facts.length === 0
+                    : dimensions.length === 0;
+              return (
+                <div key={id}>
+                  <UnstyledButton
+                    onClick={() => toggleGroup(id)}
+                    aria-expanded={open}
+                    data-testid={`schema-group-${id}`}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "0.2rem 0.75rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      color: "var(--accent)",
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                      letterSpacing: "0.05em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                    <span style={{ flex: 1 }}>{label}</span>
+                  </UnstyledButton>
+                  {open && empty && (
+                    <Text
+                      component="div"
+                      style={{
+                        padding: "0.1rem 0.75rem 0.2rem 1.5rem",
+                        fontSize: "0.7rem",
+                        color: "var(--text-muted)",
+                        opacity: 0.6,
+                      }}
+                    >
+                      {t("schemaBrowser.groupEmpty")}
+                    </Text>
+                  )}
+                  {open &&
+                    id === "metrics" &&
+                    metrics.map((m) => (
+                      <div key={m.name} style={{ display: "flex", alignItems: "center" }}>
+                        <UnstyledButton
+                          onClick={() =>
+                            insertAtCursor(`SELECT value FROM metrics.${m.name}`)
+                          }
+                          draggable={topTab === "canvas"}
+                          onDragStart={
+                            topTab === "canvas"
+                              ? (e) => e.dataTransfer.setData("metricName", m.name)
+                              : undefined
+                          }
+                          data-testid={`schema-metric-${m.name}`}
+                          title={
+                            topTab === "canvas"
+                              ? t("schemaBrowser.dragMetricToCanvas")
+                              : t("schemaBrowser.insertMetricQuery")
+                          }
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            textAlign: "left",
+                            cursor: topTab === "canvas" ? "grab" : "pointer",
+                            padding: "0.18rem 0 0.18rem 1.5rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.3rem",
+                            color: "var(--text)",
+                            fontSize: "0.75rem",
+                          }}
+                        >
+                          <Sigma
+                            size={9}
+                            aria-hidden
+                            style={{ flexShrink: 0, color: "var(--accent)" }}
+                          />
+                          <span
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {m.name}
+                          </span>
+                        </UnstyledButton>
+                        {m.description && (
+                          <Tooltip label={m.description} withinPortal>
+                            <Info
+                              size={10}
+                              aria-hidden
+                              style={{
+                                flexShrink: 0,
+                                marginRight: "0.35rem",
+                                color: "var(--accent)",
+                                opacity: 0.7,
+                              }}
+                            />
+                          </Tooltip>
+                        )}
+                      </div>
+                    ))}
+                  {open &&
+                    id === "facts" &&
+                    facts.map((tbl) => (
+                      <ModelingTableRow
+                        key={tbl.tableName}
+                        tbl={tbl}
+                        topTab={topTab}
+                        insertAtCursor={insertAtCursor}
+                        group="fact"
+                      />
+                    ))}
+                  {open &&
+                    id === "dimensions" &&
+                    dimensions.map((tbl) => (
+                      <ModelingTableRow
+                        key={tbl.tableName}
+                        tbl={tbl}
+                        topTab={topTab}
+                        insertAtCursor={insertAtCursor}
+                        group="dimension"
+                      />
+                    ))}
+                </div>
+              );
+            })}
             <Text
               component="div"
               style={{
-                padding: "0 0.75rem 0.4rem",
+                padding: "0.4rem 0.75rem 0.4rem",
                 fontSize: "0.65rem",
                 fontWeight: 700,
                 letterSpacing: "0.08em",

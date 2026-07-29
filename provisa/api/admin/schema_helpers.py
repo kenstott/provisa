@@ -43,7 +43,7 @@ from provisa.api.admin.types import (
     TableColumnType,
 )
 
-from provisa.api.admin._row_mappers import _live_type_from_row
+from provisa.api.admin._row_mappers import _live_type_from_row, _view_metrics_type_from_row
 
 log = logging.getLogger(__name__)
 
@@ -330,6 +330,7 @@ async def _fetch_table_with_columns(
         unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,
         view_sql=view_sql,
+        view_metrics=_view_metrics_type_from_row(row.get("view_metrics")),  # REQ-1318
         change_signal=row.get("change_signal"),
         probe_query=row.get("probe_query"),
         probe_type=row.get("probe_type"),
@@ -344,6 +345,8 @@ async def _fetch_table_with_columns(
         mv_persist=row.get("mv_persist") or "replace",  # REQ-965
         mv_primary_key=list(row.get("mv_primary_key") or []),  # REQ-970
         mv_incremental=bool(row.get("mv_incremental", False)),  # REQ-969
+        modeling_role=row.get("modeling_role"),  # REQ-1320
+        modeling_history=row.get("modeling_history"),  # REQ-1320
         data_product=bool(row.get("data_product", False)),
         enable_aggregates=bool(row.get("enable_aggregates", False)),
         enable_group_by=bool(row.get("enable_group_by", False)),

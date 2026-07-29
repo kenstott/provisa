@@ -1,0 +1,39 @@
+{
+  "metricsPage": {
+    "title": "Metrics",
+    "newMetric": "New Metric",
+    "loading": "Loading...",
+    "empty": "No metrics registered yet.",
+    "colName": "Name",
+    "colExpression": "Expression",
+    "colDatatype": "Datatype",
+    "colDescription": "Description",
+    "colAiContext": "AI Context",
+    "fromFact": "from fact",
+    "createTitle": "New Metric",
+    "editTitle": "Edit Metric",
+    "fieldName": "Name",
+    "fieldNamePlaceholder": "e.g. total_revenue",
+    "fieldExpression": "Expression",
+    "fieldExpressionPlaceholder": "e.g. SUM(orders.amount)",
+    "fieldDatatype": "Datatype",
+    "fieldDatatypePlaceholder": "e.g. numeric",
+    "fieldDescription": "Description",
+    "fieldAiContext": "AI Context",
+    "fieldAiContextPlaceholder": "Hints for AI-assisted query generation",
+    "save": "Save",
+    "cancel": "Cancel",
+    "saveFailed": "Save failed.",
+    "editMetric": "Edit metric {{name}}",
+    "deleteMetric": "Delete metric {{name}}",
+    "deleteTitle": "Delete Metric",
+    "deleteConfirm": "Delete metric \"{{name}}\"? This cannot be undone.",
+    "delete": "Delete",
+    "deleteFailed": "Delete failed."
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "Remove metric {{metricName}}",
+    "dimensionsHeading": "Dimensions",
+    "noDimensions": "No related dimension columns found"
+  }
+}

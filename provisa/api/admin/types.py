@@ -160,6 +160,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     )  # REQ-1093
     api_endpoint: str | None = None
     view_sql: str | None = None
+    view_metrics: ViewMetricsType | None = None  # REQ-1318: metric-composed view spec
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
@@ -181,6 +182,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_allowed_lateness: float = 0.0  # REQ-961: seal-deadline slack (s)
     mv_expected_events: list[str] | None = None  # REQ-961: preflight freshness contract
     mv_business_day_grain: bool = False  # REQ-962: gate windows to business days
+    modeling_role: str | None = None  # REQ-1320: "dimension" | "fact" | None
+    modeling_history: str | None = None  # REQ-1320: "scd2" | "snapshot" | None
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False
@@ -407,6 +410,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         default_factory=list
     )  # REQ-1093
     view_sql: str | None = None
+    # REQ-1318: declarative metric-composed view definition; mutually exclusive with view_sql.
+    # The server generates (and regenerates on metric change) the view SELECT from this spec.
+    view_metrics: ViewMetricsInput | None = None
     load_protected: bool | None = None  # REQ-1141: NULL = inherit source load protection
     off_peak_window: str | None = None  # REQ-1141: per-table "HH:MM-HH:MM" window override
     off_peak_tz: str | None = None  # REQ-1141: per-table window zone override
@@ -431,6 +437,8 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_allowed_lateness: float = 0.0  # REQ-961: seal-deadline slack (s)
     mv_expected_events: list[str] | None = None  # REQ-961: preflight freshness contract
     mv_business_day_grain: bool = False  # REQ-962: gate windows to business days
+    modeling_role: str | None = None  # REQ-1320: "dimension" | "fact" | None
+    modeling_history: str | None = None  # REQ-1320: "scd2" | "snapshot" | None
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False
@@ -488,6 +496,41 @@ class FactInput:  # REQ-1164: star fact / DV link sugar → lowers to an aggrega
     measures: list[MeasureInput] = strawberry.field(default_factory=list)
     dimensions: list[DimRefInput] = strawberry.field(default_factory=list)
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+
+
+@strawberry.type
+class ViewMetricsType:  # REQ-1318: declarative metric-composed view spec (persisted alongside view_sql)
+    metrics: list[str]
+    dimensions: list[str]
+    filters: list[str] = strawberry.field(default_factory=list)
+
+
+@strawberry.input
+class ViewMetricsInput:  # REQ-1318: declarative metric-composed view definition
+    metrics: list[str]
+    dimensions: list[str]
+    filters: list[str] = strawberry.field(default_factory=list)
+
+
+@strawberry.type
+class MetricType:  # REQ-1317: a governed, named aggregate definition (grain bound at query time)
+    name: str
+    expression: str
+    datatype: str | None = None
+    description: str | None = None
+    ai_context: str | None = None  # REQ-1319: definition text for AI consumers
+    visible_to: list[str] = strawberry.field(default_factory=lambda: ["*"])
+    from_fact: str | None = None  # REQ-1320: set when auto-registered from a fact measure
+
+
+@strawberry.input
+class MetricInput:  # REQ-1317
+    name: str
+    expression: str  # must parse under sqlglot and contain ≥1 aggregate function
+    datatype: str | None = None
+    description: str | None = None
+    ai_context: str | None = None  # REQ-1319
+    visible_to: list[str] = strawberry.field(default_factory=lambda: ["*"])
 
 
 @strawberry.input

@@ -13,6 +13,7 @@
     "domainSelectPlaceholder": "— select domain —",
     "description": "Description",
     "descriptionPlaceholder": "Optional",
+    "saveAsMetricView": "Save as metric view ({{metric}})",
     "hasParamsWarning": "SQL contains unresolved parameter placeholders ($1, $2, …). Edit the SQL to replace them with literal values.",
     "savedTitle": "View Saved",
     "savedMessageCreated": "View \"{{viewId}}\" has been created and registered.",

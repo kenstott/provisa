@@ -15,6 +15,7 @@ import type {
   Source,
   Domain,
   RegisteredTable,
+  Metric,
   RefreshPolicySummary,
   Relationship,
   RLSRule,
@@ -41,6 +42,9 @@ import {
   CreateCalendar as CREATE_CALENDAR_MUTATION,
   DeleteCalendar as DELETE_CALENDAR_MUTATION,
   RefreshPolicyPreview as REFRESH_POLICY_PREVIEW_QUERY,
+  MetricsQuery as METRICS_QUERY,
+  UpsertMetric as UPSERT_METRIC_MUTATION,
+  DeleteMetric as DELETE_METRIC_MUTATION,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
   RLSRulesQuery as RLS_RULES_QUERY,
@@ -135,6 +139,58 @@ export function useTables() {
     loading,
     error,
     refetch,
+  };
+}
+
+// REQ-1317: registered semantic metrics.
+const NO_METRICS: Metric[] = [];
+
+export function useMetrics() {
+  const { data, loading, error, refetch } = useQuery<{ metrics: Metric[] }>(METRICS_QUERY, {
+    fetchPolicy: "cache-and-network",
+  });
+  return {
+    metrics: data?.metrics ?? NO_METRICS,
+    loading,
+    error,
+    refetch,
+  };
+}
+
+export interface MetricInput {
+  name: string;
+  expression: string;
+  datatype?: string | null;
+  description?: string | null;
+  aiContext?: string | null;
+  visibleTo?: string[];
+}
+
+export function useUpsertMetric() {
+  const [upsertMetric, { loading }] = useMutation<{ upsertMetric: MutationResult }>(
+    UPSERT_METRIC_MUTATION,
+    { refetchQueries: [{ query: METRICS_QUERY }] },
+  );
+  return {
+    upsertMetric: async (input: MetricInput) => {
+      const result = await upsertMetric({ variables: { input } });
+      return (result.data?.upsertMetric ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useDeleteMetric() {
+  const [deleteMetric, { loading }] = useMutation<{ deleteMetric: MutationResult }>(
+    DELETE_METRIC_MUTATION,
+    { refetchQueries: [{ query: METRICS_QUERY }] },
+  );
+  return {
+    deleteMetric: async (name: string) => {
+      const result = await deleteMetric({ variables: { name } });
+      return (result.data?.deleteMetric ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
   };
 }
 

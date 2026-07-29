@@ -286,6 +286,44 @@ if not os.environ.get("PYTEST_NO_DOCKER") and not os.environ.get("PROVISA_E2E_EX
     _allocate_itest_ports()
 
 
+
+def _populate_trino_plugins() -> None:
+    # Gitignored plugin jars exist only where built. Resolve the primary checkout from
+    # the git common dir (worktree-agnostic) and symlink any missing/empty plugin dir.
+    plugins = os.path.join(_REPO_ROOT, "trino", "plugins")
+    if not os.path.isdir(plugins):
+        return
+    common = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    primary = os.path.dirname(os.path.abspath(os.path.join(_REPO_ROOT, common)))
+    primary_plugins = os.path.join(primary, "trino", "plugins")
+    if os.path.realpath(primary_plugins) == os.path.realpath(plugins):
+        return  # already the primary checkout
+    if not os.path.isdir(primary_plugins):
+        raise RuntimeError(
+            f"trino plugin jars missing here and in the primary checkout ({primary_plugins}); "
+            "build them there first"
+        )
+    for name in os.listdir(primary_plugins):
+        src = os.path.join(primary_plugins, name)
+        dst = os.path.join(plugins, name)
+        if not os.path.isdir(src) or not any(f.endswith(".jar") for f in os.listdir(src)):
+            continue
+        if os.path.islink(dst):
+            continue
+        if os.path.isdir(dst) and any(f.endswith(".jar") for f in os.listdir(dst)):
+            continue
+        if os.path.isdir(dst):
+            os.rmdir(dst) if not os.listdir(dst) else None
+        if not os.path.exists(dst):
+            os.symlink(src, dst)
+
+
 class _DockerServiceManager:
     def pytest_collection_finish(self, session):
         if os.environ.get("PYTEST_NO_DOCKER"):
@@ -306,6 +344,13 @@ class _DockerServiceManager:
                     continue
                 if item.get_closest_marker(marker):
                     needed.update(services)
+
+        # Trino's custom plugin jars (trino/plugins/*) are gitignored build artifacts:
+        # present only where they were built (the primary checkout). A fresh worktree
+        # mounts empty dirs and Trino fails startup ("No service providers ... in the
+        # classpath"). Populate missing plugin dirs from the primary checkout, located
+        # worktree-agnostically via the git common dir.
+        _populate_trino_plugins()
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
         # exported at import time, its own network — the dev stack is never touched.

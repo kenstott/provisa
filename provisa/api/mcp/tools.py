@@ -314,6 +314,72 @@ async def explain_sql(state: Any, role: str, sql: str) -> dict:
     return {"ok": True}
 
 
+def _visible_metrics(state: Any, role: str) -> list[Any]:
+    """Config metrics whose ``visible_to`` contains "*" or ``role`` (REQ-1319).
+
+    Sourced from the loaded config (``state.config.metrics``) — the same reachable
+    config object _domain_descriptions reads domains from.
+    """
+    config = getattr(state, "config", None)
+    metrics = getattr(config, "metrics", None) or []
+    return [m for m in metrics if "*" in m.visible_to or role in m.visible_to]
+
+
+def list_metrics(state: Any, role: str) -> list[dict]:
+    """Governed metric definitions visible to the role (REQ-1319).
+
+    Projects each metric's name + description + ai_context (definition text written
+    for AI consumers) + datatype + from_fact, filtered by ``visible_to``. Never the
+    expression — an agent selects a meaning by name, not by SQL.
+    """
+    require_role(role, state)
+    return [
+        {
+            "name": m.name,
+            "description": m.description,
+            "ai_context": m.ai_context,
+            "datatype": m.datatype,
+            "from_fact": m.from_fact,
+        }
+        for m in _visible_metrics(state, role)
+    ]
+
+
+def _metric_sql(metric: str, dimensions: list[str], filters: str | None) -> str:
+    """The semantic SQL for one metric query against the reserved ``metrics`` schema (REQ-1319).
+
+    ``filters`` is a raw boolean SQL fragment passed through verbatim — the governed
+    pipeline (not this function) validates and governs it. No dimensions → no GROUP BY:
+    a single grand-total row.
+    """
+    select = ", ".join([*dimensions, "value"])
+    sql = f"SELECT {select} FROM metrics.{metric}"
+    if filters:
+        sql += f" WHERE {filters}"
+    if dimensions:
+        sql += f" GROUP BY {', '.join(dimensions)}"
+    return sql
+
+
+async def query_metric(
+    state: Any, role: str, metric: str, dimensions: list[str], filters: str | None = None
+) -> list[dict]:
+    """Query one governed metric at a caller-chosen grain (REQ-1319).
+
+    Builds semantic SQL against the reserved ``metrics`` schema and executes it through
+    the same governed pipeline run_sql uses (execute_sql_batch) — never a private
+    execution path. A PermissionError from governance propagates to the caller.
+    """
+    from provisa.pgwire._pipeline import execute_sql_batch
+
+    require_role(role, state)
+    if metric not in {m.name for m in _visible_metrics(state, role)}:
+        raise ValueError(f"Unknown metric {metric!r}")
+    result = await execute_sql_batch(_metric_sql(metric, dimensions, filters), role, state)
+    cols = list(result.column_names)
+    return [_row_to_json(cols, r) for r in result.rows]
+
+
 def _role_domains(state: Any, role: str) -> set[str]:
     """The schema ids ``role`` may access, or ``{"*"}`` for full access.
 

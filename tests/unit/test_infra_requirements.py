@@ -149,8 +149,20 @@ class TestREQ071RequirementsTracker:
     """REQ-071"""
 
     def test_requirements_tracker_agent_exists(self):
-        # REQ-071
-        tracker = REPO_ROOT / ".claude" / "agents" / "requirements-tracker.md"
+        # REQ-071. `.claude/` is a separate checkout living only in the PRIMARY
+        # working tree — a git worktree does not contain it. Resolve the primary
+        # checkout via the git common dir so the assertion holds from any worktree.
+        import subprocess
+
+        common = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        primary = (REPO_ROOT / common).resolve().parent
+        tracker = primary / ".claude" / "agents" / "requirements-tracker.md"
         assert tracker.exists(), ".claude/agents/requirements-tracker.md must exist"
 
 

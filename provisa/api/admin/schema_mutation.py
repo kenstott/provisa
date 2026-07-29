@@ -44,6 +44,7 @@ from provisa.api.admin.types import (
     EnforcementType,
     EntityInput,
     FactInput,
+    MetricInput,
     MutationResult,
     RelationshipInput,
     RLSRuleInput,
@@ -482,18 +483,88 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """REQ-1164: fact sugar → lower to an aggregate MV + dimension relationships and register."""
         from provisa.api.admin.modeling_register import fact_table_input
 
-        ti, rels = fact_table_input(input)
+        from provisa.core.repositories import metric as metric_repo
+
+        ti, rels, fact_metrics = fact_table_input(input)
         res = await _ops.register_table(info, ti)
         if not res.success:
             return res
         for rel in rels:
-            rr = await self.upsert_relationship(info, rel)
+            # Strawberry's mutation decorator hides the (self, info, input) runtime
+            # signature from pyright; the call is correct at runtime (tested).
+            rr = await self.upsert_relationship(info, rel)  # pyright: ignore[reportCallIssue]
             if not rr.success:
                 return rr
+        # REQ-1320: each fact measure auto-registers as a governed metric (upsert by name).
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            for m in fact_metrics:
+                await metric_repo.upsert(cast("Connection", conn), m)
         return MutationResult(
             success=True,
-            message=f"Fact {input.name!r} registered with {len(rels)} dimension link(s)",
+            message=(
+                f"Fact {input.name!r} registered with {len(rels)} dimension link(s) "
+                f"and {len(fact_metrics)} metric(s)"
+            ),
         )
+
+    @strawberry.mutation
+    async def upsert_metric(self, info: StrawberryInfo, input: MetricInput) -> MutationResult:  # REQ-1317
+        """Create or replace a governed metric definition (REQ-1317). The expression must parse
+        under sqlglot and contain at least one aggregate function — hard error otherwise."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.core.models import Metric as MetricModel
+        from provisa.core.repositories import metric as metric_repo
+
+        require_capability(info, "table_registration")
+        try:
+            model = MetricModel(
+                name=input.name,
+                expression=input.expression,
+                datatype=input.datatype,
+                description=input.description,
+                ai_context=input.ai_context,
+                visible_to=list(input.visible_to),
+            )
+        except ValueError as e:  # pydantic name validation (snake_case)
+            return MutationResult(success=False, message=str(e))
+        pool = await _get_pool()
+        try:
+            async with pool.acquire() as conn:
+                await metric_repo.upsert(cast("Connection", conn), model)
+                # REQ-1318: every registered view whose view_metrics spec references this
+                # metric regenerates its stored view_sql against the UPDATED definition.
+                # Free-hand view_sql born from inline metric() calls carries no stored
+                # provenance and is not regenerated (config-path views regenerate on reload).
+                from provisa.api.admin._metric_views import regenerate_metric_views
+
+                regenerated = await regenerate_metric_views(cast("Connection", conn), input.name)
+        except ValueError as e:  # REQ-1317/1318: invalid expression / spec no longer compiles
+            return MutationResult(success=False, message=str(e))
+        if regenerated:
+            await _rebuild_schemas()
+            return MutationResult(
+                success=True,
+                message=(
+                    f"Metric {input.name!r} saved; regenerated view(s): "
+                    + ", ".join(sorted(regenerated))
+                ),
+            )
+        return MutationResult(success=True, message=f"Metric {input.name!r} saved")
+
+    @strawberry.mutation
+    async def delete_metric(self, info: StrawberryInfo, name: str) -> MutationResult:  # REQ-1317
+        """Delete a governed metric definition by name (REQ-1317)."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.core.repositories import metric as metric_repo
+
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            deleted = await metric_repo.delete(cast("Connection", conn), name)
+        if deleted:
+            return MutationResult(success=True, message=f"Metric {name!r} deleted")
+        return MutationResult(success=False, message=f"Metric {name!r} not found")
 
     @strawberry.mutation
     async def update_table(
@@ -688,7 +759,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(success=False, message=str(e))
 
         if req["request_type"] == "relationship":
-            result = await self.upsert_relationship(
+            # Same strawberry-decorator signature limitation as above.
+            result = await self.upsert_relationship(  # pyright: ignore[reportCallIssue]
                 info,
                 _rebuild_relationship_input(req["payload"]),  # pyright: ignore[reportCallIssue]
             )
