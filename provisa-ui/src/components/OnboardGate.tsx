@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { fetchBootstrapStatus } from "../api/admin";
+import { clearSessionState } from "../lib/session";
 
 const OnboardOrgPage = lazy(() =>
   import("../pages/OnboardOrgPage").then((m) => ({ default: m.OnboardOrgPage })),
@@ -60,7 +61,9 @@ export function OnboardGate({
   const credentialRejected = unresolved && !serverFailed;
   useEffect(() => {
     if (!credentialRejected) return;
-    localStorage.removeItem("provisa_token");
+    // REQ-1326: this ends the session, so it clears what a sign-out clears. Dropping the token
+    // alone left provisa_org/provisa_role and the persisted Apollo snapshot for the next identity.
+    clearSessionState();
     onSessionExpired();
   }, [credentialRejected, onSessionExpired]);
 
@@ -89,7 +92,9 @@ export function OnboardGate({
   const firstLoginPending = authEnabled && !!userId && slotUnclaimed === true;
   useEffect(() => {
     if (!firstLoginPending) return;
-    localStorage.removeItem("provisa_token");
+    // REQ-1326: same as above — an unclaimed admin slot invalidates the whole session, not just
+    // the credential. A stale provisa_org here rides on X-Org-Provisa into the claiming sign-in.
+    clearSessionState();
     onSessionExpired();
   }, [firstLoginPending, onSessionExpired]);
 
