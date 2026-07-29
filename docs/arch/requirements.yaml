@@ -38221,18 +38221,22 @@
     and ''superadmin'' are retired: they exist today as both seeded role rows and as the platform-bypass
     keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are replaced by
     platform_admin. Existing assignments naming the retired ids are rewritten to platform_admin at seed
-    time; nothing resolves them afterward. platform_admin is the deployment-wide administrator (the role
-    the bootstrap claim grants) and is the only one carrying the platform-bypass capabilities. org_admin
-    administers a single org — members, invites, sources, governance — and holds no bypass. developer
-    builds against the data: query development, view and relationship authoring, full results, write.
-    analyst reads: usage, ad-hoc query, query development, no authoring or governance. All four are system
-    roles (org_id NULL, identical capabilities in every org) and are not editable through the roles admin
-    surface.'
+    time; nothing resolves them afterward. platform_admin is the deployment-wide control-plane administrator
+    (the role the bootstrap claim grants), responsible for org lifecycle, infra/engine settings, and recovery
+    operations. The platform-bypass (has_platform_bypass in provisa/security/rights.py) is scoped to control-plane
+    surfaces only and does not bypass any data-plane capability check, even in root; platform_admin holds no
+    standing data capabilities anywhere. org_admin administers data-plane operations in a single org — members,
+    invites, sources, governance, querying — in every org including root. developer builds against the data:
+    query development, view and relationship authoring, full results, write. analyst reads: usage, ad-hoc
+    query, query development, no authoring or governance. All four are system roles (org_id NULL, identical
+    capability sets in every org) and are not editable through the roles admin surface.'
   use_case: The seeded catalog was ad hoc — 'admin' and 'analyst' existed by accident of the boot seed
     and 'org_admin' was added later for self-service org creation, leaving no role for a person who builds
     views and relationships but must not administer anything. A fixed four-role catalog gives every fresh
-    org and every fresh deployment the same starting vocabulary, and makes the platform/org administration
-    split explicit in the role id rather than implicit in a capability keyword.
+    org and every fresh deployment the same starting vocabulary. Separating platform_admin (control-plane,
+    no data access) from org_admin (all data-plane administration, including in root) makes the platform/org
+    administration split explicit in the role id and capability set, enabling auditable recovery and
+    preventing silent data access.
   code:
   - provisa/core/schema.sql
   - provisa/security/rights.py
@@ -38260,9 +38264,11 @@
 
     Given the four default roles
 
-    Then platform_admin carries the platform-bypass capabilities
+    Then platform_admin carries the platform-bypass capabilities for control-plane operations only
 
     And org_admin, developer and analyst do not
+
+    And platform_admin holds no standing data-plane capabilities in any org
 
 
     Given a user holding developer
@@ -38283,6 +38289,15 @@
     And authoring a view or relationship is denied
 
 
+    Given a platform_admin querying a tenant org they do not hold org_admin in
+
+    When they attempt to access the org''s data
+
+    Then the query is rejected
+
+    And platform-bypass does not exempt the access
+
+
     Given a request to edit or delete a default role through the roles admin surface
 
     Then it is rejected
@@ -38292,6 +38307,11 @@
   related_reqs:
   - REQ-1296
   - REQ-1266
+  - REQ-1303
+  impact_note: >-
+    Corrected 2026-07-29. Prior recording conflated platform_admin's control-plane operations with
+    standing data access in all orgs. Corrected text reflects the settled design: platform_admin is
+    control-plane only with zero data capabilities. platform-bypass is control-plane only.
 - id: REQ-1298
   status: proposed
   group: 1. Access Governance & Security
@@ -38631,24 +38651,24 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: When an org's administrators are unreachable, recovery runs through the platform_admin,
+  description: When an org's administrators are unreachable, recovery runs through the platform_admin
+    via an explicit, audited operation — not through a silent platform bypass that leaves no trace and
     not through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org
     at their own discretion; whatever verification satisfies them that the request is legitimate is a
     business process outside the product, not an automated check. The grant is a named operation, distinct
     from ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT
     org's audit trail so the intervention is visible to the org afterward. The same authority runs the
-    other way - a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin
+    other way — a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin
     invariant (REQ-1302), and that revocation is audited into the org's trail identically. No per-org
-    break-glass key is ever minted - the platform_admin already holds every capability in every org, so
-    a customer-held token would add a permanent bearer secret without adding any recovery capability that
-    does not already exist. Tokens of that kind belong to vendors who are cryptographically unable to
-    recover a customer's data; Provisa is not one.
-  use_case: This is the contact-the-vendor path every SaaS platform ends up with - Google Workspace, Atlassian
+    break-glass key is ever minted — platform_admin holds zero standing data capabilities in any org
+    (REQ-1327), so a customer-held token would add a permanent bearer secret. Tokens of that kind belong
+    to vendors who are cryptographically unable to recover a customer's data; Provisa is not one.
+  use_case: This is the contact-the-vendor path every SaaS platform ends up with — Google Workspace, Atlassian
     and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for a Provisa
-    deployment the provider is the platform_admin. The capability already exists implicitly via the platform
-    bypass, which is the problem - recovery today would be an unlogged act indistinguishable from a platform_admin
-    quietly reading a customer's org. Making it an explicit operation that lands in the org's own audit
-    trail turns a silent backdoor into a recorded intervention.
+    deployment the provider is the platform_admin. Separation of control-plane (platform_admin) from data-plane
+    (org_admin) means recovery capability exists only through explicit operations that land in the org's own
+    audit trail. Turning a potential silent backdoor into a recorded, revocable intervention enables compliance
+    audits (SOC 2, ISO 27001) and prevents platform_admin from bypassing governance in data orgs.
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/api/admin/roles_router.py
@@ -38662,6 +38682,8 @@
     Then that member holds org_admin
 
     And an entry naming the platform_admin and the grantee is written to that org''s audit trail
+
+    And the platform_admin does not gain org_admin or data access in that org
 
 
     Given an org with two or more org_admins
@@ -38690,6 +38712,11 @@
   - REQ-1274
   - REQ-1299
   - REQ-1302
+  - REQ-1327
+  impact_note: >-
+    Corrected 2026-07-29. Prior recording stated "the platform_admin already holds every capability in every org,"
+    which contradicts the settled design where platform_admin is control-plane only (REQ-1327). Corrected text
+    reflects that platform_admin has zero standing data capabilities and recovery is audited and revocable.
 - id: REQ-1304
   status: proposed
   group: 1. Access Governance & Security
@@ -39933,3 +39960,86 @@
   e2e_reason: >-
     Session lifecycle behavior (sign-in clearing stale state, logout cleanup, org membership
     reconciliation) is only verifiable through full sign-in/logout round-trips with server state changes.
+- id: REQ-1327
+  status: complete
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: >-
+    platform_admin is a purely control-plane role with ZERO data capabilities anywhere — including root. All data-plane
+    administration (members, invites, sources, tables, governance, querying) belongs to org_admin, in every org including
+    root. Bootstrap grants the claimant BOTH roles in root: org_admin (root is their working org) and platform_admin
+    (deployment operation: infra/engine settings, config reload, org lifecycle, audited orphaned-org recovery grants).
+    The platform_admin role's capability set drops the admin/superadmin data-wildcard capabilities; the platform_bypass
+    does not bypass any data-plane capability check, even in root. Demo/install config column visible_to lists must not
+    name platform_admin (a control-plane role cannot appear in data grants); they name org_admin, analyst, developer.
+    Single-tenant: one person holding both roles; the roles never merge because org_admin of root must not inherit
+    deployment powers when a second org appears. When an org's administrators are unreachable, recovery runs through the
+    named, audited grant_org_admin operation: a platform_admin invoking it grants org_admin to a named member of that
+    org, written to that org's audit trail, and revocable through the same operation.
+  use_case: >-
+    Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane operations and customer data
+    access. Unified role inheritance conflates recovery capability with standing access and creates a silent backdoor
+    that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation of planes makes platform_admin's actions
+    inside customer orgs explicit, audited, and revocable, turning a standing privilege into a break-glass intervention
+    available only through audit trails. Even in single-tenant, keeping roles separate allows the platform to scale to
+    multi-tenant without redesigning role semantics.
+  code:
+  - provisa/security/rights.py
+  - provisa/api/admin/orgs_router.py
+  - provisa/api/admin/roles_router.py
+  - provisa/core/org_membership.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  - tests/integration/test_invite_role_authz.py
+  scenario: |
+    Given a platform_admin and a tenant org they do not hold org_admin in
+
+    When the platform_admin attempts to query that tenant org's data without holding org_admin
+
+    Then the query is rejected
+
+    And platform_bypass does not exempt the access
+
+
+    Given a platform_admin who needs to recover an orphaned tenant org
+
+    When they invoke grant_org_admin naming a member of that org
+
+    Then that member is assigned org_admin in that org's schema
+
+    And the operation is recorded in that org's audit trail
+
+    And the platform_admin does not gain org_admin or any data access in that org
+
+    And they can later revoke org_admin through the same operation
+
+
+    Given a single-tenant deployment with one person holding both platform_admin and org_admin in root
+
+    When they query root's data or administer sources
+
+    Then they act as org_admin only (the capability check)
+
+    And platform_bypass is never consulted for data-plane operations
+
+  e2e: true
+  e2e_reason: >-
+    platform_bypass scoping to control-plane only and role separation (platform_admin never grants data access) are only
+    verifiable end-to-end with real role resolution across both planes and live audit trail writes. Single-tenant role
+    non-merging is only verifiable when the second org appears.
+  related_reqs:
+  - REQ-1297
+  - REQ-1298
+  - REQ-1303
+  - REQ-1305
+  impact_note: >-
+    Formalizes the settled design on 2026-07-29, correcting defective prior recordings in REQ-1303 and REQ-1297.
+    The platform/tenant separation (platform_admin = control-plane only, zero data access anywhere including root;
+    org_admin = all data-plane administration in every org) was the design intent but was contradicted by recorded
+    text ("platform_admin already holds every capability in every org"). Amended REQ-1303 and REQ-1297 now state
+    the separation correctly. REQ-1327 documents the full refined constraint: capability-set changes (no admin/superadmin
+    data wildcards), bootstrap dual-role grant, visible_to lists never naming platform_admin, role non-merging in
+    single-tenant. Invite-escalation validation must ensure platform-level invites never resolve to org_admin (REQ-1298 area).
