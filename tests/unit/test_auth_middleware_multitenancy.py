@@ -369,8 +369,10 @@ def test_control_plane_host_with_non_member_org_header_rejected():
     assert "evil" in resp.json()["detail"]
 
 
-def test_platform_admin_with_subdomain_org_allowed_req1276():
-    # REQ-1276: platform admin acts in any org via subdomain
+def test_platform_admin_subdomain_nonmember_org_denied_req1327():
+    # REQ-1327: membership is the ONLY way into an org — the platform_admin role is control-plane
+    # and confers no tenant binding. Naming a non-member org via subdomain is rejected, same as
+    # for any other identity (the audited REQ-1303 recovery grant is the sanctioned way in).
     db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": []})
     app = _make_app(
@@ -380,8 +382,8 @@ def test_platform_admin_with_subdomain_org_allowed_req1276():
         "/test",
         headers=_auth("root"),
     )
-    assert resp.status_code == 200
-    assert resp.json()["active_org_id"] == "anyorg"
+    assert resp.status_code == 403
+    assert "anyorg" in resp.json()["detail"]
 
 
 # --- REQ-1318: a session must be usable on EVERY plane, not just /auth/me ------
@@ -430,13 +432,14 @@ def test_bootstrap_platform_admin_is_usable_on_tenant_plane_immediately():
     assert tenant.json()["roles"] == ["platform_admin"]
 
 
-def test_platform_admin_named_org_still_wins_over_the_default():
-    # The default org is only the no-org-named case; naming one must still select it, or a platform
-    # admin could never act in a tenant org.
+def test_platform_admin_named_org_requires_membership_req1327():
+    # REQ-1327: naming a tenant org selects it ONLY for members. A platform admin who was granted
+    # membership + a role in that org (the audited REQ-1303 path) binds it and resolves the role
+    # THAT org assigned — the platform set never carries across.
     db = _Pool(
         rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
     )
-    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
     app = _make_app(
         assignments_source="provisa",
         db_pool=db,

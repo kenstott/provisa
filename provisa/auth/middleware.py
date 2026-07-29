@@ -366,10 +366,11 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             active_org_id = self._default_org_id
             assignments = platform_assignments
         else:
-            # Platform admins (global admin/superadmin) may act in any org — org CRUD runs on the
-            # platform plane, not a tenant's active-org schema. Everyone else is confined to an org
-            # they belong to: a client-supplied X-Org-Id (or token active_org claim) naming a
-            # non-member org is rejected, not silently honored, or it becomes a cross-tenant escape.
+            # REQ-1327: EVERYONE is confined to orgs they belong to — including platform admins.
+            # platform_admin is a control-plane role (org lifecycle, infra, audited recovery
+            # grants); it confers ZERO standing capabilities inside tenant orgs, so binding a
+            # non-member org is rejected for platform admins exactly as for anyone else. Org CRUD
+            # runs on the platform plane (see platform_plane below), which needs no tenant binding.
             is_platform_admin = _is_platform_admin({a.role_id for a in platform_assignments})
             member_org_ids: list[str] = []
             if self._admin_pool is not None:
@@ -420,7 +421,10 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             platform_plane = request.url.path.startswith(("/auth/", "/setup", "/admin/orgs"))
             requested_org = _requested_org_from_host(request)
             if requested_org is not None:
-                if is_platform_admin or requested_org in member_org_ids:
+                # REQ-1327: membership is the ONLY way into an org — no platform-admin escape.
+                # A platform admin needing access uses the audited recovery grant (REQ-1303) to
+                # obtain membership + a role in that org, visible in the org's own audit trail.
+                if requested_org in member_org_ids:
                     active_org_id = requested_org
                 else:
                     return _deny(request, 403, f"Not a member of org {requested_org!r}")
@@ -442,12 +446,13 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 return _deny(request, 401, "Org selection required")
 
             # Tenant-plane assignments. A member's role assignment lives in their org's OWN schema,
-            # so bind that org and read it there (the default-org read above sees no such row). A
-            # platform admin instead carries admin/superadmin into every org — keep the platform set.
-            # The default org's own members already have their rows from the platform read.
+            # so bind that org and read it there (the default-org read above sees no such row).
+            # REQ-1327: this read is unconditional — capabilities inside an org come ONLY from
+            # assignments in that org's schema. A platform admin bound to a tenant org they are a
+            # member of resolves whatever role that org granted them, nothing more; the platform
+            # set never carries across. The default org's members have rows from the platform read.
             if (
-                not is_platform_admin
-                and self._assignments_source == "provisa"
+                self._assignments_source == "provisa"
                 and self._db_pool
                 and active_org_id is not None
                 and active_org_id != self._default_org_id
