@@ -287,12 +287,61 @@ if not os.environ.get("PYTEST_NO_DOCKER") and not os.environ.get("PROVISA_E2E_EX
 
 
 
+# The Calcite-derived Trino connector plugins the compose stack bind-mounts, and the release
+# they come from. Kept in step with .github/workflows/build-dmg.yml's download-plugins job —
+# CI and the test harness must fetch the same build, or a connector behaves differently here
+# than in the shipped image.
+_TRINO_PLUGIN_RELEASE = (
+    "https://github.com/kenstott/calcite/releases/download/engine-v0.32.0"
+)
+_TRINO_PLUGINS = ("trino-sharepoint", "trino-splunk", "trino-file")
+
+
+def _download_trino_plugins(plugins: str, missing: list[str]) -> None:
+    """Fetch the plugin zips for ``missing`` into ``plugins``.
+
+    Tests provision the services they need, and Trino is no exception: without these jars it
+    aborts with "No service providers of type io.trino.spi.Plugin", which surfaces only as an
+    unhealthy container two minutes into the run. Downloading here turns that into a first-run
+    cost instead of an unexplained stack failure.
+    """
+    import urllib.request
+    import zipfile
+
+    for name in missing:
+        url = f"{_TRINO_PLUGIN_RELEASE}/{name}-plugin.zip"
+        archive = os.path.join(plugins, f"{name}-plugin.zip")
+        print(f"[conftest] downloading Trino plugin {name} from {url}")
+        urllib.request.urlretrieve(url, archive)  # noqa: S310 — pinned https release URL
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(plugins)  # noqa: S202 — trusted first-party release artifact
+        finally:
+            os.unlink(archive)
+        if not _has_jars(os.path.join(plugins, name)):
+            raise RuntimeError(f"{url} extracted no jars into {plugins}/{name}")
+
+
+def _has_jars(path: str) -> bool:
+    return os.path.isdir(path) and any(f.endswith(".jar") for f in os.listdir(path))
+
+
 def _populate_trino_plugins() -> None:
     # Gitignored plugin jars exist only where built. Resolve the primary checkout from
-    # the git common dir (worktree-agnostic) and symlink any missing/empty plugin dir.
+    # the git common dir (worktree-agnostic) and symlink any missing/empty plugin dir;
+    # whatever is still missing afterwards is downloaded from the pinned release.
     plugins = os.path.join(_REPO_ROOT, "trino", "plugins")
     if not os.path.isdir(plugins):
         return
+    _link_trino_plugins_from_primary(plugins)
+    # Docker bind-mounts create an empty root-owned directory for a missing source, so an
+    # empty dir is indistinguishable from "never populated" — check for jars, not existence.
+    missing = [name for name in _TRINO_PLUGINS if not _has_jars(os.path.join(plugins, name))]
+    if missing:
+        _download_trino_plugins(plugins, missing)
+
+
+def _link_trino_plugins_from_primary(plugins: str) -> None:
     common = subprocess.run(
         ["git", "rev-parse", "--git-common-dir"],
         cwd=_REPO_ROOT,
@@ -302,20 +351,26 @@ def _populate_trino_plugins() -> None:
     ).stdout.strip()
     primary = os.path.dirname(os.path.abspath(os.path.join(_REPO_ROOT, common)))
     primary_plugins = os.path.join(primary, "trino", "plugins")
-    if os.path.realpath(primary_plugins) == os.path.realpath(plugins):
+    # Identity by inode, not by path string. On macOS the same directory is reachable under
+    # two distinct real paths (/Users/... and /Volumes/<root-volume>/Users/...), and a string
+    # compare called the primary checkout "different" — so every plugin dir was symlinked to
+    # ITSELF, and Docker then refused to mount them ("mkdir ...: file exists").
+    if os.path.isdir(primary_plugins) and os.path.samefile(primary_plugins, plugins):
         return  # already the primary checkout
     if not os.path.isdir(primary_plugins):
-        raise RuntimeError(
-            f"trino plugin jars missing here and in the primary checkout ({primary_plugins}); "
-            "build them there first"
-        )
+        return  # nothing to borrow; the caller downloads what is missing
     for name in os.listdir(primary_plugins):
         src = os.path.join(primary_plugins, name)
         dst = os.path.join(plugins, name)
         if not os.path.isdir(src) or not any(f.endswith(".jar") for f in os.listdir(src)):
             continue
         if os.path.islink(dst):
-            continue
+            # A link that no longer reaches jars (dangling, or self-referential from the
+            # path-string bug above) is worse than nothing: Docker fails the bind mount. Clear
+            # it and re-link rather than skipping it forever.
+            if os.path.isdir(dst) and any(f.endswith(".jar") for f in os.listdir(dst)):
+                continue
+            os.unlink(dst)
         if os.path.isdir(dst) and any(f.endswith(".jar") for f in os.listdir(dst)):
             continue
         if os.path.isdir(dst):
