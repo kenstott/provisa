@@ -29,7 +29,8 @@ hard, named error — never a silent passthrough.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+import re
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
 
 import sqlglot
 from sqlglot import Expr
@@ -42,6 +43,31 @@ if TYPE_CHECKING:
 METRICS_SCHEMA = "metrics"
 
 _DIALECT = "postgres"
+
+# Bare SQL identifier — metric names are snake_case (Metric._valid_name) and dimension
+# names are semantic column names; anything else is rejected before SQL assembly.
+_IDENT_RE = re.compile(r"[A-Za-z_]\w*")
+
+
+def metric_semantic_sql(
+    name: str, dimensions: Sequence[str], filters: str | None = None
+) -> str:  # REQ-1319
+    """The semantic-SQL addressing form for a metric at the requested grain.
+
+    ``SELECT <dims>, value FROM metrics.<name> [WHERE <filters>] GROUP BY <dims>``
+    (no dims → ``SELECT value FROM metrics.<name>``). Every identifier is validated
+    as a bare SQL identifier so callers (Bolt CALL args, NL resolution, Flight
+    tickets) cannot inject SQL through names; ``filters`` is a raw boolean SQL
+    string governed like any user predicate by the pipeline downstream.
+    """
+    for ident in (name, *dimensions):
+        if not _IDENT_RE.fullmatch(ident):
+            raise ValueError(f"invalid metric identifier {ident!r}")
+    where = f" WHERE {filters}" if filters else ""
+    if not dimensions:
+        return f"SELECT value FROM {METRICS_SCHEMA}.{name}{where}"
+    dims = ", ".join(dimensions)
+    return f"SELECT {dims}, value FROM {METRICS_SCHEMA}.{name}{where} GROUP BY {dims}"
 
 
 def _parse_expression(metric_name: str, expression: str) -> Expr:
@@ -68,6 +94,41 @@ def _expression_tables(metric_name: str, parsed: Expr) -> list[str]:
     if not seen:
         raise ValueError(f"metric {metric_name!r}: expression references no semantic columns")
     return seen
+
+
+def metric_reference_tables(metric_name: str, expression: str) -> list[str]:  # REQ-1319
+    """The semantic tables a metric expression references, in first-reference order.
+
+    Public wrapper over the expansion path's reference extraction so schema projection
+    (the GraphQL ``metrics`` block) shares one parser with query expansion (REQ-1317).
+    """
+    return _expression_tables(metric_name, _parse_expression(metric_name, expression))
+
+
+def inline_metric_sql(  # REQ-1319
+    metric_name: str,
+    expression: str,
+    table_name: str,
+    resolve_column: Callable[[str], str],
+) -> str:
+    """Rewrite a single-table metric expression into physical, unqualified SQL.
+
+    Every column reference must be qualified with ``table_name``; each is replaced by
+    the quoted physical column ``resolve_column`` returns, so the result drops straight
+    into the single-table aggregate SELECT the GraphQL aggregate compiler builds. A
+    reference to any other table is a hard error — the aggregate compiler has no join
+    builder, so a multi-table metric cannot be inlined here.
+    """
+    parsed = _parse_expression(metric_name, expression)
+    for col in list(parsed.find_all(exp.Column)):
+        if col.table != table_name:
+            raise ValueError(
+                f"metric {metric_name!r}: expression references table {col.table!r}; "
+                f"only references to {table_name!r} can be inlined into its aggregate"
+            )
+        physical = resolve_column(col.name)
+        col.replace(exp.column(exp.to_identifier(physical, quoted=True)))
+    return parsed.sql(dialect=_DIALECT)
 
 
 def _table_entry(tables: Mapping[str, Any], name: str, *, context: str) -> Mapping[str, Any]:

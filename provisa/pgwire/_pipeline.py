@@ -18,8 +18,10 @@ Called from pgwire handler threads via asyncio.run_coroutine_threadsafe.
 
 from __future__ import annotations
 
+import collections
 import logging
 import re
+import secrets as _secrets
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -97,8 +99,6 @@ class _Plan:
 #     stamp, so _execute_plan rejects its plans — the drift class of bug becomes a
 #     hard runtime failure, complementary to the static import-boundary guard test.
 # --------------------------------------------------------------------------- #
-import collections
-import secrets as _secrets
 
 # Bounded ring of issued stamps — recent-enough to verify in-flight/just-returned plans
 # without unbounded growth. A stamp is a 256-bit random hex token, so collisions/guesses
@@ -335,6 +335,11 @@ async def _govern_and_route(
         if _expanded is not None:
             _parsed_input = _expanded
             normalized_sql = _parsed_input.sql(dialect="postgres")
+            # REQ-1319: metric evaluations are traced — the expanded SQL is recorded as a
+            # pipeline stage event, same idiom as govern.in/govern.out.
+            from provisa.observability.stage_trace import trace_stage
+
+            trace_stage("metric.expand", normalized_sql)
 
     _reject_physical_source_refs(_parsed_input, state)
     _reject_view_writes(_parsed_input, state)  # REQ-1157: view/MV-backed relations are query-only
@@ -776,7 +781,38 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
 
     import sqlglot as _sg
 
-    _reject_view_writes(_sg.parse_one(sql, read="postgres"), state)  # REQ-1157: views are query-only
+    _compiled_tree = _sg.parse_one(sql, read="postgres")
+
+    # REQ-1319: the compiled path serves Flight and the gRPC proxy — a metric ask arriving
+    # as semantic SQL (metrics.<name>) must expand through the SAME single expansion the
+    # raw-SQL path uses. Guarded on a metrics-schema reference, so ordinary compiler
+    # output (which never addresses the reserved schema) is untouched.
+    _metric_registry = getattr(state, "metrics", {})
+    if _metric_registry:
+        from provisa.compiler.metric_expand import expand_metric_query
+
+        _metric_tables = {
+            t["table_name"]: {
+                "id": t["id"],
+                "columns": [c["column_name"] for c in t.get("columns", [])],
+            }
+            for t in getattr(state, "tables", [])
+        }
+        _expanded = expand_metric_query(
+            _compiled_tree,
+            _metric_registry,
+            _metric_tables,
+            getattr(state, "relationships", []),
+        )
+        if _expanded is not None:
+            _compiled_tree = _expanded
+            sql = _compiled_tree.sql(dialect="postgres")
+            # REQ-1319: metric evaluations are traced on the compiled path too.
+            from provisa.observability.stage_trace import trace_stage
+
+            trace_stage("metric.expand", sql)
+
+    _reject_view_writes(_compiled_tree, state)  # REQ-1157: views are query-only
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())

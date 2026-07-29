@@ -239,3 +239,15 @@ def test_catalog_metrics_visible_to_filters_role():
     names = [r[0] for r in db.execute("SELECT relname FROM _pg_class").fetchall()]
     assert "net_revenue" in names
     assert "headcount" not in names
+
+
+def test_metric_flight_info_shape():
+    """REQ-1319: a metric flight descriptor carries the grain shape (dims + value)."""
+    from provisa.api.flight.catalog import metric_to_flight_info
+
+    info = metric_to_flight_info("net_revenue", ["region", "month"], description="Net revenue")
+    names = [f.name for f in info.schema]
+    assert names == ["region", "month", "value"]
+    assert info.schema.metadata[b"metric"] == b"net_revenue"
+    assert info.schema.metadata[b"description"] == b"Net revenue"
+    assert [p.decode() for p in info.descriptor.path] == ["metrics", "net_revenue", "region", "month"]

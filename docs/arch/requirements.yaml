@@ -39400,7 +39400,7 @@
   - REQ-1300
   - REQ-1311
 - id: REQ-1316
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Semantic Interchange (Apache Ossie)
@@ -39433,8 +39433,12 @@
     on the standard consume Provisa's federated catalog; import bootstraps onboarding from ecosystems
     that already maintain semantic models, instead of hand-registering tables.
   code:
-  - provisa/core/models.py
-  tests: []
+  - provisa/ossie/convert.py
+  - provisa/api/admin/ossie_router.py
+  - provisa-ui/src/pages/metrics/OssieInterchangePanel.tsx
+  tests:
+  - tests/unit/test_ossie_convert.py
+  - provisa-ui/src/pages/__tests__/ossie-import.test.tsx
   scenario: 'Given a governed Provisa model with tables, columns, and relationships
 
     When the live Ossie endpoint is read
@@ -39466,7 +39470,7 @@
   related_reqs:
   - REQ-1321
 - id: REQ-1317
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Semantic Metrics
@@ -39489,7 +39493,13 @@
     layer.
   code:
   - provisa/core/models.py
-  tests: []
+  - provisa/compiler/metric_expand.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/core/repositories/metric.py
+  - provisa-ui/src/pages/MetricsPage.tsx
+  tests:
+  - tests/unit/test_metric_expand.py
+  - tests/unit/test_metric_admin.py
   scenario: 'Given a governed metric net_revenue with an aggregate expression over order fields
 
     When a query requests net_revenue grouped by region and month
@@ -39515,7 +39525,7 @@
   related_reqs:
   - REQ-1316
 - id: REQ-1318
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Views (Governed Computed Datasets)
@@ -39540,8 +39550,12 @@
     with dimensions is also simply the fastest way to make a correct governed view.
   code:
   - provisa/core/models.py
-  - provisa/lineage/columns.py
-  tests: []
+  - provisa/core/config_loader.py
+  - provisa/api/admin/_metric_views.py
+  - provisa-ui/src/pages/tables/ViewDefinitionForm.tsx
+  tests:
+  - tests/unit/test_metric_admin.py
+  - provisa-ui/src/pages/__tests__/views-definition-mode.test.tsx
   scenario: 'Given a view defined as view_metrics with metrics [net_revenue] and dimensions [region, month]
 
     When the net_revenue metric definition changes
@@ -39572,7 +39586,7 @@
   related_reqs:
   - REQ-1317
 - id: REQ-1319
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Semantic Metrics
@@ -39584,10 +39598,9 @@
     everywhere, with no copies. SQL/pgwire: a reserved metrics schema where each metric is a relation
     whose selected/grouped columns are the dimension choice, description surfaced via pg_description.
     GraphQL: a metrics block inside the _aggregate root field (REQ-653) with the definition in introspection
-    docs. Bolt/Cypher: a provisa.metric() procedure, plus Metric nodes in the federated graph with DERIVES_FROM
-    edges to columns and REFERENCES edges from consuming views, making metric lineage navigable in Neo4j
-    Browser/Bloom. Arrow Flight: metric flight descriptors returning Arrow tables. gRPC: a metric-reference
-    node in the query IR. MCP: list_metrics and query_metric tools carrying ai_context, so agents select
+    docs. Bolt/Cypher: a provisa.metric() procedure, plus Fact/Dimension labels on role-tagged tables in db.labels
+    and the label map (metric lineage as graph NODES needs a new meta-graph surface and is deferred). Arrow Flight: metric flight descriptors returning Arrow tables. gRPC: metric asks ride the semantic-SQL form through the proxy''s
+    governed path - the one expansion, no second IR representation (REQ-1321). MCP: list_metrics and query_metric tools carrying ai_context, so agents select
     governed meanings instead of composing aggregation SQL. NL: the schema matcher resolves metric vocabulary
     directly to metric plus dimensions. Streaming: view_metrics + materialize + Kafka sink yields push-on-change
     metrics from existing machinery. Observability: metric evaluations traced and exportable as OTel metrics.'
@@ -39597,10 +39610,18 @@
     and an AI agent all read the same meaning of net revenue from the surface they already use, and hallucinated
     formulas become structurally impossible for agents that query metrics by name.
   code:
+  - provisa/compiler/metric_expand.py
+  - provisa/compiler/aggregate_gen.py
+  - provisa/bolt/session.py
   - provisa/api/mcp/tools.py
+  - provisa/api/flight/catalog.py
   - provisa/nl/schema_matcher.py
-  - provisa/grpc/query_ir.py
-  tests: []
+  - provisa/pgwire/catalog_populate.py
+  tests:
+  - tests/unit/test_metric_tools.py
+  - tests/unit/test_bolt_metric_call.py
+  - tests/unit/test_nl_metrics.py
+  - tests/unit/test_sql_gen_aggregate.py
   scenario: 'Given a governed metric net_revenue
 
     When a SQL client browses the catalog on pgwire
@@ -39629,7 +39650,7 @@
   - REQ-1318
   - REQ-1316
 - id: REQ-1320
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Semantic Metrics
@@ -39656,10 +39677,12 @@
     universes carried and Ossie lacks - held internally, projected outward where expressible.
   code:
   - provisa/mv/modeling.py
+  - provisa/api/admin/modeling_register.py
+  - provisa/cypher/label_map.py
+  - provisa/compiler/schema_gen.py
   tests:
   - tests/unit/test_modeling.py
-  - tests/unit/test_ossie_convert.py
-  - tests/unit/test_metric_admin.py
+  - tests/unit/test_cypher_label_map.py
   scenario: 'Given an entity spec with history=scd2 and a fact spec with declared measures
 
     When the specs are lowered and registered
@@ -39691,7 +39714,7 @@
   - REQ-1317
   - REQ-1319
 - id: REQ-1321
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 0. Architecture & Design Principles
   category: Data-Model-Driven Estate
@@ -39727,8 +39750,10 @@
     their runtimes predate their catalogs, so their metadata describes from the outside. Stating the principle
     gives future requirements and reviews an invariant to test against.
   code:
-  - provisa/core/models.py
-  tests: []
+  - provisa/pgwire/_pipeline.py
+  - provisa/api/admin/ossie_router.py
+  tests:
+  - tests/unit/test_governed_chokepoint.py
   related_reqs:
   - REQ-964
   - REQ-1164
@@ -39738,7 +39763,7 @@
   - REQ-1319
   - REQ-1320
 - id: REQ-1322
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Semantic Metrics
@@ -39769,11 +39794,12 @@
     operates on, and the saved artifact stays live against the metric definition rather than drifting
     as frozen SQL.
   code:
-  - provisa-ui/src/pages/SqlPage.tsx
-  - provisa-ui/src/pages/sql/JoinCanvas.tsx
   - provisa-ui/src/pages/sql/SchemaBrowser.tsx
-  - provisa-ui/src/pages/sql/ViewModal.tsx
-  tests: []
+  - provisa-ui/src/pages/sql/JoinCanvas.tsx
+  - provisa-ui/src/pages/SqlPage.tsx
+  tests:
+  - provisa-ui/src/pages/__tests__/metric-explore.test.tsx
+  - provisa-ui/src/pages/__tests__/metric-detach.test.tsx
   e2e: false
   related_reqs:
   - REQ-1317

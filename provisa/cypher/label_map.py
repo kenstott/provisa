@@ -34,6 +34,9 @@ if TYPE_CHECKING:
 # avoid importing a higher layer into the cypher package.
 _META_DOMAIN_ID = "meta"
 
+# REQ-1320: star-schema modeling role → the additional node label Neo4j clients see.
+_ROLE_LABELS = {"fact": "Fact", "dimension": "Dimension"}
+
 
 @dataclass
 class NodeMapping:
@@ -61,10 +64,16 @@ class NodeMapping:
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
     traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
     domain_id: str | None = None  # raw domain id, e.g. "pet-store"; None if no domain
+    modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None (star-schema role)
 
     @property
     def sql_table_name(self) -> str:
         return self.physical_table_name or self.table_name
+
+    @property
+    def role_label(self) -> str | None:  # REQ-1320
+        """Additional node label for the table's star-schema role: Fact / Dimension."""
+        return _ROLE_LABELS.get(self.modeling_role or "")
 
 
 @dataclass
@@ -279,6 +288,14 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                 nodes_by_table,
                 aliases,
             )
+
+        # REQ-1320: tag every node with its table's star-schema modeling role so role-tagged
+        # tables additionally expose the Fact/Dimension labels to Neo4j clients. all_tables is
+        # the raw table registry (schema_build_cache) — the only place modeling_role lives.
+        if all_tables is not None:
+            _roles_by_id = {t["id"]: t.get("modeling_role") for t in all_tables}
+            for nm in nodes.values():
+                nm.modeling_role = _roles_by_id.get(nm.table_id) or nm.modeling_role
 
         # REQ-1132: meta (catalog) is DISCOVERABLE ONLY BY TRAVERSAL for a role without a meta grant
         # — it may not be a bare MATCH (n) root (which would emit a direct meta FROM and be V001-blocked,

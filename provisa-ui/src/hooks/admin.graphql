@@ -114,6 +114,11 @@ query TablesQuery {
     probeType
     apiEndpoint
     viewSql
+    viewMetrics {
+      metrics
+      dimensions
+      filters
+    }
     materialize
     mvRefreshInterval
     mvDebounceQuiet

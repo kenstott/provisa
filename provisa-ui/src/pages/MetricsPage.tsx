@@ -27,6 +27,7 @@ import {
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useMetrics, useUpsertMetric, useDeleteMetric } from "../hooks/useAdminQueries";
 import type { Metric } from "../types/admin";
+import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
 
 interface MetricForm {
   name: string;
@@ -112,6 +113,9 @@ export function MetricsPage() {
           {t("metricsPage.newMetric")}
         </Button>
       </Group>
+
+      {/* REQ-1316: semantic interchange (Ossie) — export endpoint/download + import review. */}
+      <OssieInterchangePanel />
 
       {error && (
         <Alert color="red" mb="sm">

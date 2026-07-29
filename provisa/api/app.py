@@ -971,6 +971,14 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             conn, raw_config
         )
 
+        # REQ-1319: config-declared metrics feed schema generation — each role's schema
+        # projects its visible metrics into the _aggregate metrics block. Config absent
+        # (bare rebuild before any config load) legitimately means no metrics are declared.
+        _metrics_cfg = getattr(state, "config", None)
+        _metric_dicts = (
+            [m.model_dump() for m in _metrics_cfg.metrics] if _metrics_cfg is not None else []
+        )
+
         _build_and_register_schemas(
             roles=roles,
             tables=tables,
@@ -984,6 +992,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             tracked_webhooks=tracked_webhooks,
             gql_object_cols=_gql_object_cols,
             rls_rules=rls_rules,
+            metrics=_metric_dicts,  # REQ-1319
         )
 
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
@@ -1013,6 +1022,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
         "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
+        "metrics": _metric_dicts,  # REQ-1319
     }
     state.schema_version += 1
     await _finalize_rebuild_state(_rebuild_log)

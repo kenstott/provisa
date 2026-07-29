@@ -51,6 +51,9 @@ class SchemaInput:
     gql_governed_object_cols: set[tuple[int, str]] = field(
         default_factory=set
     )  # (table_id, col_name) pairs where the GQL OBJECT type is a governed registered table
+    metrics: list[dict] = field(
+        default_factory=list
+    )  # REQ-1319: config metric registry [{name, expression, datatype, description, ai_context, visible_to}]
 
 
 @dataclass
@@ -77,3 +80,8 @@ class _TableInfo:
     enable_aggregates: bool = False  # REQ-653: table-level opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: table-level opt-in for _group_by root field
     read_only: bool = False  # REQ-1157: view_sql/MV-backed relation — query-only, no mutations
+    modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None
+    modeling_history: str | None = None  # REQ-1320: SCD mode ("scd2" | "snapshot" | None)
+    metrics: list[dict] = field(
+        default_factory=list
+    )  # REQ-1319: role-visible metrics whose expression references (only) this table

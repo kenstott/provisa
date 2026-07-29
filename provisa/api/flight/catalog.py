@@ -22,6 +22,7 @@ semantic layer as a read-only JDBC catalog:
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 
@@ -296,6 +297,40 @@ def catalog_table_to_flight_info(  # REQ-143
     if location:
         ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             f'{{"domain":"{table.domain_id}","table":"{table.table_name}"}}'.encode("utf-8"),
+        )
+        endpoints = [flight.FlightEndpoint(ticket, [location])]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+
+def metric_to_flight_info(  # REQ-1319
+    metric_name: str,
+    dimensions: list[str],
+    description: str | None = None,
+    location: flight.Location | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Build a FlightInfo for a governed metric (REQ-1319).
+
+    Descriptor path is ``["metrics", <name>, <dim>...]`` — metrics are discoverable
+    alongside tables and commands. The schema is the metric shape at the requested
+    grain: one utf8 field per dimension plus a float64 ``value``. Execution stays on
+    the governed SQL-ticket path (semantic ``metrics.<name>`` SQL, the single
+    expansion every surface shares).
+    """
+    from provisa.compiler.metric_expand import metric_semantic_sql
+
+    fields = [pa.field(d, pa.utf8()) for d in dimensions]
+    fields.append(pa.field("value", pa.float64()))
+    meta = {b"metric": metric_name.encode("utf-8")}
+    if description:
+        meta[b"description"] = description.encode("utf-8")
+    schema = pa.schema(fields, metadata=meta)
+    descriptor = flight.FlightDescriptor.for_path(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        "metrics", metric_name, *dimensions
+    )
+    endpoints = []
+    if location:
+        ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            json.dumps({"query": metric_semantic_sql(metric_name, dimensions)}).encode("utf-8")
         )
         endpoints = [flight.FlightEndpoint(ticket, [location])]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

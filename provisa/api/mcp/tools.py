@@ -346,19 +346,11 @@ def list_metrics(state: Any, role: str) -> list[dict]:
 
 
 def _metric_sql(metric: str, dimensions: list[str], filters: str | None) -> str:
-    """The semantic SQL for one metric query against the reserved ``metrics`` schema (REQ-1319).
+    """The semantic SQL for one metric query (REQ-1319) — the ONE builder, shared
+    across surfaces (MCP, Bolt, NL, Flight) via the compiler."""
+    from provisa.compiler.metric_expand import metric_semantic_sql
 
-    ``filters`` is a raw boolean SQL fragment passed through verbatim — the governed
-    pipeline (not this function) validates and governs it. No dimensions → no GROUP BY:
-    a single grand-total row.
-    """
-    select = ", ".join([*dimensions, "value"])
-    sql = f"SELECT {select} FROM metrics.{metric}"
-    if filters:
-        sql += f" WHERE {filters}"
-    if dimensions:
-        sql += f" GROUP BY {', '.join(dimensions)}"
-    return sql
+    return metric_semantic_sql(metric, dimensions, filters)
 
 
 async def query_metric(

@@ -178,3 +178,103 @@ def test_expand_metric_calls_no_calls_untouched():
 def test_expand_metric_calls_unknown_name():
     with pytest.raises(ValueError, match="unknown metric 'ghost'"):
         expand_metric_calls_in_sql("SELECT metric('ghost') FROM orders", METRICS)
+
+
+# ── surface reach (REQ-1319) ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_compiled_path_expands_metric_refs():
+    """Flight and the gRPC proxy enter via _govern_and_route_compiled — a metrics-schema
+    reference must hit the SAME expansion there (unknown metric → named error, proving
+    the hook runs before governance)."""
+    from provisa.core.models import Metric as _Metric
+    from provisa.pgwire import _pipeline
+
+    class _FakeState:
+        contexts = {"admin": None}  # role gate passes; expansion raises before ctx is used
+        metrics = {"net_revenue": _Metric(name="net_revenue", expression="SUM(orders.amount)")}
+        tables = []
+        relationships = []
+        view_sql_map = {}
+
+    with pytest.raises(ValueError, match="nope"):
+        await _pipeline._govern_and_route_compiled(
+            "SELECT value FROM metrics.nope", "admin", state=_FakeState()
+        )
+
+
+def test_streaming_metric_view_config_is_valid():
+    """REQ-1319 streaming freebie: a metric-composed view may carry materialize + a Kafka
+    sink — push-on-change metrics ride the existing machinery, no new validation path."""
+    from provisa.core.models import KafkaSinkAttachment, Table, ViewMetricsSpec
+
+    t = Table(
+        source_id="__provisa__",
+        domain_id="views",
+        table_name="net_revenue_by_region",
+        columns=[],
+        view_metrics=ViewMetricsSpec(metrics=["net_revenue"], dimensions=["region"]),
+        materialize=True,
+        kafka_sink=KafkaSinkAttachment(topic="metrics.net_revenue"),
+    )
+    assert t.view_metrics is not None and t.materialize and t.kafka_sink.topic
+
+
+# ── metric_reference_tables / inline_metric_sql (REQ-1319) ───────────────────
+
+
+def test_metric_reference_tables_single_table():
+    from provisa.compiler.metric_expand import metric_reference_tables
+
+    assert metric_reference_tables(
+        "net_revenue", "SUM(orders.amount) - SUM(orders.refunds)"
+    ) == ["orders"]
+
+
+def test_metric_reference_tables_multi_table_ordered():
+    from provisa.compiler.metric_expand import metric_reference_tables
+
+    assert metric_reference_tables(
+        "blend", "SUM(orders.amount) / COUNT(customers.id)"
+    ) == ["orders", "customers"]
+
+
+def test_metric_reference_tables_unqualified_column_is_error():
+    from provisa.compiler.metric_expand import metric_reference_tables
+
+    with pytest.raises(ValueError, match="table-qualified"):
+        metric_reference_tables("bad", "SUM(amount)")
+
+
+def test_inline_metric_sql_rewrites_to_physical_unqualified():
+    from provisa.compiler.metric_expand import inline_metric_sql
+
+    sql = inline_metric_sql(
+        "net_revenue",
+        "SUM(orders.amount) - SUM(orders.refunds)",
+        "orders",
+        lambda c: c,
+    )
+    assert sql == 'SUM("amount") - SUM("refunds")'
+
+
+def test_inline_metric_sql_uses_resolver_result():
+    from provisa.compiler.metric_expand import inline_metric_sql
+
+    sql = inline_metric_sql(
+        "order_count", "COUNT(orders.id)", "orders", lambda c: f"phys_{c}"
+    )
+    assert sql == 'COUNT("phys_id")'
+
+
+def test_inline_metric_sql_foreign_table_reference_is_error():
+    from provisa.compiler.metric_expand import inline_metric_sql
+
+    with pytest.raises(ValueError, match="references table 'customers'"):
+        inline_metric_sql(
+            "blend",
+            "SUM(orders.amount) / COUNT(customers.id)",
+            "orders",
+            lambda c: c,
+        )

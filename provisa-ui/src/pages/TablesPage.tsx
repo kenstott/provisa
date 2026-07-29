@@ -42,8 +42,9 @@ import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { NAMING_CONVENTIONS } from "./tables/constants";
-import { normalizeDomain } from "./tables/helpers";
+import { buildTableUpdateInput, normalizeDomain } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
+import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
 import { TableReadView } from "./tables/TableReadView";
 import { TableEditForm } from "./tables/TableEditForm";
@@ -82,6 +83,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showModeling, setShowModeling] = useState(false); // REQ-1164: entity/fact modeling modal
+  // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
+  const [showViewForm, setShowViewForm] = useState(false);
+  const [editingViewDef, setEditingViewDef] = useState<RegisteredTable | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState(() => searchParams.get("source") ?? "");
   const [page, setPage] = useState(0);
@@ -303,86 +307,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setError(null);
     setSaving(true);
     try {
-      const result = await updateTable({
-        sourceId: editingTable.sourceId,
-        domainId: editingTable.domainId,
-        schemaName: editingTable.schemaName,
-        tableName: editingTable.tableName,
-        alias: editingTable.alias || undefined,
-        description: editingTable.description || undefined,
-        watermarkColumn: editingTable.watermarkColumn || null,
-        changeSignal: editingTable.changeSignal || null,
-        probeQuery: editingTable.probeQuery || null,
-        probeType: editingTable.probeType || null,
-        viewSql: editingTable.viewSql || undefined,
-        materialize: editingTable.materialize,
-        mvRefreshInterval: editingTable.mvRefreshInterval,
-        mvDebounceQuiet: editingTable.mvDebounceQuiet,
-        mvDebounceMaxDelay: editingTable.mvDebounceMaxDelay,
-        mvConsistency: editingTable.mvConsistency,
-        mvPreprocess: editingTable.mvPreprocess || null, // REQ-957
-        mvBitemporalMode: editingTable.mvBitemporalMode || null, // REQ-1162
-        mvBitemporalKey: editingTable.mvBitemporalKey, // REQ-1162
-        mvPersist: editingTable.mvPersist, // REQ-965
-        // REQ-970: the MV row-identity key IS the table Primary Key — derive it from the per-column
-        // PK checkboxes (single source of truth), not a separate field.
-        mvPrimaryKey: editingTable.columns.filter((c) => c.isPrimaryKey).map((c) => c.columnName),
-        mvIncremental: editingTable.mvIncremental, // REQ-969
-        mvCalendar: editingTable.mvCalendar || null, // REQ-962
-        mvGrain: editingTable.mvGrain || null, // REQ-962/1168
-        mvAllowedLateness: editingTable.mvAllowedLateness, // REQ-961
-        mvExpectedEvents: editingTable.mvExpectedEvents, // REQ-961
-        mvBusinessDayGrain: editingTable.mvBusinessDayGrain, // REQ-962
-        dataProduct: editingTable.dataProduct,
-        enableAggregates: editingTable.enableAggregates,
-        enableGroupBy: editingTable.enableGroupBy,
-        live: editingTable.live
-          ? {
-              queryId: editingTable.live.queryId ?? undefined,
-              watermarkColumn: editingTable.live.watermarkColumn ?? undefined,
-              pollInterval: editingTable.live.pollInterval,
-              strategy: editingTable.live.strategy,
-              kafka:
-                editingTable.live.strategy === "kafka" && editingTable.live.kafka
-                  ? {
-                      topic: editingTable.live.kafka.topic,
-                      format: editingTable.live.kafka.format ?? undefined,
-                      keyColumn: editingTable.live.kafka.keyColumn ?? undefined,
-                    }
-                  : undefined,
-              outputs: editingTable.live.outputs.map((o) => ({
-                type: o.type,
-                topic: o.topic ?? undefined,
-                keyColumn: o.keyColumn ?? undefined,
-                bootstrapServers: o.bootstrapServers ?? undefined,
-              })),
-            }
-          : null,
-        columnPresets: editingTable.columnPresets,
-        // REQ-1093: persist edited UNIQUE constraints; drop empty/incomplete rows.
-        uniqueConstraints: (editingTable.uniqueConstraints ?? [])
-          .filter((u) => u.name.trim() && u.columns.length > 0)
-          .map((u) => ({ name: u.name.trim(), columns: u.columns })),
-        columns: editingTable.columns.map((c) => ({
-          name: c.columnName,
-          visibleTo: c.visibleTo,
-          writableBy: c.writableBy,
-          unmaskedTo: c.unmaskedTo,
-          maskType: c.maskType || undefined,
-          maskPattern: c.maskPattern || undefined,
-          maskReplace: c.maskReplace || undefined,
-          maskValue: c.maskValue || undefined,
-          maskPrecision: c.maskPrecision || undefined,
-          alias: c.alias || undefined,
-          description: c.description || undefined,
-          dataType: c.dataType || undefined, // REQ-846: steward type override (metadata only)
-          nativeFilterType: c.nativeFilterType || undefined,
-          isPrimaryKey: c.isPrimaryKey || undefined,
-          isForeignKey: c.isForeignKey || undefined,
-          isAlternateKey: c.isAlternateKey || undefined,
-          scope: c.scope || "domain",
-        })),
-      });
+      const result = await updateTable(buildTableUpdateInput(editingTable));
       if (!result.success) {
         setError(result.message);
         return;
@@ -441,8 +366,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               {showForm ? <X size={14} /> : translate("tablesPage.addTable")}
             </Button>
           )}
-          <Button variant="default" onClick={() => navigate("/sql")} title={translate("tablesPage.addViewTitle")}>
-            {translate("tablesPage.addView")}
+          <Button
+            variant="default"
+            data-testid="views-add-toggle"
+            // REQ-1318: on the Views page, Add View opens the definition-mode form
+            // (SQL | Metrics toggle); elsewhere it keeps routing to the SQL editor.
+            onClick={() => (viewsOnly ? setShowViewForm(!showViewForm) : navigate("/sql"))}
+            title={translate("tablesPage.addViewTitle")}
+          >
+            {viewsOnly && showViewForm ? <X size={14} /> : translate("tablesPage.addView")}
           </Button>
           {!viewsOnly && (
             <Button
@@ -479,6 +411,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         <Alert color="red" mb="md" data-testid="tables-load-error">
           {translate("tablesPage.loadFailed", { message: tablesError.message })}
         </Alert>
+      )}
+
+      {/* REQ-1318: create-view flow with the definition-mode toggle. */}
+      {showViewForm && viewsOnly && (
+        <ViewDefinitionForm
+          editing={null}
+          tables={tables}
+          relationships={relationships}
+          domainHints={domainHints}
+          registerTable={registerTable}
+          updateTable={updateTable}
+          onSuccess={() => {
+            setShowViewForm(false);
+            reload();
+          }}
+          onCancel={() => setShowViewForm(false)}
+        />
       )}
 
       {showForm && !viewsOnly && (
@@ -872,6 +821,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             t={t}
                             navigate={navigate}
                             viewsOnly={viewsOnly}
+                            onEditDefinition={viewsOnly ? setEditingViewDef : undefined}
                             deploying={deploying}
                             setDeploying={setDeploying}
                             deployMsg={deployMsg}
@@ -970,6 +920,31 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           </Group>
         );
       })()}
+      {/* REQ-1318: edit-view definition flow — a metric view opens in Metrics mode
+          prefilled; a free-hand view opens in SQL mode. */}
+      <Modal
+        opened={editingViewDef !== null}
+        onClose={() => setEditingViewDef(null)}
+        title={translate("tablesPage.editViewDefinitionTitle")}
+        size="lg"
+        data-testid="view-definition-modal"
+      >
+        {editingViewDef && (
+          <ViewDefinitionForm
+            editing={editingViewDef}
+            tables={tables}
+            relationships={relationships}
+            domainHints={domainHints}
+            registerTable={registerTable}
+            updateTable={updateTable}
+            onSuccess={() => {
+              setEditingViewDef(null);
+              reload();
+            }}
+            onCancel={() => setEditingViewDef(null)}
+          />
+        )}
+      </Modal>
       <Modal
         opened={showModeling}
         onClose={() => setShowModeling(false)}

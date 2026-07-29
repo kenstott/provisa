@@ -495,6 +495,19 @@ def _populate_pg_description(
         _cols = rt["columns"] if isinstance(rt, dict) else getattr(rt, "columns", [])
         if _tid is None:
             continue
+        # REQ-1320: role/SCD mode ride the catalog description so BI tools that infer
+        # star shapes read them instead of guessing — same suffix as GraphQL docs.
+        _role = (
+            rt.get("modeling_role") if isinstance(rt, dict) else getattr(rt, "modeling_role", None)
+        )
+        _hist = (
+            rt.get("modeling_history")
+            if isinstance(rt, dict)
+            else getattr(rt, "modeling_history", None)
+        )
+        if _role:
+            _tag = f"[{_role}, {_hist}]" if _hist else f"[{_role}]"
+            _tdesc = f"{_tdesc} {_tag}" if _tdesc else _tag
         if _tdesc:
             tid_desc[_tid] = _tdesc
         cdesc: dict[str, str] = {}

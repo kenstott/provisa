@@ -184,7 +184,8 @@ def test_bolt_show_procedures_lists_commands():
     cols, rows = _system_query("SHOW PROCEDURES", None, "admin", True, state, None)
     assert cols == ["name", "description", "signature"]
     names = {r[0] for r in rows}
-    assert names == {"active_users", "reset_cache"}
+    # REQ-1319: the built-in metric procedure is discoverable alongside registered commands.
+    assert names == {"provisa.metric", "active_users", "reset_cache"}
 
 
 def test_http_cypher_commands_procedure_regex():

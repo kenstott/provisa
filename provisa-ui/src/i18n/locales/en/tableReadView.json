@@ -50,6 +50,8 @@
     "colMin": "Min",
     "colMax": "Max",
     "colMean": "Mean",
-    "colTopValues": "Top values"
+    "colTopValues": "Top values",
+    "editDefinitionButton": "Edit Definition",
+    "editDefinitionTitle": "Edit the view definition (SQL or metric/dimension picker)"
   }
 }

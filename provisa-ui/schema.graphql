@@ -392,6 +392,8 @@ type RegisteredTableType {
   apiEndpoint: String
   viewSql: String
   viewMetrics: ViewMetricsType
+  modelingRole: String
+  modelingHistory: String
   changeSignal: String
   probeQuery: String
   probeType: String
@@ -585,6 +587,8 @@ input TableInput {
   uniqueConstraints: [UniqueConstraintInput!]! = []
   viewSql: String = null
   viewMetrics: ViewMetricsInput = null
+  modelingRole: String = null
+  modelingHistory: String = null
   loadProtected: Boolean = null
   offPeakWindow: String = null
   offPeakTz: String = null

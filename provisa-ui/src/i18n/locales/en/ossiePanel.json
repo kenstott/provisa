@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "Semantic interchange (Ossie)",
+    "endpointLabel": "Endpoint:",
+    "copyEndpoint": "Copy endpoint URL",
+    "download": "Download",
+    "import": "Import",
+    "reviewTitle": "Review Ossie import: {{model}}",
+    "reviewHint": "Nothing is registered yet. Uncheck anything you want to trim, then apply — checked items register through the standard registration mutations.",
+    "tablesSection": "Tables ({{count}})",
+    "relationshipsSection": "Relationships ({{count}})",
+    "metricsSection": "Metrics ({{count}})",
+    "columnCount": "{{count}} columns",
+    "apply": "Apply ({{count}})",
+    "applied": "Applied",
+    "failed": "Failed",
+    "cancel": "Cancel",
+    "close": "Close"
+  }
+}

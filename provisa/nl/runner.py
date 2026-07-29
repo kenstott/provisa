@@ -172,7 +172,21 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     from provisa.nl.prompt import format_entities
 
     embed_fn = make_embed_fn(app_state)
-    matcher = await get_matcher(role, schema_sdl, embed_fn)
+    # REQ-1319: metrics visible to this role join the matcher vocabulary; REQ-1320: table
+    # modeling roles ground the star shape in the prompt and metric resolution.
+    _metrics = [
+        m
+        for m in (getattr(app_state, "metrics", {}) or {}).values()
+        if "*" in m.visible_to or role in m.visible_to
+    ]
+    _table_roles = {
+        t["table_name"]: t["modeling_role"]
+        for t in getattr(app_state, "tables", [])
+        if t.get("modeling_role")
+    }
+    matcher = await get_matcher(
+        role, schema_sdl, embed_fn, metrics=_metrics, table_roles=_table_roles
+    )
     query_emb: list[float] | None = None
     if embed_fn is not None:
         try:
@@ -184,7 +198,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         # complexity-gate: allow-ble=3 reason="[file ceiling 3] Best-effort query embedding via a pluggable embed_fn (local/remote model) with an unbounded failure taxonomy — a failure only drops entity hints (query_emb stays None) and is logged; NL processing must continue without it."
         except Exception as exc:
             log.debug("Query embedding failed: %s", exc)
-    relevant_entities = format_entities(matcher.top_k(query_emb))
+    relevant_entities = format_entities(matcher.top_k(query_emb), table_roles=_table_roles)
 
     # A role may have no GraphQL schema. Never validate the GraphQL branch with the
     # Cypher compiler (that masks the absence); instead omit the graphql compiler so
@@ -227,6 +241,12 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         # other branches' results. Convert any exception into a branch error.
         try:
             if target == "sql":
+                # REQ-1319: a metric-shaped question resolves to the governed semantic
+                # form (metric + matched dimension columns) instead of asking the model
+                # to invent a raw aggregation.
+                metric_sql = matcher.resolve_metric(nl_query)
+                if metric_sql is not None:
+                    return target, metric_sql, None
                 valid_query, error = await _generate_sql_from_nl(
                     nl_query, role, app_state, pre_selected_types=shared_selected_types
                 )

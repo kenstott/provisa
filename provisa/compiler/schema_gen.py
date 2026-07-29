@@ -47,6 +47,7 @@ from provisa.compiler.naming import (
     rel_field_name,
     to_type_name,
 )
+from provisa.compiler.metric_expand import metric_reference_tables
 from provisa.compiler.type_map import JSONScalar, column_type_to_graphql
 from provisa.compiler.schema_types import SchemaInput, _TableInfo
 from provisa.security.rights import (
@@ -89,6 +90,19 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
     accessible = set(role["domain_access"])
     # Consistent with visible_to=[]: empty list means no restriction (all domains accessible).
     all_access = not accessible or "*" in accessible
+
+    # REQ-1319: role-visible metrics keyed by the single semantic table their expression
+    # references. The aggregate compiler selects from exactly one table (no join builder),
+    # so only single-table metrics project into a metrics block; a multi-table metric stays
+    # reachable through the raw-SQL `metrics.<name>` expansion (REQ-1317).
+    metrics_by_table: dict[str, list[dict]] = {}
+    for m in si.metrics:
+        vt = m.get("visible_to") or []
+        if vt and "*" not in vt and role["id"] not in vt:
+            continue
+        refs = metric_reference_tables(m["name"], m["expression"])
+        if len(refs) == 1:
+            metrics_by_table.setdefault(refs[0], []).append(m)
 
     result: list[_TableInfo] = []
     for table in si.tables:
@@ -179,9 +193,17 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 description=table.get("description"),
                 gql_convention_override=resolved_conv,
                 relay_pagination=resolved_relay,
-                enable_aggregates=bool(table.get("enable_aggregates", False)),
+                # REQ-1320: aggregates default ON for fact tables — modeling_role == "fact"
+                # enables the _aggregate root field without an explicit enable_aggregates.
+                enable_aggregates=(
+                    bool(table.get("enable_aggregates", False))
+                    or table.get("modeling_role") == "fact"
+                ),
                 enable_group_by=bool(table.get("enable_group_by", False)),
                 read_only=bool(table.get("view_sql")),  # REQ-1157: MV/view → query-only
+                modeling_role=table.get("modeling_role"),  # REQ-1320
+                modeling_history=table.get("modeling_history"),  # REQ-1320
+                metrics=metrics_by_table.get(table["table_name"], []),  # REQ-1319
             )
         )
 
@@ -231,6 +253,21 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
                     t.type_name = to_type_name(t.field_name)
             else:
                 t.type_name = to_type_name(t.field_name)
+
+
+def _type_description(t: _TableInfo) -> str | None:
+    """REQ-1320: surface modeling role/SCD in introspection docs.
+
+    Appends a " [fact]" / " [dimension, scd2]"-style suffix to the table description
+    when a modeling role is set, so GraphQL introspection carries the star-schema shape.
+    """
+    if not t.modeling_role:
+        return t.description
+    tags = [t.modeling_role]
+    if t.modeling_history:
+        tags.append(t.modeling_history)
+    suffix = f"[{', '.join(tags)}]"
+    return f"{t.description} {suffix}" if t.description else suffix
 
 
 def _can_see_relationship(rel: dict, table_lookup: dict[int, _TableInfo]) -> bool:
@@ -764,7 +801,8 @@ def generate_schema(
 
         gql_types[tid] = cast(
             GraphQLObjectType,
-            GraphQLObjectType(t.type_name, make_fields, description=t.description),
+            # REQ-1320: type description carries the modeling role/SCD suffix.
+            GraphQLObjectType(t.type_name, make_fields, description=_type_description(t)),
         )
 
     # Build root query fields
@@ -795,7 +833,10 @@ def generate_schema(
         shared_agg_fields_type = None
         if t.enable_aggregates or t.enable_group_by:
             shared_agg_fields_type = build_agg_fields_type(
-                t.type_name, t.visible_columns, t.column_metadata
+                t.type_name,
+                t.visible_columns,
+                t.column_metadata,
+                metrics=t.metrics,  # REQ-1319: metrics block inside the aggregate result
             )
 
         # REQ-653: table-level enable_aggregates gates the _aggregate root field.

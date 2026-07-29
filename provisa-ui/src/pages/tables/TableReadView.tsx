@@ -38,6 +38,8 @@ interface TableReadViewProps {
   startEditing: (t: RegisteredTable) => void;
   handleDelete: (id: number) => void;
   handleProfile: (id: number) => void;
+  // REQ-1318: opens the Views-page definition-mode editor (SQL | Metrics toggle).
+  onEditDefinition?: (t: RegisteredTable) => void;
 }
 
 export function TableReadView({
@@ -54,6 +56,7 @@ export function TableReadView({
   startEditing,
   handleDelete,
   handleProfile,
+  onEditDefinition,
 }: TableReadViewProps) {
   const { t } = useTranslation();
 
@@ -217,6 +220,20 @@ export function TableReadView({
             title={t("tableReadView.editSqlTitle")}
           >
             {viewsOnly ? t("tableReadView.editSqlButton") : t("tableReadView.openInExplorerButton")}
+          </Button>
+        )}
+        {table.viewSql && onEditDefinition && (
+          <Button
+            size="compact-sm"
+            variant="default"
+            data-testid="table-read-view-edit-definition"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditDefinition(table);
+            }}
+            title={t("tableReadView.editDefinitionTitle")}
+          >
+            {t("tableReadView.editDefinitionButton")}
           </Button>
         )}
         {table.canDeployToDb && (
