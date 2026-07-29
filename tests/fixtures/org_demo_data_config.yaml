@@ -1,0 +1,67 @@
+# REQ-1321: the demo config a self-created org is seeded with, shaped exactly like the production
+# demo (config/provisa.yaml): multitenant, Basic auth with the superadmin bootstrap gate, the same
+# three roles with the same domain_access, and per-column `visible_to` lists — the surface the
+# reported "parts of the demo data, but not all" failure lives on.
+#
+# The source host is the compose-INTERNAL service name `postgres`, so the dynamically created
+# org-prefixed catalog (org_<id>__sales_pg) is reachable from the Trino coordinator. The
+# pytest-host direct-driver pool cannot resolve `postgres` and fails silently by design
+# (tolerate_startup_failure); every data assertion runs through the engine terminal.
+multitenancy: true
+
+auth:
+  provider: basic
+  assignments_source: provisa
+  bootstrap_superadmin: true
+  default_assignments: []
+
+sources:
+  - id: sales-pg
+    type: postgresql
+    host: postgres
+    port: 5432
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD}
+
+domains:
+  - id: sales-analytics
+    description: Sales operational and analytical data
+
+tables:
+  - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
+    table: orders
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [platform_admin, org_admin, analyst]
+      - name: amount
+        visible_to: [platform_admin, org_admin, analyst]
+
+roles:
+  - id: platform_admin
+    capabilities: [query_development, admin]
+    domain_access: ["*"]
+  - id: org_admin
+    capabilities:
+      - source_registration
+      - table_registration
+      - create_relationship
+      - access_config
+      - query_development
+      - approve_view
+      - create_view
+      - column_grant
+      - user_management
+      - masking_config
+      - view_governance
+      - full_results
+      - usage
+      - ad_hoc_query
+      - write
+    domain_access: ["*"]
+  - id: analyst
+    capabilities: [query_development]
+    domain_access: [sales-analytics]
