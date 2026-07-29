@@ -106,7 +106,17 @@ def _table_to_config(row: dict, id_to_name: dict[int, str]) -> dict:
     row = {**row, "schema": row.get("schema_name"), "table": row.get("table_name")}
     out = _project(row, _TABLE_KEYS, id_to_name=id_to_name)
     if isinstance(out.get("columns"), list):
-        out["columns"] = [_project(c, _COLUMN_KEYS, id_to_name=id_to_name) for c in out["columns"]]
+        # DB column rows carry ``column_name``; the config schema key is ``name`` — map it the
+        # same way schema_name/table_name are mapped above, or every column projects to {} and
+        # ProvisaConfig validation (the Ossie endpoint validates on every read) fails. And
+        # ``visible_to`` must survive even when EMPTY: [] means "visible to no role" (how
+        # native-filter columns are seeded) — the generic drop-empties rule would delete a
+        # field the config schema requires and that carries meaning.
+        out["columns"] = [
+            _project({**c, "name": c.get("column_name")}, _COLUMN_KEYS, id_to_name=id_to_name)
+            | {"visible_to": list(c.get("visible_to") or [])}
+            for c in out["columns"]
+        ]
     return out
 
 
