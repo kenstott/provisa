@@ -25,6 +25,7 @@ import {
 import { Trash2 } from "lucide-react";
 import { useRegisterEntity, useRegisterFact, useTables } from "../../hooks/useAdminQueries";
 import type { Domain, RegisteredTable, TableColumn } from "../../types/admin";
+import { DERIVED_SOURCE_ID } from "../../types/admin";
 import { FieldLabel } from "./FieldLabel";
 import { normalizeDomain } from "./helpers";
 
@@ -43,7 +44,7 @@ const _AGGS = ["sum", "avg", "min", "max", "count"] as const;
 
 // User-defined tables only — exclude Provisa's own system sources/domains from the source picker.
 // Mirrors provisa/core/config_loader.py::_SYSTEM_SOURCE_IDS and domain_policy._SYSTEM_DOMAIN_IDS.
-const _SYSTEM_SOURCE_IDS = new Set(["provisa-admin", "provisa-otel", "__provisa__"]);
+const _SYSTEM_SOURCE_IDS = new Set(["provisa-admin", "provisa-otel", DERIVED_SOURCE_ID]);
 const _SYSTEM_DOMAIN_IDS = new Set(["", "meta", "ops"]);
 const _isUserTable = (tbl: RegisteredTable) =>
   !_SYSTEM_SOURCE_IDS.has(tbl.sourceId) && !_SYSTEM_DOMAIN_IDS.has(tbl.domainId);

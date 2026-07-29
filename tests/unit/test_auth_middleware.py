@@ -73,26 +73,27 @@ def _make_app(provider=None, mapping_rules=None, default_role="analyst", superus
     return app
 
 
-def test_no_auth_configured_backward_compat():
+def test_no_auth_configured_anonymous_org_admin():
     app = _make_app(provider=None)
     client = TestClient(app)
     resp = client.get("/test")
     assert resp.status_code == 200
     data = resp.json()
-    # Unsecured: no identity provider, so the username IS the role, which defaults to
-    # platform_admin (REQ-1297 — the role id 'admin' is retired).
-    assert data["user_id"] == "platform_admin"
-    assert data["role"] == "platform_admin"
+    # Unsecured: the ANONYMOUS dev principal (engages the documented dev-mode enforcement
+    # skip) with the DATA-plane default role. REQ-1327: platform_admin is control-plane
+    # only — an unsecured demo need not even define it, so it can never be the default.
+    assert data["user_id"] == "anonymous"
+    assert data["role"] == "org_admin"
 
 
-def test_no_auth_configured_username_is_role():
-    """Unsecured + explicit X-Provisa-Role → identity username equals that role."""
+def test_no_auth_configured_header_selects_role():
+    """Unsecured + explicit X-Provisa-Role → that role, still the anonymous principal."""
     app = _make_app(provider=None)
     client = TestClient(app)
     resp = client.get("/test", headers={"x-provisa-role": "analyst"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["user_id"] == "analyst"
+    assert data["user_id"] == "anonymous"
     assert data["role"] == "analyst"
 
 
@@ -292,13 +293,14 @@ def test_resolver_reresolves_on_generation_bump(monkeypatch):
     gen = {"v": 0}
     client = TestClient(_make_resolver_app(holder, gen, monkeypatch))
 
-    # Boots unsecured: no provider, username is the role.
-    assert client.get("/test").json()["user_id"] == "platform_admin"  # REQ-1297
+    # Boots unsecured: the anonymous dev principal (REQ-1327 — org_admin default, not
+    # platform_admin; the control-plane role never defaults onto the data plane).
+    assert client.get("/test").json()["user_id"] == "anonymous"
 
     # Reconfigure to a real provider WITHOUT bumping the generation: still cached (unsecured).
     holder["provider"] = MockProvider()
     assert client.get("/test").status_code == 200
-    assert client.get("/test").json()["user_id"] == "platform_admin"  # REQ-1297
+    assert client.get("/test").json()["user_id"] == "anonymous"  # still the dev principal
 
     # Bump the generation: the middleware re-resolves and now enforces the provider.
     gen["v"] += 1

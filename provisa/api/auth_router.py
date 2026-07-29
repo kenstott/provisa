@@ -228,7 +228,7 @@ async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
     """
     from provisa.api.app import state
     from provisa.core.org_membership import grant_membership, grant_org_role
-    from provisa.security.rights import PLATFORM_ADMIN_ROLE
+    from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
     assert state.admin_db is not None
     await grant_membership(state.admin_db, user_id, state.org_id)
@@ -237,6 +237,11 @@ async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
     tenant_db = state.tenant_db
     assert tenant_db is not None, "the bootstrap org's tenant plane must be up before a claim"
     await grant_org_role(tenant_db, user_id, PLATFORM_ADMIN_ROLE)
+    # REQ-1297: platform_admin carries only the control-plane bypass — no column grants name it and it
+    # holds no data capabilities. The claimant is also the bootstrap org's data-plane administrator, so
+    # seat them as its org_admin too. Without this the claim lands on "No roles configured" again: the
+    # welcome modal would hand them a deployment whose own org they cannot query.
+    await grant_org_role(tenant_db, user_id, ORG_ADMIN_ROLE)
 
 
 @router.get("/my-invites")

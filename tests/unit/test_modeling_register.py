@@ -23,7 +23,7 @@ def test_entity_scd2_lowers_to_bitemporal_table_input():
             history="scd2",
         )
     )
-    assert ti.source_id == "__provisa__"
+    assert ti.source_id == "__derived__"
     assert ti.table_name == "Customer"
     assert ti.materialize is True
     assert ti.view_sql == 'SELECT "id", "name", "region" FROM "raw"."customers"'

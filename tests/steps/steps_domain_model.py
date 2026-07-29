@@ -169,9 +169,9 @@ def given_analyst_building_cross_domain_report(shared_data: dict) -> None:
         # The raw finance table — belongs to 'finance' domain.
         "revenue": _meta(1, "revenue", domain_id="finance", source_id="pg"),
         # The import view — registered in the analyst's 'analytics' domain.
-        # source_id="__provisa__" marks it as a Provisa-managed view/adapter.
+        # source_id="__derived__" marks it as a Provisa-managed view/adapter.
         "finance_revenue": _meta(
-            2, "finance_revenue", domain_id="analytics", source_id="__provisa__"
+            2, "finance_revenue", domain_id="analytics", source_id="__derived__"
         ),
     }
     shared_data["compilation_ctx"] = ctx

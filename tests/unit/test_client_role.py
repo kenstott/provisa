@@ -169,11 +169,13 @@ async def test_unsecured_honors_any_requested_role():
 
 
 @pytest.mark.asyncio
-async def test_unsecured_defaults_platform_admin_without_header():
+async def test_unsecured_defaults_org_admin_without_header():
     mw = AuthMiddleware(app=None, provider=None)
     req = _Req({})
     await mw.dispatch(req, _next)
-    assert req.state.role == "platform_admin"  # REQ-1297: the role id 'admin' is retired
+    # REQ-1327: the unsecured default is the DATA-plane administrator; platform_admin is
+    # control-plane only and never defaults onto the data plane.
+    assert req.state.role == "org_admin"
 
 
 @pytest.mark.asyncio

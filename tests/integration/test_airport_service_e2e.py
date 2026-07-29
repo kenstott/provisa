@@ -236,7 +236,7 @@ def _run_sql(port: int, role: str, stmts: list[str], *, fetch: bool = True) -> d
 
 def test_admin_reads_governed_table_via_duckdb_airport(airport_server_port):
     """The real DuckDB airport extension ATTACHes Provisa and reads governed rows (admin)."""
-    out = _run_airport_client(airport_server_port, "platform_admin", _SCHEMA, _TABLE)
+    out = _run_airport_client(airport_server_port, "org_admin", _SCHEMA, _TABLE)
     assert "email" in out["columns"], out["columns"]  # admin-only column visible
     assert {"id", "name", "region"}.issubset(set(out["columns"])), out["columns"]
     assert len(out["rows"]) > 0, "expected governed customer rows"
@@ -245,7 +245,7 @@ def test_admin_reads_governed_table_via_duckdb_airport(airport_server_port):
 def test_governance_rls_applied_analyst_gets_zero_order_rows(airport_server_port):
     """Server-side RLS governance: analyst's orders are row-filtered to empty (deny-by-default)
     while admin reads all orders — through the real DuckDB airport client."""
-    admin_orders = _run_airport_client(airport_server_port, "platform_admin", _SCHEMA, "orders")
+    admin_orders = _run_airport_client(airport_server_port, "org_admin", _SCHEMA, "orders")
     analyst_orders = _run_airport_client(airport_server_port, "analyst", _SCHEMA, "orders")
     # analyst can still read a non-RLS table — proving the role isn't globally broken.
     analyst_customers = _run_airport_client(airport_server_port, "analyst", _SCHEMA, _TABLE)
@@ -274,7 +274,7 @@ def test_predicate_pushdown_filters_at_source(airport_server_port):
     rows are correctly filtered."""
     out = _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f"""SELECT id, region FROM provisa."{_SCHEMA}"."{_TABLE}" WHERE region = 'us-east'"""],
     )
     # Every returned row matches the predicate.
@@ -291,7 +291,7 @@ def test_projection_pushdown_selects_only_requested_columns(airport_server_port)
     """A projection is pushed to the SOURCE: the server's scan SELECTs only the requested columns."""
     out = _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f"""SELECT id, name FROM provisa."{_SCHEMA}"."{_TABLE}" ORDER BY id"""],
     )
     assert set(out["columns"]) == {"id", "name"}, out["columns"]
@@ -308,7 +308,7 @@ def test_governed_insert_roundtrip_via_airport(airport_server_port):
     row_id = 987654
     _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [
             f"""INSERT INTO provisa."{_SCHEMA}"."{_TABLE}" (id, name, email, region)
                 VALUES ({row_id}, 'Airport Insert', 'ai@example.com', 'ap-1')"""
@@ -317,7 +317,7 @@ def test_governed_insert_roundtrip_via_airport(airport_server_port):
     )
     back = _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f'SELECT id, name, region FROM provisa."{_SCHEMA}"."{_TABLE}" WHERE id = {row_id}'],
     )
     assert len(back["rows"]) == 1, back
@@ -332,7 +332,7 @@ def test_governed_update_roundtrip_via_airport(airport_server_port):
     row_id = 987655
     _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [
             f"""INSERT INTO provisa."{_SCHEMA}"."{_TABLE}" (id, name, email, region)
                 VALUES ({row_id}, 'Update Me', 'um@example.com', 'up-1')"""
@@ -341,13 +341,13 @@ def test_governed_update_roundtrip_via_airport(airport_server_port):
     )
     _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f"""UPDATE provisa."{_SCHEMA}"."{_TABLE}" SET region = 'up-2' WHERE id = {row_id}"""],
         fetch=False,
     )
     back = _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f'SELECT id, region FROM provisa."{_SCHEMA}"."{_TABLE}" WHERE id = {row_id}'],
     )
     assert len(back["rows"]) == 1, back
@@ -361,7 +361,7 @@ def test_governed_delete_roundtrip_via_airport(airport_server_port):
     row_id = 987656
     _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [
             f"""INSERT INTO provisa."{_SCHEMA}"."{_TABLE}" (id, name, email, region)
                 VALUES ({row_id}, 'Delete Me', 'dm@example.com', 'del-1')"""
@@ -370,13 +370,13 @@ def test_governed_delete_roundtrip_via_airport(airport_server_port):
     )
     _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f'DELETE FROM provisa."{_SCHEMA}"."{_TABLE}" WHERE id = {row_id}'],
         fetch=False,
     )
     back = _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f'SELECT id FROM provisa."{_SCHEMA}"."{_TABLE}" WHERE id = {row_id}'],
     )
     assert back["rows"] == [], back
@@ -388,7 +388,7 @@ def test_update_denied_for_non_visible_row_is_governed_noop(airport_server_port)
     unchanged (the row identity is only ever a PK the role's RLS already let it read)."""
     admin_before = _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f'SELECT id, status FROM provisa."{_SCHEMA}"."orders" ORDER BY id LIMIT 1'],
     )
     assert admin_before["rows"], admin_before
@@ -405,7 +405,7 @@ def test_update_denied_for_non_visible_row_is_governed_noop(airport_server_port)
 
     admin_after = _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f'SELECT status FROM provisa."{_SCHEMA}"."orders" WHERE id = {oid}'],
     )
     assert admin_after["rows"], admin_after
@@ -417,9 +417,9 @@ def test_update_denied_for_non_visible_row_is_governed_noop(airport_server_port)
 def test_create_schema_maps_to_domain(airport_server_port):
     """CREATE SCHEMA via airport creates a Provisa domain through the schema-mutation pipeline."""
     # Should not raise — the create_schema DoAction maps to a domain upsert.
-    _run_sql(airport_server_port, "platform_admin", ["CREATE SCHEMA provisa.airport_ddl_test"], fetch=False)
+    _run_sql(airport_server_port, "org_admin", ["CREATE SCHEMA provisa.airport_ddl_test"], fetch=False)
     # drop_schema maps to domain delete.
-    _run_sql(airport_server_port, "platform_admin", ["DROP SCHEMA provisa.airport_ddl_test"], fetch=False)
+    _run_sql(airport_server_port, "org_admin", ["DROP SCHEMA provisa.airport_ddl_test"], fetch=False)
 
 
 def test_create_table_roundtrip_via_airport(airport_server_port):
@@ -428,7 +428,7 @@ def test_create_table_roundtrip_via_airport(airport_server_port):
     accepts a governed INSERT, read back through the same governed path."""
     _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f'CREATE TABLE provisa."{_SCHEMA}"."ap_created" (x INTEGER, label VARCHAR)'],
         fetch=False,
     )
@@ -436,13 +436,13 @@ def test_create_table_roundtrip_via_airport(airport_server_port):
     # the governed write pipeline into the physical table just created.
     _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f"""INSERT INTO provisa."{_SCHEMA}"."ap_created" (x, label) VALUES (7, 'seven')"""],
         fetch=False,
     )
     back = _run_sql(
         airport_server_port,
-        "platform_admin",
+        "org_admin",
         [f'SELECT x, label FROM provisa."{_SCHEMA}"."ap_created" ORDER BY x'],
     )
     assert len(back["rows"]) == 1, back
@@ -458,7 +458,7 @@ def test_transaction_create_and_status(airport_server_port):
     import pyarrow.flight as fl
 
     client = fl.connect(f"grpc://localhost:{airport_server_port}")
-    opts = fl.FlightCallOptions(headers=[(b"authorization", b"platform_admin")])
+    opts = fl.FlightCallOptions(headers=[(b"authorization", b"org_admin")])
 
     created = list(client.do_action(fl.Action("create_transaction", b""), opts))
     body = created[0].body.to_pybytes()
@@ -485,7 +485,7 @@ def test_column_statistics_refused_by_protocol_error(airport_server_port):
     import pyarrow.flight as fl
 
     client = fl.connect(f"grpc://localhost:{airport_server_port}")
-    opts = fl.FlightCallOptions(headers=[(b"authorization", b"platform_admin")])
+    opts = fl.FlightCallOptions(headers=[(b"authorization", b"org_admin")])
     with pytest.raises(fl.FlightError) as exc:
         list(client.do_action(fl.Action("column_statistics", b"\x80"), opts))
     assert "column_statistics" in str(exc.value) or "statistics" in str(exc.value).lower()

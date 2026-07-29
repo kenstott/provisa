@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from sqlglot.errors import SqlglotError
 
 from provisa.lineage.graph import build_column_graph
+from provisa.core.models import DERIVED_SOURCE_ID
 
 router = APIRouter()
 
@@ -140,7 +141,7 @@ async def _fetch_view_rows(state) -> list[dict]:
                 registered_tables.c.table_name,
                 registered_tables.c.view_sql,
             ).where(
-                registered_tables.c.source_id == "__provisa__",
+                registered_tables.c.source_id == DERIVED_SOURCE_ID,
                 registered_tables.c.view_sql.is_not(None),
             )
         )

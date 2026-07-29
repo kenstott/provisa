@@ -18,12 +18,22 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Role
 from provisa.core.schema_org import roles
+from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
 async def upsert(conn: "Connection", role: Role) -> None:  # REQ-042, REQ-059, REQ-060, REQ-1174
+    if role.id == PLATFORM_ADMIN_ROLE:
+        # REQ-1297: platform_admin's definition belongs to schema.sql alone — it is the control-plane
+        # role and holds no standing data capabilities. Config files and the roles admin surface used
+        # to be able to redefine it, and the shipped install config did exactly that: it re-granted
+        # source_registration/table_registration/query_development/approve_view and
+        # domain_access ['*'] over the seeded row in every org schema the config loaded into. Refusing
+        # the write here is what makes "platform_admin has no rights to tenant org data" hold for a
+        # deployment that loads a config, not just a bare one.
+        return
     await conn.upsert(
         roles,
         {

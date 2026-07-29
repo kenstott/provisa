@@ -48,6 +48,7 @@ from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES
 # `state`, `_META_TABLE_ALIAS`, `_META_TABLES` are bound in its namespace.
 from provisa.api.app import state  # noqa: E402
 from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES  # noqa: E402
+from provisa.core.models import DERIVED_SOURCE_ID
 
 # Views registered in the ops domain alongside the raw Iceberg tables.
 # Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
@@ -451,7 +452,7 @@ async def _init_control_planes(
 async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     pg_host: str, pg_port: int, pg_database: str, pg_user: str, org_id: str | None = None
 ) -> None:
-    """Seed provisa-admin, provisa-otel, and __provisa__ source rows; seed meta domain and ops; compute clusters.
+    """Seed provisa-admin, provisa-otel, and __derived__ source rows; seed meta domain and ops; compute clusters.
 
     The provisa-admin source is the control-plane self-catalog; its ``type``/``dialect`` follow the
     control plane's actual backend (``postgresql`` for PG, ``sqlite`` for the file-based demo).
@@ -518,7 +519,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         await _conn.upsert(
             _sources_t,
             {
-                "id": "__provisa__",
+                "id": DERIVED_SOURCE_ID,
                 "type": _engine_name,
                 "description": (
                     "Provisa-managed virtual views — cross-source SQL views defined and "

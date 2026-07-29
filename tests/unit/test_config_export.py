@@ -57,7 +57,7 @@ async def test_created_view_appears_in_tables():
     base = {"server": {"port": 8000}, "sources": [{"id": "pg", "password": "secret"}], "tables": []}
     view_row = {
         "id": 42,
-        "source_id": "__provisa__",
+        "source_id": "__derived__",
         "schema_name": "org_x_mv_cache",
         "table_name": "test",
         "view_sql": "SELECT * FROM pet_store.users",

@@ -113,8 +113,8 @@ class TestMaterializeStoreInfoResilience:
 
 class TestMaterializedViewIsQueryable:
     """Regression: a materialized view must ALSO populate view_sql_map so the query path can inline-
-    expand it live. Registering it ONLY as an MV left its raw source catalog (e.g. __provisa__) in the
-    compiled query → "Binder Error: Catalog __provisa__ does not exist" until a refresh landed."""
+    expand it live. Registering it ONLY as an MV left its raw source catalog (e.g. __derived__) in the
+    compiled query → "Binder Error: Catalog __derived__ does not exist" until a refresh landed."""
 
     async def test_config_materialized_view_populates_both_and_resolves_target(self):
         from provisa.api.app_loaders import _load_mv_and_views_config

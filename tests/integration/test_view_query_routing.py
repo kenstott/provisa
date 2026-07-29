@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-135 regression: querying a __provisa__ view through /data/sql must inline-expand the view and
+"""REQ-135 regression: querying a __derived__ view through /data/sql must inline-expand the view and
 route through the engine. Previously routing bound the view's virtual source to no native driver, fell
 back to a real source on the DIRECT route, and executed the un-expanded view ref → KeyError in the
 native pool (surfaced to the client as {"detail": "'<source-id>'"})."""
@@ -45,7 +45,7 @@ async def test_select_from_provisa_view_routes_through_engine(client):
             "query": """
                 mutation {
                     registerTable(input: {
-                        sourceId: "__provisa__",
+                        sourceId: "__derived__",
                         domainId: "vq",
                         schemaName: "views",
                         tableName: "vq_view",

@@ -9,9 +9,19 @@
 // permission from the copyright holder.
 
 import { clearPersistedAdminCache } from "../apolloClient";
+import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "./domainFilterKeys";
 
 /** localStorage keys that scope client state to ONE signed-in session. */
-export const SESSION_KEYS = ["provisa_token", "provisa_org", "provisa_role"] as const;
+export const SESSION_KEYS = [
+  "provisa_token",
+  "provisa_org",
+  "provisa_role",
+  // REQ-1297: the domain filter names domains of one org. Carried into a new session or a new org,
+  // a previously-unchecked domain stays unchecked (mergeCheckedDomains keeps `known`-but-not-
+  // `checked` off), which presented a correctly-provisioned org as one missing its meta/ops domains.
+  CHECKED_DOMAINS_KEY,
+  KNOWN_DOMAINS_KEY,
+] as const;
 
 /**
  * REQ-1326: drop every trace of the previous session's client state.

@@ -81,6 +81,17 @@ SYSTEM_ROLE_IDS: frozenset[str] = frozenset(
 )
 
 
+def is_tenant_org(org_id: str | None, root_org_id: str) -> bool:  # REQ-1297
+    """True when ``org_id`` names a TENANT org — any bound org other than the deployment's root.
+
+    platform_admin is ACTIVELY IGNORED in a tenant org: not merely un-granted, but stripped from the
+    resolved assignment set so nothing downstream — capability resolution, /auth/me, the acting role,
+    the UI's role picker — can see it there. The platform operator administers org lifecycle and
+    infrastructure; a tenant org's data is governed only by roles that org itself granted.
+    """
+    return org_id is not None and org_id != root_org_id
+
+
 def is_platform_admin(claims: Iterable[str]) -> bool:  # REQ-1297
     """True when any role claim (``role`` or ``role:domain``) or resolved capability names
     platform_admin — the single platform-bypass keyword, replacing the retired admin/superadmin

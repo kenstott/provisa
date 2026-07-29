@@ -24,6 +24,7 @@ import {
 import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { RegisteredTable, Source, LiveDeliveryConfig, LiveOutputConfig } from "../../types/admin";
+import { DERIVED_SOURCE_ID } from "../../types/admin";
 import type { PlatformSettings } from "../../api/admin";
 import { isWatermarkEligible } from "./helpers";
 
@@ -44,7 +45,7 @@ export function LiveDeliveryFieldset({
   const { t } = useTranslation();
   const src = sources.find((s) => s.id === editingTable.sourceId);
   const stype = (src?.type ?? "").toLowerCase();
-  const isEngineDerived = stype === "trino" || src?.id === "__provisa__";
+  const isEngineDerived = stype === "trino" || src?.id === DERIVED_SOURCE_ID;
   // Live Delivery is the OUTBOUND axis. The mechanism — repeat a push stream
   // vs. append/replace poll — is DERIVED from the effective Change Signal
   // (the inbound axis), never re-chosen here (REQ-932: change_signal subsumes

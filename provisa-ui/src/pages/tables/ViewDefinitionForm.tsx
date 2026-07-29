@@ -33,6 +33,7 @@ import { MultiSelect } from "../../components/MultiSelect";
 import { useMetrics } from "../../hooks/useAdminQueries";
 import { metricDimensionTables } from "../sql/sqlHelpers";
 import type { MutationResult, RegisteredTable, Relationship } from "../../types/admin";
+import { DERIVED_SOURCE_ID } from "../../types/admin";
 import { buildTableUpdateInput } from "./helpers";
 
 type DefinitionMode = "sql" | "metrics";
@@ -120,7 +121,7 @@ export function ViewDefinitionForm({
         });
       } else {
         result = await registerTable({
-          sourceId: "__provisa__",
+          sourceId: DERIVED_SOURCE_ID,
           domainId: domainId.trim(),
           schemaName: "views",
           tableName: name.trim(),

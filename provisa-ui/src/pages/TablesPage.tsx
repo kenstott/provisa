@@ -38,6 +38,7 @@ import {
   useAllRelationships,
 } from "../hooks/useAdminQueries";
 import type { RegisteredTable } from "../types/admin";
+import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
@@ -749,7 +750,17 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     }}
                     className="clickable"
                   >
-                    <Table.Td>{t.sourceId}</Table.Td>
+                    <Table.Td>
+                      {t.sourceId === DERIVED_SOURCE_ID ? (
+                        // A derived relation has no external source — its provenance is the
+                        // lineage of its definition, so never print the storage sentinel.
+                        <Badge size="xs" variant="light" color="gray" data-testid={`tables-derived-${t.tableName}`}>
+                          {translate("tablesPage.derived")}
+                        </Badge>
+                      ) : (
+                        t.sourceId
+                      )}
+                    </Table.Td>
                     {domainsEnabled && (
                       <Table.Td>{t.domainId ? normalizeDomain(t.domainId) : ""}</Table.Td>
                     )}

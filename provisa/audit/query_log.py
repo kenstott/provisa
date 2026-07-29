@@ -68,11 +68,17 @@ async def init_audit_schema(pool: "Database", org_id: str = "default") -> None: 
         return
     schema_name = f"org_{org_id}"
     async with pool.acquire() as conn:
-        await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
-        await conn.execute(f"SET search_path TO {schema_name}")
-        # multi-statement script (CREATE TABLE + DO $$ RULEs + indexes); raw
-        # asyncpg runs it natively, the Database shim auto-routes to the driver.
-        await conn.execute(AUDIT_SCHEMA_SQL)
+        # Same advisory lock id as init_schema (provisa/core/db.py) — both bootstrap relations into
+        # org_<id>, and two callers can run them concurrently for one org (provision_org runs
+        # outside the org registry's per-org lock, so a request that lazily builds the same org's
+        # runtime overlaps it). CREATE TABLE IF NOT EXISTS is NOT race-safe in PostgreSQL: two
+        # transactions both pass the catalog check and the loser raises DuplicateTable. Serialize.
+        async with conn.advisory_lock(7337):
+            await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+            await conn.execute(f"SET search_path TO {schema_name}")
+            # multi-statement script (CREATE TABLE + DO $$ RULEs + indexes); raw
+            # asyncpg runs it natively, the Database shim auto-routes to the driver.
+            await conn.execute(AUDIT_SCHEMA_SQL)
 
 
 async def log_query(  # REQ-074, REQ-689

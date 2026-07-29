@@ -240,7 +240,7 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     expect(registerTable).toHaveBeenCalledTimes(1);
     const input = registerTable.mock.calls[0][0] as Record<string, unknown>;
     expect(input).toMatchObject({
-      sourceId: "__provisa__",
+      sourceId: "__derived__",
       domainId: "sales",
       schemaName: "views",
       tableName: "rev_by_region",
@@ -265,7 +265,7 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     renderForm(
       makeTable({
         id: 9,
-        sourceId: "__provisa__",
+        sourceId: "__derived__",
         schemaName: "views",
         tableName: "rev_by_region",
         viewSql: "SELECT ...generated...",
@@ -283,7 +283,7 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     renderForm(
       makeTable({
         id: 9,
-        sourceId: "__provisa__",
+        sourceId: "__derived__",
         schemaName: "views",
         tableName: "freehand_view",
         viewSql: "SELECT 1",
@@ -300,7 +300,7 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     const { onSuccess } = renderForm(
       makeTable({
         id: 9,
-        sourceId: "__provisa__",
+        sourceId: "__derived__",
         schemaName: "views",
         tableName: "rev_by_region",
         viewSql: "SELECT ...generated...",

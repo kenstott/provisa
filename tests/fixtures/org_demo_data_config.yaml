@@ -36,14 +36,14 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [platform_admin, org_admin, analyst]
+        visible_to: [org_admin, analyst]
       - name: amount
-        visible_to: [platform_admin, org_admin, analyst]
+        visible_to: [org_admin, analyst]
 
 roles:
-  - id: platform_admin
-    capabilities: [query_development, admin]
-    domain_access: ["*"]
+  # REQ-1297: platform_admin is absent by design. schema.sql seeds it with the control-plane bypass
+  # and nothing else, role_repo.upsert refuses any config redefinition of that row, and it names no
+  # column grant in any org. The data-plane administrator of this org is org_admin.
   - id: org_admin
     capabilities:
       - source_registration

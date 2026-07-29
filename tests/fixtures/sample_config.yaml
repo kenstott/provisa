@@ -30,17 +30,17 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
       - name: customer_id
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
       - name: amount
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
       - name: region
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
       - name: status
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
       - name: created_at
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
   - source_id: sales-pg
     domain_id: sales-analytics
     schema: public
@@ -48,13 +48,13 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
       - name: name
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
       - name: email
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
       - name: region
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
   - source_id: sales-pg
     domain_id: product-catalog
     schema: public
@@ -62,13 +62,13 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
       - name: name
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
       - name: price
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
       - name: category
-        visible_to: [platform_admin, analyst]
+        visible_to: [org_admin, analyst]
 
 relationships:
   - id: orders-to-customers
@@ -79,15 +79,27 @@ relationships:
     cardinality: many-to-one
 
 roles:
-  - id: platform_admin
+  # REQ-1297: org_admin is the DATA-plane administrator of one org. Its capability list mirrors the
+  # provisa/core/schema.sql seed and deliberately excludes the platform-bypass 'admin'/'superadmin'
+  # capabilities: those belong to platform_admin alone, which in turn holds no data capability in any
+  # org. A fixture that granted 'admin' here would give this role the wildcard the design withholds.
+  - id: org_admin
     capabilities:
       - source_registration
       - table_registration
       - create_relationship
-      - access_config
-      - query_development
+      - create_view
       - approve_view
-      - admin
+      - approve_relationship
+      - access_config
+      - user_management
+      - masking_config
+      - column_grant
+      - view_governance
+      - query_development
+      - full_results
+      - write
+      - usage
     domain_access: ["*"]
   - id: analyst
     capabilities:
@@ -139,7 +151,7 @@ functions:
         columns:
           - {name: id, type: integer}
           - {name: region, type: text}
-    visible_to: [platform_admin]
+    visible_to: [org_admin]
     output_columns:
       - {name: id, type: integer}
       - {name: score, type: double}

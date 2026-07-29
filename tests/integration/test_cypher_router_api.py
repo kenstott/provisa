@@ -144,7 +144,7 @@ class TestGraphSchema:
         assert "product-catalog" not in domain_ids
 
     async def test_schema_admin_sees_all_domains(self, client):
-        schema = await _schema(client, headers={"X-Provisa-Role": "platform_admin"})
+        schema = await _schema(client, headers={"X-Provisa-Role": "org_admin"})
         domain_ids = {n["domain_id"] for n in schema["node_labels"]}
         assert "sales-analytics" in domain_ids
         assert "product-catalog" in domain_ids
@@ -298,7 +298,7 @@ class TestCypherDomainScoping:
     async def test_analyst_cannot_query_product_catalog_label(self, client):
         """analyst's domain_access is restricted to sales-analytics; a Products query
         (product-catalog domain) must not be answered as an admin-visible node."""
-        schema = await _schema(client, headers={"X-Provisa-Role": "platform_admin"})
+        schema = await _schema(client, headers={"X-Provisa-Role": "org_admin"})
         products = _label_for_domain(schema, "product-catalog")
         resp = await _cypher(
             client,
@@ -310,12 +310,12 @@ class TestCypherDomainScoping:
         assert resp.status_code in (400, 403), resp.text
 
     async def test_admin_can_query_product_catalog_label(self, client):
-        schema = await _schema(client, headers={"X-Provisa-Role": "platform_admin"})
+        schema = await _schema(client, headers={"X-Provisa-Role": "org_admin"})
         products = _label_for_domain(schema, "product-catalog")
         resp = await _cypher(
             client,
             f"MATCH (n:{products['label']}) RETURN n LIMIT 1",
-            headers={"X-Provisa-Role": "platform_admin"},
+            headers={"X-Provisa-Role": "org_admin"},
         )
         assert resp.status_code == 200, resp.text
 

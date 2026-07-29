@@ -60,9 +60,9 @@ class TestOwnershipConflict:
         assert msg is not None
 
     async def test_virtual_provisa_views_exempt(self):
-        # __provisa__ is a shared virtual source — many domains hold views there.
+        # __derived__ is a shared virtual source — many domains hold views there.
         conn = _Conn(_rows(("sales", "revenue")))
-        assert await _dataset_ownership_conflict(conn, "__provisa__", "revenue", "finance") is None
+        assert await _dataset_ownership_conflict(conn, "__derived__", "revenue", "finance") is None
 
     async def test_different_source_no_conflict(self):
         # The query is scoped to source_id; a same-named table on another source is

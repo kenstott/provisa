@@ -83,10 +83,10 @@ async def sql_client():
     ctx = _make_ctx("orders", table_id=1)
     rls = RLSContext.empty()
 
-    app_mod.state.schemas = {"platform_admin": MagicMock()}
-    app_mod.state.contexts = {"platform_admin": ctx}
-    app_mod.state.rls_contexts = {"platform_admin": rls}
-    app_mod.state.roles = {"platform_admin": {"id": "platform_admin", "capabilities": ["admin"]}}
+    app_mod.state.schemas = {"org_admin": MagicMock()}
+    app_mod.state.contexts = {"org_admin": ctx}
+    app_mod.state.rls_contexts = {"org_admin": rls}
+    app_mod.state.roles = {"org_admin": {"id": "org_admin", "capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"]}}
     app_mod.state.masking_rules = {}
     app_mod.state.source_types = {"pg": "postgresql"}
     app_mod.state.source_dialects = {"pg": "postgres"}
@@ -133,16 +133,16 @@ class TestSqlEndpointCapability:
     async def test_no_query_development_capability_403(self, sql_client):
         import provisa.api.app as app_mod
 
-        app_mod.state.roles["platform_admin"] = {"id": "platform_admin", "capabilities": []}
+        app_mod.state.roles["org_admin"] = {"id": "org_admin", "capabilities": []}
         resp = await sql_client.post(
-            "/data/sql", json={"sql": "SELECT id FROM orders", "role": "platform_admin"}
+            "/data/sql", json={"sql": "SELECT id FROM orders", "role": "org_admin"}
         )
         assert resp.status_code == 403
 
     async def test_discovery_mode_bypasses_capability_check(self, sql_client):
         import provisa.api.app as app_mod
 
-        app_mod.state.roles["platform_admin"] = {"id": "platform_admin", "capabilities": []}
+        app_mod.state.roles["org_admin"] = {"id": "org_admin", "capabilities": []}
         fallback_result = _make_query_result(rows=[(1,)], column_names=["id"])
         with (
             patch(
@@ -157,7 +157,7 @@ class TestSqlEndpointCapability:
                 "/data/sql",
                 json={
                     "sql": "SELECT id FROM orders",
-                    "role": "platform_admin",
+                    "role": "org_admin",
                     "discovery_mode": True,
                 },
             )
@@ -172,7 +172,7 @@ class TestSqlEndpointNoSchema:
         # state.roles (passes the middleware) but absent from state.schemas.
         import provisa.api.app as app_mod
 
-        app_mod.state.roles["schemaless"] = {"id": "schemaless", "capabilities": ["admin"]}
+        app_mod.state.roles["schemaless"] = {"id": "schemaless", "capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"]}
         try:
             resp = await sql_client.post(
                 "/data/sql",
@@ -199,7 +199,7 @@ class TestSqlEndpointStatsAndFormat:
         ):
             resp = await sql_client.post(
                 "/data/sql",
-                json={"sql": "SELECT id FROM orders", "role": "platform_admin"},
+                json={"sql": "SELECT id FROM orders", "role": "org_admin"},
                 headers={"accept": "application/json", "x-provisa-stats": "true"},
             )
         assert resp.status_code == 200
@@ -218,7 +218,7 @@ class TestSqlEndpointStatsAndFormat:
             ),
         ):
             resp = await sql_client.post(
-                "/data/sql", json={"sql": "SELECT id FROM orders", "role": "platform_admin"}
+                "/data/sql", json={"sql": "SELECT id FROM orders", "role": "org_admin"}
             )
         assert resp.status_code == 200
         assert resp.json() == {"data": {"sql": [{"id": 1}]}}
@@ -236,7 +236,7 @@ class TestSqlEndpointStatsAndFormat:
         ):
             resp = await sql_client.post(
                 "/data/sql",
-                json={"sql": "SELECT id FROM orders", "role": "platform_admin"},
+                json={"sql": "SELECT id FROM orders", "role": "org_admin"},
                 headers={"accept": "text/csv"},
             )
         assert resp.status_code == 200
@@ -245,8 +245,8 @@ class TestSqlEndpointStatsAndFormat:
 
 class TestSqlEndpointRoleResolution:
     async def test_x_provisa_role_header_overrides_body_role(self, sql_client):
-        # Body role "ghost" doesn't exist; header "platform_admin" does — header should win. Mock execution
-        # (the engine terminal) so the query resolves for platform_admin instead of hitting the fake pool — the
+        # Body role "ghost" doesn't exist; header "org_admin" does — header should win. Mock execution
+        # (the engine terminal) so the query resolves for org_admin instead of hitting the fake pool — the
         # point is role RESOLUTION, not the engine result.
         result = _make_query_result(rows=[(1,)], column_names=["id"])
         with (
@@ -256,7 +256,7 @@ class TestSqlEndpointRoleResolution:
             resp = await sql_client.post(
                 "/data/sql",
                 json={"sql": "SELECT id FROM orders", "role": "ghost"},
-                headers={"x-provisa-role": "platform_admin"},
+                headers={"x-provisa-role": "org_admin"},
             )
         # Not the 400 "No schema for role 'ghost'" — proves header took precedence.
         assert resp.status_code != 400 or "ghost" not in resp.text
@@ -269,14 +269,14 @@ class TestSqlEndpointRoleResolution:
 
 class TestProtoEndpoint:
     async def test_no_proto_file_404(self, sql_client):
-        resp = await sql_client.get("/data/proto/platform_admin")
+        resp = await sql_client.get("/data/proto/org_admin")
         assert resp.status_code == 404
 
     async def test_static_proto_file_returned(self, sql_client):
         import provisa.api.app as app_mod
 
-        app_mod.state.proto_files = {"platform_admin": 'syntax = "proto3";'}
-        resp = await sql_client.get("/data/proto/platform_admin")
+        app_mod.state.proto_files = {"org_admin": 'syntax = "proto3";'}
+        resp = await sql_client.get("/data/proto/org_admin")
         assert resp.status_code == 200
         assert "proto3" in resp.text
         app_mod.state.proto_files = {}
@@ -289,15 +289,15 @@ class TestProtoEndpoint:
         import provisa.api.app as app_mod
 
         app_mod.state.schema_build_cache = {}
-        resp = await sql_client.get("/data/proto/platform_admin?domains=pet_store")
+        resp = await sql_client.get("/data/proto/org_admin?domains=pet_store")
         assert resp.status_code == 503
 
     async def test_domains_generates_filtered_proto(self, sql_client):
         import provisa.api.app as app_mod
 
-        app_mod.state.roles["platform_admin"] = {
-            "id": "platform_admin",
-            "capabilities": ["admin"],
+        app_mod.state.roles["org_admin"] = {
+            "id": "org_admin",
+            "capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"],
             "domain_access": [],
         }
         app_mod.state.schema_build_cache = {
@@ -320,7 +320,7 @@ class TestProtoEndpoint:
                 "provisa.grpc.proto_gen.generate_proto", return_value='syntax = "proto3";'
             ) as mock_gen,
         ):
-            resp = await sql_client.get("/data/proto/platform_admin?domains=pet_store")
+            resp = await sql_client.get("/data/proto/org_admin?domains=pet_store")
         assert resp.status_code == 200
         mock_gen.assert_called_once()
         app_mod.state.schema_build_cache = {}
@@ -328,9 +328,9 @@ class TestProtoEndpoint:
     async def test_domains_generate_proto_value_error_404(self, sql_client):
         import provisa.api.app as app_mod
 
-        app_mod.state.roles["platform_admin"] = {
-            "id": "platform_admin",
-            "capabilities": ["admin"],
+        app_mod.state.roles["org_admin"] = {
+            "id": "org_admin",
+            "capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"],
             "domain_access": [],
         }
         app_mod.state.schema_build_cache = {
@@ -352,7 +352,7 @@ class TestProtoEndpoint:
                 side_effect=ValueError("bad schema"),
             ),
         ):
-            resp = await sql_client.get("/data/proto/platform_admin?domains=pet_store")
+            resp = await sql_client.get("/data/proto/org_admin?domains=pet_store")
         assert resp.status_code == 404
         app_mod.state.schema_build_cache = {}
 
@@ -405,7 +405,7 @@ class TestCheckSqlCapabilities:
     def test_admin_capability_passes(self):
         from provisa.api.data.endpoint_dev import _check_sql_capabilities
 
-        _check_sql_capabilities({"capabilities": ["admin"]}, discovery_mode=False)  # no raise
+        _check_sql_capabilities({"capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"]}, discovery_mode=False)  # no raise
 
 
 class TestCheckQualifierBinding:

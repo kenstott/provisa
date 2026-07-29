@@ -652,22 +652,33 @@ ON CONFLICT (id) DO NOTHING;
 
 -- REQ-1297: platform_admin is the deployment-wide administrator and the fourth and last system
 -- template role. It is the role the bootstrap claim grants (REQ-1296) and the only one carrying the
--- platform-bypass capabilities 'admin' and 'superadmin' — every capability gate treats those as the
--- wildcard, so platform_admin needs no enumeration of the org-scoped capabilities beyond them.
+-- platform-bypass capabilities 'admin' and 'superadmin'.
+--
+-- Its capability list is those two and NOTHING else. The org-scoped data capabilities it used to
+-- enumerate (source_registration, table_registration, query_development, column_grant, write, …)
+-- made it a data-plane role in every org schema it was seeded into, which is the opposite of what it
+-- is for: the platform operator runs org lifecycle and infrastructure, and a tenant org's data is
+-- governed only by roles that org granted. Data-plane administration of an org — including root's —
+-- is org_admin's job. The middleware strips platform_admin from the resolved assignment set in any
+-- tenant org, so it is actively ignored there rather than merely un-granted.
+--
 -- Seeded here rather than synthesized in code so user_role_assignments.role_id has a real FK target
--- and state.roles["platform_admin"] resolves its capabilities like any other role.
+-- and state.roles["platform_admin"] resolves its capabilities like any other role. role_repo.upsert
+-- refuses to overwrite this row, so no config file or admin surface can re-grant the data caps.
 INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'platform_admin',
-    '["admin","superadmin","user_management","access_config","source_registration",
-      "table_registration","create_relationship","create_view","approve_view",
-      "approve_relationship","masking_config","column_grant","view_governance",
-      "query_development","full_results","write","usage","ad_hoc_query",
-      "read_restricted","ignore_relationships"]'::jsonb,
+    '["admin","superadmin"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- REQ-1297: a deployment seeded before the capability list was narrowed still holds the wide row
+-- (ON CONFLICT DO NOTHING leaves it alone), so correct it in place. V1 has no migrations; this is the
+-- seed asserting the system role's definition on every init_schema, the same way the retired-id
+-- rewrite below does.
+UPDATE roles SET capabilities = '["admin","superadmin"]'::jsonb WHERE id = 'platform_admin';
 
 -- REQ-1297: the role ids 'admin' and 'superadmin' are retired. Rewrite existing assignments naming
 -- them to platform_admin, then drop the rows, so nothing resolves them afterward. The rewrite runs

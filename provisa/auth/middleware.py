@@ -33,7 +33,12 @@ from provisa.core.schema_admin import (
     user_profiles,
 )
 from provisa.core.schema_org import user_role_assignments
-from provisa.security.rights import PLATFORM_ADMIN_ROLE, is_platform_admin as _is_platform_admin
+from provisa.security.rights import (
+    ORG_ADMIN_ROLE,
+    PLATFORM_ADMIN_ROLE,
+    is_platform_admin as _is_platform_admin,
+    is_tenant_org as _is_tenant_org,
+)
 
 # Requirements: REQ-120, REQ-125, REQ-273, REQ-1267
 
@@ -239,15 +244,18 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
 
         await self._ensure_resolved()
 
-        # No auth configured — backward compat: admin identity. REQ-273 caveat: when the
-        # server is unsecured, a client-supplied role IS honored (there is no auth to validate
-        # against), so X-Provisa-Role is taken at face value here; it defaults to admin.
-        # With no identity provider, the username IS the role (there is nothing else to name the
-        # caller by).
+        # No auth configured — dev mode. REQ-273 caveat: when the server is unsecured, a
+        # client-supplied role IS honored (there is no auth to validate against), so
+        # X-Provisa-Role is taken at face value here. REQ-1327: the default is org_admin —
+        # the DATA-plane administrator; platform_admin is control-plane only and a demo
+        # deployment need not even define it. The identity is the ANONYMOUS dev principal,
+        # which is what engages the documented dev-mode enforcement skip in
+        # require_capability — previously the admin UI only worked unsecured because the
+        # default role rode the platform bypass.
         if self._provider is None:
-            unsecured_role = request.headers.get("x-provisa-role") or PLATFORM_ADMIN_ROLE
+            unsecured_role = request.headers.get("x-provisa-role") or ORG_ADMIN_ROLE
             request.state.identity = AuthIdentity(
-                user_id=unsecured_role,
+                user_id="anonymous",
                 email=None,
                 display_name=unsecured_role,
                 roles=[unsecured_role],
@@ -469,7 +477,26 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             else:
                 assignments = platform_assignments
 
+            # REQ-1297: platform_admin is actively ignored in a tenant org. The role is seeded into
+            # every org schema (it is the FK target for the retired-id rewrite), so a tenant schema
+            # CAN hold an assignment naming it — granted by an org_admin through user_management, or
+            # carried in by a config load. Dropping it here, at the one place the acting assignment
+            # set is settled, is what makes it unresolvable in that org: no capabilities, no acting
+            # role, and /auth/me does not report it. Root keeps it (that is the control plane's org).
+            if _is_tenant_org(active_org_id, self._default_org_id):
+                assignments = [a for a in assignments if a.role_id != PLATFORM_ADMIN_ROLE]
+
         role = resolve_role(identity, self._mapping_rules, self._default_role)
+        if role == PLATFORM_ADMIN_ROLE and _is_tenant_org(active_org_id, self._default_org_id):
+            # The acting role must come from the assignment set the filter above left standing. A
+            # platform_admin default/mapping rule would otherwise reinstate as the acting role what
+            # the assignment filter just removed.
+            remaining = [a.role_id for a in assignments if a.role_id != PLATFORM_ADMIN_ROLE]
+            if not remaining:
+                return _deny(
+                    request, 403, f"platform_admin confers no rights in org {active_org_id!r}"
+                )
+            role = remaining[0]
 
         # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
         # honors it only when the authenticated user is actually assigned that role — a bare

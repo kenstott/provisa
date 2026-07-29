@@ -20,6 +20,7 @@ from sqlalchemy import select
 
 from provisa.api.app import state
 from provisa.core.schema_org import registered_tables
+from provisa.core.models import DERIVED_SOURCE_ID
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection  # noqa: F401
@@ -63,10 +64,10 @@ async def profile_table(
     table_name: str = m["table_name"]
     view_sql: str | None = m["view_sql"]
 
-    # __provisa__ view SQL is semantic (domain.field refs) and must be compiled,
+    # __derived__ view SQL is semantic (domain.field refs) and must be compiled,
     # governed, and routed exactly like an interactive /data/sql query — handing it
     # raw to the federation engine fails to resolve domain refs (REQ-452).
-    if source_id == "__provisa__" and view_sql:
+    if source_id == DERIVED_SOURCE_ID and view_sql:
         # ONE pipeline: sample the view through the single governed chokepoint, exactly like /data/sql.
         from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
@@ -79,7 +80,7 @@ async def profile_table(
         return {"columns": res.column_names, "rows": rows, "rowCount": len(rows)}
 
     view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
-    catalog = view_catalog if source_id == "__provisa__" else state.catalog_for(source_id)
+    catalog = view_catalog if source_id == DERIVED_SOURCE_ID else state.catalog_for(source_id)
     fqn = f'"{catalog}"."{schema_name}"."{table_name}"'
     # Try TABLESAMPLE first; fall back to plain LIMIT if unsupported
     sql = f"SELECT * FROM {fqn} TABLESAMPLE BERNOULLI ({_TABLESAMPLE_PCT}) LIMIT {_SAMPLE_LIMIT}"

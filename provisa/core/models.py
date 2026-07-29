@@ -33,6 +33,13 @@ from provisa.core.source_registry import (
 )
 
 
+# The sentinel source id for DERIVED relations — defined by their declaration (view_sql,
+# entity/fact lowering, metric-composed views), not scanned from an external system. Their
+# provenance is the lineage of the definition, not a connector. SQL-standard vocabulary
+# ("derived table"); pairs with base relations the way Denodo base/derived views do.
+DERIVED_SOURCE_ID = "__derived__"
+
+
 class SourceType(str, Enum):
     # RDBMS
     postgresql = "postgresql"

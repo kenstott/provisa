@@ -24,7 +24,7 @@ from sqlalchemy import delete as _delete
 from sqlalchemy import insert, or_, select, update
 from sqlalchemy import table as _sa_table
 
-from provisa.core.models import ControlPlaneConfig, Domain, ProvisaConfig, Source, Table
+from provisa.core.models import DERIVED_SOURCE_ID, ControlPlaneConfig, Domain, ProvisaConfig, Source, Table
 from provisa.core import domain_policy
 from provisa.core.schema_org import (
     api_endpoints,
@@ -212,7 +212,7 @@ def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
     return ProvisaConfig.model_validate(resolve_secrets_in_dict(data))
 
 
-_SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", "__provisa__"]
+_SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", DERIVED_SOURCE_ID]
 
 _OAPI_PHYSICAL = {
     "string": "varchar",

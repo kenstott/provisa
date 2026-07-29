@@ -202,7 +202,7 @@ async def test_register_view_metrics_generates_and_persists_view_sql(tmp_path):
             assert "GROUP BY" in sql
 
             model = Table(
-                source_id="__provisa__",
+                source_id="__derived__",
                 domain_id="sales",
                 schema_name="views",
                 table_name="revenue_by_region",
@@ -212,7 +212,7 @@ async def test_register_view_metrics_generates_and_persists_view_sql(tmp_path):
             model.view_sql = sql  # register_table generates then persists (REQ-1318)
             await table_repo.upsert(conn, model)
 
-            row = await table_repo.get_by_name(conn, "__provisa__", "views", "revenue_by_region")
+            row = await table_repo.get_by_name(conn, "__derived__", "views", "revenue_by_region")
             assert row is not None
             assert row["view_sql"] == sql
             assert row["view_metrics"] == spec.model_dump()
@@ -224,7 +224,7 @@ async def test_view_sql_and_view_metrics_together_is_hard_error():
     from provisa.api.admin.types import TableInput, ViewMetricsInput
 
     inp = TableInput(
-        source_id="__provisa__",
+        source_id="__derived__",
         domain_id="sales",
         schema_name="views",
         table_name="conflicted",
@@ -248,7 +248,7 @@ async def test_metric_upsert_regenerates_dependent_view_sql(tmp_path):
             await _seed_semantic_layer(conn)
             spec = ViewMetricsSpec(metrics=["net_revenue"], dimensions=["region"])
             model = Table(
-                source_id="__provisa__",
+                source_id="__derived__",
                 domain_id="sales",
                 schema_name="views",
                 table_name="revenue_by_region",
@@ -268,7 +268,7 @@ async def test_metric_upsert_regenerates_dependent_view_sql(tmp_path):
             )
             assert await regenerate_metric_views(conn, "net_revenue") == ["revenue_by_region"]
 
-            row = await table_repo.get_by_name(conn, "__provisa__", "views", "revenue_by_region")
+            row = await table_repo.get_by_name(conn, "__derived__", "views", "revenue_by_region")
             assert row is not None
             assert "SUM(orders.amount) AS net_revenue" in row["view_sql"]
             assert "refunds" not in row["view_sql"]

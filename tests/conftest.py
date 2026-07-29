@@ -407,6 +407,18 @@ class _DockerServiceManager:
         # worktree-agnostically via the git common dir.
         _populate_trino_plugins()
 
+        # Every run reserves FRESH ephemeral host ports (_export_isolated_ports), so a stack
+        # left over from an earlier run publishes the wrong ports and is useless. `up` would
+        # then RECREATE each container in place, and compose's --wait races the recreate: it
+        # watches the container it saw at plan time, sees the SIGTERM exit of the old one, and
+        # fails the whole bring-up ("dependency failed to start: ... exited (143)"). Tear the
+        # stale project down first so `up` always starts from nothing.
+        subprocess.run(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes", "--remove-orphans"],
+            cwd=_REPO_ROOT,
+            check=False,
+        )
+
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
         # exported at import time, its own network — the dev stack is never touched.
         subprocess.run(

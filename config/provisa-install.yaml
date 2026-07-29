@@ -1,10 +1,10 @@
 auth:
   assignments_source: provisa
   default_assignments:
+  # REQ-1297: org_admin only. platform_admin is control-plane and confers no data rights, so a
+  # default assignment naming it grants nothing and would only surface it as a selectable role.
   - domain_id: '*'
     role_id: org_admin
-  - domain_id: '*'
-    role_id: platform_admin
   provider: none
 cache:
   default_ttl: 300
@@ -148,9 +148,9 @@ relationships:
   cardinality: many-to-one
   id: fact_pet_inquiries__pet_id
   source_column: pet_id
-  source_table_id: factPetInquiries
+  source_table_id: fact_pet_inquiries
   target_column: id
-  target_table_id: dimPet
+  target_table_id: dim_pet
 - alias: DETAIL
   cardinality: many-to-one
   id: find-pets-by-status-to-get-pet-by-id
@@ -268,17 +268,8 @@ roles:
   domain_access:
   - '*'
   id: org_admin
-- capabilities:
-  - source_registration
-  - table_registration
-  - create_relationship
-  - access_config
-  - query_development
-  - approve_view
-  - admin
-  domain_access:
-  - '*'
-  id: platform_admin
+# REQ-1297: platform_admin is deliberately absent — seeded by schema.sql with only the control-plane
+# bypass capabilities, and role_repo.upsert refuses any redefinition of it.
 server:
   limits:
     default_row_limit: 100
@@ -480,8 +471,7 @@ tables:
   schema: graphql
   source_id: graphql-demo
   table: assignmentsByEmployee
-- alias: dimPet
-  columns:
+- columns:
   - name: available
     visible_to:
     - org_admin
@@ -512,7 +502,7 @@ tables:
   materialize: true
   modeling_role: dimension
   schema: views
-  source_id: __provisa__
+  source_id: __derived__
   table: dim_pet
   view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM
     "pet_store"."pets"
@@ -613,8 +603,7 @@ tables:
   schema: graphql
   source_id: graphql-demo
   table: employees
-- alias: factPetInquiries
-  columns:
+- columns:
   - name: id
     visible_to:
     - org_admin
@@ -629,7 +618,7 @@ tables:
   materialize: true
   modeling_role: fact
   schema: views
-  source_id: __provisa__
+  source_id: __derived__
   table: fact_pet_inquiries
   view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "default"."inquiries" GROUP
     BY "pet_id"

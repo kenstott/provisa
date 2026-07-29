@@ -28,6 +28,7 @@ import {
   useUpdateTable,
 } from "../hooks/useAdminQueries";
 import type { RegisteredTable } from "../types/admin";
+import { DERIVED_SOURCE_ID } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 import {
   PAGE_SIZE,
@@ -626,7 +627,7 @@ export function SqlPage() {
         maskPrecision: c.maskPrecision || undefined,
       }));
       const result = await registerTable({
-        sourceId: "__provisa__",
+        sourceId: DERIVED_SOURCE_ID,
         domainId: viewDomainId.trim(),
         schemaName: "views",
         tableName: viewId.trim(),

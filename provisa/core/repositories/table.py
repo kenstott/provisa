@@ -19,9 +19,22 @@ from sqlalchemy import delete as _delete, select
 from provisa.core import domain_policy
 from provisa.core.models import Table
 from provisa.core.schema_org import registered_tables, table_columns
+from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+
+
+def _ungrant_platform_admin(role_ids: list[str] | None) -> list[str]:
+    """REQ-1297: platform_admin can never appear in a column grant.
+
+    This is the single write path for ``table_columns``, so every registration source — config load,
+    admin GraphQL, introspection, view creation, the modeling registrar — passes through here. The
+    shipped install config named platform_admin in every column's ``visible_to``, which is what put
+    it on the column chips of a tenant org's tables. A column grant is a data-plane right;
+    platform_admin is control-plane only and holds none.
+    """
+    return [r for r in (role_ids or []) if r != PLATFORM_ADMIN_ROLE]
 
 _COLUMN_PROJECTION = [
     table_columns.c.column_name,
@@ -175,9 +188,9 @@ async def upsert(
             table_columns.insert().values(
                 table_id=table_id,
                 column_name=col.name,
-                visible_to=col.visible_to,
-                writable_by=getattr(col, "writable_by", []),
-                unmasked_to=getattr(col, "unmasked_to", []),
+                visible_to=_ungrant_platform_admin(col.visible_to),
+                writable_by=_ungrant_platform_admin(getattr(col, "writable_by", [])),
+                unmasked_to=_ungrant_platform_admin(getattr(col, "unmasked_to", [])),
                 mask_type=getattr(col, "mask_type", None),
                 mask_pattern=getattr(col, "mask_pattern", None),
                 mask_replace=getattr(col, "mask_replace", None),

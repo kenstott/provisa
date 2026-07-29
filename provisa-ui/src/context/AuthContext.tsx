@@ -14,11 +14,16 @@ import type { ReactNode } from "react";
 import type { Capability, Role, RoleAssignment, AuthState, OrgMembership } from "../types/auth";
 import { AuthMeError, fetchMe } from "../api/admin";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
+import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys";
 
-// REQ-1297: dev/no-auth mirrors what the server grants an unsecured caller — the platform_admin
-// role, the only one carrying the bypass capabilities.
+// REQ-1297: dev/no-auth mirrors what the server grants an unsecured caller, and that is now
+// org_admin — the DATA-plane administrator — not platform_admin. The no-auth configs' single
+// default assignment is org_admin (config/provisa.yaml, config/provisa-install.yaml), and the
+// middleware honours X-Provisa-Role only for roles the caller is actually assigned, so claiming
+// platform_admin here would 403 every request. platform_admin carries only the control-plane bypass:
+// it grants no capability the data surfaces gate on and names no column grant.
 const DEFAULT_ADMIN_ROLE: Role = {
-  id: "platform_admin",
+  id: "org_admin",
   capabilities: [
     "source_registration",
     "table_registration",
@@ -26,17 +31,17 @@ const DEFAULT_ADMIN_ROLE: Role = {
     "access_config",
     "query_development",
     "approve_view",
-    "full_results",
-    "admin",
-    "usage",
-    "read_restricted",
     "approve_relationship",
     "create_view",
     "column_grant",
     "user_management",
     "masking_config",
-    "superadmin",
-    "platform_admin",
+    "view_governance",
+    "full_results",
+    "usage",
+    "read_restricted",
+    "ad_hoc_query",
+    "write",
   ] as Capability[],
   domain_access: ["*"],
 };
@@ -200,7 +205,7 @@ export function AuthProvider({
       if (allRoles.length === 0) {
         if (isDev) {
           allRoles = [DEFAULT_ADMIN_ROLE];
-          userAssignments = [{ role_id: "platform_admin", domain_id: "*" }];
+          userAssignments = [{ role_id: "org_admin", domain_id: "*" }];
         } else if (rolesError) {
           setError(`Could not load roles: ${rolesError}`);
         } else if (userAssignments.length > 0) {
@@ -286,6 +291,12 @@ export function AuthProvider({
 
   function selectOrg(orgId: string | null) {
     setSelectedOrg(orgId);
+    // REQ-1297: the persisted domain filter belongs to the org being left. Its domain ids are that
+    // org's, and a domain it had unchecked would stay unchecked in the org being entered — the
+    // reported "the new org has no meta or ops domain" with both present server-side. Drop it so the
+    // incoming org's domains all start checked.
+    localStorage.removeItem(CHECKED_DOMAINS_KEY);
+    localStorage.removeItem(KNOWN_DOMAINS_KEY);
     if (orgId) localStorage.setItem("provisa_org", orgId);
     else localStorage.removeItem("provisa_org");
   }

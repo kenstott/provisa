@@ -43,6 +43,7 @@ import { SchemaDiscovery } from "../components/SchemaDiscovery";
 import { TableMappingBuilder } from "../components/TableMappingBuilder";
 import type { TableMapping } from "../components/TableMappingBuilder";
 import type { Source } from "../types/admin";
+import { DERIVED_SOURCE_ID } from "../types/admin";
 import { cdcTransportApplicable, sourceChangeSignals } from "../liveCapability";
 import {
   CATEGORIES,
@@ -842,7 +843,7 @@ export function SourcesPage() {
           <Table.Tbody>
             {(() => {
               const filtered = sources.filter((s) => {
-                if (["__provisa__", "provisa-admin", "provisa-otel"].includes(s.id)) return false;
+                if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
                 if (!sourceSearch.trim()) return true;
                 const q = sourceSearch.toLowerCase();
                 return (
@@ -1014,7 +1015,7 @@ export function SourcesPage() {
 
       {(() => {
         const filtered = sources.filter((s) => {
-          if (["__provisa__", "provisa-admin", "provisa-otel"].includes(s.id)) return false;
+          if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
           if (!sourceSearch.trim()) return true;
           const q = sourceSearch.toLowerCase();
           return (

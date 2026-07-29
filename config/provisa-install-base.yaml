@@ -24,50 +24,37 @@ tables:
   - name: id
     data_type: integer
     visible_to:
-    - platform_admin
     - analyst
     - org_admin
   - name: name
     data_type: varchar(100)
     visible_to:
-    - platform_admin
     - analyst
     - org_admin
   - name: species
     data_type: varchar(50)
     visible_to:
-    - platform_admin
     - analyst
     - org_admin
   - name: breed_name
     data_type: varchar(100)
     visible_to:
-    - platform_admin
     - analyst
     - org_admin
   - name: price
     data_type: decimal(10,2)
     visible_to:
-    - platform_admin
     - org_admin
   - name: available
     data_type: boolean
     visible_to:
-    - platform_admin
     - analyst
     - org_admin
 roles:
-- id: platform_admin
-  capabilities:
-  - source_registration
-  - table_registration
-  - create_relationship
-  - access_config
-  - query_development
-  - approve_view
-  - admin
-  domain_access:
-  - '*'
+# REQ-1297: platform_admin is deliberately absent. schema.sql seeds it with exactly
+# ['admin','superadmin'] — control-plane bypass only — and role_repo.upsert refuses to overwrite that
+# row. It holds no data capabilities, appears in no column grant, and is stripped from the resolved
+# assignment set in every tenant org.
 # org_admin: full administrative power WITHIN a single org, deliberately WITHOUT the global
 # 'admin'/'superadmin' capability (which bypass every capability + org check). Isolation comes from
 # active-org + membership confinement (middleware), so a tenant's first admin administers only its org.

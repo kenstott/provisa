@@ -151,7 +151,7 @@ class TestMutations:
 
 
 class TestViewRegistrationRefreshPolicy:
-    """REQ-1143 regression: a __provisa__ virtual view persists its source `type` as the federation
+    """REQ-1143 regression: a __derived__ virtual view persists its source `type` as the federation
     engine name (e.g. "trino"), which is not a SourceType. Resolving refreshPolicySummary over that
     row must NOT raise — a raise becomes a GraphQL error that (under the UI's Apollo errorPolicy=none)
     discards the whole `tables` payload, blanking the schema sidebar and Views list."""
@@ -173,14 +173,14 @@ class TestViewRegistrationRefreshPolicy:
         assert resp.status_code == 200
         assert resp.json()["data"]["createDomain"]["success"]
 
-        # Register a virtual view (source_id __provisa__) with explicit columns (no introspection).
+        # Register a virtual view (source_id __derived__) with explicit columns (no introspection).
         resp = await client.post(
             "/admin/graphql",
             json={
                 "query": """
                     mutation {
                         registerTable(input: {
-                            sourceId: "__provisa__",
+                            sourceId: "__derived__",
                             domainId: "view-reg-domain",
                             schemaName: "views",
                             tableName: "reg_test_view",
@@ -219,5 +219,5 @@ class TestViewRegistrationRefreshPolicy:
         tables = body["data"]["tables"]
         view = next((t for t in tables if t["tableName"] == "reg_test_view"), None)
         assert view is not None, "registered view missing from tables query"
-        assert view["sourceId"] == "__provisa__"
+        assert view["sourceId"] == "__derived__"
         assert view["refreshPolicySummary"] is None

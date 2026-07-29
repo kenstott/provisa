@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import select, update
 
+from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.schema_org import registered_tables, sources, table_meta_links
 from provisa.api.admin.types import MutationResult, TableInput
 from provisa.api.admin.schema_helpers import (
@@ -169,15 +170,17 @@ async def register_table(
         return _col_err
     alias = input.alias or None
     if not alias:
+        # REQ-471: the registered virtual name is a SQL-plane identifier, so the SQL naming
+        # convention is its authority. The GraphQL surface applies gql conventions at schema
+        # generation — it never mints the SQL name (deriving the alias from a source's
+        # gql_naming_convention put camelCase into the SQL plane, e.g. dim_pet -> dimPet).
+        from provisa.api.app import state as _app_state
         from provisa.compiler.naming import apply_convention
 
-        async with pool.acquire() as conn:
-            _sres = await conn.execute_core(
-                select(sources.c.gql_naming_convention).where(sources.c.id == input.source_id)
-            )
-            src = _sres.fetchone()
-        convention = (src.gql_naming_convention if src else None) or "apollo_graphql"
-        alias = apply_convention(input.table_name, convention)
+        _sql_name = apply_convention(
+            input.table_name, getattr(_app_state, "global_sql_naming_convention", "snake")
+        )
+        alias = None if _sql_name == input.table_name else _sql_name
 
     from provisa.core.models import ColumnPreset as ColumnPresetModel
 
@@ -225,13 +228,13 @@ async def register_table(
         )
         if _owner_conflict:
             return MutationResult(success=False, message=_owner_conflict)
-        if input.source_id == "__provisa__":
+        if input.source_id == DERIVED_SOURCE_ID:
             from provisa.api.app import state
 
             await _conn.upsert(
                 sources,
                 {
-                    "id": "__provisa__",
+                    "id": DERIVED_SOURCE_ID,
                     "type": state.federation_engine.name,
                     "description": "Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products",
                 },
@@ -362,10 +365,10 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
         row = _res.fetchone()
     if not row:
         return MutationResult(success=False, message=f"Table {table_id} not found")
-    if row.source_id != "__provisa__":
+    if row.source_id != DERIVED_SOURCE_ID:
         return MutationResult(
             success=False,
-            message="Table is not a virtual Provisa view (source_id != '__provisa__')",
+            message="Table is not a virtual Provisa view (source_id != '__derived__')",
         )
     if not row.view_sql:
         return MutationResult(success=False, message="Table has no view_sql")
@@ -388,7 +391,7 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
             .select_from(
                 registered_tables.join(sources, sources.c.id == registered_tables.c.source_id)
             )
-            .where(registered_tables.c.source_id != "__provisa__")
+            .where(registered_tables.c.source_id != DERIVED_SOURCE_ID)
         )
         all_tables = [dict(r._mapping) for r in _ares.fetchall()]
 

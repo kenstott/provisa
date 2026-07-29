@@ -8,6 +8,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import { fetchSettings } from "../api/admin";
+import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys";
 
 interface DomainFilterContextValue {
   domains: string[];
@@ -59,9 +60,6 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
       .then((s) => setDomainsEnabled(s.naming.use_domains !== false))
       .catch(() => {});
   }, []);
-
-  const CHECKED_DOMAINS_KEY = "provisa.checkedDomains";
-  const KNOWN_DOMAINS_KEY = "provisa.knownDomains";
 
   // Restore the persisted checked set, but default any domain that has appeared since the last
   // visit (e.g. a just-created view's domain) to CHECKED — otherwise a new domain, absent from the

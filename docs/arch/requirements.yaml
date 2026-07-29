@@ -40043,3 +40043,115 @@
     the separation correctly. REQ-1327 documents the full refined constraint: capability-set changes (no admin/superadmin
     data wildcards), bootstrap dual-role grant, visible_to lists never naming platform_admin, role non-merging in
     single-tenant. Invite-escalation validation must ensure platform-level invites never resolve to org_admin (REQ-1298 area).
+- id: REQ-471
+  status: complete
+  since: 2026-07
+  group: 5. Query Languages, Compilation & Operations
+  category: Compiler & Schema
+  priority: MUST
+  type: constraint
+  description: >-
+    A registered table's virtual name (alias) is a SQL-plane identifier whose sole authority is the SQL naming convention
+    (global_sql_naming_convention, default snake_case). The GraphQL surface applies gql naming conventions at schema generation
+    and never mints the SQL name. Defect fixed 2026-07-29: register_table previously derived the default alias from the source's
+    gql_naming_convention with apollo_graphql (camelCase) fallback, causing __provisa__ view/entity/fact registrations (no source)
+    to get camelCase SQL names (e.g., dim_pet → dimPet). Now derives from global_sql_naming_convention and collapses to NULL when
+    the normalized name equals table_name.
+  use_case: >-
+    Keeping SQL and GraphQL naming authorities separate ensures the SQL plane (federated query routing, native dialect emit)
+    operates on a stable snake_case schema, while the GraphQL surface applies naming conventions independently at schema-generation time.
+  code:
+  - provisa/api/admin/schema_mutation_ops.py
+  tests:
+  - tests/unit/test_naming.py
+  - tests/integration/test_schema_mutation_api.py
+- id: REQ-1328
+  status: complete
+  since: 2026-07
+  group: 3. Source Registration & Data Modeling
+  category: Source Identification
+  priority: MUST
+  type: structural
+  description: >-
+    The sentinel source ID for definition-backed relations (views, entity/fact lowerings, metric-composed views)
+    is renamed from __provisa__ to __derived__, centralized as provisa.core.models.DERIVED_SOURCE_ID.
+    The name is invariant under materialization (a materialized fact is not "virtual") and clarifies the provenance
+    relationship: "derived FROM other relations". The Tables UI renders a "derived" badge instead of printing
+    the sentinel. No dual-accept of the old ID (no-backcompat rule).
+  use_case: >-
+    "Derived" is the established term (SQL-standard "derived table"; Denodo base/derived views; Dremio physical/virtual datasets).
+    Centralizing the sentinel simplifies its use across admin APIs and UI surfaces, and the badge provides
+    user-facing clarity about lineage.
+  code:
+  - provisa/core/models.py
+  - provisa/core/config_loader.py
+  - provisa/api/admin/modeling_register.py
+  - provisa/api/startup_seed.py
+  - provisa/api/admin/schema_mutation_ops.py
+  - provisa-ui/src/types/admin.ts
+- id: REQ-1329
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Source Identification
+  priority: MUST
+  type: structural
+  description: >-
+    Replace the sentinel source ID entirely: source_id becomes nullable, and registered relations gain an explicit
+    definition kind (base | derived). Provenance surfaces from definition lineage, not a source slot.
+    The sentinel remains a storage detail until this refactoring is complete, at which point registration schemas,
+    admin APIs, and the UI all reference the explicit kind field.
+  use_case: >-
+    Removing the sentinel simplifies the schema model and makes the provenance relationship explicit in the type system,
+    eliminating special-case handling and reducing surface area.
+- id: REQ-1330
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: Email Delivery
+  priority: MUST
+  type: behavioral
+  target: 2026-Q4
+  description: >-
+    Transactional email delivery (org invites today; any future outbound transactional mail) exists only in SaaS
+    deployment mode and is sent exclusively through an internal EmailSender abstraction (port/adapter). Application
+    code never imports or configures a concrete provider; it depends only on the port, so the provider can be swapped
+    without touching call sites. The initial adapter is a transactional email service (Resend or AWS SES) sending as
+    invites@provisa.dev, authenticated by SPF/DKIM records on provisa.dev; inbound MX for provisa.dev remains with
+    Microsoft 365 (receiving is out of scope for the application). Prohibited transports: direct SMTP submission to
+    Microsoft 365 (smtp.office365.com) and any locally hosted SMTP relay. Self-hosted (non-SaaS) deployments send no
+    email: the feature is gated on SaaS mode and invite flows in self-hosted mode surface the invite link for
+    out-of-band delivery instead of sending.
+  use_case: >-
+    Invites must reach users reliably without binding the codebase to one email vendor. A port/adapter seam keeps the
+    provider a deployment detail (avoiding the Microsoft 365 SMTP basic-auth retirement and its throughput limits),
+    while SaaS-only gating keeps self-hosted installs free of outbound-mail infrastructure, credentials, and
+    deliverability liability.
+  scenario: |
+    Given a SaaS-mode deployment with the transactional provider adapter configured
+
+    When an org admin sends a member invite
+
+    Then the invite email is dispatched through the EmailSender port
+
+    And the message is sent as invites@provisa.dev via the configured provider adapter
+
+    And no application module outside the adapter references the concrete provider
+
+
+    Given a self-hosted (non-SaaS) deployment
+
+    When an org admin creates a member invite
+
+    Then no email is sent
+
+    And the invite link is returned for out-of-band delivery
+
+
+    Given the provider is swapped (e.g. Resend to SES)
+
+    When the new adapter is configured
+
+    Then invite flows work unchanged with no modification to any caller of the EmailSender port
+  related_reqs:
+  - REQ-1030
+  - REQ-1298

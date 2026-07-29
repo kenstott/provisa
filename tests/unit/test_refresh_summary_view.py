@@ -4,7 +4,7 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1143: a __provisa__ virtual view has no external-source refresh policy and its persisted
+"""REQ-1143: a __derived__ virtual view has no external-source refresh policy and its persisted
 source `type` is the federation engine name (e.g. "trino", not a SourceType). summarize_table_policy
 must return None for it — never raise — so the admin `tables` query does not error on a view row
 (which, under Apollo's default errorPolicy, would discard the whole result and blank the UI lists)."""
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 def _view_table() -> SimpleNamespace:
     return SimpleNamespace(
-        source_id="__provisa__",
+        source_id="__derived__",
         domain_id="analytics",
         schema_name="views",
         table_name="top_users",
@@ -39,6 +39,6 @@ def _view_table() -> SimpleNamespace:
 async def test_summarize_returns_none_for_provisa_view_without_raising():
     from provisa.api.admin._refresh_summary import summarize_table_policy
 
-    # No engine/db is touched: the __provisa__ guard short-circuits before _resolve_engine/_load_source.
+    # No engine/db is touched: the __derived__ guard short-circuits before _resolve_engine/_load_source.
     result = await summarize_table_policy(cast("RegisteredTableType", _view_table()))
     assert result is None

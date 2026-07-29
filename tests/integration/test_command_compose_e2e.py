@@ -57,11 +57,12 @@ async def server():
 
 def _query(srv, sql: str) -> list[tuple]:
     conn = psycopg2.connect(
-        # REQ-1297: the platform role id is platform_admin; "admin" survives only as a capability.
+        # REQ-1297: the pgwire username is the acting role, and the role that governs this org's data
+        # is org_admin. platform_admin is control-plane only and holds no data capability.
         host="127.0.0.1",
         port=srv.pgwire_port,
         dbname="provisa",
-        user="platform_admin",
+        user="org_admin",
         password="provisa",
     )
     try:

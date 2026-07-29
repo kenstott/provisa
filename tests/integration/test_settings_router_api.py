@@ -308,7 +308,7 @@ class TestDomainPolicyApply:
 
         # Config is now reset (no user sources/domains/tables/relationships) — verify via
         # GraphQL. Sources still includes provisa's own bootstrap-internal sources (e.g.
-        # "__provisa__", the OTel self-monitoring source), and domains still includes the
+        # "__derived__", the OTel self-monitoring source), and domains still includes the
         # internal "meta"/"ops" domains (config_export._INTERNAL_DOMAINS) — both are seeded
         # independently of config.yaml and are not cleared by this endpoint.
         gql_resp = await client.post(

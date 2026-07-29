@@ -25,7 +25,7 @@ from provisa.api.admin.types import (
     RelationshipInput,
     TableInput,
 )
-from provisa.core.models import Metric
+from provisa.core.models import DERIVED_SOURCE_ID, Metric
 from provisa.mv.modeling import (
     DimRef,
     Entity,
@@ -35,7 +35,7 @@ from provisa.mv.modeling import (
     fact_registration,
 )
 
-_SCHEMA = "views"  # __provisa__ views land under a fixed schema, like hand-registered views
+_SCHEMA = "views"  # __derived__ views land under a fixed schema, like hand-registered views
 
 
 def _columns(names: list[str], visible_to: list[str]) -> list[ColumnInput]:
@@ -54,7 +54,7 @@ def entity_table_input(inp: EntityInput) -> TableInput:
         )
     )
     return TableInput(
-        source_id="__provisa__",
+        source_id=DERIVED_SOURCE_ID,
         domain_id=inp.domain_id,
         schema_name=_SCHEMA,
         table_name=reg["table_name"],
@@ -81,7 +81,7 @@ def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput
         )
     )
     ti = TableInput(
-        source_id="__provisa__",
+        source_id=DERIVED_SOURCE_ID,
         domain_id=inp.domain_id,
         schema_name=_SCHEMA,
         table_name=reg["table_name"],

@@ -182,6 +182,11 @@ export interface ViewMetricsSpec {
   filters: string[];
 }
 
+// The sentinel source id for DERIVED relations — defined by their declaration (view_sql,
+// entity/fact lowering), not scanned from an external system. Mirrors the backend
+// provisa.core.models.DERIVED_SOURCE_ID; provenance is the definition's lineage.
+export const DERIVED_SOURCE_ID = "__derived__";
+
 // REQ-1317: a registered semantic metric. `fromFact` names the source fact when the
 // metric was auto-derived from a fact registration (REQ-1320); null for hand-authored.
 export interface Metric {

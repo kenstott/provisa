@@ -80,6 +80,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     CreationRequestType,
     _resolve_admin_context,
 )
+from provisa.core.models import DERIVED_SOURCE_ID  # noqa: E402
 
 
 def _safe_store_ref(engine: Any) -> str | None:
@@ -285,7 +286,7 @@ class Query:  # REQ-021, REQ-042
                         registered_tables.c.schema_name,
                         registered_tables.c.table_name,
                         registered_tables.c.alias,
-                    ).where(registered_tables.c.source_id != "__provisa__")
+                    ).where(registered_tables.c.source_id != DERIVED_SOURCE_ID)
                 )
                 all_tables = [dict(r._mapping) for r in _ares.fetchall()]
                 return [

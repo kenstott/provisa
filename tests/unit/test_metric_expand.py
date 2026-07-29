@@ -210,7 +210,7 @@ def test_streaming_metric_view_config_is_valid():
     from provisa.core.models import KafkaSinkAttachment, Table, ViewMetricsSpec
 
     t = Table(
-        source_id="__provisa__",
+        source_id="__derived__",
         domain_id="views",
         table_name="net_revenue_by_region",
         columns=[],

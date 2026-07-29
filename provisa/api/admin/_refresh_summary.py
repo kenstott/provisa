@@ -59,14 +59,14 @@ async def _summarize(
     The single choke point for both the persisted-table field and the draft preview — so the decision
     tree is derived server-side exactly once, never re-derived in the client."""
     from provisa.api.admin.types import RefreshPolicySummaryType
-    from provisa.core.models import Table
+    from provisa.core.models import DERIVED_SOURCE_ID, Table
     from provisa.federation.policy_summary import describe_refresh_policy
 
-    # A __provisa__ virtual view has no external-source freshness — its refresh is governed by the
+    # A __derived__ virtual view has no external-source freshness — its refresh is governed by the
     # view/MV config, not a source-refresh policy — and its persisted source `type` is the federation
     # engine name (e.g. "trino"), which is not a SourceType. Skip the source-policy summary for it so
     # the tables query never errors on a view row (REQ-1143).
-    if source_id == "__provisa__":
+    if source_id == DERIVED_SOURCE_ID:
         return None
 
     engine = _resolve_engine()

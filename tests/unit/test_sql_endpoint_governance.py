@@ -79,13 +79,13 @@ async def sql_client():
     ctx = _make_ctx("orders", table_id=1)
     rls = RLSContext.empty()
 
-    app_mod.state.schemas = {"platform_admin": MagicMock()}
-    app_mod.state.contexts = {"platform_admin": ctx}
-    app_mod.state.rls_contexts = {"platform_admin": rls}
+    app_mod.state.schemas = {"org_admin": MagicMock()}
+    app_mod.state.contexts = {"org_admin": ctx}
+    app_mod.state.rls_contexts = {"org_admin": rls}
     # Role must exist in state.roles or the rate-limit middleware rejects it as unknown
     # (REQ-369). admin capability keeps the endpoint's QUERY_DEVELOPMENT check passing;
     # empty domain_access preserves the table-access (V000) governance under test.
-    app_mod.state.roles = {"platform_admin": {"id": "platform_admin", "capabilities": ["admin"]}}
+    app_mod.state.roles = {"org_admin": {"id": "org_admin", "capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"]}}
     app_mod.state.masking_rules = {}
     app_mod.state.source_types = {"pg": "postgresql"}
     app_mod.state.source_dialects = {"pg": "postgres"}
@@ -130,7 +130,7 @@ async def sql_client():
 class TestSQLParseError:
     async def test_sql_parse_error_returns_400(self, sql_client):
         """Completely invalid SQL that cannot be parsed returns HTTP 400."""
-        payload = {"sql": "THIS IS NOT VALID SQL !!!! SELECT ??? FROM", "role": "platform_admin"}
+        payload = {"sql": "THIS IS NOT VALID SQL !!!! SELECT ??? FROM", "role": "org_admin"}
 
         # Patch sqlglot.parse_one to raise the SqlglotError real sqlglot raises on unparseable input
         # (the endpoint narrows its 400 catch to SqlglotError, not a blanket Exception).
@@ -149,7 +149,7 @@ class TestSQLForbiddenTable:
     async def test_sql_forbidden_table_returns_403(self, sql_client):
         """SQL referencing a table not in the role's schema scope returns HTTP 403."""
         # "secret_table" is not in state.tables or ctx.tables
-        payload = {"sql": "SELECT id FROM secret_table", "role": "platform_admin"}
+        payload = {"sql": "SELECT id FROM secret_table", "role": "org_admin"}
         resp = await sql_client.post("/data/sql", json=payload)
 
         assert resp.status_code == 403
@@ -160,7 +160,7 @@ class TestSQLForbiddenTable:
 
     async def test_sql_accessible_table_not_forbidden(self, sql_client):
         """SQL referencing an accessible table does not get a 403."""
-        payload = {"sql": "SELECT id FROM orders", "role": "platform_admin"}
+        payload = {"sql": "SELECT id FROM orders", "role": "org_admin"}
         fallback_result = _make_query_result(rows=[(1,)], column_names=["id"])
 
         with patch(
@@ -217,7 +217,7 @@ class TestSQLGovernanceApplied:
 
     async def test_sql_endpoint_rls_applied_via_http(self, sql_client):
         """Via HTTP: a role with RLS rules results in non-403 for allowed table."""
-        # sql_client uses "platform_admin" role with no RLS — just verify the endpoint routes correctly
+        # sql_client uses "org_admin" role with no RLS — just verify the endpoint routes correctly
         fallback_result = _make_query_result(rows=[(1,)], column_names=["id"])
         with patch(
             "provisa.executor.direct.execute_direct",
@@ -229,7 +229,7 @@ class TestSQLGovernanceApplied:
             ):
                 resp = await sql_client.post(
                     "/data/sql",
-                    json={"sql": "SELECT id FROM orders", "role": "platform_admin"},
+                    json={"sql": "SELECT id FROM orders", "role": "org_admin"},
                 )
         # Not forbidden — 200 or some execution result
         assert resp.status_code != 403

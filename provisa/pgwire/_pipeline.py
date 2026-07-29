@@ -448,7 +448,7 @@ async def _govern_and_route(
 
     exec_params = embedded_params or None
 
-    # REQ-135/REQ-1163: a query referencing a __provisa__ view MUST route through the engine, where the
+    # REQ-135/REQ-1163: a query referencing a __derived__ view MUST route through the engine, where the
     # view is inline-expanded. A view's virtual source has no native driver/catalog, so extract_sources
     # cannot bind it and routing would otherwise pick DIRECT against a real source, handing the
     # un-expanded view ref to a native pool. Force ENGINE so the ENGINE branch expands it.
@@ -495,7 +495,7 @@ async def _govern_and_route(
     # the engine by decide_route as usual. So the localizer does NOT force a route; it lets routing
     # decide, which keeps a single-source composed query on the source instead of the org store.
     if decision.route == Route.ENGINE:
-        # REQ-135/REQ-1163: inline-expand any __provisa__ view ref BEFORE the unknown-catalog check and
+        # REQ-135/REQ-1163: inline-expand any __derived__ view ref BEFORE the unknown-catalog check and
         # transpile — a request-level as-of overlays each bitemporal view's entry with an as-of
         # reconstruction over its append log (else views read current state). Same lowering the GQL/
         # Cypher path uses (_govern_and_route_compiled). _qualified is catalog-physical; a view ref is

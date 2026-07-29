@@ -4,7 +4,7 @@
 
 """E2E tests: POST /admin/tables/{id}/profile → sampled rows (REQ-452).
 
-Regression: a __provisa__ view's SQL is semantic (domain.field refs) and must be
+Regression: a __derived__ view's SQL is semantic (domain.field refs) and must be
 compiled + governed + routed like an interactive /data/sql query. Handing it raw
 to the federation engine 500s because domain refs never resolve.
 """
@@ -34,7 +34,7 @@ async def client():
 
 @pytest.fixture
 async def view_id():
-    """Register a __provisa__ view sampling a semantic query, yield its id, clean up."""
+    """Register a __derived__ view sampling a semantic query, yield its id, clean up."""
     from provisa.api.app import state
     from provisa.core.schema_org import registered_tables
 
@@ -43,7 +43,7 @@ async def view_id():
         res = await conn.execute_core(
             insert(registered_tables)
             .values(
-                source_id="__provisa__",
+                source_id="__derived__",
                 domain_id="sales-analytics",
                 schema_name="sales-analytics",
                 table_name="_profile_test_view",

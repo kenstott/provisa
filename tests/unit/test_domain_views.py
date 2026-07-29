@@ -70,7 +70,7 @@ class TestDomainAccessEnforcement:
         # finance data is reachable — cross-domain data enters via the view.
         ctx = CompilationContext()
         ctx.tables = {
-            "finance_revenue": _meta(1, "finance_revenue", domain_id="sales", source_id="__provisa__")
+            "finance_revenue": _meta(1, "finance_revenue", domain_id="sales", source_id="__derived__")
         }
         gov = _gov(("public.finance_revenue", 1))
         sql = 'SELECT "v"."id" FROM "public"."finance_revenue" AS "v"'

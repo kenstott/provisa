@@ -7,7 +7,7 @@ auth:
   assignments_source: provisa
   default_assignments:
     - domain_id: '*'
-      role_id: platform_admin
+      role_id: org_admin
 naming:
   domain_prefix: false
   rules: []
@@ -17,12 +17,25 @@ domains:
   - id: shelter
     description: Animal shelter
 roles:
-  - id: platform_admin
+  # REQ-1297: the DATA-plane administrator, without the platform-bypass 'admin'/'superadmin'
+  # capabilities — those are platform_admin's alone, and platform_admin holds no data rights.
+  - id: org_admin
     capabilities:
-      - admin
-      - query_development
       - source_registration
       - table_registration
+      - create_relationship
+      - create_view
+      - approve_view
+      - approve_relationship
+      - access_config
+      - user_management
+      - masking_config
+      - column_grant
+      - view_governance
+      - query_development
+      - full_results
+      - write
+      - usage
     domain_access:
       - '*'
 sources:
@@ -37,19 +50,19 @@ tables:
     columns:
       - name: pet_id
         data_type: integer
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
       - name: user_id
         data_type: integer
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
       - name: inquiry_type
         data_type: varchar
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
       - name: message
         data_type: varchar
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
       - name: status
         data_type: varchar
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
       - name: submitted_at
         data_type: varchar
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
