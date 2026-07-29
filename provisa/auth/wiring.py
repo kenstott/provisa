@@ -117,6 +117,7 @@ def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
     ``auth_config is None`` (no ``auth`` section, or ``provider: none``) → unsecured: no provider, so
     the middleware honors ``X-Provisa-Role`` at face value (REQ-273)."""
     from provisa.api.app import state
+    from provisa.api.org_runtime import ActiveOrgPool
 
     auth_config = getattr(state, "auth_config", None)
     cfg = getattr(state, "config", None)
@@ -148,7 +149,7 @@ def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
         "provider": provider,
         "mapping_rules": auth_config.get("role_mapping", []),
         "default_role": auth_config.get("default_role", "analyst"),
-        "db_pool": getattr(state, "tenant_db", None),
+        "db_pool": ActiveOrgPool(),
         "admin_pool": admin_pool,
         "assignments_source": auth_config.get("assignments_source", "claims"),
         "default_assignments": auth_config.get("default_assignments", []),

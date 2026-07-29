@@ -2,7 +2,7 @@ auth:
   assignments_source: provisa
   default_assignments:
   - domain_id: '*'
-    role_id: admin
+    role_id: platform_admin
   provider: none
 cache:
   default_ttl: 300
@@ -135,7 +135,7 @@ roles:
   - admin
   domain_access:
   - '*'
-  id: admin
+  id: platform_admin
 # org_admin: full administrative power WITHIN a single org, deliberately WITHOUT the global
 # 'admin'/'superadmin' capability. Those two bypass every capability + org check (capabilities.py),
 # which would let the holder reach superadmin platform endpoints (orgs_router) and other tenants.
@@ -204,31 +204,31 @@ tables:
   - description: Unique identifier for the pet record
     name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - description: Name of the pet
     name: name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - description: Species of the pet (e.g. dog, cat, bird)
     name: species
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - description: Breed of the pet
     name: breed_name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - description: Sale price of the pet in USD
     name: price
     visible_to:
-    - admin
+    - platform_admin
   - description: Whether the pet is currently available for purchase
     name: available
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: "Pet inventory \u2014 managed by the inventory department"
   domain_id: pet-store
@@ -244,27 +244,27 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: status
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: photoUrls
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: tags
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: category
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: "Pets available for purchase \u2014 filtered by status from Petstore\
     \ API"
@@ -279,27 +279,27 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: status
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: photoUrls
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: tags
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: category
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: Pets filtered by tag from Petstore API
   domain_id: pet-store
@@ -313,27 +313,27 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: status
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: photoUrls
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: tags
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: category
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: Individual pet record by ID from Petstore API
   domain_id: pet-store
@@ -344,11 +344,11 @@ tables:
   columns:
   - name: status
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: count
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: Pet inventory counts by status from Petstore API
   domain_id: pet-store
@@ -362,27 +362,27 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: petId
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: quantity
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: shipDate
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: status
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: complete
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: Individual purchase order by ID from Petstore API
   domain_id: pet-store
@@ -393,29 +393,29 @@ tables:
   columns:
   - name: id
     visible_to:
-    - admin
+    - platform_admin
   - name: username
     native_filter_type: path_param
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: firstName
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: lastName
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: email
     visible_to:
-    - admin
+    - platform_admin
   - name: phone
     visible_to:
-    - admin
+    - platform_admin
   - name: userStatus
     visible_to:
-    - admin
+    - platform_admin
   description: User account by username from Petstore API
   domain_id: pet-store
   schema: default
@@ -424,21 +424,21 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: email
     visible_to:
-    - admin
+    - platform_admin
   - name: phone
     visible_to:
-    - admin
+    - platform_admin
   - name: created_at
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: Prospective adopters who have submitted inquiries
   domain_id: pet-store
@@ -448,31 +448,31 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: pet_id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: user_id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: inquiry_type
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: message
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: status
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: submitted_at
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: "Customer adoption inquiries \u2014 managed by the front-desk/CRM team"
   domain_id: pet-store
@@ -484,27 +484,27 @@ tables:
 - columns:
   - name: name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: species
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: care_level
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: avg_lifespan_years
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: typical_habitat
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: description
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   alias: animal_breeds
   description: "Full breed catalog \u2014 use to answer what care protocols apply\
@@ -519,27 +519,27 @@ tables:
     visible_to: []
   - name: name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: species
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: care_level
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: avg_lifespan_years
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: typical_habitat
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: description
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   alias: animal_breed
   description: "Care requirements and placement context for a single breed \u2014\
@@ -551,44 +551,44 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: first_name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: last_name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: hire_date
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: department
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: contact
     data_type: jsonb
     visible_to:
-    - admin
+    - platform_admin
     - analyst
     object_fields:
     - name: phone
       type: string
       visible_to:
-      - admin
+      - platform_admin
       - analyst
     - name: email
       type: string
       visible_to:
-      - admin
+      - platform_admin
       - analyst
     - name: ssn
       type: string
       visible_to:
-      - admin
+      - platform_admin
   description: "All staff eligible for breed assignments \u2014 use to identify who\
     \ can be assigned or scheduled"
   domain_id: shelter
@@ -601,44 +601,44 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: first_name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: last_name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: hire_date
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: department
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: contact
     data_type: jsonb
     visible_to:
-    - admin
+    - platform_admin
     - analyst
     object_fields:
     - name: phone
       type: string
       visible_to:
-      - admin
+      - platform_admin
       - analyst
     - name: email
       type: string
       visible_to:
-      - admin
+      - platform_admin
       - analyst
     - name: ssn
       type: string
       visible_to:
-      - admin
+      - platform_admin
   description: "Contact details and department for a single staff member \u2014 use\
     \ to route assignment requests or resolve scheduling conflicts"
   domain_id: shelter
@@ -648,27 +648,27 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: employee_id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: breed_name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: role
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: start_date
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: end_date
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: "Complete accountability map of staff to breeds \u2014 use to spot\
     \ coverage gaps or single-keeper risk across all species"
@@ -682,27 +682,27 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: employee_id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: breed_name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: role
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: start_date
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: end_date
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   alias: assignments_by_employee
   description: "All breeds a given staff member is accountable for \u2014 use to assess\
@@ -717,27 +717,27 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: employee_id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: breed_name
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: role
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: start_date
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: end_date
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   alias: assignments_by_breed
   description: "All staff responsible for a breed \u2014 use to verify minimum keeper\
@@ -749,27 +749,27 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: employee_id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: day_of_week
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: shift_start
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: shift_end
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: location
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   description: "Full weekly shift roster \u2014 use for shelter-wide coverage analysis\
     \ and to surface days where any location is understaffed"
@@ -783,27 +783,27 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: employee_id
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: day_of_week
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: shift_start
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: shift_end
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: location
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   alias: schedule_by_employee
   description: "A staff member's shift coverage for the week \u2014 use for availability\
@@ -829,7 +829,7 @@ functions:
   - name: seed
     type: Int
   visible_to:
-  - admin
+  - platform_admin
   return_schema:
     type: array
     items:
@@ -851,7 +851,7 @@ functions:
     target: ${env:DEMO_GRPC_TARGET:-localhost:50071}
     method: /provisa.demo.RandomData/GetRandomSet
   visible_to:
-  - admin
+  - platform_admin
   return_schema:
     type: array
     items:
@@ -881,7 +881,7 @@ functions:
     - {name: id, type: integer}
     - {name: region, type: text}
   visible_to:
-  - admin
+  - platform_admin
   # REQ-1159: canonical IR-typed output dataset contract; validated on the way out.
   output_columns:
   - {name: id, type: integer}
@@ -910,7 +910,7 @@ webhooks:
   timeout_ms: 5000
   url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/pet
   visible_to:
-  - admin
+  - platform_admin
 - arguments:
   - name: petId
     type: Int
@@ -924,4 +924,4 @@ webhooks:
   timeout_ms: 5000
   url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
   visible_to:
-  - admin
+  - platform_admin

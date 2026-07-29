@@ -11,6 +11,7 @@
     "createButton": "+ Org",
     "created": "Created \"{{name}}\"",
     "deleted": "Deleted \"{{id}}\"",
+    "deleteConfirmPrompt": "Deleting \"{{id}}\" destroys every source, domain, table and role in it, for everyone in it. This cannot be undone. Type {{id}} to confirm.",
     "colId": "ID",
     "colName": "Name",
     "colMembers": "Members",
@@ -45,6 +46,7 @@
     "copiedButton": "Copied!",
     "revokeButton": "Revoke",
     "revokeInvite": "Revoke invite for {{org}}",
-    "invitePagination": "Invite links pagination"
+    "invitePagination": "Invite links pagination",
+    "orgIdDesc": "2-40 characters, lowercase letters and digits, starting with a letter. It becomes the schema name and the subdomain, and cannot be changed later."
   }
 }

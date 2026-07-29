@@ -8,21 +8,33 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
   Button,
   Group,
+  Modal,
   Select,
   Stack,
   Table,
   Text,
+  TextInput,
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { createInvite, fetchInvites, revokeInvite } from "../api/admin";
-import type { OrgInvite } from "../api/admin";
+import {
+  createInvite,
+  deleteOrg,
+  exportOrgConfig,
+  fetchInvites,
+  fetchOrgMembers,
+  grantOrgAdmin,
+  removeOrgMember,
+  revokeInvite,
+  revokeOrgAdmin,
+} from "../api/admin";
+import type { OrgInvite, OrgMember } from "../api/admin";
 import { useRoles } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
 
@@ -33,18 +45,99 @@ import { useAuth } from "../context/AuthContext";
 // only ever surfaces the current org's invites. Roles are shaped at Security → Roles.
 export function TeamPage() {
   const { t } = useTranslation();
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, userId } = useAuth();
   const { roles } = useRoles();
   const [invites, setInvites] = useState<OrgInvite[]>([]);
+  const [members, setMembers] = useState<OrgMember[]>([]);
   const [roleId, setRoleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  // REQ-1300: deletion is unrecoverable, so it is gated behind an explicit modal in which the
+  // org_admin retypes the org id. Nothing about it is reachable by a single mis-click.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [exported, setExported] = useState(false);
+
+  const reportError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
+
+  const loadMembers = useCallback(async () => {
+    if (!activeOrgId) return;
+    try {
+      setMembers(await fetchOrgMembers(activeOrgId));
+    } catch (e) {
+      reportError(e);
+    }
+  }, [activeOrgId]);
 
   useEffect(() => {
     fetchInvites()
       .then(setInvites)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch(reportError);
   }, []);
+
+  useEffect(() => {
+    void loadMembers();
+  }, [loadMembers]);
+
+  // REQ-1302: the server refuses the removal or demotion that would leave the org with no admin.
+  // The page mirrors that rule so the last admin sees a disabled control instead of an error.
+  const adminCount = members.filter((m) => m.is_org_admin).length;
+
+  const handleRemoveMember = async (member: OrgMember) => {
+    if (!activeOrgId) return;
+    setError(null);
+    try {
+      await removeOrgMember(activeOrgId, member.user_id);
+      await loadMembers();
+    } catch (e) {
+      reportError(e);
+    }
+  };
+
+  const handleToggleAdmin = async (member: OrgMember) => {
+    if (!activeOrgId) return;
+    setError(null);
+    try {
+      if (member.is_org_admin) await revokeOrgAdmin(activeOrgId, member.user_id);
+      else await grantOrgAdmin(activeOrgId, member.user_id);
+      await loadMembers();
+    } catch (e) {
+      reportError(e);
+    }
+  };
+
+  // REQ-1304: the download is offered inside the deletion flow, because taking the configuration
+  // with you is only useful before the org that holds it is gone.
+  const handleExport = async () => {
+    if (!activeOrgId) return;
+    setError(null);
+    try {
+      const yaml = await exportOrgConfig(activeOrgId);
+      const blob = new Blob([yaml], { type: "application/x-yaml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${activeOrgId}-config.yaml`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setExported(true);
+    } catch (e) {
+      reportError(e);
+    }
+  };
+
+  const handleDeleteOrg = async () => {
+    if (!activeOrgId) return;
+    setError(null);
+    try {
+      await deleteOrg(activeOrgId, confirmText);
+      // The org the session was pointed at no longer exists, so a reload is the only coherent next
+      // state: it re-runs the identity bootstrap, which routes to onboarding or a remaining org.
+      window.location.assign("/");
+    } catch (e) {
+      reportError(e);
+    }
+  };
 
   const roleOptions = roles.map((r) => ({ value: r.id, label: r.id }));
 
@@ -89,6 +182,81 @@ export function TeamPage() {
           {error}
         </Alert>
       )}
+
+      <Stack gap="sm">
+        <Title order={4}>{t("teamPage.membersHeading")}</Title>
+        <Table.ScrollContainer minWidth={640}>
+          <Table striped highlightOnHover withTableBorder verticalSpacing="xs" data-testid="team-members">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("teamPage.colPerson")}</Table.Th>
+                <Table.Th>{t("teamPage.colProvider")}</Table.Th>
+                <Table.Th>{t("teamPage.colOrgAdmin")}</Table.Th>
+                <Table.Th>{t("teamPage.colActions")}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {members.length === 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={4} ta="center" c="dimmed">
+                    {t("teamPage.noMembers")}
+                  </Table.Td>
+                </Table.Tr>
+              )}
+              {members.map((m) => {
+                const lastAdmin = m.is_org_admin && adminCount <= 1;
+                return (
+                  <Table.Tr key={m.user_id} data-testid={`team-member-${m.user_id}`}>
+                    <Table.Td>
+                      <Text size="sm">{m.display_name ?? m.email ?? m.user_id}</Text>
+                      {m.email && m.display_name && (
+                        <Text size="xs" c="dimmed">
+                          {m.email}
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>{m.provider ?? "—"}</Table.Td>
+                    <Table.Td>
+                      {m.is_org_admin ? t("teamPage.yes") : t("teamPage.no")}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <Button
+                          size="compact-xs"
+                          variant="default"
+                          disabled={lastAdmin}
+                          title={lastAdmin ? t("teamPage.lastAdminHint") : undefined}
+                          onClick={() => handleToggleAdmin(m)}
+                          data-testid={`team-toggle-admin-${m.user_id}`}
+                        >
+                          {m.is_org_admin ? t("teamPage.demote") : t("teamPage.promote")}
+                        </Button>
+                        <Button
+                          size="compact-xs"
+                          color="red"
+                          variant="light"
+                          disabled={lastAdmin || m.user_id === userId}
+                          title={
+                            m.user_id === userId
+                              ? t("teamPage.selfRemoveHint")
+                              : lastAdmin
+                                ? t("teamPage.lastAdminHint")
+                                : undefined
+                          }
+                          onClick={() => handleRemoveMember(m)}
+                          data-testid={`team-remove-${m.user_id}`}
+                        >
+                          {t("teamPage.removeButton")}
+                        </Button>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Stack>
 
       <Stack gap="sm" maw={480}>
         <Title order={4}>{t("teamPage.inviteHeading")}</Title>
@@ -171,6 +339,61 @@ export function TeamPage() {
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+
+      <Stack gap="sm" maw={520}>
+        <Title order={4}>{t("teamPage.dangerHeading")}</Title>
+        <Text c="dimmed" size="sm">
+          {t("teamPage.dangerHelp")}
+        </Text>
+        <Button
+          color="red"
+          variant="outline"
+          style={{ alignSelf: "flex-start" }}
+          disabled={!activeOrgId}
+          onClick={() => {
+            setConfirmText("");
+            setExported(false);
+            setDeleteOpen(true);
+          }}
+          data-testid="team-delete-org"
+        >
+          {t("teamPage.deleteOrgButton")}
+        </Button>
+      </Stack>
+
+      <Modal
+        opened={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title={t("teamPage.deleteModalTitle")}
+        transitionProps={{ duration: 0 }}
+      >
+        <Stack gap="sm" data-testid="team-delete-modal">
+          <Alert color="red">{t("teamPage.deleteWarning", { org: activeOrgId })}</Alert>
+          <Button
+            variant="default"
+            onClick={handleExport}
+            style={{ alignSelf: "flex-start" }}
+            data-testid="team-export-config"
+          >
+            {exported ? t("teamPage.downloadedButton") : t("teamPage.downloadButton")}
+          </Button>
+          <TextInput
+            label={t("teamPage.confirmLabel", { org: activeOrgId })}
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.currentTarget.value)}
+            data-testid="team-delete-confirm"
+          />
+          <Button
+            color="red"
+            disabled={confirmText !== activeOrgId}
+            onClick={handleDeleteOrg}
+            style={{ alignSelf: "flex-start" }}
+            data-testid="team-delete-submit"
+          >
+            {t("teamPage.deleteConfirmButton")}
+          </Button>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

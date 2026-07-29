@@ -23,6 +23,7 @@ from sqlalchemy import delete as _delete, func, insert, select, update
 
 from provisa.core.database import Database
 from provisa.core.schema_admin import local_users
+from provisa.core.org_membership import SELF_ROLE_CHANGE_MESSAGE, is_self_role_change
 from provisa.core.schema_org import user_role_assignments
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
@@ -127,6 +128,16 @@ async def get_user(user_id: str, request: Request):
     return _strip_hash(row)
 
 
+def _reject_self_role_change(request: Request, user_id: str) -> None:  # REQ-1308
+    """403 when the caller is targeting their own role assignment."""
+    identity = getattr(request.state, "identity", None)
+    actor = getattr(identity, "user_id", None) if identity is not None else None
+    if actor == "anonymous":
+        actor = None
+    if is_self_role_change(actor, user_id):
+        raise HTTPException(status_code=403, detail=SELF_ROLE_CHANGE_MESSAGE)
+
+
 @router.put("/{user_id}")
 async def update_user(user_id: str, body: UpdateUserBody, request: Request):
     pool = _admin_pool(request)
@@ -136,6 +147,9 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
     if body.display_name is not None:
         values["display_name"] = body.display_name
     if body.roles is not None:
+        # REQ-1308: the local_users.roles list is a claims source, so editing your own is a self
+        # role change no less than editing your own assignment row.
+        _reject_self_role_change(request, user_id)
         # JSON columns take Python objects directly.
         values["roles"] = body.roles
     if body.attributes is not None:
@@ -203,6 +217,7 @@ async def list_assignments(user_id: str, request: Request):
 
 @router.post("/{user_id}/assignments")
 async def add_assignment(user_id: str, body: AssignmentBody, request: Request):  # REQ-042
+    _reject_self_role_change(request, user_id)  # REQ-1308
     pool = _pool(request)
     t = user_role_assignments
     async with pool.acquire() as conn:
@@ -230,6 +245,7 @@ async def add_assignment(user_id: str, body: AssignmentBody, request: Request): 
 
 @router.delete("/{user_id}/assignments/{assignment_id}")
 async def remove_assignment(user_id: str, assignment_id: int, request: Request):
+    _reject_self_role_change(request, user_id)  # REQ-1308
     pool = _pool(request)
     t = user_role_assignments
     async with pool.acquire() as conn:

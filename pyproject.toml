@@ -157,6 +157,9 @@ dev = [
     # importorskip("firebase_admin.auth"); declared here so the test env always has it and those
     # tests RUN instead of skipping. Same rationale as the direct-driver libs above.
     "firebase-admin",
+    # REQ-1310: the invite-delivery test sends over SMTP to a real local server this provides.
+    # Asserting on a captured message is only meaningful against a server that speaks the protocol.
+    "aiosmtpd",
 ]
 
 [build-system]

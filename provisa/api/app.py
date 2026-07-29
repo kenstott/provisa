@@ -89,6 +89,7 @@ from provisa.core.schema_org import (
 from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
 from provisa.api.org_runtime import (
+    ActiveOrgPool,
     OrgRegistry,
     OrgRuntime,
     current_org,
@@ -203,7 +204,7 @@ class AppState:
     # entries; empty ⇒ all external egress denied (loopback/Provisa pgwire is always allowed).
     udf_egress_allowlist: list[str] = []
     pg_enum_types: dict = {}  # pg_name → GraphQLEnumType (REQ-221)
-    org_id: str = "default"  # REQ-697: org schema scope (ORG_ID env var)
+    _org_id: str = "default"  # REQ-697: org schema scope (ORG_ID env var); see the org_id property
     graphql_remote_sources: dict[str, dict] = {}  # source_id → GraphQL remote registration
     openapi_specs: dict[str, dict] = {}  # source_id → OpenAPI spec registration
     grpc_remote_sources: dict[str, dict] = {}  # source_id → gRPC remote registration
@@ -266,6 +267,27 @@ class AppState:
         self.org_registry.set(self.org_id, OrgRuntime(org_id=self.org_id))
 
     # --- Per-request org routing (REQ-1266) -----------------------------------
+    @property
+    def org_id(self) -> str:
+        return self._org_id
+
+    @org_id.setter
+    def org_id(self, value: str) -> None:
+        """Re-point the boot org, moving the default-org runtime with it.
+
+        REQ-1266: ``__init__`` registers the default runtime under the compile-time id, but the
+        real id only arrives once ``_init_control_planes`` reads the control-plane config. The
+        runtime has to follow, because every build-time write below resolves through it — leaving
+        it keyed by the old id strands the writes and the boot fails on the missing runtime."""
+        old = self._org_id
+        self._org_id = value
+        if value == old:
+            return
+        rt = self.org_registry.get(old)
+        if rt is not None:
+            self.org_registry.set(value, rt)
+            self.org_registry.invalidate(old)
+
     def _active_runtime(self) -> OrgRuntime:
         """The OrgRuntime for the current request's org, or the default-org runtime
         when no org is bound. Never fabricates a runtime for an unbuilt org — a
@@ -1194,7 +1216,9 @@ def create_app() -> FastAPI:
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth
 
-    wire_auth(app, state.auth_config, db_pool=state.tenant_db, admin_pool=state.admin_db)
+    # ActiveOrgPool, not state.tenant_db: the middleware outlives the request, and the tenant
+    # control plane it must read is whichever org the request binds (REQ-1266).
+    wire_auth(app, state.auth_config, db_pool=ActiveOrgPool(), admin_pool=state.admin_db)
 
     if state.multitenancy:
         from provisa.api.middleware.tenant_middleware import TenantMiddleware

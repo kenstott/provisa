@@ -14,12 +14,17 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, select
 
 from provisa.core.database import Database
 from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
+from provisa.security.rights import has_platform_bypass
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/invites", tags=["admin"])
 
@@ -33,10 +38,10 @@ def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParamet
 
 
 async def _require_org_admin(request: Request, org_id: str) -> None:  # REQ-1266
-    """Raise 403 unless the caller may issue invites for ``org_id``: a platform admin
-    (superadmin/admin — any org), or the org_admin of exactly this org. org_admin authority
-    is confined to the org the caller is currently acting in (active_org_id) and backed by an
-    admin-plane membership row. Dev/no-auth (anonymous) is allowed, matching _require_superadmin."""
+    """Raise 403 unless the caller may issue invites for ``org_id``: a platform_admin (any org),
+    or the org_admin of exactly this org. org_admin authority is confined to the org the caller is
+    currently acting in (active_org_id) and backed by an admin-plane membership row. Dev/no-auth
+    (anonymous) is allowed, matching _require_platform_admin."""
     from provisa.api.app import state as _app_state
     from provisa.api.admin.capabilities import _resolved_capabilities
 
@@ -44,7 +49,7 @@ async def _require_org_admin(request: Request, org_id: str) -> None:  # REQ-1266
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
         return  # dev mode — no auth configured
     caps = _resolved_capabilities(identity, _app_state)
-    if "superadmin" in caps or "admin" in caps:
+    if has_platform_bypass(caps):
         return  # platform admin acts in any org
     role_claims = {c.split(":")[0] for c in getattr(identity, "roles", [])}
     active_org = getattr(request.state, "active_org_id", None)
@@ -70,6 +75,45 @@ class CreateInviteBody(BaseModel):
     email: str | None = None
 
 
+# REQ-1314: the role a link invitation confers when it names none. analyst is the least-privileged
+# of the four default roles (REQ-1297); defaulting upward would hand a shareable link more authority
+# than its creator chose to grant.
+DEFAULT_INVITE_ROLE = "analyst"
+
+
+async def resolve_invite_role(org_id: str, role_id: str | None) -> str:
+    """The role an invitation into ``org_id`` confers, validated against that org's roles table.
+
+    REQ-1313: ``org_invites.role_id`` is a plain Text column with no foreign key (it references the
+    per-org ``roles`` table, which lives in another model), and redemption feeds it straight into
+    ``grant_org_role``. Without this check an org_admin can name any string at all — including
+    ``platform_admin``, whose capabilities resolve deployment-wide regardless of which org schema
+    the assignment sits in. Raises 403/422 rather than returning a substitute: silently downgrading
+    an unconferrable role would grant access the inviter did not intend to describe.
+    """
+    from provisa.api.app import ensure_org_runtime, state
+    from provisa.core.schema_org import roles as org_roles
+
+    resolved = role_id if role_id is not None else DEFAULT_INVITE_ROLE
+    # platform_admin confers deployment-wide administration, so it may only be conferred into the
+    # root org — REQ-1298 makes an invitation into root followed by that assignment the sole path
+    # to a backup platform administrator, and this is what stops an org_admin minting one at home.
+    if resolved == "platform_admin" and org_id != state.org_id:
+        raise HTTPException(
+            status_code=403,
+            detail="platform_admin may only be conferred by an invitation into the root org",
+        )
+    rt = await ensure_org_runtime(org_id)
+    assert rt.tenant_db is not None
+    async with rt.tenant_db.acquire() as conn:
+        found = await conn.execute_core(select(org_roles.c.id).where(org_roles.c.id == resolved))
+        if found.fetchone() is None:
+            raise HTTPException(
+                status_code=422, detail=f"Role '{resolved}' does not exist in org '{org_id}'"
+            )
+    return resolved
+
+
 @router.post("/")
 async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     import datetime
@@ -91,15 +135,24 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
         days=body.expires_in_days
     )
     async with pool.acquire() as conn:
-        result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == body.org_id))
-        if result.fetchone() is None:
+        result = await conn.execute_core(
+            select(orgs.c.id, orgs.c.name).where(orgs.c.id == body.org_id)
+        )
+        org_row = result.fetchone()
+        if org_row is None:
             raise HTTPException(status_code=404, detail="Org not found")
+        org_name = org_row._mapping["name"]
+    # REQ-1313/REQ-1314: resolve the default and validate against the target org's roles BEFORE the
+    # insert, so a refused role leaves no invitation row behind and the inviter sees the refusal
+    # rather than the invitee hitting it at redemption.
+    role_id = await resolve_invite_role(body.org_id, body.role_id)
+    async with pool.acquire() as conn:
         result = await conn.execute_core(
             org_invites.insert()
             .values(
                 token=token,
                 org_id=body.org_id,
-                role_id=body.role_id,
+                role_id=role_id,
                 email=body.email.strip().lower() if body.email else None,
                 created_by=created_by,
                 expires_at=expires_at,
@@ -114,7 +167,66 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
             )
         )
         row = result.fetchone()
-    return dict(row._mapping)
+    invite = dict(row._mapping)
+    # REQ-1310: an addressed invitation is delivered. A link invitation (no email) is distributed by
+    # the org_admin, so there is nothing to send.
+    invite["delivery"] = await _deliver_invite(
+        email=invite["email"],
+        org_id=body.org_id,
+        org_name=org_name,
+        inviter=created_by,
+        role_id=role_id,
+        expires_at=expires_at,
+        token=token,
+    )
+    return invite
+
+
+async def _deliver_invite(  # REQ-1310
+    *,
+    email: str | None,
+    org_id: str,
+    org_name: str,
+    inviter: str,
+    role_id: str,
+    expires_at,
+    token: str,
+) -> str:
+    """Send the invitation and report what happened, as a value in the creation response.
+
+    Returns "not_addressed" for a link invitation, "sent", or "failed: <reason>". A send failure is
+    reported rather than raised: the invitation row is valid and its link still works, so refusing
+    the whole request would destroy a usable invitation over a mail-server problem. Reporting it
+    inline is what tells the org_admin to distribute the link themselves.
+    """
+    if not email:
+        return "not_addressed"
+    from starlette.concurrency import run_in_threadpool
+
+    from provisa.api.app import state as _app_state
+    from provisa.core.mail import compose_invite_message, send_message
+
+    cfg = getattr(_app_state, "config", None)
+    if cfg is None:
+        raise HTTPException(status_code=503, detail="Server configuration is not loaded")
+    message = compose_invite_message(
+        to=email,
+        org_name=org_name,
+        org_id=org_id,
+        # The user id, not a display name: display_name is optional on an identity and this line
+        # must name someone in every message.
+        inviter=inviter,
+        role_id=role_id,
+        expires_at=expires_at,
+        base_url=cfg.mail.base_url,
+        token=token,
+    )
+    try:
+        await run_in_threadpool(send_message, cfg.mail, message)
+    except Exception as exc:  # reported to the caller, never swallowed
+        log.error("invitation to %s for org %s could not be delivered: %s", email, org_id, exc)
+        return f"failed: {exc}"
+    return "sent"
 
 
 async def _administered_org_scope(request: Request) -> str | None:  # REQ-1266
@@ -128,7 +240,7 @@ async def _administered_org_scope(request: Request) -> str | None:  # REQ-1266
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
         return None  # dev mode
     caps = _resolved_capabilities(identity, _app_state)
-    if "superadmin" in caps or "admin" in caps:
+    if has_platform_bypass(caps):
         return None  # platform admin: all orgs
     role_claims = {c.split(":")[0] for c in getattr(identity, "roles", [])}
     active_org = getattr(request.state, "active_org_id", None)

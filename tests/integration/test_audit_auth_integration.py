@@ -29,6 +29,7 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from provisa.encryption import NullEncryption
+from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
 pytestmark = [pytest.mark.integration]
 
@@ -80,20 +81,21 @@ class TestREQ535AnonymousAuth:
     """
 
     def test_anonymous_identity_user_id(self):
-        # REQ-535: no provider → the username IS the role, defaulting to "admin"
+        # REQ-535/REQ-1297: no provider → the username IS the role, defaulting to platform_admin
         app = _make_app(provider=None)
         client = TestClient(app)
         resp = client.get("/probe")
         assert resp.status_code == 200
-        assert resp.json()["user_id"] == "admin"
+        assert resp.json()["user_id"] == PLATFORM_ADMIN_ROLE
 
     def test_anonymous_identity_has_role(self):
-        # REQ-535: no provider → resolved role defaults to admin (or x-provisa-role header)
-        app = _make_app(provider=None, default_role="admin")
+        # REQ-535/REQ-1297: no provider → resolved role defaults to platform_admin (or the
+        # x-provisa-role header)
+        app = _make_app(provider=None, default_role=PLATFORM_ADMIN_ROLE)
         client = TestClient(app)
         resp = client.get("/probe")
         assert resp.status_code == 200
-        assert resp.json()["role"] == "admin"
+        assert resp.json()["role"] == PLATFORM_ADMIN_ROLE
 
     def test_anonymous_assignment_has_wildcard_domain(self):
         # REQ-535: no provider → RoleAssignment has domain_id="*" (wildcard domain access)

@@ -26,42 +26,51 @@ direct-driver pool cannot reach ``postgres`` and fails silently by design
 
 import os
 
-# Force the Trino engine + point at the two-org fixture config BEFORE provisa.api.app is imported
-# (the module-global AppState binds its engine at import time from $PROVISA_ENGINE). Host/port use
-# setdefault so an isolated-stack run (ephemeral ports, set earlier by conftest) wins.
-os.environ["PROVISA_ENGINE"] = "trino"
-os.environ["PROVISA_CONFIG"] = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "fixtures", "two_org_trino_config.yaml")
-)
-os.environ["PROVISA_CONFIG_REPLACE"] = "1"
-os.environ.setdefault("TRINO_HOST", "localhost")
-os.environ.setdefault("TRINO_PORT", "8080")
-os.environ.setdefault("PG_PASSWORD", "provisa")
-os.environ.setdefault("PROVISA_SKIP_TRINO_WAIT", "1")
-
 import pytest
 from httpx import ASGITransport, AsyncClient
+
+_CONFIG = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "fixtures", "two_org_trino_config.yaml")
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
 @pytest.fixture(scope="module")
 async def app_state():
+    from _pytest.monkeypatch import MonkeyPatch
+
     from provisa.api.app import create_app, state
     from provisa.federation.engine import build_engine
     from provisa.federation.runtime import EngineRuntime
 
-    # If another test imported the app earlier under a different engine, rebind to Trino so this
-    # module always exercises the shared-coordinator catalog namespace it is written to prove.
-    if getattr(state.federation_engine.engine, "name", None) != "trino":
-        state.federation_engine = EngineRuntime(build_engine(), state)
+    # Scoped to this fixture, never module import: pytest imports every test module before running
+    # anything, so an import-time PROVISA_CONFIG/PROVISA_CONFIG_REPLACE would repoint — and with
+    # REPLACE=1, delete rows from — the shared control plane every other in-process test uses.
+    # Host/port default so an isolated-stack run (ephemeral ports, set by conftest) still wins.
+    mp = MonkeyPatch()
+    mp.setenv("PROVISA_ENGINE", "trino")
+    mp.setenv("PROVISA_CONFIG", _CONFIG)
+    mp.setenv("PROVISA_CONFIG_REPLACE", "1")
+    mp.setenv("TRINO_HOST", os.environ.get("TRINO_HOST", "localhost"))
+    mp.setenv("TRINO_PORT", os.environ.get("TRINO_PORT", "8080"))
+    mp.setenv("PG_PASSWORD", os.environ.get("PG_PASSWORD", "provisa"))
+    mp.setenv("PROVISA_SKIP_TRINO_WAIT", os.environ.get("PROVISA_SKIP_TRINO_WAIT", "1"))
 
-    app = create_app()
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as _c:
-            assert _c is not None
-            yield state
+    try:
+        # If another test imported the app earlier under a different engine, rebind to Trino so this
+        # module always exercises the shared-coordinator catalog namespace it is written to prove.
+        if getattr(state.federation_engine.engine, "name", None) != "trino":
+            state.federation_engine = EngineRuntime(build_engine(), state)
+
+        app = create_app()
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as _c:
+                assert _c is not None
+                yield state
+    finally:
+        mp.undo()
 
 
 async def _drop_catalog(state, name: str) -> None:

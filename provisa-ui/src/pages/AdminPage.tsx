@@ -99,7 +99,7 @@ export function AdminPage() {
   const location = useLocation();
   const activeTab = ROUTE_TO_SECTION[location.pathname] ?? "Overview";
   const { capabilities } = useAuth();
-  const isSuperAdmin = capabilities.includes("superadmin") || capabilities.includes("admin");
+  const isSuperAdmin = capabilities.includes("platform_admin");
   const [stats, setStats] = useState<Record<string, number>>({});
   const [newDomainId, setNewDomainId] = useState("");
   const [newDomainDesc, setNewDomainDesc] = useState("");

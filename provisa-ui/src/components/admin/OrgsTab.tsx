@@ -81,7 +81,10 @@ export function OrgsTab() {
   };
 
   const handleDeleteOrg = async (id: string) => {
-    await deleteOrg(id);
+    // REQ-1300: the server refuses deletion unless the caller repeats the org id back, so the
+    // platform admin confirms it here the same way the org's own admin does on the team page.
+    if (window.prompt(t("orgsTab.deleteConfirmPrompt", { id })) !== id) return;
+    await deleteOrg(id, id);
     setOrgs(await fetchOrgs());
     notifications.show({ message: t("orgsTab.deleted", { id }) });
   };
@@ -180,6 +183,7 @@ export function OrgsTab() {
         <Stack gap="sm" maw={480}>
           <TextInput
             label={t("orgsTab.orgIdLabel")}
+            description={t("orgsTab.orgIdDesc")}
             placeholder={t("orgsTab.orgIdPlaceholder")}
             value={newOrgId}
             onChange={(e) => setNewOrgId(e.currentTarget.value)}

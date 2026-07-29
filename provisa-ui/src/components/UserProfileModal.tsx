@@ -8,11 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Badge, Button, Group, Modal, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, Modal, Stack, Table, Text, TextInput, Title } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
-import { updateProfile } from "../api/admin";
+import { deleteAccount, leaveOrg, updateProfile } from "../api/admin";
 
 interface Props {
   onClose: () => void;
@@ -25,7 +25,32 @@ export function UserProfileModal({ onClose }: Props) {
   const [last, setLast] = useState(familyName ?? "");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // REQ-1306/REQ-1307: leaving an org and deleting the account are the person's own acts, so they
+  // live on their profile rather than under an admin page they may not be able to reach.
+  const [membershipError, setMembershipError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState("");
   const dirty = first !== (givenName ?? "") || last !== (familyName ?? "");
+
+  async function handleLeave(orgId: string) {
+    setMembershipError(null);
+    try {
+      await leaveOrg(orgId);
+      // The org list the session was built from has changed; a reload re-runs identity bootstrap.
+      window.location.assign("/");
+    } catch (e) {
+      setMembershipError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleDeleteAccount() {
+    setMembershipError(null);
+    try {
+      await deleteAccount(confirmDelete);
+      window.location.assign("/");
+    } catch (e) {
+      setMembershipError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -167,6 +192,69 @@ export function UserProfileModal({ onClose }: Props) {
               ))}
             </Group>
           )}
+        </section>
+
+        <section data-testid="profile-memberships">
+          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+            {t("userProfileModal.membershipsHeading")}
+          </Title>
+          {membershipError && (
+            <Alert color="red" mb="xs" data-testid="profile-membership-error">
+              {membershipError}
+            </Alert>
+          )}
+          {orgMemberships.length === 0 ? (
+            <Text fz="0.85rem" c="dimmed">{t("userProfileModal.noMemberships")}</Text>
+          ) : (
+            <Table fz="0.82rem" withTableBorder={false}>
+              <Table.Tbody>
+                {orgMemberships.map((m) => (
+                  <Table.Tr key={m.org_id}>
+                    <Table.Td>{m.org_name}</Table.Td>
+                    <Table.Td ta="right">
+                      <Button
+                        size="compact-xs"
+                        variant="default"
+                        onClick={() => handleLeave(m.org_id)}
+                        data-testid={`profile-leave-${m.org_id}`}
+                      >
+                        {t("userProfileModal.leaveOrg")}
+                      </Button>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          )}
+          <Text fz="0.8rem" c="dimmed" mt="xs">
+            {t("userProfileModal.leaveHelp")}
+          </Text>
+        </section>
+
+        <section data-testid="profile-delete-account">
+          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+            {t("userProfileModal.deleteAccountHeading")}
+          </Title>
+          <Text fz="0.85rem" c="dimmed" mb="xs">
+            {t("userProfileModal.deleteAccountHelp")}
+          </Text>
+          <Group gap="xs" align="flex-end">
+            <TextInput
+              label={t("userProfileModal.deleteAccountConfirmLabel", { userId })}
+              value={confirmDelete}
+              onChange={(e) => setConfirmDelete(e.currentTarget.value)}
+              data-testid="profile-delete-confirm"
+            />
+            <Button
+              color="red"
+              size="xs"
+              disabled={!userId || confirmDelete !== userId}
+              onClick={handleDeleteAccount}
+              data-testid="profile-delete-submit"
+            >
+              {t("userProfileModal.deleteAccountButton")}
+            </Button>
+          </Group>
         </section>
       </Stack>
     </Modal>

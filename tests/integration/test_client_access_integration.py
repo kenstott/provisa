@@ -389,7 +389,9 @@ class TestRESTAutoGenEndpoint:
 
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/data/rest/default/orders")
+                resp = await client.get(
+                    "/data/rest/default/orders", headers={"X-Provisa-Role": "admin"}
+                )
             assert resp.status_code == 200
             body = resp.json()
             assert "data" in body
@@ -427,6 +429,7 @@ class TestRESTAutoGenEndpoint:
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
                     "/data/rest/default/orders",
+                    headers={"X-Provisa-Role": "admin"},
                     params={
                         "filter": json.dumps(
                             [{"field": "id", "comparator": "eq", "value": 99999999}]
@@ -467,7 +470,9 @@ class TestRESTAutoGenEndpoint:
             app.include_router(create_rest_router(state))
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/data/rest/default/orders")
+                resp = await client.get(
+                    "/data/rest/default/orders", headers={"X-Provisa-Role": "admin"}
+                )
             # Governance must not crash; 200 or 403 are both valid
             assert resp.status_code in (200, 403)
         finally:
@@ -487,11 +492,15 @@ class TestGraphSchemaEndpoint:
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
         from provisa.api.rest.cypher_router import router as cypher_router
+        from provisa.auth.middleware import AuthMiddleware
 
         state = _make_app_state_with_orders()
 
         with patch("provisa.api.app.state", state):
             app = FastAPI()
+            # REQ-486: AuthMiddleware is what settles request.state.role, which the graph
+            # surfaces read. Without it in the stack there is no role for the router to obey.
+            app.add_middleware(AuthMiddleware)
             app.include_router(cypher_router)
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -510,11 +519,15 @@ class TestGraphSchemaEndpoint:
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
         from provisa.api.rest.cypher_router import router as cypher_router
+        from provisa.auth.middleware import AuthMiddleware
 
         state = _make_app_state_with_orders()
 
         with patch("provisa.api.app.state", state):
             app = FastAPI()
+            # REQ-486: AuthMiddleware is what settles request.state.role, which the graph
+            # surfaces read. Without it in the stack there is no role for the router to obey.
+            app.add_middleware(AuthMiddleware)
             app.include_router(cypher_router)
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -533,11 +546,15 @@ class TestGraphSchemaEndpoint:
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
         from provisa.api.rest.cypher_router import router as cypher_router
+        from provisa.auth.middleware import AuthMiddleware
 
         state = _make_app_state_with_orders()
 
         with patch("provisa.api.app.state", state):
             app = FastAPI()
+            # REQ-486: AuthMiddleware is what settles request.state.role, which the graph
+            # surfaces read. Without it in the stack there is no role for the router to obey.
+            app.add_middleware(AuthMiddleware)
             app.include_router(cypher_router)
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -551,23 +568,30 @@ class TestGraphSchemaEndpoint:
         assert "relationship_types" in body
         assert isinstance(body["relationship_types"], list)
 
-    async def test_graph_schema_role_fallback(self):
-        """REQ-398: missing role header falls back to first registered role."""
+    async def test_graph_schema_headerless_caller_gets_the_unsecured_default_role(self):
+        """REQ-486: a headerless caller on an unsecured server is platform_admin, never an
+        arbitrary registered role — this state registers only 'admin', so there is no schema
+        for the caller's settled role and the endpoint says so instead of handing one over."""
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
         from provisa.api.rest.cypher_router import router as cypher_router
+        from provisa.auth.middleware import AuthMiddleware
 
         state = _make_app_state_with_orders()
 
         with patch("provisa.api.app.state", state):
             app = FastAPI()
+            # REQ-486: AuthMiddleware is what settles request.state.role, which the graph
+            # surfaces read. Without it in the stack there is no role for the router to obey.
+            app.add_middleware(AuthMiddleware)
             app.include_router(cypher_router)
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                # No X-Provisa-Role header — should fall back to 'admin'
+                # No X-Provisa-Role header — the middleware settles platform_admin.
                 resp = await client.get("/data/graph-schema")
 
-        assert resp.status_code == 200
+        assert resp.status_code == 503, resp.text
+        assert resp.json() == {"error": "Schema not loaded"}
 
 
 # ---------------------------------------------------------------------------

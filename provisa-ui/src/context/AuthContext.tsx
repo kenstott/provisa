@@ -15,8 +15,10 @@ import type { Capability, Role, RoleAssignment, AuthState, OrgMembership } from 
 import { AuthMeError, fetchMe } from "../api/admin";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 
+// REQ-1297: dev/no-auth mirrors what the server grants an unsecured caller — the platform_admin
+// role, the only one carrying the bypass capabilities.
 const DEFAULT_ADMIN_ROLE: Role = {
-  id: "admin",
+  id: "platform_admin",
   capabilities: [
     "source_registration",
     "table_registration",
@@ -34,6 +36,7 @@ const DEFAULT_ADMIN_ROLE: Role = {
     "user_management",
     "masking_config",
     "superadmin",
+    "platform_admin",
   ] as Capability[],
   domain_access: ["*"],
 };
@@ -184,7 +187,7 @@ export function AuthProvider({
       if (allRoles.length === 0) {
         if (isDev) {
           allRoles = [DEFAULT_ADMIN_ROLE];
-          userAssignments = [{ role_id: "admin", domain_id: "*" }];
+          userAssignments = [{ role_id: "platform_admin", domain_id: "*" }];
         } else if (rolesError) {
           setError(`Could not load roles: ${rolesError}`);
         } else if (userAssignments.length > 0) {

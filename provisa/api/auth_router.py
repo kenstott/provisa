@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 
 from provisa.core.schema_admin import (
     local_users,
@@ -30,6 +30,7 @@ from provisa.core.schema_admin import (
 )
 from provisa.core.org_membership import email_matches_rule
 from provisa.core.schema_org import roles
+from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
 if TYPE_CHECKING:
     pass
@@ -70,11 +71,12 @@ async def me(request: Request):
             "assignments": [{"role_id": rid, "domain_id": "*"} for rid in sorted(all_role_ids)],
         }
 
-    # admin/superadmin are platform bypass keywords, not tenant `roles` rows, so they are absent
-    # from all_role_ids — but a bootstrap superadmin's ONLY assignment is `admin`. Keep the bypass
-    # roles alongside real tenant roles so the platform superadmin surfaces to the UI (otherwise
-    # /me returns []: the onboarding gate then traps the superadmin, who has 0 org memberships).
-    _PLATFORM_BYPASS = {"admin", "superadmin"}
+    # REQ-1297: platform_admin is seeded into every org schema, so it normally IS in all_role_ids —
+    # but the bootstrap claimant's assignment is synthesized in the middleware and a process whose
+    # state.roles predates the seed would drop it. Keep it alongside real tenant roles so the
+    # platform administrator surfaces to the UI (otherwise /me returns []: the onboarding gate then
+    # traps them, since they may hold 0 org memberships).
+    _PLATFORM_BYPASS = {PLATFORM_ADMIN_ROLE}
     raw = resolve_assignments(identity)
     assignments = [
         {"role_id": a.role_id, "domain_id": a.domain_id}
@@ -200,7 +202,41 @@ async def claim_bootstrap(request: Request):  # REQ-1290
             update_columns=[],
             returning="user_id",
         )
-    return {"claimed": claimed_user_id == identity.user_id, "claimed_by": claimed_user_id}
+    claimed = claimed_user_id == identity.user_id
+    if claimed:
+        await _seat_claimant_in_root(identity.user_id)
+    return {
+        "claimed": claimed,
+        "claimed_by": claimed_user_id,
+        # REQ-1296: the org the claimant lands in. Naming it in the response is what lets the login
+        # page send the next request into a populated org instead of nowhere.
+        "org_id": state.org_id if claimed else None,
+    }
+
+
+async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
+    """Seat the platform-admin claimant in the bootstrap org as a real member holding platform_admin.
+
+    Claiming the slot used to leave the claimant holding an in-memory grant and nothing else: no
+    membership row, no tenant-plane assignment, so the first screen after the welcome modal showed
+    "No roles configured" and "You do not have permission to view this page". The claim now writes
+    both planes, exactly as joining any other org does — the bootstrap org is an org, and its
+    administrator is a member of it.
+
+    The bootstrap org id is ``state.org_id``, the control plane's resolved value (REQ-1286), so the
+    membership row and the ``org_<id>`` schema the assignment lands in can never name different orgs.
+    """
+    from provisa.api.app import state
+    from provisa.core.org_membership import grant_membership, grant_org_role
+    from provisa.security.rights import PLATFORM_ADMIN_ROLE
+
+    assert state.admin_db is not None
+    await grant_membership(state.admin_db, user_id, state.org_id)
+    # current_org is unbound on this request, so the tenant_db shim resolves the default (bootstrap)
+    # org's runtime — the same org the membership names.
+    tenant_db = state.tenant_db
+    assert tenant_db is not None, "the bootstrap org's tenant plane must be up before a claim"
+    await grant_org_role(tenant_db, user_id, PLATFORM_ADMIN_ROLE)
 
 
 @router.get("/my-invites")
@@ -457,6 +493,14 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
                 status_code=403,
                 detail="Your email address is not permitted to join this organization",
             )
+        # REQ-1313: revalidate rather than trusting the stored value — a role can be removed from
+        # the org between the invitation being written and this redemption, and assigning a role
+        # that no longer exists would leave a user_role_assignments row pointing at nothing. This
+        # runs BEFORE the membership upsert and the burn: a refused role must leave the invitation
+        # intact and re-redeemable once the org restores the role, not spend it on a failure.
+        from provisa.api.admin.invites_router import resolve_invite_role
+
+        role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
         await conn.upsert(
             user_org_memberships,
             {"user_id": user_id, "org_id": invite["org_id"]},
@@ -477,8 +521,8 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
 
     rt = await ensure_org_runtime(invite["org_id"])
     assert rt.tenant_db is not None
-    await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
-    return {"user_id": user_id, "org_id": invite["org_id"], "role_id": invite["role_id"]}
+    await grant_org_role(rt.tenant_db, user_id, role_id)
+    return {"user_id": user_id, "org_id": invite["org_id"], "role_id": role_id}
 
 
 class ProfileUpdate(BaseModel):
@@ -491,9 +535,15 @@ async def update_profile(body: ProfileUpdate, request: Request):
     """Update the authenticated user's own first/last name (user_profiles, platform plane).
 
     display_name/email mirror the IdP token and are read-only here; given_name/family_name have
-    no IdP source (Firebase/OIDC tokens carry no first/last split) so the user supplies them. The
-    profile row already exists — _upsert_profile writes it on every authenticated request — so this
-    updates in place. An empty string clears the field (stored as NULL); whitespace is trimmed.
+    no IdP source (Firebase/OIDC tokens carry no first/last split) so the user supplies them. An
+    empty string clears the field (stored as NULL); whitespace is trimmed.
+
+    Written as an upsert, not an in-place UPDATE: the IdP mirror that creates the row
+    (_upsert_profile) is dispatched fire-and-forget from the auth middleware, so on a user's first
+    authenticated request it may not have committed by the time this handler runs — an UPDATE
+    would match zero rows and silently discard the name. The insert names only user_id and the two
+    user-owned columns; email/display_name/provider stay the mirror's to write, whichever lands
+    first.
     """
     from provisa.api.app import state
 
@@ -510,13 +560,152 @@ async def update_profile(body: ProfileUpdate, request: Request):
     admin_db = state.admin_db
     assert admin_db is not None
     async with admin_db.acquire() as conn:
-        await conn.execute_core(
-            update(user_profiles)
-            .where(user_profiles.c.user_id == identity.user_id)
-            .values(given_name=_norm(body.given_name), family_name=_norm(body.family_name))
+        await conn.upsert(
+            user_profiles,
+            {
+                "user_id": identity.user_id,
+                "given_name": _norm(body.given_name),
+                "family_name": _norm(body.family_name),
+            },
+            index_elements=["user_id"],
+            update_columns=["given_name", "family_name"],
         )
     return {
         "user_id": identity.user_id,
         "given_name": _norm(body.given_name),
         "family_name": _norm(body.family_name),
     }
+
+
+@router.delete("/account")  # REQ-1307, REQ-1312
+async def delete_account(request: Request, confirm: str | None = None):
+    """Delete the authenticated user's own Provisa account.
+
+    Leaves every org they belong to (the same two-plane removal as REQ-1306, minus the auto-join
+    opt-out — the account is going away, so there is nothing left to suppress), removes their
+    ``user_profiles`` row and any ``local_users`` credential row, and tombstones every remaining
+    reference to their id (REQ-1312).
+
+    Refused while they are the last org_admin of any org, or the last platform_admin of the
+    deployment: the response names each blocking org so they know exactly what to hand off first.
+    The orgs themselves and everything registered in them survive — those belong to the org, not to
+    the person.
+
+    ``confirm`` must repeat the user id, the same typed ceremony org deletion carries (REQ-1300).
+
+    REQ-1263 personal access tokens are not revoked here because no PAT table exists yet; when one
+    lands, its rows for this user are deleted alongside the profile.
+    """
+    from provisa.api.admin.orgs_router import _admin_pool, _org_tenant_db
+    from provisa.core.org_membership import org_admin_user_ids, remove_from_org, tombstone_id
+    from provisa.core.schema_org import admin_audit_log, query_audit_log, user_role_assignments
+
+    identity = getattr(request.state, "identity", None)
+    user_id = getattr(identity, "user_id", None) if identity is not None else None
+    if user_id in (None, "anonymous"):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if confirm != user_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Deleting your account is irreversible: your profile and every org membership are "
+                "removed and cannot be restored. Repeat your user id in the 'confirm' parameter to "
+                "proceed."
+            ),
+        )
+    admin_db = _admin_pool()
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(user_org_memberships.c.org_id).where(
+                user_org_memberships.c.user_id == user_id
+            )
+        )
+        member_org_ids = sorted(r[0] for r in result.fetchall())
+
+    # Name EVERY org that blocks the deletion rather than refusing on the first one — one refusal
+    # per handoff is a queue the user has to discover by repetition.
+    tenant_dbs = {}
+    blocking: list[str] = []
+    for org_id in member_org_ids:
+        tenant_dbs[org_id] = await _org_tenant_db(org_id)
+        admins = await org_admin_user_ids(tenant_dbs[org_id])
+        if user_id in admins and len(admins) == 1:
+            blocking.append(org_id)
+    if blocking:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"You are the last org_admin of: {', '.join(blocking)}. Promote another org_admin "
+                f"in each, or delete the organization, before deleting your account."
+            ),
+        )
+
+    # The deployment must not be left without a platform administrator either. platform_admin is
+    # held either by a role assignment in the platform-plane schema or by the bootstrap claimant.
+    from provisa.api.app import state
+
+    platform_admins: set[str] = set()
+    assert state.tenant_db is not None
+    async with state.tenant_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(user_role_assignments.c.user_id).where(
+                user_role_assignments.c.role_id == PLATFORM_ADMIN_ROLE
+            )
+        )
+        platform_admins = {r[0] for r in result.fetchall()}
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(superadmin_bootstrap.c.user_id).where(superadmin_bootstrap.c.id == 1)
+        )
+        claimant = result.scalar()
+    if claimant is not None:
+        platform_admins.add(claimant)
+    if user_id in platform_admins and len(platform_admins) == 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "You are the last platform_admin of this deployment. Grant platform_admin to "
+                "another user before deleting your account."
+            ),
+        )
+
+    for org_id in member_org_ids:
+        await remove_from_org(admin_db, tenant_dbs[org_id], user_id, org_id)
+
+    tombstone = tombstone_id(user_id)
+    async with admin_db.acquire() as conn:
+        # Tombstone rather than NULL: org_invites.created_by is NOT NULL, and a dangling id is
+        # worse than an explicit one. The row stays referentially intact and stops naming anyone.
+        await conn.execute_core(
+            update(orgs).where(orgs.c.created_by == user_id).values(created_by=tombstone)
+        )
+        await conn.execute_core(
+            update(org_invites)
+            .where(org_invites.c.created_by == user_id)
+            .values(created_by=tombstone)
+        )
+        await conn.execute_core(
+            update(org_invites).where(org_invites.c.used_by == user_id).values(used_by=tombstone)
+        )
+        await conn.execute_core(delete(user_profiles).where(user_profiles.c.user_id == user_id))
+        await conn.execute_core(delete(local_users).where(local_users.c.id == user_id))
+    # Audit attributions carry the tombstone too. Audit entries are NEVER deleted (REQ-1312) — a
+    # trail that erases on request is not a trail.
+    for org_id in member_org_ids:
+        async with tenant_dbs[org_id].acquire() as conn:
+            await conn.execute_core(
+                update(query_audit_log)
+                .where(query_audit_log.c.user_id == user_id)
+                .values(user_id=tombstone)
+            )
+            await conn.execute_core(
+                update(admin_audit_log)
+                .where(admin_audit_log.c.actor_id == user_id)
+                .values(actor_id=tombstone)
+            )
+            await conn.execute_core(
+                update(admin_audit_log)
+                .where(admin_audit_log.c.subject_id == user_id)
+                .values(subject_id=tombstone)
+            )
+    return {"deleted": user_id, "tombstone": tombstone, "left_orgs": member_org_ids}

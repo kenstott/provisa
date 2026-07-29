@@ -37,7 +37,14 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES, orgs, user_org_memberships
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import roles, user_role_assignments
+from provisa.core.schema_org import (
+    domains,
+    registered_tables,
+    roles,
+    sources,
+    table_columns,
+    user_role_assignments,
+)
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
 pytestmark = [pytest.mark.integration]
@@ -63,8 +70,16 @@ def _prepare_sync():
         # A pre-existing org: proves the server_default keeps older rows "ready".
         conn.execute(insert(orgs).values(id="root", name="Enterprise"))
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments])
+        # REQ-1301: provisioning refreshes the root org's registry view and registers it as a
+        # meta-domain table, so the tenant plane needs the dataset catalog too — not just the roles.
+        org_metadata.create_all(
+            conn,
+            tables=[roles, user_role_assignments, sources, domains, registered_tables,
+                    table_columns],
+        )
         conn.execute(insert(roles).values(id="org_admin"))
+        conn.execute(insert(sources).values(id="provisa-admin", type="postgres"))
+        conn.execute(insert(domains).values(id="meta"))
     return engine
 
 

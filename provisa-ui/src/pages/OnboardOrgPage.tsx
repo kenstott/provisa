@@ -277,7 +277,7 @@ export function OnboardOrgPage() {
                   value={id}
                   onChange={(e) => setId(e.currentTarget.value)}
                   required
-                  pattern="[A-Za-z_][A-Za-z0-9_]*"
+                  pattern="[a-z][a-z0-9]{1,39}"
                 />
                 <TextInput
                   id="onboard-org-name"

@@ -772,3 +772,19 @@ preserved_snapshots = Table(
     Column("window_id", Text),  # optional calendar-addressable period this snapshot froze
     Column("sealed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+# REQ-1303/REQ-1308: the org's administrative trail — grants, revocations, offboardings and role
+# changes performed against THIS org, including a platform_admin's intervention. Distinct from
+# query_audit_log, which records data access. Mirrors the schema.sql DDL of the same name.
+admin_audit_log = Table(
+    "admin_audit_log",
+    metadata,
+    Column(
+        "id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    ),
+    Column("action", Text, nullable=False),
+    Column("actor_id", Text, nullable=False),
+    Column("subject_id", Text, nullable=False),
+    Column("detail", JSON, nullable=False, default=dict, server_default="{}"),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)

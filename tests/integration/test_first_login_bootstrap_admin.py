@@ -54,11 +54,15 @@ _ORG = "default"
 
 
 def _prepare_sync():
-    """A wiped control plane: no orgs, no memberships, an unclaimed bootstrap slot.
+    """A wiped control plane: the bootstrap org registered, no memberships, an unclaimed slot.
 
-    The tenant plane carries the seeded role catalog every org schema gets. `admin` is present as a
-    row here, which is what the deployment showed too — the question is never "does the role exist"
-    but "is the caller assigned it".
+    The org row is present because startup seeds it (``init_registry_schema``) before any request
+    arrives — the schema exists, it simply has nobody in it. That is precisely the state REQ-1296
+    addresses: the deployment is built, and the first person through the door has to be seated in it.
+
+    The tenant plane carries the seeded role catalog every org schema gets. ``platform_admin`` is
+    present as a row here, which is what the deployment showed too — the question is never "does the
+    role exist" but "is the caller assigned it".
     """
     engine = create_engine(_SYNC_URL, pool_pre_ping=True)
     with engine.begin() as conn:
@@ -69,10 +73,14 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
+        conn.execute(
+            text("INSERT INTO orgs (id, name, seeded_demo) VALUES (:i, 'Enterprise', true)"),
+            {"i": _ORG},
+        )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn, tables=[roles, user_role_assignments])
-        for rid in ("admin", "analyst", "org_admin"):
+        for rid in ("platform_admin", "analyst", "org_admin"):
             conn.execute(text("INSERT INTO roles (id) VALUES (:i)"), {"i": rid})
     return engine
 
@@ -159,7 +167,7 @@ def test_first_login_claims_and_holds_platform_admin(planes):
 
         claim = client.post("/auth/claim-bootstrap", headers=_hdr("tok-first"))
         assert claim.status_code == 200, claim.text
-        assert claim.json() == {"claimed": True, "claimed_by": "uid-first"}
+        assert claim.json() == {"claimed": True, "claimed_by": "uid-first", "org_id": _ORG}
 
         assert client.get("/auth/bootstrap-status").json() == {"unclaimed": False}
 
@@ -168,20 +176,63 @@ def test_first_login_claims_and_holds_platform_admin(planes):
         body = me.json()
 
     assert body["dev_mode"] is False
-    assert body["assignments"] == [{"role_id": "admin", "domain_id": "*"}]
+    assert body["assignments"] == [{"role_id": "platform_admin", "domain_id": "*"}]
     assert body["active_org_id"] == _ORG
-    # The platform admin holds no org membership — being the platform admin is not being in an org.
-    assert body["org_memberships"] == []
+    # REQ-1296: the claimant is seated in the bootstrap org. Landing with no membership is what left
+    # the first admin staring at an empty deployment they could not query.
+    assert body["org_memberships"] == [{"org_id": _ORG, "org_name": "Enterprise"}]
 
 
-def test_platform_admin_may_request_the_admin_role(planes):
+def test_claim_seats_the_admin_in_both_planes(planes):
+    """REQ-1296: the claim writes rows, not just an in-request grant.
+
+    The middleware can hand the claimant ``platform_admin`` for the duration of one request without
+    anything being persisted — and that is exactly what produced "No roles configured" on the next
+    request. So the assertions are against the tables: a membership row in the admin plane and an
+    assignment row in the tenant plane, both surviving the client's shutdown.
+    """
+    admin_db, tenant_db = planes
+    with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
+        claim = client.post("/auth/claim-bootstrap", headers=_hdr("tok-first"))
+    assert claim.status_code == 200, claim.text
+    # The response names the org the claimant landed in, so the login page can send the next request
+    # into a populated org instead of nowhere.
+    assert claim.json() == {"claimed": True, "claimed_by": "uid-first", "org_id": _ORG}
+
+    engine = create_engine(_SYNC_URL, pool_pre_ping=True)
+    try:
+        with engine.begin() as conn:
+            memberships = conn.execute(
+                text(
+                    f"SELECT user_id, org_id FROM {_ADMIN_SCHEMA}.user_org_memberships"
+                    " ORDER BY user_id"
+                )
+            ).all()
+            assignments = conn.execute(
+                text(
+                    f"SELECT user_id, role_id, domain_id FROM {_TENANT_SCHEMA}.user_role_assignments"
+                    " ORDER BY user_id"
+                )
+            ).all()
+    finally:
+        engine.dispose()
+
+    assert memberships == [("uid-first", _ORG)]
+    assert assignments == [("uid-first", "platform_admin", "*")]
+
+
+def test_platform_admin_may_request_the_platform_admin_role(planes):
     """The role /auth/me offered is the role the server honors — no 403 on the next request."""
     admin_db, tenant_db = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         client.post("/auth/claim-bootstrap", headers=_hdr("tok-first"))
-        resp = client.get("/whoami", headers=_hdr("tok-first", "admin"))
+        resp = client.get("/whoami", headers=_hdr("tok-first", "platform_admin"))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"role": "admin", "assigned": ["admin"], "active_org_id": _ORG}
+    assert resp.json() == {
+        "role": "platform_admin",
+        "assigned": ["platform_admin"],
+        "active_org_id": _ORG,
+    }
 
 
 def test_second_user_is_admitted_without_a_grant(planes):

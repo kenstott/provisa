@@ -217,14 +217,14 @@ def test_member_less_user_blocked_on_tenant_plane():
 # --- REQ-1266 bootstrap fall-through under multitenancy ------------------------
 
 
-def test_bootstrap_claimant_is_granted_admin():
+def test_bootstrap_claimant_is_granted_platform_admin():
     admin = _Pool(rows_by_table={"user_org_memberships": []}, claimant="first")
     app = _make_app(
         bootstrap_superadmin=True, admin_pool=admin, multitenancy=True
     )
     resp = TestClient(app).get("/test", headers=_auth("first"))
     assert resp.status_code == 200
-    assert resp.json()["roles"] == ["admin"]
+    assert resp.json()["roles"] == ["platform_admin"]  # REQ-1297
 
 
 def test_an_unclaimed_slot_is_not_taken_by_merely_authenticating():
@@ -290,7 +290,7 @@ def test_subdomain_host_resolves_org():
 
 def test_apex_host_resolves_to_none():
     # REQ-1276: provisa.org → no org (None)
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": []})
     app = _make_app(
         assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
@@ -302,7 +302,7 @@ def test_apex_host_resolves_to_none():
 
 def test_localhost_resolves_to_none():
     # REQ-1276: localhost → no org (None)
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": []})
     app = _make_app(
         assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
@@ -314,7 +314,7 @@ def test_localhost_resolves_to_none():
 
 def test_control_plane_host_cloud_uses_x_org_provisa_header():
     # REQ-1276: cloud.provisa.dev requires x-org-provisa header for org
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
     app = _make_app(
         assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
@@ -329,7 +329,7 @@ def test_control_plane_host_cloud_uses_x_org_provisa_header():
 
 def test_control_plane_host_cloud_without_header_resolves_to_none():
     # REQ-1276: cloud.provisa.dev with no header → None (platform-plane auth allowed)
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": []})
     app = _make_app(
         assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
@@ -371,7 +371,7 @@ def test_control_plane_host_with_non_member_org_header_rejected():
 
 def test_platform_admin_with_subdomain_org_allowed_req1276():
     # REQ-1276: platform admin acts in any org via subdomain
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "admin", "domain_id": "*"}]})
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": []})
     app = _make_app(
         assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True

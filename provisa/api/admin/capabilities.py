@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from provisa.security.rights import PLATFORM_ADMIN_ROLE, has_platform_bypass
+
 if TYPE_CHECKING:
     import strawberry
     import strawberry.types
@@ -43,12 +45,12 @@ def _resolved_capabilities(identity, state) -> set[str]:
     for assignment_claim in getattr(identity, "roles", []):
         claim = assignment_claim.strip()
         role_id = claim.split(":")[0] if ":" in claim else claim
-        # admin/superadmin are platform-bypass keywords, not `roles` rows (schema.sql seeds only
-        # org_admin and deliberately excludes them). The bootstrap superadmin and the HTTP-Basic
-        # superuser are granted role "admin" with no matching state.roles entry, so a plain
-        # roles.get() lookup yields nothing and every admin gate 403s. A claim of admin/superadmin
-        # IS the capability — surface it directly so _require_superadmin/require_capability resolve.
-        if role_id in ("admin", "superadmin"):
+        # REQ-1297: platform_admin is the single platform-bypass keyword. It IS a seeded roles row,
+        # so its capabilities resolve below — but the gates test for the role id itself, and a
+        # process whose state.roles has not been rebuilt since the seed (or a protocol identity
+        # carrying only claims) would otherwise fail them. Surface the id as a capability so
+        # has_platform_bypass() answers off the same set either way.
+        if role_id == PLATFORM_ADMIN_ROLE:
             caps.add(role_id)
         role = roles.get(role_id) or {}
         for c in role.get("capabilities") or []:
@@ -90,8 +92,8 @@ def require_capability(  # REQ-042, REQ-060
         return
 
     caps = _resolved_capabilities(identity, state)
-    if "superadmin" in caps or "admin" in caps:
-        return  # admins bypass all capability checks
+    if has_platform_bypass(caps):
+        return  # the platform administrator bypasses all capability checks (REQ-1297)
 
     if capability not in caps:
         raise PermissionError(f"Missing capability: {capability!r}")

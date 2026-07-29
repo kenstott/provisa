@@ -65,6 +65,9 @@ def _make_minimal_state():
     from unittest.mock import MagicMock
 
     state = MagicMock()
+    # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
+    # server behind the multitenancy org gate. Name the deployment shape explicitly.
+    state.multitenancy = False
     state.schemas = {}
     state.contexts = {}
     state.rls_contexts = {}
@@ -289,6 +292,9 @@ class TestFlightDoGetWithRealData:
         server = ProvisaFlightServer(state_placeholder, location=location, main_loop=main_loop)
 
         state = MagicMock()
+        # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
+        # server behind the multitenancy org gate. Name the deployment shape explicitly.
+        state.multitenancy = False
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}

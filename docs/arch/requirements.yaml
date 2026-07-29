@@ -37961,25 +37961,30 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: AuthProvider takes an authVersion prop that is bumped by App whenever a token is stored or
-    dropped. The provider re-runs the identity bootstrap (fetchMe + roles/domains) when authVersion changes,
-    ensuring a just-signed-in user resolves to their real identity instead of staying at userId=null.
-  use_case: Without authVersion, a just-signed-in user remained at userId=null because the identity
-    fetched at mount was never revisited. OnboardGate then read the fresh token alongside the stale
-    (null) identity, read it as a rejected credential, deleted it, and sent the user back to sign-in — an
-    unbreakable loop.
+  description: AuthProvider takes an authVersion prop that is bumped by App whenever a token is stored
+    or dropped. The provider re-runs the identity bootstrap (fetchMe + roles/domains) when authVersion
+    changes, ensuring a just-signed-in user resolves to their real identity instead of staying at userId=null.
+  use_case: Without authVersion, a just-signed-in user remained at userId=null because the identity fetched
+    at mount was never revisited. OnboardGate then read the fresh token alongside the stale (null) identity,
+    read it as a rejected credential, deleted it, and sent the user back to sign-in — an unbreakable loop.
   code:
   - provisa-ui/src/context/AuthContext.tsx
   - provisa-ui/src/App.tsx
   tests:
   - provisa-ui/src/__tests__/OnboardGate.test.tsx
-  scenario: |
-    Given an unauthenticated user at the sign-in page
+  scenario: 'Given an unauthenticated user at the sign-in page
+
     When they sign in and a token is stored
+
     And App bumps authVersion
+
     Then AuthProvider re-fetches /auth/me
+
     And userId resolves to the real identity
+
     And OnboardGate does not delete the fresh token
+
+    '
   e2e: true
   e2e_reason: Token storage side-effects, AuthProvider re-bootstrap, and OnboardGate routing logic are
     only verifiable end-to-end through a full browser render cycle.
@@ -38001,14 +38006,21 @@
   - provisa/auth/middleware.py
   tests:
   - provisa-ui/src/__tests__/OnboardGate.test.tsx
-  scenario: |
-    Given bootstrap mode is on and the admin slot is unclaimed
+  scenario: 'Given bootstrap mode is on and the admin slot is unclaimed
+
     And a user holds a valid credential
+
     When the user navigates to the app
+
     Then /auth/bootstrap-status returns unclaimed=true
+
     And OnboardGate drops the token
+
     And the user is redirected to sign-in
+
     And org onboarding is not rendered
+
+    '
   e2e: true
   e2e_reason: Bootstrap status resolution, token deletion, and OnboardGate routing are only verifiable
     through end-to-end browser navigation with real bootstrap state.
@@ -38030,15 +38042,20 @@
   - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - provisa-ui/src/__tests__/TablesPageLoadError.test.tsx
-  scenario: |
-    Given a tenant-plane query in an org_<id> schema
+  scenario: 'Given a tenant-plane query in an org_<id> schema
+
     When the query executes
+
     Then it operates only on rows in that schema
+
     And no row-level org_id filter is applied
+
     And a failed query renders an error, not an empty result
+
+    '
   e2e: true
-  e2e_reason: Schema routing, query failure handling, and UI error rendering are only verifiable
-    end-to-end through a request from UI to server with real schema isolation.
+  e2e_reason: Schema routing, query failure handling, and UI error rendering are only verifiable end-to-end
+    through a request from UI to server with real schema isolation.
 - id: REQ-1294
   status: complete
   group: 1. Access Governance & Security
@@ -38048,34 +38065,29 @@
   since: 2026-07
   description: 'After claiming the platform-admin slot the user is shown a welcome modal stating three
     things and nothing else: they are now this deployment''s platform_admin and the administrator of the
-    root org, which already holds the demo assets; backup platform_admins start with an invitation to join
-    root, after which the platform_admin assigns them the platform_admin role (REQ-1298); and the site is
-    now open for org creation — the next person who signs in creates their own organization. The flag is
-    read once at mount and cleared when dismissed.'
-  use_case: 'Claiming the sole admin slot is an irreversible act that happens behind a provider redirect
+    root org, which already holds the demo assets; backup platform_admins start with an invitation to
+    join root, after which the platform_admin assigns them the platform_admin role (REQ-1298); and the
+    site is now open for org creation — the next person who signs in creates their own organization. The
+    flag is read once at mount and cleared when dismissed.'
+  use_case: Claiming the sole admin slot is an irreversible act that happens behind a provider redirect
     — the user clicks "Sign in with Google" and lands in the app with no statement of what they now are.
     This modal is that statement. A single platform_admin account is a deployment-level single point of
     failure, so the moment the role is granted is the moment to say backups are possible. And the operator
-    needs to know the deployment''s gate has opened — nobody else can claim platform admin, but anyone
+    needs to know the deployment's gate has opened — nobody else can claim platform admin, but anyone
     signing in from here creates an org. Telling the platform admin to go invite someone instead conflates
-    platform administration with org administration.'
+    platform administration with org administration.
   code:
   - provisa-ui/src/components/PlatformAdminWelcomeModal.tsx
   - provisa-ui/src/App.tsx
   tests:
   - provisa-ui/src/__tests__/PlatformAdminWelcomeModal.test.tsx
-  scenario: |
-    Given a user has just claimed the platform-admin slot
-    And the CLAIMED_ADMIN_FLAG is set in localStorage
-    When the app shell renders
-    Then PlatformAdminWelcomeModal appears
-    And it names the user as this deployment's platform_admin
-    And it names the user as the administrator of the root org, which already holds the demo assets
-    And it states that backup platform_admins start with an invitation to join root, after which they are
-      assigned platform_admin
-    And it states that the site is now open for org creation on the next sign-in
-    And it does not tell the platform admin to invite people into an org they administer
-    And clicking dismiss clears the flag
+  scenario: "Given a user has just claimed the platform-admin slot\nAnd the CLAIMED_ADMIN_FLAG is set\
+    \ in localStorage\nWhen the app shell renders\nThen PlatformAdminWelcomeModal appears\nAnd it names\
+    \ the user as this deployment's platform_admin\nAnd it names the user as the administrator of the\
+    \ root org, which already holds the demo assets\nAnd it states that backup platform_admins start with\
+    \ an invitation to join root, after which they are\n  assigned platform_admin\nAnd it states that\
+    \ the site is now open for org creation on the next sign-in\nAnd it does not tell the platform admin\
+    \ to invite people into an org they administer\nAnd clicking dismiss clears the flag\n"
   e2e: true
   e2e_reason: Modal lifecycle (showing exactly once across navigations) and localStorage coordination
     between LoginPage and the app shell are only verifiable end-to-end.
@@ -38087,34 +38099,46 @@
   type: constraint
   since: 2026-07
   description: The UI may only place an ASSIGNED role in the X-Provisa-Role header. When auth is enforced
-    and the roles query fails or yields no assigned role, AuthContext reports the error and leaves the role
-    list empty — it must never fall back to a fabricated full-capability admin role. The DEFAULT_ADMIN_ROLE
+    and the roles query fails or yields no assigned role, AuthContext reports the error and leaves the
+    role list empty — it must never fall back to a fabricated full-capability admin role. The DEFAULT_ADMIN_ROLE
     fallback applies only where auth is not enforced (dev mode).
   use_case: The server honors X-Provisa-Role only for roles the user is assigned (provisa/auth/middleware.py),
-    so handing an org_admin a client-side admin role makes every subsequent request 403 "Role 'admin' is not
-    assigned to this user" — the exact failure a self-service org creator hit when a roles query failed and
-    the client fabricated a fallback.
+    so handing an org_admin a client-side admin role makes every subsequent request 403 "Role 'admin'
+    is not assigned to this user" — the exact failure a self-service org creator hit when a roles query
+    failed and the client fabricated a fallback.
   code:
   - provisa-ui/src/context/AuthContext.tsx
   - provisa/auth/middleware.py
   tests:
   - provisa-ui/src/context/__tests__/AuthContext.roles.test.tsx
   - tests/integration/test_org_creator_role_request.py
-  scenario: |
-    Given an authenticated user with assigned roles
+  scenario: 'Given an authenticated user with assigned roles
+
     When AuthContext resolves roles
+
     Then only assigned roles are offered to select
 
+
     Given auth is enforced
+
     When the roles query fails
+
     Then AuthContext reports the error
+
     And the role list is empty
+
     And no fallback admin role is fabricated
 
+
     Given auth is NOT enforced (dev mode)
+
     When the roles query fails
+
     Then AuthContext offers DEFAULT_ADMIN_ROLE
+
     And the error is not reported
+
+    '
   e2e: true
   e2e_reason: Role filtering, error reporting, and X-Provisa-Role header placement on requests are only
     verifiable end-to-end through the full auth stack with real role assignments.
@@ -38130,15 +38154,15 @@
     control-plane resolver returns (REQ-1286), not a literal layered over it, so there is still one source
     of truth for the default org id. It is provisioned with the demo assets (registered sources, tables,
     the ops and meta domains, relationships and views) before the first sign-in completes. The claiming
-    identity is written as a member of 'root' holding platform_admin — so they administer root as well as
-    the deployment — and 'root' is their active_org_id, so the first screen after the welcome modal renders
-    real data and a real role.
+    identity is written as a member of 'root' holding platform_admin — so they administer root as well
+    as the deployment — and 'root' is their active_org_id, so the first screen after the welcome modal
+    renders real data and a real role.
   use_case: The first sign-in on a wiped multitenant deployment claimed the slot and then rendered "No
     roles configured" and "You do not have permission to view this page" with no tables, no ops or meta
-    domain, and no demo data. Nothing in REQ-1288/1290/1292/1294 said what a freshly claimed platform admin
-    should hold — those cover only the claim ceremony — so the post-claim state was unspecified and the
-    deployment shipped an empty one. A platform administrator with nothing to look at cannot tell a working
-    deployment from a broken one.
+    domain, and no demo data. Nothing in REQ-1288/1290/1292/1294 said what a freshly claimed platform
+    admin should hold — those cover only the claim ceremony — so the post-claim state was unspecified
+    and the deployment shipped an empty one. A platform administrator with nothing to look at cannot tell
+    a working deployment from a broken one.
   code:
   - provisa/api/auth_router.py
   - provisa/api/startup_seed.py
@@ -38146,23 +38170,37 @@
   - provisa/core/org_membership.py
   tests:
   - tests/integration/test_first_login_bootstrap_admin.py
-  scenario: |
-    Given a wiped deployment with bootstrap mode on and the admin slot unclaimed
-    Then an org with id 'root' exists
+  scenario: 'Given a wiped deployment with bootstrap mode on and the admin slot unclaimed
+
+    Then an org with id ''root'' exists
+
     And its tenant schema is org_root
-    And the control-plane resolver returns 'root' as the default org id
-    And 'root' carries the demo assets: registered sources, registered tables, the ops and meta domains
+
+    And the control-plane resolver returns ''root'' as the default org id
+
+    And ''root'' carries the demo assets: registered sources, registered tables, the ops and meta domains
+
 
     Given the slot is unclaimed
+
     When a user POSTs /auth/claim-bootstrap and wins the claim
-    Then the claiming identity is a member of 'root'
-    And the identity holds platform_admin in 'root'
-    And /auth/me returns active_org_id 'root' with a non-empty org_memberships list
+
+    Then the claiming identity is a member of ''root''
+
+    And the identity holds platform_admin in ''root''
+
+    And /auth/me returns active_org_id ''root'' with a non-empty org_memberships list
+
 
     Given the platform admin has just claimed the slot
+
     When the app shell loads the query screen
+
     Then the role selector offers platform_admin
+
     And the demo tables and the ops and meta domains are listed
+
+    '
   e2e: true
   e2e_reason: The post-claim state spans the control plane (org row, membership), the tenant plane (org
     schema, seeded demo assets, role assignment), and the UI's role and domain rendering — only a live
@@ -38179,19 +38217,19 @@
   type: behavioral
   since: 2026-07
   description: 'Every org schema is seeded with exactly four default roles: platform_admin, org_admin,
-    analyst, developer. These four ids are the whole vocabulary — there are no aliases. The role ids
-    ''admin'' and ''superadmin'' are retired: they exist today as both seeded role rows and as the
-    platform-bypass keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are
-    replaced by platform_admin. Existing assignments naming the retired ids are rewritten to
-    platform_admin at seed time; nothing resolves them afterward. platform_admin is the deployment-wide
-    administrator (the role the bootstrap claim grants) and is the only one carrying the platform-bypass
-    capabilities. org_admin administers a single org — members, invites, sources, governance — and holds no
-    bypass. developer builds against the data:
-    query development, view and relationship authoring, full results, write. analyst reads: usage,
-    ad-hoc query, query development, no authoring or governance. All four are system roles (org_id NULL,
-    identical capabilities in every org) and are not editable through the roles admin surface.'
-  use_case: The seeded catalog was ad hoc — 'admin' and 'analyst' existed by accident of the boot seed and
-    'org_admin' was added later for self-service org creation, leaving no role for a person who builds
+    analyst, developer. These four ids are the whole vocabulary — there are no aliases. The role ids ''admin''
+    and ''superadmin'' are retired: they exist today as both seeded role rows and as the platform-bypass
+    keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are replaced by
+    platform_admin. Existing assignments naming the retired ids are rewritten to platform_admin at seed
+    time; nothing resolves them afterward. platform_admin is the deployment-wide administrator (the role
+    the bootstrap claim grants) and is the only one carrying the platform-bypass capabilities. org_admin
+    administers a single org — members, invites, sources, governance — and holds no bypass. developer
+    builds against the data: query development, view and relationship authoring, full results, write.
+    analyst reads: usage, ad-hoc query, query development, no authoring or governance. All four are system
+    roles (org_id NULL, identical capabilities in every org) and are not editable through the roles admin
+    surface.'
+  use_case: The seeded catalog was ad hoc — 'admin' and 'analyst' existed by accident of the boot seed
+    and 'org_admin' was added later for self-service org creation, leaving no role for a person who builds
     views and relationships but must not administer anything. A fixed four-role catalog gives every fresh
     org and every fresh deployment the same starting vocabulary, and makes the platform/org administration
     split explicit in the role id rather than implicit in a capability keyword.
@@ -38201,33 +38239,55 @@
   - provisa/auth/middleware.py
   tests:
   - tests/integration/test_first_login_bootstrap_admin.py
-  scenario: |
-    Given a newly provisioned org schema
-    Then roles platform_admin, org_admin, analyst and developer exist
-    And each has org_id NULL
-    And no role with id 'admin' or 'superadmin' exists
+  - tests/integration/test_invite_role_authz.py
+  scenario: 'Given a newly provisioned org schema
 
-    Given an existing deployment carrying assignments to 'admin' or 'superadmin'
+    Then roles platform_admin, org_admin, analyst and developer exist
+
+    And each has org_id NULL
+
+    And no role with id ''admin'' or ''superadmin'' exists
+
+
+    Given an existing deployment carrying assignments to ''admin'' or ''superadmin''
+
     When the seed runs
+
     Then those assignments name platform_admin
+
     And the platform-bypass check recognizes platform_admin only
 
+
     Given the four default roles
+
     Then platform_admin carries the platform-bypass capabilities
+
     And org_admin, developer and analyst do not
 
+
     Given a user holding developer
+
     When they author a view or a relationship
+
     Then it is permitted
+
     And administering members, invites or masking is denied
 
+
     Given a user holding analyst
+
     When they run a query
+
     Then it is permitted
+
     And authoring a view or relationship is denied
 
+
     Given a request to edit or delete a default role through the roles admin surface
+
     Then it is rejected
+
+    '
   e2e: false
   related_reqs:
   - REQ-1296
@@ -38242,40 +38302,57 @@
   description: A backup platform_admin is made in two steps, never by a second bootstrap claim. An existing
     platform_admin invites the person into the root org, the person redeems the invite and becomes a member
     of root, and the platform_admin then assigns them the platform_admin role in root. The bootstrap slot
-    stays claimed by its original holder and is never reopened; platform_admin is a role held in root, and
-    holding it there is what confers deployment-wide administration.
+    stays claimed by its original holder and is never reopened; platform_admin is a role held in root,
+    and holding it there is what confers deployment-wide administration.
   use_case: The bootstrap claim is first-writer-wins and single-use, so it cannot be the way a second
-    administrator is created — yet a deployment whose only platform_admin loses their account is a
-    deployment nobody can administer. Routing backups through root membership plus a role assignment reuses
-    the invite and role-assignment surfaces that already exist, keeps the claim ceremony irreversible, and
-    makes the set of platform administrators readable as the platform_admin assignments in one org rather
-    than as a hidden singleton row.
+    administrator is created — yet a deployment whose only platform_admin loses their account is a deployment
+    nobody can administer. Routing backups through root membership plus a role assignment reuses the invite
+    and role-assignment surfaces that already exist, keeps the claim ceremony irreversible, and makes
+    the set of platform administrators readable as the platform_admin assignments in one org rather than
+    as a hidden singleton row.
   code:
   - provisa/api/admin/invites_router.py
   - provisa/api/auth_router.py
   - provisa/core/org_membership.py
   tests:
   - tests/integration/test_first_login_bootstrap_admin.py
-  scenario: |
-    Given a claimed bootstrap slot and a platform_admin signed in
+  - tests/integration/test_invite_role_authz.py
+  scenario: 'Given a claimed bootstrap slot and a platform_admin signed in
+
     When they invite a person into the root org
+
     And that person redeems the invite
+
     Then the person is a member of root
+
     And the person does not hold platform_admin yet
 
+
     Given a member of root who does not hold platform_admin
+
     When a platform_admin assigns them the platform_admin role in root
+
     Then the person holds deployment-wide administration
+
     And the superadmin_bootstrap holder is unchanged
 
+
     Given the bootstrap slot is already claimed
+
     When any user POSTs /auth/claim-bootstrap
+
     Then the existing holder is returned
+
     And no second claim is granted
 
+
     Given a user who is not a platform_admin
+
     When they attempt to assign platform_admin to anyone
+
     Then the request is denied
+
+    '
   e2e: true
   e2e_reason: The flow crosses the invite control plane, invite redemption, root-org membership, and a
     tenant-plane role assignment — only a live two-account walk shows the second administrator actually
@@ -38297,46 +38374,65 @@
     exactly one platform_admin exists the admin overview and the health endpoint carry a standing warning
     naming the risk and the two-step fix (REQ-1298) — a warning, not a block, because a solo operator
     forced to invent a second account produces ceremony rather than redundancy. Recovery when the sole
-    holder is unreachable runs at the infrastructure boundary that already exists - a grant command
-    executed on the host, plus the SSO-independent break-glass account of REQ-1264. No long-lived recovery
-    code is minted at claim time — a bearer secret conferring permanent deployment-wide administration is a
+    holder is unreachable runs at the infrastructure boundary that already exists - a grant command executed
+    on the host, plus the SSO-independent break-glass account of REQ-1264. No long-lived recovery code
+    is minted at claim time — a bearer secret conferring permanent deployment-wide administration is a
     larger standing risk than the outage it insures against.
-  use_case: A platform_admin who revokes their own role, or an operator who deletes the only
-    administrator's account, bricks the deployment - nobody can grant the role back through the product
-    because granting it requires holding it. The failure is silent until someone needs administration.
-    Refusing the last revocation makes the invariant enforceable rather than advisory, and the standing
-    single-holder warning turns the far more likely scenario - the sole administrator becoming unreachable
-    - into something the operator was told about while they could still act.
+  use_case: A platform_admin who revokes their own role, or an operator who deletes the only administrator's
+    account, bricks the deployment - nobody can grant the role back through the product because granting
+    it requires holding it. The failure is silent until someone needs administration. Refusing the last
+    revocation makes the invariant enforceable rather than advisory, and the standing single-holder warning
+    turns the far more likely scenario - the sole administrator becoming unreachable - into something
+    the operator was told about while they could still act.
   code:
   - provisa/api/admin/roles_router.py
   - provisa/api/admin/users_router.py
   - provisa/cli
   tests:
   - tests/integration/test_first_login_bootstrap_admin.py
-  scenario: |
-    Given exactly one platform_admin exists
+  scenario: 'Given exactly one platform_admin exists
+
     When any actor revokes platform_admin from that holder
+
     Then the request is rejected
+
     And the holder still holds platform_admin
 
+
     Given exactly one platform_admin exists
-    When any actor deletes or disables that holder's account
+
+    When any actor deletes or disables that holder''s account
+
     Then the request is rejected
 
+
     Given exactly one platform_admin exists
+
     When the admin overview renders
+
     Then a standing single-administrator warning is shown
+
     And it names the invite-into-root then assign path
 
+
     Given two or more platform_admins exist
+
     When one is revoked
+
     Then the revocation succeeds
+
     And the warning is not shown
 
+
     Given the sole platform_admin is unreachable
+
     When an operator with host access runs the platform-admin grant command
+
     Then the named identity holds platform_admin
+
     And no recovery code was ever minted or stored
+
+    '
   e2e: false
   related_reqs:
   - REQ-1264
@@ -38349,50 +38445,70 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: An organization can be deleted. Deletion drops the org's tenant schema, its membership and
-    invite rows in the control plane, and its entry in the org registry, and evicts its OrgRuntime from the
-    registry so no in-flight request resolves it. Only a platform_admin, or the org's own org_admin, may
-    delete it. The root org cannot be deleted. Deletion is explicit and irreversible - it is never a side
-    effect of removing the last member. Because it is irreversible, the UI gates it behind a stern
-    confirmation that names the org being destroyed, states plainly that its data cannot be recovered by
-    anyone including the platform_admin, and requires the operator to type the org id to proceed - a
-    single click must never be enough to destroy an organization.
+  description: An organization can be deleted. Deletion drops the org's tenant schema, its membership
+    and invite rows in the control plane, and its entry in the org registry, and evicts its OrgRuntime
+    from the registry so no in-flight request resolves it. Only a platform_admin, or the org's own org_admin,
+    may delete it. The root org cannot be deleted. Deletion is explicit and irreversible - it is never
+    a side effect of removing the last member. Because it is irreversible, the UI gates it behind a stern
+    confirmation that names the org being destroyed, states plainly that its data cannot be recovered
+    by anyone including the platform_admin, and requires the operator to type the org id to proceed -
+    a single click must never be enough to destroy an organization.
   use_case: Self-service org creation without deletion is a one-way ratchet - abandoned orgs accumulate
-    schemas, source pools, and runtime entries that nobody can remove through the product, and a person who
-    creates an org by mistake has no way to undo it. Making root undeletable keeps the deployment's own
-    working org and the platform_admin's membership from being destroyed by an ordinary org operation.
+    schemas, source pools, and runtime entries that nobody can remove through the product, and a person
+    who creates an org by mistake has no way to undo it. Making root undeletable keeps the deployment's
+    own working org and the platform_admin's membership from being destroyed by an ordinary org operation.
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/core/org_provisioning.py
   - provisa/api/org_runtime.py
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given an org with a provisioned schema and members
+  scenario: 'Given an org with a provisioned schema and members
+
     When a platform_admin deletes it
+
     Then the org_<id> schema is dropped
+
     And its membership and invite rows are removed
+
     And its OrgRuntime is evicted from the registry
+
     And a subsequent request naming that org resolves to no org
 
+
     Given an org_admin of that org
+
     When they delete their own org
+
     Then the deletion succeeds
 
+
     Given an org_admin of a different org
+
     When they delete it
+
     Then the request is rejected
+
 
     Given the root org
+
     When any actor deletes it
+
     Then the request is rejected
 
+
     Given an org whose last member is removed
+
     Then the org still exists
 
+
     Given an org_admin opening the delete-org control
+
     Then a confirmation naming the org and stating the data cannot be recovered is shown
+
     And deletion does not proceed until the org id is typed
+
+    '
   e2e: true
   e2e_reason: Deletion spans the control plane, the tenant schema, and the live OrgRuntime registry -
     only an end-to-end run shows that a deleted org stops resolving for requests already in flight.
@@ -38413,30 +38529,41 @@
     deployment's own tenancy is queryable through the same surfaces as any other dataset. The view reads
     the control plane and is read-only; it is scoped to root and is not present in any other org.
   use_case: A platform_admin asked "who runs org acme, and when did it appear" has no answer inside the
-    product - the org registry is control-plane state reachable only through admin endpoints, so the
-    operator drops to SQL against the admin schema. Exposing it as a registered view in root makes the
-    tenancy answerable by the query, graph, and API surfaces the platform already provides, and gives root
-    a reason to exist beyond holding the demo.
+    product - the org registry is control-plane state reachable only through admin endpoints, so the operator
+    drops to SQL against the admin schema. Exposing it as a registered view in root makes the tenancy
+    answerable by the query, graph, and API surfaces the platform already provides, and gives root a reason
+    to exist beyond holding the demo.
   code:
   - provisa/api/startup_seed.py
   - provisa/core/org_provisioning.py
   tests:
   - tests/integration/test_first_login_bootstrap_admin.py
-  scenario: |
-    Given a provisioned root org
+  scenario: 'Given a provisioned root org
+
     Then a registered view over the org registry exists in root
+
     And each row carries the org id, name, provisioning state and creation time
-    And each row carries the contact details of that org's org_admins
+
+    And each row carries the contact details of that org''s org_admins
+
 
     Given a platform_admin querying root
+
     When they select from the org registry view
+
     Then every organization in the deployment is returned
 
+
     Given any org other than root
+
     Then the org registry view is not present
 
+
     Given a write against the org registry view
+
     Then it is rejected
+
+    '
   e2e: false
   related_reqs:
   - REQ-1296
@@ -38448,38 +38575,50 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: No organization can be left with zero org_admins by an ordinary administrative act.
-    Revoking org_admin from the last holder in an org is rejected, as is removing that holder's membership.
-    The org is not nagged about having a single administrator - a standing warning would be invasive and a
-    two-person org forced to invent a second administrator account produces ceremony rather than
-    redundancy. Deleting the org is still available to its last org_admin (REQ-1300) - that path is a
-    deliberate, confirmed destruction, not an accidental orphaning.
+  description: No organization can be left with zero org_admins by an ordinary administrative act. Revoking
+    org_admin from the last holder in an org is rejected, as is removing that holder's membership. The
+    org is not nagged about having a single administrator - a standing warning would be invasive and a
+    two-person org forced to invent a second administrator account produces ceremony rather than redundancy.
+    Deleting the org is still available to its last org_admin (REQ-1300) - that path is a deliberate,
+    confirmed destruction, not an accidental orphaning.
   use_case: An org whose sole administrator is revoked cannot invite anyone, cannot grant roles, and cannot
     delete itself - every act of administration requires the role that nobody now holds. Its members can
-    still query, so the failure stays invisible until someone needs to change something. Refusing the last
-    revocation removes the accidental route into that state; the unexpected-departure route is handled by
-    platform_admin-mediated recovery (REQ-1303) rather than by pestering every small org.
+    still query, so the failure stays invisible until someone needs to change something. Refusing the
+    last revocation removes the accidental route into that state; the unexpected-departure route is handled
+    by platform_admin-mediated recovery (REQ-1303) rather than by pestering every small org.
   code:
   - provisa/api/admin/roles_router.py
   - provisa/core/org_membership.py
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given an org with exactly one org_admin
+  scenario: 'Given an org with exactly one org_admin
+
     When any actor revokes org_admin from that holder
+
     Then the request is rejected
 
-    Given an org with exactly one org_admin
-    When that holder's membership is removed
-    Then the request is rejected
 
     Given an org with exactly one org_admin
+
+    When that holder''s membership is removed
+
+    Then the request is rejected
+
+
+    Given an org with exactly one org_admin
+
     When its Team page renders
+
     Then no single-administrator warning is shown
 
+
     Given an org with two or more org_admins
+
     When one is revoked
+
     Then the revocation succeeds
+
+    '
   e2e: false
   related_reqs:
   - REQ-1299
@@ -38492,54 +38631,65 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: When an org's administrators are unreachable, recovery runs through the platform_admin, not
-    through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org at their
-    own discretion; whatever verification satisfies them that the request is legitimate is a business
-    process outside the product, not an automated check. The grant is a named operation, distinct from
-    ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT org's
-    audit trail so the intervention is visible to the org afterward. The same authority runs the other way -
-    a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin
+  description: When an org's administrators are unreachable, recovery runs through the platform_admin,
+    not through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org
+    at their own discretion; whatever verification satisfies them that the request is legitimate is a
+    business process outside the product, not an automated check. The grant is a named operation, distinct
+    from ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT
+    org's audit trail so the intervention is visible to the org afterward. The same authority runs the
+    other way - a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin
     invariant (REQ-1302), and that revocation is audited into the org's trail identically. No per-org
-    break-glass key is ever
-    minted - the platform_admin already holds every capability in every org, so a customer-held token would
-    add a permanent bearer secret without adding any recovery capability that does not already exist.
-    Tokens of that kind belong to vendors who are cryptographically unable to recover a customer's data;
-    Provisa is not one.
-  use_case: This is the contact-the-vendor path every SaaS platform ends up with - Google Workspace,
-    Atlassian and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for
-    a Provisa deployment the provider is the platform_admin. The capability already exists implicitly via
-    the platform bypass, which is the problem - recovery today would be an unlogged act indistinguishable
-    from a platform_admin quietly reading a customer's org. Making it an explicit operation that lands in
-    the org's own audit trail turns a silent backdoor into a recorded intervention.
+    break-glass key is ever minted - the platform_admin already holds every capability in every org, so
+    a customer-held token would add a permanent bearer secret without adding any recovery capability that
+    does not already exist. Tokens of that kind belong to vendors who are cryptographically unable to
+    recover a customer's data; Provisa is not one.
+  use_case: This is the contact-the-vendor path every SaaS platform ends up with - Google Workspace, Atlassian
+    and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for a Provisa
+    deployment the provider is the platform_admin. The capability already exists implicitly via the platform
+    bypass, which is the problem - recovery today would be an unlogged act indistinguishable from a platform_admin
+    quietly reading a customer's org. Making it an explicit operation that lands in the org's own audit
+    trail turns a silent backdoor into a recorded intervention.
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/api/admin/roles_router.py
   - provisa/core/org_membership.py
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given an org whose only org_admin is unreachable
+  scenario: 'Given an org whose only org_admin is unreachable
+
     When a platform_admin grants org_admin to a named member of that org
+
     Then that member holds org_admin
-    And an entry naming the platform_admin and the grantee is written to that org's audit trail
+
+    And an entry naming the platform_admin and the grantee is written to that org''s audit trail
+
 
     Given an org with two or more org_admins
+
     When a platform_admin revokes org_admin from one of them
+
     Then that user no longer holds org_admin
-    And the revocation is written to that org's audit trail
+
+    And the revocation is written to that org''s audit trail
+
 
     Given a user who is not a platform_admin
+
     When they grant or revoke org_admin in an org they do not administer
+
     Then the request is rejected
 
+
     Given any org
+
     Then no break-glass key or recovery code exists for it
+
+    '
   e2e: false
   related_reqs:
   - REQ-1274
   - REQ-1299
   - REQ-1302
-
 - id: REQ-1304
   status: proposed
   group: 1. Access Governance & Security
@@ -38549,49 +38699,60 @@
   since: 2026-07
   description: Pressing delete on an organization downloads that org's configuration before the deletion
     is confirmed. The download is the live config YAML built for that org (REQ-164 build_live_config_yaml,
-    resolved through the org's OrgRuntime) - its registered sources, tables, relationships, views,
-    materializations, domains, roles and grants - which is enough to recreate the org's shape later. It is
-    configuration, not data - the rows in the tenant schema are gone for good, and the confirmation
-    (REQ-1300) still says so. The download is not gated by the live_config_export opt-in - that flag exists
-    because a normalized patch cannot stay faithful to a hand-authored config file, and this is a
-    standalone snapshot, not a patch. A failure to build the config aborts the deletion rather than
-    proceeding without the snapshot.
-  use_case: Deletion is irreversible, so the moment before it is the last moment the org's structure
-    exists anywhere. An operator who deletes an org they built over months loses not just the rows but
-    every source registration, relationship and view definition that made it useful - and those are the
-    expensive part to rebuild. Handing the config back on the way out turns an irreversible act into a
-    recoverable one for everything except the data itself, which costs nothing to offer and removes most
-    of the reason to hesitate over a deletion that should happen.
+    resolved through the org's OrgRuntime) - its registered sources, tables, relationships, views, materializations,
+    domains, roles and grants - which is enough to recreate the org's shape later. It is configuration,
+    not data - the rows in the tenant schema are gone for good, and the confirmation (REQ-1300) still
+    says so. The download is not gated by the live_config_export opt-in - that flag exists because a normalized
+    patch cannot stay faithful to a hand-authored config file, and this is a standalone snapshot, not
+    a patch. A failure to build the config aborts the deletion rather than proceeding without the snapshot.
+  use_case: Deletion is irreversible, so the moment before it is the last moment the org's structure exists
+    anywhere. An operator who deletes an org they built over months loses not just the rows but every
+    source registration, relationship and view definition that made it useful - and those are the expensive
+    part to rebuild. Handing the config back on the way out turns an irreversible act into a recoverable
+    one for everything except the data itself, which costs nothing to offer and removes most of the reason
+    to hesitate over a deletion that should happen.
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/api/admin/config_export.py
   - provisa-ui/src/pages/TeamPage.tsx
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given an org_admin pressing delete on their org
+  scenario: 'Given an org_admin pressing delete on their org
+
     When the confirmation is shown
-    Then that org's live config YAML has been downloaded
-    And it carries the org's sources, tables, relationships, views, domains and roles
+
+    Then that org''s live config YAML has been downloaded
+
+    And it carries the org''s sources, tables, relationships, views, domains and roles
+
 
     Given a deployment with live_config_export disabled
+
     When an org_admin presses delete
+
     Then the config download still happens
 
+
     Given an org whose live config cannot be built
+
     When an org_admin presses delete
+
     Then the deletion is aborted with the build failure reported
 
+
     Given a platform_admin deleting another org
+
     When the confirmation is shown
-    Then that org's config is downloaded, not root's
+
+    Then that org''s config is downloaded, not root''s
+
+    '
   e2e: true
   e2e_reason: The download is a browser-side effect of pressing delete on a live org - only an end-to-end
     run shows the file arriving before the confirmation resolves.
   related_reqs:
   - REQ-164
   - REQ-1300
-
 - id: REQ-1305
   status: proposed
   group: 1. Access Governance & Security
@@ -38599,46 +38760,58 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: Removing a person from an org is an org_admin operation and it removes them from both
-    planes. Today DELETE /admin/orgs/{org_id}/members/{user_id} requires the platform bypass (the
-    _require_superadmin guard, retired by REQ-1297) so an org_admin cannot offboard anyone from their own
-    org, and it deletes only the control-plane user_org_memberships row - the tenant-plane
-    user_role_assignments row written by grant_org_role/grant_org_admin survives in org_<id>, so re-adding
-    the person silently restores the privileges they had before. Removal must be available to the org's own
-    org_admin (and to a platform_admin for any org), and must delete the membership row, every
-    user_role_assignments row for that user in that org schema, and any personal access token (REQ-1263)
-    scoped to that org for that user, in one operation. Offboarding is the mirror of the invite flow
-    (REQ-1283) and belongs on the same Team page.
+  description: Removing a person from an org is an org_admin operation and it removes them from both planes.
+    Today DELETE /admin/orgs/{org_id}/members/{user_id} requires the platform bypass (the _require_superadmin
+    guard, retired by REQ-1297) so an org_admin cannot offboard anyone from their own org, and it deletes
+    only the control-plane user_org_memberships row - the tenant-plane user_role_assignments row written
+    by grant_org_role/grant_org_admin survives in org_<id>, so re-adding the person silently restores
+    the privileges they had before. Removal must be available to the org's own org_admin (and to a platform_admin
+    for any org), and must delete the membership row, every user_role_assignments row for that user in
+    that org schema, and any personal access token (REQ-1263) scoped to that org for that user, in one
+    operation. Offboarding is the mirror of the invite flow (REQ-1283) and belongs on the same Team page.
   use_case: An org_admin who can invite but cannot remove has half an administrative surface - the person
-    who leaves the company stays a member until someone with deployment-wide authority is asked to act. The
-    two-plane split makes the partial delete worse than an outright missing feature - the operator sees the
-    member disappear from the Team page and reasonably concludes the access is gone, while the role grant
-    that actually confers capability is still sitting in the tenant schema. A long-lived protocol token
-    scoped to the org is the same failure at a longer horizon, since it authenticates without a browser
-    session to invalidate.
+    who leaves the company stays a member until someone with deployment-wide authority is asked to act.
+    The two-plane split makes the partial delete worse than an outright missing feature - the operator
+    sees the member disappear from the Team page and reasonably concludes the access is gone, while the
+    role grant that actually confers capability is still sitting in the tenant schema. A long-lived protocol
+    token scoped to the org is the same failure at a longer horizon, since it authenticates without a
+    browser session to invalidate.
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/core/org_membership.py
   - provisa-ui/src/pages/TeamPage.tsx
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given an org_admin and a member of their org
+  scenario: 'Given an org_admin and a member of their org
+
     When they remove that member
+
     Then the user_org_memberships row is deleted
+
     And every user_role_assignments row for that user in org_<id> is deleted
+
     And every personal access token that user holds scoped to that org is revoked
 
+
     Given a removed member who is later re-invited and redeems
+
     Then they hold only the role the new invitation named
 
+
     Given an org_admin of a different org
+
     When they remove a member from an org they do not administer
+
     Then the request is rejected
 
+
     Given an ordinary member with no user_management capability
+
     When they remove another member
+
     Then the request is rejected
+
+    '
   e2e: false
   related_reqs:
   - REQ-1283
@@ -38653,41 +38826,55 @@
   since: 2026-07
   description: A user may leave an org on their own. Leaving performs the same two-plane removal as an
     org_admin offboarding them (REQ-1305) and additionally suppresses auto-join (REQ-1285) for that user
-    and org, so a deliberate departure is not undone by the next sign-in matching the org's email rule. The
-    last org_admin of an org cannot leave it - the last-admin invariant (REQ-1302) applies to departure as
-    much as to revocation, and the paths out are to promote another org_admin first or to delete the org
-    (REQ-1300). If the org the user leaves is their active_org_id, the next request resolves another
+    and org, so a deliberate departure is not undone by the next sign-in matching the org's email rule.
+    The last org_admin of an org cannot leave it - the last-admin invariant (REQ-1302) applies to departure
+    as much as to revocation, and the paths out are to promote another org_admin first or to delete the
+    org (REQ-1300). If the org the user leaves is their active_org_id, the next request resolves another
     membership; a user who leaves their only org returns to onboarding (REQ-1287) rather than to an error.
   use_case: Membership can currently only be granted, never given up - a person invited to the wrong org,
-    or one who has finished a contract, has no way to detach themselves and must ask an administrator of an
-    org they no longer want to be in. Auto-join makes the omission self-inflicting - without an exclusion,
-    every removal is reversed on the removed person's next sign-in, so leaving would not stay done.
+    or one who has finished a contract, has no way to detach themselves and must ask an administrator
+    of an org they no longer want to be in. Auto-join makes the omission self-inflicting - without an
+    exclusion, every removal is reversed on the removed person's next sign-in, so leaving would not stay
+    done.
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/core/org_membership.py
   - provisa-ui/src/components/UserProfileModal.tsx
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given a member of an org who is not its last org_admin
+  scenario: 'Given a member of an org who is not its last org_admin
+
     When they leave it
+
     Then their membership and tenant-plane role assignments in that org are removed
-    And a later sign-in matching the org's email rule does not re-join them
+
+    And a later sign-in matching the org''s email rule does not re-join them
+
 
     Given the last org_admin of an org
+
     When they leave it
+
     Then the request is rejected
+
     And the response names promoting another org_admin or deleting the org
 
+
     Given a user leaving the org that is their active_org_id
+
     And who belongs to another org
+
     Then the next request resolves that other org
 
+
     Given a user leaving their only org
+
     Then the next sign-in lands on onboarding
+
+    '
   e2e: true
-  e2e_reason: Leaving changes membership, the active org resolution, and which surface the user lands on -
-    only an end-to-end run shows the departure resolving to onboarding rather than to a broken session.
+  e2e_reason: Leaving changes membership, the active org resolution, and which surface the user lands
+    on - only an end-to-end run shows the departure resolving to onboarding rather than to a broken session.
   related_reqs:
   - REQ-1285
   - REQ-1302
@@ -38699,44 +38886,60 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: A user may delete their own Provisa account. Deletion leaves every org they belong to
-    (REQ-1306), revokes every personal access token they hold (REQ-1263), and removes their user_profile
-    record (REQ-1246) and any local_users credential row. It is refused while the user is the last
-    org_admin of any org or the last platform_admin of the deployment (REQ-1299, REQ-1302) - the response
-    names each org that blocks it, so the user knows exactly what to hand off. Deletion is irreversible and
-    carries the same stern confirmation as org deletion (REQ-1300). It does not delete the orgs the user
-    belonged to, nor any data they registered - those belong to the org, not to the person.
+  description: A user may delete their own Provisa account. Deletion leaves every org they belong to (REQ-1306),
+    revokes every personal access token they hold (REQ-1263), and removes their user_profile record (REQ-1246)
+    and any local_users credential row. It is refused while the user is the last org_admin of any org
+    or the last platform_admin of the deployment (REQ-1299, REQ-1302) - the response names each org that
+    blocks it, so the user knows exactly what to hand off. Deletion is irreversible and carries the same
+    stern confirmation as org deletion (REQ-1300). It does not delete the orgs the user belonged to, nor
+    any data they registered - those belong to the org, not to the person.
   use_case: An account that can be created by signing in but never removed is a standing record of a person
-    who may have no further relationship with the deployment, and for a SaaS deployment it is also a
-    deletion request that has to be satisfiable. Refusing while the user is somebody's last administrator
-    is the same invariant as everywhere else - self-deletion must not be the back door that orphans an org
-    the other paths were built to protect.
+    who may have no further relationship with the deployment, and for a SaaS deployment it is also a deletion
+    request that has to be satisfiable. Refusing while the user is somebody's last administrator is the
+    same invariant as everywhere else - self-deletion must not be the back door that orphans an org the
+    other paths were built to protect.
   code:
   - provisa/api/auth_router.py
   - provisa/core/org_membership.py
   - provisa-ui/src/components/UserProfileModal.tsx
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given a user who is not the last administrator of anything
+  scenario: 'Given a user who is not the last administrator of anything
+
     When they confirm account deletion
+
     Then they are removed from every org they belonged to
+
     And every personal access token they hold is revoked
+
     And their user_profile and any local credential row are deleted
+
     And their orgs and the data registered in them still exist
 
+
     Given a user who is the last org_admin of an org
+
     When they request account deletion
+
     Then the request is rejected
+
     And the response names that org
 
+
     Given the last platform_admin
+
     When they request account deletion
+
     Then the request is rejected
 
+
     Given account deletion
+
     When the confirmation is shown
+
     Then it states the account cannot be recovered
+
+    '
   e2e: false
   related_reqs:
   - REQ-1246
@@ -38751,39 +38954,48 @@
   since: 2026-07
   description: A user can never change their own role in an org. Changing a member's role is an org_admin
     operation, available only to the org_admin of that org (and to a platform_admin for any org, REQ-1303),
-    and it writes the change to that org's audit trail naming who made it. This closes the loop the
-    X-Provisa-Role header opened - REQ-1295 already requires the UI to place only an ASSIGNED role in that
-    header, and this states the matching server-side rule - role assignment is an administrative act, and a
-    request that would grant its own sender a capability they were not assigned is rejected whatever
-    surface it arrives on.
+    and it writes the change to that org's audit trail naming who made it. This closes the loop the X-Provisa-Role
+    header opened - REQ-1295 already requires the UI to place only an ASSIGNED role in that header, and
+    this states the matching server-side rule - role assignment is an administrative act, and a request
+    that would grant its own sender a capability they were not assigned is rejected whatever surface it
+    arrives on.
   use_case: Role selection is presented to the user as a control they operate - the role selector in the
-    NavBar - so the boundary between choosing among roles you hold and acquiring one you do not has to be
-    enforced by the server rather than by the shape of the UI. Every non-browser protocol carries the same
-    role selection over pgwire, Bolt and Flight, where no UI constrains it at all.
+    NavBar - so the boundary between choosing among roles you hold and acquiring one you do not has to
+    be enforced by the server rather than by the shape of the UI. Every non-browser protocol carries the
+    same role selection over pgwire, Bolt and Flight, where no UI constrains it at all.
   code:
   - provisa/api/admin/roles_router.py
   - provisa/auth/middleware.py
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given a member of an org
+  scenario: 'Given a member of an org
+
     When they assign themselves a role
+
     Then the request is rejected
+
 
     Given an org_admin
-    When they change a member's role in their own org
+
+    When they change a member''s role in their own org
+
     Then the change takes effect
-    And an entry naming the org_admin, the member and the new role is written to the org's audit trail
+
+    And an entry naming the org_admin, the member and the new role is written to the org''s audit trail
+
 
     Given a user selecting a role over any protocol
+
     When the role is not assigned to them in the active org
+
     Then the request is rejected
+
+    '
   e2e: false
   related_reqs:
   - REQ-1295
   - REQ-1303
   - REQ-1305
-
 - id: REQ-1309
   status: proposed
   group: 1. Access Governance & Security
@@ -38792,44 +39004,60 @@
   type: behavioral
   since: 2026-07
   description: An org id is validated on creation and immutable thereafter. It must match a conservative
-    identifier pattern (lowercase letters, digits and hyphens, starting with a letter, bounded length),
-    because the value becomes both the PostgreSQL schema name org_<id> and the Host subdomain (REQ-1276) -
-    today CreateOrgBody.id is an unconstrained str whose only check is a duplicate lookup. Reserved ids are
-    rejected - root (REQ-1296), default, public, admin, information_schema, and anything beginning pg_ -
-    since each either collides with a real schema or with the deployment's own org. The id can never
-    change afterward - renaming an org changes its display name only, leaving the schema, the subdomain and
-    every bookmarked URL intact - and the rename UI states that.
-  use_case: The org id is not a label, it is a schema name and a hostname, so an unvalidated value is a
-    correctness problem before it is a security one - an id containing a quote, a dot, or mixed case
+    identifier pattern (lowercase letters and digits only - no hyphen, no underscore - starting with
+    a letter, 2-40 characters),
+    because the value becomes both the PostgreSQL schema name org_<id> and the Host subdomain (REQ-1276)
+    - today CreateOrgBody.id is an unconstrained str whose only check is a duplicate lookup. Reserved
+    ids are rejected - root (REQ-1296), default, public, admin, information_schema, and anything beginning
+    pg_ - since each either collides with a real schema or with the deployment's own org. The id can never
+    change afterward - renaming an org changes its display name only, leaving the schema, the subdomain
+    and every bookmarked URL intact - and the rename UI states that.
+  use_case: The org id is not a label, it is a schema name and a hostname, so an unvalidated value is
+    a correctness problem before it is a security one - an id containing a quote, a dot, or mixed case
     produces a schema that DDL cannot address or a subdomain that does not resolve, and the failure appears
-    during background provisioning rather than at the point of entry. Reserving the names is what keeps a
-    self-service creation from colliding with root or with a PostgreSQL system schema. Immutability is the
-    other half - once an org id is in DNS, in connection strings, and in the schema name, changing it is
-    not a rename but a migration.
+    during background provisioning rather than at the point of entry. Reserving the names is what keeps
+    a self-service creation from colliding with root or with a PostgreSQL system schema. Immutability
+    is the other half - once an org id is in DNS, in connection strings, and in the schema name, changing
+    it is not a rename but a migration.
   code:
   - provisa/api/admin/orgs_router.py
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given a create-org request whose id is not a valid identifier
+  scenario: 'Given a create-org request whose id is not a valid identifier
+
     When it is submitted
+
     Then it is rejected before any row is inserted
+
     And the response names the required format
 
+
     Given a create-org request naming a reserved id
+
     When it is submitted
+
     Then it is rejected
+
 
     Given an existing org id
+
     When another user creates an org with the same id
+
     Then it is rejected as already existing
 
+
     Given an existing org
+
     When its name is changed
+
     Then its id, schema and subdomain are unchanged
 
+
     Given any request that would change an org id
+
     Then it is rejected
+
+    '
   e2e: false
   related_reqs:
   - REQ-1271
@@ -38842,44 +39070,58 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: An invitation addressed to an email address is delivered to that address. Today
-    create_invite stores the invitee email but nothing sends anything - there is no SMTP or mail-provider
-    code in the codebase - so the only way to see an invitation is GET /auth/my-invites after signing in,
-    which requires the invited person to independently discover the deployment and create an account
-    unprompted. The message names the org, who invited them, the role they will hold, the expiry, and a
-    link that carries them into the redemption flow. Mail delivery is configured like every other backing
-    service, and tests exercise it against a local SMTP server the harness starts - the test asserts on the
-    captured message, never on a stub or a log line. A link invitation with no email address is unchanged -
-    the org_admin distributes it themselves.
+  description: An invitation addressed to an email address is delivered to that address. Today create_invite
+    stores the invitee email but nothing sends anything - there is no SMTP or mail-provider code in the
+    codebase - so the only way to see an invitation is GET /auth/my-invites after signing in, which requires
+    the invited person to independently discover the deployment and create an account unprompted. The
+    message names the org, who invited them, the role they will hold, the expiry, and a link that carries
+    them into the redemption flow. Mail delivery is configured like every other backing service, and tests
+    exercise it against a local SMTP server the harness starts - the test asserts on the captured message,
+    never on a stub or a log line. A link invitation with no email address is unchanged - the org_admin
+    distributes it themselves.
   use_case: Invitation is one of the three onboarding questions (REQ-1287) and it is the only one whose
-    answer currently depends on the invitee already knowing to look. An invite that exists in a table but
-    reaches nobody is the same as no invite for every user who was not told out of band, and it makes the
-    expiry (7 days by default) run against a clock the invitee cannot see. Testing against a real local
-    SMTP server rather than a mock is what makes the assertion meaningful - a mocked send proves the call
-    was made, not that a message a person could act on was produced.
+    answer currently depends on the invitee already knowing to look. An invite that exists in a table
+    but reaches nobody is the same as no invite for every user who was not told out of band, and it makes
+    the expiry (7 days by default) run against a clock the invitee cannot see. Testing against a real
+    local SMTP server rather than a mock is what makes the assertion meaningful - a mocked send proves
+    the call was made, not that a message a person could act on was produced.
   code:
   - provisa/api/admin/invites_router.py
   - provisa/core/mail.py
   tests:
   - tests/integration/test_invite_delivery.py
-  scenario: |
-    Given an org_admin creating an invitation addressed to an email address
+  scenario: 'Given an org_admin creating an invitation addressed to an email address
+
     When the invitation is created
+
     Then a message is delivered to that address
+
     And it names the org, the inviter, the role and the expiry
+
     And it carries a link that opens the redemption flow
 
+
     Given an invitation created with no email address
+
     Then no message is sent
+
     And the link invitation is returned as before
 
+
     Given the integration suite
+
     When invitation delivery is exercised
+
     Then it runs against a local SMTP server started by the harness
+
     And the assertions read the captured message
 
+
     Given mail delivery that fails
+
     Then the invitation creation reports the failure rather than reporting success
+
+    '
   e2e: false
   related_reqs:
   - REQ-1283
@@ -38893,28 +39135,37 @@
   since: 2026-07
   description: A single user may create at most 100 organizations. The cap is a backstop against runaway
     or automated creation, not a product tier - every org provisions a schema and optionally seeds demo
-    data, and nothing currently bounds how many one account can trigger. Orgs the user has deleted
-    (REQ-1300) do not count against it. Reaching the cap returns a clear refusal naming the limit.
+    data, and nothing currently bounds how many one account can trigger. Orgs the user has deleted (REQ-1300)
+    do not count against it. Reaching the cap returns a clear refusal naming the limit.
   use_case: Self-service creation (REQ-1271) is open to any authenticated user, and each creation runs
-    background provisioning that builds a schema and a data-plane runtime. Without a ceiling, one account -
-    scripted, or simply confused - can consume the deployment's schema budget and provisioning capacity.
+    background provisioning that builds a schema and a data-plane runtime. Without a ceiling, one account
+    - scripted, or simply confused - can consume the deployment's schema budget and provisioning capacity.
     100 is far above any plausible legitimate use and far below the point where it becomes a resource
     problem, which is what a backstop should be.
   code:
   - provisa/api/admin/orgs_router.py
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given a user who has created 100 orgs
+  - tests/unit/test_org_id_validation.py
+  scenario: 'Given a user who has created 100 orgs
+
     When they create another
+
     Then the request is rejected naming the limit
 
+
     Given a user at the cap
+
     When they delete one of their orgs
+
     Then they may create another
 
+
     Given a user who belongs to many orgs they did not create
+
     Then those do not count against their cap
+
+    '
   e2e: false
   related_reqs:
   - REQ-1271
@@ -38926,52 +39177,226 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: Deletion scrubs personal data while preserving the record that the deletion happened.
-    Deleting an org (REQ-1300) drops every tenant-scoped row and cascades the control-plane rows keyed to
-    it; what survives is the billing and usage record needed to invoice, which names the org and not a
-    person, and the platform audit entry recording the deletion. Deleting an account (REQ-1307) replaces
-    every reference to that user id - orgs.created_by, org_invites.created_by and used_by, audit
-    attributions - with an opaque tombstone token, and erases the personal attributes on user_profile
-    (name, email, avatar). References are tombstoned rather than nulled because org_invites.created_by is
-    NOT NULL and because a dangling id is worse than an explicit one - the record stays referentially
-    intact and stops identifying anyone. Audit entries are never deleted by either operation; an audit
-    trail that erases on request is not one.
+  description: Deletion scrubs personal data while preserving the record that the deletion happened. Deleting
+    an org (REQ-1300) drops every tenant-scoped row and cascades the control-plane rows keyed to it; what
+    survives is the billing and usage record needed to invoice, which names the org and not a person,
+    and the platform audit entry recording the deletion. Deleting an account (REQ-1307) replaces every
+    reference to that user id - orgs.created_by, org_invites.created_by and used_by, audit attributions
+    - with an opaque tombstone token, and erases the personal attributes on user_profile (name, email,
+    avatar). References are tombstoned rather than nulled because org_invites.created_by is NOT NULL and
+    because a dangling id is worse than an explicit one - the record stays referentially intact and stops
+    identifying anyone. Audit entries are never deleted by either operation; an audit trail that erases
+    on request is not one.
   use_case: This is the shape every SaaS platform converges on under GDPR and CCPA. Article 17(3) permits
     retention for legal obligation and for establishing or defending legal claims, which is what keeps
-    billing records and audit trails out of the erasure - and platforms that delete audit records on
-    request fail their own security obligations doing it. Tombstoning is the published practice at GitHub
-    (the ghost user), Slack (deactivated account) and Atlassian (account anonymization) for the same reason
+    billing records and audit trails out of the erasure - and platforms that delete audit records on request
+    fail their own security obligations doing it. Tombstoning is the published practice at GitHub (the
+    ghost user), Slack (deactivated account) and Atlassian (account anonymization) for the same reason
     it is right here - the opaque id keeps foreign references and audit history coherent while the person
-    behind it becomes unidentifiable. Nulling would require schema changes the NOT NULL columns forbid and
-    would destroy the ability to answer who created a still-live org.
+    behind it becomes unidentifiable. Nulling would require schema changes the NOT NULL columns forbid
+    and would destroy the ability to answer who created a still-live org.
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/api/auth_router.py
   - provisa/core/org_membership.py
   tests:
   - tests/integration/test_org_lifecycle.py
-  scenario: |
-    Given an org with members, invites, and registered data
+  scenario: 'Given an org with members, invites, and registered data
+
     When it is deleted
+
     Then every tenant-scoped row is dropped
+
     And its control-plane membership and invite rows are gone
+
     And its billing and usage records are retained
+
     And an audit entry recording the deletion is retained
 
+
     Given a user who created an org and several invitations
+
     When they delete their account
+
     Then every reference to their user id is replaced with an opaque tombstone
+
     And their user_profile personal attributes are erased
+
     And the orgs and invitations themselves still exist
 
+
     Given a tombstoned user id
-    When an org's creator is displayed
+
+    When an org''s creator is displayed
+
     Then it shows a deleted-user placeholder rather than a dangling identifier
 
+
     Given any deletion
+
     Then no audit entry is removed
+
+    '
   e2e: false
   related_reqs:
   - REQ-1300
   - REQ-1307
+- id: REQ-1313
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: An invitation may only confer a role the inviter is entitled to confer, and the role must
+    exist in the target org. Today CreateInviteBody.role_id is an unvalidated str stored verbatim and
+    passed straight into grant_org_role at redemption, which upserts whatever string it is given - org_invites.role_id
+    is a plain Text column with no foreign key, since it references the per-org roles table. The invitation
+    must be rejected at creation when the named role does not exist in that org's schema, and platform_admin
+    may be named only in an invitation into root (REQ-1298) - an org_admin cannot confer it in their own
+    org. Redemption revalidates rather than trusting the stored value, since a role can be removed between
+    creation and redemption.
+  use_case: This is an escalation path that REQ-1297 arms. Capability resolution reads the global roles
+    map by role id without regard to which org the assignment lives in, so a tenant-plane assignment of
+    platform_admin resolves deployment-wide capabilities. Once REQ-1297 seeds all four default roles into
+    every org schema, an org_admin can invite an accomplice as platform_admin in their own org and produce
+    a platform administrator without ever touching root - which is exactly what REQ-1298 declares to be
+    the only path, and which nothing currently enforces. Validating at creation also turns a redemption-time
+    failure the invitee cannot act on into a refusal the inviter sees immediately.
+  code:
+  - provisa/api/admin/invites_router.py
+  - provisa/api/auth_router.py
+  - provisa/core/org_membership.py
+  tests:
+  - tests/integration/test_invite_role_authz.py
+  scenario: 'Given an org_admin creating an invitation naming a role that does not exist in their org
 
+    When it is submitted
+
+    Then it is rejected and no invitation row is written
+
+
+    Given an org_admin of an org other than root
+
+    When they create an invitation naming platform_admin
+
+    Then it is rejected
+
+
+    Given a platform_admin creating an invitation into root naming platform_admin
+
+    Then it is accepted
+
+
+    Given a valid invitation whose role is removed from the org before redemption
+
+    When it is redeemed
+
+    Then the redemption is rejected rather than assigning a role that does not exist
+
+    '
+  e2e: false
+  related_reqs:
+  - REQ-1297
+  - REQ-1298
+  - REQ-1308
+- id: REQ-1314
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: An invitation that names no role confers analyst, the least-privileged of the four default
+    roles (REQ-1297). CreateInviteBody.role_id currently defaults to None and redemption passes it unconditionally
+    into the user_role_assignments upsert, so a link invitation created without a role produces a null
+    assignment rather than a member who can do anything. The default is applied when the invitation is
+    created, so the stored row always names a concrete role and the invitee is told which one before redeeming.
+  use_case: A link invitation is the shareable path an org_admin distributes themselves, and it is exactly
+    the case where naming a role per invitee is inconvenient - so it is the case most likely to be created
+    without one. Defaulting to the lowest-privilege role is the only safe direction, and resolving it
+    at creation rather than at redemption means the invitation, the delivered message (REQ-1310) and the
+    redemption all agree on what is being offered.
+  code:
+  - provisa/api/admin/invites_router.py
+  tests:
+  - tests/integration/test_invite_role_authz.py
+  scenario: 'Given an invitation created with no role named
+
+    Then the stored invitation names analyst
+
+
+    Given that invitation
+
+    When it is redeemed
+
+    Then the member holds analyst
+
+
+    Given an invitation created naming a role
+
+    Then the named role is stored unchanged
+
+    '
+  e2e: false
+  related_reqs:
+  - REQ-1297
+  - REQ-1310
+  - REQ-1313
+- id: REQ-1315
+  status: proposed
+  group: 1. Access Governance & Security
+  category: Authorization
+  priority: SHOULD
+  type: behavioral
+  since: 2026-07
+  description: An org whose provisioning failed is recoverable, not abandoned. Background provisioning
+    records provisioning_state=failed with the error, and there is currently no way forward - no retry
+    endpoint exists, the registry row and whatever partial schema the failure left behind persist, and
+    the org counts against the creator's cap (REQ-1311). The creator or a platform_admin may retry provisioning,
+    which drops any partial schema and runs the build again from the beginning; a failed org may also
+    be deleted (REQ-1300) without the confirmation ceremony a provisioned org requires, since it holds
+    no data anyone could lose. A failed org does not count against the creation cap.
+  use_case: Provisioning builds a schema, seeds roles and optionally loads demo assets, so it can fail
+    on anything from a transient connection loss to a bad demo asset - and the state it leaves is a half-built
+    schema the user cannot see and cannot address. Without a retry the only recovery is to create a second
+    org under a different id, which leaves the first one occupying its id permanently, since ids are immutable
+    and reserved by existence (REQ-1309). Making the retry idempotent from a clean slate is what keeps
+    a second failure from compounding the first.
+  code:
+  - provisa/api/admin/orgs_router.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: 'Given an org in provisioning_state failed
+
+    When its creator retries provisioning
+
+    Then any partial org_<id> schema is dropped
+
+    And provisioning runs again from the beginning
+
+    And the state becomes provisioning then ready
+
+
+    Given an org in provisioning_state failed
+
+    When it is deleted
+
+    Then no typed confirmation is required
+
+
+    Given a user at the creation cap holding a failed org
+
+    Then the failed org does not count against the cap
+
+
+    Given a retry that fails again
+
+    Then the state returns to failed with the new error
+
+    '
+  e2e: false
+  related_reqs:
+  - REQ-1272
+  - REQ-1300
+  - REQ-1311

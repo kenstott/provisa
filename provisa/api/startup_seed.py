@@ -538,6 +538,73 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         ).scalar()
         if needs_clusters:
             await _compute_and_store_clusters(_conn)
+    # REQ-1301: the org registry is a dataset of the root org only — it describes the deployment,
+    # and no tenant may read another tenant's roster. Runs outside the connection above because it
+    # opens both planes.
+    if eff_org == state.org_id:
+        await seed_org_registry_view()
+
+
+async def seed_org_registry_view() -> bool:  # REQ-1301
+    """Build the root org's org-registry view and register it in the meta domain. Returns whether
+    it landed.
+
+    A deployment whose two control planes live in separate databases (or on a non-PostgreSQL
+    backend) cannot carry this view — PostgreSQL has no cross-database join. That topology is
+    supported and must still boot, so the reason is logged and startup continues; every other
+    failure propagates.
+    """
+    from provisa.core.org_registry_view import (
+        VIEW_NAME,
+        RegistryViewUnavailable,
+        refresh_org_registry_view,
+        root_schema_name,
+    )
+
+    assert state.admin_db is not None
+    tenant_db = state.tenant_db
+    assert tenant_db is not None
+    try:
+        await refresh_org_registry_view(tenant_db=tenant_db, admin_db=state.admin_db)
+        # The registration must name the schema the view was actually built in, which is the root
+        # connection's own scope — not a name recomposed from the org id.
+        schema_name = root_schema_name(tenant_db)
+    except RegistryViewUnavailable as exc:
+        logging.getLogger(__name__).info(
+            "org registry view not available on this deployment: %s", exc
+        )
+        return False
+
+    async with tenant_db.acquire() as conn:
+        table_id = await conn.upsert_returning(
+            _registered_tables_t,
+            {
+                "source_id": "provisa-admin",
+                "domain_id": "meta",
+                "schema_name": schema_name,
+                "table_name": VIEW_NAME,
+            },
+            index_elements=["source_id", "schema_name", "table_name"],
+            returning="id",
+            update_columns=["domain_id"],
+        )
+        cols = await conn.reflect_columns(VIEW_NAME, schema=schema_name)
+        for col in cols:
+            await conn.upsert(
+                _table_columns_t,
+                {
+                    "table_id": table_id,
+                    "column_name": col["column_name"],
+                    "visible_to": [],
+                    "data_type": col["data_type"],
+                    # A view over the registry has no key of its own — one org appears once per
+                    # org_admin — so nothing here is a primary key.
+                    "is_primary_key": False,
+                },
+                index_elements=["table_id", "column_name"],
+                update_columns=["data_type"],
+            )
+    return True
 
 
 async def _resolve_pk_from_sources() -> None:

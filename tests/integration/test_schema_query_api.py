@@ -96,7 +96,8 @@ class TestRoles:
     async def test_list_roles(self, client):
         data = await _gql(client, "{ roles { id capabilities domainAccess } }")
         roles = data["data"]["roles"]
-        admin = next(r for r in roles if r["id"] == "admin")
+        # REQ-1297: the platform role id is platform_admin; "admin" survives only as a capability.
+        admin = next(r for r in roles if r["id"] == "platform_admin")
         assert "admin" in admin["capabilities"]
 
 

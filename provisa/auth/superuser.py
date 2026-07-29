@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from provisa.auth.models import AuthIdentity
+from provisa.security.rights import PLATFORM_ADMIN_ROLE
 from provisa.core.secrets import resolve_secrets
 
 # Requirements: REQ-125
@@ -53,7 +54,7 @@ def check_superuser(  # REQ-125
             user_id=su_user,
             email=None,
             display_name="Superuser",
-            roles=["admin"],
+            roles=[PLATFORM_ADMIN_ROLE],
             raw_claims={"superuser": True},
         )
     return None

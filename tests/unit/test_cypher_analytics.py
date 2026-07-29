@@ -163,6 +163,10 @@ class TestImputeRelationshipsEdgeGeneration:
 
             mock_request = MagicMock(spec=FastAPIRequest)
             mock_request.headers = {}
+            # REQ-486: AuthMiddleware settles the role onto request.state.role before any router
+            # sees the request; the graph surfaces read it rather than picking one out of
+            # state.roles.
+            mock_request.state.role = "default"
             from provisa.api.rest.graph_tools_router import impute_relationships
 
             resp = await impute_relationships(mock_request, req)
@@ -231,6 +235,10 @@ class TestImputeRelationshipsEdgeGeneration:
         ):
             mock_request = MagicMock(spec=FastAPIRequest)
             mock_request.headers = {}
+            # REQ-486: AuthMiddleware settles the role onto request.state.role before any router
+            # sees the request; the graph surfaces read it rather than picking one out of
+            # state.roles.
+            mock_request.state.role = "default"
 
             body = ImputeRequest(
                 nodes=[
@@ -281,6 +289,10 @@ class TestImputeRelationshipsEdgeGeneration:
         ):
             mock_request = MagicMock(spec=FastAPIRequest)
             mock_request.headers = {}
+            # REQ-486: AuthMiddleware settles the role onto request.state.role before any router
+            # sees the request; the graph surfaces read it rather than picking one out of
+            # state.roles.
+            mock_request.state.role = "default"
 
             body = ImputeRequest(nodes=[{"label": "Person", "id": "1"}])
             import json
@@ -344,6 +356,10 @@ class TestImputeRelationshipsEdgeGeneration:
         ):
             mock_request = MagicMock(spec=FastAPIRequest)
             mock_request.headers = {}
+            # REQ-486: AuthMiddleware settles the role onto request.state.role before any router
+            # sees the request; the graph surfaces read it rather than picking one out of
+            # state.roles.
+            mock_request.state.role = "default"
 
             body = ImputeRequest(
                 nodes=[

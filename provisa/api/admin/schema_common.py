@@ -131,7 +131,7 @@ def _resolve_admin_context(info: StrawberryInfo) -> tuple[str, bool]:
     active_org_id = require_active_org_id(request)
     identity = getattr(request.state, "identity", None)
     caps = _resolved_capabilities(identity, _state) if identity else set()
-    is_admin = bool(caps & {"superadmin", "admin"})
+    is_admin = bool(caps & {"superadmin", "admin", "platform_admin"})
     return active_org_id, is_admin
 
 

@@ -65,16 +65,18 @@ def _make_schema_and_state(role_id: str = "analyst"):
     return state
 
 
-def _make_app(state):
+def _make_app(state, monkeypatch):
     from fastapi import FastAPI
     from provisa.api.data.endpoint_grpc_proxy import router
 
     app = FastAPI()
 
-    # Patch the module-level state reference
+    # Swap the module-level state reference for this test only. A bare assignment would leave this
+    # stub AppState installed process-wide, and every later module in the session would then read an
+    # empty org runtime (no tenant_db) through provisa.api.app.state.
     import provisa.api.app as app_module
 
-    app_module.state = state
+    monkeypatch.setattr(app_module, "state", state)
     app.include_router(router)
     return app
 
@@ -85,10 +87,10 @@ def state():
 
 
 @pytest.fixture
-def client(state):
+def client(state, monkeypatch):
     import httpx
 
-    app = _make_app(state)
+    app = _make_app(state, monkeypatch)
     transport = httpx.ASGITransport(app=app)
     return httpx.AsyncClient(transport=transport, base_url="http://test")
 
@@ -143,8 +145,8 @@ class TestTranslation:
         )
         return semantic, govern, execute
 
-    async def test_valid_request_returns_200(self, state):
-        app = _make_app(state)
+    async def test_valid_request_returns_200(self, state, monkeypatch):
+        app = _make_app(state, monkeypatch)
         import httpx
 
         transport = httpx.ASGITransport(app=app)
@@ -160,8 +162,8 @@ class TestTranslation:
                 resp = await c.post("/data/grpc/Pet", json={"role_id": "analyst", "limit": 10})
         assert resp.status_code == 200
 
-    async def test_response_is_list(self, state):
-        app = _make_app(state)
+    async def test_response_is_list(self, state, monkeypatch):
+        app = _make_app(state, monkeypatch)
         import httpx
 
         transport = httpx.ASGITransport(app=app)
@@ -177,8 +179,8 @@ class TestTranslation:
                 resp = await c.post("/data/grpc/Pet", json={"role_id": "analyst"})
         assert isinstance(resp.json(), list)
 
-    async def test_governance_denial_returns_403(self, state):
-        app = _make_app(state)
+    async def test_governance_denial_returns_403(self, state, monkeypatch):
+        app = _make_app(state, monkeypatch)
         import httpx
 
         transport = httpx.ASGITransport(app=app)

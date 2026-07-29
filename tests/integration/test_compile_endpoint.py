@@ -40,7 +40,7 @@ mutation CompileQuery($input: CompileQueryInput!) {
 
 
 async def _compile(
-    client: AsyncClient, query: str, role: str = "admin", variables: dict | None = None
+    client: AsyncClient, query: str, role: str = "platform_admin", variables: dict | None = None
 ):
     resp = await client.post(
         "/admin/graphql",
@@ -227,7 +227,7 @@ mutation CompileQuery($input: CompileQueryInput!) {
 """
 
 
-async def _compile_cypher(client, query: str, flat_cypher: bool, role: str = "admin"):
+async def _compile_cypher(client, query: str, flat_cypher: bool, role: str = "platform_admin"):
     resp = await client.post(
         "/admin/graphql",
         json={

@@ -65,7 +65,7 @@ class TestLiveAdbcExecution:
         from provisa_client.adbc import adbc_connect  # pyright: ignore[reportMissingImports]
 
         c = adbc_connect(
-            adbc_server.base_url, user="admin", password="provisa", port=adbc_server.flight_port
+            adbc_server.base_url, user="platform_admin", password="provisa", port=adbc_server.flight_port
         )
         yield c
         c.close()
@@ -103,7 +103,7 @@ class TestLiveAdbcExecution:
         from provisa_client.adbc import adbc_connect  # pyright: ignore[reportMissingImports]
 
         fresh = adbc_connect(
-            adbc_server.base_url, user="admin", password="provisa", port=adbc_server.flight_port
+            adbc_server.base_url, user="platform_admin", password="provisa", port=adbc_server.flight_port
         )
         with fresh as c:
             cursor = c.cursor()

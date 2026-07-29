@@ -117,7 +117,10 @@ def _prepare_sync():
             )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments])
+        # The whole org metadata, not just the two role tables: provisioning ends by rebuilding the
+        # root org-registry view (REQ-1301), which registers itself in registered_tables/
+        # table_columns of the root tenant schema.
+        org_metadata.create_all(conn)
         conn.execute(insert(roles).values(id="org_admin"))
         conn.execute(insert(roles).values(id="analyst"))
     return engine
@@ -148,7 +151,9 @@ def planes(monkeypatch):
         default_rt,
         "roles",
         {
-            "admin": {"capabilities": ["admin", "superadmin"]},
+            # REQ-1297: the platform role is platform_admin; "admin"/"superadmin" survive only as
+            # capability keywords inside it, never as a role id.
+            "platform_admin": {"capabilities": ["admin", "superadmin"]},
             "org_admin": {"capabilities": ["user_management", "source_registration"]},
             "analyst": {"capabilities": ["query_development"]},
         },
@@ -241,10 +246,18 @@ def test_full_multi_org_onboarding_lifecycle(planes):
         # /auth/claim-bootstrap from the first-login page, never as a side effect of authenticating.
         claim = client.post("/auth/claim-bootstrap", headers={**_basic("super1"), "host": _CONTROL_HOST})
         assert claim.status_code == 200, claim.text
-        assert claim.json() == {"claimed": True, "claimed_by": "super1"}
+        # REQ-1296: the claim names the org it seated the claimant in, so the login page can send
+        # the next request somewhere populated.
+        from provisa.api.app import state as app_state
+
+        assert claim.json() == {
+            "claimed": True,
+            "claimed_by": "super1",
+            "org_id": app_state.org_id,
+        }
         who = client.get("/whoami", headers={**_basic("super1"), "host": _CONTROL_HOST})
         assert who.status_code == 200, who.text
-        assert who.json()["roles"] == ["admin"]
+        assert who.json()["roles"] == ["platform_admin"]
 
         # 2. person 2 (member-less) self-creates an org from the control-plane host.
         created = client.post(
@@ -338,7 +351,7 @@ def test_full_multi_org_onboarding_lifecycle(planes):
 
 def test_second_user_cannot_claim_superadmin(planes):
     # The superadmin slot is a singleton. person 1 claims it and — being a platform admin — resolves
-    # an active org and reads /whoami as ["admin"]. person 2 gets NO platform grant and NO membership,
+    # an active org and reads /whoami as ["platform_admin"]. person 2 gets NO platform grant and NO membership,
     # so the same member-only path fails closed with "Org selection required" (never silently
     # defaulted to an org, never granted admin). That contrast is the singleton guarantee.
     admin_db, tenant_db, _ = planes
@@ -349,13 +362,13 @@ def test_second_user_cannot_claim_superadmin(planes):
         assert claimed.json()["claimed"] is True
         first = client.get("/whoami", headers={**_basic("super1"), "host": _CONTROL_HOST})
         assert first.status_code == 200, first.text
-        assert first.json()["roles"] == ["admin"]
+        assert first.json()["roles"] == ["platform_admin"]
         # REQ-1290: person 2's own claim attempt loses the singleton race — it never displaces the
         # holder, and posting it confers nothing.
         losing = client.post(
             "/auth/claim-bootstrap", headers={**_basic("user2"), "host": _CONTROL_HOST}
         )
-        assert losing.json() == {"claimed": False, "claimed_by": "super1"}
+        assert losing.json() == {"claimed": False, "claimed_by": "super1", "org_id": None}
         second = client.get("/whoami", headers={**_basic("user2"), "host": _CONTROL_HOST})
     assert second.status_code == 401, second.text
     assert second.json()["detail"] == "Org selection required"

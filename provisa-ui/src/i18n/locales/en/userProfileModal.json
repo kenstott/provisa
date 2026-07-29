@@ -21,6 +21,14 @@
     "domains": "Domains",
     "allDomains": "all",
     "capabilities": "Capabilities",
-    "noCapabilities": "None"
+    "noCapabilities": "None",
+    "membershipsHeading": "Organizations",
+    "noMemberships": "You are not a member of any organization.",
+    "leaveOrg": "Leave",
+    "leaveHelp": "Leaving removes your access to that organization. If you are its only org admin, promote someone else first.",
+    "deleteAccountHeading": "Delete account",
+    "deleteAccountHelp": "This removes your Provisa account and your membership of every organization. Organizations you belong to, and everything registered in them, are kept.",
+    "deleteAccountConfirmLabel": "Type {{userId}} to confirm",
+    "deleteAccountButton": "Delete my account"
   }
 }

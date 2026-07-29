@@ -7,7 +7,7 @@ auth:
   assignments_source: provisa
   default_assignments:
     - domain_id: '*'
-      role_id: admin
+      role_id: platform_admin
 naming:
   domain_prefix: false
   rules: []
@@ -17,7 +17,7 @@ domains:
   - id: shelter
     description: Animal shelter
 roles:
-  - id: admin
+  - id: platform_admin
     capabilities:
       - admin
       - query_development
@@ -37,19 +37,19 @@ tables:
     columns:
       - name: pet_id
         data_type: integer
-        visible_to: [admin]
+        visible_to: [platform_admin]
       - name: user_id
         data_type: integer
-        visible_to: [admin]
+        visible_to: [platform_admin]
       - name: inquiry_type
         data_type: varchar
-        visible_to: [admin]
+        visible_to: [platform_admin]
       - name: message
         data_type: varchar
-        visible_to: [admin]
+        visible_to: [platform_admin]
       - name: status
         data_type: varchar
-        visible_to: [admin]
+        visible_to: [platform_admin]
       - name: submitted_at
         data_type: varchar
-        visible_to: [admin]
+        visible_to: [platform_admin]

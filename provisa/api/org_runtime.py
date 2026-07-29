@@ -167,3 +167,36 @@ def require_current_org() -> str:
             "condition to default around."
         )
     return org_id
+
+
+class ActiveOrgPool:  # REQ-1266
+    """A tenant-control-plane handle that resolves to whichever org is bound *at the moment of use*.
+
+    ``AppState.tenant_db`` is a property routed by the ``current_org`` ContextVar. Reading it once
+    at wiring time — which is what passing ``state.tenant_db`` into a long-lived object does —
+    freezes that reader to the default org's schema, so a member's ``user_role_assignments`` row in
+    any other org is invisible no matter which org the request binds. Holding this handle instead
+    defers the read to each call.
+
+    Truthiness reports whether a tenant plane is bound at all, so callers gating on "is there a
+    tenant control plane to read" keep working when there is none (single-org boot, unsecured).
+    """
+
+    __slots__ = ()
+
+    def resolve(self) -> "object | None":
+        from provisa.api.app import state
+
+        return getattr(state, "tenant_db", None)
+
+    def __bool__(self) -> bool:
+        return self.resolve() is not None
+
+    def acquire(self):
+        db = self.resolve()
+        if db is None:
+            raise RuntimeError(
+                "No tenant control plane is bound for the active org. The org runtime must be "
+                "built (ensure_org_runtime) before its control plane is read."
+            )
+        return db.acquire()

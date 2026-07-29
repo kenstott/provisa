@@ -117,6 +117,20 @@ user_org_memberships = Table(
     PrimaryKeyConstraint("user_id", "org_id"),
 )
 
+# REQ-1306: a deliberate departure must not be undone by the next sign-in. When a user leaves an
+# org whose auto_join rule still matches their email, the resolver would re-add them immediately;
+# this row records the refusal. It is keyed to the (user, org) pair, so it suppresses only that
+# org's auto-join and only for that person. An invitation or an explicit add clears it — those are
+# affirmative acts, unlike a rule match.
+org_auto_join_optouts = Table(
+    "org_auto_join_optouts",
+    metadata,
+    Column("user_id", Text, nullable=False),
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("user_id", "org_id"),
+)
+
 local_users = Table(
     "local_users",
     metadata,
@@ -197,6 +211,7 @@ REGISTRY_TABLES = [
     orgs,
     user_profiles,
     user_org_memberships,
+    org_auto_join_optouts,
     local_users,
     org_invites,
     superadmin_bootstrap,
@@ -221,9 +236,20 @@ async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696,
         result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if result.scalar() is None:
             # Insert-if-absent (DO NOTHING): seed the default org idempotently.
+            # REQ-1296: seeded_demo is true because the bootstrap org is built from the deployment's
+            # own config at every startup — the demo sources, domains and views land in it before the
+            # first sign-in completes. A false here would make a rebuilt runtime come back empty and
+            # hand the platform admin the blank deployment this requirement exists to prevent.
             await conn.upsert(
                 orgs,
-                {"id": org_id, "name": "Enterprise"},
+                {"id": org_id, "name": "Enterprise", "seeded_demo": True},
                 index_elements=["id"],
                 update_columns=[],
+            )
+        else:
+            # An org row predating REQ-1296 carries seeded_demo=false (the column default). The
+            # bootstrap org is always demo-seeded, so correct it rather than leave the registry
+            # disagreeing with what startup actually built.
+            await conn.execute_core(
+                orgs.update().where(orgs.c.id == org_id).values(seeded_demo=True)
             )

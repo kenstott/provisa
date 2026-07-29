@@ -23,21 +23,17 @@ under an org_admin identity — the same path the browser uses.
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 
-os.environ["PROVISA_CONFIG"] = os.path.abspath(
+import pytest
+from sqlalchemy import select
+
+from provisa.core.schema_org import domains as domains_t
+from provisa.core.schema_org import registered_tables as registered_tables_t
+
+_CONFIG = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "fixtures", "org_demo_seed_config.yaml")
 )
-os.environ.setdefault("PG_HOST", "localhost")
-os.environ.setdefault("PG_PORT", "5432")
-os.environ.setdefault("PG_PASSWORD", "provisa")
-
-from types import SimpleNamespace  # noqa: E402
-
-import pytest  # noqa: E402
-from sqlalchemy import select  # noqa: E402
-
-from provisa.core.schema_org import domains as domains_t  # noqa: E402
-from provisa.core.schema_org import registered_tables as registered_tables_t  # noqa: E402
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -48,26 +44,40 @@ _SCHEMA = f"org_{_ORG_ID}"
 @pytest.fixture(scope="module")
 async def demo_org():
     """Provision _ORG_ID with demo data through the real build_org_runtime, bound as the app's org."""
+    from _pytest.monkeypatch import MonkeyPatch
+
     from provisa.api.app import build_org_runtime, create_app, state
     from provisa.api.org_runtime import reset_current_org, set_current_org
 
-    app = create_app()
-    async with app.router.lifespan_context(app):
-        assert state.tenant_db is not None
-        async with state.tenant_db.acquire() as conn:
-            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
-            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
+    # Scoped to this module's fixture, never at import time: pytest imports every test module
+    # before running anything, so an import-time PROVISA_CONFIG would point EVERY other in-process
+    # create_app in the session at this fixture config.
+    mp = MonkeyPatch()
+    mp.setenv("PROVISA_CONFIG", _CONFIG)
+    mp.setenv("PG_HOST", os.environ.get("PG_HOST", "localhost"))
+    mp.setenv("PG_PORT", os.environ.get("PG_PORT", "5432"))
+    mp.setenv("PG_PASSWORD", os.environ.get("PG_PASSWORD", "provisa"))
 
-        rt = await build_org_runtime(_ORG_ID, include_demo=True)
-        token = set_current_org(_ORG_ID)
-        try:
-            yield state, rt
-        finally:
-            reset_current_org(token)
-            assert rt.tenant_db is not None
-            async with rt.tenant_db.acquire() as conn:
+    try:
+        app = create_app()
+        async with app.router.lifespan_context(app):
+            assert state.tenant_db is not None
+            async with state.tenant_db.acquire() as conn:
                 await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
                 await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
+
+            rt = await build_org_runtime(_ORG_ID, include_demo=True)
+            token = set_current_org(_ORG_ID)
+            try:
+                yield state, rt
+            finally:
+                reset_current_org(token)
+                assert rt.tenant_db is not None
+                async with rt.tenant_db.acquire() as conn:
+                    await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+                    await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
+    finally:
+        mp.undo()
 
 
 def _org_admin_context():

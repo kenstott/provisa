@@ -44,6 +44,7 @@ from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
 from provisa.auth.superuser import check_superuser, resolve_superuser_config
 from provisa.auth.providers.simple import SimpleAuthProvider
+from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
 pytestmark = [pytest.mark.integration]
 
@@ -261,7 +262,7 @@ class TestSuperuserBootstrap:
         identity = check_superuser("su_admin", "su_secret", config)
         assert identity is not None
         assert identity.user_id == "su_admin"
-        assert "admin" in identity.roles
+        assert PLATFORM_ADMIN_ROLE in identity.roles
         assert identity.raw_claims.get("superuser") is True
 
     def test_check_superuser_wrong_password_returns_none(self):
@@ -289,7 +290,7 @@ class TestSuperuserBootstrap:
         config = {"username": "bootstrap", "password": "bootstrap_pw"}
         identity = check_superuser("bootstrap", "bootstrap_pw", config)
         assert identity is not None
-        assert identity.roles == ["admin"]
+        assert identity.roles == [PLATFORM_ADMIN_ROLE]
 
     def test_resolve_superuser_config_returns_none_when_empty(self):
         # REQ-125: resolve_superuser_config returns None when config is None.
@@ -321,8 +322,8 @@ class TestSuperuserBootstrap:
         creds = base64.b64encode(b"su:su_pw").decode("ascii")
         resp = client.get("/echo", headers={"Authorization": f"Basic {creds}"})
         assert resp.status_code == 200
-        assert resp.json()["role"] == "admin", (
-            "REQ-125: superuser Basic auth must resolve to admin role"
+        assert resp.json()["role"] == PLATFORM_ADMIN_ROLE, (
+            "REQ-125/REQ-1297: superuser Basic auth must resolve to the platform admin role"
         )
 
 
@@ -379,7 +380,7 @@ class TestAuthMiddlewarePipeline:
         client = TestClient(app, raise_server_exceptions=True)
         resp = client.get("/echo")
         assert resp.status_code == 200
-        assert resp.json()["role"] == "admin"
+        assert resp.json()["role"] == PLATFORM_ADMIN_ROLE
 
     def test_x_provisa_role_not_assigned_returns_403(self):
         # REQ-273: client-supplied role via X-Provisa-Role is rejected if not assigned.
@@ -654,7 +655,7 @@ class TestSingleAdminBootstrap:
 
         resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
         assert resp.status_code == 200
-        assert resp.json()["role"] == "admin", (
+        assert resp.json()["role"] == PLATFORM_ADMIN_ROLE, (
             "REQ-1266: the claimant must resolve to admin role"
         )
 
@@ -688,7 +689,7 @@ class TestSingleAdminBootstrap:
         assert client.get("/echo", headers={"Authorization": "Bearer tok-bob"}).status_code == 403
         again = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
         assert again.status_code == 200
-        assert again.json()["role"] == "admin"
+        assert again.json()["role"] == PLATFORM_ADMIN_ROLE
 
     def test_authenticating_never_claims_the_slot(self, tmp_path):
         # REQ-1290: this is the defect that reached production. Claiming inside the middleware made
@@ -769,7 +770,8 @@ class TestFirebaseBootstrapRealWiring:
 
         first = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
         assert first.status_code == 200
-        assert first.json() == {"user_id": "alice", "role": "admin"}
+        # REQ-1297: the bootstrap claimant resolves to the platform admin role.
+        assert first.json() == {"user_id": "alice", "role": PLATFORM_ADMIN_ROLE}
 
         second = client.get("/echo", headers={"Authorization": "Bearer tok-bob"})
         assert second.status_code == 403

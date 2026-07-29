@@ -24,34 +24,34 @@ tables:
   - name: id
     data_type: integer
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: name
     data_type: varchar(100)
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: species
     data_type: varchar(50)
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: breed_name
     data_type: varchar(100)
     visible_to:
-    - admin
+    - platform_admin
     - analyst
   - name: price
     data_type: decimal(10,2)
     visible_to:
-    - admin
+    - platform_admin
   - name: available
     data_type: boolean
     visible_to:
-    - admin
+    - platform_admin
     - analyst
 roles:
-- id: admin
+- id: platform_admin
   capabilities:
   - source_registration
   - table_registration

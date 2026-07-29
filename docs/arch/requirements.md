@@ -13154,7 +13154,7 @@ Every org schema is seeded with exactly four default roles: platform_admin, org_
 
 **Code:** `provisa/core/schema.sql`, `provisa/security/rights.py`, `provisa/auth/middleware.py`
 
-**Tests:** `tests/integration/test_first_login_bootstrap_admin.py`
+**Tests:** `tests/integration/test_first_login_bootstrap_admin.py`, `tests/integration/test_invite_role_authz.py`
 
 ### REQ-1298 · Authorization {#REQ-1298}
 
@@ -13166,7 +13166,7 @@ A backup platform_admin is made in two steps, never by a second bootstrap claim.
 
 **Code:** `provisa/api/admin/invites_router.py`, `provisa/api/auth_router.py`, `provisa/core/org_membership.py`
 
-**Tests:** `tests/integration/test_first_login_bootstrap_admin.py`
+**Tests:** `tests/integration/test_first_login_bootstrap_admin.py`, `tests/integration/test_invite_role_authz.py`
 
 ### REQ-1299 · Authorization {#REQ-1299}
 
@@ -13292,7 +13292,7 @@ A user can never change their own role in an org. Changing a member's role is an
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-An org id is validated on creation and immutable thereafter. It must match a conservative identifier pattern (lowercase letters, digits and hyphens, starting with a letter, bounded length), because the value becomes both the PostgreSQL schema name org_<id> and the Host subdomain ([REQ-1276](#REQ-1276)) - today CreateOrgBody.id is an unconstrained str whose only check is a duplicate lookup. Reserved ids are rejected - root ([REQ-1296](#REQ-1296)), default, public, admin, information_schema, and anything beginning pg_ - since each either collides with a real schema or with the deployment's own org. The id can never change afterward - renaming an org changes its display name only, leaving the schema, the subdomain and every bookmarked URL intact - and the rename UI states that.
+An org id is validated on creation and immutable thereafter. It must match a conservative identifier pattern (lowercase letters and digits only - no hyphen, no underscore - starting with a letter, 2-40 characters), because the value becomes both the PostgreSQL schema name org_<id> and the Host subdomain ([REQ-1276](#REQ-1276)) - today CreateOrgBody.id is an unconstrained str whose only check is a duplicate lookup. Reserved ids are rejected - root ([REQ-1296](#REQ-1296)), default, public, admin, information_schema, and anything beginning pg_ - since each either collides with a real schema or with the deployment's own org. The id can never change afterward - renaming an org changes its display name only, leaving the schema, the subdomain and every bookmarked URL intact - and the rename UI states that.
 
 **Use case:** The org id is not a label, it is a schema name and a hostname, so an unvalidated value is a correctness problem before it is a security one - an id containing a quote, a dot, or mixed case produces a schema that DDL cannot address or a subdomain that does not resolve, and the failure appears during background provisioning rather than at the point of entry. Reserving the names is what keeps a self-service creation from colliding with root or with a PostgreSQL system schema. Immutability is the other half - once an org id is in DNS, in connection strings, and in the schema name, changing it is not a rename but a migration.
 
@@ -13322,7 +13322,7 @@ A single user may create at most 100 organizations. The cap is a backstop agains
 
 **Code:** `provisa/api/admin/orgs_router.py`
 
-**Tests:** `tests/integration/test_org_lifecycle.py`
+**Tests:** `tests/integration/test_org_lifecycle.py`, `tests/unit/test_org_id_validation.py`
 
 ### REQ-1312 · Authorization {#REQ-1312}
 
@@ -13333,5 +13333,41 @@ Deletion scrubs personal data while preserving the record that the deletion happ
 **Use case:** This is the shape every SaaS platform converges on under GDPR and CCPA. Article 17(3) permits retention for legal obligation and for establishing or defending legal claims, which is what keeps billing records and audit trails out of the erasure - and platforms that delete audit records on request fail their own security obligations doing it. Tombstoning is the published practice at GitHub (the ghost user), Slack (deactivated account) and Atlassian (account anonymization) for the same reason it is right here - the opaque id keeps foreign references and audit history coherent while the person behind it becomes unidentifiable. Nulling would require schema changes the NOT NULL columns forbid and would destroy the ability to answer who created a still-live org.
 
 **Code:** `provisa/api/admin/orgs_router.py`, `provisa/api/auth_router.py`, `provisa/core/org_membership.py`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`
+
+### REQ-1313 · Authorization {#REQ-1313}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+An invitation may only confer a role the inviter is entitled to confer, and the role must exist in the target org. Today CreateInviteBody.role_id is an unvalidated str stored verbatim and passed straight into grant_org_role at redemption, which upserts whatever string it is given - org_invites.role_id is a plain Text column with no foreign key, since it references the per-org roles table. The invitation must be rejected at creation when the named role does not exist in that org's schema, and platform_admin may be named only in an invitation into root ([REQ-1298](#REQ-1298)) - an org_admin cannot confer it in their own org. Redemption revalidates rather than trusting the stored value, since a role can be removed between creation and redemption.
+
+**Use case:** This is an escalation path that [REQ-1297](#REQ-1297) arms. Capability resolution reads the global roles map by role id without regard to which org the assignment lives in, so a tenant-plane assignment of platform_admin resolves deployment-wide capabilities. Once [REQ-1297](#REQ-1297) seeds all four default roles into every org schema, an org_admin can invite an accomplice as platform_admin in their own org and produce a platform administrator without ever touching root - which is exactly what [REQ-1298](#REQ-1298) declares to be the only path, and which nothing currently enforces. Validating at creation also turns a redemption-time failure the invitee cannot act on into a refusal the inviter sees immediately.
+
+**Code:** `provisa/api/admin/invites_router.py`, `provisa/api/auth_router.py`, `provisa/core/org_membership.py`
+
+**Tests:** `tests/integration/test_invite_role_authz.py`
+
+### REQ-1314 · Authorization {#REQ-1314}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+An invitation that names no role confers analyst, the least-privileged of the four default roles ([REQ-1297](#REQ-1297)). CreateInviteBody.role_id currently defaults to None and redemption passes it unconditionally into the user_role_assignments upsert, so a link invitation created without a role produces a null assignment rather than a member who can do anything. The default is applied when the invitation is created, so the stored row always names a concrete role and the invitee is told which one before redeeming.
+
+**Use case:** A link invitation is the shareable path an org_admin distributes themselves, and it is exactly the case where naming a role per invitee is inconvenient - so it is the case most likely to be created without one. Defaulting to the lowest-privilege role is the only safe direction, and resolving it at creation rather than at redemption means the invitation, the delivered message ([REQ-1310](#REQ-1310)) and the redemption all agree on what is being offered.
+
+**Code:** `provisa/api/admin/invites_router.py`
+
+**Tests:** `tests/integration/test_invite_role_authz.py`
+
+### REQ-1315 · Authorization {#REQ-1315}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+An org whose provisioning failed is recoverable, not abandoned. Background provisioning records provisioning_state=failed with the error, and there is currently no way forward - no retry endpoint exists, the registry row and whatever partial schema the failure left behind persist, and the org counts against the creator's cap ([REQ-1311](#REQ-1311)). The creator or a platform_admin may retry provisioning, which drops any partial schema and runs the build again from the beginning; a failed org may also be deleted ([REQ-1300](#REQ-1300)) without the confirmation ceremony a provisioned org requires, since it holds no data anyone could lose. A failed org does not count against the creation cap.
+
+**Use case:** Provisioning builds a schema, seeds roles and optionally loads demo assets, so it can fail on anything from a transient connection loss to a bad demo asset - and the state it leaves is a half-built schema the user cannot see and cannot address. Without a retry the only recovery is to create a second org under a different id, which leaves the first one occupying its id permanently, since ids are immutable and reserved by existence ([REQ-1309](#REQ-1309)). Making the retry idempotent from a clean slate is what keeps a second failure from compounding the first.
+
+**Code:** `provisa/api/admin/orgs_router.py`
 
 **Tests:** `tests/integration/test_org_lifecycle.py`

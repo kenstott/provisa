@@ -648,7 +648,10 @@ class TestJSONAPIPaginationHTTP:
             response = await client.get(
                 "/data/jsonapi/default/orders",
                 params={"page[number]": "1", "page[size]": "2"},
-                headers={"accept": "application/vnd.api+json"},
+                # REQ-1297: this state registers the role "admin"; name it so the request resolves
+
+                # to a role that has a schema instead of the unsecured-server default.
+                headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
 
         assert response.status_code == 200
@@ -710,7 +713,10 @@ class TestJSONAPIPaginationHTTP:
             response = await client.get(
                 "/data/jsonapi/default/orders",
                 params={"page[number]": "1", "page[size]": "2"},
-                headers={"accept": "application/vnd.api+json"},
+                # REQ-1297: this state registers the role "admin"; name it so the request resolves
+
+                # to a role that has a schema instead of the unsecured-server default.
+                headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
 
         body = response.json()
@@ -764,7 +770,10 @@ class TestJSONAPIPaginationHTTP:
         ) as client:
             response = await client.get(
                 "/data/jsonapi/default/orders",
-                headers={"accept": "application/vnd.api+json"},
+                # REQ-1297: this state registers the role "admin"; name it so the request resolves
+
+                # to a role that has a schema instead of the unsecured-server default.
+                headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
 
         assert "vnd.api+json" in response.headers.get("content-type", "")
@@ -788,7 +797,10 @@ class TestJSONAPIPaginationHTTP:
         ) as client:
             response = await client.get(
                 "/data/jsonapi/default/nonexistent",
-                headers={"accept": "application/vnd.api+json"},
+                # REQ-1297: this state registers the role "admin"; name it so the request resolves
+
+                # to a role that has a schema instead of the unsecured-server default.
+                headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
 
         assert response.status_code == 404
@@ -848,7 +860,10 @@ class TestJSONAPIPaginationHTTP:
         ) as client:
             response = await client.get(
                 "/data/jsonapi/default/orders",
-                headers={"accept": "application/vnd.api+json"},
+                # REQ-1297: this state registers the role "admin"; name it so the request resolves
+
+                # to a role that has a schema instead of the unsecured-server default.
+                headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
 
         body = response.json()

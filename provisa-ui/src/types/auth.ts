@@ -25,7 +25,10 @@ export type Capability =
   | 'column_grant'
   | 'user_management'
   | 'masking_config'
-  | 'superadmin';
+  | 'superadmin'
+  // REQ-1297: platform_admin is a ROLE id, surfaced as a capability by the server's
+  // _resolved_capabilities so a single keyword answers every platform-bypass gate.
+  | 'platform_admin';
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;

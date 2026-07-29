@@ -610,6 +610,63 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
+-- REQ-1297: analyst and developer are the other two system template roles, seeded on the same
+-- terms as org_admin (org_id = NULL, identical caps in every org). analyst is the least-privileged
+-- of the defaults and is what an invitation confers when it names no role (REQ-1314), so it must
+-- exist in every org schema before invite validation (REQ-1313) can resolve it. developer authors
+-- queries, views and relationships and may write; neither holds user_management, so neither can
+-- confer roles.
+INSERT INTO roles (id, capabilities, domain_access, org_id)
+VALUES (
+    'analyst',
+    '["usage","ad_hoc_query","query_development"]'::jsonb,
+    '["*"]'::jsonb,
+    NULL
+),
+(
+    'developer',
+    '["query_development","create_view","create_relationship","full_results","write","usage",
+      "ad_hoc_query"]'::jsonb,
+    '["*"]'::jsonb,
+    NULL
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- REQ-1297: platform_admin is the deployment-wide administrator and the fourth and last system
+-- template role. It is the role the bootstrap claim grants (REQ-1296) and the only one carrying the
+-- platform-bypass capabilities 'admin' and 'superadmin' — every capability gate treats those as the
+-- wildcard, so platform_admin needs no enumeration of the org-scoped capabilities beyond them.
+-- Seeded here rather than synthesized in code so user_role_assignments.role_id has a real FK target
+-- and state.roles["platform_admin"] resolves its capabilities like any other role.
+INSERT INTO roles (id, capabilities, domain_access, org_id)
+VALUES (
+    'platform_admin',
+    '["admin","superadmin","user_management","access_config","source_registration",
+      "table_registration","create_relationship","create_view","approve_view",
+      "approve_relationship","masking_config","column_grant","view_governance",
+      "query_development","full_results","write","usage","ad_hoc_query",
+      "read_restricted","ignore_relationships"]'::jsonb,
+    '["*"]'::jsonb,
+    NULL
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- REQ-1297: the role ids 'admin' and 'superadmin' are retired. Rewrite existing assignments naming
+-- them to platform_admin, then drop the rows, so nothing resolves them afterward. The rewrite runs
+-- as a DELETE-then-INSERT-select rather than an UPDATE because a user may already hold
+-- platform_admin for the same domain and user_role_assignments is UNIQUE (user_id, role_id,
+-- domain_id) — an UPDATE would raise on the collision. Deleting the roles rows would cascade the
+-- assignments away (ON DELETE CASCADE), so the carry-over must happen first.
+DO $$ BEGIN
+    INSERT INTO user_role_assignments (user_id, role_id, domain_id)
+    SELECT DISTINCT user_id, 'platform_admin', domain_id
+    FROM user_role_assignments
+    WHERE role_id IN ('admin', 'superadmin')
+    ON CONFLICT (user_id, role_id, domain_id) DO NOTHING;
+
+    DELETE FROM roles WHERE id IN ('admin', 'superadmin');
+END $$;
+
 -- Org invite tokens live in the platform control plane (schema_admin.org_invites),
 -- not per-org here.
 
@@ -667,3 +724,18 @@ CREATE TABLE IF NOT EXISTS preserved_snapshots (
     sealed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+
+-- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member
+-- offboarded, a member's role changed. Separate from query_audit_log (which records data access):
+-- an intervention by a platform_admin must be visible to the org afterward, and the query trail is
+-- the wrong shelf for it. Per-org, because the entry belongs to the org it was performed against.
+-- Never deleted (REQ-1312) — org deletion drops the schema, account deletion tombstones the actor.
+-- Mirrors schema_org.admin_audit_log.
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id          BIGSERIAL PRIMARY KEY,
+    action      TEXT NOT NULL,          -- grant_org_admin | revoke_org_admin | remove_member | leave_org | change_role
+    actor_id    TEXT NOT NULL,          -- who performed it (tombstoned on account deletion)
+    subject_id  TEXT NOT NULL,          -- who it was performed against
+    detail      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -63,10 +63,13 @@ def _make_label_map(nodes: dict, relationships: dict) -> MagicMock:
     return lm
 
 
-def _make_request(headers: dict[str, str] | None = None) -> MagicMock:
+def _make_request(headers: dict[str, str] | None = None, *, role: str = "default") -> MagicMock:
     req = MagicMock()
     req.headers = headers or {}
     req.query_params = {}
+    # REQ-486: AuthMiddleware settles the role onto request.state.role before any router runs —
+    # from the identity's assignments on a secured server, from X-Provisa-Role on an unsecured one.
+    req.state.role = role
     return req
 
 
@@ -96,42 +99,41 @@ def _make_state(
 
 
 class TestResolveRoleId:
-    """REQ-796: X-Role (x-provisa-role) header grants access to /data/cypher."""
+    """REQ-796/REQ-486: /data/cypher runs as the role AuthMiddleware settled for the request.
+
+    The header still selects the role on an unsecured server — but AuthMiddleware is what reads it
+    and writes ``request.state.role``. The graph surfaces must consume that settled value, never
+    re-derive one from ``state.roles``, or a headerless caller would silently be handed whichever
+    role happened to sort first."""
 
     def _resolve(self, request, state):
         from provisa.api.rest.cypher_exec import _resolve_role_id
 
         return _resolve_role_id(request, state)
 
-    def test_role_from_x_provisa_role_header(self):
-        state = _make_state(roles={"admin": {}, "viewer": {}})
-        req = _make_request({"x-provisa-role": "viewer"})
+    def test_uses_the_role_the_middleware_settled(self):
+        state = _make_state(roles={"platform_admin": {}, "viewer": {}})
+        req = _make_request({}, role="viewer")
         assert self._resolve(req, state) == "viewer"
 
-    def test_role_from_X_Provisa_Role_header_case_variant(self):
-        state = _make_state(roles={"admin": {}, "analyst": {}})
-        req = _make_request({"X-Provisa-Role": "analyst"})
-        assert self._resolve(req, state) == "analyst"
+    def test_does_not_re_read_the_header_over_the_settled_role(self):
+        # A header naming a privileged role cannot escalate past what the middleware settled.
+        state = _make_state(roles={"platform_admin": {}, "viewer": {}})
+        req = _make_request({"x-provisa-role": "platform_admin"}, role="viewer")
+        assert self._resolve(req, state) == "viewer"
 
-    def test_falls_back_to_first_role_when_header_absent(self):
-        state = _make_state(roles={"admin": {}})
-        req = _make_request({})
-        assert self._resolve(req, state) == "admin"
+    def test_does_not_fall_back_to_a_role_out_of_state(self):
+        # state.roles is irrelevant to resolution — no first-role escalation, no default guess.
+        state = _make_state(roles={"platform_admin": {}})
+        req = _make_request({}, role="viewer")
+        assert self._resolve(req, state) == "viewer"
 
-    def test_falls_back_to_first_role_when_header_role_unknown(self):
-        state = _make_state(roles={"admin": {}})
-        req = _make_request({"x-provisa-role": "unknown-role"})
-        assert self._resolve(req, state) == "admin"
-
-    def test_returns_default_when_no_roles_registered(self):
-        state = _make_state(roles={})
-        req = _make_request({"x-provisa-role": "viewer"})
-        assert self._resolve(req, state) == "default"
-
-    def test_header_takes_precedence_over_first_role(self):
-        state = _make_state(roles={"admin": {}, "viewer": {}, "analyst": {}})
-        req = _make_request({"x-provisa-role": "analyst"})
-        assert self._resolve(req, state) == "analyst"
+    def test_resolution_is_independent_of_the_seeded_roles(self):
+        req = _make_request({}, role="analyst")
+        assert self._resolve(req, _make_state(roles={})) == "analyst"
+        assert self._resolve(req, _make_state(roles={"platform_admin": {}, "viewer": {}})) == (
+            "analyst"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -528,40 +530,25 @@ class TestNeo4jCypherLiteral:
 
 
 class TestXRoleHeaderAccess:
-    """REQ-796: x-provisa-role header controls which role's schema is used."""
+    """REQ-796: the x-provisa-role header selects the role's schema — via AuthMiddleware.
+
+    On an unsecured server the middleware turns the header into ``request.state.role``; these cover
+    that the endpoint honors whichever role came out of that, privileged or not."""
 
     def _resolve(self, request, state):
         from provisa.api.rest.cypher_exec import _resolve_role_id
 
         return _resolve_role_id(request, state)
 
-    def test_viewer_role_resolved_from_header(self):
-        state = _make_state(roles={"admin": {}, "viewer": {}})
-        req = _make_request({"x-provisa-role": "viewer"})
+    def test_viewer_role_settled_from_header_is_honored(self):
+        state = _make_state(roles={"platform_admin": {}, "viewer": {}})
+        req = _make_request({"x-provisa-role": "viewer"}, role="viewer")
         assert self._resolve(req, state) == "viewer"
 
-    def test_admin_role_resolved_from_header(self):
-        state = _make_state(roles={"admin": {}, "viewer": {}})
-        req = _make_request({"x-provisa-role": "admin"})
-        assert self._resolve(req, state) == "admin"
-
-    def test_unknown_role_in_header_falls_back_to_first(self):
-        state = _make_state(roles={"admin": {}, "viewer": {}})
-        req = _make_request({"x-provisa-role": "ghost"})
-        # First registered role is used when header role is not registered
-        result = self._resolve(req, state)
-        assert result in ("admin", "viewer")
-
-    def test_no_header_uses_first_registered_role(self):
-        state = _make_state(roles={"analyst": {}, "viewer": {}})
-        req = _make_request({})
-        result = self._resolve(req, state)
-        assert result == "analyst"
-
-    def test_empty_roles_returns_default(self):
-        state = _make_state(roles={})
-        req = _make_request({"x-provisa-role": "admin"})
-        assert self._resolve(req, state) == "default"
+    def test_platform_admin_role_settled_from_header_is_honored(self):
+        state = _make_state(roles={"platform_admin": {}, "viewer": {}})
+        req = _make_request({"x-provisa-role": "platform_admin"}, role="platform_admin")
+        assert self._resolve(req, state) == "platform_admin"
 
 
 # ---------------------------------------------------------------------------

@@ -132,6 +132,9 @@ class TestGrpcServerStarts:
         pb2_path, pb2_grpc_path = compiled_proto_paths
 
         state = MagicMock()
+        # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
+        # server behind the multitenancy org gate. Name the deployment shape explicitly.
+        state.multitenancy = False
         state.schemas = {}
         state.contexts = {}
         state.rls_contexts = {}
@@ -166,6 +169,9 @@ class TestGrpcServerStarts:
 
         pb2_path, pb2_grpc_path = compiled_proto_paths
         state = MagicMock()
+        # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
+        # server behind the multitenancy org gate. Name the deployment shape explicitly.
+        state.multitenancy = False
         state.schemas = {}
         state.contexts = {}
         state.rls_contexts = {}
@@ -306,6 +312,9 @@ class TestGrpcQueryExecution:
         # integration: mock-justified — AppState is not a docker-compose service.
         # MagicMock scaffolds the struct fields; the real data path (source_pool + PG) is live.
         state = MagicMock()
+        # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
+        # server behind the multitenancy org gate. Name the deployment shape explicitly.
+        state.multitenancy = False
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
@@ -418,6 +427,9 @@ class TestGrpcQueryExecution:
         pb2_grpc_mock = MagicMock()
 
         state = MagicMock()
+        # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
+        # server behind the multitenancy org gate. Name the deployment shape explicitly.
+        state.multitenancy = False
         state.schemas = {}  # empty — will cause NOT_FOUND
 
         servicer = ProvisaServicer(state, pb2_mock, pb2_grpc_mock)

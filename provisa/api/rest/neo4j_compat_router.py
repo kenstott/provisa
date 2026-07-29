@@ -224,10 +224,14 @@ def _error_response(message: str, code: str, status: int = 400) -> JSONResponse:
 
 
 def _resolve_role_id(
-    _request: Request,  # pyright: ignore[reportUnusedParameter]
-    state: object,  # object-ok: circular-import boundary (AppState)
-) -> str:
-    roles: dict = getattr(state, "roles", {})
-    if roles:
-        return next(iter(roles))
-    return "default"
+    request: Request,
+    state: object,  # noqa: ARG001  # object-ok: circular-import boundary (AppState)
+) -> str:  # pyright: ignore[reportUnusedParameter]
+    """The role the caller was authenticated as.
+
+    REQ-486: AuthMiddleware resolves every request that reaches a router and writes the settled
+    role to ``request.state.role`` — on a secured server from the identity's assignments, on an
+    unsecured one from X-Provisa-Role. Reading it here is what makes the graph surfaces obey the
+    same governance as every other surface; picking an arbitrary entry out of ``state.roles``
+    instead would hand one role's schema to whoever asked."""
+    return request.state.role

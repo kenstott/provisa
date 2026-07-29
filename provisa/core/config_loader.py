@@ -41,6 +41,7 @@ from provisa.core.schema_org import (
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.openapi.mapper import OpenAPIQuery
+from provisa.security.rights import SYSTEM_ROLE_IDS
 from provisa.core.repositories import (
     source as source_repo,
     domain as domain_repo,
@@ -228,7 +229,11 @@ async def _replace_mode_cleanup(
     """Delete all rows not present in the new config (full replace semantics)."""
     new_source_ids = list({src.id for src in config.sources} | set(_SYSTEM_SOURCE_IDS))
     new_domain_ids = list({d.id for d in config.domains} | set(domain_policy.system_domain_ids()))
-    new_role_ids = [r.id for r in config.roles]
+    # REQ-1297: the four system roles are seeded by schema.sql, not by any config file, so a full
+    # replace must keep them the way it keeps system sources and domains. Deleting platform_admin
+    # here strands every request an unsecured server makes under it — the role resolves to nothing
+    # and the rate-limit gate 403s the whole deployment.
+    new_role_ids = list({r.id for r in config.roles} | SYSTEM_ROLE_IDS)
     keep_sources = new_source_ids if new_source_ids else _SYSTEM_SOURCE_IDS
     await conn.execute_core(
         _delete(registered_tables).where(registered_tables.c.source_id.not_in(keep_sources))

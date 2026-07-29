@@ -45,7 +45,8 @@ def test_fileless_setup_base_parses(monkeypatch, tmp_path):
     assert parsed.sources
     assert parsed.domains
     assert parsed.roles
-    assert any(r.id == "admin" for r in parsed.roles)
+    # REQ-1297: the platform role id is platform_admin; "admin" survives only as a capability.
+    assert any(r.id == "platform_admin" for r in parsed.roles)
 
 
 def test_existing_config_used_as_is(monkeypatch, tmp_path):

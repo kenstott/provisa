@@ -79,9 +79,10 @@ def test_no_auth_configured_backward_compat():
     resp = client.get("/test")
     assert resp.status_code == 200
     data = resp.json()
-    # Unsecured: no identity provider, so the username IS the role (defaults to admin).
-    assert data["user_id"] == "admin"
-    assert data["role"] == "admin"
+    # Unsecured: no identity provider, so the username IS the role, which defaults to
+    # platform_admin (REQ-1297 — the role id 'admin' is retired).
+    assert data["user_id"] == "platform_admin"
+    assert data["role"] == "platform_admin"
 
 
 def test_no_auth_configured_username_is_role():
@@ -177,7 +178,7 @@ def _basic(username: str, password: str) -> str:
     return f"Basic {raw}"
 
 
-def test_superuser_basic_grants_admin_with_bearer_provider():
+def test_superuser_basic_grants_platform_admin_with_bearer_provider():
     # Works even though a bearer IdP is configured.
     app = _make_app(provider=MockProvider(), superuser=_SU)
     client = TestClient(app)
@@ -185,7 +186,7 @@ def test_superuser_basic_grants_admin_with_bearer_provider():
     assert resp.status_code == 200
     data = resp.json()
     assert data["user_id"] == "root"
-    assert data["role"] == "admin"
+    assert data["role"] == "platform_admin"  # REQ-1297
 
 
 def test_superuser_wrong_password_falls_through_to_provider():
@@ -229,7 +230,7 @@ def test_superuser_password_from_env_secret(monkeypatch):
     client = TestClient(app)
     resp = client.get("/test", headers={"Authorization": _basic("root", "env-pass")})
     assert resp.status_code == 200
-    assert resp.json()["role"] == "admin"
+    assert resp.json()["role"] == "platform_admin"  # REQ-1297
 
 
 def test_resolve_superuser_config_fails_fast_on_unset_secret(monkeypatch):
@@ -292,12 +293,12 @@ def test_resolver_reresolves_on_generation_bump(monkeypatch):
     client = TestClient(_make_resolver_app(holder, gen, monkeypatch))
 
     # Boots unsecured: no provider, username is the role.
-    assert client.get("/test").json()["user_id"] == "admin"
+    assert client.get("/test").json()["user_id"] == "platform_admin"  # REQ-1297
 
     # Reconfigure to a real provider WITHOUT bumping the generation: still cached (unsecured).
     holder["provider"] = MockProvider()
     assert client.get("/test").status_code == 200
-    assert client.get("/test").json()["user_id"] == "admin"
+    assert client.get("/test").json()["user_id"] == "platform_admin"  # REQ-1297
 
     # Bump the generation: the middleware re-resolves and now enforces the provider.
     gen["v"] += 1

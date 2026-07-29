@@ -46,7 +46,7 @@ import pytest_asyncio
 pytestmark = [pytest.mark.integration]
 
 _ORG = "cmd_compose_surfaces"
-_ROLE = "admin"
+_ROLE = "platform_admin"
 
 # Known seed rows of public.orders (db/init.sql): id -> region.
 _ORDER_REGION = {1: "us-east", 2: "us-east", 3: "us-west", 4: "eu-west", 5: "us-east"}

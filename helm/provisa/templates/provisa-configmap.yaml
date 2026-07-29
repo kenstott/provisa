@@ -50,19 +50,19 @@ data:
         governance: pre-approved
         columns:
           - name: id
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: customer_id
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: product_id
-            visible_to: [admin]
+            visible_to: [platform_admin]
           - name: amount
-            visible_to: [admin]
+            visible_to: [platform_admin]
           - name: region
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: status
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: created_at
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
       - source_id: sales-pg
         domain_id: sales-analytics
         schema: public
@@ -70,13 +70,13 @@ data:
         governance: pre-approved
         columns:
           - name: id
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: name
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: email
-            visible_to: [admin]
+            visible_to: [platform_admin]
           - name: region
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
       - source_id: sales-pg
         domain_id: product-catalog
         schema: public
@@ -84,13 +84,13 @@ data:
         governance: registry-required
         columns:
           - name: id
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: name
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: price
-            visible_to: [admin]
+            visible_to: [platform_admin]
           - name: category
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
       {{- if .Values.mongodb.enabled }}
       - source_id: reviews-mongo
         domain_id: product-catalog
@@ -99,13 +99,13 @@ data:
         governance: pre-approved
         columns:
           - name: product_id
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: reviewer
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: rating
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: comment
-            visible_to: [admin]
+            visible_to: [platform_admin]
       {{- end }}
       - source_id: analytics-pg
         domain_id: customer-insights
@@ -114,11 +114,11 @@ data:
         governance: pre-approved
         columns:
           - name: customer_id
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: segment
-            visible_to: [admin, analyst]
+            visible_to: [platform_admin, analyst]
           - name: score
-            visible_to: [admin]
+            visible_to: [platform_admin]
 
     relationships:
       - id: orders-to-customers
@@ -143,7 +143,7 @@ data:
       {{- end }}
 
     roles:
-      - id: admin
+      - id: platform_admin
         capabilities: [source_registration, table_registration, create_relationship, access_config, query_development, approve_view, full_results, admin]
         domain_access: ["*"]
       - id: analyst

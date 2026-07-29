@@ -21,11 +21,14 @@ first-writer-wins upsert the middleware performs is what this reads back.
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, insert, text
 
+import provisa.core
 from provisa.api.auth_router import router as auth_router
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
@@ -40,15 +43,28 @@ _SYNC_URL = f"postgresql+psycopg2://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provis
 _ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _SCHEMA = "test_req1288_admin"
+# REQ-1296: claiming the slot seats the claimant in the bootstrap org, so the claim path touches the
+# tenant plane too. This test owns both planes; the org id is the one state.org_id is pinned to below.
+_ORG_ID = "req1288"
+_ORG_SCHEMA = f"org_{_ORG_ID}"
 
 
 def _prepare_sync():
     engine = create_engine(_SYNC_URL, pool_pre_ping=True)
+    schema_sql = (Path(provisa.core.__file__).parent / "schema.sql").read_text()
     with engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE"))
         conn.execute(text(f"CREATE SCHEMA {_SCHEMA}"))
         conn.execute(text(f"SET search_path TO {_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
+    with engine.begin() as conn:
+        # The tenant plane is built with the same schema.sql the runtime runs, so the roles rows the
+        # claim path assigns (platform_admin) exist. Built synchronously because an async build would
+        # bind its engine to a loop the TestClient does not use.
+        conn.execute(text(f"DROP SCHEMA IF EXISTS {_ORG_SCHEMA} CASCADE"))
+        conn.execute(text(f"CREATE SCHEMA {_ORG_SCHEMA}"))
+        conn.execute(text(f"SET search_path TO {_ORG_SCHEMA}"))
+        conn.execute(text(schema_sql))
     return engine
 
 
@@ -64,6 +80,15 @@ def admin_plane(monkeypatch):
     from provisa.api.app import state as app_state
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
+    # REQ-1296: the claim seats the claimant in the bootstrap org, which writes the tenant plane.
+    # Pinning org_id first makes the AppState shim resolve this test's runtime.
+    monkeypatch.setattr(app_state, "org_id", _ORG_ID, raising=False)
+    monkeypatch.setattr(
+        app_state,
+        "tenant_db",
+        Database(create_engine_from_url(_ASYNC_URL), name="org", search_path=_ORG_SCHEMA),
+        raising=False,
+    )
 
     def set_bootstrap(enabled: bool) -> None:
         # state.auth_config is what wiring.py hands the middleware, and therefore what decides
@@ -76,6 +101,7 @@ def admin_plane(monkeypatch):
 
     with sync_engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE"))
+        conn.execute(text(f"DROP SCHEMA IF EXISTS {_ORG_SCHEMA} CASCADE"))
     sync_engine.dispose()
 
 
@@ -157,7 +183,9 @@ def test_claiming_an_unclaimed_slot_takes_it_and_closes_the_notice(admin_plane):
     with TestClient(_make_app()) as client:
         resp = _claim(client, "alice")
         assert resp.status_code == 200, resp.text
-        assert resp.json() == {"claimed": True, "claimed_by": "alice"}
+        # REQ-1296: the response names the org the claimant was seated in, so the login page can
+        # send the next request into a populated org.
+        assert resp.json() == {"claimed": True, "claimed_by": "alice", "org_id": _ORG_ID}
         assert _status(client) == {"unclaimed": False}, (
             "the first-login notice must stop showing the moment the slot is taken"
         )
@@ -170,7 +198,7 @@ def test_a_second_claimant_loses_the_race_and_the_holder_stands(admin_plane):
         assert _claim(client, "alice").json()["claimed"] is True
         resp = _claim(client, "bob")
         assert resp.status_code == 200, resp.text
-        assert resp.json() == {"claimed": False, "claimed_by": "alice"}, (
+        assert resp.json() == {"claimed": False, "claimed_by": "alice", "org_id": None}, (
             "first writer wins on the singleton row — a later claim reads back the holder, never "
             "displaces them"
         )
@@ -181,7 +209,11 @@ def test_reclaiming_by_the_holder_is_idempotent(admin_plane):
     set_bootstrap(True)
     with TestClient(_make_app()) as client:
         assert _claim(client, "alice").json()["claimed"] is True
-        assert _claim(client, "alice").json() == {"claimed": True, "claimed_by": "alice"}
+        assert _claim(client, "alice").json() == {
+            "claimed": True,
+            "claimed_by": "alice",
+            "org_id": _ORG_ID,
+        }
 
 
 def test_claiming_is_404_when_the_deployment_has_no_bootstrap_slot(admin_plane):

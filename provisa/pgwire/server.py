@@ -45,6 +45,7 @@ from buenavista.postgres import (
 )
 
 from provisa.executor.result import ResultStream
+from provisa.security.rights import is_platform_admin as _is_platform_admin
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ async def _resolve_and_build_org(state_, identity) -> str | None:  # REQ-1266
     from provisa.api.app import ensure_org_runtime
     from provisa.api.org_resolve import resolve_session_org
 
-    is_platform_admin = bool(set(getattr(identity, "roles", []) or []) & {"admin", "superadmin"})
+    is_platform_admin = _is_platform_admin(getattr(identity, "roles", []) or [])
     org_id = await resolve_session_org(
         state_,
         user_id=getattr(identity, "user_id", None),

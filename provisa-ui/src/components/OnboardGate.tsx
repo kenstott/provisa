@@ -141,12 +141,10 @@ export function OnboardGate({
       </div>
     );
   }
-  // A platform superadmin holds admin caps but zero org memberships — the onboarding flow is for
-  // tenant users who must join/create an org, not the platform operator. Let admin/superadmin
-  // (resolved from /auth/me assignments) through to the shell instead of trapping them here.
-  const isPlatformAdmin = assignments.some(
-    (a) => a.role_id === "admin" || a.role_id === "superadmin",
-  );
+  // A platform_admin (REQ-1297) may hold zero org memberships — the onboarding flow is for tenant
+  // users who must join/create an org, not the platform operator. Let them (resolved from
+  // /auth/me assignments) through to the shell instead of trapping them here.
+  const isPlatformAdmin = assignments.some((a) => a.role_id === "platform_admin");
   if (
     authEnabled &&
     token &&

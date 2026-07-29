@@ -19,14 +19,20 @@ the same pair, so it lives here once.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import delete, insert, select
 
-from provisa.core.schema_admin import orgs, user_org_memberships
-from provisa.core.schema_org import user_role_assignments
+from provisa.core.schema_admin import (
+    org_auto_join_optouts,
+    orgs,
+    user_org_memberships,
+)
+from provisa.core.schema_org import admin_audit_log, user_role_assignments
+from provisa.security.rights import ORG_ADMIN_ROLE
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -95,13 +101,16 @@ async def grant_org_admin(
 
 
 async def resolve_auto_join_orgs(
-    admin_db: "Database", email: str | None
+    admin_db: "Database", email: str | None, user_id: str
 ) -> list[tuple[str, str]]:
     """Return ``(org_id, auto_join_role)`` for every auto-join org whose email rule ``email`` matches.
 
     REQ-1269. Reads the admin plane only (no tenant-schema access): the caller grants the tenant
     role once it has bound the org's runtime. An auto_join org with no auto_join_role is skipped —
     membership without a role would leave the user with no capabilities in the org.
+
+    REQ-1306: an org the user has deliberately left is excluded for that user. The opt-out row is
+    what makes departure stick against a rule that still matches their address.
     """
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
@@ -110,11 +119,135 @@ async def resolve_auto_join_orgs(
             )
         )
         rows = [dict(r._mapping) for r in result.fetchall()]
+        opted_out_result = await conn.execute_core(
+            select(org_auto_join_optouts.c.org_id).where(
+                org_auto_join_optouts.c.user_id == user_id
+            )
+        )
+        opted_out = {r[0] for r in opted_out_result.fetchall()}
     return [
         (r["id"], r["auto_join_role"])
         for r in rows
-        if r["auto_join_role"] and email_matches_rule(email, r["email_rule"])
+        if r["auto_join_role"]
+        and r["id"] not in opted_out
+        and email_matches_rule(email, r["email_rule"])
     ]
+
+
+async def suppress_auto_join(admin_db: "Database", user_id: str, org_id: str) -> None:  # REQ-1306
+    """Record that ``user_id`` has deliberately left ``org_id`` and must not be auto-rejoined."""
+    async with admin_db.acquire() as conn:
+        await conn.upsert(
+            org_auto_join_optouts,
+            {"user_id": user_id, "org_id": org_id},
+            index_elements=["user_id", "org_id"],
+            update_columns=[],
+        )
+
+
+async def clear_auto_join_suppression(  # REQ-1306
+    admin_db: "Database", user_id: str, org_id: str
+) -> None:
+    """Drop the opt-out row, if any. An invitation or an explicit add is an affirmative act by the
+    org and outranks the user's earlier departure; a rule match is not."""
+    async with admin_db.acquire() as conn:
+        await conn.execute_core(
+            delete(org_auto_join_optouts).where(
+                org_auto_join_optouts.c.user_id == user_id,
+                org_auto_join_optouts.c.org_id == org_id,
+            )
+        )
+
+
+async def org_admin_user_ids(tenant_db: "Database") -> set[str]:  # REQ-1302
+    """Every user holding org_admin in the schema ``tenant_db`` is scoped to.
+
+    The tenant plane is the authority on who administers an org — a control-plane membership row
+    says only that the person belongs to it.
+    """
+    async with tenant_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(user_role_assignments.c.user_id).where(
+                user_role_assignments.c.role_id == ORG_ADMIN_ROLE
+            )
+        )
+        return {r[0] for r in result.fetchall()}
+
+
+class LastOrgAdminError(Exception):  # REQ-1302
+    """Raised when an act would leave an org with zero org_admins."""
+
+    def __init__(self, org_id: str, user_id: str):
+        self.org_id = org_id
+        self.user_id = user_id
+        super().__init__(
+            f"{user_id} is the last org_admin of {org_id}. Promote another org_admin first, or "
+            f"delete the organization."
+        )
+
+
+async def assert_not_last_org_admin(  # REQ-1302
+    tenant_db: "Database", user_id: str, org_id: str
+) -> None:
+    """Raise LastOrgAdminError if removing ``user_id``'s org_admin authority would orphan the org.
+
+    Applies identically to revocation, offboarding and voluntary departure — all three are ordinary
+    administrative acts. Org deletion is not: it is a confirmed destruction (REQ-1300) and bypasses
+    this check deliberately.
+    """
+    admins = await org_admin_user_ids(tenant_db)
+    if user_id in admins and len(admins) == 1:
+        raise LastOrgAdminError(org_id, user_id)
+
+
+async def record_admin_action(  # REQ-1303, REQ-1308
+    tenant_db: "Database", *, action: str, actor_id: str, subject_id: str, detail: dict
+) -> None:
+    """Append an entry to the org's administrative trail. ``tenant_db`` must be scoped to that org's
+    schema — the entry belongs to the org the act was performed against, so a platform_admin's
+    intervention is visible there afterward rather than only on the platform."""
+    async with tenant_db.acquire() as conn:
+        await conn.execute_core(
+            insert(admin_audit_log).values(
+                action=action, actor_id=actor_id, subject_id=subject_id, detail=detail
+            )
+        )
+
+
+async def remove_from_org(  # REQ-1305
+    admin_db: "Database", tenant_db: "Database", user_id: str, org_id: str
+) -> bool:
+    """Remove ``user_id`` from ``org_id`` in BOTH planes. Returns whether a membership row existed.
+
+    The tenant-plane assignments must go with the membership: leaving them behind means re-adding
+    the person silently restores every privilege they previously held. ``tenant_db`` must be scoped
+    to ``org_<org_id>``.
+
+    REQ-1263 personal access tokens are not revoked here because no PAT table exists yet; when one
+    lands, its org-scoped rows for this user are deleted in this function.
+    """
+    async with tenant_db.acquire() as conn:
+        await conn.execute_core(
+            delete(user_role_assignments).where(user_role_assignments.c.user_id == user_id)
+        )
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            delete(user_org_memberships).where(
+                user_org_memberships.c.user_id == user_id,
+                user_org_memberships.c.org_id == org_id,
+            )
+        )
+    return (result.rowcount or 0) > 0
+
+
+def tombstone_id(user_id: str) -> str:  # REQ-1312
+    """The opaque token replacing a deleted user's id in rows that must stay referentially intact.
+
+    Derived by hash rather than randomly so every reference to one deleted account collapses to the
+    same token — the record still shows that one person did these things, without saying who. It is
+    one-way: the digest cannot be turned back into the id.
+    """
+    return "deleted-user-" + hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:16]
 
 
 def notify_org_ready(org_id: str, user_id: str) -> None:  # REQ-1266
@@ -125,3 +258,21 @@ def notify_org_ready(org_id: str, user_id: str) -> None:  # REQ-1266
     side-effect-light so the provisioning task can call it inline after flipping to ``ready``.
     """
     log.info("org %s provisioned and ready — notifying creator %s", org_id, user_id)
+
+
+# REQ-1308: a user may not change their own role, on ANY protocol. Self-elevation is the whole
+# reason role assignment is an administrative act; a user who can grant themselves a role has no
+# role. Enforced server-side at every mutation site rather than hidden in a UI, because the UI is
+# not the only client.
+SELF_ROLE_CHANGE_MESSAGE = (
+    "A user cannot change their own role. Ask another administrator (REQ-1308)."
+)
+
+
+def is_self_role_change(actor_id: str | None, subject_id: str) -> bool:
+    """Whether an actor is attempting to alter their own role assignment.
+
+    ``actor_id`` is None in dev/no-auth mode, where there is no authenticated identity to protect
+    and every request is already the operator's own — the rule does not apply.
+    """
+    return actor_id is not None and actor_id == subject_id

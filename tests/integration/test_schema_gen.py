@@ -114,7 +114,7 @@ def _make_schema_input(schema_input: dict, role_id: str) -> SchemaInput:
 
 class TestSchemaGenValid:
     def test_admin_schema_validates(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         assert_valid_schema(schema)  # raises if invalid
         assert schema.query_type is not None
@@ -128,7 +128,7 @@ class TestSchemaGenValid:
 
 class TestSchemaGenObjectTypes:
     def test_admin_sees_all_three_tables(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         query = schema.query_type
         assert query is not None
@@ -149,7 +149,7 @@ class TestSchemaGenObjectTypes:
         assert "products" not in field_names
 
     def test_orders_type_has_correct_fields(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_field = schema.query_type.fields["orders"]
         orders_type = _unwrap_list_type(orders_field)
@@ -163,7 +163,7 @@ class TestSchemaGenObjectTypes:
 
 class TestSchemaGenColumnVisibility:
     def test_admin_sees_amount_column(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
         assert "amount" in orders_type.fields
@@ -182,7 +182,7 @@ class TestSchemaGenColumnVisibility:
         assert "region" in orders_type.fields
 
     def test_admin_sees_email_on_customers(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         customers_type = _unwrap_list_type(schema.query_type.fields["customers"])
         assert "email" in customers_type.fields
@@ -198,7 +198,7 @@ class TestSchemaGenColumnVisibility:
 class TestSchemaGenRelationships:
     def test_orders_has_customers_relationship(self, schema_input):
         """orders → customers (many-to-one) should produce a singular 'customer' field."""
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
         assert "customer" in orders_type.fields
@@ -208,7 +208,7 @@ class TestSchemaGenRelationships:
 
     def test_relationship_visible_when_both_domains_accessible(self, schema_input):
         """Admin has '*' domain access — should see the relationship."""
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
         assert "customer" in orders_type.fields
@@ -223,14 +223,14 @@ class TestSchemaGenRelationships:
 
 class TestSchemaGenQueryArgs:
     def test_query_field_has_limit_offset(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_field = schema.query_type.fields["orders"]
         assert "limit" in orders_field.args
         assert "offset" in orders_field.args
 
     def test_query_field_has_where_arg(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_field = schema.query_type.fields["orders"]
         assert "where" in orders_field.args
@@ -238,7 +238,7 @@ class TestSchemaGenQueryArgs:
         assert isinstance(where_type, GraphQLInputObjectType)
 
     def test_where_has_column_filters(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_field = schema.query_type.fields["orders"]
         where_type = orders_field.args["where"].type
@@ -246,7 +246,7 @@ class TestSchemaGenQueryArgs:
         assert "region" in where_type.fields
 
     def test_where_has_and_or_combinators(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_field = schema.query_type.fields["orders"]
         where_type = orders_field.args["where"].type
@@ -254,14 +254,14 @@ class TestSchemaGenQueryArgs:
         assert "_or" in where_type.fields
 
     def test_query_field_has_order_by(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_field = schema.query_type.fields["orders"]
         assert "order_by" in orders_field.args
 
     def test_order_by_has_column_fields(self, schema_input):
         """Hasura v2 pattern: each column is a field with OrderDirection type."""
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_field = schema.query_type.fields["orders"]
         order_by_list_type = orders_field.args["order_by"].type
@@ -285,13 +285,13 @@ class TestSchemaGenNaming:
     def test_naming_rules_applied(self, schema_input):
         """Sample config has rule ^prod_pg_ → ''. Since table names don't match,
         names should remain unchanged."""
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         # Table names are 'orders', 'customers', 'products' — no prefix match
         assert "orders" in schema.query_type.fields
 
     def test_type_names_are_pascal_case(self, schema_input):
-        si = _make_schema_input(schema_input, "admin")
+        si = _make_schema_input(schema_input, "platform_admin")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
         assert orders_type.name == "Orders"

@@ -48,6 +48,8 @@ REGISTRY_ONLY_TABLES = {
     "user_org_memberships",
     "local_users",
     "org_invites",
+    # REQ-1306: the auto-join opt-out written when a user deliberately leaves an org.
+    "org_auto_join_optouts",
     # Billing tables are now portable metadata too (schema_admin), created via
     # metadata.create_all — no raw SQL DDL to mirror.
     "tenants",

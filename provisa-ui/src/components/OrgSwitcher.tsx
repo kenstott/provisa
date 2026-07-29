@@ -15,7 +15,7 @@ export function OrgSwitcher() {
   const { capabilities, orgMemberships, activeOrgId, selectOrg } = useAuth();
   const [allOrgs, setAllOrgs] = useState<Org[]>([]);
 
-  const isSuperAdmin = capabilities.includes("superadmin") || capabilities.includes("admin");
+  const isSuperAdmin = capabilities.includes("platform_admin");
 
   useEffect(() => {
     if (!isSuperAdmin) return;

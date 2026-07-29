@@ -15,6 +15,7 @@ Each capability gates a specific operation. Missing capability → rejection.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum
 
 # Requirements: REQ-001, REQ-002, REQ-003, REQ-038, REQ-042, REQ-125, REQ-263
@@ -63,6 +64,47 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     SUPERADMIN = "superadmin"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
+
+
+# REQ-1297: the four system role ids are the whole role vocabulary — every org schema seeds
+# exactly these, all with org_id NULL and identical capabilities everywhere. The former role ids
+# 'admin' and 'superadmin' are retired: they survive only as CAPABILITY strings (Capability.ADMIN /
+# Capability.SUPERADMIN above, which check_capability treats as the wildcard), and platform_admin is
+# the only role carrying them. Nothing resolves the retired ROLE ids — seed time rewrites existing
+# assignments naming them to platform_admin.
+PLATFORM_ADMIN_ROLE = "platform_admin"
+ORG_ADMIN_ROLE = "org_admin"
+DEVELOPER_ROLE = "developer"
+ANALYST_ROLE = "analyst"
+SYSTEM_ROLE_IDS: frozenset[str] = frozenset(
+    {PLATFORM_ADMIN_ROLE, ORG_ADMIN_ROLE, DEVELOPER_ROLE, ANALYST_ROLE}
+)
+
+
+def is_platform_admin(claims: Iterable[str]) -> bool:  # REQ-1297
+    """True when any role claim (``role`` or ``role:domain``) or resolved capability names
+    platform_admin — the single platform-bypass keyword, replacing the retired admin/superadmin
+    pair. Callers pass either an identity's role claims or the output of _resolved_capabilities,
+    which surfaces the platform_admin role id as a capability for exactly this test."""
+    return PLATFORM_ADMIN_ROLE in {c.split(":")[0].strip() for c in claims}
+
+
+# REQ-1297: the two capability strings that mean "unrestricted". Only platform_admin carries them
+# (see the schema.sql seed), but they are CAPABILITIES, not role ids, so a gate reading a resolved
+# capability set must test for them as well as for the platform_admin id that _resolved_capabilities
+# surfaces. check_capability/has_capability above treat ADMIN the same way.
+PLATFORM_BYPASS_CAPABILITIES: frozenset[str] = frozenset(
+    {Capability.ADMIN.value, Capability.SUPERADMIN.value}
+)
+
+
+def has_platform_bypass(capabilities: Iterable[str]) -> bool:  # REQ-1297
+    """True when a RESOLVED CAPABILITY set carries platform authority — either wildcard capability
+    or the platform_admin role id that ``_resolved_capabilities`` folds in. Gates reading raw role
+    CLAIMS must use ``is_platform_admin`` instead: as role ids, 'admin' and 'superadmin' are retired
+    and resolve to nothing."""
+    caps = set(capabilities)
+    return PLATFORM_ADMIN_ROLE in caps or bool(caps & PLATFORM_BYPASS_CAPABILITIES)
 
 
 class InsufficientRightsError(Exception):

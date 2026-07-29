@@ -88,7 +88,8 @@ class TestQueryRoles:
         assert resp.status_code == 200
         roles = resp.json()["data"]["roles"]
         assert len(roles) > 0
-        admin = next(r for r in roles if r["id"] == "admin")
+        # REQ-1297: the platform role id is platform_admin; "admin" survives only as a capability.
+        admin = next(r for r in roles if r["id"] == "platform_admin")
         assert "admin" in admin["capabilities"]
 
 

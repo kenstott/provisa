@@ -82,25 +82,16 @@ def _span_attrs_from_semantic_sql(
     return attrs
 
 
-def _resolve_role_id(request: Request, state: AppState) -> str:
-    """Resolve the role_id from the X-Provisa-Role header, else the configured default_role.
+def _resolve_role_id(request: Request, state: AppState) -> str:  # noqa: ARG001
+    """The role the caller was authenticated as.
 
-    A no-header request must NEVER escalate to admin — that would grant an unauthenticated caller
-    full visibility. Resolve the auth config's ``default_role`` (a deliberately-scoped role, like
-    the MCP path in api/mcp/server.py which refuses to escalate), falling back to a deterministic
-    first role only when no default is configured. Admins see everything, but a caller must present
-    an admin role via header/token to be one."""
-    roles: dict = getattr(state, "roles", {})
-    header_role = request.headers.get("x-provisa-role") or request.headers.get("X-Provisa-Role")
-    if header_role and header_role in roles:
-        return header_role
-    if not roles:
-        return "default"
-    auth_config = getattr(state, "auth_config", None) or {}
-    default_role = auth_config.get("default_role") if isinstance(auth_config, dict) else None
-    if default_role and default_role in roles:
-        return default_role
-    return next(iter(roles))
+    REQ-486: AuthMiddleware settles the role for every request that reaches a router — from the
+    identity's assignments on a secured server, from X-Provisa-Role on an unsecured one — and
+    writes it to ``request.state.role``. Reading it is what keeps the graph surfaces under the
+    same governance as the rest of the pipeline. Choosing a role out of ``state.roles`` instead
+    both escalates (a headerless caller would get whichever role happened to sort first) and
+    varies with the seeded system roles, which no caller named."""
+    return request.state.role
 
 
 def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> CypherLabelMap:

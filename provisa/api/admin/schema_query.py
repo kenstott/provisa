@@ -245,7 +245,9 @@ class Query:  # REQ-021, REQ-042
                 user_can_deploy = True  # dev mode — no auth, allow all
             else:
                 caps = _resolved_capabilities(identity, _state)
-                user_can_deploy = bool(caps & {"table_registration", "admin", "superadmin"})
+                user_can_deploy = bool(
+                    caps & {"table_registration", "admin", "superadmin", "platform_admin"}
+                )
 
             pool = await _get_pool()
             async with pool.acquire() as conn:

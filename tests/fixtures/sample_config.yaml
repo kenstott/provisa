@@ -30,17 +30,17 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
       - name: customer_id
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
       - name: amount
-        visible_to: [admin]
+        visible_to: [platform_admin]
       - name: region
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
       - name: status
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
       - name: created_at
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
   - source_id: sales-pg
     domain_id: sales-analytics
     schema: public
@@ -48,13 +48,13 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
       - name: name
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
       - name: email
-        visible_to: [admin]
+        visible_to: [platform_admin]
       - name: region
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
   - source_id: sales-pg
     domain_id: product-catalog
     schema: public
@@ -62,13 +62,13 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
       - name: name
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
       - name: price
-        visible_to: [admin]
+        visible_to: [platform_admin]
       - name: category
-        visible_to: [admin, analyst]
+        visible_to: [platform_admin, analyst]
 
 relationships:
   - id: orders-to-customers
@@ -79,7 +79,7 @@ relationships:
     cardinality: many-to-one
 
 roles:
-  - id: admin
+  - id: platform_admin
     capabilities:
       - source_registration
       - table_registration
@@ -139,7 +139,7 @@ functions:
         columns:
           - {name: id, type: integer}
           - {name: region, type: text}
-    visible_to: [admin]
+    visible_to: [platform_admin]
     output_columns:
       - {name: id, type: integer}
       - {name: score, type: double}

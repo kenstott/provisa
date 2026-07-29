@@ -25,12 +25,12 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [admin]
+        visible_to: [platform_admin]
       - name: amount
-        visible_to: [admin]
+        visible_to: [platform_admin]
 
 roles:
-  - id: admin
+  - id: platform_admin
     capabilities:
       - query_development
       - admin

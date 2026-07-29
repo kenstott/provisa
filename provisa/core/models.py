@@ -829,6 +829,30 @@ class AuthConfig(
     approval_hook: dict | None = None  # REQ-247: ABAC approval hook config block
 
 
+class MailConfig(BaseModel):  # REQ-1310
+    """Outbound SMTP, used today only for org invitations.
+
+    host: SMTP server. Empty means no mail transport is configured — sending raises rather than
+        dropping, so an org_admin learns the invitation must be distributed by hand.
+    port: SMTP port. 25 is the plain-SMTP default the local test server listens on; 587 with
+        use_starttls, or 465 with use_ssl, are the usual production pairs.
+    from_address: envelope and header sender.
+    base_url: public origin of the UI, used to build the redemption link in the message. It cannot
+        be derived from the request that created the invitation — that request may arrive on an
+        internal address or an org subdomain, and the link must work from the invitee's mailbox.
+    """
+
+    host: str = ""
+    port: int = 25
+    from_address: str = "provisa@localhost"
+    username: str = ""
+    password: str = ""
+    use_starttls: bool = False
+    use_ssl: bool = False
+    timeout_seconds: int = 10
+    base_url: str = "http://localhost:5173"
+
+
 class OtelConfig(BaseModel):  # REQ-545
     """OpenTelemetry tracing configuration.
 
@@ -1124,6 +1148,7 @@ class ProvisaConfig(BaseModel):
     warm_tables: WarmTablesConfig = Field(default_factory=WarmTablesConfig)
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)
+    mail: MailConfig = Field(default_factory=MailConfig)  # REQ-1310
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
     nl: NlConfig = Field(default_factory=NlConfig)

@@ -32,6 +32,7 @@ from provisa.core.schema_admin import (
     user_profiles,
 )
 from provisa.core.schema_org import user_role_assignments
+from provisa.security.rights import PLATFORM_ADMIN_ROLE, is_platform_admin as _is_platform_admin
 
 # Requirements: REQ-120, REQ-125, REQ-273, REQ-1267
 
@@ -190,7 +191,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         shim resolves to (unset → default org). ``user_role_assignments`` is tenant-plane, so a
         member's grant is only visible when this runs with THEIR org bound. Applies configured
         default_assignments only when the user has no explicit rows."""
-        assert self._db_pool is not None
+        assert self._db_pool, "no tenant control plane bound for the active org"
         async with self._db_pool.acquire() as conn:
             result = await conn.execute_core(
                 select(
@@ -220,7 +221,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         # With no identity provider, the username IS the role (there is nothing else to name the
         # caller by).
         if self._provider is None:
-            unsecured_role = request.headers.get("x-provisa-role") or "admin"
+            unsecured_role = request.headers.get("x-provisa-role") or PLATFORM_ADMIN_ROLE
             request.state.identity = AuthIdentity(
                 user_id=unsecured_role,
                 email=None,
@@ -251,10 +252,10 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                     )
                 su_identity = check_superuser(su_username, su_password, self._superuser)
                 if su_identity is not None:
-                    su_assignments = [RoleAssignment(role_id="admin", domain_id="*")]
+                    su_assignments = [RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*")]
                     su_identity.roles = _assignments_to_claims(su_assignments)
                     request.state.identity = su_identity
-                    request.state.role = "admin"
+                    request.state.role = PLATFORM_ADMIN_ROLE
                     request.state.assignments = su_assignments
                     request.state.active_org_id = self._default_org_id
                     return await call_next(request)
@@ -322,10 +323,12 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 # else: not the superadmin claimant — continue to DB-assignment resolution below.
             else:
                 await self._upsert_profile(identity)
-                boot_assignments = [RoleAssignment(role_id="admin", domain_id="*")]
+                # REQ-1297: the bootstrap claim grants platform_admin — the retired 'admin' role id
+                # no longer resolves anywhere.
+                boot_assignments = [RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*")]
                 identity.roles = _assignments_to_claims(boot_assignments)
                 request.state.identity = identity
-                request.state.role = "admin"
+                request.state.role = PLATFORM_ADMIN_ROLE
                 request.state.assignments = boot_assignments
                 request.state.active_org_id = self._default_org_id
                 return await call_next(request)
@@ -335,7 +338,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         # for a member of a NON-default org it is empty, since user_role_assignments is tenant-plane
         # and their grant lives in the org_<id> schema. It still tells us whether the user is a
         # platform admin (admin/superadmin), which the org gate below needs before an org is bound.
-        if self._assignments_source == "provisa" and self._db_pool is not None:
+        if self._assignments_source == "provisa" and self._db_pool:
             platform_assignments = await self._read_assignments(identity)
         else:
             platform_assignments = resolve_assignments(identity)
@@ -349,9 +352,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             # platform plane, not a tenant's active-org schema. Everyone else is confined to an org
             # they belong to: a client-supplied X-Org-Id (or token active_org claim) naming a
             # non-member org is rejected, not silently honored, or it becomes a cross-tenant escape.
-            is_platform_admin = bool(
-                {a.role_id for a in platform_assignments} & {"admin", "superadmin"}
-            )
+            is_platform_admin = _is_platform_admin({a.role_id for a in platform_assignments})
             member_org_ids: list[str] = []
             if self._admin_pool is not None:
                 async with self._admin_pool.acquire() as conn:
@@ -380,7 +381,9 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                     resolve_auto_join_orgs,
                 )
 
-                auto = await resolve_auto_join_orgs(self._admin_pool, identity.email)
+                auto = await resolve_auto_join_orgs(
+                    self._admin_pool, identity.email, identity.user_id
+                )
                 for auto_org_id, auto_role in auto:
                     await grant_membership(self._admin_pool, identity.user_id, auto_org_id)
                     rt = await ensure_org_runtime(auto_org_id)
@@ -423,7 +426,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             if (
                 not is_platform_admin
                 and self._assignments_source == "provisa"
-                and self._db_pool is not None
+                and self._db_pool
                 and active_org_id is not None
                 and active_org_id != self._default_org_id
             ):

@@ -192,9 +192,66 @@ export async function fetchOrgStatus(orgId: string): Promise<OrgProvisioning> {
   return res.json();
 }
 
-export async function deleteOrg(orgId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`deleteOrg failed: ${res.status}`);
+// REQ-1300: deletion is unrecoverable, so the server refuses it unless the caller repeats the org
+// id back. The UI types that ceremony rather than sending a bare DELETE.
+export async function deleteOrg(orgId: string, confirm: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/admin/orgs/${orgId}?confirm=${encodeURIComponent(confirm)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `deleteOrg failed: ${res.status}`);
+  }
+}
+
+// REQ-1304: the org's live config YAML — the same document the config surface serves — so a
+// departing org_admin can take their work with them before REQ-1300 destroys it.
+export async function exportOrgConfig(orgId: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/config-export`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `exportOrgConfig failed: ${res.status}`);
+  }
+  return res.text();
+}
+
+// REQ-1303/REQ-1308: an org_admin hands the keys to someone else, or takes them back. The server
+// refuses the last removal (REQ-1302), so a failure here is a real answer, not a UI guess.
+export async function grantOrgAdmin(orgId: string, userId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/admins/${userId}`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `grantOrgAdmin failed: ${res.status}`);
+  }
+}
+
+export async function revokeOrgAdmin(orgId: string, userId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/admins/${userId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `revokeOrgAdmin failed: ${res.status}`);
+  }
+}
+
+// REQ-1306: leaving is the member's own act, so it is not the org_admin's member-removal route.
+export async function leaveOrg(orgId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/leave`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `leaveOrg failed: ${res.status}`);
+  }
+}
+
+// REQ-1307/REQ-1312: the account itself. Same typed ceremony as org deletion, against the user id.
+export async function deleteAccount(confirm: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/account?confirm=${encodeURIComponent(confirm)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `deleteAccount failed: ${res.status}`);
+  }
 }
 
 export interface OrgMember {
@@ -202,6 +259,9 @@ export interface OrgMember {
   email: string | null;
   display_name: string | null;
   provider: string | null;
+  // REQ-1302/REQ-1303: whether this person holds org_admin in the org. The server joins it from the
+  // tenant plane; the team page needs it to decide between a promote and a demote control.
+  is_org_admin: boolean;
 }
 
 export async function fetchOrgMembers(orgId: string): Promise<OrgMember[]> {

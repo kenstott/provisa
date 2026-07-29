@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, select, update
 
 from provisa.core.schema_org import creation_requests
+from provisa.security.rights import has_platform_bypass
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -85,7 +86,7 @@ def _require_capability(request: Request, capability: str) -> None:
         role = roles.get(role_id) or {}
         for c in role.get("capabilities") or []:
             caps.add(c)
-    if "superadmin" not in caps and "admin" not in caps and capability not in caps:
+    if not has_platform_bypass(caps) and capability not in caps:
         raise HTTPException(status_code=403, detail=f"Missing capability: {capability!r}")
 
 

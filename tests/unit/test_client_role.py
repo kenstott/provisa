@@ -169,11 +169,11 @@ async def test_unsecured_honors_any_requested_role():
 
 
 @pytest.mark.asyncio
-async def test_unsecured_defaults_admin_without_header():
+async def test_unsecured_defaults_platform_admin_without_header():
     mw = AuthMiddleware(app=None, provider=None)
     req = _Req({})
     await mw.dispatch(req, _next)
-    assert req.state.role == "admin"
+    assert req.state.role == "platform_admin"  # REQ-1297: the role id 'admin' is retired
 
 
 @pytest.mark.asyncio
