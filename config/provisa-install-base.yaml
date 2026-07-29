@@ -26,30 +26,36 @@ tables:
     visible_to:
     - platform_admin
     - analyst
+    - org_admin
   - name: name
     data_type: varchar(100)
     visible_to:
     - platform_admin
     - analyst
+    - org_admin
   - name: species
     data_type: varchar(50)
     visible_to:
     - platform_admin
     - analyst
+    - org_admin
   - name: breed_name
     data_type: varchar(100)
     visible_to:
     - platform_admin
     - analyst
+    - org_admin
   - name: price
     data_type: decimal(10,2)
     visible_to:
     - platform_admin
+    - org_admin
   - name: available
     data_type: boolean
     visible_to:
     - platform_admin
     - analyst
+    - org_admin
 roles:
 - id: platform_admin
   capabilities:
