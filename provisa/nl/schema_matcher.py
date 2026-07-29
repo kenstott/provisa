@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
@@ -45,9 +46,35 @@ class SchemaEntity:  # REQ-356
     """A single schema entity extracted from a GraphQL SDL."""
 
     exact_name: str
-    kind: str  # "table" | "field"
-    parent: str | None  # table name for fields; None for tables
+    kind: str  # "table" | "field" | "metric"
+    parent: str | None  # table name for fields; None for tables and metrics
     embed_text: str  # text sent to the embedding model
+    description: str | None = None  # REQ-1319: metric description, surfaced in the prompt
+
+
+def metric_entities(metrics: list) -> list[SchemaEntity]:  # REQ-1319
+    """Build matcher vocabulary entries for registered metrics.
+
+    Name + description + ai_context all participate in the embedding text so a
+    metric-shaped question ranks the metric alongside tables/columns.
+    """
+    out: list[SchemaEntity] = []
+    for m in metrics:
+        parts = [f"metric {m.name}"]
+        if m.description:
+            parts.append(m.description)
+        if m.ai_context:
+            parts.append(m.ai_context)
+        out.append(
+            SchemaEntity(
+                exact_name=m.name,
+                kind="metric",
+                parent=None,
+                embed_text=" — ".join(parts),
+                description=m.description,
+            )
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +192,8 @@ class SchemaMatcher:  # REQ-356, REQ-419
 
     entities: list[SchemaEntity]
     embeddings: list[list[float]]  # parallel to entities; empty = no-vector fallback
+    # REQ-1320: table name → modeling role ("fact" | "dimension") for star grounding.
+    table_roles: dict[str, str] = field(default_factory=dict)
 
     def top_k(self, query_embedding: list[float] | None, k: int = 20) -> list[SchemaEntity]:
         """Return the k most relevant entities.
@@ -181,19 +210,56 @@ class SchemaMatcher:  # REQ-356, REQ-419
         scored.sort(key=lambda x: x[1], reverse=True)
         return [e for e, _ in scored[:k]]
 
+    def resolve_metric(self, nl_query: str) -> str | None:  # REQ-1319
+        """Ground a metric-shaped question to the semantic SQL form.
+
+        When every name token of a registered metric appears in the question, the
+        resolution is the semantic addressing form (metric + matched dimension
+        columns) — ``SELECT <dims>, value FROM metrics.<name> GROUP BY <dims>`` —
+        instead of a raw aggregation the model would otherwise have to invent.
+        Dimension columns are matched fields whose parent table has modeling_role
+        "dimension" (REQ-1320 star grounding). Returns None when no metric matches.
+        """
+        from provisa.compiler.metric_expand import metric_semantic_sql
+
+        tokens = set(re.findall(r"[a-z0-9]+", nl_query.lower()))
+        metric = next(
+            (
+                e
+                for e in self.entities
+                if e.kind == "metric" and set(e.exact_name.lower().split("_")) <= tokens
+            ),
+            None,
+        )
+        if metric is None:
+            return None
+        dims: list[str] = []
+        for e in self.entities:
+            if e.kind != "field" or e.parent is None:
+                continue
+            if self.table_roles.get(e.parent) != "dimension":
+                continue
+            name_tokens = set(re.findall(r"[a-z0-9]+", e.exact_name.lower()))
+            if name_tokens <= tokens and e.exact_name not in dims:
+                dims.append(e.exact_name)
+        return metric_semantic_sql(metric.exact_name, dims)
+
     @classmethod
     async def build(
         cls,
         schema_sdl: str,
         embed_fn: EmbedFn | None,
+        metrics: list | None = None,
+        table_roles: dict[str, str] | None = None,
     ) -> "SchemaMatcher":
-        """Extract entities from SDL and optionally embed them."""
-        entities = extract_entities(schema_sdl)
+        """Extract entities from SDL (plus registered metrics) and optionally embed them."""
+        entities = extract_entities(schema_sdl) + metric_entities(metrics or [])  # REQ-1319
+        roles = table_roles or {}
         if not entities:
-            return cls(entities=[], embeddings=[])
+            return cls(entities=[], embeddings=[], table_roles=roles)
 
         if embed_fn is None:
-            return cls(entities=entities, embeddings=[])
+            return cls(entities=entities, embeddings=[], table_roles=roles)
 
         texts = [e.embed_text for e in entities]
         try:
@@ -202,7 +268,7 @@ class SchemaMatcher:  # REQ-356, REQ-419
             log.warning("Schema entity embedding failed: %s — falling back to unranked", exc)
             embeddings = []
 
-        return cls(entities=entities, embeddings=embeddings)
+        return cls(entities=entities, embeddings=embeddings, table_roles=roles)
 
 
 # ---------------------------------------------------------------------------
@@ -223,13 +289,23 @@ async def get_matcher(
     role: str,
     schema_sdl: str,
     embed_fn: EmbedFn | None,
+    metrics: list | None = None,
+    table_roles: dict[str, str] | None = None,
 ) -> SchemaMatcher:  # REQ-356
-    """Return a cached SchemaMatcher, rebuilding only when the SDL changes."""
-    h = hash(schema_sdl)
+    """Return a cached SchemaMatcher, rebuilding when the SDL, metrics, or roles change."""
+    # REQ-1319/REQ-1320: metric definitions and table modeling roles are part of the
+    # vocabulary, so they participate in the cache key alongside the SDL.
+    h = hash(
+        (
+            schema_sdl,
+            tuple((m.name, m.description, m.ai_context) for m in metrics or []),
+            tuple(sorted((table_roles or {}).items())),
+        )
+    )
     entry = _CACHE.get(role)
     if entry is not None and entry.sdl_hash == h:
         return entry.matcher
-    matcher = await SchemaMatcher.build(schema_sdl, embed_fn)
+    matcher = await SchemaMatcher.build(schema_sdl, embed_fn, metrics, table_roles)
     _CACHE[role] = _CacheEntry(sdl_hash=h, matcher=matcher)
     return matcher
 

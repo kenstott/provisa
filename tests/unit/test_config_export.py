@@ -28,7 +28,7 @@ class _FakePool:
         yield self._conn
 
 
-async def _run(*, base, tables, rels=None, roles=None, rls=None, domains=None):
+async def _run(*, base, tables, rels=None, roles=None, rls=None, domains=None, metrics=None):
     from provisa.api.admin import config_export
 
     conn = object()
@@ -45,6 +45,9 @@ async def _run(*, base, tables, rels=None, roles=None, rls=None, domains=None):
         patch("provisa.core.repositories.role.list_all", AsyncMock(return_value=roles or [])),
         patch("provisa.core.repositories.rls.list_all", AsyncMock(return_value=rls or [])),
         patch("provisa.core.repositories.domain.list_all", AsyncMock(return_value=domains or [])),
+        patch(
+            "provisa.core.repositories.metric.list_all", AsyncMock(return_value=metrics or [])
+        ),  # REQ-1317
     ):
         return await config_export.build_live_config()
 

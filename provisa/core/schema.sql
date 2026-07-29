@@ -83,6 +83,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     mv_expected_events JSONB,  -- REQ-961: preflight freshness contract (NULL = all lineage inputs)
     mv_business_day_grain BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-962: gate windows to business days
     unique_constraints JSONB NOT NULL DEFAULT '[]',  -- REQ-1093: table-level UNIQUE constraints
+    modeling_role TEXT,     -- REQ-1320: 'dimension' | 'fact' | NULL (entity/fact lowering metadata)
+    modeling_history TEXT,  -- REQ-1320: originating entity history mode ('scd2' | 'snapshot' | NULL)
+    view_metrics JSONB,     -- REQ-1318: declarative metric-view spec {metrics, dimensions, filters}; view_sql holds the generated SELECT
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -162,6 +165,9 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_allowed_lateness DOUBLE PRECISION NOT NULL DEFAULT 0;  -- REQ-961
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_expected_events JSONB;  -- REQ-961
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_business_day_grain BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-962
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS modeling_role TEXT;  -- REQ-1320
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS modeling_history TEXT;  -- REQ-1320
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_metrics JSONB;  -- REQ-1318
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_aggregates BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_group_by BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS live JSONB;
@@ -276,6 +282,18 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     expected_events   JSONB,          -- freshness-contract inputs; NULL = all SQL-lineage inputs
     business_day_grain BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- REQ-1317: governed metric definitions — named aggregates with query-time grain.
+-- from_fact marks a metric auto-registered from a fact spec's measure (REQ-1320).
+CREATE TABLE IF NOT EXISTS metrics (
+    name        TEXT PRIMARY KEY,
+    expression  TEXT NOT NULL,
+    datatype    TEXT,
+    description TEXT,
+    ai_context  TEXT,  -- REQ-1319: definition text for AI consumers
+    visible_to  JSONB NOT NULL DEFAULT '["*"]',
+    from_fact   TEXT
 );
 
 -- REQ-962: named, shared, VERSIONED calendars — the temporal-window boundary source. Holiday/

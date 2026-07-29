@@ -245,6 +245,19 @@ class ProvisaFlightServer(
                     return command_to_flight_info(cmd)
             raise flight.FlightServerError(f"Command not found: {path[1]}.{path[2]}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+        # REQ-1319: a metric descriptor is ["metrics", <name>, <dim>...] — the metric shape
+        # at the requested grain, discoverable alongside tables and commands. Execution rides
+        # the governed SQL-ticket path via the semantic metrics.<name> form.
+        if len(path) >= 2 and path[0] == "metrics":
+            from provisa.api.flight.catalog import metric_to_flight_info
+
+            name, dims = path[1], list(path[2:])
+            registry = getattr(self._state, "metrics", {})
+            m = registry.get(name)
+            if m is None:
+                raise flight.FlightServerError(f"Metric not found: {name}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return metric_to_flight_info(name, dims, description=m.description or m.ai_context)
+
         if len(path) == 2:
             domain_id, table_name = path[0], path[1]
             tables = build_catalog_tables(self._state)

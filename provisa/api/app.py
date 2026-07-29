@@ -454,6 +454,16 @@ class AppState:
     def relationships(self, value: list[dict]) -> None:
         self._active_runtime().relationships = value
 
+    @property
+    def metrics(self) -> dict[str, Any]:
+        # REQ-1317: config-declared metric registry (name → Metric), published for the
+        # raw-SQL path's `metrics.<name>` query expansion (before governance).
+        return self._active_runtime().metrics
+
+    @metrics.setter
+    def metrics(self, value: dict[str, Any]) -> None:
+        self._active_runtime().metrics = value
+
 
 state = AppState()
 
@@ -978,6 +988,14 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             conn, raw_config
         )
 
+        # REQ-1319: config-declared metrics feed schema generation — each role's schema
+        # projects its visible metrics into the _aggregate metrics block. Config absent
+        # (bare rebuild before any config load) legitimately means no metrics are declared.
+        _metrics_cfg = getattr(state, "config", None)
+        _metric_dicts = (
+            [m.model_dump() for m in _metrics_cfg.metrics] if _metrics_cfg is not None else []
+        )
+
         _build_and_register_schemas(
             roles=roles,
             tables=tables,
@@ -991,6 +1009,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             tracked_webhooks=tracked_webhooks,
             gql_object_cols=_gql_object_cols,
             rls_rules=rls_rules,
+            metrics=_metric_dicts,  # REQ-1319
         )
 
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
@@ -1001,6 +1020,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # REQ-1132: publish the resolved relationship registry alongside tables so the raw-SQL
     # governance path can compute 1-hop meta row scoping.
     state.relationships = relationships
+    # REQ-1317: publish the config-declared metric registry alongside tables so the raw-SQL
+    # path can expand `metrics.<name>` queries into governed aggregates. Config absent (bare
+    # rebuild before any config load) legitimately means no metrics are declared.
+    _cfg = getattr(state, "config", None)
+    state.metrics = {m.name: m for m in _cfg.metrics} if _cfg is not None else {}
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {
@@ -1015,6 +1039,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
         "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
+        "metrics": _metric_dicts,  # REQ-1319
     }
     state.schema_version += 1
     await _finalize_rebuild_state(_rebuild_log)
@@ -1366,6 +1391,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.settings_router import router as settings_router
 
     app.include_router(settings_router)
+    from provisa.api.admin.ossie_router import router as ossie_router  # REQ-1316, REQ-1321
+
+    app.include_router(ossie_router)
     from provisa.api.admin.security_router import router as security_router
 
     app.include_router(security_router)

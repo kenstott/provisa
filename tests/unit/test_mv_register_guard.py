@@ -126,6 +126,8 @@ def test_table_input_maps_consistency():
         data_product=False,
         enable_aggregates=False,
         enable_group_by=False,
+        modeling_role=None,  # REQ-1320
+        modeling_history=None,  # REQ-1320
         live=None,
     )
     model = table_model_from_input(inp, [], [], None)

@@ -914,6 +914,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     tracked_webhooks: list[dict],
     gql_object_cols: dict,
     rls_rules: list[dict],
+    metrics: list[dict],  # REQ-1319: config metric registry for schema projection
 ) -> None:
     """Build and register GraphQL schemas, contexts, and protos for each role."""
     from provisa.api.app import state
@@ -960,6 +961,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
             gql_object_columns=gql_object_cols,
             governed_gql_types=_governed_gql_types,
             gql_governed_object_cols=_gov_obj_cols,
+            metrics=metrics,  # REQ-1319
         )
         try:
             from provisa.compiler.schema_gen import build_table_path_map

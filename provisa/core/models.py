@@ -441,6 +441,50 @@ class LiveDeliveryConfig(BaseModel):  # REQ-565, REQ-813
     outputs: list[LiveOutputConfig] = Field(default_factory=list)
 
 
+class Metric(BaseModel):  # REQ-1317
+    # A named, governed aggregate definition with no grain of its own. Shape follows
+    # Apache Ossie's metric natively (REQ-1316) so interchange of this slice is lossless.
+    # Dataset binding is implicit through the semantic table.column references inside the
+    # expression; grain is bound at query time by the requested dimension set.
+    name: str
+    # Aggregate ANSI-SQL expression over semantic references, e.g.
+    # "SUM(orders.amount) - SUM(orders.refunds)". Must contain at least one aggregate.
+    expression: str
+    datatype: str | None = None
+    description: str | None = None
+    # REQ-1319: definition text written for AI consumers; projected into MCP tool output,
+    # GraphQL introspection docs, pg_description, and Ossie ai_context.
+    ai_context: str | None = None
+    visible_to: list[str] = Field(default_factory=lambda: ["*"])
+    # REQ-1320: set when this metric was auto-registered from a fact spec's measure.
+    from_fact: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _valid_name(cls, v: str) -> str:
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", v):
+            raise ValueError(
+                f"metric name {v!r} must be snake_case (letters, digits, underscores)"
+            )
+        return v
+
+
+class ViewMetricsSpec(BaseModel):  # REQ-1318
+    # Declarative view definition: close the open grain of one or more metrics at
+    # definition time. The compiler generates the SQL; the view regenerates whenever a
+    # referenced metric changes, so it cannot drift from the business definition.
+    metrics: list[str]
+    dimensions: list[str]
+    filters: list[str] = Field(default_factory=list)
+
+    @field_validator("metrics")
+    @classmethod
+    def _nonempty(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("view_metrics.metrics must name at least one metric")
+        return v
+
+
 class Table(
     BaseModel
 ):  # REQ-013, REQ-014, REQ-016, REQ-119, REQ-133, REQ-135, REQ-204, REQ-237, REQ-240, REQ-260, REQ-393
@@ -500,6 +544,14 @@ class Table(
     # (the poll/staleness cadence); when materialized it is also the refresh cadence. One value, so
     # the change-detection interval and the materialized-copy lifetime can never diverge.
     view_sql: str | None = None  # when set, table is a Provisa-managed view
+    # REQ-1318: declarative metric-composed view definition; mutually exclusive with
+    # view_sql (one view concept, two definition forms — validated below).
+    view_metrics: ViewMetricsSpec | None = None
+    # REQ-1320: star/vault modeling role retained after entity/fact lowering
+    # ("dimension" | "fact" | None). Metadata only — never changes what is generated.
+    modeling_role: str | None = None
+    # REQ-1320: SCD/history mode of the originating entity spec (scd2 | snapshot | None).
+    modeling_history: str | None = None
     materialize: bool = False  # when True, view_sql is materialized as a physical CTAS in mv_cache
     mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
     # REQ-963: live-MV debounce. deadline = min(last_change+quiet, first_change+max_delay). A burst
@@ -548,6 +600,22 @@ class Table(
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
     kafka_sink: KafkaSinkAttachment | None = None  # REQ-176: per-table Kafka sink config
+
+    @model_validator(mode="after")
+    def _validate_view_definition_forms(self) -> "Table":
+        # REQ-1318: exactly one definition form per view — view_sql (free-hand) or
+        # view_metrics (declarative). Both set is rejected at parse.
+        if self.view_sql is not None and self.view_metrics is not None:
+            raise ValueError(
+                f"table {self.table_name!r}: view_sql and view_metrics are mutually "
+                "exclusive — a view has exactly one definition form (REQ-1318)"
+            )
+        if self.modeling_role not in (None, "fact", "dimension"):
+            raise ValueError(
+                f"table {self.table_name!r}: modeling_role must be 'fact' or "
+                f"'dimension', got {self.modeling_role!r} (REQ-1320)"
+            )
+        return self
 
 
 class HotTablesConfig(BaseModel):  # REQ-544
@@ -1130,6 +1198,8 @@ class ProvisaConfig(BaseModel):
     naming: NamingConfig = Field(default_factory=NamingConfig)
     tables: list[Table]
     relationships: list[Relationship] = Field(default_factory=list)
+    # REQ-1317: governed metric definitions — named aggregates with query-time grain.
+    metrics: list[Metric] = Field(default_factory=list)
     vector_models: list[VectorModelConfig] = Field(default_factory=list)  # REQ-419
     roles: list[Role]
     rls_rules: list[RLSRule] = Field(default_factory=list)
@@ -1154,6 +1224,25 @@ class ProvisaConfig(BaseModel):
     nl: NlConfig = Field(default_factory=NlConfig)
     govdata_sources: list[GovDataSource] = Field(default_factory=list)
     govdata_subscriptions: list[GovDataSubscription] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_metrics(self) -> "ProvisaConfig":
+        # REQ-1317: metric names are unique. REQ-1318: view_metrics references resolve.
+        seen: set[str] = set()
+        dupes = [m.name for m in self.metrics if m.name in seen or seen.add(m.name)]
+        if dupes:
+            raise ValueError(f"duplicate metric names: {sorted(set(dupes))}")
+        known = {m.name for m in self.metrics}
+        offenders = [
+            f"table {t.table_name} references unknown metric {name!r}"
+            for t in self.tables
+            if t.view_metrics
+            for name in t.view_metrics.metrics
+            if name not in known
+        ]
+        if offenders:
+            raise ValueError("view_metrics: " + "; ".join(offenders))
+        return self
 
     @model_validator(mode="after")
     def _validate_domain_policy(self) -> "ProvisaConfig":

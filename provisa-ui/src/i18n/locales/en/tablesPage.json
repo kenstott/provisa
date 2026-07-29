@@ -35,6 +35,7 @@
     "firstPage": "First page",
     "lastPage": "Last page",
     "pageOf": "Page {{page}} / {{totalPages}}",
-    "loadFailed": "Could not load registered tables: {{message}}"
+    "loadFailed": "Could not load registered tables: {{message}}",
+    "editViewDefinitionTitle": "Edit view definition"
   }
 }

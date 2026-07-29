@@ -25,7 +25,13 @@ def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> 
 
 
 def _build_schema_and_ctx(
-    tables=None, relationships=None, role_id="admin", naming_rules=None, role_extra=None
+    tables=None,
+    relationships=None,
+    role_id="admin",
+    naming_rules=None,
+    role_extra=None,
+    metrics=None,
+    column_types=None,
 ):
     _naming.configure(gql="snake")
     if tables is None:
@@ -70,21 +76,22 @@ def _build_schema_and_ctx(
                 "cardinality": "many-to-one",
             }
         ]
-    column_types = {
-        1: [
-            _col("id", "integer"),
-            _col("customer_id", "integer"),
-            _col("amount", "decimal(10,2)"),
-            _col("region", "varchar(20)"),
-            _col("status", "varchar(20)"),
-            _col("created_at", "timestamp"),
-        ],
-        2: [
-            _col("id", "integer"),
-            _col("name", "varchar(100)"),
-            _col("email", "varchar(200)"),
-        ],
-    }
+    if column_types is None:
+        column_types = {
+            1: [
+                _col("id", "integer"),
+                _col("customer_id", "integer"),
+                _col("amount", "decimal(10,2)"),
+                _col("region", "varchar(20)"),
+                _col("status", "varchar(20)"),
+                _col("created_at", "timestamp"),
+            ],
+            2: [
+                _col("id", "integer"),
+                _col("name", "varchar(100)"),
+                _col("email", "varchar(200)"),
+            ],
+        }
     role = {"id": role_id, "capabilities": [], "domain_access": ["*"], **(role_extra or {})}
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
@@ -94,6 +101,7 @@ def _build_schema_and_ctx(
         naming_rules=naming_rules or [],
         role=role,
         domains=domains,
+        metrics=metrics or [],
     )
     schema = generate_schema(si)
     ctx = build_context(si)
@@ -681,3 +689,239 @@ class TestAggregateGating:
     def test_aggregate_present_with_unrelated_capabilities(self):
         schema, _ = _build_schema_and_ctx(role_extra={"capabilities": ["table_registration"]})
         assert "orders_aggregate" in schema.query_type.fields
+
+
+# ---------------------------------------------------------------------------
+# REQ-1319/REQ-1320: metrics block inside _aggregate + fact-table defaults
+# ---------------------------------------------------------------------------
+
+_FACT_TABLES = [
+    {
+        "id": 1,
+        "source_id": "sales-pg",
+        "domain_id": "sales",
+        "schema_name": "public",
+        "table_name": "orders",
+        "modeling_role": "fact",  # REQ-1320: no explicit enable_aggregates
+        "description": "Order fact rows",
+        "columns": [
+            {"column_name": "id", "visible_to": ["admin", "analyst"]},
+            {"column_name": "customer_id", "visible_to": ["admin", "analyst"]},
+            {"column_name": "amount", "visible_to": ["admin", "analyst"]},
+            {"column_name": "refunds", "visible_to": ["admin", "analyst"]},
+            {"column_name": "region", "visible_to": ["admin", "analyst"]},
+        ],
+    },
+    {
+        "id": 2,
+        "source_id": "sales-pg",
+        "domain_id": "sales",
+        "schema_name": "public",
+        "table_name": "customers",
+        "modeling_role": "dimension",
+        "modeling_history": "scd2",
+        "description": "Customer dimension",
+        "columns": [
+            {"column_name": "id", "visible_to": ["admin"]},
+            {"column_name": "name", "visible_to": ["admin"]},
+        ],
+    },
+]
+
+_METRICS = [
+    {
+        "name": "net_revenue",
+        "expression": "SUM(orders.amount) - SUM(orders.refunds)",
+        "datatype": None,
+        "description": "Gross minus refunds.",
+        "ai_context": "Use for revenue questions; excludes tax.",
+        "visible_to": ["*"],
+    },
+    {
+        "name": "customer_count",
+        "expression": "COUNT(customers.id)",
+        "datatype": None,
+        "description": None,
+        "ai_context": None,
+        "visible_to": ["*"],
+    },
+    {
+        "name": "admin_only_margin",
+        "expression": "AVG(orders.amount)",
+        "datatype": None,
+        "description": None,
+        "ai_context": None,
+        "visible_to": ["admin"],
+    },
+    {
+        # Multi-table metric: no single-table aggregate can inline it — never projected.
+        "name": "blend",
+        "expression": "SUM(orders.amount) / COUNT(customers.id)",
+        "datatype": None,
+        "description": None,
+        "ai_context": None,
+        "visible_to": ["*"],
+    },
+]
+
+
+_FACT_COL_TYPES = {
+    1: [
+        _col("id", "integer"),
+        _col("customer_id", "integer"),
+        _col("amount", "decimal(10,2)"),
+        _col("refunds", "decimal(10,2)"),
+        _col("region", "varchar(20)"),
+    ],
+    2: [_col("id", "integer"), _col("name", "varchar(100)")],
+}
+
+
+def _fact_schema_and_ctx(role_id="admin", tables=None):
+    return _build_schema_and_ctx(
+        tables=tables or _FACT_TABLES,
+        relationships=[],
+        role_id=role_id,
+        metrics=_METRICS,
+        column_types=_FACT_COL_TYPES,
+    )
+
+
+class TestMetricsBlock:
+    """REQ-1319: the _aggregate metrics block; REQ-1320: fact defaults + role suffix."""
+
+    def test_fact_table_exposes_aggregate_without_flag(self):
+        """REQ-1320: modeling_role=fact defaults enable_aggregates ON."""
+        schema, _ = _fact_schema_and_ctx()
+        assert "orders_aggregate" in schema.query_type.fields
+        # dimension table without the flag stays opt-in
+        assert "customers_aggregate" not in schema.query_type.fields
+
+    def test_metrics_block_lists_only_single_table_metrics_for_table(self):
+        schema, _ = _fact_schema_and_ctx()
+        agg_fields = schema.query_type.fields["orders_aggregate"].type.fields["aggregate"].type
+        metric_names = set(agg_fields.fields["metrics"].type.fields.keys())
+        assert metric_names == {"net_revenue", "admin_only_margin"}
+        assert "customer_count" not in metric_names  # references customers, not orders
+        assert "blend" not in metric_names  # multi-table: not inlinable
+
+    def test_metrics_block_filtered_by_role_visibility(self):
+        schema, _ = _fact_schema_and_ctx(role_id="analyst")
+        agg_fields = schema.query_type.fields["orders_aggregate"].type.fields["aggregate"].type
+        metric_names = set(agg_fields.fields["metrics"].type.fields.keys())
+        assert metric_names == {"net_revenue"}  # admin_only_margin hidden from analyst
+
+    def test_metric_field_description_carries_description_and_ai_context(self):
+        schema, _ = _fact_schema_and_ctx()
+        agg_fields = schema.query_type.fields["orders_aggregate"].type.fields["aggregate"].type
+        field = agg_fields.fields["metrics"].type.fields["net_revenue"]
+        assert field.description is not None
+        assert "Gross minus refunds." in field.description
+        assert "Use for revenue questions; excludes tax." in field.description
+
+    def test_type_description_carries_modeling_role_suffix(self):
+        """REQ-1320: role/SCD suffix in the GraphQL type description."""
+        schema, _ = _fact_schema_and_ctx()
+        orders_type = schema.type_map["Orders"]
+        customers_type = schema.type_map["Customers"]
+        assert orders_type.description == "Order fact rows [fact]"
+        assert customers_type.description == "Customer dimension [dimension, scd2]"
+
+    def test_metric_field_compiles_inlined_expression(self):
+        schema, ctx = _fact_schema_and_ctx()
+        doc = parse("""
+            { orders_aggregate {
+                aggregate { count metrics { net_revenue } }
+            } }
+        """)
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        assert 'SUM("amount") - SUM("refunds")' in q.sql
+        assert 'FROM "public"."orders"' in q.sql
+        metric_cols = [c for c in q.columns if c.nested_in == "aggregate.metrics"]
+        assert len(metric_cols) == 1
+        assert metric_cols[0].field_name == "net_revenue"
+
+    def test_metric_field_alias_produces_sql_alias(self):
+        schema, ctx = _fact_schema_and_ctx()
+        doc = parse("""
+            { orders_aggregate {
+                aggregate { metrics { rev: net_revenue } }
+            } }
+        """)
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        assert 'SUM("amount") - SUM("refunds") AS "rev"' in q.sql
+
+    def test_metric_respects_where_argument(self):
+        schema, ctx = _fact_schema_and_ctx()
+        doc = parse("""
+            { orders_aggregate(where: { region: { eq: "east" } }) {
+                aggregate { metrics { net_revenue } }
+            } }
+        """)
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        assert 'WHERE "region" = $1' in q.sql
+        assert q.params == ["east"]
+
+    def test_metric_sql_executes_correct_value(self):
+        """Execution-shaped: the compiled metric SQL computes the metric's value."""
+        import duckdb
+
+        schema, ctx = _fact_schema_and_ctx()
+        doc = parse("""
+            { orders_aggregate {
+                aggregate { metrics { net_revenue } }
+            } }
+        """)
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        conn = duckdb.connect()
+        conn.execute("CREATE SCHEMA public")
+        conn.execute(
+            "CREATE TABLE public.orders (id INT, customer_id INT, amount DOUBLE, "
+            "refunds DOUBLE, region VARCHAR)"
+        )
+        conn.execute(
+            "INSERT INTO public.orders VALUES "
+            "(1, 10, 100, 5, 'east'), (2, 10, 200, 0, 'east'), (3, 20, 50, 10, 'west')"
+        )
+        (value,) = conn.execute(q.sql).fetchone()
+        assert value == 335.0  # (100+200+50) - (5+0+10)
+
+    def test_group_by_metrics_compile(self):
+        tables = [dict(_FACT_TABLES[0], enable_group_by=True), _FACT_TABLES[1]]
+        schema, ctx = _fact_schema_and_ctx(tables=tables)
+        doc = parse("""
+            { orders_group_by(by: [region]) {
+                groupKey
+                aggregate { metrics { net_revenue } }
+            } }
+        """)
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        assert 'SUM("amount") - SUM("refunds")' in q.sql
+        assert 'GROUP BY "region"' in q.sql
+
+    def test_metrics_absent_when_no_metric_references_table(self):
+        """A table no visible metric references gets no metrics block."""
+        schema, _ = _fact_schema_and_ctx()
+        # customers has no _aggregate (dimension, flag off) — enable it via group_by-free
+        # check on the type map instead: no CustomersMetricsFields type exists.
+        assert "CustomersMetricsFields" not in schema.type_map
+        assert "OrdersMetricsFields" in schema.type_map
+
+    def test_group_by_metric_with_filter_where_is_hard_error(self):
+        """REQ-1319: FILTER (WHERE ...) cannot wrap a compound metric expression —
+        requesting both is a named error, never a silently-unfiltered result."""
+        tables = [dict(_FACT_TABLES[0], enable_group_by=True), _FACT_TABLES[1]]
+        schema, ctx = _fact_schema_and_ctx(tables=tables)
+        doc = parse("""
+            { orders_group_by(by: [region]) {
+                aggregate(where: { region: { eq: "east" } }) { metrics { net_revenue } }
+            } }
+        """)
+        assert not validate(schema, doc)
+        with pytest.raises(ValueError, match="FILTER"):
+            compile_query(doc, ctx)

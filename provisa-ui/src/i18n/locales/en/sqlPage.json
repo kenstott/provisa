@@ -4,6 +4,14 @@
     "tabSql": "sql",
     "tabCanvas": "canvas",
     "execMs": "{{ms}} ms",
-    "queryStats": "Query Stats"
+    "queryStats": "Query Stats",
+    "showExpansion": "Show expansion",
+    "detachToPhysical": "Detach to physical SQL",
+    "expansionTitle": "Metric Expansion",
+    "expansionLoading": "Fetching expansion...",
+    "detachConfirmTitle": "Detach to physical SQL?",
+    "detachConfirmBody": "This is ONE-WAY: the metric link will be severed and the query becomes free-hand SQL. There is no way to re-attach it to the metric.",
+    "detachCancel": "Cancel",
+    "detachConfirm": "Detach"
   }
 }

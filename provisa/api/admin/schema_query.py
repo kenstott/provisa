@@ -44,6 +44,7 @@ from provisa.api.admin.types import (
     DomainType,
     HotTableStatType,
     MaterializeStoreInfoType,
+    MetricType,
     MVType,
     RefreshPolicySummaryType,
     RegisteredTableType,
@@ -135,6 +136,28 @@ class Query:  # REQ-021, REQ-042
                 week_start=r["week_start"],
                 holidays=list(r["holidays"] or []),
                 weekend=list(r["weekend"] or [5, 6]),
+            )
+            for r in rows
+        ]
+
+    @strawberry.field
+    async def metrics(self) -> list["MetricType"]:  # REQ-1317
+        """Every governed metric definition — feeds the metric admin panel (REQ-1317); fact-derived
+        metrics carry ``from_fact`` (REQ-1320)."""
+        from provisa.core.repositories import metric as metric_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await metric_repo.list_all(cast("Connection", conn))
+        return [
+            MetricType(
+                name=r["name"],
+                expression=r["expression"],
+                datatype=r["datatype"],
+                description=r["description"],
+                ai_context=r["ai_context"],
+                visible_to=list(r["visible_to"]),
+                from_fact=r["from_fact"],
             )
             for r in rows
         ]

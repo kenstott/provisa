@@ -274,6 +274,8 @@ type Mutation {
   registerTable(input: TableInput!): MutationResult!
   registerEntity(input: EntityInput!): MutationResult!
   registerFact(input: FactInput!): MutationResult!
+  upsertMetric(input: MetricInput!): MutationResult!
+  deleteMetric(name: String!): MutationResult!
   updateTable(input: TableInput!): MutationResult!
   deleteTable(id: Int!): MutationResult!
   deleteRole(id: String!): MutationResult!
@@ -325,6 +327,7 @@ type Query {
   source(id: String!): SourceType
   domains: [DomainType!]!
   tables: [RegisteredTableType!]!
+  metrics: [MetricType!]!
   relationships: [RelationshipType!]!
   allRelationships: [RelationshipType!]!
   roles: [RoleType!]!
@@ -388,6 +391,9 @@ type RegisteredTableType {
   uniqueConstraints: [UniqueConstraintType!]!
   apiEndpoint: String
   viewSql: String
+  viewMetrics: ViewMetricsType
+  modelingRole: String
+  modelingHistory: String
   changeSignal: String
   probeQuery: String
   probeType: String
@@ -580,6 +586,9 @@ input TableInput {
   columnPresets: [ColumnPresetInput!]! = []
   uniqueConstraints: [UniqueConstraintInput!]! = []
   viewSql: String = null
+  viewMetrics: ViewMetricsInput = null
+  modelingRole: String = null
+  modelingHistory: String = null
   loadProtected: Boolean = null
   offPeakWindow: String = null
   offPeakTz: String = null
@@ -612,6 +621,37 @@ input TableInput {
 input UniqueConstraintInput {
   name: String!
   columns: [String!]!
+}
+
+type ViewMetricsType {
+  metrics: [String!]!
+  dimensions: [String!]!
+  filters: [String!]!
+}
+
+input ViewMetricsInput {
+  metrics: [String!]!
+  dimensions: [String!]!
+  filters: [String!]! = []
+}
+
+type MetricType {
+  name: String!
+  expression: String!
+  datatype: String
+  description: String
+  aiContext: String
+  visibleTo: [String!]!
+  fromFact: String
+}
+
+input MetricInput {
+  name: String!
+  expression: String!
+  datatype: String = null
+  description: String = null
+  aiContext: String = null
+  visibleTo: [String!]! = ["*"]
 }
 
 type UniqueConstraintType {

@@ -608,8 +608,16 @@ def _system_query(
     if q_upper.startswith("SHOW PROCEDURES") or q_upper.startswith("SHOW FUNCTIONS"):
         _dbg.warning("[BOLT] _system_query: intercepted SHOW PROCEDURES/FUNCTIONS")
         return ["name", "description", "signature"], [
-            [c["name"], c["description"], _command_signature(c)]
-            for c in _list_commands(app_state, role_id)
+            # REQ-1319: the built-in metric procedure is discoverable alongside commands.
+            [
+                "provisa.metric",
+                "Grain-closed read of a registered metric: dimension columns + value",
+                "provisa.metric(name :: STRING, dimensions :: LIST OF STRING) :: (ROWS)",
+            ],
+            *[
+                [c["name"], c["description"], _command_signature(c)]
+                for c in _list_commands(app_state, role_id)
+            ],
         ]
 
     # SHOW TRANSACTIONS / SHOW SETTINGS / SHOW INDEXES / SHOW CONSTRAINTS
@@ -630,6 +638,9 @@ def _system_query(
         labels = sorted(
             {nm.table_label for nm in label_map.nodes.values()}
             | {nm.domain_label for nm in label_map.nodes.values() if nm.domain_label}
+            # REQ-1320: role-tagged tables (modeling_role fact/dimension) additionally
+            # expose the star-schema labels Fact / Dimension.
+            | {rl for nm in label_map.nodes.values() if (rl := nm.role_label)}
         )
         rel_types = sorted({rm.rel_type for rm in label_map.relationships.values()})
         prop_keys = sorted({prop for nm in label_map.nodes.values() for prop in nm.properties})
@@ -868,6 +879,94 @@ async def _maybe_invoke_command_call(
     return cols, [[r.get(c) for c in cols] for r in rows]
 
 
+_CALL_METRIC_RE = re.compile(
+    r"^\s*CALL\s+provisa\.metric\s*\((.*)\)\s*(?:YIELD\b.*)?;?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _split_top_level_args(raw: str) -> list[str]:
+    """Split a CALL argument string on top-level commas (quotes and [] nesting respected)."""
+    parts: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    quote: str | None = None
+    for ch in raw:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            buf.append(ch)
+            continue
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append("".join(buf))
+            buf = []
+            continue
+        buf.append(ch)
+    if "".join(buf).strip():
+        parts.append("".join(buf))
+    return [p.strip() for p in parts]
+
+
+def _parse_metric_dimensions(tok: str) -> list[str]:
+    """Coerce the dimensions CALL argument: list literal, single string, or null."""
+    tok = tok.strip()
+    if not tok or tok.lower() == "null":
+        return []
+    if tok.startswith("[") and tok.endswith("]"):
+        inner = tok[1:-1].strip()
+        if not inner:
+            return []
+        return [str(_parse_call_arg(t)) for t in _split_top_level_args(inner)]
+    return [str(_parse_call_arg(tok))]
+
+
+async def _maybe_invoke_metric_call(
+    cypher: str, role_id: str, app_state
+) -> tuple[list[str], list[list[Any]]] | None:
+    """If *cypher* is ``CALL provisa.metric(name, dimensions)``, run the metric read (REQ-1319).
+
+    Builds the semantic addressing form ``SELECT <dims>, value FROM metrics.<name> GROUP BY
+    <dims>`` and executes it through the same governed path Cypher-compiled SQL uses
+    (_govern_and_route_compiled → _execute_plan), so REQ-1317 expansion, RLS, and masking all
+    apply. Returns (columns, rows) or None when the statement is not a provisa.metric CALL.
+    An unknown metric — including one not visible to *role_id* — is a hard ValueError.
+    """
+    m = _CALL_METRIC_RE.match(cypher.strip())
+    if m is None:
+        return None
+    args = _split_top_level_args(m.group(1))
+    if not args or len(args) > 2:
+        raise ValueError(
+            "provisa.metric expects (name :: STRING, dimensions :: LIST OF STRING)"
+        )
+    name = _parse_call_arg(args[0])
+    if not isinstance(name, str):
+        raise ValueError(f"provisa.metric: name must be a string, got {name!r}")
+    dims = _parse_metric_dimensions(args[1]) if len(args) == 2 else []
+
+    metric = (getattr(app_state, "metrics", {}) or {}).get(name)
+    # Visibility is part of existence for the caller — an invisible metric reads as unknown,
+    # matching the pgwire catalog's visible_to gate (never leak that the name exists).
+    if metric is None or not ("*" in metric.visible_to or role_id in metric.visible_to):
+        raise ValueError(f"Unknown metric: {name!r}")
+
+    from provisa.compiler.metric_expand import metric_semantic_sql
+    from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
+
+    sql = metric_semantic_sql(name, dims)
+    plan = await _govern_and_route_compiled(sql, role_id, buffered=True)
+    result = await _execute_plan(plan)
+    return list(result.column_names), [list(row) for row in result.rows]
+
+
 async def _execute_cypher(
     cypher: str,
     parameters: dict,
@@ -907,6 +1006,13 @@ async def _execute_cypher(
     result = _system_query(cypher, ctx, role_id, include_ops, app_state, roles)
     if result is not None:
         return (*result, None)
+
+    # REQ-1319: `CALL provisa.metric(name, dimensions)` — grain-closed metric read through the
+    # same governed path as Cypher-compiled SQL. Checked before command dispatch: the dotted
+    # name can never collide with a registered command (command names are bare identifiers).
+    metric_rows = await _maybe_invoke_metric_call(cypher, role_id, app_state)
+    if metric_rows is not None:
+        return (*metric_rows, None)
 
     # REQ-1156: `CALL <command>(args)` naming a registered command invokes it through the single
     # governed executor and returns its rows — so Bolt/Cypher clients (Neo4j Browser/Bloom) can run

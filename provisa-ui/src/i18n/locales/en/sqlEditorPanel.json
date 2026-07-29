@@ -3,6 +3,7 @@
     "renameHint": "Double-click to rename",
     "closeTab": "Close {{title}}",
     "newTab": "New query tab",
+    "detachedBadge": "detached",
     "nlPlaceholder": "Ask in plain English — generates SQL…",
     "clear": "Clear",
     "generate": "Generate SQL",

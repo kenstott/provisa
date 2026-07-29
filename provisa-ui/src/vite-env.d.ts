@@ -18,6 +18,9 @@ declare module '*.graphql' {
   export const DomainsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const RefreshPolicyPreview: DocumentNode;
+  export const MetricsQuery: DocumentNode;
+  export const UpsertMetric: DocumentNode;
+  export const DeleteMetric: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
   export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;
@@ -86,6 +89,9 @@ declare module '*.gql' {
   export const DomainsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const RefreshPolicyPreview: DocumentNode;
+  export const MetricsQuery: DocumentNode;
+  export const UpsertMetric: DocumentNode;
+  export const DeleteMetric: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
   export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;

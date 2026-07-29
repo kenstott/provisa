@@ -129,6 +129,9 @@ registered_tables = Table(
     # REQ-1093: table-level UNIQUE constraints — [{name, columns:[...]}], seeded from source introspection.
     Column("unique_constraints", JSON, nullable=False, default=list, server_default="[]"),
     Column("view_sql", Text),
+    # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
+    # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
+    Column("view_metrics", JSON),
     Column("data_product", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("mv_refresh_interval", Integer, nullable=False, server_default="300"),
@@ -158,6 +161,10 @@ registered_tables = Table(
     Column("mv_allowed_lateness", Float, nullable=False, server_default="0"),
     Column("mv_expected_events", JSON),
     Column("mv_business_day_grain", Boolean, nullable=False, server_default=false()),
+    # REQ-1320: star/vault modeling role retained after entity/fact lowering
+    # ("dimension" | "fact" | NULL) and the originating entity's history mode.
+    Column("modeling_role", Text),
+    Column("modeling_history", Text),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
     Column("live", JSON),
@@ -236,6 +243,21 @@ relationships = Table(
     CheckConstraint(
         "cardinality IN ('many-to-one', 'one-to-many')", name="relationships_cardinality_check"
     ),
+)
+
+# REQ-1317: governed metric definitions — named aggregates with query-time grain.
+# from_fact marks a metric auto-registered from a fact spec's measure (REQ-1320).
+# V1: schema-defined, no migration.
+metrics = Table(
+    "metrics",
+    metadata,
+    Column("name", Text, primary_key=True),
+    Column("expression", Text, nullable=False),
+    Column("datatype", Text),
+    Column("description", Text),
+    Column("ai_context", Text),  # REQ-1319: definition text for AI consumers
+    Column("visible_to", JSON, nullable=False, default=lambda: ["*"], server_default='["*"]'),
+    Column("from_fact", Text),
 )
 
 roles = Table(

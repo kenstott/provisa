@@ -19,6 +19,22 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
     probe_type, watermark_column) mapped in one place."""
     from provisa.core.models import Table as TableModel
     from provisa.core.models import UniqueConstraint as UniqueConstraintModel
+    from provisa.core.models import ViewMetricsSpec
+
+    view_metrics = getattr(inp, "view_metrics", None)
+    if view_metrics is not None:
+        # REQ-1318: a view is defined EITHER by free-hand SQL or by a metric spec, never both —
+        # the spec is the source of truth and the server generates the SQL from it.
+        if inp.view_sql:
+            raise ValueError(
+                "view_sql and view_metrics are mutually exclusive (REQ-1318): a metric-composed "
+                "view's SQL is generated from the spec"
+            )
+        view_metrics = ViewMetricsSpec(
+            metrics=list(view_metrics.metrics),
+            dimensions=list(view_metrics.dimensions),
+            filters=list(view_metrics.filters),
+        )
 
     unique_constraints = [
         UniqueConstraintModel(name=uc.name, columns=list(uc.columns))
@@ -43,6 +59,7 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         off_peak_tz=inp.off_peak_tz,  # REQ-1141
         column_presets=presets,
         view_sql=inp.view_sql or None,
+        view_metrics=view_metrics,  # REQ-1318
         materialize=inp.materialize,
         mv_refresh_interval=inp.mv_refresh_interval,
         mv_debounce_quiet=inp.mv_debounce_quiet,  # REQ-963
@@ -59,6 +76,8 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         mv_allowed_lateness=inp.mv_allowed_lateness,  # REQ-961
         mv_expected_events=inp.mv_expected_events,  # REQ-961
         mv_business_day_grain=inp.mv_business_day_grain,  # REQ-962
+        modeling_role=inp.modeling_role,  # REQ-1320
+        modeling_history=inp.modeling_history,  # REQ-1320
         data_product=inp.data_product,
         enable_aggregates=inp.enable_aggregates,
         enable_group_by=inp.enable_group_by,

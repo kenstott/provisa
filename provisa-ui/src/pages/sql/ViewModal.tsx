@@ -14,6 +14,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Group,
   Modal,
   Select,
@@ -46,6 +47,10 @@ interface ViewModalProps {
   viewSqlNormalized: string;
   viewSqlExtensions: Extension[];
   domainMap: Record<string, Domain>;
+  // REQ-1318: non-null when the SQL is a pure semantic metric query.
+  metricViewInfo: { metric: string; dimensions: string[] } | null;
+  saveAsMetricView: boolean;
+  setSaveAsMetricView: React.Dispatch<React.SetStateAction<boolean>>;
   savedViewId: number | null;
   setSavedViewId: React.Dispatch<React.SetStateAction<number | null>>;
   setViewColumns: React.Dispatch<React.SetStateAction<ViewColumnConfig[]>>;
@@ -70,6 +75,9 @@ export function ViewModal({
   viewSqlNormalized,
   viewSqlExtensions,
   domainMap,
+  metricViewInfo,
+  saveAsMetricView,
+  setSaveAsMetricView,
   savedViewId,
   setSavedViewId,
   setViewColumns,
@@ -161,6 +169,16 @@ export function ViewModal({
             style={{ flexShrink: 0 }}
             data-testid="view-description-input"
           />
+          {metricViewInfo && (
+            <Checkbox
+              size="xs"
+              label={t("sqlViewModal.saveAsMetricView", { metric: metricViewInfo.metric })}
+              checked={saveAsMetricView}
+              onChange={(e) => setSaveAsMetricView(e.currentTarget.checked)}
+              style={{ flexShrink: 0 }}
+              data-testid="view-save-as-metric-checkbox"
+            />
+          )}
           {viewHasParams && (
             <Alert color="red" style={{ flexShrink: 0 }}>
               {t("sqlViewModal.hasParamsWarning")}

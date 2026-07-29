@@ -26,6 +26,7 @@ from provisa.api.admin.types import (
     RelationshipInput,
     TableInput,
 )
+from provisa.core.models import Metric
 from provisa.mv.modeling import (
     DimRef,
     Entity,
@@ -63,11 +64,14 @@ def entity_table_input(inp: EntityInput) -> TableInput:
         materialize=True,
         mv_bitemporal_mode=reg.get("mv_bitemporal_mode"),
         mv_bitemporal_key=reg.get("mv_bitemporal_key", []),
+        modeling_role=reg["modeling_role"],  # REQ-1320
+        modeling_history=reg.get("modeling_history"),  # REQ-1320
     )
 
 
-def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput]]:
-    """FactInput → the TableInput (aggregate MV) plus one RelationshipInput per dimension link."""
+def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput], list[Metric]]:
+    """FactInput → the TableInput (aggregate MV), one RelationshipInput per dimension link, and the
+    governed Metric auto-registered from each measure (REQ-1320)."""
     reg = fact_registration(
         Fact(
             name=inp.name,
@@ -85,6 +89,7 @@ def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput
         columns=_columns(reg["columns"], inp.visible_to),
         view_sql=reg["view_sql"],
         materialize=True,
+        modeling_role=reg["modeling_role"],  # REQ-1320
     )
     rels = [
         RelationshipInput(
@@ -96,4 +101,7 @@ def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput
         )
         for r in reg["relationships"]
     ]
-    return ti, rels
+    # REQ-1320: each fact measure auto-registers as a governed metric; the fact's visibility
+    # carries over so a measure a role may read stays readable as a metric.
+    fact_metrics = [Metric(**m, visible_to=list(inp.visible_to)) for m in reg["metrics"]]
+    return ti, rels, fact_metrics

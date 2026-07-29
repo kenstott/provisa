@@ -30,6 +30,7 @@ from provisa.core.schema_org import (
     api_endpoints,
     api_sources,
     domains,
+    metrics as metrics_table,
     naming_rules,
     registered_tables,
     relationships,
@@ -46,6 +47,7 @@ from provisa.core.repositories import (
     source as source_repo,
     domain as domain_repo,
     table as table_repo,
+    metric as metric_repo,
     relationship as rel_repo,
     role as role_repo,
     rls as rls_repo,
@@ -634,6 +636,46 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
 ) -> None:
     sources_by_id = {src.id: src for src in config.sources}
 
+    # REQ-1318: compile metric-composed view definitions to SQL at registration, so the
+    # generated SELECT flows everywhere view_sql does (registered_tables.view_sql →
+    # view_sql_map / MV registration). Free-hand view_sql with metric() calls is inlined
+    # the same way. Config relationships key tables by table_name, so the registry ids
+    # here ARE the semantic table names.
+    from provisa.compiler.metric_expand import (
+        expand_metric_calls_in_sql,
+        generate_view_metrics_sql,
+    )
+
+    metric_registry = {m.name: m for m in config.metrics}
+    semantic_tables: dict[str, dict] = {}
+    _virtual_to_name: dict[str, str] = {}
+    for t in config.tables:
+        entry = {"id": t.table_name, "columns": [c.name for c in t.columns]}
+        semantic_tables[t.table_name] = entry
+        _virtual_to_name[t.table_name] = t.table_name
+        _alias = getattr(t, "alias", None)
+        if _alias:
+            # Config relationships address tables by virtual name (alias when set) —
+            # normalize both the registry key and the relationship ids to table_name.
+            semantic_tables[_alias] = entry
+            _virtual_to_name[_alias] = t.table_name
+    semantic_rels = [
+        {
+            "source_table_id": _virtual_to_name.get(r.source_table_id, r.source_table_id),
+            "target_table_id": _virtual_to_name.get(r.target_table_id, r.target_table_id),
+            "source_column": r.source_column,
+            "target_column": r.target_column,
+        }
+        for r in config.relationships
+    ]
+    for tbl in config.tables:
+        if tbl.view_metrics is not None:
+            tbl.view_sql = generate_view_metrics_sql(
+                tbl.view_metrics, metric_registry, semantic_tables, semantic_rels
+            )
+        elif tbl.view_sql is not None:
+            tbl.view_sql, _ = expand_metric_calls_in_sql(tbl.view_sql, metric_registry)
+
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
         await _upsert_single_table(conn, engine, tbl, src, openapi_specs)
@@ -681,6 +723,20 @@ async def _upsert_relationships(
             await rel_repo.upsert(conn, rel)
         except ValueError:
             pass  # referenced table not yet registered (dynamic source); retried after source registration
+
+
+async def _upsert_metrics(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-1317, REQ-1320
+    """Delete stale config-declared metrics and upsert the current ones.
+
+    Fact-derived metrics (``from_fact`` set, REQ-1320) are managed by fact registration, not
+    the file — they are preserved regardless of the config's metric list."""
+    current_names = [m.name for m in config.metrics]
+    stale = _delete(metrics_table).where(metrics_table.c.from_fact.is_(None))
+    if current_names:
+        stale = stale.where(metrics_table.c.name.not_in(current_names))
+    await conn.execute_core(stale)
+    for m in config.metrics:
+        await metric_repo.upsert(conn, m)
 
 
 async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-1266
@@ -737,6 +793,9 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # source (e.g. graphql_remote) — those are managed outside of this config file.
     # Also preserve 'meta:*' relationships seeded by _seed_meta_domain.
     await _upsert_relationships(conn, config)
+
+    # 6.5 Metrics (REQ-1317/REQ-1320): governed metric definitions; fact-derived ones preserved.
+    await _upsert_metrics(conn, config)
 
     # 7. RLS rules (tables + roles must exist first)
     for rule in config.rls_rules:

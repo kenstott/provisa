@@ -44,6 +44,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "navBar.groupModel",
     items: [
       { to: "/views", labelKey: "navBar.itemViews", capability: "table_registration" },
+      { to: "/metrics", labelKey: "navBar.itemMetrics", capability: "table_registration" }, // REQ-1317
       { to: "/commands", labelKey: "navBar.itemCommands", capability: "admin" },
       { to: "/lineage", labelKey: "navBar.itemLineage", capability: "admin" }, // REQ-1160/1161
     ],

@@ -133,6 +133,7 @@ class CatalogIndex:  # REQ-532
         "col_attnum",
         "attnum_to_col",
         "ns_map",
+        "metric_oids",
     )
 
     def __init__(self) -> None:
@@ -143,9 +144,13 @@ class CatalogIndex:  # REQ-532
         self.col_attnum: dict[tuple[int, str], int] = {}
         self.attnum_to_col: dict[tuple[int, int], str] = {}
         self.ns_map: dict[str, int] = {"pg_catalog": 11, "information_schema": 12, "public": 2200}
+        # REQ-1319: metric name -> relation OID for the reserved `metrics` namespace.
+        self.metric_oids: dict[str, int] = {}
 
 
-def _build_catalog_index(ctx, col_types: dict) -> CatalogIndex:  # REQ-128, REQ-363
+def _build_catalog_index(
+    ctx, col_types: dict, metrics: list | None = None
+) -> CatalogIndex:  # REQ-128, REQ-363
     """Build the CatalogIndex once. All populate functions read from it — nothing recomputes."""
     from provisa.compiler.naming import domain_to_sql_name, apply_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
@@ -200,6 +205,24 @@ def _build_catalog_index(ctx, col_types: dict) -> CatalogIndex:  # REQ-128, REQ-
             idx.all_cols.append((toid, vcol, "varchar", True, j))
             idx.col_attnum[(toid, vcol)] = j
             idx.attnum_to_col[(toid, j)] = vcol
+
+    # REQ-1319: reserved `metrics` namespace — one relation per visible metric with a single
+    # `value` column. Dimensions are caller-chosen at query time, so they cannot be
+    # enumerated as columns. Relation OIDs live in a dedicated 60000+ range, disjoint from
+    # the 16384+table_id user tables and the 8001/9001 system objects.
+    if metrics:
+        idx.ns_map["metrics"] = _ns_extra
+        for i, m in enumerate(sorted(metrics, key=lambda m: m.name)):
+            toid = 60000 + i
+            idx.tables.append(("provisa", "metrics", m.name, toid, toid))
+            idx.toid_to_table[toid] = ("provisa", "metrics", m.name)
+            idx.metric_oids[m.name] = toid
+            # A metric with no declared datatype surfaces as double — the natural type of
+            # an aggregate value; the design mandates this default (REQ-1319: datatype is
+            # optional in the Metric model but pg_attribute requires a type).
+            idx.all_cols.append((toid, "value", m.datatype or "double", True, 1))
+            idx.col_attnum[(toid, "value")] = 1
+            idx.attnum_to_col[(toid, 1)] = "value"
 
     return idx
 
@@ -456,7 +479,11 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
 
 
 def _populate_pg_description(
-    db, idx: CatalogIndex, raw_tables: list, raw_domains: list | None = None
+    db,
+    idx: CatalogIndex,
+    raw_tables: list,
+    raw_domains: list | None = None,
+    metrics: list | None = None,
 ) -> None:
     from provisa.compiler.naming import domain_to_sql_name
 
@@ -468,6 +495,19 @@ def _populate_pg_description(
         _cols = rt["columns"] if isinstance(rt, dict) else getattr(rt, "columns", [])
         if _tid is None:
             continue
+        # REQ-1320: role/SCD mode ride the catalog description so BI tools that infer
+        # star shapes read them instead of guessing — same suffix as GraphQL docs.
+        _role = (
+            rt.get("modeling_role") if isinstance(rt, dict) else getattr(rt, "modeling_role", None)
+        )
+        _hist = (
+            rt.get("modeling_history")
+            if isinstance(rt, dict)
+            else getattr(rt, "modeling_history", None)
+        )
+        if _role:
+            _tag = f"[{_role}, {_hist}]" if _hist else f"[{_role}]"
+            _tdesc = f"{_tdesc} {_tag}" if _tdesc else _tag
         if _tdesc:
             tid_desc[_tid] = _tdesc
         cdesc: dict[str, str] = {}
@@ -505,6 +545,15 @@ def _populate_pg_description(
             attnum = idx.col_attnum.get((toid, cname))
             if attnum is not None:
                 desc_rows.append((toid, "pg_class", attnum, cdesc_val))
+
+    # REQ-1319: metric relation descriptions — description, else ai_context (the definition
+    # text written for AI consumers; the design mandates this fallback so an AI-documented
+    # metric is never undescribed in the served catalog).
+    for m in metrics or []:
+        m_toid = idx.metric_oids.get(m.name)
+        text = m.description or m.ai_context
+        if m_toid is not None and text:
+            desc_rows.append((m_toid, "pg_class", 0, text))
 
     if desc_rows:
         db.executemany("INSERT INTO _pg_description VALUES (?,?,?,?)", desc_rows)
@@ -849,7 +898,13 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
         LIMIT 0""")
     ctx = state.contexts.get(role_id)
     col_types: dict = state.schema_build_cache.get("column_types", {})
-    idx = _build_catalog_index(ctx, col_types)
+    # REQ-1319: governed metrics from the loaded config, filtered to the connected role's
+    # visible_to before they enter the served catalog. isinstance guard mirrors
+    # _populate_pg_roles_and_database — partial/mock states carry no metrics list.
+    _metrics_attr = getattr(getattr(state, "config", None), "metrics", None)
+    all_metrics = _metrics_attr if isinstance(_metrics_attr, list) else []
+    metrics = [m for m in all_metrics if "*" in m.visible_to or role_id in m.visible_to]
+    idx = _build_catalog_index(ctx, col_types, metrics)
 
     now = time.monotonic()
     cached = _row_count_cache.get(role_id)
@@ -872,7 +927,7 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     populate_functions(db, state, role_id)  # REQ-872
     raw_tables = state.schema_build_cache.get("tables", []) if state else []
     raw_domains = state.schema_build_cache.get("domains", []) if state else []
-    _populate_pg_description(db, idx, raw_tables, raw_domains)
+    _populate_pg_description(db, idx, raw_tables, raw_domains, metrics)
     constraint_rows = _populate_pg_constraint(db, ctx, idx)
     _populate_pg_index(db, constraint_rows)
     _populate_pg_roles_and_database(db, role_id, state)

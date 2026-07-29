@@ -71,6 +71,9 @@ async def upsert(
             u.model_dump() for u in getattr(table, "unique_constraints", [])
         ],  # REQ-1093
         "view_sql": getattr(table, "view_sql", None),
+        "view_metrics": (
+            vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
+        ),  # REQ-1318
         "data_product": getattr(table, "data_product", False),
         "materialize": getattr(table, "materialize", False),
         "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
@@ -88,6 +91,8 @@ async def upsert(
         "mv_allowed_lateness": getattr(table, "mv_allowed_lateness", 0.0),  # REQ-961
         "mv_expected_events": getattr(table, "mv_expected_events", None),  # REQ-961
         "mv_business_day_grain": getattr(table, "mv_business_day_grain", False),  # REQ-962
+        "modeling_role": getattr(table, "modeling_role", None),  # REQ-1320
+        "modeling_history": getattr(table, "modeling_history", None),  # REQ-1320
         "enable_aggregates": getattr(table, "enable_aggregates", False),
         "enable_group_by": getattr(table, "enable_group_by", False),
         "live": table.live.model_dump() if table.live else None,
@@ -106,6 +111,7 @@ async def upsert(
         "column_presets",
         "unique_constraints",  # REQ-1093
         "view_sql",
+        "view_metrics",  # REQ-1318
         "data_product",
         "materialize",
         "mv_refresh_interval",
@@ -123,6 +129,8 @@ async def upsert(
         "mv_allowed_lateness",  # REQ-961
         "mv_expected_events",  # REQ-961
         "mv_business_day_grain",  # REQ-962
+        "modeling_role",  # REQ-1320
+        "modeling_history",  # REQ-1320
         "enable_aggregates",
         "enable_group_by",
         "live",

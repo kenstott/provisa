@@ -14,7 +14,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
-import { Group, SegmentedControl, Checkbox, Text } from "@mantine/core";
+import { Button, Drawer, Group, Modal, SegmentedControl, Checkbox, Text, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { runSql } from "../api/admin";
@@ -23,6 +23,7 @@ import {
   useDomains,
   useTables,
   useRelationships,
+  useMetrics,
   useRegisterTable,
   useUpdateTable,
 } from "../hooks/useAdminQueries";
@@ -39,7 +40,7 @@ import {
 } from "./sql/types";
 import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig, ColumnProfile } from "./sql/types";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
-import { autoAliasConflicts, normalizeDomain } from "./sql/sqlHelpers";
+import { autoAliasConflicts, normalizeDomain, parseSemanticMetricQuery } from "./sql/sqlHelpers";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
 import { SchemaBrowser } from "./sql/SchemaBrowser";
 import { JoinCanvas } from "./sql/JoinCanvas";
@@ -60,6 +61,7 @@ export function SqlPage() {
   const { domains: domainsData } = useDomains();
   const { tables: tablesData, refetch: refetchTables } = useTables();
   const { relationships: relsData, refetch: refetchRelationships } = useRelationships();
+  const { metrics } = useMetrics();
   const { registerTable } = useRegisterTable();
   const { updateTable } = useUpdateTable();
   const [viewModal, setViewModal] = useState(false);
@@ -70,6 +72,13 @@ export function SqlPage() {
   const [viewMsg, setViewMsg] = useState("");
   const [viewColumns, setViewColumns] = useState<ViewColumnConfig[]>([]);
   const [savedViewId, setSavedViewId] = useState<number | null>(null);
+  // REQ-1322: read-only expansion preview + one-way detach for metric-referencing SQL.
+  const [expansionOpen, setExpansionOpen] = useState(false);
+  const [expansionText, setExpansionText] = useState("");
+  const [expansionLoading, setExpansionLoading] = useState(false);
+  const [detachConfirmOpen, setDetachConfirmOpen] = useState(false);
+  // REQ-1318: pure semantic metric queries can save as a metric view.
+  const [saveAsMetricView, setSaveAsMetricView] = useState(true);
   const tables = tablesData;
   const existingRels = relsData;
   const [topTab, setTopTab] = useState<TopTab>("sql");
@@ -238,6 +247,45 @@ export function SqlPage() {
   }, [sqlText]);
 
   const viewHasParams = useMemo(() => /\$\d+/.test(viewSqlNormalized), [viewSqlNormalized]);
+
+  // REQ-1322: the editor references the semantic metrics schema.
+  const sqlReferencesMetrics = useMemo(() => /\bmetrics\.\w+/i.test(sqlText), [sqlText]);
+  // REQ-1318: non-null when the view SQL is a pure semantic metric query.
+  const metricViewInfo = useMemo(
+    () => parseSemanticMetricQuery(viewSqlNormalized),
+    [viewSqlNormalized],
+  );
+
+  // REQ-1322: server-side expansion of a metric query via EXPLAIN on the /data/sql
+  // surface — the server compiler is the single generator (REQ-1321).
+  const fetchExpansion = useCallback(async (): Promise<{ text: string; isError: boolean }> => {
+    const inner = sqlText.trim().replace(/;+$/, "");
+    const result = await runSql(`EXPLAIN ${inner}`, role);
+    if (result.error) return { text: result.error, isError: true };
+    const text = result.rows.map((r) => Object.values(r).map(String).join(" ")).join("\n");
+    return { text, isError: false };
+  }, [sqlText, role]);
+
+  const handleShowExpansion = useCallback(async () => {
+    setExpansionOpen(true);
+    setExpansionLoading(true);
+    const { text } = await fetchExpansion();
+    setExpansionText(text);
+    setExpansionLoading(false);
+  }, [fetchExpansion]);
+
+  // REQ-1322: one-way detach — replaces the editor text with the server expansion
+  // and severs the metric link permanently (no re-ingestion path).
+  const handleDetach = useCallback(async () => {
+    const { text, isError } = await fetchExpansion();
+    setDetachConfirmOpen(false);
+    if (isError) {
+      setResultError(text);
+      return;
+    }
+    setSqlText(text);
+    setTabs((prev) => prev.map((t2) => (t2.id === activeTabId ? { ...t2, detached: true } : t2)));
+  }, [fetchExpansion, activeTabId]);
 
   const domainGroups = useMemo(() => {
     const groups: Record<string, RegisteredTable[]> = {};
@@ -556,7 +604,9 @@ export function SqlPage() {
     setViewSaving(true);
     setViewMsg("");
     try {
-      const sql = viewSqlNormalized;
+      // REQ-1318: a metric view registers through the real viewMetrics input — the server
+      // generates the view SQL from the spec and regenerates it when the metric changes.
+      const asMetricView = metricViewInfo !== null && saveAsMetricView;
       const columns = viewColumns.map((c) => ({
         name: c.name,
         alias: c.alias || undefined,
@@ -582,7 +632,11 @@ export function SqlPage() {
         tableName: viewId.trim(),
         alias: viewId.trim(),
         description: viewDescription.trim() || undefined,
-        viewSql: sql,
+        viewSql: asMetricView ? undefined : viewSqlNormalized,
+        viewMetrics:
+          asMetricView && metricViewInfo
+            ? { metrics: [metricViewInfo.metric], dimensions: metricViewInfo.dimensions, filters: [] }
+            : undefined,
         columns,
       });
       const idMatch = result.message.match(/\(id=(\d+)\)/);
@@ -606,6 +660,8 @@ export function SqlPage() {
     viewDescription,
     viewDomainId,
     viewSqlNormalized,
+    metricViewInfo,
+    saveAsMetricView,
     canCreateView,
     viewColumns,
     registerTable,
@@ -675,6 +731,7 @@ export function SqlPage() {
     setViewDescription("");
     setViewDomainId("");
     setViewMsg("");
+    setSaveAsMetricView(true); // REQ-1318: default on
     // Build a lookup of column descriptions from all registered tables.
     // Build description lookup keyed by both raw column name and tableName_columnName
     // so aliased result columns like "users_id" still find "id"'s description.
@@ -751,6 +808,27 @@ export function SqlPage() {
           />
         </Group>
         <Group gap="0.75rem" wrap="nowrap" ml="auto">
+          {sqlReferencesMetrics && (
+            <>
+              <Button
+                size="compact-xs"
+                variant="default"
+                onClick={handleShowExpansion}
+                data-testid="sql-show-expansion"
+              >
+                {t("sqlPage.showExpansion")}
+              </Button>
+              <Button
+                size="compact-xs"
+                color="orange"
+                variant="light"
+                onClick={() => setDetachConfirmOpen(true)}
+                data-testid="sql-detach"
+              >
+                {t("sqlPage.detachToPhysical")}
+              </Button>
+            </>
+          )}
           {execMs !== null && (
             <Text size="0.75rem" c="var(--text-muted)">
               {t("sqlPage.execMs", { ms: execMs })}
@@ -785,6 +863,8 @@ export function SqlPage() {
           toggleDomain={toggleDomain}
           toggleTable={toggleTable}
           setDomainPages={setDomainPages}
+          metrics={metrics}
+          tables={tables}
         />
 
         {/* Right pane */}
@@ -800,6 +880,7 @@ export function SqlPage() {
             <JoinCanvas
               tables={tables}
               existingRels={existingRels}
+              metrics={metrics}
               onGenerateSql={(generatedSql) => {
                 setSqlText(generatedSql);
                 setTopTab("sql");
@@ -890,6 +971,59 @@ export function SqlPage() {
         </div>
       </div>
 
+      {/* REQ-1322: read-only server expansion of the metric query */}
+      <Drawer
+        opened={expansionOpen}
+        onClose={() => setExpansionOpen(false)}
+        position="right"
+        size="lg"
+        title={<Title order={4}>{t("sqlPage.expansionTitle")}</Title>}
+        data-testid="sql-expansion-drawer"
+      >
+        {expansionLoading ? (
+          <Text size="sm" c="var(--text-muted)">
+            {t("sqlPage.expansionLoading")}
+          </Text>
+        ) : (
+          <pre
+            data-testid="sql-expansion-text"
+            style={{
+              whiteSpace: "pre-wrap",
+              fontSize: "0.75rem",
+              fontFamily: "monospace",
+              margin: 0,
+            }}
+          >
+            {expansionText}
+          </pre>
+        )}
+      </Drawer>
+
+      {/* REQ-1322: one-way detach confirmation */}
+      <Modal
+        opened={detachConfirmOpen}
+        onClose={() => setDetachConfirmOpen(false)}
+        title={<Title order={4}>{t("sqlPage.detachConfirmTitle")}</Title>}
+        centered
+        data-testid="sql-detach-confirm-modal"
+      >
+        <Text mb="lg" size="sm">
+          {t("sqlPage.detachConfirmBody")}
+        </Text>
+        <Group justify="flex-end" gap="sm">
+          <Button
+            variant="default"
+            onClick={() => setDetachConfirmOpen(false)}
+            data-testid="sql-detach-cancel"
+          >
+            {t("sqlPage.detachCancel")}
+          </Button>
+          <Button color="orange" onClick={handleDetach} data-testid="sql-detach-confirm">
+            {t("sqlPage.detachConfirm")}
+          </Button>
+        </Group>
+      </Modal>
+
       <ViewModal
         viewModal={viewModal}
         setViewModal={setViewModal}
@@ -907,6 +1041,9 @@ export function SqlPage() {
         viewSqlNormalized={viewSqlNormalized}
         viewSqlExtensions={viewSqlExtensions}
         domainMap={domainMap}
+        metricViewInfo={metricViewInfo}
+        saveAsMetricView={saveAsMetricView}
+        setSaveAsMetricView={setSaveAsMetricView}
         savedViewId={savedViewId}
         setSavedViewId={setSavedViewId}
         setViewColumns={setViewColumns}
