@@ -2821,7 +2821,7 @@ requires-dist = [
     { name = "inflect" },
     { name = "jpype1" },
     { name = "jsonpath-ng" },
-    { name = "mcp", specifier = ">=1.2.0" },
+    { name = "mcp", specifier = ">=1.2.0,<2" },
     { name = "mcp-proxy", marker = "extra == 'desktop'" },
     { name = "minio" },
     { name = "mkdocs-material", marker = "extra == 'docs'" },

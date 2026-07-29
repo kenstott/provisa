@@ -579,15 +579,20 @@ def _start_scheduler(_log: logging.Logger) -> None:
 
 
 async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
-    """Auto-register graphql-demo source if GRAPHQL_DEMO_URL or GRAPHQL_DEMO_ENABLED is set."""
+    """Auto-register the graphql-demo source when GRAPHQL_DEMO_ENABLED is truthy.
+
+    GRAPHQL_DEMO_ENABLED is the only switch. It previously also fired on a set GRAPHQL_DEMO_URL,
+    but docker-compose.app.yml:33 always injects that variable (defaulting to the compose service
+    hostname), so ``GRAPHQL_DEMO_ENABLED=false`` never took effect: every deploy without a
+    graphql-demo container introspected ``graphql-demo:4000`` at startup and raised
+    ``Errno -3 Temporary failure in name resolution``. The URL says WHERE the demo lives, not
+    WHETHER it exists.
+    """
     from provisa.api.app import _rebuild_schemas, state  # lazy: avoid app<->app_startup cycle
 
-    _graphql_demo_url = os.environ.get("GRAPHQL_DEMO_URL", "http://graphql-demo:4000/graphql")
-    if not (
-        os.environ.get("GRAPHQL_DEMO_ENABLED", "").lower() in ("1", "true", "yes")
-        or os.environ.get("GRAPHQL_DEMO_URL")
-    ):
+    if os.environ.get("GRAPHQL_DEMO_ENABLED", "").lower() not in ("1", "true", "yes"):
         return
+    _graphql_demo_url = os.environ.get("GRAPHQL_DEMO_URL", "http://graphql-demo:4000/graphql")
 
     async def _register_graphql_demo() -> None:
         from provisa.api.admin.graphql_remote_router import (
