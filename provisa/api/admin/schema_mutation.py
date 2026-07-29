@@ -86,6 +86,90 @@ from provisa.api.admin.schema_common import (  # noqa: E402
 )
 
 
+async def _upsert_relationship_impl(
+    info: StrawberryInfo, input: RelationshipInput
+) -> MutationResult:  # REQ-019, REQ-020, REQ-366, REQ-434
+    """Shared body of the upsertRelationship mutation. Module-level so register_fact can
+    create its dimension links directly — strawberry invokes root mutations with self=None,
+    so a self.upsert_relationship call never works from inside another resolver."""
+    from provisa.api.admin.capabilities import has_capability
+
+    # REQ-434/366: a user lacking create_relationship queues a request instead of erroring.
+    if not has_capability(info, "create_relationship"):
+        return await _queue_creation_request(info, "relationship", "create_relationship", input)
+    from provisa.core.models import Relationship as RelModel, Cardinality
+    from provisa.core.repositories import relationship as rel_repo
+    from provisa.api.admin.capabilities import _identity_from_info
+
+    pool = await _get_pool()
+    try:
+        Cardinality(input.cardinality)
+    except ValueError:
+        return MutationResult(
+            success=False,
+            message=f"Invalid cardinality: {input.cardinality!r}",
+        )
+    # REQ-020: record the defining steward as owner.
+    _identity = _identity_from_info(info)
+    _owner = getattr(_identity, "user_id", None) if _identity is not None else None
+    model = RelModel(
+        id=input.id,
+        source_table_id=input.source_table_id,
+        target_table_id=input.target_table_id or "",
+        source_column=input.source_column,
+        target_column=input.target_column or "",
+        cardinality=Cardinality(input.cardinality),
+        materialize=input.materialize,
+        refresh_interval=input.refresh_interval,
+        target_function_name=input.target_function_name or None,
+        function_arg=input.function_arg or None,
+        alias=input.alias or None,
+        graphql_alias=getattr(input, "graphql_alias", None) or None,
+        disable_cypher=getattr(input, "disable_cypher", False),
+        owner=_owner,
+    )
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await rel_repo.upsert(_conn, model)
+        if input.record_candidate and not input.target_function_name:
+            _rres = await _conn.execute_core(
+                select(relationships.c.source_table_id, relationships.c.target_table_id).where(
+                    relationships.c.id == input.id
+                )
+            )
+            rel_row = _rres.fetchone()
+            if rel_row and rel_row.target_table_id is not None:
+                # DO UPDATE sets the same literal values it inserts (accepted / 1.0 /
+                # 'SQL modeling (admin)'), so an EXCLUDED-column upsert is equivalent.
+                await _conn.upsert(
+                    relationship_candidates,
+                    {
+                        "source_table_id": rel_row.source_table_id,
+                        "target_table_id": rel_row.target_table_id,
+                        "source_column": input.source_column,
+                        "target_column": input.target_column or None,
+                        "cardinality": input.cardinality,
+                        "confidence": 1.0,
+                        "reasoning": "SQL modeling (admin)",
+                        "suggested_name": input.id,
+                        "scope": "admin",
+                        "status": "accepted",
+                    },
+                    index_elements=[
+                        "source_table_id",
+                        "source_column",
+                        "target_table_id",
+                        "target_column",
+                    ],
+                    update_columns=["status", "confidence", "reasoning"],
+                )
+    await _rebuild_schemas()
+    return MutationResult(
+        success=True,
+        message=f"Relationship {input.id!r} saved",
+    )
+
+
 def _validate_load_protection(
     load_protected: bool | None,
     off_peak_window: str | None,
@@ -489,17 +573,36 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         res = await _ops.register_table(info, ti)
         if not res.success:
             return res
+        # Relationships resolve tables by their VIRTUAL name (alias when set, else
+        # table_name — find_by_table_name). Registration may auto-alias under the org
+        # naming convention (dim_pet → dimPet), so resolve each side before linking.
+        pool = await _get_pool()
+
+        async def _virtual_name(name: str) -> str:
+            async with pool.acquire() as conn:
+                row = (
+                    await conn.execute_core(
+                        select(registered_tables.c.alias).where(
+                            registered_tables.c.table_name == name
+                        )
+                    )
+                ).fetchone()
+            if row is None:
+                raise ValueError(f"table {name!r} is not registered")
+            return row.alias or name
+
         for rel in rels:
-            # Strawberry's mutation decorator hides the (self, info, input) runtime
-            # signature from pyright; the call is correct at runtime (tested).
-            rr = await self.upsert_relationship(info, rel)  # pyright: ignore[reportCallIssue]
+            rel.source_table_id = await _virtual_name(rel.source_table_id)
+            rel.target_table_id = await _virtual_name(rel.target_table_id)
+            rr = await _upsert_relationship_impl(info, rel)
             if not rr.success:
                 return rr
         # REQ-1320: each fact measure auto-registers as a governed metric (upsert by name).
-        pool = await _get_pool()
         async with pool.acquire() as conn:
             for m in fact_metrics:
                 await metric_repo.upsert(cast("Connection", conn), m)
+        if fact_metrics:
+            await _rebuild_schemas()  # republish state.metrics + schema metric blocks
         return MutationResult(
             success=True,
             message=(
@@ -541,8 +644,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 regenerated = await regenerate_metric_views(cast("Connection", conn), input.name)
         except ValueError as e:  # REQ-1317/1318: invalid expression / spec no longer compiles
             return MutationResult(success=False, message=str(e))
+        # Always rebuild: state.metrics (raw-SQL `metrics.<name>` expansion) and the
+        # per-role schema metric blocks republish from the DB registry on rebuild.
+        await _rebuild_schemas()
         if regenerated:
-            await _rebuild_schemas()
             return MutationResult(
                 success=True,
                 message=(
@@ -563,6 +668,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         async with pool.acquire() as conn:
             deleted = await metric_repo.delete(cast("Connection", conn), name)
         if deleted:
+            await _rebuild_schemas()  # republish state.metrics + schema metric blocks
             return MutationResult(success=True, message=f"Metric {name!r} deleted")
         return MutationResult(success=False, message=f"Metric {name!r} not found")
 
@@ -827,82 +933,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def upsert_relationship(  # REQ-019, REQ-020, REQ-366, REQ-434
         self, info: StrawberryInfo, input: RelationshipInput
     ) -> MutationResult:
-        from provisa.api.admin.capabilities import has_capability
-
-        # REQ-434/366: a user lacking create_relationship queues a request instead of erroring.
-        if not has_capability(info, "create_relationship"):
-            return await _queue_creation_request(info, "relationship", "create_relationship", input)
-        from provisa.core.models import Relationship as RelModel, Cardinality
-        from provisa.core.repositories import relationship as rel_repo
-        from provisa.api.admin.capabilities import _identity_from_info
-
-        pool = await _get_pool()
-        try:
-            Cardinality(input.cardinality)
-        except ValueError:
-            return MutationResult(
-                success=False,
-                message=f"Invalid cardinality: {input.cardinality!r}",
-            )
-        # REQ-020: record the defining steward as owner.
-        _identity = _identity_from_info(info)
-        _owner = getattr(_identity, "user_id", None) if _identity is not None else None
-        model = RelModel(
-            id=input.id,
-            source_table_id=input.source_table_id,
-            target_table_id=input.target_table_id or "",
-            source_column=input.source_column,
-            target_column=input.target_column or "",
-            cardinality=Cardinality(input.cardinality),
-            materialize=input.materialize,
-            refresh_interval=input.refresh_interval,
-            target_function_name=input.target_function_name or None,
-            function_arg=input.function_arg or None,
-            alias=input.alias or None,
-            graphql_alias=getattr(input, "graphql_alias", None) or None,
-            disable_cypher=getattr(input, "disable_cypher", False),
-            owner=_owner,
-        )
-        async with pool.acquire() as conn:
-            _conn = cast("Connection", conn)
-            await rel_repo.upsert(_conn, model)
-            if input.record_candidate and not input.target_function_name:
-                _rres = await _conn.execute_core(
-                    select(relationships.c.source_table_id, relationships.c.target_table_id).where(
-                        relationships.c.id == input.id
-                    )
-                )
-                rel_row = _rres.fetchone()
-                if rel_row and rel_row.target_table_id is not None:
-                    # DO UPDATE sets the same literal values it inserts (accepted / 1.0 /
-                    # 'SQL modeling (admin)'), so an EXCLUDED-column upsert is equivalent.
-                    await _conn.upsert(
-                        relationship_candidates,
-                        {
-                            "source_table_id": rel_row.source_table_id,
-                            "target_table_id": rel_row.target_table_id,
-                            "source_column": input.source_column,
-                            "target_column": input.target_column or None,
-                            "cardinality": input.cardinality,
-                            "confidence": 1.0,
-                            "reasoning": "SQL modeling (admin)",
-                            "suggested_name": input.id,
-                            "scope": "admin",
-                            "status": "accepted",
-                        },
-                        index_elements=[
-                            "source_table_id",
-                            "source_column",
-                            "target_table_id",
-                            "target_column",
-                        ],
-                        update_columns=["status", "confidence", "reasoning"],
-                    )
-        await _rebuild_schemas()
-        return MutationResult(
-            success=True,
-            message=f"Relationship {input.id!r} saved",
-        )
+        return await _upsert_relationship_impl(info, input)
 
     @strawberry.mutation
     async def delete_relationship(self, id: str) -> MutationResult:

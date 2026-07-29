@@ -63,10 +63,11 @@ def test_fact_lowers_to_aggregate_table_input_and_relationships():
     assert ti.materialize is True
     assert "GROUP BY" in (ti.view_sql or "")
     assert 'SUM("amount")' in (ti.view_sql or "")
-    # one relationship per dimension, fact → dimension (many_to_one)
+    # one relationship per dimension, fact → dimension. The value must be a Cardinality
+    # enum literal ("many-to-one") — upsert_relationship rejects anything else at runtime.
     assert [(r.source_table_id, r.source_column, r.target_table_id, r.cardinality) for r in rels] == [
-        ("Sales", "customer_id", "Customer", "many_to_one"),
-        ("Sales", "product_id", "Product", "many_to_one"),
+        ("Sales", "customer_id", "Customer", "many-to-one"),
+        ("Sales", "product_id", "Product", "many-to-one"),
     ]
     assert ti.modeling_role == "fact"  # REQ-1320
     # REQ-1320: each measure lowers to a governed Metric; visibility carries from the fact input.

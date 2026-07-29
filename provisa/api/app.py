@@ -988,13 +988,27 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             conn, raw_config
         )
 
-        # REQ-1319: config-declared metrics feed schema generation — each role's schema
-        # projects its visible metrics into the _aggregate metrics block. Config absent
-        # (bare rebuild before any config load) legitimately means no metrics are declared.
-        _metrics_cfg = getattr(state, "config", None)
-        _metric_dicts = (
-            [m.model_dump() for m in _metrics_cfg.metrics] if _metrics_cfg is not None else []
-        )
+        # REQ-1317/1319: the metric registry feeds schema generation and raw-SQL expansion.
+        # Read from the DB — the settled registry: the config loader upserts config-declared
+        # metrics into it, and admin mutations (upsertMetric, registerFact) write it directly.
+        # Publishing state.config.metrics here instead would hide every runtime-registered
+        # metric from `metrics.<name>` queries until the next config reload.
+        from provisa.core.models import Metric as _MetricModel
+        from provisa.core.repositories import metric as _metric_repo
+
+        _metric_models = [
+            _MetricModel(
+                name=r["name"],
+                expression=r["expression"],
+                datatype=r["datatype"],
+                description=r["description"],
+                ai_context=r["ai_context"],
+                visible_to=list(r["visible_to"]),
+                from_fact=r["from_fact"],
+            )
+            for r in await _metric_repo.list_all(conn)
+        ]
+        _metric_dicts = [m.model_dump() for m in _metric_models]
 
         _build_and_register_schemas(
             roles=roles,
@@ -1020,11 +1034,10 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # REQ-1132: publish the resolved relationship registry alongside tables so the raw-SQL
     # governance path can compute 1-hop meta row scoping.
     state.relationships = relationships
-    # REQ-1317: publish the config-declared metric registry alongside tables so the raw-SQL
-    # path can expand `metrics.<name>` queries into governed aggregates. Config absent (bare
-    # rebuild before any config load) legitimately means no metrics are declared.
-    _cfg = getattr(state, "config", None)
-    state.metrics = {m.name: m for m in _cfg.metrics} if _cfg is not None else {}
+    # REQ-1317: publish the DB-backed metric registry alongside tables so the raw-SQL
+    # path can expand `metrics.<name>` queries into governed aggregates (loaded above,
+    # same registry the admin surfaces read — runtime-registered metrics included).
+    state.metrics = {m.name: m for m in _metric_models}
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from provisa.api.admin.types import (
     ColumnInput,
-    DimRefInput,
     EntityInput,
     FactInput,
     RelationshipInput,
@@ -97,7 +96,7 @@ def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput
             source_table_id=reg["table_name"],
             target_table_id=r["target_table"],
             source_column=r["source_column"],
-            cardinality="many_to_one",  # fact rows → one dimension row (the FK target)
+            cardinality="many-to-one",  # fact rows → one dimension row (the FK target)
         )
         for r in reg["relationships"]
     ]
