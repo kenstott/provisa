@@ -417,6 +417,9 @@ async def _init_control_planes(
     tenant_engine = create_engine_from_url(
         cp.resolved_tenant_url(), pool_size=cp.pool_max, max_overflow=cp.max_overflow
     )
+    # REQ-1316: every later org runtime reuses THIS engine (see build_org_runtime) — one tenant
+    # pool for the whole process, orgs separated by the per-checkout search_path.
+    state.tenant_engine = tenant_engine
     state.tenant_db = Database(tenant_engine, name="org", search_path=f"org_{org_id}")
     state.admin_db = await bring_up_platform(
         cp.resolved_platform_url(),

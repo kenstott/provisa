@@ -48,7 +48,7 @@ const DomainFilterContext = createContext<DomainFilterContextValue>({
 });
 
 export function DomainFilterProvider({ children }: { children: React.ReactNode }) {
-  const { role } = useAuth();
+  const { selectedRoles } = useAuth();
   const [domains, setDomains] = useState<string[]>([]);
   const [selectedDomain, setSelectedDomain] = useState("all");
   const [checkedDomains, setCheckedDomains] = useState<Set<string>>(new Set());
@@ -87,10 +87,21 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
     return new Set(available);
   }
 
+  // REQ-1319: the filter spans EVERY active role, not `selectedRoles[0]`. Under "Role: All" the
+  // user is acting as the union of their roles, and `capabilities` upstream is already that union —
+  // but this effect read one arbitrary role, so a user holding analyst (pet-store, shelter) plus
+  // org_admin (*) got analyst's two domains and lost meta and ops entirely. Which role won was an
+  // accident of list order, so the same account showed different domains as its role set changed.
+  // Any active role with `*` means the whole catalog; otherwise the union of the named domains.
+  const roleIds = selectedRoles.map((r) => r.id).join(",");
+  const hasWildcard = selectedRoles.some((r) => r.domain_access.includes("*"));
+  const namedDomains = [
+    ...new Set(selectedRoles.flatMap((r) => r.domain_access).filter((d) => d !== "*")),
+  ].join(",");
   useEffect(() => {
-    if (!role) return;
-    if (role.domain_access.includes("*")) {
-      fetch("/data/domains", { headers: { "X-Role": role.id } })
+    if (selectedRoles.length === 0) return;
+    if (hasWildcard) {
+      fetch("/data/domains", { headers: { "X-Role": roleIds.split(",")[0] } })
         .then((r) => r.json())
         .then((ids: string[]) => {
           if (ids.length > 0) {
@@ -100,15 +111,17 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
         })
         .catch(() => {});
     } else {
-      const ds = role.domain_access.filter((d) => d !== "*");
+      const ds = namedDomains ? namedDomains.split(",") : [];
       if (ds.length > 0) {
         /* eslint-disable-next-line react-hooks/set-state-in-effect --
-           reset domain filter state in sync with an external input (the active role) */
+           reset domain filter state in sync with an external input (the active role set) */
         setDomains(ds);
         setCheckedDomains(restoreChecked(ds));
       }
     }
-  }, [role]);
+    // Keyed by the role SET, not the array identity, so the fetch does not re-run every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roleIds, hasWildcard, namedDomains]);
 
   function toggleDomain(id: string) {
     setCheckedDomains((prev) => {

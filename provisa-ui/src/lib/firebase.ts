@@ -158,6 +158,21 @@ export async function registerWithEmailPassword(email: string, password: string)
 // dashboard's initial queries never fire against a stale/expired localStorage token — the
 // boot-time race that 401'd every call on reload of an hour-old session. No-op (resolves
 // immediately) on non-firebase deploys.
+// REQ-1318: Firebase reports "could not reach the server" and "this credential is dead" through the
+// same rejected promise. Only the second means signed-out; treating the first as signed-out deletes
+// a still-valid bearer on a network blip and forces a sign-in the user did not ask for.
+const TRANSIENT_AUTH_CODES = new Set([
+  "auth/network-request-failed",
+  "auth/timeout",
+  "auth/too-many-requests",
+  "auth/internal-error",
+]);
+
+function isTransientAuthError(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === "string" && TRANSIENT_AUTH_CODES.has(code);
+}
+
 export function installFirebaseTokenSync(): Promise<void> {
   if (!hasFirebaseConfig()) return Promise.resolve();
   return new Promise<void>((resolve) => {
@@ -175,12 +190,18 @@ export function installFirebaseTokenSync(): Promise<void> {
         user
           .getIdToken()
           .then((idToken) => localStorage.setItem("provisa_token", idToken))
-          .catch((err) => {
+          .catch((err: unknown) => {
             // A rejected refresh (revoked/disabled session) is a legitimate signed-out state,
             // not a bug to swallow: surface it, clear the dead bearer, and let boot proceed to
             // the login page rather than hanging render forever.
             console.error("Firebase token refresh failed:", err);
-            localStorage.removeItem("provisa_token");
+            // REQ-1318: but a NETWORK failure is not a signed-out state. `onIdTokenChanged` still
+            // holds a live user; the refresh could not reach Google. Deleting the bearer there
+            // signs the user out on any blip and strands them until they sign in again — the
+            // forced logout/login cycle. Only codes that mean the credential itself is dead clear
+            // it; a transient failure keeps the stored token, which is still valid until it
+            // expires and which the next `onIdTokenChanged` will replace.
+            if (!isTransientAuthError(err)) localStorage.removeItem("provisa_token");
           })
           .finally(settle);
       } else {

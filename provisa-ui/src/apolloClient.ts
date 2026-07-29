@@ -10,6 +10,7 @@
 
 import { ApolloClient, InMemoryCache, HttpLink, ApolloLink } from "@apollo/client";
 import { map } from "rxjs/operators";
+import { ORG_HEADER } from "./lib/authFetch";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -23,7 +24,7 @@ const authLink = new ApolloLink((operation, forward) => {
   const orgId = localStorage.getItem("provisa_org");
   const headers: Record<string, string> = {};
   if (token) headers["authorization"] = `Bearer ${token}`;
-  if (orgId) headers["X-Org-Id"] = orgId;
+  if (orgId) headers[ORG_HEADER] = orgId; // REQ-1317: the name the middleware reads.
   if (Object.keys(headers).length > 0) {
     operation.setContext({ headers });
   }

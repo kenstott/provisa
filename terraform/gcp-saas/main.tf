@@ -137,6 +137,18 @@ resource "google_sql_database_instance" "main" {
       private_network = google_compute_network.main.id
     }
 
+    # REQ-1316: db-f1-micro derives max_connections from its 0.6 GB of memory, giving 25 — of which
+    # Cloud SQL reserves 3 for cloudsqladmin plus the superuser reserve. The control plane, the audit
+    # plane and every org's tenant handle all connect to THIS one instance, so a deployment with a
+    # couple of orgs and normal pool sizing runs the server out of slots and every query fails with
+    # "remaining connection slots are reserved for roles with privileges of pg_use_reserved_connections".
+    # The pool-per-org multiplication is fixed separately (one shared tenant engine); this is the
+    # server-side headroom that keeps a second org from being fatal.
+    database_flags {
+      name  = "max_connections"
+      value = var.cloudsql_max_connections
+    }
+
     user_labels = local.all_labels
   }
 }

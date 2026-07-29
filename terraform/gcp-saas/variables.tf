@@ -127,6 +127,16 @@ variable "cloudsql_ha" {
   default     = false
 }
 
+variable "cloudsql_max_connections" {
+  description = <<-EOT
+    Postgres max_connections for the control-plane instance. db-f1-micro's memory-derived
+    default is 25, which the control plane + audit plane + per-org tenant handles exhaust at
+    a couple of orgs. Raise this alongside the tier when tenant count grows.
+  EOT
+  type        = number
+  default     = 100
+}
+
 variable "cloudsql_disk_gb" {
   description = "Cloud SQL data disk size in GB."
   type        = number

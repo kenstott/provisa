@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import logging
 
 import jwt
 
@@ -35,6 +36,29 @@ from provisa.core.schema_org import user_role_assignments
 from provisa.security.rights import PLATFORM_ADMIN_ROLE, is_platform_admin as _is_platform_admin
 
 # Requirements: REQ-120, REQ-125, REQ-273, REQ-1267
+
+logger = logging.getLogger(__name__)
+
+
+def _deny(
+    request: Request, status: int, detail: str, *, cause: str | None = None
+) -> JSONResponse:
+    """REQ-1318: every auth denial records WHY, at WARNING, with the request identity.
+
+    A 401 that logs nothing is indistinguishable from every other 401 in the container log, so a
+    client stuck in a sign-in loop could not be attributed to a cause — expired token, unresolved
+    org, or non-membership — without adding instrumentation after the fact. The response body is
+    unchanged; the reason goes to the operator, not the caller.
+    """
+    logger.warning(
+        "auth denied %s %s -> %d: %s%s",
+        request.method,
+        request.url.path,
+        status,
+        detail,
+        f" ({cause})" if cause else "",
+    )
+    return JSONResponse(status_code=status, content={"detail": detail})
 
 
 def _requested_org_from_host(request: Request) -> str | None:
@@ -268,21 +292,15 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
 
         auth_header = request.headers.get("authorization")
         if not auth_header or not auth_header.startswith(expected_prefix):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Missing or invalid Authorization header"},
-            )
+            return _deny(request, 401, "Missing or invalid Authorization header")
 
         token = auth_header[len(expected_prefix) :]
         try:
             identity = await self._provider.validate_token(token)
-        except (ValueError, jwt.PyJWTError):
+        except (ValueError, jwt.PyJWTError) as exc:
             # Only genuine token-validation failures map to 401; infra/unexpected
             # errors (DB down, JWKS fetch failure, misconfig) must propagate.
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid or expired token"},
-            )
+            return _deny(request, 401, "Invalid or expired token", cause=str(exc))
 
         # REQ-1266: single-administrator bootstrap (limited IdP mode). The first
         # authenticated user atomically claims the sole super-admin slot and is granted
@@ -405,19 +423,23 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 if is_platform_admin or requested_org in member_org_ids:
                     active_org_id = requested_org
                 else:
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": f"Not a member of org {requested_org!r}"},
-                    )
+                    return _deny(request, 403, f"Not a member of org {requested_org!r}")
             elif len(member_org_ids) == 1:
                 active_org_id = member_org_ids[0]
             elif platform_plane:
                 active_org_id = None
+            elif is_platform_admin:
+                # REQ-1318: a platform admin holds zero org memberships by design — the platform
+                # operator is not a tenant. Without this branch they named no org, matched no
+                # membership, and fell to the tenant-path 401 on every non-platform-plane request,
+                # so /admin/graphql 401'd while /auth/me returned 200 and reported platform_admin.
+                # The client read that as an unusable session. They already act in any org they name
+                # (the requested_org branch above); with none named they act in the default org.
+                # Ordered AFTER the platform plane so /auth/me keeps reporting an unresolved org —
+                # the org there is a fact about the user, not a plane the request needs bound.
+                active_org_id = self._default_org_id
             else:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Org selection required"},
-                )
+                return _deny(request, 401, "Org selection required")
 
             # Tenant-plane assignments. A member's role assignment lives in their org's OWN schema,
             # so bind that org and read it there (the default-org read above sees no such row). A

@@ -28,6 +28,18 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/admin/roles", tags=["admin"])
 
 
+def _active_org(request: Request) -> str:
+    """REQ-1276/REQ-1317: the org is whatever ``AuthMiddleware`` resolved for this request — Host
+    subdomain, or the ``x-org-provisa`` header on the control-plane host. Never a client-supplied
+    ``x-org-id``, and never a default: the middleware sets ``active_org_id`` on every request that
+    reaches a router, so a missing value is a wiring bug, not a case to paper over.
+    """
+    org_id = getattr(request.state, "active_org_id", None)
+    if org_id is None:
+        raise HTTPException(status_code=401, detail="Org selection required")
+    return org_id
+
+
 def _pool(_request: Request) -> "Database":  # pyright: ignore[reportUnusedParameter]
     from provisa.api.app import state
 
@@ -48,7 +60,7 @@ class UpdateRoleBody(BaseModel):
 
 @router.get("/")
 async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
-    org_id = request.headers.get("x-org-id", "root")
+    org_id = _active_org(request)
     pool = _pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(
@@ -62,7 +74,7 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
 
 @router.post("/")
 async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-059, REQ-060, REQ-215
-    org_id = request.headers.get("x-org-id", "root")
+    org_id = _active_org(request)
     pool = _pool(request)
     async with pool.acquire() as conn:
         await conn.execute_core(

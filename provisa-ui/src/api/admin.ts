@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import type { Role, RoleAssignment, OrgMembership } from "../types/auth";
+import { ORG_HEADER } from "../lib/authFetch";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -288,7 +289,7 @@ export async function removeOrgMember(orgId: string, userId: string): Promise<vo
 
 export async function fetchOrgRoles(orgId: string): Promise<Role[]> {
   const res = await fetch(`${API_BASE}/admin/roles`, {
-    headers: { "X-Org-Id": orgId },
+    headers: { [ORG_HEADER]: orgId },
   });
   if (!res.ok) throw new Error(`fetchOrgRoles failed: ${res.status}`);
   const rows: Array<{ id: string; capabilities: string[]; domain_access: string[] }> =
@@ -308,7 +309,7 @@ export async function createOrgRole(
 ): Promise<Role> {
   const res = await fetch(`${API_BASE}/admin/roles`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Org-Id": orgId },
+    headers: { "Content-Type": "application/json", [ORG_HEADER]: orgId },
     body: JSON.stringify({ id, capabilities, domain_access }),
   });
   if (!res.ok) throw new Error(`createOrgRole failed: ${res.status}`);
@@ -318,7 +319,7 @@ export async function createOrgRole(
 export async function deleteOrgRole(orgId: string, roleId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/roles/${roleId}`, {
     method: "DELETE",
-    headers: { "X-Org-Id": orgId },
+    headers: { [ORG_HEADER]: orgId },
   });
   if (!res.ok) throw new Error(`deleteOrgRole failed: ${res.status}`);
 }

@@ -382,3 +382,85 @@ def test_platform_admin_with_subdomain_org_allowed_req1276():
     )
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] == "anyorg"
+
+
+# --- REQ-1318: a session must be usable on EVERY plane, not just /auth/me ------
+#
+# The class of defect these cover: the client decides "am I signed in?" from one endpoint and then
+# issues requests to another. When the two planes disagree — /auth/me says platform_admin, the data
+# plane says 401 — the UI reads the 401 as a dead credential, drops the token and forces a fresh
+# sign-in. Every case below asserts plane AGREEMENT for one identity, which is the property that was
+# actually broken; asserting only the happy endpoint is what let it ship.
+
+
+def test_platform_admin_without_memberships_is_usable_on_tenant_plane():
+    # REQ-1318: the platform operator is not a tenant, so they hold zero org memberships. They named
+    # no org (apex host, no header) and matched no membership, so they fell to the tenant-path 401 —
+    # /auth/me returned 200 with platform_admin while /admin/graphql 401'd on the same token.
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
+    )
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
+    )
+    client = TestClient(app)
+    assert client.get("/auth/me", headers=_auth("root")).status_code == 200
+    tenant = client.get("/test", headers=_auth("root"))
+    assert tenant.status_code == 200, "platform admin 401'd on the tenant plane"
+    assert tenant.json()["active_org_id"] == "root", "with no org named, acts in the default org"
+
+
+def test_bootstrap_platform_admin_is_usable_on_tenant_plane_immediately():
+    # REQ-1318: the same agreement for the identity that just claimed the bootstrap slot. This is the
+    # reported symptom — claim platform_admin, get no access, sign out and back in, and it works. The
+    # claimant has no membership either, so it took the same 401 branch.
+    admin = _Pool(rows_by_table={"user_org_memberships": []}, claimant="first")
+    app = _make_app(
+        bootstrap_superadmin=True, admin_pool=admin, multitenancy=True, default_org_id="root"
+    )
+    client = TestClient(app)
+    assert client.get("/auth/me", headers=_auth("first")).status_code == 200
+    tenant = client.get("/test", headers=_auth("first"))
+    assert tenant.status_code == 200
+    assert tenant.json()["roles"] == ["platform_admin"]
+
+
+def test_platform_admin_named_org_still_wins_over_the_default():
+    # The default org is only the no-org-named case; naming one must still select it, or a platform
+    # admin could never act in a tenant org.
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
+    )
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
+    )
+    resp = TestClient(app, base_url="http://cloud.provisa.dev").get(
+        "/test", headers={**_auth("root"), "x-org-provisa": "acme"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] == "acme"
+
+
+def test_non_admin_member_less_user_is_still_blocked_on_the_tenant_plane():
+    # The platform-admin branch must not widen into "anyone with no memberships gets the default
+    # org" — that would hand every just-authenticated stranger the default org's data.
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
+    )
+    assert TestClient(app).get("/test", headers=_auth("stranger")).status_code == 401

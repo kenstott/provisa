@@ -129,6 +129,12 @@ class AppState:
     # ``admin_db`` is the global platform control plane (orgs/users/invites/
     # billing), backed by its own SQLAlchemy URI.
     admin_db: Database | None = None
+    # REQ-1316: ONE tenant-plane AsyncEngine shared by every org runtime on a schema-capable
+    # backend. Database.acquire() issues the org's search_path on each checkout, so orgs need
+    # separate handles, never separate pools. A pool per org multiplies connections by tenant
+    # count and exhausts the server's max_connections (Cloud SQL db-f1-micro caps at 25 — two
+    # orgs at pool_size=5/overflow=5 already blow past it).
+    tenant_engine: Any | None = None  # AsyncEngine; Any avoids the runtime import here
     engine_conn: Any | None = None  # engine terminal connection; owned by the engine backend
     engine_conn_kwargs: dict = {}  # kwargs used to create engine_conn (for reconnect)
     # Terminal-route execution binding (REQ-825): owns DIRECT-vs-ENGINE dispatch. Always bound in
@@ -732,7 +738,7 @@ async def build_org_runtime(org_id: str, *, include_demo: bool = False) -> OrgRu
     """
     from provisa.api.startup_seed import _seed_built_in_sources, _resolve_pk_from_sources
     from provisa.core.config_loader import load_control_plane
-    from provisa.core.database import create_engine_from_url
+    from provisa.core.database import Capabilities, create_engine_from_url
     from provisa.core.db import init_schema
     from provisa.audit.query_log import init_audit_schema
 
@@ -744,9 +750,20 @@ async def build_org_runtime(org_id: str, *, include_demo: bool = False) -> OrgRu
         # (state.admin_db) is global and already up — never rebuilt here.
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
         cp = load_control_plane(config_path)
-        tenant_engine = create_engine_from_url(
-            cp.resolved_tenant_url(), pool_size=cp.pool_max, max_overflow=cp.max_overflow
-        )
+        # REQ-1316: reuse the process-wide tenant engine. Database.acquire() issues this org's
+        # search_path on every checkout, so the org boundary is the handle, not the pool. Building
+        # an engine per org multiplies open connections by tenant count against ONE server and
+        # exhausts max_connections (the "remaining connection slots are reserved" failure).
+        # A not-schema-capable backend (SQLite/DuckDB) puts each org in its own FILE, so there the
+        # engine genuinely is per-org and a shared one would read the wrong database.
+        shared_engine = state.tenant_engine
+        assert shared_engine is not None, "tenant engine not built; _init_control_planes must run first"
+        if Capabilities.for_dialect(shared_engine.dialect.name).schemas:
+            tenant_engine = shared_engine
+        else:
+            tenant_engine = create_engine_from_url(
+                cp.resolved_tenant_url(), pool_size=cp.pool_max, max_overflow=cp.max_overflow
+            )
         state.tenant_db = Database(tenant_engine, name="org", search_path=f"org_{org_id}")
 
         schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
