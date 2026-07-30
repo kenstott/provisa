@@ -206,10 +206,12 @@ def planes(monkeypatch):
 
     monkeypatch.setattr("provisa.core.org_provisioning.deprovision_org", _deprovision)
 
-    provisioned: list[tuple[str, bool, str | None]] = []
+    provisioned: list[tuple[str, bool, str | None, bool]] = []
 
-    async def _provision_task(org_id: str, include_demo: bool, created_by: str | None):
-        provisioned.append((org_id, include_demo, created_by))
+    async def _provision_task(
+        org_id: str, include_demo: bool, created_by: str | None, isolated_engine: bool = False
+    ):
+        provisioned.append((org_id, include_demo, created_by, isolated_engine))
 
     monkeypatch.setattr("provisa.api.admin.orgs_router._provision_org_task", _provision_task)
 
@@ -537,6 +539,31 @@ def test_org_creation_cap(planes, monkeypatch):  # REQ-1311
             "/admin/orgs/", json={"id": "gamma", "name": "Gamma"}, headers=_auth("tok-alice")
         )
         assert after_failure.status_code == 200, after_failure.text
+
+
+def test_isolated_engine_flag_round_trips(planes):  # REQ-1043, REQ-1067, REQ-1244
+    """An org created with the "Isolated engine" checkbox persists the flag, reports it on
+    status, and hands it to the provisioning task that binds the dedicated engine."""
+    with TestClient(_make_app(planes)) as client:
+        created = client.post(
+            "/admin/orgs/",
+            json={"id": "iso", "name": "Iso", "isolated_engine": True},
+            headers=_auth("tok-alice"),
+        )
+        assert created.status_code == 200, created.text
+        status = client.get("/admin/orgs/iso/status", headers=_auth("tok-alice"))
+        assert status.status_code == 200, status.text
+        assert status.json()["isolated_engine"] is True
+        assert ("iso", False, "alice", True) in planes.provisioned
+
+        # The default lane stays shared: no flag → False everywhere.
+        pooled = client.post(
+            "/admin/orgs/", json={"id": "pool", "name": "Pool"}, headers=_auth("tok-alice")
+        )
+        assert pooled.status_code == 200, pooled.text
+        pooled_status = client.get("/admin/orgs/pool/status", headers=_auth("tok-alice"))
+        assert pooled_status.json()["isolated_engine"] is False
+        assert ("pool", False, "alice", False) in planes.provisioned
 
 
 def test_account_deletion_is_blocked_while_last_org_admin(planes):  # REQ-1307

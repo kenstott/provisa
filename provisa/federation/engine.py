@@ -1238,6 +1238,29 @@ def configured_engine_endpoint() -> tuple[str, int]:
     return host, port
 
 
+def isolated_engine_endpoint(org_id: str) -> tuple[str, int]:  # REQ-1043/REQ-1067/REQ-1244
+    """The dedicated coordinator endpoint for an isolated-engine org.
+
+    Resolved from ``$PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE`` (an ``{org_id}``-templated hostname,
+    e.g. ``trino-{org_id}.internal``) and ``$PROVISA_ISOLATED_ENGINE_PORT``. An org that requested
+    an isolated engine on a deployment with no template configured is a hard error — routing it to
+    the shared coordinator would silently void the isolation the org was promised.
+    """
+    import os
+
+    template = os.environ.get("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE")
+    if not template:
+        raise RuntimeError(
+            f"org {org_id!r} requires an isolated federation engine, but this deployment has no "
+            "PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE configured — cannot resolve a dedicated "
+            "coordinator, and routing to the shared engine would break the isolation guarantee "
+            "(REQ-1043)"
+        )
+    host = template.format(org_id=org_id)
+    port = int(os.environ.get("PROVISA_ISOLATED_ENGINE_PORT", "8080"))
+    return host, port
+
+
 def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/904/916
     """Select the federation engine by name — the one place the runtime picks an engine. Precedence:
     explicit arg > ``$PROVISA_ENGINE`` env > persisted ``federation_engine`` config > ``duckdb``. The

@@ -97,6 +97,9 @@ class CreateOrgBody(BaseModel):
     # REQ-1269: when true, any user whose email matches email_rule auto-joins with auto_join_role.
     auto_join: bool = False
     auto_join_role: str | None = None
+    # REQ-1043/REQ-1067/REQ-1244: run this org on a dedicated federation-engine instance instead of
+    # the shared/pooled engine. Pre-billing surface: the onboarding create-org checkbox.
+    isolated_engine: bool = False
 
 
 class RenameOrgBody(BaseModel):
@@ -175,7 +178,13 @@ async def list_orgs(request: Request):  # REQ-042, REQ-059
     pool = _admin_pool()
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(orgs.c.id, orgs.c.name, orgs.c.created_by, orgs.c.created_at).order_by(orgs.c.id)
+            select(
+                orgs.c.id,
+                orgs.c.name,
+                orgs.c.created_by,
+                orgs.c.created_at,
+                orgs.c.isolated_engine,
+            ).order_by(orgs.c.id)
         )
         rows = result.fetchall()
     return [dict(r._mapping) for r in rows]
@@ -199,7 +208,9 @@ async def _refresh_root_registry_view() -> None:  # REQ-1301
         reset_current_org(token)
 
 
-async def _provision_org_task(org_id: str, include_demo: bool, created_by: str | None) -> None:
+async def _provision_org_task(
+    org_id: str, include_demo: bool, created_by: str | None, isolated_engine: bool = False
+) -> None:
     # REQ-1266: async provisioning. Runs the full Part-1 per-org build (schema + PG role + Redis ACL
     # + the queryable data-plane runtime), then grants the creator org_admin inside the new org's
     # schema, then flips provisioning_state. The one allowed catch: a failure is PERSISTED to
@@ -228,7 +239,10 @@ async def _provision_org_task(org_id: str, include_demo: bool, created_by: str |
         # second CREATE VIEW collides on pg_type, and provisioning fails with the org half-seeded
         # — the "parts of the demo data, and no meta/ops domains" failure.
         rt = await _app_state.org_registry.rebuild(
-            org_id, lambda oid: build_org_runtime(oid, include_demo=include_demo)
+            org_id,
+            lambda oid: build_org_runtime(
+                oid, include_demo=include_demo, isolated_engine=isolated_engine
+            )
         )
         # The creator's org_admin role assignment lands in the org's own schema — possible only now
         # the schema + seeded org_admin row exist. Membership (admin plane) was granted synchronously.
@@ -307,6 +321,7 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
                 email_rule=body.email_rule,
                 auto_join=body.auto_join,
                 auto_join_role=body.auto_join_role,
+                isolated_engine=body.isolated_engine,
             )
             .returning(orgs.c.id, orgs.c.name, orgs.c.created_by, orgs.c.provisioning_state)
         )
@@ -319,7 +334,9 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
                 update_columns=[],
             )
 
-    task = asyncio.create_task(_provision_org_task(body.id, body.include_demo, created_by))
+    task = asyncio.create_task(
+        _provision_org_task(body.id, body.include_demo, created_by, body.isolated_engine)
+    )
     _provisioning_tasks.add(task)
     task.add_done_callback(_provisioning_tasks.discard)
     return dict(row._mapping)
@@ -338,6 +355,7 @@ async def org_status(org_id: str, request: Request):  # REQ-1266
                 orgs.c.created_by,
                 orgs.c.provisioning_state,
                 orgs.c.provisioning_error,
+                orgs.c.isolated_engine,
             ).where(orgs.c.id == org_id)
         )
         row = result.fetchone()
@@ -504,14 +522,17 @@ async def retry_provisioning(org_id: str, request: Request):  # REQ-1315
     caller = _caller_user_id(request)
     async with _admin_pool().acquire() as conn:
         result = await conn.execute_core(
-            select(orgs.c.created_by, orgs.c.provisioning_state, orgs.c.seeded_demo).where(
-                orgs.c.id == org_id
-            )
+            select(
+                orgs.c.created_by,
+                orgs.c.provisioning_state,
+                orgs.c.seeded_demo,
+                orgs.c.isolated_engine,
+            ).where(orgs.c.id == org_id)
         )
         row = result.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Org not found")
-        created_by, prov_state, seeded_demo = row[0], row[1], row[2]
+        created_by, prov_state, seeded_demo, iso_engine = row[0], row[1], row[2], row[3]
         if caller is not None and created_by != caller:
             _require_platform_admin(request)
         if prov_state != "failed":
@@ -528,7 +549,9 @@ async def retry_provisioning(org_id: str, request: Request):  # REQ-1315
 
     _app_state.org_registry.invalidate(org_id)
     await deprovision_org(_pool(), org_id, redis_url=os.environ.get("REDIS_URL"))
-    task = asyncio.create_task(_provision_org_task(org_id, bool(seeded_demo), created_by))
+    task = asyncio.create_task(
+        _provision_org_task(org_id, bool(seeded_demo), created_by, bool(iso_engine))
+    )
     _provisioning_tasks.add(task)
     task.add_done_callback(_provisioning_tasks.discard)
     return {"id": org_id, "provisioning_state": "provisioning"}

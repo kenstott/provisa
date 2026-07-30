@@ -135,11 +135,9 @@ class AppState:
     # count and exhausts the server's max_connections (Cloud SQL db-f1-micro caps at 25 — two
     # orgs at pool_size=5/overflow=5 already blow past it).
     tenant_engine: Any | None = None  # AsyncEngine; Any avoids the runtime import here
-    engine_conn: Any | None = None  # engine terminal connection; owned by the engine backend
-    engine_conn_kwargs: dict = {}  # kwargs used to create engine_conn (for reconnect)
-    # Terminal-route execution binding (REQ-825): owns DIRECT-vs-ENGINE dispatch. Always bound in
-    # __init__ (never None); the engine is the reference engine. Typed Any to avoid the runtime import.
-    federation_engine: Any = None
+    # engine_conn / engine_conn_kwargs / federation_engine are routed PROPERTIES (REQ-1244):
+    # they live on the per-org OrgRuntime and resolve through the current_org ContextVar, falling
+    # through to the default-org (shared) runtime for every org without a dedicated engine.
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
     # schema_build_cache is org-routed; see the property below.
     schema_version: int = (
@@ -264,8 +262,6 @@ class AppState:
         from provisa.federation.engine import build_engine  # $PROVISA_ENGINE selects
         from provisa.federation.runtime import EngineRuntime
 
-        self.federation_engine = EngineRuntime(build_engine(), self)
-
         # REQ-1266: per-request multi-org data plane. The routed maps below (source
         # pools, roles, compiled schemas/contexts, catalog names, masking, …) live on
         # a per-org OrgRuntime; the properties resolve the ContextVar-selected runtime,
@@ -274,6 +270,11 @@ class AppState:
         # (which run before any request sets the ContextVar) always have a target.
         self.org_registry = OrgRegistry()
         self.org_registry.set(self.org_id, OrgRuntime(org_id=self.org_id))
+
+        # The registry must exist first: federation_engine is a routed property (REQ-1244) and
+        # this assignment lands on the default-org runtime — the SHARED engine every org without
+        # a dedicated binding resolves to.
+        self.federation_engine = EngineRuntime(build_engine(), self)
 
     # --- Per-request org routing (REQ-1266) -----------------------------------
     @property
@@ -308,6 +309,60 @@ class AppState:
             rt = self.org_registry.get(self.org_id)
             assert rt is not None, "default-org runtime missing — AppState not initialized"
         return rt
+
+    def _default_runtime(self) -> OrgRuntime:
+        rt = self.org_registry.get(self.org_id)
+        assert rt is not None, "default-org runtime missing — AppState not initialized"
+        return rt
+
+    def _engine_runtime(self) -> OrgRuntime:
+        """The runtime OWNING the engine terminal for the current context (REQ-1244): the active
+        org's runtime when it carries a dedicated federation engine (orgs.isolated_engine), else
+        the default-org runtime holding the shared engine — the pooled lane every org starts on
+        (REQ-1243)."""
+        rt = self._active_runtime()
+        if rt.federation_engine is not None:
+            return rt
+        return self._default_runtime()
+
+    @property
+    def federation_engine(self) -> Any:
+        return self._engine_runtime().federation_engine
+
+    @federation_engine.setter
+    def federation_engine(self, value: Any) -> None:
+        rt = self._active_runtime()
+        target = rt if rt.isolated_engine else self._default_runtime()
+        target.federation_engine = value
+
+    @property
+    def engine_conn(self) -> Any:
+        return self._engine_runtime().engine_conn
+
+    @engine_conn.setter
+    def engine_conn(self, value: Any) -> None:
+        self._engine_runtime().engine_conn = value
+
+    @property
+    def engine_conn_kwargs(self) -> dict:
+        return self._engine_runtime().engine_conn_kwargs
+
+    @engine_conn_kwargs.setter
+    def engine_conn_kwargs(self, value: dict) -> None:
+        self._engine_runtime().engine_conn_kwargs = value
+
+    @property
+    def active_org_id(self) -> str:
+        """The org id the current context is bound to, or the default org when none is bound."""
+        return current_org.get() or self.org_id
+
+    @property
+    def active_isolated_org(self) -> str | None:
+        """The active org's id IF that org runs a dedicated federation engine, else ``None`` —
+        the seam engine lifecycle code (trino_lifecycle.provision) uses to resolve the dedicated
+        coordinator endpoint without knowing about org routing."""
+        rt = self._active_runtime()
+        return rt.org_id if rt.isolated_engine else None
 
     @property
     def tenant_db(self) -> Database | None:
@@ -715,12 +770,13 @@ async def _load_and_build(
     _mark("hot_tables")
 
 
-async def _read_seeded_demo(org_id: str) -> bool:  # REQ-1266
-    """Whether ``org_id`` was seeded with the shared demo config, read from the admin plane.
+async def _read_org_flags(org_id: str) -> tuple[bool, bool]:  # REQ-1266, REQ-1244
+    """``(seeded_demo, isolated_engine)`` for ``org_id``, read from the admin plane.
 
     The org registry is in-memory with no TTL, so after a process restart the per-request router
-    must rebuild an org's runtime on first access. This tells it whether to reload the demo sources
-    (demo org) or leave the schema empty (non-demo org) — no default, the row is authoritative."""
+    must rebuild an org's runtime on first access. ``seeded_demo`` tells it whether to reload the
+    demo sources; ``isolated_engine`` whether to bind a dedicated federation engine
+    (REQ-1043/REQ-1067) — no defaults, the row is authoritative."""
     from sqlalchemy import select as _select
 
     from provisa.core.schema_admin import orgs as _orgs
@@ -728,12 +784,12 @@ async def _read_seeded_demo(org_id: str) -> bool:  # REQ-1266
     assert state.admin_db is not None
     async with state.admin_db.acquire() as conn:
         result = await conn.execute_core(
-            _select(_orgs.c.seeded_demo).where(_orgs.c.id == org_id)
+            _select(_orgs.c.seeded_demo, _orgs.c.isolated_engine).where(_orgs.c.id == org_id)
         )
         row = result.fetchone()
     if row is None:
         raise KeyError(f"org {org_id!r} not found in the admin plane — cannot route a request to it")
-    return bool(row[0])
+    return bool(row[0]), bool(row[1])
 
 
 async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
@@ -742,16 +798,21 @@ async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
     The single seam every entrypoint (HTTP middleware AND the pgwire/bolt/flight/gRPC/MCP protocol
     servers) uses to lazily materialize an org's runtime before binding ``current_org``. The
     registry is in-memory with no TTL, so first access after a process restart rebuilds; whether to
-    reload the demo sources is read authoritatively from the admin plane (no default)."""
+    reload the demo sources / bind a dedicated engine is read authoritatively from the admin plane
+    (no default)."""
 
     async def _builder(oid: str) -> OrgRuntime:
-        include_demo = await _read_seeded_demo(oid)
-        return await build_org_runtime(oid, include_demo=include_demo)
+        include_demo, isolated_engine = await _read_org_flags(oid)
+        return await build_org_runtime(
+            oid, include_demo=include_demo, isolated_engine=isolated_engine
+        )
 
     return await state.org_registry.get_or_build(org_id, _builder)
 
 
-async def build_org_runtime(org_id: str, *, include_demo: bool = False) -> OrgRuntime:  # REQ-1266
+async def build_org_runtime(
+    org_id: str, *, include_demo: bool = False, isolated_engine: bool = False
+) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
     Registers an empty :class:`OrgRuntime` FIRST so the ``AppState`` property shims route every
@@ -777,6 +838,21 @@ async def build_org_runtime(org_id: str, *, include_demo: bool = False) -> OrgRu
     state.org_registry.set(org_id, rt)
     token = set_current_org(org_id)
     try:
+        if isolated_engine:
+            # REQ-1043/REQ-1067/REQ-1244: this org runs on its OWN federation engine. Bind a
+            # dedicated EngineRuntime BEFORE any source registration below, so the org's catalogs
+            # land on ITS engine, never the shared one. The engine kind is the deployment's
+            # (build_engine); a Trino engine targets the org's dedicated coordinator
+            # (isolated_engine_endpoint), a native engine is a fresh in-process instance —
+            # inherently isolated. bind_terminal stores connection kwargs WITHOUT connecting: the
+            # dedicated cluster sleeps between sessions (idle-stop, same as the shared engine's
+            # front door) and only real traffic — the first query's lazy connect — wakes it.
+            from provisa.federation.engine import build_engine
+            from provisa.federation.runtime import EngineRuntime
+
+            rt.isolated_engine = True
+            rt.federation_engine = EngineRuntime(build_engine(), state)
+            rt.federation_engine.bind_terminal()
         # Tenant plane for THIS org: its own Database scoped to org_<id>. The platform/admin plane
         # (state.admin_db) is global and already up — never rebuilt here.
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
@@ -1198,6 +1274,19 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     await state.source_pools.close_all()
     if state.tenant_db:
         await state.tenant_db.close()
+    # REQ-1244: every org with a dedicated federation engine owns a live terminal — close each,
+    # then the shared engine (the default runtime's, reached by the unrouted property below).
+    for _oid in state.org_registry.all_org_ids():
+        _rt = state.org_registry.get(_oid)
+        if _rt is not None and _rt.federation_engine is not None and _oid != state.org_id:
+            with tolerate_shutdown_failure(f"org {_oid} federation engine close"):
+                # close() reaches its terminal through the routed state shims, so the org must
+                # be bound or the shims would resolve the SHARED engine's connection.
+                _tok = set_current_org(_oid)
+                try:
+                    _rt.federation_engine.close()
+                finally:
+                    reset_current_org(_tok)
     state.federation_engine.close()
 
 

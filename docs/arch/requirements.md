@@ -8592,7 +8592,7 @@ Postgres federation engines validate connector availability and fail explicitly 
 
 **Code:** `provisa/federation/engine.py`
 
-**Tests:** `tests/unit/test_federation_engine.py`
+**Tests:** `tests/unit/test_isolated_engine_routing.py`
 
 ### REQ-904 · PostgreSQL Deployment {#REQ-904}
 
@@ -13735,3 +13735,67 @@ UI language is selected solely from the browser's navigator.language setting (re
 **Code:** `provisa-ui/src/i18n/index.ts`
 
 **Tests:** `provisa-ui/e2e/i18n.spec.ts`
+
+## 5. Multi-Tenancy & Org Isolation
+
+### REQ-1343 · Isolated Federation Engine {#REQ-1343}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** ui
+
+Onboarding create-org page surfaces an "Isolated engine" checkbox. POST /admin/orgs accepts isolated_engine (boolean, default false). The flag is persisted as orgs.isolated_engine in the platform admin plane (provisa/core/schema_admin.py) and returned by GET /admin/orgs and GET /admin/orgs/{id}/status. Until billing gates it, the checkbox is the only acquisition path for the dedicated-engine lane.
+
+**Use case:** Orgs opt into dedicated federation-engine resources at creation time, providing the surface for multi-tenancy tier differentiation (shared vs. isolated compute).
+
+**Code:** `provisa-ui/src/pages/OnboardOrgPage.tsx`, `provisa-ui/src/api/admin.ts`, `provisa/api/admin/orgs_router.py`, `provisa/core/schema_admin.py`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`, `tests/unit/test_isolated_engine_routing.py`
+
+### REQ-1344 · Isolated Federation Engine {#REQ-1344}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+OrgRuntime (provisa/api/org_runtime.py) carries isolated_engine/federation_engine/engine_conn/engine_conn_kwargs. AppState.federation_engine/engine_conn/engine_conn_kwargs are routed properties resolving through the current_org ContextVar. An org with a dedicated engine resolves its own EngineRuntime; every other org falls through to the default-org (shared) engine. build_org_runtime binds the dedicated EngineRuntime before source registration so the org's catalogs land on its engine; shutdown closes each org engine with its org bound.
+
+**Use case:** Per-org federation-engine routing isolates catalog and execution scope per tenant, ensuring source registrations and queries execute against the org's dedicated or shared engine without cross-org interference.
+
+**Code:** `provisa/api/org_runtime.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_isolated_engine_routing.py`, `tests/integration/test_org_lifecycle.py`
+
+### REQ-1345 · Isolated Federation Engine {#REQ-1345}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+isolated_engine_endpoint(org_id) in provisa/federation/engine.py resolves a dedicated Trino coordinator endpoint using PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE (an {org_id}-templated hostname) and PROVISA_ISOLATED_ENGINE_PORT. If an isolated org is deployed to an environment without the template configured, resolution is a hard error (never silently routing to the shared coordinator).
+
+**Use case:** Isolated orgs must route exclusively to their dedicated Trino coordinator, with no silent fallback to shared infrastructure; missing configuration is a deployment defect requiring explicit remediation.
+
+**Code:** `provisa/federation/engine.py`
+
+**Tests:** `tests/unit/test_isolated_engine_routing.py`
+
+### REQ-1346 · Isolated Federation Engine {#REQ-1346}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+The dedicated federation-engine cluster idles/sleeps between sessions like the shared engine's front door. bind_terminal (backend lifecycle hook in provisa/federation/backend.py and trino_lifecycle.bind_terminal) stores terminal connection kwargs without connecting. TrinoBackend.execute and execute_sync accept a kwargs-only (unconnected) terminal; execute_trino's liveness path connects on the first real query. Traffic wakes the cluster; org provisioning never does.
+
+**Use case:** Dedicated engines reduce operational cost by sleeping when idle, waking only on actual query execution, avoiding provisioning/deprovisioning cycles or always-on compute overhead.
+
+**Code:** `provisa/federation/backend.py`, `provisa/federation/runtime.py`, `provisa/federation/trino_lifecycle.py`
+
+**Tests:** `tests/unit/test_isolated_engine_routing.py`
+
+## 6. Testing & Validation
+
+### REQ-1347 · Test Infrastructure {#REQ-1347}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+tests/conftest.py stages the gitignored Trino plugin jar directories (trino-file/trino-sharepoint/trino-splunk) into a git worktree by symlinking from the primary checkout before compose up. The itest Trino coordinator crash-loops without these plugins present.
+
+**Use case:** Integration tests need access to Trino plugins that are excluded from git; symlinking from the primary checkout ensures worktree isolation while preventing duplicate jars and avoiding storage overhead.
+
+**Code:** `tests/conftest.py`
+
+**Tests:** `tests/conftest.py`
