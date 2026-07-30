@@ -28,8 +28,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
+from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.schema_org import domains as domains_t
 from provisa.core.schema_org import registered_tables as registered_tables_t
+from provisa.core.schema_org import sources as sources_t
 
 _CONFIG = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "fixtures", "org_demo_seed_config.yaml")
@@ -104,6 +106,30 @@ async def test_provisioning_writes_the_demo_rows_into_the_orgs_own_schema(demo_o
         domain_ids = {r[0] for r in (await conn.execute_core(select(domains_t.c.id))).fetchall()}
     assert "orders" in {r[0] for r in tables}
     assert "sales-analytics" in domain_ids
+
+
+async def test_provisioning_seeds_the_derived_source_and_its_virtual_views(demo_org):
+    # __derived__ is a system source: no config file declares it, _seed_built_in_sources writes one
+    # row per org. An org provisioned before that seed existed had no __derived__ row, so every
+    # config table pointing at it (the star-schema demo's dim_pet / fact_pet_inquiries) had no FK
+    # target and was dropped from the load — the org came up with the demo "missing elements" and
+    # its GraphQL schema had no groupBy field for the fact.
+    _state, rt = demo_org
+    assert rt.tenant_db is not None
+    async with rt.tenant_db.acquire() as conn:
+        source_ids = {r[0] for r in (await conn.execute_core(select(sources_t.c.id))).fetchall()}
+        derived = {
+            r[0]
+            for r in (
+                await conn.execute_core(
+                    select(registered_tables_t.c.table_name).where(
+                        registered_tables_t.c.source_id == DERIVED_SOURCE_ID
+                    )
+                )
+            ).fetchall()
+        }
+    assert DERIVED_SOURCE_ID in source_ids, source_ids
+    assert "order_totals" in derived, derived
 
 
 async def test_org_admin_sees_the_demo_tables_on_the_admin_surface(demo_org):

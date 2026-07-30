@@ -25,6 +25,21 @@ tables:
         visible_to: [org_admin]
       - name: amount
         visible_to: [org_admin]
+  # A Provisa-managed virtual view, exactly as config/provisa-install.yaml ships dim_pet /
+  # fact_pet_inquiries. Its source_id names no config source — __derived__ is a SYSTEM source
+  # seeded per org by _seed_built_in_sources, so this row only loads when that seed reached the
+  # org being provisioned. Without it the FK has no target and the view silently never lands.
+  - source_id: __derived__
+    domain_id: sales-analytics
+    schema: views
+    table: order_totals
+    view_sql: SELECT "id", "amount" FROM "public"."orders"
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: amount
+        visible_to: [org_admin]
 
 roles:
   # REQ-1297: the DATA-plane administrator, without the platform-bypass 'admin'/'superadmin'
