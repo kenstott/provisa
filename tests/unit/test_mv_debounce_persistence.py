@@ -17,16 +17,18 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from provisa.core.database import Database
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import registered_tables, table_columns
+from provisa.core.schema_org import registered_tables, roles, table_columns
 
 
 @asynccontextmanager
 async def _conn(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'r.db'}")
     async with engine.begin() as c:
+        # roles: table_repo resolves control-plane (cross_org) roles from the DB (REQ-1337), so
+        # every fixture that registers tables must carry the roles table the bootstrap guarantees.
         await c.run_sync(
             lambda s: registered_tables.metadata.create_all(
-                s, tables=[registered_tables, table_columns]
+                s, tables=[registered_tables, table_columns, roles]
             )
         )
     try:
