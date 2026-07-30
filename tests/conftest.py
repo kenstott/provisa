@@ -625,7 +625,13 @@ def _wait_for_trino(request):  # pyright: ignore
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.fetchone()
-            cur.execute("SHOW SCHEMAS FROM sales_pg")
+            # `system` is the one catalog Trino serves without any properties file. The probe
+            # used to name sales_pg, which only resolved because a committed
+            # trino/catalog/sales_pg.properties was bind-mounted; those files are Trino's own
+            # FileCatalogStore output and no longer ship (REQ-1339), and the app that registers
+            # the real catalogs starts *after* this gate — so a data catalog can never be the
+            # readiness signal. What this must prove is that the coordinator answers metadata.
+            cur.execute("SHOW SCHEMAS FROM system")
             cur.fetchall()
             conn.close()
             return
