@@ -21,11 +21,12 @@ import { ColorSchemeToggle } from "../theme/ColorSchemeToggle";
 import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
-import { clearSessionState } from "../lib/session";
+import { clearSessionState, LAST_SUBNAV_KEY } from "../lib/session";
+import { hasCapability } from "../lib/capabilities";
 import type { Capability } from "../types/auth";
 
 
-interface DropdownItem {
+export interface DropdownItem {
   to: string;
   labelKey: string;
   capability: Capability;
@@ -33,13 +34,13 @@ interface DropdownItem {
   separatorBefore?: boolean;
 }
 
-interface NavGroup {
+export interface NavGroup {
   id: string;
   labelKey: string;
   items: DropdownItem[];
 }
 
-const NAV_GROUPS: NavGroup[] = [
+export const NAV_GROUPS: NavGroup[] = [
   {
     id: "model",
     labelKey: "navBar.groupModel",
@@ -127,8 +128,7 @@ function activeGroupId(pathname: string): string | null {
 
 // Remembers the last submenu item visited within each group so returning to a
 // group restores that item instead of always landing on the first one.
-const LAST_SUBNAV_KEY = "provisa_nav_last_item";
-
+// The key itself lives in lib/session so clearSessionState drops it at sign-in.
 function readLastSubnav(): Record<string, string> {
   const raw = localStorage.getItem(LAST_SUBNAV_KEY);
   if (!raw) return {};
@@ -140,12 +140,21 @@ function writeLastSubnav(groupId: string, to: string) {
   localStorage.setItem(LAST_SUBNAV_KEY, JSON.stringify({ ...readLastSubnav(), [groupId]: to }));
 }
 
-// The submenu item within a group to navigate to on entry: the remembered one
-// (if still valid and available) or the first non-comingSoon item.
-function entryItem(group: NavGroup): DropdownItem | undefined {
+// The submenu item within a group to navigate to on entry: the remembered one (if still valid,
+// available AND permitted) or the first non-comingSoon item the caller's rights admit.
+//
+// REQ-1349: the remembered item is a browser preference, not an entitlement. Rights change under
+// it — a deployment flips to multitenant and org_admin loses `platform_settings`, an org grant is
+// withdrawn — and the subnav item it names then disappears while the entry navigation still aimed
+// at it. Entering the group landed on the denied route, whose NotAuthorized fallback replaces the
+// whole page INCLUDING this subnav, so there was nothing left to click to reach a permitted tab.
+// A preference that no longer resolves is dropped in favour of the first tab that does.
+export function entryItem(group: NavGroup, capabilities: string[]): DropdownItem | undefined {
+  const reachable = group.items.filter(
+    (i) => !i.comingSoon && hasCapability(capabilities, i.capability),
+  );
   const remembered = readLastSubnav()[group.id];
-  const match = group.items.find((i) => !i.comingSoon && i.to === remembered);
-  return match ?? group.items.find((i) => !i.comingSoon);
+  return reachable.find((i) => i.to === remembered) ?? reachable[0];
 }
 
 export function NavBar() {
@@ -153,7 +162,7 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
-  const { displayName, email, devMode, authEnabled } = useAuth();
+  const { displayName, email, devMode, authEnabled, capabilities } = useAuth();
   const { startTour, canResume } = useTour();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -161,6 +170,8 @@ export function NavBar() {
   const subnavRef = useRef<HTMLElement>(null);
 
   const routeGroup = activeGroupId(location.pathname);
+  const adminGroup = NAV_GROUPS.find((g) => g.id === "admin");
+  const adminEntry = adminGroup ? entryItem(adminGroup, capabilities) : undefined;
 
   // When route changes into a group, clear any manual pin so the route drives display
   useEffect(() => {
@@ -235,9 +246,9 @@ export function NavBar() {
       setPinnedGroup((prev) => (prev === id ? null : id));
       return;
     }
-    // Navigate to the last-visited item in the group (or the first, if none)
+    // Navigate to the last-visited PERMITTED item in the group (or the first permitted one)
     const group = NAV_GROUPS.find((g) => g.id === id);
-    const target = group ? entryItem(group) : undefined;
+    const target = group ? entryItem(group, capabilities) : undefined;
     if (target) navigate(target.to);
     setPinnedGroup(null);
   }
@@ -278,7 +289,9 @@ export function NavBar() {
           <CapabilityGate capability="user_management">
             <NavLink to="/team" data-tour="nav-team">{t("navBar.team")}</NavLink>
           </CapabilityGate>
-          {NAV_GROUPS.map((group) => {
+          {/* REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
+              rendering it left a tab that swallowed the click and never navigated. */}
+          {NAV_GROUPS.filter((group) => entryItem(group, capabilities)).map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
               <button
@@ -376,11 +389,14 @@ export function NavBar() {
                   </Menu.Label>
                 )}
                 <Menu.Item onClick={() => setProfileOpen(true)}>{t("navBar.profile")}</Menu.Item>
-                <CapabilityGate capability="admin">
-                  <Menu.Item onClick={() => navigate("/admin/overview")}>
+                {/* REQ-1349: shown when the caller has ANY admin surface, and it opens the first
+                    one they hold — gating on the `admin` wildcard hid it from every org_admin, and
+                    the hardcoded /admin/overview needs `observability` the wildcard does not imply. */}
+                {adminEntry && (
+                  <Menu.Item onClick={() => navigate(adminEntry.to)}>
                     {t("navBar.settings")}
                   </Menu.Item>
-                </CapabilityGate>
+                )}
                 {authEnabled && (
                   <Menu.Item color="red" onClick={handleLogout}>
                     {t("navBar.logout")}

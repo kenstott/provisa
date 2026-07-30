@@ -40797,3 +40797,41 @@
   related_reqs:
   - REQ-1341
   - REQ-1342
+- id: REQ-1351
+  status: complete
+  group: 11. Frontend UI & UX
+  category: Navigation & Admin Menu
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: >-
+    Navigation into a nav group must resolve to a route the caller's rights admit.
+    The remembered last-visited subnav item (localStorage provisa_nav_last_item) is
+    a browser preference, not an entitlement; when the caller no longer holds the
+    right that item's route requires, it is dropped and the group is entered on the
+    first item they do hold. When the caller holds no item in the group at all, the
+    group is not offered. This applies to clicking a nav group tab, the profile menu's
+    Settings item, and the bare /admin URL, which must land identically.
+  use_case: >-
+    Denial fallback replaces the whole page including the subnav, so entering on a
+    denied route leaves no tab to click. provisa_nav_last_item is now session-scoped
+    (cleared by clearSessionState() at sign-in per REQ-1326), so one identity's
+    remembered tab cannot cross to the next identity on a shared browser; no per-login
+    key namespace is required because only one identity is signed in at a time.
+  code:
+  - provisa-ui/src/lib/capabilities.ts
+  - provisa-ui/src/components/NavBar.tsx
+  - provisa-ui/src/App.tsx
+  - provisa-ui/src/lib/session.ts
+  tests:
+  - provisa-ui/src/__tests__/navEntryItem.test.ts
+  scenario: |
+    Given a signed-in user with limited capabilities in a nav group
+    When the user navigates to a group tab or /admin URL
+    Then the system checks if the cached last-visited item (from provisa_nav_last_item)
+    And if the user no longer holds the right for that item's route, it is dropped
+    And the group is entered on the first item the user holds rights for
+    And if the user holds no items in the group at all, the group is not offered in nav
+  related_reqs:
+  - REQ-1349
+  - REQ-1326

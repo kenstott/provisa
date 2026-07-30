@@ -14,7 +14,7 @@ import { ApolloProvider } from "@apollo/client/react";
 import { client } from "./apolloClient";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { DomainFilterProvider } from "./context/DomainFilterContext";
-import { NavBar } from "./components/NavBar";
+import { NavBar, NAV_GROUPS, entryItem } from "./components/NavBar";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { OnboardGate } from "./components/OnboardGate";
 import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
@@ -72,6 +72,21 @@ function prefetchPageChunksOnIdle(): () => void {
 
 function NotAuthorized() {
   return <div className="page">You do not have permission to view this page.</div>;
+}
+
+/**
+ * REQ-1349: `/admin` resolves to the first admin section the caller's rights admit (honouring the
+ * remembered subnav item when it is still permitted), so typing the bare URL lands exactly where
+ * clicking the Admin tab does. A fixed redirect to /admin/overview needed `observability` and sent
+ * everyone else to NotAuthorized, which replaces the whole page including the subnav — leaving no
+ * tab to click. A caller holding no admin surface at all still gets NotAuthorized.
+ */
+function AdminEntry() {
+  const { capabilities } = useAuth();
+  const group = NAV_GROUPS.find((g) => g.id === "admin");
+  const target = group ? entryItem(group, capabilities) : undefined;
+  if (!target) return <NotAuthorized />;
+  return <Navigate to={target.to} replace />;
 }
 
 /**
@@ -377,7 +392,7 @@ function App() {
                   />
                   {/* Docs reader — ungated, available to every role (bundled + live fallback) */}
                   <Route path="/docs" element={<DocsPage />} />
-                  <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
+                  <Route path="/admin" element={<AdminEntry />} />
                   {/* REQ-1337: each admin route names the RIGHT it needs, never a role name. The
                       deployment-wide settings surfaces (federation engine, cache storage,
                       encryption/auth providers) require `platform_settings`; administering other

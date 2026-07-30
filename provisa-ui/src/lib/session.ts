@@ -11,11 +11,22 @@
 import { clearPersistedAdminCache } from "../apolloClient";
 import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "./domainFilterKeys";
 
+/**
+ * Remembers the last submenu item visited within each nav group. Lives here rather than in NavBar
+ * so it can be listed in SESSION_KEYS without a cycle.
+ */
+export const LAST_SUBNAV_KEY = "provisa_nav_last_item";
+
 /** localStorage keys that scope client state to ONE signed-in session. */
 export const SESSION_KEYS = [
   "provisa_token",
   "provisa_org",
   "provisa_role",
+  // REQ-1349: the remembered subnav item is one identity's preference. Two people sharing a browser
+  // profile sign in one at a time, so the key needs no per-login namespace — but it must not survive
+  // the handover: the previous identity's remembered tab can name a route the next one has no right
+  // to, and entering the group on it lands on the denial page.
+  LAST_SUBNAV_KEY,
   // REQ-1297: the domain filter names domains of one org. Carried into a new session or a new org,
   // a previously-unchecked domain stays unchecked (mergeCheckedDomains keeps `known`-but-not-
   // `checked` off), which presented a correctly-provisioned org as one missing its meta/ops domains.
