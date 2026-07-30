@@ -482,21 +482,31 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             # CAN hold an assignment naming it — granted by an org_admin through user_management, or
             # carried in by a config load. Dropping it here, at the one place the acting assignment
             # set is settled, is what makes it unresolvable in that org: no capabilities, no acting
-            # role, and /auth/me does not report it. Root keeps it (that is the control plane's org).
+            # role, and /auth/me does not report it. Root keeps the ASSIGNMENT, because root is the
+            # control plane's own org and platform_admin is what confers control-plane capability
+            # there — but it is still never the acting DATA role (see the acting-role rule below).
             if _is_tenant_org(active_org_id, self._default_org_id):
                 assignments = [a for a in assignments if a.role_id != PLATFORM_ADMIN_ROLE]
 
         role = resolve_role(identity, self._mapping_rules, self._default_role)
-        if role == PLATFORM_ADMIN_ROLE and _is_tenant_org(active_org_id, self._default_org_id):
-            # The acting role must come from the assignment set the filter above left standing. A
-            # platform_admin default/mapping rule would otherwise reinstate as the acting role what
-            # the assignment filter just removed.
-            remaining = [a.role_id for a in assignments if a.role_id != PLATFORM_ADMIN_ROLE]
-            if not remaining:
+        # REQ-1327: platform_admin holds ZERO data capabilities in EVERY org, root included, so it is
+        # never the acting role while the caller holds any other assignment. This is not gated on the
+        # org being a tenant: in root the claimant holds BOTH platform_admin and org_admin, and
+        # picking the control-plane role there built the data surface for a role with no column
+        # grants — every fully-granted table vanished from the schema and only the native-filter
+        # endpoint tables survived (compiler/schema_gen.py). A caller holding platform_admin ALONE
+        # keeps it as the acting role: the control plane needs it, and the data surfaces refuse it
+        # outright (no schema is generated for it) rather than serving an empty one.
+        _data_plane_roles = [a.role_id for a in assignments if a.role_id != PLATFORM_ADMIN_ROLE]
+        if role == PLATFORM_ADMIN_ROLE:
+            if _data_plane_roles:
+                role = _data_plane_roles[0]
+            elif _is_tenant_org(active_org_id, self._default_org_id):
+                # In a tenant org the assignment set above is already platform_admin-free, so an
+                # empty remainder means the caller was granted nothing in that org at all.
                 return _deny(
                     request, 403, f"platform_admin confers no rights in org {active_org_id!r}"
                 )
-            role = remaining[0]
 
         # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
         # honors it only when the authenticated user is actually assigned that role — a bare
@@ -504,7 +514,14 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         requested_role = request.headers.get("x-provisa-role")
         if requested_role:
             assigned_role_ids = {a.role_id for a in assignments}
-            if requested_role in assigned_role_ids:
+            if requested_role == PLATFORM_ADMIN_ROLE:
+                # REQ-1327 again, at the one place a client can name a role: the header selects the
+                # acting role for the DATA surfaces, and platform_admin is not one. It resolves to
+                # the caller's data-plane role instead of being honored; with no data-plane role the
+                # resolved control-plane role above stands, and the data surfaces refuse it.
+                if _data_plane_roles:
+                    role = _data_plane_roles[0]
+            elif requested_role in assigned_role_ids:
                 role = requested_role
             else:
                 return JSONResponse(

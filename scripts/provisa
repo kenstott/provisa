@@ -128,12 +128,16 @@ _build_compose_files() {
     if { [ "$IMAGE_SOURCE" = "tarball" ] || [ "$RUNTIME" = "bundled" ]; } && [ -f "${PROJECT_DIR}/docker-compose.airgap.yml" ]; then
         files="${files} -f ${PROJECT_DIR}/docker-compose.airgap.yml"
     fi
+    # --observability needs observability.yml, not just dev.yml: dev.yml's otel-collector block
+    # is an OVERRIDE (volumes + command only), and observability.yml is where the service — image
+    # included — is defined. Merging dev.yml alone aborts with "no image or build specified".
+    # bundled runtime (Linux AppImage): obs is always-on, compose file lives in PROJECT_DIR.
+    if { [ "$OBSERVABILITY" = "true" ] || [ "$RUNTIME" = "bundled" ]; } &&
+        [ -f "${PROJECT_DIR}/docker-compose.observability.yml" ]; then
+        files="${files} -f ${PROJECT_DIR}/docker-compose.observability.yml"
+    fi
     if [ "$OBSERVABILITY" = "true" ] && [ -f "${PROJECT_DIR}/docker-compose.dev.yml" ]; then
         files="${files} -f ${PROJECT_DIR}/docker-compose.dev.yml"
-    fi
-    # bundled runtime (Linux AppImage): obs is always-on, compose file lives in PROJECT_DIR
-    if [ "$RUNTIME" = "bundled" ] && [ -f "${PROJECT_DIR}/docker-compose.observability.yml" ]; then
-        files="${files} -f ${PROJECT_DIR}/docker-compose.observability.yml"
     fi
     # Enumerate installed extensions (observability, demo, etc.)
     local ext_dir="${PROVISA_HOME}/extensions"
@@ -416,11 +420,16 @@ cmd_start() {
         info "Starting ${FED_WORKERS} query worker(s)..."
     fi
 
-    local obs_ext="${PROVISA_HOME}/extensions/observability/docker-compose.observability.yml"
-    if [ "$OBSERVABILITY" = "true" ] || [ -f "$obs_ext" ]; then
-        export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
-        export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
-    fi
+    # The collector endpoint is exported only when the compose set actually brings a collector up.
+    # Keying it off the resolved COMPOSE_FILES (rather than the flag alone) is what keeps the app
+    # from pointing at a nonexistent host: docker-compose.app.yml no longer defaults the endpoint,
+    # so a deployment without an observability overlay leaves it unset and telemetry stays local.
+    case "$COMPOSE_FILES" in
+        *observability*)
+            export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
+            export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
+            ;;
+    esac
 
     if [ "$RESET_VOLUMES" = "true" ]; then
         printf "Resetting volumes for crash recovery...\n"

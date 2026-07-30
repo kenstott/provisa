@@ -188,6 +188,51 @@ async def test_secured_honors_assigned_requested_role():
 
 
 @pytest.mark.asyncio
+async def test_platform_admin_never_acts_on_the_data_plane_in_root():
+    # REQ-1327: root is the control plane's own org, so the platform_admin ASSIGNMENT lives there —
+    # but the acting role on a data path must still be the caller's data-plane role. Picking
+    # platform_admin built /data/graphql for a role with no column grants, and every fully-granted
+    # table silently vanished from the served schema.
+    mw = AuthMiddleware(
+        app=None,
+        provider=_Provider(["platform_admin", "org_admin"]),
+        default_role="platform_admin",
+    )
+    req = _Req({"authorization": "Bearer tok"})
+    out = await mw.dispatch(req, _next)
+    assert out == "OK"
+    assert req.state.role == "org_admin"
+
+
+@pytest.mark.asyncio
+async def test_requested_platform_admin_resolves_to_the_data_plane_role():
+    # A stale client tab puts platform_admin in the header. It names the acting role for the DATA
+    # surfaces, and platform_admin is not one of those — it resolves to the assigned data-plane role.
+    mw = AuthMiddleware(
+        app=None,
+        provider=_Provider(["platform_admin", "org_admin"]),
+        default_role="platform_admin",
+    )
+    req = _Req({"authorization": "Bearer tok", "x-provisa-role": "platform_admin"})
+    out = await mw.dispatch(req, _next)
+    assert out == "OK"
+    assert req.state.role == "org_admin"
+
+
+@pytest.mark.asyncio
+async def test_platform_admin_alone_keeps_the_control_plane_role():
+    # A platform operator holding nothing else is not denied: the control plane needs the role. The
+    # data surfaces refuse it instead, because no schema is generated for it (app_loaders).
+    mw = AuthMiddleware(
+        app=None, provider=_Provider(["platform_admin"]), default_role="platform_admin"
+    )
+    req = _Req({"authorization": "Bearer tok"})
+    out = await mw.dispatch(req, _next)
+    assert out == "OK"
+    assert req.state.role == "platform_admin"
+
+
+@pytest.mark.asyncio
 async def test_secured_rejects_unassigned_requested_role():
     mw = AuthMiddleware(app=None, provider=_Provider(["analyst", "viewer"]), default_role="analyst")
     req = _Req({"authorization": "Bearer tok", "x-provisa-role": "admin"})

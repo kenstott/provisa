@@ -24,10 +24,24 @@ services:
       PLATFORM_DATABASE_URL: "postgresql+asyncpg://${CONFIG_DB_USER:-provisa}:${CONFIG_DB_PASSWORD:-provisa}@${CONFIG_DB_HOST:-postgres}:${CONFIG_DB_PORT:-5432}/${CONFIG_DB_NAME:-provisa}"
       TRINO_HOST: trino
       TRINO_PORT: 8080
-      TRINO_FLIGHT_PORT: 8480
+      # The Arrow Flight SQL proxy (trino_lifecycle.connect_infra reads ZAYCHIK_HOST/ZAYCHIK_PORT —
+      # TRINO_FLIGHT_PORT was never read by anything). Its default `localhost` is the dev layout,
+      # where the app runs on the host against core.yml's published port; inside the container network
+      # localhost:8480 is the app itself, so a Trino deployment died at startup with
+      # "dial tcp [::1]:8480: connect: connection refused". The helm chart already sets both.
+      ZAYCHIK_HOST: zaychik
+      ZAYCHIK_PORT: 8480
       FLIGHT_PORT: "${FLIGHT_PORT:-8815}"
       REDIS_URL: "${REDIS_URL:-redis://redis:6379}"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
+      # Passed through with NO default: the otel-collector service is defined only in
+      # docker-compose.observability.yml, so an app-overlay default of
+      # http://otel-collector:4317 names a host that does not exist in any deployment that
+      # omits that overlay — the SaaS node logged endless "Failed to resolve 'otel-collector'"
+      # for /v1/traces, /v1/logs and /v1/metrics. otel_setup.py:287 attaches the OTLP exporter
+      # only when the endpoint is set, so unset here means telemetry stays local; whoever
+      # actually starts a collector sets the endpoint (scripts/provisa does when the compose
+      # set includes an observability overlay).
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
       OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME:-provisa}"
       GRAPHQL_DEMO_ENABLED: "${GRAPHQL_DEMO_ENABLED:-false}"
       GRAPHQL_DEMO_URL: "${GRAPHQL_DEMO_URL:-http://graphql-demo:4000/graphql}"

@@ -72,10 +72,15 @@ async def _warmup_readiness(_log: logging.Logger) -> None:
         _log.exception("readiness warmup probe failed; serving anyway")
 
     # Prime the admin GraphQL landing queries the UI hits first (Tables, Relationships,
-    # Sources, Domains). Their resolvers open the control-plane pool and read per-table
+    # Sources). Their resolvers open the control-plane pool and read per-table
     # columns for every registered table — cold on the first request, which reads as
     # "Loading tables…" hanging. Running them here (behind /ready) means the browser
     # opens onto warm pages. context_value={} → anonymous identity (dev/demo allows all).
+    #
+    # `{ domains { id } }` is NOT in this list: its resolver calls _resolve_admin_context, which
+    # requires a request-bound active org (REQ-1293 — the tenant plane is isolated by schema), so
+    # at boot it raised GraphQLError("'request'") on every start. There is no org to warm it for,
+    # and the three queries above already open the same control-plane pool.
     try:
         from provisa.api.admin.schema import admin_schema
 
@@ -83,7 +88,6 @@ async def _warmup_readiness(_log: logging.Logger) -> None:
             "{ tables { id } }",
             "{ relationships { id } }",
             "{ sources { id } }",
-            "{ domains { id } }",
         ):
             _res = await admin_schema.execute(_q, context_value={})
             if _res.errors:

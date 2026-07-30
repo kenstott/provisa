@@ -44,8 +44,14 @@ catalog.management=dynamic
 query.max-memory={query_max_memory}
 query.max-memory-per-node={query_max_memory_per_node}
 query.max-total-memory={query_max_total_memory}
-{fte_block}tracing.enabled=true
-otel.exporter.endpoint=http://otel-collector:4317
+{fte_block}{tracing_block}"""
+
+# Trino's OTel exporter has no "drop if unreachable" mode: with tracing.enabled=true and a
+# collector that does not exist, the coordinator retries every span export for the life of the
+# process. The block is therefore rendered only when OTEL_EXPORTER_OTLP_ENDPOINT names a real
+# collector — the same signal docker-compose.app.yml passes through to the app container.
+_TRACING_TEMPLATE = """tracing.enabled=true
+otel.exporter.endpoint={endpoint}
 """
 
 _WORKER_TEMPLATE = """coordinator=false
@@ -132,11 +138,16 @@ def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
         os.path.join(trino_etc, "jvm.config"),
         _JVM_TEMPLATE.format(heap_gb=heap_gb),
     )
+    otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    tracing_block = (
+        _TRACING_TEMPLATE.format(endpoint=otlp_endpoint) if otlp_endpoint.strip() else ""
+    )
     coordinator_props = _COORDINATOR_TEMPLATE.format(
         query_max_memory=query_max_memory,
         query_max_memory_per_node=query_max_memory_per_node,
         query_max_total_memory=query_max_total_memory,
         fte_block=fte_block,
+        tracing_block=tracing_block,
     )
     worker_props = _WORKER_TEMPLATE.format(
         query_max_memory_per_node=query_max_memory_per_node,

@@ -28,6 +28,7 @@ from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
+from provisa.security.rights import PLATFORM_ADMIN_ROLE
 from provisa.compiler.context import build_context
 from provisa.compiler.rls import build_rls_context
 from sqlalchemy import select
@@ -968,6 +969,15 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
 
     for role in roles:
         state.roles[role["id"]] = role
+        # REQ-1327: platform_admin is control-plane only and holds zero data capabilities in every
+        # org, root included, so it gets NO data surface at all. Generating one produced a schema
+        # whose every fully-granted table was filtered out by the column-visibility gate, leaving
+        # only the native-filter endpoint tables — a silently truncated dataset instead of a refusal.
+        # Without an entry, /data/graphql, the JSON:API, REST, Flight and SDL surfaces all answer
+        # "No schema available for role 'platform_admin'". The role dict is still registered above:
+        # control-plane capability resolution reads state.roles.
+        if role["id"] == PLATFORM_ADMIN_ROLE:
+            continue
         si = _schema_input(role, tables, metrics)
         try:
             from provisa.compiler.schema_gen import build_table_path_map
