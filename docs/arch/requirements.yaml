@@ -26007,7 +26007,7 @@
   code:
   - provisa/federation/engine.py
   tests:
-  - tests/unit/test_federation_engine.py
+  - tests/unit/test_isolated_engine_routing.py
   related_reqs:
   - REQ-900
   - REQ-901
@@ -40540,6 +40540,138 @@
   - REQ-1012
   - REQ-1341
 - id: REQ-1343
+  status: complete
+  since: 2026-07
+  group: 5. Multi-Tenancy & Org Isolation
+  category: Isolated Federation Engine
+  priority: MUST
+  type: ui
+  description: Onboarding create-org page surfaces an "Isolated engine" checkbox. POST /admin/orgs accepts
+    isolated_engine (boolean, default false). The flag is persisted as orgs.isolated_engine in the platform
+    admin plane (provisa/core/schema_admin.py) and returned by GET /admin/orgs and GET /admin/orgs/{id}/status.
+    Until billing gates it, the checkbox is the only acquisition path for the dedicated-engine lane.
+  use_case: Orgs opt into dedicated federation-engine resources at creation time, providing the surface
+    for multi-tenancy tier differentiation (shared vs. isolated compute).
+  code:
+  - provisa-ui/src/pages/OnboardOrgPage.tsx
+  - provisa-ui/src/api/admin.ts
+  - provisa/api/admin/orgs_router.py
+  - provisa/core/schema_admin.py
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  - tests/unit/test_isolated_engine_routing.py
+  related_reqs:
+  - REQ-1043
+  - REQ-1067
+  - REQ-1244
+- id: REQ-1344
+  status: complete
+  since: 2026-07
+  group: 5. Multi-Tenancy & Org Isolation
+  category: Isolated Federation Engine
+  priority: MUST
+  type: behavioral
+  description: OrgRuntime (provisa/api/org_runtime.py) carries isolated_engine/federation_engine/engine_conn/engine_conn_kwargs.
+    AppState.federation_engine/engine_conn/engine_conn_kwargs are routed properties resolving through the
+    current_org ContextVar. An org with a dedicated engine resolves its own EngineRuntime; every other org
+    falls through to the default-org (shared) engine. build_org_runtime binds the dedicated EngineRuntime
+    before source registration so the org's catalogs land on its engine; shutdown closes each org engine
+    with its org bound.
+  use_case: Per-org federation-engine routing isolates catalog and execution scope per tenant, ensuring
+    source registrations and queries execute against the org's dedicated or shared engine without cross-org
+    interference.
+  scenario: |
+    Given an isolated org with its own federation engine
+    When a source is registered for that org
+    Then the catalog lands on the org's dedicated engine, not the shared pool
+
+    Given a non-isolated org
+    When a source is registered
+    Then the catalog lands on the default-org (shared) engine
+
+    Given an org with a bound EngineRuntime during shutdown
+    When org lifecycle completes
+    Then the dedicated engine shuts down with its org bound
+  code:
+  - provisa/api/org_runtime.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_isolated_engine_routing.py
+  - tests/integration/test_org_lifecycle.py
+  related_reqs:
+  - REQ-1043
+  - REQ-1244
+  - REQ-1243
+- id: REQ-1345
+  status: complete
+  since: 2026-07
+  group: 5. Multi-Tenancy & Org Isolation
+  category: Isolated Federation Engine
+  priority: MUST
+  type: behavioral
+  description: isolated_engine_endpoint(org_id) in provisa/federation/engine.py resolves a dedicated Trino
+    coordinator endpoint using PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE (an {org_id}-templated hostname) and
+    PROVISA_ISOLATED_ENGINE_PORT. If an isolated org is deployed to an environment without the template
+    configured, resolution is a hard error (never silently routing to the shared coordinator).
+  use_case: Isolated orgs must route exclusively to their dedicated Trino coordinator, with no silent
+    fallback to shared infrastructure; missing configuration is a deployment defect requiring explicit remediation.
+  scenario: |
+    Given an isolated org and PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE configured
+    When isolated_engine_endpoint is called with the org_id
+    Then a Trino coordinator endpoint is resolved using the template and port
+
+    Given an isolated org and PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE not configured
+    When isolated_engine_endpoint is called
+    Then resolution raises a hard error
+  code:
+  - provisa/federation/engine.py
+  tests:
+  - tests/unit/test_isolated_engine_routing.py
+  related_reqs:
+  - REQ-1043
+  - REQ-1244
+- id: REQ-1346
+  status: complete
+  since: 2026-07
+  group: 5. Multi-Tenancy & Org Isolation
+  category: Isolated Federation Engine
+  priority: MUST
+  type: infrastructure
+  description: The dedicated federation-engine cluster idles/sleeps between sessions like the shared engine's
+    front door. bind_terminal (backend lifecycle hook in provisa/federation/backend.py and trino_lifecycle.bind_terminal)
+    stores terminal connection kwargs without connecting. TrinoBackend.execute and execute_sync accept a
+    kwargs-only (unconnected) terminal; execute_trino's liveness path connects on the first real query.
+    Traffic wakes the cluster; org provisioning never does.
+  use_case: Dedicated engines reduce operational cost by sleeping when idle, waking only on actual query
+    execution, avoiding provisioning/deprovisioning cycles or always-on compute overhead.
+  code:
+  - provisa/federation/backend.py
+  - provisa/federation/runtime.py
+  - provisa/federation/trino_lifecycle.py
+  tests:
+  - tests/unit/test_isolated_engine_routing.py
+  related_reqs:
+  - REQ-1043
+  - REQ-1244
+- id: REQ-1347
+  status: complete
+  since: 2026-07
+  group: 6. Testing & Validation
+  category: Test Infrastructure
+  priority: MUST
+  type: infrastructure
+  description: tests/conftest.py stages the gitignored Trino plugin jar directories (trino-file/trino-sharepoint/trino-splunk)
+    into a git worktree by symlinking from the primary checkout before compose up. The itest Trino coordinator
+    crash-loops without these plugins present.
+  use_case: Integration tests need access to Trino plugins that are excluded from git; symlinking from
+    the primary checkout ensures worktree isolation while preventing duplicate jars and avoiding storage overhead.
+  code:
+  - tests/conftest.py
+  tests:
+  - tests/conftest.py
+  related_reqs:
+  - REQ-1043
+- id: REQ-1348
   status: complete
   group: 11. Frontend UI & UX
   category: Internationalization

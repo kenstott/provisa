@@ -10,10 +10,10 @@
 
 // The bare i18next singleton, not ./index: importing ./index would pull the
 // full locale catalog graph into every src/api module (main.tsx boots ./index;
-// REQ-1343's English-fallback design covers the uninitialized case).
+// REQ-1348's English-fallback design covers the uninitialized case).
 import i18n from "i18next";
 
-// Hybrid server i18n (REQ-1343). API errors and MutationResult envelopes
+// Hybrid server i18n (REQ-1348). API errors and MutationResult envelopes
 // carry a stable `code` + `params` alongside the English message. When the
 // serverErrors catalog has the code, render the localized template; otherwise
 // fall back to the English server message (unmigrated sites, engine

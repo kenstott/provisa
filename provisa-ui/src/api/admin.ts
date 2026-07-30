@@ -120,6 +120,8 @@ export interface Org {
   name: string;
   created_by: string | null;
   created_at: string;
+  // REQ-1043/REQ-1067: true when the org runs on a dedicated federation engine.
+  isolated_engine: boolean;
 }
 
 export async function fetchOrgs(): Promise<Org[]> {
@@ -148,6 +150,9 @@ export async function createOrg(
   name: string,
   includeDemo = false,
   policy: OrgJoinPolicy = {},
+  // REQ-1043/REQ-1067: run the org on a dedicated federation engine (premium lane; surfaced as a
+  // plain checkbox until billing gates it).
+  isolatedEngine = false,
 ): Promise<OrgProvisioning> {
   const res = await fetch(`${API_BASE}/admin/orgs`, {
     method: "POST",
@@ -159,6 +164,7 @@ export async function createOrg(
       email_rule: policy.emailRule ?? null,
       auto_join: policy.autoJoin ?? false,
       auto_join_role: policy.autoJoinRole ?? null,
+      isolated_engine: isolatedEngine,
     }),
   });
   if (!res.ok) {

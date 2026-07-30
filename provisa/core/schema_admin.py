@@ -90,6 +90,11 @@ orgs = Table(
     # role granted on auto-join (e.g. a low-privilege "analyst"); it must exist in the org schema.
     Column("auto_join", Boolean, nullable=False, server_default=false()),
     Column("auto_join_role", Text),
+    # REQ-1043/REQ-1067/REQ-1244: when true this org runs on its OWN federation-engine instance
+    # (a dedicated Trino coordinator / per-org embedded engine) instead of the shared/pooled
+    # engine. Chosen at org creation (pre-billing surface: the onboarding create-org checkbox);
+    # the org-runtime builder reads it to bind a dedicated EngineRuntime.
+    Column("isolated_engine", Boolean, nullable=False, server_default=false()),
 )
 
 user_profiles = Table(

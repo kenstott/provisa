@@ -39,7 +39,6 @@ _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
 _TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
 
-
 def _ensure_odbcsysini() -> None:
     """Make the installed SQL Server ODBC driver discoverable by pyodbc for requires_sqlserver tests.
 
@@ -101,7 +100,21 @@ def _server_coverage_env() -> dict:
 # dev stack (the `provisa` project on default ports 5432/8080/9000/…). Core and
 # marker services share this one project's default network, so Trino reaches
 # kafka/mongo/etc. by service name without any external (dev) network.
-_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", "provisa-itest")
+# Cross-worktree isolation: the compose project owns containers/networks/volumes, and every run
+# tears its project down before `up`. A NAME shared across checkouts makes concurrent sessions in
+# different worktrees kill each other's stacks mid-run (observed: `down` from one worktree
+# SIGTERMs the other's Trino, failing its `--wait` with exit 143). Ports are already per-run
+# ephemeral; the project name must be per-checkout too.
+def _default_itest_project() -> str:
+    import hashlib
+    import re
+
+    root = os.path.abspath(_REPO_ROOT)
+    slug = re.sub(r"[^a-z0-9]+", "-", os.path.basename(root).lower()).strip("-") or "repo"
+    return f"provisa-itest-{slug}-{hashlib.sha1(root.encode()).hexdigest()[:6]}"
+
+
+_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", _default_itest_project())
 _ITEST_COMPOSE_ARGS = ["-p", _ITEST_PROJECT, "-f", _CORE_COMPOSE, "-f", _TEST_COMPOSE]
 
 _MARKER_SERVICES: dict[str, list[str]] = {
@@ -625,7 +638,13 @@ def _wait_for_trino(request):  # pyright: ignore
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.fetchone()
-            cur.execute("SHOW SCHEMAS FROM sales_pg")
+            # `system` is the one catalog Trino serves without any properties file. The probe
+            # used to name sales_pg, which only resolved because a committed
+            # trino/catalog/sales_pg.properties was bind-mounted; those files are Trino's own
+            # FileCatalogStore output and no longer ship (REQ-1339), and the app that registers
+            # the real catalogs starts *after* this gate — so a data catalog can never be the
+            # readiness signal. What this must prove is that the coordinator answers metadata.
+            cur.execute("SHOW SCHEMAS FROM system")
             cur.fetchall()
             conn.close()
             return

@@ -45,6 +45,8 @@ export function OnboardOrgPage() {
   const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [includeDemo, setIncludeDemo] = useState(false);
+  // REQ-1043/REQ-1067: dedicated federation engine, chosen at creation (pre-billing surface).
+  const [isolatedEngine, setIsolatedEngine] = useState(false);
   const [emailRule, setEmailRule] = useState("");
   const [autoJoin, setAutoJoin] = useState(false);
   const [autoJoinRole, setAutoJoinRole] = useState("");
@@ -92,11 +94,17 @@ export function OnboardOrgPage() {
     setError(null);
     setPhase("provisioning");
     try {
-      const created = await createOrg(id, name, includeDemo, {
-        emailRule: emailRule.trim() || null,
-        autoJoin,
-        autoJoinRole: autoJoinRole.trim() || null,
-      });
+      const created = await createOrg(
+        id,
+        name,
+        includeDemo,
+        {
+          emailRule: emailRule.trim() || null,
+          autoJoin,
+          autoJoinRole: autoJoinRole.trim() || null,
+        },
+        isolatedEngine,
+      );
       let state = created.provisioning_state;
       // Bounded poll — the background provisioning task flips the row.
       for (let i = 0; i < 300 && state === "provisioning"; i++) {
@@ -293,6 +301,13 @@ export function OnboardOrgPage() {
                   description={t("onboardOrg.includeDemoDesc")}
                   checked={includeDemo}
                   onChange={(e) => setIncludeDemo(e.currentTarget.checked)}
+                />
+                <Checkbox
+                  data-testid="onboard-org-isolated-engine"
+                  label={t("onboardOrg.isolatedEngineLabel")}
+                  description={t("onboardOrg.isolatedEngineDesc")}
+                  checked={isolatedEngine}
+                  onChange={(e) => setIsolatedEngine(e.currentTarget.checked)}
                 />
                 <TextInput
                   id="onboard-org-email-rule"

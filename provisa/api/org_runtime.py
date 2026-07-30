@@ -65,6 +65,17 @@ class OrgRuntime:
 
     org_id: str
 
+    # REQ-1043/REQ-1067/REQ-1244: per-org federation engine. ``None`` means this org runs on the
+    # SHARED engine (the pooled lane, REQ-1243 lane a — every org starts here); an isolated-engine
+    # org (orgs.isolated_engine) carries its OWN EngineRuntime plus its own terminal-connection
+    # state, so its queries never touch the shared coordinator. The AppState shims route
+    # ``state.federation_engine`` / ``state.engine_conn`` / ``state.engine_conn_kwargs`` here
+    # whenever ``federation_engine`` is bound, and to the default-org (shared) runtime otherwise.
+    isolated_engine: bool = False
+    federation_engine: Any = None
+    engine_conn: Any = None
+    engine_conn_kwargs: dict = field(default_factory=dict)
+
     # Per-org control plane: Database bound to the org_{id} schema.
     tenant_db: "Database | None" = None
 

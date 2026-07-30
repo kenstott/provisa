@@ -122,6 +122,11 @@ class EngineBackend:
         Any so a subclass (TrinoBackend) can return a concrete provider without an incompatible-override."""
         return None
 
+    def bind_terminal(self, state: Any) -> None:
+        """Lifecycle (REQ-1043/REQ-1244): resolve and store the terminal's connection parameters
+        WITHOUT connecting, so a sleeping cluster (idle-stopped between sessions) is only woken by
+        the first real query. In-process engines have no remote terminal to defer — no-op."""
+
     def close(self, state: Any) -> None:
         """Lifecycle: tear down the engine terminal. Native engines close with the process — no-op."""
 
@@ -378,6 +383,11 @@ class TrinoBackend(EngineBackend):
 
         trino_lifecycle.provision(state, ops_views, retention_hours)
 
+    def bind_terminal(self, state: Any) -> None:
+        from provisa.federation import trino_lifecycle
+
+        trino_lifecycle.bind_terminal(state)
+
     async def provision_infra(self, state: Any) -> None:
         from provisa.federation import trino_lifecycle
 
@@ -562,7 +572,10 @@ class TrinoBackend(EngineBackend):
         if fresh and conn_kwargs is None:
             conn_kwargs = state.engine_conn_kwargs
         conn = state.engine_conn
-        if conn is None and conn_kwargs is None:
+        # REQ-1043/REQ-1244: a bound-but-unconnected terminal (bind_terminal — sleeping cluster,
+        # wake-on-traffic) has kwargs and no conn; execute_trino's liveness path connects from
+        # state.engine_conn_kwargs on this first query. Only a terminal with NEITHER is an error.
+        if conn is None and conn_kwargs is None and not state.engine_conn_kwargs:
             raise RuntimeError(f"engine {self.engine.name!r} connection not available")
         _conn = cast("Any", conn)
         loop = asyncio.get_event_loop()
@@ -590,7 +603,8 @@ class TrinoBackend(EngineBackend):
         from provisa.executor.trino import execute_trino
 
         conn = state.engine_conn
-        if conn is None:
+        # Same wake-on-traffic contract as execute(): kwargs-only means execute_trino connects.
+        if conn is None and not state.engine_conn_kwargs:
             raise RuntimeError(f"engine {self.engine.name!r} connection not available")
         return execute_trino(
             cast("Any", conn), sql, params=params, session_hints=session_hints

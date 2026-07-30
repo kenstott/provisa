@@ -327,6 +327,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         """A change-data polling provider for the engine, or ``None`` when it offers none."""
         return self._backend.polling_provider(self._state, catalog, schema, table, watermark_column)
 
+    def bind_terminal(self) -> None:
+        """Lifecycle (REQ-1043/REQ-1244): store the terminal's connection parameters WITHOUT
+        connecting, so a sleeping dedicated cluster is woken only by the first real query
+        (wake-on-traffic). No-op for in-process engines."""
+        self._backend.bind_terminal(self._state)
+
     def close(self) -> None:
         """Lifecycle: tear down the engine terminal (no-op for native)."""
         self._backend.close(self._state)
