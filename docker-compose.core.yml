@@ -65,8 +65,9 @@ services:
   # at startup, since register_system_catalogs runs inside the lifespan.
   trino-exchange-init:
     image: busybox
-    # Single flow line: a folded scalar keeps a MORE-indented continuation literally, so a
-    # "&& ..." continuation line reaches sh as a new line starting with && — a syntax error.
+    # One line: a YAML folded scalar keeps the newline before a MORE-indented continuation, so the
+    # wrapped form reached busybox sh as two lines and died with `unexpected "&&"`, failing every
+    # service that waits on service_completed_successfully.
     command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange && mkdir -p /etc/trino/catalog && chown -R 1000:1000 /etc/trino/catalog"
     volumes:
       - provisa_exchange:/data/provisa/exchange

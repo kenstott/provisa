@@ -44,7 +44,7 @@ from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
 from provisa.auth.superuser import check_superuser, resolve_superuser_config
 from provisa.auth.providers.simple import SimpleAuthProvider
-from provisa.security.rights import PLATFORM_ADMIN_ROLE
+from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
 pytestmark = [pytest.mark.integration]
 
@@ -374,13 +374,16 @@ class TestAuthMiddlewarePipeline:
         data = resp.json()
         assert data["role"] == ROLE_ANALYST
 
-    def test_no_provider_defaults_to_admin(self):
-        # REQ-120 / REQ-273: when no provider configured and no role header, default is admin.
+    def test_no_provider_defaults_to_the_data_plane_administrator(self):
+        # REQ-120 / REQ-273: when no provider is configured and no role header is sent, the default
+        # is the DATA-plane administrator. REQ-1327 made that org_admin: platform_admin is
+        # control-plane only, carries no column grants, and a demo deployment need not define it —
+        # defaulting to it left an unsecured server with a role that can read nothing.
         app = _make_test_app(provider=None)
         client = TestClient(app, raise_server_exceptions=True)
         resp = client.get("/echo")
         assert resp.status_code == 200
-        assert resp.json()["role"] == PLATFORM_ADMIN_ROLE
+        assert resp.json()["role"] == ORG_ADMIN_ROLE
 
     def test_x_provisa_role_not_assigned_returns_403(self):
         # REQ-273: client-supplied role via X-Provisa-Role is rejected if not assigned.
