@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, select
 
+from provisa.api.errors import ApiError
 from provisa.core.database import Database
 from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
 from provisa.security.rights import Capability, can_act_cross_org
@@ -55,8 +56,11 @@ async def _require_org_admin(request: Request, org_id: str) -> None:  # REQ-1266
     # confined to the org being acted in because the caller does not hold cross_org.
     active_org = getattr(request.state, "active_org_id", None)
     if Capability.USER_MANAGEMENT.value not in caps or active_org != org_id:
-        raise HTTPException(
-            status_code=403, detail=f"user_management in {org_id} required"
+        raise ApiError(
+            403,
+            "invites.user_management_in_org_required",
+            f"user_management in {org_id} required",
+            org_id=org_id,
         )
     async with _pool(request).acquire() as conn:
         result = await conn.execute_core(
@@ -66,7 +70,7 @@ async def _require_org_admin(request: Request, org_id: str) -> None:  # REQ-1266
             )
         )
         if result.fetchone() is None:
-            raise HTTPException(status_code=403, detail=f"Not a member of {org_id}")
+            raise ApiError(403, "invites.not_org_member", f"Not a member of {org_id}", org_id=org_id)
 
 
 class CreateInviteBody(BaseModel):
@@ -102,17 +106,22 @@ async def resolve_invite_role(org_id: str, role_id: str | None) -> str:
     # root org — REQ-1298 makes an invitation into root followed by that assignment the sole path
     # to a backup platform administrator, and this is what stops an org_admin minting one at home.
     if resolved == "platform_admin" and org_id != state.org_id:
-        raise HTTPException(
-            status_code=403,
-            detail="platform_admin may only be conferred by an invitation into the root org",
+        raise ApiError(
+            403,
+            "invites.platform_admin_root_only",
+            "platform_admin may only be conferred by an invitation into the root org",
         )
     rt = await ensure_org_runtime(org_id)
     assert rt.tenant_db is not None
     async with rt.tenant_db.acquire() as conn:
         found = await conn.execute_core(select(org_roles.c.id).where(org_roles.c.id == resolved))
         if found.fetchone() is None:
-            raise HTTPException(
-                status_code=422, detail=f"Role '{resolved}' does not exist in org '{org_id}'"
+            raise ApiError(
+                422,
+                "invites.role_not_in_org",
+                f"Role '{resolved}' does not exist in org '{org_id}'",
+                role_id=resolved,
+                org_id=org_id,
             )
     return resolved
 
@@ -127,7 +136,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     identity = getattr(request.state, "identity", None)
     # Audit attribution must be a real user — never fall back to "system".
     if identity is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise ApiError(401, "auth.authentication_required", "Authentication required")
     await _require_org_admin(request, body.org_id)
     created_by = identity.user_id
     # token and expiry are computed app-side (portable) rather than via
@@ -143,7 +152,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
         )
         org_row = result.fetchone()
         if org_row is None:
-            raise HTTPException(status_code=404, detail="Org not found")
+            raise ApiError(404, "invites.org_not_found", "Org not found")
         org_name = org_row._mapping["name"]
     # REQ-1313/REQ-1314: resolve the default and validate against the target org's roles BEFORE the
     # insert, so a refused role leaves no invitation row behind and the inviter sees the refusal
@@ -213,7 +222,7 @@ async def _deliver_invite(  # REQ-1310
 
     cfg = getattr(_app_state, "config", None)
     if cfg is None:
-        raise HTTPException(status_code=503, detail="Server configuration is not loaded")
+        raise ApiError(503, "invites.config_not_loaded", "Server configuration is not loaded")
     if not getattr(cfg, "multitenancy", False):  # REQ-1330
         return "saas_only"
     message = compose_invite_message(
@@ -252,7 +261,7 @@ async def _administered_org_scope(request: Request) -> str | None:  # REQ-1266
         return None  # holds cross_org: all orgs
     active_org = getattr(request.state, "active_org_id", None)
     if Capability.USER_MANAGEMENT.value not in caps or active_org is None:
-        raise HTTPException(status_code=403, detail="user_management required")
+        raise ApiError(403, "invites.user_management_required", "user_management required")
     return active_org
 
 
@@ -293,5 +302,7 @@ async def revoke_invite(token: str, request: Request):  # REQ-516
         result = await conn.execute_core(stmt.returning(org_invites.c.token))
         row = result.fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Invite not found or already used")
+        raise ApiError(
+            404, "invites.invite_not_found_or_used", "Invite not found or already used"
+        )
     return {"revoked": token}

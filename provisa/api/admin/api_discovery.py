@@ -19,6 +19,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from urllib.parse import urlparse
 
+from provisa.api.errors import ApiError
+
 from provisa.api_source.candidates import (
     accept_candidate,
     list_candidates,
@@ -58,7 +60,7 @@ async def discover(req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
         from provisa.api.app import state
 
         if state.tenant_db is None:
-            raise HTTPException(status_code=503, detail="Database not connected")
+            raise ApiError(503, "discovery.database_not_connected", "Database not connected")
 
         if req.type == ApiSourceType.openapi:
             candidates = await introspect_openapi(req.spec_url)
@@ -67,7 +69,12 @@ async def discover(req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
         elif req.type == ApiSourceType.grpc_api:
             candidates = await introspect_grpc(req.spec_url)
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown source type: {req.type}")
+            raise ApiError(
+                400,
+                "discovery.unknown_source_type",
+                f"Unknown source type: {req.type}",
+                type=str(req.type),
+            )
 
         for c in candidates:
             c.source_id = req.source_id
@@ -100,7 +107,7 @@ async def get_candidates(source_id: str | None = None):  # REQ-308, REQ-316, REQ
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "discovery.database_not_connected", "Database not connected")
 
     pool = state.tenant_db
     assert pool is not None
@@ -116,7 +123,7 @@ async def accept(candidate_id: int, req: AcceptRequest | None = None):  # REQ-31
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "discovery.database_not_connected", "Database not connected")
 
     overrides = req.overrides if req else None
     pool = state.tenant_db
@@ -125,7 +132,12 @@ async def accept(candidate_id: int, req: AcceptRequest | None = None):  # REQ-31
         async with pool.acquire() as _conn:
             endpoint = await accept_candidate(_conn, candidate_id, overrides)
     except IntegrityError as e:
-        raise HTTPException(status_code=400, detail=f"Endpoint already registered: {e}")
+        raise ApiError(
+            400,
+            "discovery.endpoint_already_registered",
+            f"Endpoint already registered: {e}",
+            error=str(e),
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -138,7 +150,7 @@ async def reject(candidate_id: int):  # REQ-311, REQ-321, REQ-329
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "discovery.database_not_connected", "Database not connected")
 
     pool = state.tenant_db
     assert pool is not None

@@ -38,6 +38,7 @@ from fastapi.responses import JSONResponse, Response
 from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
 
+from provisa.api.errors import ApiError
 from provisa.cache.key import cache_key, is_cacheable
 from provisa.cache.middleware import build_cache_headers, check_cache
 from provisa.compiler.hints import extract_graphql_hints
@@ -128,7 +129,7 @@ async def _resolve_apq(
 
         expected = compute_apq_hash(request.query)
         if expected != apq_hash:
-            raise HTTPException(status_code=400, detail="APQ hash mismatch")
+            raise ApiError(400, "data.apq_hash_mismatch", "APQ hash mismatch")
     return request
 
 
@@ -154,7 +155,7 @@ async def compile_endpoint(  # REQ-161, REQ-163
     auth_role = getattr(raw_request.state, "role", None)
     role_id = auth_role or x_provisa_role
     if not role_id or role_id not in state.contexts:
-        raise HTTPException(status_code=403, detail="No accessible schema for role")
+        raise ApiError(403, "data.no_accessible_schema_for_role", "No accessible schema for role")
     try:
         results = await _compile_only(role_id, request.query, request.variables)
     except ValueError as exc:
@@ -232,9 +233,11 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     role_id = auth_role or x_provisa_role or request.role
 
     if role_id not in state.schemas:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No schema available for role {role_id!r}",
+        raise ApiError(
+            400,
+            "data.no_schema_available_for_role",
+            f"No schema available for role {role_id!r}",
+            role_id=role_id,
         )
 
     role = state.roles.get(role_id)
@@ -254,7 +257,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     request = apq_result
 
     if not request.query:
-        raise HTTPException(status_code=400, detail="query is required")
+        raise ApiError(400, "data.query_required", "query is required")
 
     # Legacy comment hints (kept for backwards compat)
     _legacy_hints = extract_graphql_hints(request.query)
@@ -338,7 +341,9 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         try:
             _as_of = parse_as_of(x_provisa_as_of)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=f"invalid X-Provisa-As-Of: {exc}")
+            raise ApiError(
+                400, "data.invalid_as_of", f"invalid X-Provisa-As-Of: {exc}", error=str(exc)
+            )
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
@@ -512,7 +517,12 @@ async def _prepare_compiled(
             )
             resp = await state.approval_hook.evaluate(req)
             if not resp.approved:
-                raise HTTPException(status_code=403, detail=f"Approval denied: {resp.reason}")
+                raise ApiError(
+                    403,
+                    "data.approval_denied",
+                    f"Approval denied: {resp.reason}",
+                    reason=str(resp.reason),
+                )
             if resp.additional_filter:
                 compiled.sql = _inject_where(compiled.sql, f"({resp.additional_filter})")
 
@@ -729,7 +739,9 @@ async def _execute_one_field(
             )
             return root_field, None, redirect_info, ck, None
         except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Redirect upload failed: {e}") from e
+            raise ApiError(
+                502, "data.redirect_upload_failed", f"Redirect upload failed: {e}", error=str(e)
+            ) from e
 
     return await _exec_inline_result(
         compiled,
@@ -797,11 +809,13 @@ async def _handle_query(
         return JSONResponse(content={"data": data}, headers=build_cache_headers(None))
 
     if action_sels and regular_names:
-        raise HTTPException(status_code=400, detail="Cannot mix action fields with table queries")
+        raise ApiError(
+            400, "data.mixed_action_and_table_queries", "Cannot mix action fields with table queries"
+        )
 
     compiled_queries = compile_query(document, ctx, variables)
     if not compiled_queries:
-        raise HTTPException(status_code=400, detail="No query fields found")
+        raise ApiError(400, "data.no_query_fields", "No query fields found")
 
     fresh_mvs = state.mv_registry.get_fresh()
 
@@ -860,8 +874,11 @@ async def _handle_query(
                 timeout=_role_timeout,
             )
         except asyncio.TimeoutError:
-            raise HTTPException(
-                status_code=504, detail=f"Query timed out after {_role_timeout:.0f}s"
+            raise ApiError(
+                504,
+                "data.query_timeout",
+                f"Query timed out after {_role_timeout:.0f}s",
+                timeout_s=f"{_role_timeout:.0f}",
             )
         if cached_entry is not None:
             headers = build_cache_headers(cached_entry)
@@ -912,8 +929,11 @@ async def _handle_query(
             timeout=_role_timeout,
         )
     except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=504, detail=f"Query timed out after {_role_timeout:.0f}s"
+        raise ApiError(
+            504,
+            "data.query_timeout",
+            f"Query timed out after {_role_timeout:.0f}s",
+            timeout_s=f"{_role_timeout:.0f}",
         )
 
     for root_field, field_rows, redirect_info, _, cached_entry in results:
@@ -951,7 +971,7 @@ async def touch_table(  # REQ-174
         None,
     )
     if table_obj is None:
-        raise HTTPException(status_code=404, detail=f"Table {table!r} not found")
+        raise ApiError(404, "data.table_not_found", f"Table {table!r} not found", table=table)
 
     emit_change_event(table_obj.table_name, table_obj.source_id, "touch")
     return Response(status_code=204)

@@ -27,6 +27,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from provisa.api.errors import ApiError
 from provisa.grpc.query_ir import grpc_table_to_semantic_sql
 from provisa.grpc.proto_gen import _to_proto_field_name
 from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
@@ -142,9 +143,9 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
     body = await request.json()
     name = body.get("name")
     if not name:
-        raise HTTPException(status_code=400, detail="Missing command name")
+        raise ApiError(400, "data.missing_command_name", "Missing command name")
     if name not in (getattr(state, "tracked_functions", {}) or {}):
-        raise HTTPException(status_code=404, detail=f"Unknown command {name!r}")
+        raise ApiError(404, "data.unknown_command", f"Unknown command {name!r}", name=name)
 
     raw = body.get("args_json")
     parsed_args: Any
@@ -154,11 +155,13 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
         try:
             parsed_args = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=400, detail=f"args_json not valid JSON: {exc}")
+            raise ApiError(
+                400, "data.args_json_invalid", f"args_json not valid JSON: {exc}", error=str(exc)
+            )
     else:
         parsed_args = raw
     if not isinstance(parsed_args, dict):
-        raise HTTPException(status_code=400, detail="args_json must be a JSON object")
+        raise ApiError(400, "data.args_json_not_object", "args_json must be a JSON object")
     args = parsed_args
 
     try:
@@ -181,9 +184,11 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
     limit = int(body.get("limit", 100))
 
     if not role_id:
-        raise HTTPException(status_code=400, detail="Missing role_id")
+        raise ApiError(400, "data.missing_role_id", "Missing role_id")
     if role_id not in state.schemas:
-        raise HTTPException(status_code=404, detail=f"No schema for role {role_id!r}")
+        raise ApiError(
+            404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+        )
 
     ctx = state.contexts[role_id]
     mask_map = _parse_read_mask(body)
@@ -192,9 +197,12 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
     # Lower the request straight to a semantic SELECT — never round-trip through GraphQL.
     semantic_sql = grpc_table_to_semantic_sql(ctx, type_name, limit)
     if semantic_sql is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No query field for proto type {type_name!r} under role {role_id!r}",
+        raise ApiError(
+            404,
+            "data.no_query_field_for_proto_type",
+            f"No query field for proto type {type_name!r} under role {role_id!r}",
+            type_name=type_name,
+            role_id=role_id,
         )
 
     try:

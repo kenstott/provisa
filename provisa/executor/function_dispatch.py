@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 
+from provisa.api.errors import ApiError
 from provisa.otel_compat import (
     TRANSPORT_BY_KIND,
     MintedSession,
@@ -64,9 +65,12 @@ async def _run_subprocess(argv: list[str], payload: bytes) -> bytes:
     )
     out, err = await proc.communicate(payload)
     if proc.returncode != 0:
-        raise HTTPException(
-            status_code=502,
-            detail=f"script exited {proc.returncode}: {err.decode(errors='replace')}",
+        raise ApiError(
+            502,
+            "functions.script_failed",
+            f"script exited {proc.returncode}: {err.decode(errors='replace')}",
+            returncode=proc.returncode,
+            stderr=err.decode(errors="replace"),
         )
     return out
 
@@ -97,9 +101,11 @@ def _grpc_method_path(method: str) -> str:
     if "/" in method:
         return "/" + method.lstrip("/")
     if "." not in method:
-        raise HTTPException(
-            status_code=400,
-            detail=f"grpc method {method!r} must be 'Service/Method' or 'pkg.Service.Method'",
+        raise ApiError(
+            400,
+            "functions.grpc_method_invalid",
+            f"grpc method {method!r} must be 'Service/Method' or 'pkg.Service.Method'",
+            method=method,
         )
     service, _, name = method.rpartition(".")
     return f"/{service}/{name}"
@@ -138,9 +144,14 @@ async def _grpc_call(
         )
         response = await rpc(request, timeout=timeout)
     except grpc.aio.AioRpcError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"grpc call {target}{path} failed: {exc.code().name}: {exc.details()}",
+        raise ApiError(
+            502,
+            "functions.grpc_call_failed",
+            f"grpc call {target}{path} failed: {exc.code().name}: {exc.details()}",
+            target=target,
+            path=path,
+            status=exc.code().name,
+            details=str(exc.details()),
         ) from exc
     finally:
         await channel.close()
@@ -160,13 +171,20 @@ async def _materialize_relation(ref: str, state, columns: list[str] | None = Non
     would carry extra columns the contract rejects). No contract ⇒ full ``SELECT *``."""
     parts = ref.split(".")
     if len(parts) < _QUALIFIED_REF_PARTS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"result_set ref {ref!r} must be source.schema.table",
+        raise ApiError(
+            400,
+            "functions.result_set_ref_invalid",
+            f"result_set ref {ref!r} must be source.schema.table",
+            ref=ref,
         )
     src_id, schema, table = parts[0], parts[1], parts[2]
     if not state.source_pools.has(src_id):
-        raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
+        raise ApiError(
+            503,
+            "functions.source_not_connected",
+            f"Source '{src_id}' not connected",
+            source_id=src_id,
+        )
     projection = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     sql = f'SELECT {projection} FROM "{schema}"."{table}"'
     result = await state.source_pools.execute(src_id, sql, [])
@@ -247,7 +265,13 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
             payload[name] = materialized
             input_refs.append(str(value))
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown arg_kind {kind!r} for {name!r}")
+            raise ApiError(
+                400,
+                "functions.unknown_arg_kind",
+                f"Unknown arg_kind {kind!r} for {name!r}",
+                arg_kind=kind,
+                name=name,
+            )
     return payload, input_refs
 
 
@@ -261,9 +285,12 @@ def _require(
 ) -> object:  # object-ok: binding values are truly-any JSON
     """Fetch a required binding key or fail loud — no silent default (REQ-885)."""
     if key not in binding or binding[key] in (None, "", []):
-        raise HTTPException(
-            status_code=400,
-            detail=f"function binding for kind {kind!r} is missing required key {key!r}",
+        raise ApiError(
+            400,
+            "functions.binding_missing_key",
+            f"function binding for kind {kind!r} is missing required key {key!r}",
+            kind=kind,
+            key=key,
         )
     return binding[key]
 
@@ -302,12 +329,14 @@ def _check_egress(state, endpoint: str, kind: str) -> None:
     allowlist = getattr(state, "udf_egress_allowlist", None) or []
     if host in allowlist or hostport in allowlist:
         return
-    raise HTTPException(
-        status_code=403,
-        detail=(
+    raise ApiError(
+        403,
+        "functions.egress_denied",
+        (
             f"egress to {endpoint!r} is denied: host not on the UDF egress allow-list "
             f"(REQ-885 deny-by-default). Add it to udf_egress_allowlist to permit."
         ),
+        endpoint=endpoint,
     )
 
 
@@ -334,20 +363,28 @@ def _reject_rowwise_external(fn: dict) -> None:
         return
     if any(a.get("arg_kind", "column_value") in _RELATION_ARG_KINDS for a in declared):
         return
-    raise HTTPException(
-        status_code=400,
-        detail=(
+    raise ApiError(
+        400,
+        "functions.rowwise_external",
+        (
             f"function {fn.get('name', '')!r} (kind={fn.get('impl_kind')}) is row-wise external: "
             "all arguments are scalar column_value. Declare a table_ref/result_set relation "
             "argument so calls are set-wise and batched (REQ-885)."
         ),
+        name=fn.get("name", ""),
+        impl_kind=str(fn.get("impl_kind")),
     )
 
 
 async def _exec_source_procedure(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
     src_id = fn["source_id"]
     if not state.source_pools.has(src_id):
-        raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
+        raise ApiError(
+            503,
+            "functions.source_not_connected",
+            f"Source '{src_id}' not connected",
+            source_id=src_id,
+        )
     params = list(args.values())
     placeholders = ", ".join(f"${i + 1}" for i in range(len(params)))
     sql = f'SELECT * FROM "{fn["schema_name"]}"."{fn["function_name"]}"({placeholders})'
@@ -393,8 +430,11 @@ async def _exec_python(
 ) -> list[dict]:
     spec = str(_require(fn["binding"], "callable", "python"))
     if ":" not in spec:
-        raise HTTPException(
-            status_code=400, detail=f"python callable {spec!r} must be 'module:attr'"
+        raise ApiError(
+            400,
+            "functions.python_callable_invalid",
+            f"python callable {spec!r} must be 'module:attr'",
+            spec=spec,
         )
     mod_name, attr = spec.split(":", 1)
     fn_obj = getattr(importlib.import_module(mod_name), attr)
@@ -412,8 +452,11 @@ def _rows_from_response(
         return list(body)
     if isinstance(body, dict):
         return [body]
-    raise HTTPException(
-        status_code=502, detail=f"function returned non-tabular payload: {type(body)!r}"
+    raise ApiError(
+        502,
+        "functions.non_tabular_payload",
+        f"function returned non-tabular payload: {type(body)!r}",
+        payload_type=str(type(body)),
     )
 
 
@@ -457,7 +500,12 @@ async def dispatch_function(  # REQ-885, REQ-886
     impl_kind = fn.get("impl_kind", "source_procedure")
     executor = _EXECUTORS.get(impl_kind)
     if executor is None:
-        raise HTTPException(status_code=400, detail=f"Unknown function impl_kind: {impl_kind!r}")
+        raise ApiError(
+            400,
+            "functions.unknown_impl_kind",
+            f"Unknown function impl_kind: {impl_kind!r}",
+            impl_kind=str(impl_kind),
+        )
     transport = TRANSPORT_BY_KIND[impl_kind]
     identity = "definer" if fn.get("materialize") else "invoker"
     _reject_rowwise_external(fn)

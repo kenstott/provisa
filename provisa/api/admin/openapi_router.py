@@ -29,6 +29,8 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, model_validator
 
+from provisa.api.errors import ApiError
+
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/openapi", tags=["admin", "openapi"])
 
@@ -92,7 +94,7 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
             resolved_base_url = servers[0].get("url", "")
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "openapi.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
@@ -161,7 +163,9 @@ async def register_openapi_source(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Registration failed: {exc}") from exc
+        raise ApiError(
+            422, "openapi.registration_failed", f"Registration failed: {exc}", error=str(exc)
+        ) from exc
 
     log.info(
         "Registered OpenAPI source %s (%d tables, %d mutations)",
@@ -183,7 +187,12 @@ async def refresh_openapi_source(source_id: str):  # REQ-321
 
     specs = getattr(state, "openapi_specs", {})
     if source_id not in specs:
-        raise HTTPException(status_code=404, detail=f"OpenAPI source {source_id!r} not registered")
+        raise ApiError(
+            404,
+            "openapi.source_not_registered",
+            f"OpenAPI source {source_id!r} not registered",
+            source_id=source_id,
+        )
 
     reg = specs[source_id]
     try:
@@ -201,7 +210,9 @@ async def refresh_openapi_source(source_id: str):  # REQ-321
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Refresh failed: {exc}") from exc
+        raise ApiError(
+            422, "openapi.refresh_failed", f"Refresh failed: {exc}", error=str(exc)
+        ) from exc
 
     log.info(
         "Refreshed OpenAPI source %s (%d tables, %d mutations)", source_id, n_tables, n_mutations
@@ -227,7 +238,9 @@ async def preview_openapi_spec(body: OpenAPIPreviewRequest):  # REQ-315, REQ-407
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Spec load failed: {exc}") from exc
+        raise ApiError(
+            422, "openapi.spec_load_failed", f"Spec load failed: {exc}", error=str(exc)
+        ) from exc
 
     queries, mutations = parse_spec(spec)
     info = spec.get("info", {})
@@ -264,7 +277,12 @@ async def get_openapi_spec(source_id: str):
 
     specs = getattr(state, "openapi_specs", {})
     if source_id not in specs:
-        raise HTTPException(status_code=404, detail=f"OpenAPI source {source_id!r} not registered")
+        raise ApiError(
+            404,
+            "openapi.source_not_registered",
+            f"OpenAPI source {source_id!r} not registered",
+            source_id=source_id,
+        )
     return specs[source_id]["spec"]
 
 
@@ -276,13 +294,15 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-31
     try:
         spec = await request.json()
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid JSON: {exc}") from exc
+        raise ApiError(
+            422, "openapi.invalid_json", f"Invalid JSON: {exc}", error=str(exc)
+        ) from exc
 
     from provisa.openapi.register import auto_register_openapi_source
     from provisa.api.admin.actions_router import _ensure_tables
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "openapi.database_not_connected", "Database not connected")
 
     put_pool = state.tenant_db
     await _ensure_tables(put_pool)

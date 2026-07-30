@@ -23,6 +23,7 @@ import {
 } from "../api/admin";
 import type { InviteInfo } from "../api/admin";
 import { CLAIMED_ADMIN_FLAG } from "../components/PlatformAdminWelcomeModal";
+import { serverMessage, requestFailed } from "../i18n/serverMessage";
 import { startSession } from "../lib/session";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
@@ -113,7 +114,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     });
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-      setError(body.detail || `Login failed: ${resp.status}`);
+      setError(serverMessage(body, requestFailed("Login", resp.status)));
       setLoading(false);
       return;
     }

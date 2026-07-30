@@ -10,6 +10,8 @@
 
 // Security posture config (REQ-693).
 
+import { requestFailed } from "../i18n/serverMessage";
+
 const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
 
 export interface SecurityMode {
@@ -26,7 +28,7 @@ export interface SecurityState {
 
 export async function fetchSecurity(): Promise<SecurityState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/security`);
-  if (!resp.ok) throw new Error(`Security fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Security fetch", resp.status));
   return resp.json();
 }
 
@@ -38,6 +40,6 @@ export async function setSecurity(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`Security update failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Security update", resp.status));
   return resp.json();
 }

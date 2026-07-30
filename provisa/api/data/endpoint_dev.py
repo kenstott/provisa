@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from provisa.cypher.label_map import CypherLabelMap
 
 from provisa.api.admin._dev_shared import detect_target
+from provisa.api.errors import ApiError
 from provisa.core import domain_policy
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
@@ -67,9 +68,9 @@ async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
     if domain_list:
         role = state.roles.get(role_id)
         if role is None:
-            raise HTTPException(status_code=404, detail=f"No role {role_id!r}")
+            raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
         if not state.schema_build_cache:
-            raise HTTPException(status_code=503, detail="Schema build cache not ready")
+            raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
         from provisa.api.data.sdl import _reachable_table_ids
         from provisa.compiler.schema_gen import SchemaInput
 
@@ -117,9 +118,11 @@ async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
         return Response(content=proto, media_type="text/plain")
 
     if role_id not in state.proto_files:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No proto file available for role {role_id!r}",
+        raise ApiError(
+            404,
+            "data.no_proto_for_role",
+            f"No proto file available for role {role_id!r}",
+            role_id=role_id,
         )
     return Response(content=state.proto_files[role_id], media_type="text/plain")
 
@@ -141,7 +144,9 @@ async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
         )
         _row = result.fetchone()
     if _row is None:
-        raise HTTPException(status_code=404, detail=f"No govdata source {source_id!r}")
+        raise ApiError(
+            404, "data.no_govdata_source", f"No govdata source {source_id!r}", source_id=source_id
+        )
     row = dict(_row._mapping)
 
     api_key = resolve_secrets(row["username"] or "")
@@ -230,7 +235,9 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         try:
             _as_of = parse_as_of(x_provisa_as_of)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=f"invalid X-Provisa-As-Of: {exc}")
+            raise ApiError(
+                400, "data.invalid_as_of", f"invalid X-Provisa-As-Of: {exc}", error=str(exc)
+            )
 
     import time as _time
     from provisa.executor import stats as _qs_mod
@@ -277,7 +284,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # shared function hook. Surface-specific request auth (capability gate) is a pre-check here; as_of
     # (REQ-1163) + discovery_mode are query-shaping params threaded in.
     if role_id not in state.schemas:
-        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
+        raise ApiError(400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id)
     role = state.roles.get(role_id)
     _check_sql_capabilities(role, request.discovery_mode)
     from provisa.pgwire._pipeline import execute_sql_batch
@@ -608,7 +615,7 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
     if role_id not in state.contexts:
-        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
+        raise ApiError(400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id)
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
@@ -644,8 +651,11 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     )
 
     if last_error:
-        raise HTTPException(
-            status_code=422, detail=f"Could not generate valid SQL after 3 attempts: {last_error}"
+        raise ApiError(
+            422,
+            "data.sql_generation_failed",
+            f"Could not generate valid SQL after 3 attempts: {last_error}",
+            error=str(last_error),
         )
 
     return {"sql": last_sql, "attempts": attempt}

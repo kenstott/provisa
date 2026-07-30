@@ -149,8 +149,12 @@ def require_mutation_write(action: dict, role: dict | None, field_name: str) -> 
         return
     allowed, reason = authorize_mutation(role, action.get("writable_by") or [])
     if not allowed:
-        from fastapi import HTTPException  # noqa: PLC0415
+        from provisa.api.errors import ApiError  # noqa: PLC0415
 
-        raise HTTPException(
-            status_code=403, detail=f"Mutation {field_name!r} not permitted: {reason}"
+        raise ApiError(
+            403,
+            "authz.mutation_not_permitted",
+            f"Mutation {field_name!r} not permitted: {reason}",
+            field_name=field_name,
+            reason=reason,
         )

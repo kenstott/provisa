@@ -336,6 +336,8 @@ async def register_table(
     return MutationResult(
         success=True,
         message=f"Table {input.table_name!r} registered (id={table_id})",
+        code="schema.table_registered",
+        params={"table": input.table_name, "id": table_id},
     )
 
 
@@ -364,14 +366,15 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
         )
         row = _res.fetchone()
     if not row:
-        return MutationResult(success=False, message=f"Table {table_id} not found")
+        return MutationResult(success=False, message=f"Table {table_id} not found", code="schema.table_not_found", params={"table": table_id})
     if row.source_id != DERIVED_SOURCE_ID:
         return MutationResult(
             success=False,
             message="Table is not a virtual Provisa view (source_id != '__derived__')",
+            code="schema.not_virtual_view",
         )
     if not row.view_sql:
-        return MutationResult(success=False, message="Table has no view_sql")
+        return MutationResult(success=False, message="Table has no view_sql", code="schema.no_view_sql")
 
     view_sql = row.view_sql
     view_name = row.alias or row.table_name
@@ -418,11 +421,13 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
             hit_sources[source_id] = schema_name
 
     if not hit_sources:
-        return MutationResult(success=False, message="no recognized table references")
+        return MutationResult(success=False, message="no recognized table references", code="schema.no_table_refs")
     if len(hit_sources) > 1:
         return MutationResult(
             success=False,
             message=f"view spans multiple sources: {', '.join(sorted(hit_sources))}",
+            code="schema.view_spans_sources",
+            params={"sources": ", ".join(sorted(hit_sources))},
         )
 
     target_source_id = next(iter(hit_sources))
@@ -430,7 +435,10 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
 
     if not state.source_pools.has(target_source_id):
         return MutationResult(
-            success=False, message=f"source {target_source_id!r} has no active connection"
+            success=False,
+            message=f"source {target_source_id!r} has no active connection",
+            code="schema.source_no_connection",
+            params={"source": target_source_id},
         )
 
     dialect = state.source_pools.dialect_for(target_source_id) or "postgres"
@@ -450,6 +458,8 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
     return MutationResult(
         success=True,
         message=f"View '{view_name}' deployed to {target_source_id!r} schema '{target_schema}'",
+        code="schema.view_deployed",
+        params={"view": view_name, "source": target_source_id, "schema": target_schema},
     )
 
 
@@ -505,53 +515,55 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
 
     path = _config_path()
     if not path.exists():
-        return MutationResult(success=False, message="Config file not found")
+        return MutationResult(success=False, message="Config file not found", code="schema.config_not_found")
 
     kind = kind.strip().lower()
     if kind not in ("webhook", "sql"):
-        return MutationResult(success=False, message=f"Unknown trigger kind {kind!r}")
+        return MutationResult(success=False, message=f"Unknown trigger kind {kind!r}", code="schema.unknown_trigger_kind", params={"kind": kind})
     if not id.strip() or not name.strip() or not cron.strip():
-        return MutationResult(success=False, message="id, name, and cron are required")
+        return MutationResult(success=False, message="id, name, and cron are required", code="schema.trigger_fields_required")
 
     trigger: dict = {"id": id.strip(), "name": name.strip(), "cron": cron.strip(), "enabled": True}
 
     if kind == "webhook":
         if not webhook_name:
             return MutationResult(
-                success=False, message="webhook_name is required for a webhook trigger"
+                success=False,
+                message="webhook_name is required for a webhook trigger",
+                code="schema.webhook_name_required",
             )
         if sql:  # fail loud on url/sql collision (REQ-1003)
-            return MutationResult(success=False, message="url and sql are mutually exclusive")
+            return MutationResult(success=False, message="url and sql are mutually exclusive", code="schema.url_sql_exclusive")
         pool = await _get_pool()
         if pool is None:
-            return MutationResult(success=False, message="Database pool not available")
+            return MutationResult(success=False, message="Database pool not available", code="schema.db_pool_unavailable")
         async with pool.acquire() as conn:
             res = await conn.execute_core(
                 select(tracked_webhooks.c.url).where(tracked_webhooks.c.name == webhook_name)
             )
             row = res.fetchone()
         if row is None:
-            return MutationResult(success=False, message=f"Webhook {webhook_name!r} not found")
+            return MutationResult(success=False, message=f"Webhook {webhook_name!r} not found", code="schema.webhook_not_found", params={"webhook": webhook_name})
         trigger["url"] = row[0]
         trigger["webhook_name"] = webhook_name
         if args_json:
             trigger["args"] = _json.loads(args_json)
     else:  # sql
         if not sql or not sql.strip():
-            return MutationResult(success=False, message="sql is required for a SQL trigger")
+            return MutationResult(success=False, message="sql is required for a SQL trigger", code="schema.sql_required")
         trigger["sql"] = sql.strip()
 
     cfg = read_config()
     triggers = cfg.setdefault("scheduled_triggers", [])
     if any(t.get("id") == trigger["id"] for t in triggers):
-        return MutationResult(success=False, message=f"Trigger {trigger['id']!r} already exists")
+        return MutationResult(success=False, message=f"Trigger {trigger['id']!r} already exists", code="schema.trigger_exists", params={"trigger": trigger["id"]})
     triggers.append(trigger)
 
     with open(path, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
 
     _register_trigger_live(trigger)
-    return MutationResult(success=True, message=f"Scheduled task {trigger['id']!r} created")
+    return MutationResult(success=True, message=f"Scheduled task {trigger['id']!r} created", code="schema.scheduled_task_created", params={"task": trigger["id"]})
 
 
 async def delete_scheduled_task_op(task_id: str) -> MutationResult:  # REQ-1003
@@ -565,13 +577,13 @@ async def delete_scheduled_task_op(task_id: str) -> MutationResult:  # REQ-1003
 
     path = _config_path()
     if not path.exists():
-        return MutationResult(success=False, message="Config file not found")
+        return MutationResult(success=False, message="Config file not found", code="schema.config_not_found")
 
     cfg = read_config()
     triggers = cfg.get("scheduled_triggers", [])
     remaining = [t for t in triggers if t.get("id") != task_id]
     if len(remaining) == len(triggers):
-        return MutationResult(success=False, message=f"Task {task_id!r} not found")
+        return MutationResult(success=False, message=f"Task {task_id!r} not found", code="schema.task_not_found", params={"task": task_id})
     cfg["scheduled_triggers"] = remaining
 
     with open(path, "w") as f:
@@ -584,4 +596,4 @@ async def delete_scheduled_task_op(task_id: str) -> MutationResult:  # REQ-1003
         except JobLookupError:
             # Disabled triggers are persisted but never scheduled — absence is expected.
             pass
-    return MutationResult(success=True, message=f"Task {task_id!r} deleted")
+    return MutationResult(success=True, message=f"Task {task_id!r} deleted", code="schema.task_deleted", params={"task": task_id})

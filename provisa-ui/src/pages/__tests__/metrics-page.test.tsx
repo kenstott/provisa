@@ -193,7 +193,8 @@ describe("MetricsPage fact-sourced builder", () => {
     expect(screen.getByTestId("metric-datatype-input")).toHaveValue("bigint");
   });
 
-  it("keeps the expression textarea as a free-text escape hatch", async () => {
+  // 15s: long userEvent sequence; under full-suite load the 5s default trips.
+  it("keeps the expression textarea as a free-text escape hatch", { timeout: 15000 }, async () => {
     upsertMetric.mockResolvedValue({ success: true, message: "ok" });
     render(<MetricsPage />);
     await userEvent.click(screen.getByTestId("metrics-new-button"));

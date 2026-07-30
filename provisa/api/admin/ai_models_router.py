@@ -14,9 +14,10 @@ bind at startup, so changes take effect only after a service restart.
 
 # Requirements: REQ-464, REQ-419, REQ-500, REQ-370
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 
 from provisa.api.admin._config_io import config_path, read_config, write_config
+from provisa.api.errors import ApiError
 
 router = APIRouter()
 
@@ -84,9 +85,10 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
         vms = body["vector_models"] or []
         for vm in vms:
             if not (vm.get("id") and vm.get("provider") and vm.get("dimensions")):
-                raise HTTPException(
-                    status_code=400,
-                    detail="each vector_models entry requires id, provider, and dimensions",
+                raise ApiError(
+                    400,
+                    "ai_models.vector_model_fields_required",
+                    "each vector_models entry requires id, provider, and dimensions",
                 )
         cfg["vector_models"] = vms
         updated.append("vector_models")

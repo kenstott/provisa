@@ -16,10 +16,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, insert, or_, select, update
 
+from provisa.api.errors import ApiError
 from provisa.core.schema_org import roles
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ def _active_org(request: Request) -> str:
     """
     org_id = getattr(request.state, "active_org_id", None)
     if org_id is None:
-        raise HTTPException(status_code=401, detail="Org selection required")
+        raise ApiError(401, "roles.org_selection_required", "Org selection required")
     return org_id
 
 
@@ -106,10 +107,10 @@ async def update_role(
         )
         existing = result.fetchone()
         if existing is None:
-            raise HTTPException(status_code=404, detail="Role not found")
+            raise ApiError(404, "roles.not_found", "Role not found")
         existing = dict(existing._mapping)
         if existing["org_id"] is None:
-            raise HTTPException(status_code=400, detail="Cannot modify system roles")
+            raise ApiError(400, "roles.cannot_modify_system", "Cannot modify system roles")
 
         new_caps = body.capabilities if body.capabilities is not None else existing["capabilities"]
         new_domains = (
@@ -136,9 +137,9 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
         result = await conn.execute_core(select(roles.c.org_id).where(roles.c.id == role_id))
         existing = result.fetchone()
         if existing is None:
-            raise HTTPException(status_code=404, detail="Role not found")
+            raise ApiError(404, "roles.not_found", "Role not found")
         if existing._mapping["org_id"] is None:
-            raise HTTPException(status_code=400, detail="Cannot delete system roles")
+            raise ApiError(400, "roles.cannot_delete_system", "Cannot delete system roles")
 
         await conn.execute_core(_delete(roles).where(roles.c.id == role_id))
     return {"deleted": role_id}

@@ -21,10 +21,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import and_, delete
 
+from provisa.api.errors import ApiError
 from provisa.core.schema_org import domains, registered_tables, sources
 
 if TYPE_CHECKING:
@@ -226,7 +227,9 @@ async def register_graphql_remote_source(  # REQ-307, REQ-308, REQ-311, REQ-312,
             field_overrides=body.field_overrides or None,
         )
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Introspection failed: {exc}") from exc
+        raise ApiError(
+            422, "graphql_remote.introspection_failed", f"Introspection failed: {exc}", error=str(exc)
+        ) from exc
 
     all_relationships = auto_relationships + (body.relationships or [])
     registration = GraphQLRemoteRegistration(
@@ -311,8 +314,11 @@ async def refresh_graphql_remote_source(source_id: str):  # REQ-311, REQ-598
 
     sources = getattr(state, "graphql_remote_sources", {})
     if source_id not in sources:
-        raise HTTPException(
-            status_code=404, detail=f"GraphQL remote source {source_id!r} not found"
+        raise ApiError(
+            404,
+            "graphql_remote.source_not_found",
+            f"GraphQL remote source {source_id!r} not found",
+            source_id=source_id,
         )
 
     reg = sources[source_id]
@@ -326,7 +332,12 @@ async def refresh_graphql_remote_source(source_id: str):  # REQ-311, REQ-598
             field_overrides=reg.get("field_overrides") or None,
         )
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Re-introspection failed: {exc}") from exc
+        raise ApiError(
+            422,
+            "graphql_remote.reintrospection_failed",
+            f"Re-introspection failed: {exc}",
+            error=str(exc),
+        ) from exc
 
     manual_rels = [r for r in reg.get("relationships", []) if r.get("remote_managed") is not True]
     all_relationships = auto_relationships + manual_rels

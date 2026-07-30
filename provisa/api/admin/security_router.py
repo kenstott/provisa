@@ -8,9 +8,10 @@
 
 # Requirements: REQ-693
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 
 from provisa.api.admin._config_io import config_path, read_config, write_config
+from provisa.api.errors import ApiError
 
 router = APIRouter()
 
@@ -47,7 +48,9 @@ async def set_security(request: Request):  # REQ-693
     body = await request.json()
     mode = body.get("mode")
     if mode not in {m["key"] for m in _SECURITY_MODES}:
-        raise HTTPException(status_code=400, detail=f"unknown security mode {mode!r}")
+        raise ApiError(
+            400, "security.unknown_mode", f"unknown security mode {mode!r}", mode=str(mode)
+        )
     path = config_path()
     cfg = read_config()
     sec = dict(cfg.get("security", {}) or {})

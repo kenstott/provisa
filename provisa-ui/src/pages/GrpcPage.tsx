@@ -17,6 +17,7 @@ import { Badge, Button, Group, Select, Tabs, Text } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./GrpcPage.css";
+import { serverMessage } from "../i18n/serverMessage";
 
 type OperationType = "query" | "mutation" | "command";
 type LeftTab = "body" | "proto";
@@ -262,7 +263,7 @@ export function GrpcPage() {
         });
         const json = await res.json();
         if (!res.ok) {
-          setError((json as { detail?: string }).detail ?? JSON.stringify(json));
+          setError(serverMessage(json as { detail?: string }, JSON.stringify(json)));
         } else {
           setResponse(JSON.stringify(json, null, 2));
         }
@@ -280,7 +281,7 @@ export function GrpcPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError((json as { detail?: string }).detail ?? JSON.stringify(json));
+        setError(serverMessage(json as { detail?: string }, JSON.stringify(json)));
       } else {
         setResponse(JSON.stringify(json, null, 2));
       }

@@ -38,6 +38,7 @@ import {
 // @ts-expect-error -- CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
 import { useDomains } from "../hooks/useAdminQueries";
+import { serverMessage } from "../i18n/serverMessage";
 import { domainGqlAlias } from "../types/admin";
 
 /** Register # @provisa hint completions in the GraphQL Monaco editor. */
@@ -670,7 +671,7 @@ export function QueryPage() {
           setDomainSchema(buildClientSchema(json.data));
           setSchemaError(null);
         } else {
-          setSchemaError(json.detail ?? "Schema unavailable");
+          setSchemaError(serverMessage(json, "Schema unavailable"));
         }
       })
       .catch((err) => {

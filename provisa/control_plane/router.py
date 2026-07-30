@@ -15,6 +15,7 @@ import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from provisa.api.errors import ApiError
 from provisa.control_plane.models import DataPlane, Tenant
 from provisa.control_plane.store import ControlPlaneStore
 
@@ -27,7 +28,7 @@ def _require_multitenancy() -> None:
     from provisa.api.app import state
 
     if not state.multitenancy:
-        raise HTTPException(status_code=403, detail="multitenancy is not enabled")
+        raise ApiError(403, "control_plane.multitenancy_disabled", "multitenancy is not enabled")
 
 
 class RegisterTenantRequest(BaseModel):  # REQ-457

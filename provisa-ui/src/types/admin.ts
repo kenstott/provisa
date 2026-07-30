@@ -232,4 +232,7 @@ export interface RLSRule {
 export interface MutationResult {
   success: boolean;
   message: string;
+  // REQ-1343: stable server error/status code + interpolation params for client-side i18n.
+  code?: string | null;
+  params?: Record<string, unknown> | null;
 }

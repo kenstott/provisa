@@ -10,6 +10,8 @@
 
 // REQ-1160/REQ-1161: client for the column-level lineage graph endpoints.
 
+import { serverMessage, requestFailed } from "../i18n/serverMessage";
+
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export interface LineageTransformOp {
@@ -54,8 +56,8 @@ export async function fetchLineageGraph(sql: string, dialect = "postgres"): Prom
     body: JSON.stringify({ sql, dialect }),
   });
   if (!resp.ok) {
-    const detail = await resp.text();
-    throw new Error(`Lineage graph failed (${resp.status}): ${detail}`);
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed("Lineage graph", resp.status)));
   }
   return resp.json();
 }
@@ -75,8 +77,8 @@ export async function fetchFederationGraph(opts?: {
   const qs = params.toString();
   const resp = await fetch(`${API_BASE}/admin/lineage/federation${qs ? `?${qs}` : ""}`);
   if (!resp.ok) {
-    const detail = await resp.text();
-    throw new Error(`Federation graph failed (${resp.status}): ${detail}`);
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed("Federation graph", resp.status)));
   }
   return resp.json();
 }

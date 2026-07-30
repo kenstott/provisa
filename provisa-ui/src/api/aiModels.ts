@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { requestFailed } from "../i18n/serverMessage";
+
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 // --- AI models / vector models / NL rate limit (REQ-464, REQ-419, REQ-500, REQ-370) ---
@@ -46,7 +48,7 @@ export interface AiModelsUpdate {
 
 export async function fetchAiModels(): Promise<AiModelsState> {
   const resp = await fetch(`${API_BASE}/admin/ai-models`);
-  if (!resp.ok) throw new Error(`AI models fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("AI models fetch", resp.status));
   return resp.json();
 }
 
@@ -58,6 +60,6 @@ export async function setAiModels(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`AI models update failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("AI models update", resp.status));
   return resp.json();
 }

@@ -20,9 +20,11 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
+
+from provisa.api.errors import ApiError
 
 # Requirements: REQ-331, REQ-333, REQ-334, REQ-335
 
@@ -48,23 +50,35 @@ async def ingest_event(  # REQ-331, REQ-333, REQ-335
     try:
         body: Any = await request.json()
     except Exception as exc:
-        raise HTTPException(status_code=400, detail="Request body must be valid JSON") from exc
+        raise ApiError(400, "ingest.invalid_json", "Request body must be valid JSON") from exc
 
     # Validate source and table are registered ingest targets
     source_tables = state.ingest_tables.get(source_id)
     if source_tables is None:
-        raise HTTPException(status_code=404, detail=f"Ingest source {source_id!r} not found")
+        raise ApiError(
+            404,
+            "ingest.source_not_found",
+            f"Ingest source {source_id!r} not found",
+            source_id=source_id,
+        )
 
     columns = source_tables.get(table)
     if columns is None:
-        raise HTTPException(
-            status_code=404, detail=f"Ingest table {table!r} not found for source {source_id!r}"
+        raise ApiError(
+            404,
+            "ingest.table_not_found",
+            f"Ingest table {table!r} not found for source {source_id!r}",
+            table=table,
+            source_id=source_id,
         )
 
     engine = state.ingest_engines.get(source_id)
     if engine is None:
-        raise HTTPException(
-            status_code=503, detail=f"No engine available for ingest source {source_id!r}"
+        raise ApiError(
+            503,
+            "ingest.engine_unavailable",
+            f"No engine available for ingest source {source_id!r}",
+            source_id=source_id,
         )
 
     # Support both a single event dict and a list of events

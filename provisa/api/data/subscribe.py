@@ -27,8 +27,10 @@ import json
 import logging
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
+
+from provisa.api.errors import ApiError
 
 
 log = logging.getLogger(__name__)
@@ -427,14 +429,14 @@ async def _acquire_sse_slot(state, role_id: str | None) -> str | None:  # REQ-36
     if not (limiter and role_id):
         return None
     if role_id not in state.roles:
-        raise HTTPException(status_code=403, detail=f"Unknown role {role_id!r}")
+        raise ApiError(403, "subscribe.unknown_role", f"Unknown role {role_id!r}", role=role_id)
     role = state.roles[role_id]
     cap = (role.get("rate_limit") or {}).get("max_sse_subscriptions")
     if not cap:
         return None
     key = f"rl:sse:{role_id}"
     if not await limiter.acquire(key, cap):
-        raise HTTPException(status_code=429, detail="max concurrent SSE subscriptions reached")
+        raise ApiError(429, "subscribe.sse_limit_reached", "max concurrent SSE subscriptions reached")
     return key
 
 
@@ -473,7 +475,12 @@ async def subscribe(
     if query_id is not None:
         # Route to live engine SSE output
         if state.live_engine is None or not state.live_engine.is_registered(query_id):
-            raise HTTPException(status_code=404, detail=f"Live query {query_id!r} not registered")
+            raise ApiError(
+                404,
+                "subscribe.live_query_not_registered",
+                f"Live query {query_id!r} not registered",
+                query_id=query_id,
+            )
         _engine = state.live_engine
         queue = _engine.subscribe(query_id)
 
@@ -505,7 +512,7 @@ async def subscribe(
     _sse_slot = await _acquire_sse_slot(state, role_id)
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database pool not available")
+        raise ApiError(503, "subscribe.db_pool_unavailable", "Database pool not available")
 
     # Validate table exists in role's schema
     table_found = False
@@ -523,7 +530,7 @@ async def subscribe(
                 break
 
     if state.contexts and not table_found:
-        raise HTTPException(status_code=404, detail=f"Table {table!r} not found")
+        raise ApiError(404, "subscribe.table_not_found", f"Table {table!r} not found", table=table)
 
     # Resolve provider from source type
     source_info = _resolve_table_source(table)

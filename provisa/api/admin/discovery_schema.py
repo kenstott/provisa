@@ -23,9 +23,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Protocol, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import select
+
+from provisa.api.errors import ApiError
 
 from provisa.core.schema_org import sources
 from provisa.source_adapters.registry import get_adapter
@@ -70,13 +72,15 @@ async def get_unique_constraints(
     from provisa.discovery.fk_introspect import introspect_unique_constraints
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "discovery.database_not_connected", "Database not connected")
     async with state.tenant_db.acquire() as conn:
         conn = cast("Connection", conn)
         result = await conn.execute_core(select(sources.c.type).where(sources.c.id == source_id))
         fetched = result.fetchone()
     if fetched is None:
-        raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        raise ApiError(
+            404, "discovery.source_not_found", f"Source '{source_id}' not found", source_id=source_id
+        )
     source_type = fetched._mapping["type"]
     raw = await introspect_unique_constraints(
         state.source_pools, source_type, source_id, schema, table
@@ -141,7 +145,7 @@ async def discover_source_schema(
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "discovery.database_not_connected", "Database not connected")
 
     # Fetch source record from DB
     async with state.tenant_db.acquire() as conn:
@@ -151,29 +155,37 @@ async def discover_source_schema(
         row = dict(fetched._mapping) if fetched is not None else None
 
     if row is None:
-        raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        raise ApiError(
+            404, "discovery.source_not_found", f"Source '{source_id}' not found", source_id=source_id
+        )
 
     source_type = row["type"]
 
     if source_type in _NO_DISCOVER:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Source type '{source_type}' does not support schema discovery. "
+        raise ApiError(
+            400,
+            "discovery.schema_discovery_unsupported",
+            f"Source type '{source_type}' does not support schema discovery. "
             "Define columns manually.",
+            source_type=source_type,
         )
 
     try:
         adapter = get_adapter(source_type)
     except KeyError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No adapter registered for source type '{source_type}'",
+        raise ApiError(
+            400,
+            "discovery.no_adapter_for_source_type",
+            f"No adapter registered for source type '{source_type}'",
+            source_type=source_type,
         )
 
     if not hasattr(adapter, "discover_schema"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Adapter for '{source_type}' does not implement discover_schema",
+        raise ApiError(
+            400,
+            "discovery.adapter_missing_discover_schema",
+            f"Adapter for '{source_type}' does not implement discover_schema",
+            source_type=source_type,
         )
 
     hints = body or DiscoverRequest()
@@ -223,13 +235,15 @@ def _call_discover(
         source_pools = _get_source_pool()
         source_id = row["id"]
         if not source_pools.has(source_id):
-            raise HTTPException(
-                status_code=503,
-                detail=(
+            raise ApiError(
+                503,
+                "discovery.no_live_connection",
+                (
                     f"No live connection for source '{source_id}'. "
                     "MongoDB schema discovery requires an active connection in the source pool. "
                     "Verify the source is connected and the server is reachable."
                 ),
+                source_id=source_id,
             )
         driver = cast(_SampleableDriver, source_pools.get(source_id))
         collection = hints.collection or "default"
@@ -244,16 +258,20 @@ def _call_discover(
         # transport error raises — discovery must never silently produce empty columns.
         index = hints.index
         if not index:
-            raise HTTPException(
-                status_code=400,
-                detail="Elasticsearch discovery requires an 'index' hint.",
+            raise ApiError(
+                400,
+                "discovery.elasticsearch_index_hint_required",
+                "Elasticsearch discovery requires an 'index' hint.",
             )
         try:
             properties = adapter.fetch_index_mapping(row["host"], int(row["port"]), index)
         except Exception as e:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Failed to read Elasticsearch mapping for index {index!r}: {e}",
+            raise ApiError(
+                502,
+                "discovery.elasticsearch_mapping_failed",
+                f"Failed to read Elasticsearch mapping for index {index!r}: {e}",
+                index=index,
+                error=str(e),
             )
         return adapter.discover_schema(properties)
 
@@ -261,9 +279,10 @@ def _call_discover(
         # REQ-252: Cassandra schema lives in system_schema and requires a live CQL session,
         # which Provisa does not maintain. Rather than return empty columns, direct the steward
         # to provide columns explicitly.
-        raise HTTPException(
-            status_code=501,
-            detail=(
+        raise ApiError(
+            501,
+            "discovery.cassandra_discovery_unsupported",
+            (
                 "Cassandra schema discovery requires a live CQL session, which is not "
                 "available. Define columns manually for this source."
             ),

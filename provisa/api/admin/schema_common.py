@@ -120,6 +120,8 @@ async def _queue_creation_request(  # REQ-434
             f"Queued as creation request #{rid} — awaiting a user holding "
             f"{capability!r} to execute or reject it."
         ),
+        code="schema.creation_request_queued",
+        params={"id": rid, "capability": capability},
     )
 
 
@@ -139,7 +141,7 @@ def _resolve_admin_context(info: StrawberryInfo) -> tuple[str, bool]:
 async def _validate_govdata_api_key(input: SourceInput) -> Optional[MutationResult]:
     """Return a failure MutationResult if the govdata API key is invalid, else None."""
     if not input.username:
-        return MutationResult(success=False, message="AskAmerica API Key is required")
+        return MutationResult(success=False, message="AskAmerica API Key is required", code="schema.askamerica_key_required")
     import asyncio as _asyncio
     import logging as _vlog
     from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
@@ -162,7 +164,7 @@ async def _validate_govdata_api_key(input: SourceInput) -> Optional[MutationResu
         await loop.run_in_executor(None, _validate)
     except Exception as _ve:
         _vlog.getLogger(__name__).warning("govdata API key validation failed: %s", _ve)
-        return MutationResult(success=False, message=f"Invalid AskAmerica API Key: {_ve}")
+        return MutationResult(success=False, message=f"Invalid AskAmerica API Key: {_ve}", code="schema.invalid_askamerica_key", params={"error": str(_ve)})
     return None
 
 

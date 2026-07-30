@@ -19,6 +19,7 @@ import jwt
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from provisa.api.errors import ApiError
 from provisa.auth.models import AuthIdentity, AuthProvider
 
 # Requirements: REQ-120, REQ-124
@@ -38,9 +39,9 @@ class LoginRequest(BaseModel):
 async def login(request: LoginRequest):  # REQ-124
     """Authenticate with username/password and receive a JWT."""
     if _provider_instance is None:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=503, detail="Simple auth provider not configured")
+        raise ApiError(
+            503, "auth.simple_provider_not_configured", "Simple auth provider not configured"
+        )
     try:
         token = _provider_instance.login(request.username, request.password)
     except ValueError as e:

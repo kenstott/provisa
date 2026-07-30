@@ -12,8 +12,7 @@
 
 from __future__ import annotations
 
-from fastapi import HTTPException
-
+from provisa.api.errors import ApiError
 from provisa.core.models import GovDataSource, GovDataSubject
 from provisa.govdata.subjects import subjects_cover_schema
 
@@ -38,12 +37,14 @@ def check_source_access(  # REQ-540
     if any(subjects_cover_schema(subscribed, s) for s in source.govdata_schemas):
         return
 
-    raise HTTPException(
-        status_code=403,
-        detail=(
+    raise ApiError(
+        403,
+        "subscribe.govdata_not_subscribed",
+        (
             f"Tenant not subscribed to GovData subject {source.subject.value!r}. "
             f"Subscribe via the billing portal to access this dataset."
         ),
+        subject=source.subject.value,
     )
 
 

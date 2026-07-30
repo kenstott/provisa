@@ -1231,6 +1231,18 @@ def create_app() -> FastAPI:
     from fastapi import Request as _Request
     from fastapi.responses import JSONResponse as _JSONResponse
 
+    from provisa.api.errors import ApiError as _ApiError
+
+    @app.exception_handler(_ApiError)
+    async def _api_error_handler(_req: _Request, exc: _ApiError):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # Hybrid server i18n (REQ-1343): English detail + stable code/params
+        # so the UI can render a localized message from its own catalog.
+        return _JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail, "code": exc.code, "params": exc.params},
+            headers=exc.headers,
+        )
+
     @app.exception_handler(Exception)
     async def _global_exception_handler(_req: _Request, exc: Exception):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
         log.exception("Unhandled exception on %s %s", _req.method, _req.url.path)

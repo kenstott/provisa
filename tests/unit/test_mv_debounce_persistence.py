@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from provisa.core.database import Database
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import registered_tables, table_columns
+from provisa.core.schema_org import registered_tables, roles, table_columns
 
 
 @asynccontextmanager
@@ -26,7 +26,7 @@ async def _conn(tmp_path):
     async with engine.begin() as c:
         await c.run_sync(
             lambda s: registered_tables.metadata.create_all(
-                s, tables=[registered_tables, table_columns]
+                s, tables=[registered_tables, table_columns, roles]
             )
         )
     try:

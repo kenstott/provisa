@@ -29,6 +29,8 @@ import grpc.aio
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from provisa.api.errors import ApiError
+
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/grpc-remote", tags=["admin", "grpc-remote"])
 
@@ -94,7 +96,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
     queries, mutations = map_proto(proto_dict, namespace, source_id, domain_id, method_overrides)
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "grpc_remote.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
@@ -272,7 +274,9 @@ async def register_grpc_remote_source(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Registration failed: {exc}") from exc
+        raise ApiError(
+            422, "grpc_remote.registration_failed", f"Registration failed: {exc}", error=str(exc)
+        ) from exc
 
     log.info(
         "Registered gRPC remote source %s (%d tables, %d mutations)",
@@ -289,7 +293,12 @@ async def refresh_grpc_remote_source(source_id: str, request: Request):  # REQ-3
     state = request.app.state
     sources = getattr(state, "grpc_remote_sources", {})
     if source_id not in sources:
-        raise HTTPException(status_code=404, detail=f"gRPC source {source_id!r} not registered")
+        raise ApiError(
+            404,
+            "grpc_remote.source_not_registered",
+            f"gRPC source {source_id!r} not registered",
+            source_id=source_id,
+        )
 
     reg = sources[source_id]
     try:
@@ -310,7 +319,9 @@ async def refresh_grpc_remote_source(source_id: str, request: Request):  # REQ-3
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Refresh failed: {exc}") from exc
+        raise ApiError(
+            422, "grpc_remote.refresh_failed", f"Refresh failed: {exc}", error=str(exc)
+        ) from exc
 
     log.info(
         "Refreshed gRPC remote source %s (%d tables, %d mutations)",
@@ -347,7 +358,12 @@ async def get_grpc_proto(source_id: str, request: Request):  # REQ-525
     """Return stored proto text for a registered gRPC source."""
     sources = getattr(request.app.state, "grpc_remote_sources", {})
     if source_id not in sources:
-        raise HTTPException(status_code=404, detail=f"gRPC source {source_id!r} not registered")
+        raise ApiError(
+            404,
+            "grpc_remote.source_not_registered",
+            f"gRPC source {source_id!r} not registered",
+            source_id=source_id,
+        )
     return {"source_id": source_id, "proto_text": sources[source_id].get("proto_text", "")}
 
 
@@ -357,13 +373,20 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
     state = request.app.state
     sources = getattr(state, "grpc_remote_sources", {})
     if source_id not in sources:
-        raise HTTPException(status_code=404, detail=f"gRPC source {source_id!r} not registered")
+        raise ApiError(
+            404,
+            "grpc_remote.source_not_registered",
+            f"gRPC source {source_id!r} not registered",
+            source_id=source_id,
+        )
 
     try:
         body = await request.json()
         proto_text = body["proto_text"]
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid request: {exc}") from exc
+        raise ApiError(
+            422, "grpc_remote.invalid_request", f"Invalid request: {exc}", error=str(exc)
+        ) from exc
 
     reg = sources[source_id]
     from provisa.grpc_remote.loader import compile_proto_stubs, parse_proto_text
@@ -387,10 +410,15 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
             reg.get("method_overrides") or None,
         )
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Proto compilation failed: {exc}") from exc
+        raise ApiError(
+            422,
+            "grpc_remote.proto_compilation_failed",
+            f"Proto compilation failed: {exc}",
+            error=str(exc),
+        ) from exc
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "grpc_remote.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 

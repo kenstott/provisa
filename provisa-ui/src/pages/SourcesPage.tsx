@@ -40,6 +40,7 @@ import {
   useDomains,
 } from "../hooks/useAdminQueries";
 import { SchemaDiscovery } from "../components/SchemaDiscovery";
+import { serverMessage, requestFailed } from "../i18n/serverMessage";
 import { TableMappingBuilder } from "../components/TableMappingBuilder";
 import type { TableMapping } from "../components/TableMappingBuilder";
 import type { Source } from "../types/admin";
@@ -590,7 +591,7 @@ export function SourcesPage() {
       const resp = await fetch(url, { method: "POST" });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(body.detail ?? resp.statusText);
+        throw new Error(serverMessage(body, requestFailed("Schema refresh", resp.status)));
       }
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : String(err));
@@ -615,7 +616,7 @@ export function SourcesPage() {
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(body.detail ?? resp.statusText);
+        throw new Error(serverMessage(body, requestFailed("OpenAPI preview", resp.status)));
       }
       const data = await resp.json();
       setOpenapiPreview(data);
@@ -649,7 +650,7 @@ export function SourcesPage() {
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(body.detail ?? resp.statusText);
+        throw new Error(serverMessage(body, requestFailed("OpenAPI register", resp.status)));
       }
       handleCancelForm();
       load();
@@ -684,7 +685,7 @@ export function SourcesPage() {
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(body.detail ?? resp.statusText);
+        throw new Error(serverMessage(body, requestFailed("gRPC register", resp.status)));
       }
       await createSource({
         id: form.id,

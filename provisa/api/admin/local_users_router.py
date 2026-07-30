@@ -17,10 +17,11 @@ from __future__ import annotations
 from typing import Any
 
 import bcrypt
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, func, insert, select, update
 
+from provisa.api.errors import ApiError
 from provisa.core.database import Database
 from provisa.core.schema_admin import local_users
 from provisa.core.org_membership import SELF_ROLE_CHANGE_MESSAGE, is_self_role_change
@@ -124,7 +125,7 @@ async def get_user(user_id: str, request: Request):
         result = await conn.execute_core(select(local_users).where(local_users.c.id == user_id))
         row = result.fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise ApiError(404, "users.user_not_found", "User not found")
     return _strip_hash(row)
 
 
@@ -135,7 +136,7 @@ def _reject_self_role_change(request: Request, user_id: str) -> None:  # REQ-130
     if actor == "anonymous":
         actor = None
     if is_self_role_change(actor, user_id):
-        raise HTTPException(status_code=403, detail=SELF_ROLE_CHANGE_MESSAGE)
+        raise ApiError(403, "users.self_role_change", SELF_ROLE_CHANGE_MESSAGE)
 
 
 @router.put("/{user_id}")
@@ -157,7 +158,7 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
     if body.is_active is not None:
         values["is_active"] = body.is_active
     if not values:
-        raise HTTPException(status_code=400, detail="No fields to update")
+        raise ApiError(400, "users.no_fields_to_update", "No fields to update")
     values["updated_at"] = func.now()
     async with pool.acquire() as conn:
         result = await conn.execute_core(
@@ -168,7 +169,7 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
         )
         row = result.fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise ApiError(404, "users.user_not_found", "User not found")
     return _strip_hash(row)
 
 
@@ -184,7 +185,7 @@ async def change_password(user_id: str, body: ChangePasswordBody, request: Reque
         )
         row = result.fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise ApiError(404, "users.user_not_found", "User not found")
     return {"id": row[0]}
 
 
@@ -197,7 +198,7 @@ async def delete_user(user_id: str, request: Request):
         )
         row = result.fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise ApiError(404, "users.user_not_found", "User not found")
     return {"deleted": row[0]}
 
 
@@ -254,5 +255,5 @@ async def remove_assignment(user_id: str, assignment_id: int, request: Request):
         )
         row = result.fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Assignment not found")
+        raise ApiError(404, "users.assignment_not_found", "Assignment not found")
     return {"deleted": row[0]}

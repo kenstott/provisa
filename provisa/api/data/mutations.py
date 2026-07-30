@@ -23,6 +23,7 @@ import httpx
 
 from fastapi import HTTPException
 
+from provisa.api.errors import ApiError
 from provisa.compiler.mutation_gen import (
     compile_mutation,
     inject_rls_into_mutation,
@@ -55,9 +56,12 @@ def _check_writable_by(table_meta, columns: list[str], role_id: str):
             else getattr(col_meta, "writable_by", [])
         )
         if role_id not in writable_by:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Role {role_id!r} does not have write access to column {col_name!r}",
+            raise ApiError(
+                403,
+                "data.column_not_writable",
+                f"Role {role_id!r} does not have write access to column {col_name!r}",
+                role=role_id,
+                column=col_name,
             )
 
 
@@ -243,7 +247,9 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360, REQ-869
         )
         return _apply_action_filters(rows, filter_args)
 
-    raise HTTPException(status_code=400, detail=f"Unknown action field: {field_name!r}")
+    raise ApiError(
+        400, "data.unknown_action_field", f"Unknown action field: {field_name!r}", field=field_name
+    )
 
 
 async def _maybe_resolve_relationships(rows, field_node, returns_str: str, ctx, state) -> list:
@@ -303,7 +309,9 @@ async def _handle_mutation(
 
     # Mixed action + regular fields — not supported
     if action_sels and regular_names:
-        raise HTTPException(status_code=400, detail="Cannot mix action fields with table mutations")
+        raise ApiError(
+            400, "data.mixed_action_table_mutation", "Cannot mix action fields with table mutations"
+        )
 
     headers = dict(request.headers) if request else None
     try:
@@ -318,7 +326,7 @@ async def _handle_mutation(
         raise HTTPException(status_code=400, detail=str(e))
 
     if not mutations:
-        raise HTTPException(status_code=400, detail="No mutation fields found")
+        raise ApiError(400, "data.no_mutation_fields", "No mutation fields found")
 
     results = []
     for mutation in mutations:
@@ -345,9 +353,11 @@ async def _handle_mutation(
         # Mutations always route direct
         source_id = mutation.source_id
         if not state.source_pools.has(source_id):
-            raise HTTPException(
-                status_code=503,
-                detail=f"No connection pool for source {source_id!r}",
+            raise ApiError(
+                503,
+                "data.no_source_pool",
+                f"No connection pool for source {source_id!r}",
+                source=source_id,
             )
 
         dialect = state.source_dialects.get(source_id, "postgres")

@@ -17,12 +17,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, func, select, update
 
 import httpx
 
+from provisa.api.errors import ApiError
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 
 if TYPE_CHECKING:
@@ -113,7 +114,7 @@ async def list_actions():  # REQ-205, REQ-209
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
@@ -189,7 +190,7 @@ async def create_function(
     from provisa.core.repositories import function as function_repo
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
@@ -227,7 +228,7 @@ async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, 
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
@@ -256,7 +257,7 @@ async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, 
         )
 
     if (result.rowcount or 0) == 0:
-        raise HTTPException(status_code=404, detail=f"Function '{name}' not found")
+        raise ApiError(404, "actions.function_not_found", f"Function '{name}' not found", name=name)
 
     log.info("Updated tracked function %s", name)
     from provisa.api.app import _rebuild_schemas
@@ -271,7 +272,7 @@ async def delete_function(name: str):  # REQ-205, REQ-253
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
@@ -281,7 +282,7 @@ async def delete_function(name: str):  # REQ-205, REQ-253
         )
 
     if (result.rowcount or 0) == 0:
-        raise HTTPException(status_code=404, detail=f"Function '{name}' not found")
+        raise ApiError(404, "actions.function_not_found", f"Function '{name}' not found", name=name)
 
     log.info("Deleted tracked function %s", name)
     from provisa.api.app import _rebuild_schemas
@@ -296,7 +297,7 @@ async def create_webhook(body: WebhookInput):  # REQ-209, REQ-210, REQ-211, REQ-
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
@@ -368,7 +369,7 @@ async def update_webhook(name: str, body: WebhookInput):  # REQ-209, REQ-253
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
@@ -392,7 +393,7 @@ async def update_webhook(name: str, body: WebhookInput):  # REQ-209, REQ-253
         )
 
     if (result.rowcount or 0) == 0:
-        raise HTTPException(status_code=404, detail=f"Webhook '{name}' not found")
+        raise ApiError(404, "actions.webhook_not_found", f"Webhook '{name}' not found", name=name)
 
     log.info("Updated tracked webhook %s", name)
     from provisa.api.app import _rebuild_schemas
@@ -407,7 +408,7 @@ async def delete_webhook(name: str):  # REQ-209, REQ-253
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
@@ -417,7 +418,7 @@ async def delete_webhook(name: str):  # REQ-209, REQ-253
         )
 
     if (result.rowcount or 0) == 0:
-        raise HTTPException(status_code=404, detail=f"Webhook '{name}' not found")
+        raise ApiError(404, "actions.webhook_not_found", f"Webhook '{name}' not found", name=name)
 
     log.info("Deleted tracked webhook %s", name)
     from provisa.api.app import _rebuild_schemas
@@ -516,22 +517,25 @@ def _apply_row_governance(  # REQ-062, REQ-207, REQ-245
 async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
     """Run a no-arg test invocation of a tracked function or webhook."""
     if not _test_endpoints_enabled():
-        raise HTTPException(
-            status_code=404,
-            detail="Test endpoint is disabled (set PROVISA_ENABLE_TEST_ENDPOINTS to enable in non-production).",
+        raise ApiError(
+            404,
+            "actions.test_endpoint_disabled",
+            "Test endpoint is disabled (set PROVISA_ENABLE_TEST_ENDPOINTS to enable in non-production).",
         )
 
     from provisa.api.app import state
 
     if state.tenant_db is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     await _ensure_tables(state.tenant_db)
 
     if body.actionType == "function":
         fn_def = state.tracked_functions.get(body.name)
         if not fn_def:
-            raise HTTPException(status_code=404, detail=f"Function '{body.name}' not found")
+            raise ApiError(
+                404, "actions.function_not_found", f"Function '{body.name}' not found", name=body.name
+            )
 
         impl_kind = fn_def.get("impl_kind", "source_procedure")
         role_id = body.role_id
@@ -550,7 +554,9 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
         returns = fn_def["returns"] or ""
 
         if not state.source_pools.has(src_id):
-            raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
+            raise ApiError(
+                503, "actions.source_not_connected", f"Source '{src_id}' not connected", source=src_id
+            )
 
         gov_ctx = None
         table_id: int | None = None
@@ -560,7 +566,7 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
             from provisa.compiler.stage2 import build_governance_context
 
             if role_id not in state.contexts:
-                raise HTTPException(status_code=422, detail=f"Unknown role '{role_id}'")
+                raise ApiError(422, "actions.unknown_role", f"Unknown role '{role_id}'", role=role_id)
 
             ctx = state.contexts[role_id]
             # Invariant: contexts and rls_contexts are written together per-role
@@ -615,7 +621,9 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
             )
             fetched = result.fetchone()
         if not fetched:
-            raise HTTPException(status_code=404, detail=f"Webhook '{body.name}' not found")
+            raise ApiError(
+                404, "actions.webhook_not_found", f"Webhook '{body.name}' not found", name=body.name
+            )
         row = dict(fetched._mapping)
 
         url = row["url"]
@@ -634,4 +642,9 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
             }
         return webhook_result
 
-    raise HTTPException(status_code=400, detail=f"Unknown actionType '{body.actionType}'")
+    raise ApiError(
+        400,
+        "actions.unknown_action_type",
+        f"Unknown actionType '{body.actionType}'",
+        action_type=body.actionType,
+    )

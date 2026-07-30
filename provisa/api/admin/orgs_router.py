@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, func, select, update
 
+from provisa.api.errors import ApiError
 from provisa.core.database import Database
 from provisa.core.schema_admin import orgs, user_org_memberships, user_profiles
 from provisa.security.rights import has_platform_bypass
@@ -44,7 +45,7 @@ def _require_platform_admin(request: Request) -> None:  # REQ-042, REQ-125, REQ-
         return  # dev mode — no auth configured
     caps = _resolved_capabilities(identity, _app_state)
     if not has_platform_bypass(caps):
-        raise HTTPException(status_code=403, detail="platform_admin required")
+        raise ApiError(403, "orgs.platform_admin_required", "platform_admin required")
 
 
 def _caller_user_id(request: Request) -> str | None:
@@ -65,9 +66,11 @@ async def _org_tenant_db(org_id: str) -> Database:  # REQ-1305
 
     rt = await ensure_org_runtime(org_id)
     if rt.tenant_db is None:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Org {org_id!r} has no tenant runtime — it may still be provisioning.",
+        raise ApiError(
+            409,
+            "orgs.no_tenant_runtime",
+            f"Org {org_id!r} has no tenant runtime — it may still be provisioning.",
+            org=org_id,
         )
     return rt.tenant_db
 
@@ -116,9 +119,13 @@ def _validate_org_policy(email_rule: str | None, auto_join: bool, auto_join_role
         try:
             re.compile(email_rule)
         except re.error as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid email rule: {exc}") from exc
+            raise ApiError(
+                400, "orgs.invalid_email_rule", f"Invalid email rule: {exc}", error=str(exc)
+            ) from exc
     if auto_join and not auto_join_role:
-        raise HTTPException(status_code=400, detail="auto_join requires auto_join_role")
+        raise ApiError(
+            400, "orgs.auto_join_requires_role", "auto_join requires auto_join_role"
+        )
 
 
 # REQ-1309: the org id becomes the PostgreSQL schema name ``org_<id>`` and the Host subdomain
@@ -147,21 +154,26 @@ def _validate_new_org_id(org_id: str) -> None:  # REQ-1309
     so this is the single point at which the value is ever chosen.
     """
     if not _ORG_ID_PATTERN.fullmatch(org_id):
-        raise HTTPException(
-            status_code=400,
-            detail=(
+        raise ApiError(
+            400,
+            "orgs.invalid_org_id",
+            (
                 f"Invalid org id {org_id!r}: 2-40 characters, lowercase letters and digits only, "
                 "starting with a letter. The id becomes the database schema name and the subdomain, "
                 "and cannot be changed later."
             ),
+            org=org_id,
         )
     if org_id in _RESERVED_ORG_IDS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
+        raise ApiError(
+            400,
+            "orgs.org_id_reserved",
+            (
                 f"Org id {org_id!r} is reserved. Reserved ids: "
                 f"{', '.join(sorted(_RESERVED_ORG_IDS))}."
             ),
+            org=org_id,
+            reserved=", ".join(sorted(_RESERVED_ORG_IDS)),
         )
 
 
@@ -267,7 +279,9 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
     if created_by == "anonymous":
         created_by = None
     if identity is not None and created_by is None:
-        raise HTTPException(status_code=401, detail="Authentication required to create an org")
+        raise ApiError(
+            401, "orgs.auth_required_create", "Authentication required to create an org"
+        )
 
     _validate_new_org_id(body.id)
     _validate_org_policy(body.email_rule, body.auto_join, body.auto_join_role)
@@ -285,17 +299,19 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
                 .where(orgs.c.created_by == created_by, orgs.c.provisioning_state != "failed")
             )
             if (owned.scalar() or 0) >= _MAX_ORGS_PER_USER:
-                raise HTTPException(
-                    status_code=409,
-                    detail=(
+                raise ApiError(
+                    409,
+                    "orgs.limit_reached",
+                    (
                         f"Organization limit reached: a single account may create at most "
                         f"{_MAX_ORGS_PER_USER} organizations. Delete one you no longer need to "
                         "create another."
                     ),
+                    limit=_MAX_ORGS_PER_USER,
                 )
         exists = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == body.id))
         if exists.fetchone() is not None:
-            raise HTTPException(status_code=409, detail="Org already exists")
+            raise ApiError(409, "orgs.already_exists", "Org already exists")
         result = await conn.execute_core(
             orgs.insert()
             .values(
@@ -342,7 +358,7 @@ async def org_status(org_id: str, request: Request):  # REQ-1266
         )
         row = result.fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Org not found")
+        raise ApiError(404, "orgs.not_found", "Org not found")
     record = dict(row._mapping)
     if user_id not in (None, "anonymous") and record["created_by"] not in (None, user_id):
         from provisa.api.app import state as _app_state
@@ -350,7 +366,7 @@ async def org_status(org_id: str, request: Request):  # REQ-1266
 
         caps = _resolved_capabilities(identity, _app_state)
         if not has_platform_bypass(caps):
-            raise HTTPException(status_code=403, detail="Not permitted to view this org")
+            raise ApiError(403, "orgs.view_not_permitted", "Not permitted to view this org")
     return record
 
 
@@ -367,7 +383,7 @@ async def rename_org(org_id: str, body: RenameOrgBody, request: Request):  # REQ
         )
         row = result.fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Org not found")
+        raise ApiError(404, "orgs.not_found", "Org not found")
     return dict(row._mapping)
 
 
@@ -391,7 +407,7 @@ async def update_org_settings(org_id: str, body: OrgPolicyBody, request: Request
         )
         row = result.fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Org not found")
+        raise ApiError(404, "orgs.not_found", "Org not found")
     return dict(row._mapping)
 
 
@@ -412,7 +428,7 @@ async def export_org_config(org_id: str, request: Request):  # REQ-1304
     async with _admin_pool().acquire() as conn:
         exists = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if exists.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Org not found")
+            raise ApiError(404, "orgs.not_found", "Org not found")
     await _org_tenant_db(org_id)  # bind the org's runtime before the exporter reads state
     token = set_current_org(org_id)
     try:
@@ -448,22 +464,24 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
     await _require_org_admin(request, org_id)
     if org_id == "root":
         # REQ-1300/REQ-1296: root carries the deployment's own admin surface and demo assets.
-        raise HTTPException(status_code=400, detail="Cannot delete the root org")
+        raise ApiError(400, "orgs.cannot_delete_root", "Cannot delete the root org")
     async with _admin_pool().acquire() as conn:
         found = await conn.execute_core(
             select(orgs.c.id, orgs.c.provisioning_state).where(orgs.c.id == org_id)
         )
         row = found.fetchone()
         if row is None:
-            raise HTTPException(status_code=404, detail="Org not found")
+            raise ApiError(404, "orgs.not_found", "Org not found")
         if row[1] != "failed" and confirm != org_id:
-            raise HTTPException(
-                status_code=400,
-                detail=(
+            raise ApiError(
+                400,
+                "orgs.delete_confirm_required",
+                (
                     f"Deleting {org_id!r} destroys all of its data permanently — no one, including "
                     f"a platform administrator, can recover it. Repeat the org id in the 'confirm' "
                     f"parameter to proceed."
                 ),
+                org=org_id,
             )
         # Explicit deletes rather than relying on FK cascade: the platform control plane may be
         # backed by an engine where the registry tables were created without them.
@@ -510,14 +528,17 @@ async def retry_provisioning(org_id: str, request: Request):  # REQ-1315
         )
         row = result.fetchone()
         if row is None:
-            raise HTTPException(status_code=404, detail="Org not found")
+            raise ApiError(404, "orgs.not_found", "Org not found")
         created_by, prov_state, seeded_demo = row[0], row[1], row[2]
         if caller is not None and created_by != caller:
             _require_platform_admin(request)
         if prov_state != "failed":
-            raise HTTPException(
-                status_code=409,
-                detail=f"Org {org_id!r} is {prov_state!r}, not 'failed' — nothing to retry.",
+            raise ApiError(
+                409,
+                "orgs.retry_not_failed",
+                f"Org {org_id!r} is {prov_state!r}, not 'failed' — nothing to retry.",
+                org=org_id,
+                state=str(prov_state),
             )
         await conn.execute_core(
             update(orgs)
@@ -584,7 +605,7 @@ async def add_member(org_id: str, body: AddMemberBody, request: Request):  # REQ
     async with pool.acquire() as conn:
         exists_result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if exists_result.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Org not found")
+            raise ApiError(404, "orgs.not_found", "Org not found")
         await conn.upsert(
             user_org_memberships,
             {"user_id": body.user_id, "org_id": org_id},
@@ -621,7 +642,7 @@ async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-130
     except LastOrgAdminError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not await remove_from_org(_admin_pool(), tenant_db, user_id, org_id):
-        raise HTTPException(status_code=404, detail="Membership not found")
+        raise ApiError(404, "orgs.membership_not_found", "Membership not found")
     await record_admin_action(
         tenant_db,
         action="remove_member",
@@ -650,14 +671,14 @@ async def leave_org(org_id: str, request: Request):  # REQ-1306
 
     user_id = _caller_user_id(request)
     if user_id is None:
-        raise HTTPException(status_code=401, detail="Authentication required to leave an org")
+        raise ApiError(401, "orgs.auth_required_leave", "Authentication required to leave an org")
     tenant_db = await _org_tenant_db(org_id)
     try:
         await assert_not_last_org_admin(tenant_db, user_id, org_id)
     except LastOrgAdminError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not await remove_from_org(_admin_pool(), tenant_db, user_id, org_id):
-        raise HTTPException(status_code=404, detail="Membership not found")
+        raise ApiError(404, "orgs.membership_not_found", "Membership not found")
     await suppress_auto_join(_admin_pool(), user_id, org_id)
     await record_admin_action(
         tenant_db,
@@ -686,14 +707,15 @@ async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # 
     await _require_org_admin(request, org_id)
     actor = _caller_user_id(request)
     if actor is not None and actor == user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="A user cannot change their own role. Ask another administrator (REQ-1308).",
+        raise ApiError(
+            403,
+            "orgs.self_role_change",
+            "A user cannot change their own role. Ask another administrator (REQ-1308).",
         )
     async with _admin_pool().acquire() as conn:
         exists = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if exists.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Org not found")
+            raise ApiError(404, "orgs.not_found", "Org not found")
     tenant_db = await _org_tenant_db(org_id)
     await grant_org_admin(_admin_pool(), tenant_db, user_id, org_id)
     await record_admin_action(
@@ -727,9 +749,10 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
     await _require_org_admin(request, org_id)
     actor = _caller_user_id(request)
     if actor is not None and actor == user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="A user cannot change their own role. Ask another administrator (REQ-1308).",
+        raise ApiError(
+            403,
+            "orgs.self_role_change",
+            "A user cannot change their own role. Ask another administrator (REQ-1308).",
         )
     tenant_db = await _org_tenant_db(org_id)
     try:
@@ -744,7 +767,13 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
             )
         )
     if (result.rowcount or 0) == 0:
-        raise HTTPException(status_code=404, detail=f"{user_id} does not hold org_admin in {org_id}")
+        raise ApiError(
+            404,
+            "orgs.not_org_admin",
+            f"{user_id} does not hold org_admin in {org_id}",
+            user=user_id,
+            org=org_id,
+        )
     await record_admin_action(
         tenant_db,
         action="revoke_org_admin",

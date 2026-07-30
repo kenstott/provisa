@@ -25,6 +25,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from provisa.api.errors import ApiError
 from provisa.neo4j.preview import Neo4jNodeObjectError, preview_query, validate_shape
 from provisa.neo4j.source import (
     Neo4jSourceConfig,
@@ -93,7 +94,12 @@ async def preview_neo4j_query(  # REQ-296, REQ-298, REQ-299
     state = request.app.state
     api_source = getattr(state, "api_sources", {}).get(source_id)
     if api_source is None:
-        raise HTTPException(status_code=404, detail=f"Neo4j source {source_id!r} not found")
+        raise ApiError(
+            404,
+            "neo4j.source_not_found",
+            f"Neo4j source {source_id!r} not found",
+            source_id=source_id,
+        )
 
     neo4j_cfg = getattr(state, "neo4j_configs", {}).get(source_id)
     database = neo4j_cfg.database if neo4j_cfg else "neo4j"
@@ -124,7 +130,12 @@ async def register_neo4j_table(  # REQ-295, REQ-296, REQ-299
     state = request.app.state
     api_source = getattr(state, "api_sources", {}).get(source_id)
     if api_source is None:
-        raise HTTPException(status_code=404, detail=f"Neo4j source {source_id!r} not found")
+        raise ApiError(
+            404,
+            "neo4j.source_not_found",
+            f"Neo4j source {source_id!r} not found",
+            source_id=source_id,
+        )
 
     neo4j_cfg = getattr(state, "neo4j_configs", {}).get(source_id)
     database = neo4j_cfg.database if neo4j_cfg else "neo4j"

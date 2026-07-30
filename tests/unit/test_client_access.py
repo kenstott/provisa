@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 import pytest
@@ -65,7 +66,8 @@ def test_compile_endpoint_raises_403_on_unknown_role():
     import inspect
 
     src = inspect.getsource(compile_endpoint)
-    assert "status_code=403" in src
+    # REQ-1343 moved user-facing raises to ApiError(403, ...); accept either form.
+    assert "status_code=403" in src or re.search(r"ApiError\(\s*403", src)
 
 
 # ── REQ-163: GraphiQL plugin exposes compiled SQL (View SQL) ─────────────────

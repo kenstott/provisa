@@ -17,10 +17,11 @@ from __future__ import annotations
 import os
 
 import bcrypt
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import func, insert, select
 
+from provisa.api.errors import ApiError
 from provisa.core.schema_admin import local_users
 
 router = APIRouter(prefix="/setup", tags=["setup"])
@@ -168,16 +169,20 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
     from provisa.api.admin._config_io import config_path, read_config_for_setup, write_config
 
     if body.provider not in ("basic", "firebase", "none"):
-        raise HTTPException(
-            status_code=400, detail="provider must be 'basic', 'firebase', or 'none'"
+        raise ApiError(
+            400, "setup.invalid_provider", "provider must be 'basic', 'firebase', or 'none'"
         )
     if body.mode not in ("single", "multi"):
-        raise HTTPException(status_code=400, detail="mode must be 'single' or 'multi'")
+        raise ApiError(400, "setup.invalid_mode", "mode must be 'single' or 'multi'")
     if body.use_domains not in (None, True, False):
-        raise HTTPException(status_code=400, detail="use_domains must be true, false, or null")
+        raise ApiError(
+            400, "setup.invalid_use_domains", "use_domains must be true, false, or null"
+        )
     if body.use_domains is False and not body.default_domain:
-        raise HTTPException(
-            status_code=400, detail="default_domain required when use_domains=false"
+        raise ApiError(
+            400,
+            "setup.default_domain_required",
+            "default_domain required when use_domains=false",
         )
 
     def _apply_naming(cfg: dict) -> None:
@@ -207,8 +212,10 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
 
     if body.provider == "basic":
         if not body.admin_username or not body.admin_password:
-            raise HTTPException(
-                status_code=400, detail="admin_username and admin_password required"
+            raise ApiError(
+                400,
+                "setup.admin_credentials_required",
+                "admin_username and admin_password required",
             )
         pw_hash = bcrypt.hashpw(body.admin_password.encode("utf-8"), bcrypt.gensalt()).decode(
             "utf-8"
@@ -220,7 +227,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
                 select(local_users.c.id).where(local_users.c.username == body.admin_username)
             )
             if existing_result.fetchone() is not None:
-                raise HTTPException(status_code=409, detail="Username already exists")
+                raise ApiError(409, "auth.username_exists", "Username already exists")
             await conn.execute_core(
                 insert(local_users).values(
                     id=str(uuid.uuid4()),
@@ -234,7 +241,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
     elif body.provider == "firebase":
         project_id = body.firebase_project_id or os.environ.get("FIREBASE_PROJECT_ID", "")
         if not project_id:
-            raise HTTPException(status_code=400, detail="firebase_project_id required")
+            raise ApiError(400, "setup.firebase_project_id_required", "firebase_project_id required")
         # REQ-1266: limited Firebase mode — first user → sole super-admin, rest denied.
         # Drop the blanket admin default (it would admit every Firebase user).
         auth_section["bootstrap_superadmin"] = True

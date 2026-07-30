@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import type { MutationResult } from '../types/admin';
+import { serverMessage, requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -77,7 +78,7 @@ export async function fetchActions(): Promise<{
   webhooks: TrackedWebhook[];
 }> {
   const resp = await fetch(`${API_BASE}/admin/actions`);
-  if (!resp.ok) throw new Error(`Fetch actions failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Fetch actions", resp.status));
   return resp.json();
 }
 
@@ -104,8 +105,9 @@ export async function saveFunction(input: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  if (!resp.ok) throw new Error(`Save function failed: ${resp.status}`);
-  return resp.json();
+  if (!resp.ok) throw new Error(requestFailed("Save function", resp.status));
+  const result: MutationResult = await resp.json();
+  return { ...result, message: serverMessage(result, result.message) };
 }
 
 export async function saveWebhook(input: {
@@ -126,24 +128,27 @@ export async function saveWebhook(input: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  if (!resp.ok) throw new Error(`Save webhook failed: ${resp.status}`);
-  return resp.json();
+  if (!resp.ok) throw new Error(requestFailed("Save webhook", resp.status));
+  const result: MutationResult = await resp.json();
+  return { ...result, message: serverMessage(result, result.message) };
 }
 
 export async function deleteFunction(name: string): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/functions/${encodeURIComponent(name)}`, {
     method: 'DELETE',
   });
-  if (!resp.ok) throw new Error(`Delete function failed: ${resp.status}`);
-  return resp.json();
+  if (!resp.ok) throw new Error(requestFailed("Delete function", resp.status));
+  const result: MutationResult = await resp.json();
+  return { ...result, message: serverMessage(result, result.message) };
 }
 
 export async function deleteWebhook(name: string): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/webhooks/${encodeURIComponent(name)}`, {
     method: 'DELETE',
   });
-  if (!resp.ok) throw new Error(`Delete webhook failed: ${resp.status}`);
-  return resp.json();
+  if (!resp.ok) throw new Error(requestFailed("Delete webhook", resp.status));
+  const result: MutationResult = await resp.json();
+  return { ...result, message: serverMessage(result, result.message) };
 }
 
 export async function testAction(
@@ -158,7 +163,7 @@ export async function testAction(
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(body.detail || resp.statusText);
+    throw new Error(serverMessage(body, requestFailed("testAction", resp.status)));
   }
   return resp.json();
 }

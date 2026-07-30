@@ -46,6 +46,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useDomains, useTables } from "../hooks/useAdminQueries";
+import { serverMessage } from "../i18n/serverMessage";
 import "./JsonApiPage.css";
 
 interface JsonApiRelationshipRef {
@@ -483,7 +484,7 @@ export function JsonApiPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.errors?.[0]?.detail ?? JSON.stringify(json));
+        setError(serverMessage(json.errors?.[0], JSON.stringify(json)));
         setParsedDoc(null);
       } else {
         setParsedDoc(json);

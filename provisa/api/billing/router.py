@@ -16,11 +16,12 @@ from __future__ import annotations
 import json
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from provisa.api.billing.kms import create_tenant_key
+from provisa.api.errors import ApiError
 from provisa.api.billing.lemonsqueezy_client import (
     create_checkout,
     get_customer_portal_url,
@@ -70,7 +71,7 @@ async def checkout(body: CheckoutBody, request: Request):
     pool = _pool(request)
     tenant = await get_tenant(pool, body.tenant_id)
     if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+        raise ApiError(404, "billing.tenant_not_found", "Tenant not found")
     url = await create_checkout(body.variant_id, body.tenant_id, body.redirect_url)
     return {"checkout_url": url}
 
@@ -85,7 +86,7 @@ async def webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("X-Signature", "")
     if not verify_webhook_signature(payload, sig):
-        raise HTTPException(status_code=400, detail="Invalid Lemon Squeezy signature")
+        raise ApiError(400, "billing.invalid_signature", "Invalid Lemon Squeezy signature")
 
     event = json.loads(payload)
     meta = event.get("meta") or {}
@@ -104,7 +105,9 @@ async def webhook(request: Request):
             resolved = await get_tenant_by_ls_customer(pool, ls_customer_id)
             tenant_id = str(resolved.id) if resolved else None
         if tenant_id is None:
-            raise HTTPException(status_code=400, detail="Webhook missing tenant linkage")
+            raise ApiError(
+                400, "billing.webhook_missing_tenant_linkage", "Webhook missing tenant linkage"
+            )
         if ls_customer_id is not None:
             await update_tenant_ls_customer(pool, tenant_id, ls_customer_id)
         plan_name = plan_from_variant(attrs.get("variant_name", ""))
@@ -112,7 +115,7 @@ async def webhook(request: Request):
 
     elif event_name in _DEACTIVATE_EVENTS:
         if ls_customer_id is None:
-            raise HTTPException(status_code=400, detail="Webhook missing customer id")
+            raise ApiError(400, "billing.webhook_missing_customer_id", "Webhook missing customer id")
         tenant = await get_tenant_by_ls_customer(pool, ls_customer_id)
         if tenant:
             await update_tenant_plan(pool, str(tenant.id), "trial", PLAN_LIMITS["trial"])
@@ -125,9 +128,11 @@ async def portal(tenant_id: str, request: Request):
     pool = _pool(request)
     tenant = await get_tenant(pool, tenant_id)
     if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+        raise ApiError(404, "billing.tenant_not_found", "Tenant not found")
     if not tenant.ls_customer_id:
-        raise HTTPException(status_code=400, detail="Tenant has no Lemon Squeezy customer")
+        raise ApiError(
+            400, "billing.tenant_no_ls_customer", "Tenant has no Lemon Squeezy customer"
+        )
     url = await get_customer_portal_url(tenant.ls_customer_id)
     return {"portal_url": url}
 
@@ -137,7 +142,7 @@ async def status(tenant_id: str, request: Request):
     pool = _pool(request)
     tenant = await get_tenant(pool, tenant_id)
     if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+        raise ApiError(404, "billing.tenant_not_found", "Tenant not found")
     return {
         "tenant_id": str(tenant.id),
         "kms_key_arn": tenant.kms_key_arn,

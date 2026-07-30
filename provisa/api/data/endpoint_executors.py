@@ -26,6 +26,7 @@ import time as _time
 
 from fastapi import HTTPException
 
+from provisa.api.errors import ApiError
 from provisa.cache.middleware import store_result
 from provisa.compiler.sql_rewrite import (
     rewrite_semantic_to_catalog_physical,
@@ -83,9 +84,11 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     table_name = table_meta.table_name if table_meta else root_field
     endpoint = state.api_endpoints.get(table_name)
     if endpoint is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No API endpoint registered for table {table_name!r}",
+        raise ApiError(
+            400,
+            "data.no_api_endpoint_for_table",
+            f"No API endpoint registered for table {table_name!r}",
+            table=table_name,
         )
 
     api_source = state.api_sources.get(source_id)
@@ -243,8 +246,11 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
 
     reg = getattr(state, "grpc_remote_sources", {}).get(source_id)
     if reg is None:
-        raise HTTPException(
-            status_code=400, detail=f"gRPC remote source {source_id!r} not registered"
+        raise ApiError(
+            400,
+            "data.grpc_source_not_registered",
+            f"gRPC remote source {source_id!r} not registered",
+            source_id=source_id,
         )
 
     table_meta = None
@@ -262,8 +268,11 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
         None,
     )
     if grpc_query is None:
-        raise HTTPException(
-            status_code=400, detail=f"No gRPC query registered for table {table_name!r}"
+        raise ApiError(
+            400,
+            "data.no_grpc_query_for_table",
+            f"No gRPC query registered for table {table_name!r}",
+            table=table_name,
         )
 
     nf_args: dict = compiled.api_args.copy() if compiled.api_args else {}
@@ -401,7 +410,7 @@ async def _execute_engine_standard(
     from provisa.compiler.hints import extract_hints
 
     if not state.federation_engine.is_connected():
-        raise HTTPException(status_code=503, detail="the engine not connected")
+        raise ApiError(503, "data.engine_not_connected", "the engine not connected")
 
     (
         _dataloader_srcs,

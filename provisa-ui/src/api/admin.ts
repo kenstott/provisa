@@ -10,6 +10,7 @@
 
 import type { Role, RoleAssignment, OrgMembership } from "../types/auth";
 import { ORG_HEADER } from "../lib/authFetch";
+import { serverMessage, requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -62,7 +63,7 @@ export async function updateProfile(body: {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `updateProfile failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("updateProfile", res.status)));
   }
   return res.json();
 }
@@ -80,7 +81,7 @@ export async function fetchProviderType(): Promise<string | null> {
 // still-valid credential cannot take platform admin behind the user's back.
 export async function claimBootstrap(): Promise<boolean> {
   const res = await fetch("/auth/claim-bootstrap", { method: "POST" });
-  if (!res.ok) throw new Error(`Failed to claim platform admin: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("claim platform admin", res.status));
   const data = await res.json();
   return data.claimed === true;
 }
@@ -90,7 +91,7 @@ export async function claimBootstrap(): Promise<boolean> {
 // admin rather than discovering it afterwards. Unauthenticated, like /auth/provider-type.
 export async function fetchBootstrapStatus(): Promise<boolean> {
   const res = await fetch("/auth/bootstrap-status");
-  if (!res.ok) throw new Error(`Failed to read bootstrap status: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("read bootstrap status", res.status));
   const data = await res.json();
   return data.unclaimed === true;
 }
@@ -109,7 +110,7 @@ export async function registerAccount(body: {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `Registration failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("Registration", res.status)));
   }
   return res.json();
 }
@@ -123,7 +124,7 @@ export interface Org {
 
 export async function fetchOrgs(): Promise<Org[]> {
   const res = await fetch(`${API_BASE}/admin/orgs`);
-  if (!res.ok) throw new Error(`fetchOrgs failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("fetchOrgs", res.status));
   return res.json();
 }
 
@@ -162,7 +163,7 @@ export async function createOrg(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `createOrg failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("createOrg", res.status)));
   }
   return res.json();
 }
@@ -182,14 +183,14 @@ export async function updateOrgSettings(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `updateOrgSettings failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("updateOrgSettings", res.status)));
   }
   return res.json();
 }
 
 export async function fetchOrgStatus(orgId: string): Promise<OrgProvisioning> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/status`);
-  if (!res.ok) throw new Error(`fetchOrgStatus failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("fetchOrgStatus", res.status));
   return res.json();
 }
 
@@ -202,7 +203,7 @@ export async function deleteOrg(orgId: string, confirm: string): Promise<void> {
   );
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `deleteOrg failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("deleteOrg", res.status)));
   }
 }
 
@@ -212,7 +213,7 @@ export async function exportOrgConfig(orgId: string): Promise<string> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/config-export`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `exportOrgConfig failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("exportOrgConfig", res.status)));
   }
   return res.text();
 }
@@ -223,7 +224,7 @@ export async function grantOrgAdmin(orgId: string, userId: string): Promise<void
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/admins/${userId}`, { method: "POST" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `grantOrgAdmin failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("grantOrgAdmin", res.status)));
   }
 }
 
@@ -231,7 +232,7 @@ export async function revokeOrgAdmin(orgId: string, userId: string): Promise<voi
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/admins/${userId}`, { method: "DELETE" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `revokeOrgAdmin failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("revokeOrgAdmin", res.status)));
   }
 }
 
@@ -240,7 +241,7 @@ export async function leaveOrg(orgId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/leave`, { method: "POST" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `leaveOrg failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("leaveOrg", res.status)));
   }
 }
 
@@ -251,7 +252,7 @@ export async function deleteAccount(confirm: string): Promise<void> {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `deleteAccount failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("deleteAccount", res.status)));
   }
 }
 
@@ -267,7 +268,7 @@ export interface OrgMember {
 
 export async function fetchOrgMembers(orgId: string): Promise<OrgMember[]> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members`);
-  if (!res.ok) throw new Error(`fetchOrgMembers failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("fetchOrgMembers", res.status));
   return res.json();
 }
 
@@ -277,21 +278,21 @@ export async function addOrgMember(orgId: string, userId: string): Promise<void>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ user_id: userId }),
   });
-  if (!res.ok) throw new Error(`addOrgMember failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("addOrgMember", res.status));
 }
 
 export async function removeOrgMember(orgId: string, userId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members/${userId}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(`removeOrgMember failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("removeOrgMember", res.status));
 }
 
 export async function fetchOrgRoles(orgId: string): Promise<Role[]> {
   const res = await fetch(`${API_BASE}/admin/roles`, {
     headers: { [ORG_HEADER]: orgId },
   });
-  if (!res.ok) throw new Error(`fetchOrgRoles failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("fetchOrgRoles", res.status));
   const rows: Array<{ id: string; capabilities: string[]; domain_access: string[] }> =
     await res.json();
   return rows.map((r) => ({
@@ -312,7 +313,7 @@ export async function createOrgRole(
     headers: { "Content-Type": "application/json", [ORG_HEADER]: orgId },
     body: JSON.stringify({ id, capabilities, domain_access }),
   });
-  if (!res.ok) throw new Error(`createOrgRole failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("createOrgRole", res.status));
   return res.json();
 }
 
@@ -321,7 +322,7 @@ export async function deleteOrgRole(orgId: string, roleId: string): Promise<void
     method: "DELETE",
     headers: { [ORG_HEADER]: orgId },
   });
-  if (!res.ok) throw new Error(`deleteOrgRole failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("deleteOrgRole", res.status));
 }
 
 export async function profileTable(
@@ -334,7 +335,7 @@ export async function profileTable(
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(body.detail || resp.statusText);
+    throw new Error(serverMessage(body, requestFailed("profileTable", resp.status)));
   }
   return resp.json();
 }
@@ -356,7 +357,7 @@ export async function fetchSdl(roleId: string): Promise<string> {
   const resp = await fetch(`${API_BASE}/data/sdl`, {
     headers: { "X-Role": roleId },
   });
-  if (!resp.ok) throw new Error(`SDL fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("SDL fetch", resp.status));
   return resp.text();
 }
 
@@ -378,13 +379,13 @@ export async function discoverRelationships(
       domain_id: domainId,
     }),
   });
-  if (!resp.ok) throw new Error(`Discovery failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Discovery", resp.status));
   return resp.json();
 }
 
 export async function fetchCandidates(): Promise<unknown[]> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates`);
-  if (!resp.ok) throw new Error(`Fetch candidates failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Fetch candidates", resp.status));
   return resp.json();
 }
 
@@ -394,13 +395,13 @@ export async function acceptCandidate(id: number, name?: string): Promise<unknow
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: name ?? null }),
   });
-  if (!resp.ok) throw new Error(`Accept failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Accept", resp.status));
   return resp.json();
 }
 
 export async function fetchRejectedCount(): Promise<number> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/rejected/count`);
-  if (!resp.ok) throw new Error(`Fetch rejected count failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Fetch rejected count", resp.status));
   const data = await resp.json();
   return data.count;
 }
@@ -409,7 +410,7 @@ export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/rejected`, {
     method: "DELETE",
   });
-  if (!resp.ok) throw new Error(`Clear rejections failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Clear rejections", resp.status));
   return resp.json();
 }
 
@@ -419,7 +420,7 @@ export async function rejectCandidate(id: number, reason: string): Promise<void>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason }),
   });
-  if (!resp.ok) throw new Error(`Reject failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Reject", resp.status));
 }
 
 // --- Schema Discovery ---
@@ -456,7 +457,7 @@ export async function discoverSourceSchema(
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(body.detail || resp.statusText);
+    throw new Error(serverMessage(body, requestFailed("discoverSourceSchema", resp.status)));
   }
   return resp.json();
 }
@@ -474,7 +475,7 @@ export async function fetchTableUniqueConstraints(
   );
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(body.detail || resp.statusText);
+    throw new Error(serverMessage(body, requestFailed("fetchTableUniqueConstraints", resp.status)));
   }
   const json = await resp.json();
   return json.unique_constraints ?? [];
@@ -485,7 +486,7 @@ export async function fetchTableUniqueConstraints(
 // physical type at landing.
 export async function fetchIrTypes(): Promise<string[]> {
   const resp = await fetch(`${API_BASE_RAW}/admin/schema-discovery/ir-types`);
-  if (!resp.ok) throw new Error(`IR types fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("IR types fetch", resp.status));
   return resp.json();
 }
 
@@ -493,7 +494,7 @@ export async function fetchIrTypes(): Promise<string[]> {
 
 export async function downloadConfig(): Promise<string> {
   const resp = await fetch(`${API_BASE_RAW}/admin/config`);
-  if (!resp.ok) throw new Error(`Config download failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Config download", resp.status));
   return resp.text();
 }
 
@@ -501,7 +502,7 @@ export async function downloadConfig(): Promise<string> {
 // identically server-side so the diff shows only genuine changes, not section/key reordering.
 export async function fetchConfigDiff(): Promise<{ original: string; current: string }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/config/diff`);
-  if (!resp.ok) throw new Error(`Config diff failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Config diff", resp.status));
   return resp.json();
 }
 
@@ -513,7 +514,7 @@ export async function downloadConfigPatch(revised: string): Promise<string> {
     headers: { "Content-Type": "application/x-yaml" },
     body: revised,
   });
-  if (!resp.ok) throw new Error(`Config patch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Config patch", resp.status));
   return resp.text();
 }
 
@@ -523,7 +524,7 @@ export async function uploadConfig(yaml: string): Promise<{ success: boolean; me
     headers: { "Content-Type": "application/x-yaml" },
     body: yaml,
   });
-  if (!resp.ok) throw new Error(`Config upload failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Config upload", resp.status));
   return resp.json();
 }
 
@@ -592,7 +593,7 @@ export interface PlatformSettings {
 
 export async function fetchSettings(): Promise<PlatformSettings> {
   const resp = await fetch(`${API_BASE_RAW}/admin/settings`);
-  if (!resp.ok) throw new Error(`Settings fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Settings fetch", resp.status));
   return resp.json();
 }
 
@@ -634,7 +635,7 @@ export interface FederationEngineState {
 
 export async function fetchFederationEngine(): Promise<FederationEngineState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/federation-engine`);
-  if (!resp.ok) throw new Error(`Federation engine fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Federation engine fetch", resp.status));
   return resp.json();
 }
 
@@ -646,7 +647,7 @@ export async function setFederationEngine(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`Federation engine update failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Federation engine update", resp.status));
   return resp.json();
 }
 
@@ -676,7 +677,7 @@ export interface McpServerStatus {
 
 export async function fetchMcpServer(): Promise<McpServerStatus> {
   const resp = await fetch(`${API_BASE_RAW}/admin/mcp-server`);
-  if (!resp.ok) throw new Error(`MCP server status fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("MCP server status fetch", resp.status));
   return resp.json();
 }
 
@@ -720,7 +721,7 @@ export async function searchCatalog(
   });
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(data.detail || `Catalog search failed: ${resp.status}`);
+    throw new Error(serverMessage(data, requestFailed("Catalog search", resp.status)));
   }
   const json = await resp.json();
   return json.results ?? [];
@@ -751,7 +752,7 @@ export interface CacheStorageState {
 
 export async function fetchCacheStorage(): Promise<CacheStorageState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/cache-storage`);
-  if (!resp.ok) throw new Error(`Cache/storage fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Cache/storage fetch", resp.status));
   return resp.json();
 }
 
@@ -769,7 +770,7 @@ export async function setCacheStorage(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`Cache/storage update failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Cache/storage update", resp.status));
   return resp.json();
 }
 
@@ -805,7 +806,7 @@ export interface EncryptionState {
 
 export async function fetchEncryption(): Promise<EncryptionState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/encryption`);
-  if (!resp.ok) throw new Error(`Encryption fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Encryption fetch", resp.status));
   return resp.json();
 }
 
@@ -817,7 +818,7 @@ export async function setEncryption(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`Encryption update failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Encryption update", resp.status));
   return resp.json();
 }
 
@@ -829,7 +830,7 @@ export async function generateEncryptionKey(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`Key generation failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Key generation", resp.status));
   return resp.json();
 }
 
@@ -866,7 +867,7 @@ export interface AuthConfigState {
 
 export async function fetchAuthConfig(): Promise<AuthConfigState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/auth`);
-  if (!resp.ok) throw new Error(`Auth config fetch failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Auth config fetch", resp.status));
   return resp.json();
 }
 
@@ -882,7 +883,7 @@ export async function setAuthConfig(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`Auth config update failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Auth config update", resp.status));
   return resp.json();
 }
 
@@ -894,7 +895,7 @@ export async function updateSettings(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
   });
-  if (!resp.ok) throw new Error(`Settings update failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Settings update", resp.status));
   return resp.json();
 }
 
@@ -909,7 +910,7 @@ export async function setDomainPolicy(body: {
   });
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(data.detail || `Domain policy update failed: ${resp.status}`);
+    throw new Error(serverMessage(data, requestFailed("Domain policy update", resp.status)));
   }
   return resp.json();
 }
@@ -1099,7 +1100,7 @@ export interface LocalUser {
 
 export async function fetchLocalUsers(): Promise<LocalUser[]> {
   const res = await fetch(`${API_BASE}/admin/users`);
-  if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("fetch users", res.status));
   return res.json();
 }
 
@@ -1116,15 +1117,15 @@ export async function createLocalUser(body: {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to create user: ${text.slice(0, 200)}`);
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("create user", res.status)));
   }
   return res.json();
 }
 
 export async function deleteLocalUser(userId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/users/${userId}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`Failed to delete user: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("delete user", res.status));
 }
 
 export interface UserAssignment {
@@ -1136,7 +1137,7 @@ export interface UserAssignment {
 
 export async function fetchUserAssignments(userId: string): Promise<UserAssignment[]> {
   const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`);
-  if (!res.ok) throw new Error(`Failed to fetch assignments: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("fetch assignments", res.status));
   return res.json();
 }
 
@@ -1151,8 +1152,8 @@ export async function addUserAssignment(
     body: JSON.stringify({ role_id: roleId, domain_id: domainId }),
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to add assignment: ${text.slice(0, 200)}`);
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("add assignment", res.status)));
   }
   return res.json();
 }
@@ -1161,7 +1162,7 @@ export async function removeUserAssignment(userId: string, assignmentId: number)
   const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments/${assignmentId}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(`Failed to remove assignment: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("remove assignment", res.status));
 }
 
 export interface OrgInvite {
@@ -1185,7 +1186,7 @@ export interface InviteInfo {
 
 export async function fetchInvites(): Promise<OrgInvite[]> {
   const res = await fetch(`${API_BASE}/admin/invites`);
-  if (!res.ok) throw new Error(`fetchInvites failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("fetchInvites", res.status));
   return res.json();
 }
 
@@ -1207,20 +1208,20 @@ export async function createInvite(
       email: email ?? null,
     }),
   });
-  if (!res.ok) throw new Error(`createInvite failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("createInvite", res.status));
   return res.json();
 }
 
 export async function revokeInvite(token: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/invites/${token}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`revokeInvite failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("revokeInvite", res.status));
 }
 
 export async function fetchInviteInfo(token: string): Promise<InviteInfo> {
   const res = await fetch(`/auth/invite/${token}`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `Invalid invite: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("fetchInviteInfo", res.status)));
   }
   return res.json();
 }
@@ -1242,7 +1243,7 @@ export interface PendingInvite {
  */
 export async function fetchMyInvites(): Promise<PendingInvite[]> {
   const res = await fetch("/auth/my-invites");
-  if (!res.ok) throw new Error(`my-invites failed: ${res.status}`);
+  if (!res.ok) throw new Error(requestFailed("my-invites", res.status));
   const data = await res.json();
   return data.invites;
 }
@@ -1257,7 +1258,7 @@ export async function redeemInvite(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `Redeem invite failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("Redeem invite", res.status)));
   }
   return res.json();
 }
@@ -1271,7 +1272,7 @@ export async function reloadQueryEngineCatalog(
   );
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `reload-catalog failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("reload-catalog", res.status)));
   }
   return res.json();
 }
@@ -1284,7 +1285,7 @@ export async function restartQueryEngine(): Promise<{
   const res = await fetch(`${API_BASE}/admin/query-engine/restart`, { method: "POST" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `restart failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("restart", res.status)));
   }
   return res.json();
 }
@@ -1296,7 +1297,7 @@ export async function recomputeSchemaClusters(): Promise<{
   const res = await fetch(`${API_BASE}/admin/schema-clusters/recompute`, { method: "POST" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `recompute failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("recompute", res.status)));
   }
   return res.json();
 }
@@ -1312,7 +1313,7 @@ export async function submitNlQuery(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(data.error || `NL submit failed: ${res.status}`);
+    throw new Error(serverMessage(data, data.error || requestFailed("NL submit", res.status)));
   }
   return res.json();
 }
@@ -1412,7 +1413,7 @@ export interface OssieImportProposals {
 /** GET the canonical live Ossie YAML document. */
 export async function fetchOssieYaml(): Promise<string> {
   const resp = await fetch(`${API_BASE}${OSSIE_ENDPOINT_PATH}`);
-  if (!resp.ok) throw new Error(`Ossie export failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(requestFailed("Ossie export", resp.status));
   return resp.text();
 }
 
@@ -1425,9 +1426,7 @@ export async function importOssie(body: string): Promise<OssieImportProposals> {
   });
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(
-      typeof data.detail === "string" ? data.detail : `Ossie import failed: ${resp.status}`,
-    );
+    throw new Error(serverMessage(data, requestFailed("Ossie import", resp.status)));
   }
   return resp.json();
 }

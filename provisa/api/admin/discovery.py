@@ -19,10 +19,11 @@ import os
 from typing import cast
 
 import asyncpg
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from provisa.api.app import state
+from provisa.api.errors import ApiError
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import analyze
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
@@ -59,11 +60,15 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
         scope_id: str | int | None = None
         if body.scope == "table":
             if body.table_id is None:
-                raise HTTPException(status_code=400, detail="table_id required for table scope")
+                raise ApiError(
+                    400, "discovery.table_id_required", "table_id required for table scope"
+                )
             scope_id = body.table_id
         elif body.scope == "domain":
             if body.domain_id is None:
-                raise HTTPException(status_code=400, detail="domain_id required for domain scope")
+                raise ApiError(
+                    400, "discovery.domain_id_required", "domain_id required for domain scope"
+                )
             scope_id = body.domain_id
 
         all_candidates = []

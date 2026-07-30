@@ -20,6 +20,7 @@ from fastapi.responses import Response
 
 from provisa.api.admin._platform_guard import require_platform_settings
 from provisa.api.admin._config_io import config_path, read_config, write_config
+from provisa.api.errors import ApiError
 
 router = APIRouter()
 
@@ -31,7 +32,7 @@ async def download_config(request: Request):  # REQ-164
     require_platform_settings(request)  # REQ-1337
     path = config_path()
     if not path.exists():
-        raise HTTPException(status_code=404, detail="Config file not found")
+        raise ApiError(404, "settings.config_file_not_found", "Config file not found")
     return Response(
         content=path.read_text(),
         media_type="application/x-yaml",
@@ -46,9 +47,10 @@ def _require_live_export() -> None:
     from provisa.api.app import state
 
     if not getattr(state, "config_live_export", False):
-        raise HTTPException(
-            status_code=404,
-            detail="Live config export is disabled (set live_config_export: true).",
+        raise ApiError(
+            404,
+            "settings.live_export_disabled",
+            "Live config export is disabled (set live_config_export: true).",
         )
 
 
@@ -494,10 +496,14 @@ async def set_domain_policy(request: Request):  # REQ-165
     use_domains = body.get("use_domains", None)
     default_domain = body.get("default_domain", "default")
     if use_domains not in (None, True, False):
-        raise HTTPException(status_code=400, detail="use_domains must be true, false, or null")
+        raise ApiError(
+            400, "settings.use_domains_invalid", "use_domains must be true, false, or null"
+        )
     if use_domains is False and not default_domain:
-        raise HTTPException(
-            status_code=400, detail="default_domain required when use_domains=false"
+        raise ApiError(
+            400,
+            "settings.default_domain_required",
+            "default_domain required when use_domains=false",
         )
 
     path = config_path()
@@ -578,8 +584,12 @@ async def set_federation_engine(request: Request):  # REQ-916
     registry = engine_registry()
     valid = {e["key"] for e in registry}
     if engine not in valid:
-        raise HTTPException(
-            status_code=400, detail=f"unknown engine {engine!r}; valid: {sorted(valid)}"
+        raise ApiError(
+            400,
+            "settings.unknown_engine",
+            f"unknown engine {engine!r}; valid: {sorted(valid)}",
+            engine=str(engine),
+            valid=sorted(valid),
         )
 
     path = config_path()
@@ -787,12 +797,19 @@ async def set_encryption(request: Request):  # REQ-918
     provider = body.get("provider")
     spec = get_provider_spec(provider)
     if spec is None:
-        raise HTTPException(status_code=400, detail=f"unknown encryption provider {provider!r}")
+        raise ApiError(
+            400,
+            "settings.unknown_encryption_provider",
+            f"unknown encryption provider {provider!r}",
+            provider=str(provider),
+        )
     if not spec.available():
         # Fail closed — the runtime (factory.build_encryption_service) can't build this.
-        raise HTTPException(
-            status_code=400,
-            detail=f"encryption provider {provider!r} is not available (its SDK/runtime is not installed)",
+        raise ApiError(
+            400,
+            "settings.encryption_provider_unavailable",
+            f"encryption provider {provider!r} is not available (its SDK/runtime is not installed)",
+            provider=str(provider),
         )
     path = config_path()
     cfg = read_config()
@@ -962,8 +979,12 @@ async def set_auth(request: Request):  # REQ-919
     provider = body.get("provider")
     valid = {p["key"] for p in _AUTH_PROVIDERS}
     if provider not in valid:
-        raise HTTPException(
-            status_code=400, detail=f"unknown auth provider {provider!r}; valid: {sorted(valid)}"
+        raise ApiError(
+            400,
+            "settings.unknown_auth_provider",
+            f"unknown auth provider {provider!r}; valid: {sorted(valid)}",
+            provider=str(provider),
+            valid=sorted(valid),
         )
 
     path = config_path()
@@ -1024,9 +1045,10 @@ async def restart_query_engine(request: Request, container: str | None = None):
         container or os.environ.get("QUERY_ENGINE_CONTAINER") or state.federation_engine.name
     )
     if not container:
-        raise HTTPException(
-            status_code=400,
-            detail="no container specified and none resolvable from QUERY_ENGINE_CONTAINER or the bound engine",
+        raise ApiError(
+            400,
+            "settings.no_container_resolvable",
+            "no container specified and none resolvable from QUERY_ENGINE_CONTAINER or the bound engine",
         )
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -1038,9 +1060,9 @@ async def restart_query_engine(request: Request, container: str | None = None):
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="docker restart timed out")
+        raise ApiError(504, "settings.docker_restart_timeout", "docker restart timed out")
     except FileNotFoundError:
-        raise HTTPException(status_code=503, detail="docker not found on PATH")
+        raise ApiError(503, "settings.docker_not_found", "docker not found on PATH")
 
     if proc.returncode != 0:
         raise HTTPException(
@@ -1058,7 +1080,7 @@ async def recompute_schema_clusters():  # REQ-510
     from provisa.api.startup_seed import _compute_and_store_clusters
 
     if not state.tenant_db:
-        raise HTTPException(status_code=503, detail="Database not available")
+        raise ApiError(503, "settings.database_not_available", "Database not available")
     async with state.tenant_db.acquire() as conn:
         count = await _compute_and_store_clusters(conn)  # type: ignore[arg-type]
     return {"success": True, "tables_clustered": count}

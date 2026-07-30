@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
+
+from provisa.api.errors import ApiError
 
 from provisa.sparql.source import (
     SparqlSourceConfig,
@@ -82,7 +84,12 @@ async def register_sparql_table(  # REQ-297, REQ-296, REQ-299
     state = request.app.state
     api_source = getattr(state, "api_sources", {}).get(source_id)
     if api_source is None:
-        raise HTTPException(status_code=404, detail=f"SPARQL source {source_id!r} not found")
+        raise ApiError(
+            404,
+            "sparql.source_not_found",
+            f"SPARQL source {source_id!r} not found",
+            source_id=source_id,
+        )
 
     cfg = SparqlSourceConfig(
         source_id=source_id,
@@ -92,9 +99,11 @@ async def register_sparql_table(  # REQ-297, REQ-296, REQ-299
     try:
         rows = await probe_endpoint(cfg, body.sparql_query)
     except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"SPARQL endpoint probe failed: {exc}",
+        raise ApiError(
+            422,
+            "sparql.probe_failed",
+            f"SPARQL endpoint probe failed: {exc}",
+            error=str(exc),
         ) from exc
 
     # Infer columns from probe results; fall back to SELECT variable names
@@ -104,9 +113,10 @@ async def register_sparql_table(  # REQ-297, REQ-296, REQ-299
         else [_make_string_col(v) for v in extract_variables(body.sparql_query)]
     )
     if not columns:
-        raise HTTPException(
-            status_code=422,
-            detail="Could not infer columns: probe returned no rows and no SELECT variables found.",
+        raise ApiError(
+            422,
+            "sparql.columns_not_inferred",
+            "Could not infer columns: probe returned no rows and no SELECT variables found.",
         )
 
     endpoint = build_endpoint(cfg, body.table_name, body.sparql_query, columns, body.ttl)

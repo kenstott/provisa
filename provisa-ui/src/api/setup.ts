@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { serverMessage, requestFailed } from "../i18n/serverMessage";
+
 export interface SetupStatus {
   needs_setup: boolean;
   demo_mode: boolean;
@@ -20,7 +22,7 @@ export interface SetupStatus {
 export async function fetchSetupStatus(): Promise<SetupStatus> {
   const res = await fetch('/setup/status');
   if (!res.ok) {
-    throw new Error(`Setup status check failed: ${res.status} ${res.statusText}`);
+    throw new Error(requestFailed("Setup status check", res.status));
   }
   return res.json();
 }
@@ -41,7 +43,7 @@ export async function runSetup(body: {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(data.detail || `Setup failed: ${res.status}`);
+    throw new Error(serverMessage(data, requestFailed("Setup", res.status)));
   }
   return res.json();
 }

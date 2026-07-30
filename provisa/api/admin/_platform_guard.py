@@ -14,8 +14,9 @@
 
 from __future__ import annotations
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
+from provisa.api.errors import ApiError
 from provisa.security.rights import Capability, has_platform_bypass
 
 _ANONYMOUS = "anonymous"
@@ -41,4 +42,6 @@ def require_platform_settings(request: Request) -> None:  # REQ-1337
     caps = _resolved_capabilities(identity, state)
     if has_platform_bypass(caps) or Capability.PLATFORM_SETTINGS.value in caps:
         return
-    raise HTTPException(status_code=403, detail="platform_settings capability required")
+    raise ApiError(
+        403, "platform.settings_capability_required", "platform_settings capability required"
+    )

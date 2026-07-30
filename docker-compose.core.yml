@@ -65,9 +65,7 @@ services:
   # at startup, since register_system_catalogs runs inside the lifespan.
   trino-exchange-init:
     image: busybox
-    command: >
-      sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange
-             && mkdir -p /etc/trino/catalog && chown -R 1000:1000 /etc/trino/catalog"
+    command: sh -c "mkdir -p /data/provisa/exchange /etc/trino/catalog && chown -R 1000:1000 /data/provisa/exchange /etc/trino/catalog"
     volumes:
       - provisa_exchange:/data/provisa/exchange
       - ./trino/catalog:/etc/trino/catalog

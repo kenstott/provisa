@@ -25,6 +25,7 @@ import {
   Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
+import { serverMessage, requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -49,7 +50,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const resp = await fetch(`${API_BASE}${path}`, opts);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(body.detail || resp.statusText);
+    throw new Error(serverMessage(body, requestFailed("Request", resp.status)));
   }
   return resp.json();
 }

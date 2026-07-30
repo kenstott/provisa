@@ -19,6 +19,7 @@ from fastapi import APIRouter, Header, HTTPException
 from sqlalchemy import select
 
 from provisa.api.app import state
+from provisa.api.errors import ApiError
 from provisa.core.schema_org import registered_tables
 from provisa.core.models import DERIVED_SOURCE_ID
 
@@ -40,9 +41,9 @@ async def profile_table(
     x_provisa_role: str | None = Header(None),
 ) -> dict:  # REQ-452
     if state.tenant_db is None:
-        raise HTTPException(503, "Database unavailable")
+        raise ApiError(503, "profile.database_unavailable", "Database unavailable")
     if state.federation_engine is None:
-        raise HTTPException(503, "Query engine unavailable")
+        raise ApiError(503, "profile.query_engine_unavailable", "Query engine unavailable")
     engine = state.federation_engine
 
     async with state.tenant_db.acquire() as conn:
@@ -56,7 +57,7 @@ async def profile_table(
         )
         row = result.fetchone()
     if row is None:
-        raise HTTPException(404, f"Table {table_id} not found")
+        raise ApiError(404, "profile.table_not_found", f"Table {table_id} not found", table_id=table_id)
 
     m = row._mapping
     source_id: str = m["source_id"]
@@ -72,7 +73,11 @@ async def profile_table(
         from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
         if not x_provisa_role:
-            raise HTTPException(400, "X-Provisa-Role header required to profile a view")
+            raise ApiError(
+                400,
+                "profile.role_header_required",
+                "X-Provisa-Role header required to profile a view",
+            )
         sampled = f"SELECT * FROM ({view_sql.rstrip().rstrip(';')}) _pv LIMIT {_SAMPLE_LIMIT}"
         _plan = await _govern_and_route(sampled, x_provisa_role)
         res = await _execute_plan(_plan, state)

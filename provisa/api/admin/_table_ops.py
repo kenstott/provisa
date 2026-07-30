@@ -193,7 +193,7 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
         try:
             discovered = await _discover_columns_for_registration(input.source_id, input.table_name)
         except Exception as e:
-            return [], MutationResult(success=False, message=f"Schema discovery failed: {e}")
+            return [], MutationResult(success=False, message=f"Schema discovery failed: {e}", code="schema.discovery_failed", params={"error": str(e)})
         discovered_models = _build_column_models(
             [_ColInput(name=d["name"], data_type=d.get("type"), visible_to=[]) for d in discovered]
         )
@@ -244,5 +244,7 @@ async def _ensure_source_column_types(input, columns) -> "MutationResult | None"
                 f"column(s): {', '.join(unresolved)}. Introspect the table (Discover schema) "
                 "or set a Data Type for each before registering."
             ),
+            code="schema.column_types_unresolved",
+            params={"columns": ", ".join(unresolved)},
         )
     return None

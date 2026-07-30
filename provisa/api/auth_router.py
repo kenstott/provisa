@@ -16,10 +16,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, func, insert, select, update
 
+from provisa.api.errors import ApiError
 from provisa.core.schema_admin import (
     local_users,
     org_invites,
@@ -184,11 +185,11 @@ async def claim_bootstrap(request: Request):  # REQ-1290
 
     auth_cfg = getattr(state, "auth_config", None)
     if auth_cfg is None or not auth_cfg.get("bootstrap_superadmin", False):
-        raise HTTPException(status_code=404, detail="Bootstrap claiming is not enabled")
+        raise ApiError(404, "auth.bootstrap_claiming_disabled", "Bootstrap claiming is not enabled")
 
     identity = getattr(request.state, "identity", None)
     if identity is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise ApiError(401, "auth.authentication_required", "Authentication required")
 
     # Bootstrap mode needs the platform plane for its singleton lock — the middleware asserts the
     # same. A missing admin_db here is a wiring fault, not a state to paper over.
@@ -322,21 +323,15 @@ async def get_invite(token: str):  # REQ-516
         fetched = result.fetchone()
     row = dict(fetched._mapping) if fetched is not None else None
     if row is None:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=404, detail="Invite not found")
+        raise ApiError(404, "auth.invite_not_found", "Invite not found")
     import datetime
     from datetime import timezone
 
     now = datetime.datetime.now(tz=timezone.utc)
     if row["used_at"] is not None:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=410, detail="Invite already used")
+        raise ApiError(410, "auth.invite_already_used", "Invite already used")
     if row["expires_at"] < now:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=410, detail="Invite expired")
+        raise ApiError(410, "auth.invite_expired", "Invite expired")
     return {
         "token": row["token"],
         "org_id": row["org_id"],
@@ -368,10 +363,10 @@ async def register(body: RegisterRequest):
         else getattr(auth_cfg, "provider", None)
     )
     if provider != "basic":
-        from fastapi import HTTPException
-
-        raise HTTPException(
-            status_code=400, detail="Registration only available with basic auth provider"
+        raise ApiError(
+            400,
+            "auth.registration_basic_only",
+            "Registration only available with basic auth provider",
         )
 
     import bcrypt
@@ -389,9 +384,7 @@ async def register(body: RegisterRequest):
         )
         existing = result.fetchone()
         if existing:
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=409, detail="Username already exists")
+            raise ApiError(409, "auth.username_exists", "Username already exists")
         await conn.execute_core(
             insert(local_users).values(
                 id=user_id,
@@ -405,7 +398,6 @@ async def register(body: RegisterRequest):
         if body.invite_token:
             import datetime
             from datetime import timezone
-            from fastapi import HTTPException
 
             now = datetime.datetime.now(tz=timezone.utc)
             result = await conn.execute_core(
@@ -419,7 +411,7 @@ async def register(body: RegisterRequest):
             fetched = result.fetchone()
             invite = dict(fetched._mapping) if fetched is not None else None
             if invite is None or invite["used_at"] is not None or invite["expires_at"] < now:
-                raise HTTPException(status_code=400, detail="Invalid or expired invite token")
+                raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
             await conn.upsert(
                 user_org_memberships,
                 {"user_id": user_id, "org_id": invite["org_id"]},
@@ -464,7 +456,9 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
 
     identity = getattr(request.state, "identity", None)
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
-        raise HTTPException(status_code=401, detail="Authentication required to redeem an invite")
+        raise ApiError(
+            401, "auth.redeem_auth_required", "Authentication required to redeem an invite"
+        )
     user_id = identity.user_id
 
     import datetime
@@ -489,14 +483,15 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
         fetched = result.fetchone()
         invite = dict(fetched._mapping) if fetched is not None else None
         if invite is None or invite["used_at"] is not None or invite["expires_at"] < now:
-            raise HTTPException(status_code=400, detail="Invalid or expired invite token")
+            raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
         # REQ-1268: an org email rule gates who may join, even with a valid invite — the invited
         # address and the authenticated address can differ. Reject a mismatch (or a missing email
         # when a rule is set) rather than granting membership the org's policy forbids.
         if not email_matches_rule(identity.email, invite["email_rule"]):
-            raise HTTPException(
-                status_code=403,
-                detail="Your email address is not permitted to join this organization",
+            raise ApiError(
+                403,
+                "auth.email_not_permitted",
+                "Your email address is not permitted to join this organization",
             )
         # REQ-1313: revalidate rather than trusting the stored value — a role can be removed from
         # the org between the invitation being written and this redemption, and assigning a role
@@ -554,7 +549,7 @@ async def update_profile(body: ProfileUpdate, request: Request):
 
     identity = getattr(request.state, "identity", None)
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise ApiError(401, "auth.authentication_required", "Authentication required")
 
     def _norm(v: str | None) -> str | None:
         if v is None:
@@ -608,11 +603,12 @@ async def delete_account(request: Request, confirm: str | None = None):
     identity = getattr(request.state, "identity", None)
     user_id = getattr(identity, "user_id", None) if identity is not None else None
     if user_id in (None, "anonymous"):
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise ApiError(401, "auth.authentication_required", "Authentication required")
     if confirm != user_id:
-        raise HTTPException(
-            status_code=400,
-            detail=(
+        raise ApiError(
+            400,
+            "auth.delete_account_confirm_required",
+            (
                 "Deleting your account is irreversible: your profile and every org membership are "
                 "removed and cannot be restored. Repeat your user id in the 'confirm' parameter to "
                 "proceed."
@@ -637,12 +633,14 @@ async def delete_account(request: Request, confirm: str | None = None):
         if user_id in admins and len(admins) == 1:
             blocking.append(org_id)
     if blocking:
-        raise HTTPException(
-            status_code=409,
-            detail=(
+        raise ApiError(
+            409,
+            "auth.last_org_admin",
+            (
                 f"You are the last org_admin of: {', '.join(blocking)}. Promote another org_admin "
                 f"in each, or delete the organization, before deleting your account."
             ),
+            orgs=", ".join(blocking),
         )
 
     # The deployment must not be left without a platform administrator either. platform_admin is
@@ -666,9 +664,10 @@ async def delete_account(request: Request, confirm: str | None = None):
     if claimant is not None:
         platform_admins.add(claimant)
     if user_id in platform_admins and len(platform_admins) == 1:
-        raise HTTPException(
-            status_code=409,
-            detail=(
+        raise ApiError(
+            409,
+            "auth.last_platform_admin",
+            (
                 "You are the last platform_admin of this deployment. Grant platform_admin to "
                 "another user before deleting your account."
             ),

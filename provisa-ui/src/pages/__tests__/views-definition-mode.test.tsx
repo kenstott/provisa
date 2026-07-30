@@ -210,7 +210,8 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     expect(screen.queryByTestId("view-definition-sql-panel")).not.toBeInTheDocument();
   });
 
-  it("Metrics mode submits registerTable with viewMetrics and no viewSql", async () => {
+  // 15s: long userEvent sequence; under full-suite load the 5s default trips.
+  it("Metrics mode submits registerTable with viewMetrics and no viewSql", { timeout: 15000 }, async () => {
     const user = userEvent.setup();
     const { onSuccess } = renderForm(null);
     await user.click(screen.getByRole("radio", { name: "Metrics" }));

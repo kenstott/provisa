@@ -18,6 +18,8 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from graphql import graphql_sync, print_schema
 
+from provisa.api.errors import ApiError
+
 router = APIRouter()
 
 
@@ -132,10 +134,10 @@ async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role
     auth_role = getattr(request.state, "role", None)
     role_id = auth_role or x_role
     if role_id is None:
-        raise HTTPException(status_code=422, detail="Missing X-Role header")
+        raise ApiError(422, "data.missing_x_role_header", "Missing X-Role header")
     role = state.roles.get(role_id)
     if role is None:
-        raise HTTPException(status_code=404, detail=f"No role {role_id!r}")
+        raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
     all_domains = [
         d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""
     ]
@@ -157,20 +159,22 @@ async def get_sdl(  # REQ-039, REQ-363
     auth_role = getattr(request.state, "role", None)
     role_id = auth_role or x_role
     if role_id is None:
-        raise HTTPException(status_code=422, detail="Missing X-Role header")
+        raise ApiError(422, "data.missing_x_role_header", "Missing X-Role header")
 
     domain_list = [d for d in (domain or "").split(",") if d and d != "all"]
     if domain_list:
         role = state.roles.get(role_id)
         if role is None:
-            raise HTTPException(status_code=404, detail=f"No role {role_id!r}")
+            raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
         if not state.schema_build_cache:
-            raise HTTPException(status_code=503, detail="Schema build cache not ready")
+            raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
         schema = _build_domain_schema(role, domain_list, state.schema_build_cache)
     else:
         schema = state.schemas.get(role_id)
         if schema is None:
-            raise HTTPException(status_code=404, detail=f"No schema for role {role_id!r}")
+            raise ApiError(
+                404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+            )
     # REQ-692: mark encrypted columns with the @encrypted directive so client wrappers
     # know which fields to decrypt locally.
     from provisa.api.data.encrypted_directive import (
@@ -227,20 +231,22 @@ async def get_introspection(  # REQ-039, REQ-363
     auth_role = getattr(request.state, "role", None)
     role_id = auth_role or x_role
     if role_id is None:
-        raise HTTPException(status_code=422, detail="Missing X-Provisa-Role header")
+        raise ApiError(422, "data.missing_x_provisa_role_header", "Missing X-Provisa-Role header")
 
     domain_list = [d for d in (domain or "").split(",") if d and d != "all"]
     if domain_list:
         role = state.roles.get(role_id)
         if role is None:
-            raise HTTPException(status_code=404, detail=f"No role {role_id!r}")
+            raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
         if not state.schema_build_cache:
-            raise HTTPException(status_code=503, detail="Schema build cache not ready")
+            raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
         schema = _build_domain_schema(role, domain_list, state.schema_build_cache)
     else:
         schema = state.schemas.get(role_id)
         if schema is None:
-            raise HTTPException(status_code=404, detail=f"No schema for role {role_id!r}")
+            raise ApiError(
+                404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+            )
 
     result = graphql_sync(schema, _INTROSPECTION_QUERY)
     if result.errors:
