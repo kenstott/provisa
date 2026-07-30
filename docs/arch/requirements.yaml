@@ -40539,3 +40539,41 @@
   related_reqs:
   - REQ-1012
   - REQ-1341
+- id: REQ-1343
+  status: complete
+  group: 11. Frontend UI & UX
+  category: Internationalization
+  priority: SHOULD
+  type: behavioral
+  since: 2026-07
+  description: >-
+    Server-side error i18n emits stable machine codes and JSON parameters alongside English messages.
+    ApiError (HTTPException) subclasses and registered handlers emit {detail, code, params} payloads; strawberry
+    MutationResult gains optional code/params fields. The UI (serverMessage()/requestFailed() in
+    provisa-ui/src/i18n/serverMessage.ts) renders localized error text from the serverErrors i18next
+    catalog with graceful fallback to English detail/message when translations are unavailable.
+    Unmigrated HTTPException sites and engine-error passthrough (str(e)) remain valid by design.
+  use_case: >-
+    Enables the UI to display localized error messages without requiring server implementations for every
+    supported language. Stable error codes allow client-side catalog management and translation maintenance
+    independent of server changes. Graceful fallback ensures compatibility with pre-i18n error paths.
+  code:
+  - provisa/api/errors.py
+  - provisa/api/app.py
+  - provisa-ui/src/i18n/serverMessage.ts
+  tests:
+  - tests/unit/test_error_handling.py
+  scenario: |
+    Given a mutation or query that results in an error with code auth.not_authorized
+    When the error is caught by the registered ApiError handler
+    Then the response includes {detail: "English message", code: "auth.not_authorized", params: {...}}
+    And the UI calls serverMessage(response) to render the error
+    And the i18next catalog serverErrors.AUTH_DENIED is rendered if available
+    And if the translation key is missing, the detail fallback is rendered
+  e2e: true
+  e2e_reason: >-
+    Error handling, code/params emission, and UI fallback rendering require real server-to-client round-trip
+    with actual i18next catalog lookup and missing-key fallback behavior verification.
+  related_reqs:
+  - REQ-1341
+  - REQ-1342
