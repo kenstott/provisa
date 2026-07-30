@@ -54,7 +54,10 @@ build_ui() {
   echo "== building UI"
   (cd "$REPO/provisa-ui" && npm run build)
   # index.html carries the hashed bundle names, so it ships with the assets it references.
-  tar czf "$STAGE/ui.tgz" -C "$REPO/provisa-ui/dist" assets index.html
+  # auth-relay.html is the second HTML entry (REQ-1348) and does the same for the relay bundle;
+  # left behind, the control plane answers an org subdomain's token request with a stale page or
+  # a 502 and sign-in on that subdomain never completes.
+  tar czf "$STAGE/ui.tgz" -C "$REPO/provisa-ui/dist" assets index.html auth-relay.html
 }
 
 push_ui() {

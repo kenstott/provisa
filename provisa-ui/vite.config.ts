@@ -84,6 +84,14 @@ export default defineConfig((config) => ({
   build: {
     chunkSizeWarningLimit: 6000,
     rollupOptions: {
+      // REQ-1348: two HTML entries. `auth-relay.html` is the control plane's cross-subdomain
+      // token endpoint — it must be emitted to the dist root so ui_server's static handler
+      // serves it directly instead of falling through to the SPA's index.html. Naming any
+      // input at all turns off Vite's implicit index.html entry, so index must be listed too.
+      input: {
+        index: path.resolve(__dirname, "index.html"),
+        "auth-relay": path.resolve(__dirname, "auth-relay.html"),
+      },
       output: {
         codeSplitting: true,
         manualChunks(id) {

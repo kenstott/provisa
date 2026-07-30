@@ -72,6 +72,10 @@ _STATIC_PREFIXES = (
     "/icon-512.png",
     "/apple-touch-icon.png",
     "/site.webmanifest",
+    # REQ-1348: the cross-subdomain auth relay. It loads as an iframe subresource, not a
+    # navigation, so without this it would be treated as an API call and proxied upstream
+    # instead of being served as the built page.
+    "/auth-relay.html",
 )
 
 # Disable this proxy app's own Swagger so /docs falls through to the SPA (the API's

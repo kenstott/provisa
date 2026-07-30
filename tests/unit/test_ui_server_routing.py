@@ -11,7 +11,7 @@
 # REQ-1006: Sec-Fetch-Dest-driven API-vs-SPA routing decision.
 import pytest
 
-from provisa.ui_server import is_spa_navigation
+from provisa.ui_server import _STATIC_PREFIXES, is_spa_navigation
 
 
 @pytest.mark.parametrize(
@@ -35,6 +35,14 @@ from provisa.ui_server import is_spa_navigation
 )
 def test_is_spa_navigation(method, headers, expected):
     assert is_spa_navigation(method, headers) is expected
+
+
+def test_auth_relay_is_served_as_a_file_not_proxied():
+    # REQ-1348: the relay is fetched as an iframe subresource, which is_spa_navigation correctly
+    # reports as a non-navigation. Without a static prefix that answer sends it to the API proxy,
+    # so the org subdomain gets a 502 instead of the page that hands it a bearer.
+    assert is_spa_navigation("GET", {"sec-fetch-dest": "iframe"}) is False
+    assert "/auth-relay.html" in _STATIC_PREFIXES
 
 
 def test_non_get_navigation_never_serves_spa():

@@ -23,6 +23,7 @@ import './theme/tokens.css'
 import i18n from './i18n/index.ts'
 import './index.css'
 import App from './App.tsx'
+import { isOrgSubdomainHost } from './lib/authHost.ts'
 
 declare global {
   interface Window {
@@ -44,8 +45,17 @@ const colorSchemeManager = localStorageColorSchemeManager({
 // out / refresh rejected — and no-ops (resolves immediately) on non-firebase deploys. The
 // Firebase SDK is dynamically imported so it stays in its own chunk, loaded only here.
 async function bootstrap() {
-  const firebase = await import('./lib/firebase.ts')
-  await firebase.installFirebaseTokenSync()
+  // REQ-1348: an org subdomain has no session of its own — sign-in runs only on the control
+  // plane (lib/authHost.ts) — so it borrows the bearer from there instead of starting Firebase
+  // locally, where signInWithPopup would fail with auth/unauthorized-domain. Returns false while
+  // redirecting to the control-plane login, in which case there is nothing worth rendering.
+  if (isOrgSubdomainHost()) {
+    const { establishOrgSubdomainSession } = await import('./lib/crossSubdomainAuth.ts')
+    if (!(await establishOrgSubdomainSession())) return
+  } else {
+    const firebase = await import('./lib/firebase.ts')
+    await firebase.installFirebaseTokenSync()
+  }
 
   createRoot(document.getElementById('root')!).render(
     <MantineProvider
@@ -66,4 +76,15 @@ async function bootstrap() {
   requestAnimationFrame(() => requestAnimationFrame(() => window.__provisaHideSplash?.()))
 }
 
-void bootstrap()
+// A boot that throws leaves the pre-React splash covering a page that will never mount, which
+// reads as a hang. Replace it with the failure so the cause is visible instead of hidden —
+// notably REQ-1348's unreachable auth relay, which is a broken control plane, not a sign-out.
+bootstrap().catch((err: unknown) => {
+  console.error('Provisa failed to start:', err)
+  window.__provisaHideSplash?.()
+  const root = document.getElementById('root')
+  if (root) {
+    root.textContent = `Provisa failed to start: ${err instanceof Error ? err.message : String(err)}`
+    root.setAttribute('style', 'padding:2rem;font-family:system-ui;color:#e5484d')
+  }
+})

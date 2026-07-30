@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Provisa auth relay</title>
+    <!-- REQ-1348: loaded only inside a hidden iframe on the control-plane origin, never as a
+         page a person looks at. It renders nothing and pulls in no UI — the whole document is
+         a postMessage endpoint that hands the control plane's bearer to an org subdomain of the
+         same deployment.
+
+         Same runtime Firebase config the app uses (REQ-1266), and for the same reason: it must
+         set window.__PROVISA_FIREBASE__ before the module below imports lib/firebase, so the
+         relay reads the session from the same Firebase project the user signed into. -->
+    <script src="/firebase-config.js"></script>
+  </head>
+  <body>
+    <script type="module" src="/src/authRelay.ts"></script>
+  </body>
+</html>
