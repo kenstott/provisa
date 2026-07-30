@@ -15,21 +15,23 @@ export function OrgSwitcher() {
   const { capabilities, orgMemberships, activeOrgId, selectOrg } = useAuth();
   const [allOrgs, setAllOrgs] = useState<Org[]>([]);
 
-  const isSuperAdmin = capabilities.includes("platform_admin");
+  // REQ-1337: listing every org is the cross_org RIGHT, not a role name. The seed decides who
+  // holds it (platform_admin always; org_admin never, in either tenancy mode).
+  const canSeeAllOrgs = capabilities.includes("cross_org");
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!canSeeAllOrgs) return;
     fetchOrgs().then(setAllOrgs).catch(() => {});
-  }, [isSuperAdmin]);
+  }, [canSeeAllOrgs]);
 
-  const orgs: Array<{ id: string; name: string }> = isSuperAdmin
+  const orgs: Array<{ id: string; name: string }> = canSeeAllOrgs
     ? allOrgs.map((o) => ({ id: o.id, name: o.name }))
     : orgMemberships.map((m) => ({ id: m.org_id, name: m.org_name }));
 
   const activeOrg = orgs.find((o) => o.id === activeOrgId);
   const orgName = activeOrg?.name ?? activeOrgId ?? "";
 
-  if (!isSuperAdmin && orgMemberships.length <= 1) {
+  if (!canSeeAllOrgs && orgMemberships.length <= 1) {
     if (orgMemberships.length === 0) return null;
     return <Text data-testid="org-switcher-static">{t("orgSwitcher.org", { org: orgName })}</Text>;
   }

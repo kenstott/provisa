@@ -334,6 +334,7 @@ export const TOUR_STEPS: TourStep[] = [
       "<li>👁️ <strong>Views</strong> — over any table, ephemeral or materialized, and views over views.</li>" +
       "<li>⚡ <strong>Commands</strong> — governed, typed operations (an HTTP service, a Python model, a stored procedure) that do double duty: a step inside your pipeline, <em>and</em> a first-class API that downstream apps and agents call to act on your data — invokable from every surface, fully governed and traced.</li>" +
       "<li>⭐ <strong>Entities &amp; facts</strong> — declare a dimension or fact once and Provisa generates the warehouse, methodology-neutral: 3NF (Inmon), star schema (Kimball), or Data Vault.</li>" +
+      "<li>📏 <strong>Metrics</strong> — governed aggregate definitions (&ldquo;net revenue&rdquo;) with grain bound at query time. Define once; every surface — SQL, GraphQL, AI agents — computes the same number, and views built on a metric regenerate when its definition changes.</li>" +
       "</ul>",
   },
   {

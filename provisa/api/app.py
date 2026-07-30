@@ -139,7 +139,7 @@ class AppState:
     # they live on the per-org OrgRuntime and resolve through the current_org ContextVar, falling
     # through to the default-org (shared) runtime for every org without a dedicated engine.
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
-    schema_build_cache: dict = {}  # raw data for on-demand domain-filtered schema building
+    # schema_build_cache is org-routed; see the property below.
     schema_version: int = (
         0  # bumped on every _rebuild_schemas; used by clients for cache invalidation
     )
@@ -154,6 +154,9 @@ class AppState:
     mv_registry: MVRegistry = MVRegistry()
     _mv_refresh_task: asyncio.Task | None = None
     proto_files: dict[str, str] = {}  # role_id → .proto content
+    # The one SERVED wire descriptor: union of every role's surface (see
+    # app_loaders._build_and_register_schemas). Governance is per-request, not per-descriptor.
+    wire_proto: str | None = None
     table_path_maps: dict[
         str, dict[str, dict]
     ] = {}  # role_id → {gql_field_name → {schema_name, table_name, domain_id}}
@@ -509,6 +512,27 @@ class AppState:
     def relationships(self, value: list[dict]) -> None:
         self._active_runtime().relationships = value
 
+    @property
+    def metrics(self) -> dict[str, Any]:
+        # REQ-1317: config-declared metric registry (name → Metric), published for the
+        # raw-SQL path's `metrics.<name>` query expansion (before governance).
+        return self._active_runtime().metrics
+
+    @metrics.setter
+    def metrics(self, value: dict[str, Any]) -> None:
+        self._active_runtime().metrics = value
+
+    @property
+    def schema_build_cache(self) -> dict:
+        # Raw registry rows for on-demand domain-filtered schema building. Per-org: domains,
+        # tables and column types differ between orgs, so a process-global cache would serve
+        # whichever org rebuilt last to every other one.
+        return self._active_runtime().schema_build_cache
+
+    @schema_build_cache.setter
+    def schema_build_cache(self, value: dict) -> None:
+        self._active_runtime().schema_build_cache = value
+
 
 state = AppState()
 
@@ -591,6 +615,13 @@ async def _load_and_build(
     config = parse_config_dict(raw_config)
     state.config = config
     state.multitenancy = config.multitenancy
+    # REQ-1337: org_admin holds the platform_settings right only in a single-tenant deployment.
+    # Asserted here rather than in _init_control_planes because the tenancy mode is only known once
+    # the config is parsed, which happens after the root org's schema is created.
+    from provisa.core.db import apply_tenancy_role_grants as _apply_tenancy_role_grants
+
+    assert state.tenant_db is not None
+    await _apply_tenancy_role_grants(state.tenant_db, state.org_id, multitenancy=config.multitenancy)
     if config.multitenancy:
         from provisa.core.tenant_context import TenantContextCache
 
@@ -800,7 +831,7 @@ async def build_org_runtime(
     from provisa.api.startup_seed import _seed_built_in_sources, _resolve_pk_from_sources
     from provisa.core.config_loader import load_control_plane
     from provisa.core.database import Capabilities, create_engine_from_url
-    from provisa.core.db import init_schema
+    from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 
     rt = OrgRuntime(org_id=org_id)
@@ -846,6 +877,8 @@ async def build_org_runtime(
         if not schema_sql_path.exists():
             raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
         await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
+        # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
+        await apply_tenancy_role_grants(state.tenant_db, org_id, multitenancy=state.multitenancy)
         await init_audit_schema(state.tenant_db, org_id=org_id)
 
         host, port, database, username, _pw = cp.tenant_parts()
@@ -1054,6 +1087,28 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             conn, raw_config
         )
 
+        # REQ-1317/1319: the metric registry feeds schema generation and raw-SQL expansion.
+        # Read from the DB — the settled registry: the config loader upserts config-declared
+        # metrics into it, and admin mutations (upsertMetric, registerFact) write it directly.
+        # Publishing state.config.metrics here instead would hide every runtime-registered
+        # metric from `metrics.<name>` queries until the next config reload.
+        from provisa.core.models import Metric as _MetricModel
+        from provisa.core.repositories import metric as _metric_repo
+
+        _metric_models = [
+            _MetricModel(
+                name=r["name"],
+                expression=r["expression"],
+                datatype=r["datatype"],
+                description=r["description"],
+                ai_context=r["ai_context"],
+                visible_to=list(r["visible_to"]),
+                from_fact=r["from_fact"],
+            )
+            for r in await _metric_repo.list_all(conn)
+        ]
+        _metric_dicts = [m.model_dump() for m in _metric_models]
+
         _build_and_register_schemas(
             roles=roles,
             tables=tables,
@@ -1067,6 +1122,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             tracked_webhooks=tracked_webhooks,
             gql_object_cols=_gql_object_cols,
             rls_rules=rls_rules,
+            metrics=_metric_dicts,  # REQ-1319
         )
 
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
@@ -1077,6 +1133,10 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # REQ-1132: publish the resolved relationship registry alongside tables so the raw-SQL
     # governance path can compute 1-hop meta row scoping.
     state.relationships = relationships
+    # REQ-1317: publish the DB-backed metric registry alongside tables so the raw-SQL
+    # path can expand `metrics.<name>` queries into governed aggregates (loaded above,
+    # same registry the admin surfaces read — runtime-registered metrics included).
+    state.metrics = {m.name: m for m in _metric_models}
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {
@@ -1091,6 +1151,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
         "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
+        "metrics": _metric_dicts,  # REQ-1319
     }
     state.schema_version += 1
     await _finalize_rebuild_state(_rebuild_log)
@@ -1455,6 +1516,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.settings_router import router as settings_router
 
     app.include_router(settings_router)
+    from provisa.api.admin.ossie_router import router as ossie_router  # REQ-1316, REQ-1321
+
+    app.include_router(ossie_router)
     from provisa.api.admin.security_router import router as security_router
 
     app.include_router(security_router)

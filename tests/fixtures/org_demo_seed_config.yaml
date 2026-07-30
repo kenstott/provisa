@@ -22,13 +22,45 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [platform_admin]
+        # REQ-1337: a config may ASK for a control-plane grant; the registration write path must
+        # refuse it. platform_admin holds cross_org, so it never reaches a column grant.
+        visible_to: [platform_admin, org_admin]
       - name: amount
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
+  # A Provisa-managed virtual view, exactly as config/provisa-install.yaml ships dim_pet /
+  # fact_pet_inquiries. Its source_id names no config source — __derived__ is a SYSTEM source
+  # seeded per org by _seed_built_in_sources, so this row only loads when that seed reached the
+  # org being provisioned. Without it the FK has no target and the view silently never lands.
+  - source_id: __derived__
+    domain_id: sales-analytics
+    schema: views
+    table: order_totals
+    view_sql: SELECT "id", "amount" FROM "public"."orders"
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: amount
+        visible_to: [org_admin]
 
 roles:
-  - id: platform_admin
+  # REQ-1297: the DATA-plane administrator, without the platform-bypass 'admin'/'superadmin'
+  # capabilities — those are platform_admin's alone, and platform_admin holds no data rights.
+  - id: org_admin
     capabilities:
+      - source_registration
+      - table_registration
+      - create_relationship
+      - create_view
+      - approve_view
+      - approve_relationship
+      - access_config
+      - user_management
+      - masking_config
+      - column_grant
+      - view_governance
       - query_development
-      - admin
+      - full_results
+      - write
+      - usage
     domain_access: ["*"]

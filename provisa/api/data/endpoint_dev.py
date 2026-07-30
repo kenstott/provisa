@@ -44,7 +44,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 class SQLRequest(BaseModel):
     sql: str
-    role: str = "admin"
+    role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
     discovery_mode: bool = False
 
 
@@ -588,7 +588,7 @@ async def _run_sql_generation_loop(
 
 class NLToSQLRequest(BaseModel):
     question: str
-    role: str = "admin"
+    role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
 
 
 @router.post("/nl-to-sql")
@@ -655,7 +655,7 @@ class QueryRequest(BaseModel):
     query: str
     params: dict = {}
     variables: dict | None = None
-    role: str = "admin"
+    role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
 
 
 @router.post("/query")

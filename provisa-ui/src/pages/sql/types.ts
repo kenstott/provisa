@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { Relationship, RegisteredTable } from "../../types/admin";
+import type { Metric, Relationship, RegisteredTable } from "../../types/admin";
 
 export type ResultTab = "results" | "profile" | "errors" | "history" | "stats";
 export type TopTab = "sql" | "canvas";
@@ -36,9 +36,16 @@ export interface CanvasJoin {
   toCol: string;
   cardinality: "many-to-one" | "one-to-many";
 }
+// REQ-1322: a metric dropped on the canvas.
+export interface CanvasMetric {
+  name: string;
+  x: number;
+  y: number;
+}
 export interface JoinCanvasProps {
   tables: RegisteredTable[];
   existingRels: Relationship[];
+  metrics: Metric[];
   onGenerateSql: (sql: string) => void;
 }
 export interface CanvasTableCardProps {
@@ -85,6 +92,7 @@ export interface SqlTab {
   resultRows: Record<string, unknown>[];
   resultError: string;
   execMs: number | null;
+  detached?: boolean; // REQ-1322: one-way detach from metric semantics → free-hand SQL
 }
 
 export interface ViewColumnConfig {

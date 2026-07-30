@@ -115,6 +115,35 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
     expect(await screen.findByTestId("role")).toHaveTextContent("org_admin");
   });
 
+  it("acts as the data-plane role, not platform_admin, when both are assigned", async () => {
+    // REQ-1297: the bootstrap super-admin holds platform_admin AND org_admin in the root org. The
+    // role list came back in Postgres heap order with platform_admin first, so "All roles" sent
+    // platform_admin in X-Provisa-Role and the data surfaces got a schema built for a role whose
+    // capabilities are only the platform bypass — every demo table granted to analyst/org_admin
+    // disappeared from the GraphQL schema.
+    fetchMe.mockResolvedValue({
+      ...ORG_ADMIN_IDENTITY,
+      assignments: [
+        { role_id: "platform_admin", domain_id: "*" },
+        { role_id: "org_admin", domain_id: "*" },
+      ],
+    });
+    refetchRoles.mockResolvedValue({
+      data: {
+        roles: [
+          { id: "platform_admin", capabilities: ["admin", "superadmin"], domainAccess: ["*"] },
+          { id: "org_admin", capabilities: ["user_management"], domainAccess: ["*"] },
+        ],
+      },
+    });
+
+    renderAuth(true);
+
+    expect(await screen.findByTestId("role")).toHaveTextContent("org_admin");
+    // Both stay selectable — only the default acting role changes.
+    expect(screen.getByTestId("available")).toHaveTextContent("org_admin,platform_admin");
+  });
+
   it("still grants the full-capability role where auth is not enforced", async () => {
     // No auth means the server grants every capability to every caller; the client mirrors that.
     fetchMe.mockRejectedValue(new Error("no identity"));

@@ -23,7 +23,7 @@ def test_entity_scd2_lowers_to_bitemporal_table_input():
             history="scd2",
         )
     )
-    assert ti.source_id == "__provisa__"
+    assert ti.source_id == "__derived__"
     assert ti.table_name == "Customer"
     assert ti.materialize is True
     assert ti.view_sql == 'SELECT "id", "name", "region" FROM "raw"."customers"'
@@ -31,6 +31,8 @@ def test_entity_scd2_lowers_to_bitemporal_table_input():
     assert ti.mv_bitemporal_key == ["id"]
     assert [c.name for c in ti.columns] == ["id", "name", "region"]
     assert ti.columns[0].visible_to == ["public"]
+    assert ti.modeling_role == "dimension"  # REQ-1320
+    assert ti.modeling_history == "scd2"  # REQ-1320
 
 
 def test_entity_no_history_is_plain_materialized_table_input():
@@ -39,10 +41,12 @@ def test_entity_no_history_is_plain_materialized_table_input():
     )
     assert ti.materialize is True
     assert ti.mv_bitemporal_mode is None
+    assert ti.modeling_role == "dimension"  # REQ-1320
+    assert ti.modeling_history is None  # REQ-1320: no history → no mode
 
 
 def test_fact_lowers_to_aggregate_table_input_and_relationships():
-    ti, rels = fact_table_input(
+    ti, rels, fact_metrics = fact_table_input(
         FactInput(
             name="Sales",
             source="raw.orders",
@@ -59,8 +63,14 @@ def test_fact_lowers_to_aggregate_table_input_and_relationships():
     assert ti.materialize is True
     assert "GROUP BY" in (ti.view_sql or "")
     assert 'SUM("amount")' in (ti.view_sql or "")
-    # one relationship per dimension, fact → dimension (many_to_one)
+    # one relationship per dimension, fact → dimension. The value must be a Cardinality
+    # enum literal ("many-to-one") — upsert_relationship rejects anything else at runtime.
     assert [(r.source_table_id, r.source_column, r.target_table_id, r.cardinality) for r in rels] == [
-        ("Sales", "customer_id", "Customer", "many_to_one"),
-        ("Sales", "product_id", "Product", "many_to_one"),
+        ("Sales", "customer_id", "Customer", "many-to-one"),
+        ("Sales", "product_id", "Product", "many-to-one"),
+    ]
+    assert ti.modeling_role == "fact"  # REQ-1320
+    # REQ-1320: each measure lowers to a governed Metric; visibility carries from the fact input.
+    assert [(m.name, m.expression, m.from_fact, m.visible_to) for m in fact_metrics] == [
+        ("sales_amount_sum", "SUM(Sales.amount)", "Sales", ["public"]),
     ]

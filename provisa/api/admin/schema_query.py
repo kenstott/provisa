@@ -44,6 +44,7 @@ from provisa.api.admin.types import (
     DomainType,
     HotTableStatType,
     MaterializeStoreInfoType,
+    MetricType,
     MVType,
     RefreshPolicySummaryType,
     RegisteredTableType,
@@ -79,6 +80,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     CreationRequestType,
     _resolve_admin_context,
 )
+from provisa.core.models import DERIVED_SOURCE_ID  # noqa: E402
 
 
 def _safe_store_ref(engine: Any) -> str | None:
@@ -135,6 +137,28 @@ class Query:  # REQ-021, REQ-042
                 week_start=r["week_start"],
                 holidays=list(r["holidays"] or []),
                 weekend=list(r["weekend"] or [5, 6]),
+            )
+            for r in rows
+        ]
+
+    @strawberry.field
+    async def metrics(self) -> list["MetricType"]:  # REQ-1317
+        """Every governed metric definition — feeds the metric admin panel (REQ-1317); fact-derived
+        metrics carry ``from_fact`` (REQ-1320)."""
+        from provisa.core.repositories import metric as metric_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await metric_repo.list_all(cast("Connection", conn))
+        return [
+            MetricType(
+                name=r["name"],
+                expression=r["expression"],
+                datatype=r["datatype"],
+                description=r["description"],
+                ai_context=r["ai_context"],
+                visible_to=list(r["visible_to"]),
+                from_fact=r["from_fact"],
             )
             for r in rows
         ]
@@ -245,9 +269,8 @@ class Query:  # REQ-021, REQ-042
                 user_can_deploy = True  # dev mode — no auth, allow all
             else:
                 caps = _resolved_capabilities(identity, _state)
-                user_can_deploy = bool(
-                    caps & {"table_registration", "admin", "superadmin", "platform_admin"}
-                )
+                # REQ-1337: rights only, never the platform_admin role id.
+                user_can_deploy = bool(caps & {"table_registration", "admin", "superadmin"})
 
             pool = await _get_pool()
             async with pool.acquire() as conn:
@@ -262,7 +285,7 @@ class Query:  # REQ-021, REQ-042
                         registered_tables.c.schema_name,
                         registered_tables.c.table_name,
                         registered_tables.c.alias,
-                    ).where(registered_tables.c.source_id != "__provisa__")
+                    ).where(registered_tables.c.source_id != DERIVED_SOURCE_ID)
                 )
                 all_tables = [dict(r._mapping) for r in _ares.fetchall()]
                 return [

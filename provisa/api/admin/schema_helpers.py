@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
 from provisa.federation.strategy import engine_attaches
 from provisa.core.config_loader import _normalize_op_id
+from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.api.admin.types import (
     AvailableColumnType,
     ColumnPresetType,
@@ -43,7 +44,7 @@ from provisa.api.admin.types import (
     TableColumnType,
 )
 
-from provisa.api.admin._row_mappers import _live_type_from_row
+from provisa.api.admin._row_mappers import _live_type_from_row, _view_metrics_type_from_row
 
 log = logging.getLogger(__name__)
 
@@ -304,7 +305,7 @@ async def _fetch_table_with_columns(
     can_deploy = False
     if (
         user_can_deploy
-        and row["source_id"] == "__provisa__"
+        and row["source_id"] == DERIVED_SOURCE_ID
         and view_sql
         and all_tables is not None
     ):
@@ -330,6 +331,7 @@ async def _fetch_table_with_columns(
         unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,
         view_sql=view_sql,
+        view_metrics=_view_metrics_type_from_row(row.get("view_metrics")),  # REQ-1318
         change_signal=row.get("change_signal"),
         probe_query=row.get("probe_query"),
         probe_type=row.get("probe_type"),
@@ -344,6 +346,8 @@ async def _fetch_table_with_columns(
         mv_persist=row.get("mv_persist") or "replace",  # REQ-965
         mv_primary_key=list(row.get("mv_primary_key") or []),  # REQ-970
         mv_incremental=bool(row.get("mv_incremental", False)),  # REQ-969
+        modeling_role=row.get("modeling_role"),  # REQ-1320
+        modeling_history=row.get("modeling_history"),  # REQ-1320
         data_product=bool(row.get("data_product", False)),
         enable_aggregates=bool(row.get("enable_aggregates", False)),
         enable_group_by=bool(row.get("enable_group_by", False)),
@@ -437,10 +441,10 @@ async def _dataset_ownership_conflict(  # REQ-433
 
     First-come ownership: a physical dataset — identified by (source_id, normalized
     table name) — may be registered by only one domain. Re-registration by the owning
-    domain is allowed. Virtual Provisa views (``__provisa__``) are exempt: they are not
+    domain is allowed. Virtual Provisa views (``__derived__``) are exempt: they are not
     datasource claims and many domains legitimately share that source id.
     """
-    if source_id == "__provisa__":
+    if source_id == DERIVED_SOURCE_ID:
         return None
     from provisa.core import domain_policy
 

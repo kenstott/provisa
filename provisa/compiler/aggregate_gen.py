@@ -96,9 +96,31 @@ def build_agg_fields_type(  # REQ-196
     type_name: str,
     visible_columns: list[dict],
     column_metadata: dict[str, ColumnMetadata],
+    metrics: list[dict] | None = None,
 ) -> GraphQLObjectType:
-    """Build {TypeName}AggregateFields type (count, sum, avg, stddev, variance, min, max)."""
+    """Build {TypeName}AggregateFields type (count, sum, avg, stddev, variance, min, max).
+
+    ``metrics`` (REQ-1319) adds a ``metrics`` block: one typed field per governed metric
+    whose expression references this table, documented from the metric's description +
+    ai_context so introspection carries the business definition.
+    """
     numeric_cols, comparable_cols = _classify_columns(visible_columns, column_metadata)
+
+    metrics_type: GraphQLObjectType | None = None
+    if metrics:
+        metric_fields: dict[str, GraphQLField] = {}
+        for m in metrics:
+            datatype = m.get("datatype")
+            m_type = column_type_to_graphql(datatype) if datatype else GraphQLFloat
+            # REQ-1319: description + ai_context become the introspection field docs.
+            m_desc = (
+                "\n\n".join(p for p in (m.get("description"), m.get("ai_context")) if p) or None
+            )
+            metric_fields[m["name"]] = GraphQLField(m_type, description=m_desc)  # type: ignore[arg-type]
+        metrics_type = cast(
+            GraphQLObjectType,
+            GraphQLObjectType(f"{type_name}MetricsFields", lambda f=metric_fields: f),
+        )
 
     sum_type: GraphQLObjectType | None = None
     if numeric_cols:
@@ -163,6 +185,9 @@ def build_agg_fields_type(  # REQ-196
         agg_inner_fields["min"] = GraphQLField(min_type)
     if max_type:
         agg_inner_fields["max"] = GraphQLField(max_type)
+    if metrics_type:
+        # REQ-1319: governed metric values computed over this table's rows.
+        agg_inner_fields["metrics"] = GraphQLField(metrics_type)
 
     return cast(
         GraphQLObjectType,

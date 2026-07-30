@@ -271,9 +271,9 @@ class TestRestEndpointsHTTP:
                     "schema_name": "public",
                     "table_name": "orders",
                     "columns": [
-                        {"column_name": "id", "visible_to": ["platform_admin"]},
-                        {"column_name": "region", "visible_to": ["platform_admin"]},
-                        {"column_name": "amount", "visible_to": ["platform_admin"]},
+                        {"column_name": "id", "visible_to": ["org_admin"]},
+                        {"column_name": "region", "visible_to": ["org_admin"]},
+                        {"column_name": "amount", "visible_to": ["org_admin"]},
                     ],
                 }
             ]
@@ -284,7 +284,14 @@ class TestRestEndpointsHTTP:
                     _col("amount", "decimal(10,2)"),
                 ]
             }
-            role = {"id": "platform_admin", "capabilities": ["admin"], "domain_access": ["*"]}
+            # REQ-1297: an org's data-plane administrator, without the platform-bypass 'admin'
+            # capability. Every column above grants org_admin explicitly, so the schema it sees comes
+            # from real grants rather than from a wildcard.
+            role = {
+                "id": "org_admin",
+                "capabilities": ["query_development", "full_results", "usage", "write"],
+                "domain_access": ["*"],
+            }
             si = SchemaInput(
                 tables=tables,
                 relationships=[],
@@ -314,9 +321,9 @@ class TestRestEndpointsHTTP:
         )
 
         app_state = AppState()
-        app_state.schemas = {"platform_admin": schema}
-        app_state.contexts = {"platform_admin": ctx}
-        app_state.rls_contexts = {"platform_admin": RLSContext.empty()}
+        app_state.schemas = {"org_admin": schema}
+        app_state.contexts = {"org_admin": ctx}
+        app_state.rls_contexts = {"org_admin": RLSContext.empty()}
         app_state.source_pools = source_pool
         app_state.source_types = {"test-pg": "postgresql"}
         app_state.source_dialects = {"test-pg": "postgres"}
@@ -324,7 +331,7 @@ class TestRestEndpointsHTTP:
         # REST routes are domain-scoped (/data/rest/{domain_id}/{table_name}); the handler resolves
         # the GraphQL field via this path map (REQ-256).
         app_state.table_path_maps = {
-            "platform_admin": {"orders": {"domain_id": "default", "table_name": "orders"}}
+            "org_admin": {"orders": {"domain_id": "default", "table_name": "orders"}}
         }
 
         app = FastAPI()
@@ -461,9 +468,9 @@ class TestRestEndpointsHTTP:
             raise
 
         app_state = AppState()
-        app_state.schemas = {"platform_admin": schema}
-        app_state.contexts = {"platform_admin": ctx}
-        app_state.rls_contexts = {"platform_admin": RLSContext.empty()}
+        app_state.schemas = {"org_admin": schema}
+        app_state.contexts = {"org_admin": ctx}
+        app_state.rls_contexts = {"org_admin": RLSContext.empty()}
 
         app = FastAPI()
         app.include_router(create_rest_router(app_state))

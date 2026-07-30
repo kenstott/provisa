@@ -1,0 +1,27 @@
+{
+  "sourceDetailPanel": {
+    "field": {
+      "description": "Descripción",
+      "type": "Tipo",
+      "host": "Host",
+      "port": "Puerto",
+      "database": "Base de datos",
+      "username": "Nombre de usuario",
+      "naming": "Nomenclatura",
+      "cache": "Caché",
+      "cacheTtl": "TTL de caché",
+      "effectiveTtl": "TTL efectivo",
+      "allowedDomains": "Dominios permitidos"
+    },
+    "namingInherit": "heredar (global)",
+    "cacheEnabled": "habilitada",
+    "cacheDisabled": "deshabilitada",
+    "ttlInherit": "heredar",
+    "domainsUnrestricted": "sin restricciones",
+    "editTitle": "Editar",
+    "navigateTitle": "Ver tablas registradas",
+    "deleteTitle": "¿Eliminar el origen \"{{id}}\"?",
+    "deleteTitleShort": "Eliminar",
+    "deleteConsequence": "Esto quitará el origen de datos \"{{id}}\" y puede dañar las tablas que lo referencian."
+  }
+}

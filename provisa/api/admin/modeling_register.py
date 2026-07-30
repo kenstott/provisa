@@ -20,12 +20,12 @@ from __future__ import annotations
 
 from provisa.api.admin.types import (
     ColumnInput,
-    DimRefInput,
     EntityInput,
     FactInput,
     RelationshipInput,
     TableInput,
 )
+from provisa.core.models import DERIVED_SOURCE_ID, Metric
 from provisa.mv.modeling import (
     DimRef,
     Entity,
@@ -35,7 +35,7 @@ from provisa.mv.modeling import (
     fact_registration,
 )
 
-_SCHEMA = "views"  # __provisa__ views land under a fixed schema, like hand-registered views
+_SCHEMA = "views"  # __derived__ views land under a fixed schema, like hand-registered views
 
 
 def _columns(names: list[str], visible_to: list[str]) -> list[ColumnInput]:
@@ -54,7 +54,7 @@ def entity_table_input(inp: EntityInput) -> TableInput:
         )
     )
     return TableInput(
-        source_id="__provisa__",
+        source_id=DERIVED_SOURCE_ID,
         domain_id=inp.domain_id,
         schema_name=_SCHEMA,
         table_name=reg["table_name"],
@@ -63,11 +63,14 @@ def entity_table_input(inp: EntityInput) -> TableInput:
         materialize=True,
         mv_bitemporal_mode=reg.get("mv_bitemporal_mode"),
         mv_bitemporal_key=reg.get("mv_bitemporal_key", []),
+        modeling_role=reg["modeling_role"],  # REQ-1320
+        modeling_history=reg.get("modeling_history"),  # REQ-1320
     )
 
 
-def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput]]:
-    """FactInput → the TableInput (aggregate MV) plus one RelationshipInput per dimension link."""
+def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput], list[Metric]]:
+    """FactInput → the TableInput (aggregate MV), one RelationshipInput per dimension link, and the
+    governed Metric auto-registered from each measure (REQ-1320)."""
     reg = fact_registration(
         Fact(
             name=inp.name,
@@ -78,13 +81,14 @@ def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput
         )
     )
     ti = TableInput(
-        source_id="__provisa__",
+        source_id=DERIVED_SOURCE_ID,
         domain_id=inp.domain_id,
         schema_name=_SCHEMA,
         table_name=reg["table_name"],
         columns=_columns(reg["columns"], inp.visible_to),
         view_sql=reg["view_sql"],
         materialize=True,
+        modeling_role=reg["modeling_role"],  # REQ-1320
     )
     rels = [
         RelationshipInput(
@@ -92,8 +96,11 @@ def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput
             source_table_id=reg["table_name"],
             target_table_id=r["target_table"],
             source_column=r["source_column"],
-            cardinality="many_to_one",  # fact rows → one dimension row (the FK target)
+            cardinality="many-to-one",  # fact rows → one dimension row (the FK target)
         )
         for r in reg["relationships"]
     ]
-    return ti, rels
+    # REQ-1320: each fact measure auto-registers as a governed metric; the fact's visibility
+    # carries over so a measure a role may read stays readable as a metric.
+    fact_metrics = [Metric(**m, visible_to=list(inp.visible_to)) for m in reg["metrics"]]
+    return ti, rels, fact_metrics

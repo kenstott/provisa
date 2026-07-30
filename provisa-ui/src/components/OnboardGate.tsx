@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { fetchBootstrapStatus } from "../api/admin";
+import { clearSessionState } from "../lib/session";
 
 const OnboardOrgPage = lazy(() =>
   import("../pages/OnboardOrgPage").then((m) => ({ default: m.OnboardOrgPage })),
@@ -32,8 +33,16 @@ export function OnboardGate({
   onSessionExpired: () => void;
 }) {
   const { t } = useTranslation();
-  const { orgMemberships, assignments, loading, authEnabled, userId, identityErrorStatus, refresh } =
-    useAuth();
+  const {
+    orgMemberships,
+    assignments,
+    availableRoles,
+    loading,
+    authEnabled,
+    userId,
+    identityErrorStatus,
+    refresh,
+  } = useAuth();
   const token = localStorage.getItem("provisa_token");
   // REQ-1286: an unresolved identity has two causes that must NOT share a screen.
   //
@@ -60,7 +69,9 @@ export function OnboardGate({
   const credentialRejected = unresolved && !serverFailed;
   useEffect(() => {
     if (!credentialRejected) return;
-    localStorage.removeItem("provisa_token");
+    // REQ-1326: this ends the session, so it clears what a sign-out clears. Dropping the token
+    // alone left provisa_org/provisa_role and the persisted Apollo snapshot for the next identity.
+    clearSessionState();
     onSessionExpired();
   }, [credentialRejected, onSessionExpired]);
 
@@ -89,7 +100,9 @@ export function OnboardGate({
   const firstLoginPending = authEnabled && !!userId && slotUnclaimed === true;
   useEffect(() => {
     if (!firstLoginPending) return;
-    localStorage.removeItem("provisa_token");
+    // REQ-1326: same as above — an unclaimed admin slot invalidates the whole session, not just
+    // the credential. A stale provisa_org here rides on X-Org-Provisa into the claiming sign-in.
+    clearSessionState();
     onSessionExpired();
   }, [firstLoginPending, onSessionExpired]);
 
@@ -141,17 +154,21 @@ export function OnboardGate({
       </div>
     );
   }
-  // A platform_admin (REQ-1297) may hold zero org memberships — the onboarding flow is for tenant
-  // users who must join/create an org, not the platform operator. Let them (resolved from
-  // /auth/me assignments) through to the shell instead of trapping them here.
-  const isPlatformAdmin = assignments.some((a) => a.role_id === "platform_admin");
+  // REQ-1337: a control-plane principal (one holding the `cross_org` RIGHT) may hold zero org
+  // memberships by design — the onboarding flow is for tenant users who must join or create an org.
+  // The assigned role ids from /auth/me are resolved to the rights those roles carry; no role name
+  // is tested here.
+  const assignedRoleIds = new Set(assignments.map((a) => a.role_id));
+  const canActCrossOrg = availableRoles.some(
+    (r) => assignedRoleIds.has(r.id) && r.capabilities.includes("cross_org"),
+  );
   if (
     authEnabled &&
     token &&
     !loading &&
     userId &&
     orgMemberships.length === 0 &&
-    !isPlatformAdmin
+    !canActCrossOrg
   ) {
     return (
       <Suspense

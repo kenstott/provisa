@@ -217,3 +217,16 @@ def _live_type_from_row(raw):  # REQ-565, REQ-813
             for o in raw.get("outputs", [])
         ],
     )
+
+
+def _view_metrics_type_from_row(raw):  # REQ-1318
+    """Build a ViewMetricsType from a persisted JSONB dict (None when unset)."""
+    from provisa.api.admin.types import ViewMetricsType
+
+    if not raw:
+        return None
+    return ViewMetricsType(
+        metrics=list(raw["metrics"]),
+        dimensions=list(raw["dimensions"]),
+        filters=list(raw.get("filters") or []),
+    )

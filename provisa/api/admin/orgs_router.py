@@ -218,7 +218,7 @@ async def _provision_org_task(
     import os
     from pathlib import Path
 
-    from provisa.api.app import build_org_runtime
+    from provisa.api.app import build_org_runtime, state as _app_state
     from provisa.core.org_membership import grant_org_role, notify_org_ready
     from provisa.core.org_provisioning import provision_org
 
@@ -232,8 +232,17 @@ async def _provision_org_task(
             redis_url=os.environ.get("REDIS_URL"),
             redis_password=os.environ.get("PROVISA_REDIS_ORG_PASSWORD"),
         )
-        rt = await build_org_runtime(
-            org_id, include_demo=include_demo, isolated_engine=isolated_engine
+        # REQ-1322: build under the registry's per-org lock, never by calling build_org_runtime
+        # directly. Membership is granted synchronously at create, so the creator's very first
+        # follow-up request (the status poll) already routes to this org and lazily builds it
+        # through ensure_org_runtime. Two concurrent builds both replay the seeding DDL, the
+        # second CREATE VIEW collides on pg_type, and provisioning fails with the org half-seeded
+        # — the "parts of the demo data, and no meta/ops domains" failure.
+        rt = await _app_state.org_registry.rebuild(
+            org_id,
+            lambda oid: build_org_runtime(
+                oid, include_demo=include_demo, isolated_engine=isolated_engine
+            )
         )
         # The creator's org_admin role assignment lands in the org's own schema — possible only now
         # the schema + seeded org_admin row exist. Membership (admin plane) was granted synchronously.

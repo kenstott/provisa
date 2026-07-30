@@ -25,13 +25,28 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
       - name: amount
-        visible_to: [platform_admin]
+        visible_to: [org_admin]
 
 roles:
-  - id: platform_admin
+  # REQ-1297: the DATA-plane administrator, without the platform-bypass 'admin'/'superadmin'
+  # capabilities — those are platform_admin's alone, and platform_admin holds no data rights.
+  - id: org_admin
     capabilities:
+      - source_registration
+      - table_registration
+      - create_relationship
+      - create_view
+      - approve_view
+      - approve_relationship
+      - access_config
+      - user_management
+      - masking_config
+      - column_grant
+      - view_governance
       - query_development
-      - admin
+      - full_results
+      - write
+      - usage
     domain_access: ["*"]

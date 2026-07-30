@@ -200,6 +200,27 @@ class TestFederationEngine:
         assert "current" in body
         assert "engines" in body
 
+    async def test_current_is_the_running_engine_not_the_persisted_field(self, client):
+        """``current`` must name the engine the process booted. $PROVISA_ENGINE outranks the persisted
+        ``federation_engine`` field, so reporting the field lies about a pinned deployment."""
+        from provisa.api.app import state
+
+        resp = await client.get("/admin/federation-engine")
+        body = resp.json()
+        assert body["current"] == state.federation_engine.selected_key
+        assert body["current"] in {e["key"] for e in body["engines"]}
+        assert "persisted" in body
+
+    async def test_env_pin_is_reported(self, client, monkeypatch):
+        monkeypatch.setenv("PROVISA_ENGINE", "trino")
+        body = (await client.get("/admin/federation-engine")).json()
+        assert body["env_pinned_engine"] == "trino"
+        assert "$PROVISA_ENGINE" in body["restart_required_note"]
+
+        monkeypatch.delenv("PROVISA_ENGINE")
+        body = (await client.get("/admin/federation-engine")).json()
+        assert body["env_pinned_engine"] is None
+
     async def test_set_federation_engine_unknown(self, client):
         resp = await client.put("/admin/federation-engine", json={"engine": "no-such-engine-xyz"})
         assert resp.status_code == 400
@@ -308,7 +329,7 @@ class TestDomainPolicyApply:
 
         # Config is now reset (no user sources/domains/tables/relationships) — verify via
         # GraphQL. Sources still includes provisa's own bootstrap-internal sources (e.g.
-        # "__provisa__", the OTel self-monitoring source), and domains still includes the
+        # "__derived__", the OTel self-monitoring source), and domains still includes the
         # internal "meta"/"ops" domains (config_export._INTERNAL_DOMAINS) — both are seeded
         # independently of config.yaml and are not cleared by this endpoint.
         gql_resp = await client.post(

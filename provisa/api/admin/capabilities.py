@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from provisa.security.rights import PLATFORM_ADMIN_ROLE, has_platform_bypass
+from provisa.security.rights import capabilities_for_claims, has_platform_bypass
 
 if TYPE_CHECKING:
     import strawberry
@@ -40,22 +40,12 @@ def _resolved_capabilities(identity, state) -> set[str]:
     """Return the union of capabilities across all of the identity's role assignments."""
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
         return set()
-    roles: dict[str, dict] = getattr(state, "roles", {})
-    caps: set[str] = set()
-    for assignment_claim in getattr(identity, "roles", []):
-        claim = assignment_claim.strip()
-        role_id = claim.split(":")[0] if ":" in claim else claim
-        # REQ-1297: platform_admin is the single platform-bypass keyword. It IS a seeded roles row,
-        # so its capabilities resolve below — but the gates test for the role id itself, and a
-        # process whose state.roles has not been rebuilt since the seed (or a protocol identity
-        # carrying only claims) would otherwise fail them. Surface the id as a capability so
-        # has_platform_bypass() answers off the same set either way.
-        if role_id == PLATFORM_ADMIN_ROLE:
-            caps.add(role_id)
-        role = roles.get(role_id) or {}
-        for c in role.get("capabilities") or []:
-            caps.add(c)
-    return caps
+    # REQ-1337: RIGHTS ONLY. The role id is never folded in as a pseudo-capability — a gate reads
+    # the rights a role carries, and the seed (schema.sql + apply_tenancy_role_grants) is the single
+    # place that decides which role carries which right.
+    return capabilities_for_claims(
+        getattr(identity, "roles", []), getattr(state, "roles", {})
+    )
 
 
 def _domain_access(identity, _state) -> set[str]:  # pyright: ignore[reportUnusedParameter]

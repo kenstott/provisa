@@ -100,7 +100,7 @@ async def test_platform_admin_requested_non_member_is_honored():
     # A platform admin may act on any org even without a membership row.
     state = _FakeState(multitenancy=True, org_ids=[])
     resolved = await resolve_session_org(
-        state, user_id="admin", is_platform_admin=True, requested_org="beta"
+        state, user_id="admin", can_act_any_org=True, requested_org="beta"
     )
     assert resolved == "beta"
 
@@ -108,7 +108,7 @@ async def test_platform_admin_requested_non_member_is_honored():
 @pytest.mark.asyncio
 async def test_platform_admin_no_membership_no_request_returns_none():
     state = _FakeState(multitenancy=True, org_ids=[])
-    resolved = await resolve_session_org(state, user_id="admin", is_platform_admin=True)
+    resolved = await resolve_session_org(state, user_id="admin", can_act_any_org=True)
     assert resolved is None
 
 

@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "Ejecute una muestra de una consulta para perfilar las columnas del resultado.",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "Descargar perfil como JSON",
+    "colColumn": "Columna",
+    "colNulls": "Nulos",
+    "colNullsTitle": "Filas donde el valor es NULL",
+    "colBlanks": "Vacíos",
+    "colBlanksTitle": "Filas donde el valor es una cadena vacía",
+    "colDistinct": "Distintos",
+    "colDistinctTitle": "Número de valores únicos",
+    "colConstant": "¿Constante?",
+    "colConstantTitle": "La columna tiene un solo valor único",
+    "colMin": "Mín",
+    "colMax": "Máx",
+    "colMean": "Media",
+    "colMeanTitle": "Media de los valores numéricos",
+    "colTopValues": "Valores principales",
+    "constantYes": "Sí ({{value}})",
+    "emptyValue": "—"
+  }
+}

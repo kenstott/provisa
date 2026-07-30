@@ -114,6 +114,20 @@ def test_build_engine_selects_the_four_engines(monkeypatch):
             build_engine(gone)
 
 
+def test_build_engine_stamps_the_resolved_registry_key(monkeypatch):
+    # REQ-916: the admin API reports the LIVE engine, so build_engine records which key won the
+    # precedence. It is not always engine.name — aliases share a runtime and pg names itself postgres.
+    from provisa.federation.engine import build_engine
+
+    monkeypatch.delenv("PROVISA_ENGINE", raising=False)
+    assert build_engine().selected_key == "duckdb"
+    assert build_engine("pg").selected_key == "pg"  # name is "postgres"
+    assert build_engine("trino-byo").selected_key == "trino-byo"  # name is "trino"
+    monkeypatch.setenv("PROVISA_ENGINE", "trino")
+    # The env pin outranks the persisted config field, and the stamp records the pin's key.
+    assert build_engine().selected_key == "trino"
+
+
 def test_sqlalchemy_engine_is_url_defined_self_only(monkeypatch):
     # REQ-905: the sqlalchemy engine is any RDB with a working SQLAlchemy URI — self-only,
     # zero connectors; its scheme names the native store.
@@ -203,6 +217,21 @@ async def test_discover_override_strikes_connector_without_probing():
     assert "not probed" in report["pg_duckdb_csv"].reason
     assert isinstance(eng.connector_for("csv"), FileFdwConnector)  # struck -> fallback wins csv
     assert eng.reachable("parquet") is True  # other pg_duckdb connectors still probed/available
+
+
+def test_trino_declares_the_platform_db_as_its_materialize_store(monkeypatch):
+    """Trino LANDS sqlite/openapi into the platform Postgres and reads the replica back through a
+    generated `postgresql` catalog (TrinoPgBackedConnector, backend.materialize_store_target). With no
+    declared default the write face raised MaterializeStoreUnconfigured while the read face already
+    named that store, so a Trino deployment could not land its sqlite demo sources at all."""
+    monkeypatch.delenv("PROVISA_MATERIALIZE_URL", raising=False)
+    monkeypatch.setenv("TENANT_DATABASE_URL", "postgresql+psycopg2://u:p@pg:5432/provisa")
+    eng = build_trino_engine()
+    # The +driver suffix is stripped for the asyncpg land / store attach.
+    assert eng.materialize_store() == "postgresql://u:p@pg:5432/provisa"
+
+    monkeypatch.setenv("PROVISA_MATERIALIZE_URL", "postgresql://other/store")
+    assert eng.materialize_store() == "postgresql://other/store"  # explicit config still wins
 
 
 def test_swapping_engine_swaps_reachability():

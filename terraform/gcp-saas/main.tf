@@ -73,19 +73,6 @@ resource "google_compute_firewall" "ssh" {
   target_tags   = ["provisa-saas-node"]
 }
 
-resource "google_compute_firewall" "lb_health" {
-  name    = "provisa-saas-allow-lb-health"
-  network = google_compute_network.main.name
-
-  allow {
-    protocol = "tcp"
-    ports    = local.protocol_ports
-  }
-
-  source_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
-  target_tags   = ["provisa-saas-node"]
-}
-
 # ── Service account — GCS/ADC access for the node ───────────────────────────────
 
 resource "google_service_account" "provisa" {
@@ -232,6 +219,12 @@ locals {
     # SaaS control plane: multitenant onboarding is always on (first user = platform
     # superadmin; later users self-create orgs / redeem invites). REQ-1266.
     export PROVISA_MULTITENANCY="true"
+    # REQ-1330: SaaS is the only deployment mode that sends mail, and it sends through
+    # the transactional-provider adapter — never SMTP into a mailbox host or a local relay.
+    export PROVISA_MAIL_PROVIDER="resend"
+    export PROVISA_EMAIL_API_KEY='${var.email_api_key}'
+    export PROVISA_MAIL_FROM="${var.mail_from_address}"
+    export PROVISA_MAIL_BASE_URL="${var.mail_base_url}"
     export FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'
     export VITE_FIREBASE_API_KEY="${var.firebase_web_api_key}"
@@ -306,7 +299,9 @@ resource "google_compute_instance" "coordinator" {
     initialize_params {
       image = "ubuntu-os-cloud/ubuntu-2204-lts"
       size  = var.disk_gb
-      type  = "pd-ssd"
+      # pd-balanced: with include-coordinator=false this disk is boot/images/logs
+      # only (no scan spill), so pd-ssd IOPS buys nothing here.
+      type = "pd-balanced"
     }
   }
 
@@ -319,6 +314,10 @@ resource "google_compute_instance" "coordinator" {
     email  = google_service_account.provisa.email
     scopes = ["cloud-platform"]
   }
+
+  # The front door stops/starts this instance; terraform must not "fix" the
+  # resulting TERMINATED state (or flag it as drift) on the next apply.
+  desired_status = null
 
   depends_on = [google_sql_user.provisa]
 
@@ -429,66 +428,137 @@ resource "google_compute_region_autoscaler" "workers" {
   }
 }
 
-# ── Regional external passthrough NLB — ONE shared IP, every protocol port ────────
-# Same pattern as enterprise (main.tf NLB block). Backend = the coordinator ONLY
-# (raw-TCP protocol listeners live on it); workers are not LB-reachable.
+# ── Front door — always-free e2-micro owning the shared IP ──────────────────────
+# Replaces the passthrough NLB (which cost ~$18/mo in forwarding-rule hours and
+# could never wake a stopped backend). A single-file TCP proxy splices every
+# protocol port to the coordinator, starts it on a hit while it is stopped
+# (HTTPS gets a "waking" page, raw TCP is held until the listener is up), and
+# stops it after idle_stop_minutes of zero traffic. cloud.provisa.dev keeps
+# pointing at this same static IP.
 
 resource "google_compute_address" "shared" {
   name   = "provisa-saas-shared-ip"
   region = var.region
 }
 
-resource "google_compute_region_health_check" "shared" {
-  name   = "provisa-saas-shared-health"
-  region = var.region
+resource "google_service_account" "front_door" {
+  account_id   = "provisa-saas-front-door"
+  display_name = "Provisa SaaS Front Door"
+}
 
-  https_health_check {
-    port         = local.protocols.api.port
-    request_path = local.protocols.api.path
+# Bearer token for the front door's authenticated wake/verify endpoint
+# (GET /status, POST /wake on front_door_status_port).
+resource "random_password" "front_door_token" {
+  length  = 48
+  special = false
+}
+
+resource "google_compute_firewall" "front_door_status" {
+  name    = "provisa-saas-allow-front-door-status"
+  network = google_compute_network.main.name
+
+  allow {
+    protocol = "tcp"
+    ports    = [tostring(var.front_door_status_port)]
   }
 
-  check_interval_sec  = 30
-  healthy_threshold   = 2
-  unhealthy_threshold = 3
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["provisa-saas-node"]
 }
 
-resource "google_compute_region_backend_service" "shared" {
-  name                  = "provisa-saas-shared"
-  region                = var.region
-  protocol              = "TCP"
-  load_balancing_scheme = "EXTERNAL"
-  health_checks         = [google_compute_region_health_check.shared.id]
-
-  backend {
-    group          = google_compute_instance_group.coordinator.id
-    balancing_mode = "CONNECTION"
-  }
+resource "google_project_iam_custom_role" "front_door" {
+  role_id     = "provisaSaasFrontDoor"
+  title       = "Provisa SaaS Front Door"
+  description = "Start/stop/get on compute instances for wake-on-hit and idle-stop."
+  permissions = [
+    "compute.instances.start",
+    "compute.instances.stop",
+    "compute.instances.get",
+  ]
 }
 
-resource "google_compute_forwarding_rule" "shared" {
-  name                  = "provisa-saas-shared"
-  region                = var.region
-  ip_address            = google_compute_address.shared.id
-  ip_protocol           = "TCP"
-  all_ports             = true
-  load_balancing_scheme = "EXTERNAL"
-  backend_service       = google_compute_region_backend_service.shared.id
+resource "google_project_iam_member" "front_door" {
+  project = var.project
+  role    = google_project_iam_custom_role.front_door.id
+  member  = "serviceAccount:${google_service_account.front_door.email}"
 }
 
-# ── Unmanaged instance group — coordinator only (LB backend) ─────────────────────
+locals {
+  front_door_config = jsonencode({
+    project      = var.project
+    zone         = var.zone
+    instance     = google_compute_instance.coordinator.name
+    backend_host = trimsuffix(google_dns_record_set.coordinator.name, ".")
+    ports = {
+      for k, v in local.enabled_protocols : tostring(v.port) => {
+        wake_style = k == "ui" ? "html" : (k == "api" ? "json" : "raw")
+      }
+    }
+    idle_stop_minutes  = var.idle_stop_minutes
+    boot_grace_seconds = var.front_door_boot_grace_minutes * 60
+    status_port        = var.front_door_status_port
+    status_token       = random_password.front_door_token.result
+    tls_cert           = var.tls_cert_pem != "" ? "/etc/provisa-front-door/tls.crt" : ""
+    tls_key            = var.tls_key_pem != "" ? "/etc/provisa-front-door/tls.key" : ""
+  })
+}
 
-resource "google_compute_instance_group" "coordinator" {
-  name    = "provisa-saas-coordinator"
-  zone    = var.zone
-  network = google_compute_network.main.id
+resource "google_compute_instance" "front_door" {
+  name         = "provisa-saas-front-door"
+  machine_type = var.front_door_machine_type
+  zone         = var.zone
+  tags         = ["provisa-saas-node"]
+  labels       = merge(local.all_labels, { role = "front-door" })
 
-  instances = [google_compute_instance.coordinator.self_link]
-
-  dynamic "named_port" {
-    for_each = local.enabled_protocols
-    content {
-      name = named_port.key
-      port = named_port.value.port
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+      size  = 30 # always-free tier ceiling (pd-standard)
+      type  = "pd-standard"
     }
   }
+
+  network_interface {
+    subnetwork = google_compute_subnetwork.nodes.id
+    access_config {
+      nat_ip = google_compute_address.shared.address
+    }
+  }
+
+  service_account {
+    email  = google_service_account.front_door.email
+    scopes = ["cloud-platform"]
+  }
+
+  metadata = merge(local.metadata_ssh, {
+    startup-script = <<-SHELL
+      #!/bin/bash
+      set -euo pipefail
+      mkdir -p /etc/provisa-front-door /opt/provisa-front-door
+      printf '%s' '${base64encode(file("${path.module}/front-door/proxy.py"))}' | base64 -d > /opt/provisa-front-door/proxy.py
+      printf '%s' '${base64encode(local.front_door_config)}' | base64 -d > /etc/provisa-front-door/config.json
+      %{if var.tls_cert_pem != "" && var.tls_key_pem != ""}
+      printf '%s' '${base64encode(var.tls_cert_pem)}' | base64 -d > /etc/provisa-front-door/tls.crt
+      printf '%s' '${base64encode(var.tls_key_pem)}' | base64 -d > /etc/provisa-front-door/tls.key
+      chmod 600 /etc/provisa-front-door/tls.key
+      %{endif}
+      cat > /etc/systemd/system/provisa-front-door.service <<'UNIT'
+      [Unit]
+      Description=Provisa SaaS front-door proxy (wake-on-hit + idle-stop)
+      After=network-online.target
+      Wants=network-online.target
+      [Service]
+      ExecStart=/usr/bin/python3 /opt/provisa-front-door/proxy.py
+      Restart=always
+      RestartSec=3
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      [Install]
+      WantedBy=multi-user.target
+      UNIT
+      systemctl daemon-reload
+      systemctl enable --now provisa-front-door
+    SHELL
+  })
+
+  depends_on = [google_project_iam_member.front_door]
 }

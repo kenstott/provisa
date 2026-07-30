@@ -39,7 +39,7 @@ async def _conn(tmp_path):
 @pytest.mark.asyncio
 async def test_mv_debounce_round_trips_through_repo(tmp_path):
     t = Table(
-        source_id="__provisa__",
+        source_id="__derived__",
         domain_id="d",
         schema_name="views",
         table_name="daily",
@@ -63,7 +63,7 @@ async def test_mv_debounce_round_trips_through_repo(tmp_path):
 @pytest.mark.asyncio
 async def test_mv_debounce_defaults_when_unset(tmp_path):
     t = Table(
-        source_id="__provisa__",
+        source_id="__derived__",
         domain_id="d",
         schema_name="views",
         table_name="live",

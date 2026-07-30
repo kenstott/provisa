@@ -1,0 +1,12 @@
+{
+  "securityTab": {
+    "intro": "Controla la postura de seguridad de la plataforma. El modo alto (zero-trust) tiene gran impacto — lea la advertencia antes de habilitarlo.",
+    "modeLabel": "Modo de seguridad",
+    "highWarningTitle": "El modo alto (zero-trust) tiene gran impacto",
+    "highWarning": "El servidor pgwire no se iniciará, y los endpoints de datos REST y GraphQL devolverán 403. Solo los clientes que descifran localmente (con kms_key_arn configurado) podrán acceder a los datos. Verifique que sus clientes estén configurados antes de habilitarlo.",
+    "loading": "Cargando…",
+    "saved": "Guardado.",
+    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios.",
+    "saveTitle": "Guardar postura de seguridad"
+  }
+}

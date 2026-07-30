@@ -26,9 +26,11 @@ export type Capability =
   | 'user_management'
   | 'masking_config'
   | 'superadmin'
-  // REQ-1297: platform_admin is a ROLE id, surfaced as a capability by the server's
-  // _resolved_capabilities so a single keyword answers every platform-bypass gate.
-  | 'platform_admin';
+  // REQ-1337: RIGHTS ONLY — no role id appears in this union. Every gate, server and UI alike,
+  // names a right; the seed decides which role carries it (platform_settings and cross_org go to
+  // platform_admin always, and to org_admin only where single-tenant mode grants them).
+  | 'platform_settings'
+  | 'cross_org';
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;

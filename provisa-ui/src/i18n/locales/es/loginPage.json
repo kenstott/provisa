@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "Inicio de sesión",
+    "authNotConfigured": "Autenticación no configurada",
+    "loading": "Cargando...",
+    "signInTitle": "Iniciar sesión",
+    "firstLoginHeading": "Configurar esta implementación",
+    "firstLoginTitle": "Este es el primer inicio de sesión",
+    "firstLoginBody": "Nadie administra esta implementación todavía. Quien inicie sesión primero se convierte en el administrador de la plataforma — con control total sobre organizaciones, usuarios y orígenes de datos. Elija un método de inicio de sesión abajo para reclamarlo.",
+    "signInWithGoogle": "Iniciar sesión con Google",
+    "signInWithGithub": "Iniciar sesión con GitHub",
+    "signInWithMicrosoft": "Iniciar sesión con Microsoft",
+    "signInWithEmail": "Iniciar sesión con correo electrónico",
+    "orDivider": "o",
+    "haveAccountSignIn": "¿Ya tiene una cuenta? Inicie sesión",
+    "needAccountRegister": "¿Necesita una cuenta? Regístrese",
+    "signingIn": "Iniciando sesión...",
+    "createAccountTitle": "Crear cuenta",
+    "username": "Nombre de usuario",
+    "email": "Correo electrónico",
+    "displayName": "Nombre para mostrar",
+    "organization": "Organización",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar contraseña",
+    "creating": "Creando...",
+    "createAccount": "Crear cuenta",
+    "backToLogin": "Volver al inicio de sesión",
+    "loggingIn": "Iniciando sesión...",
+    "passwordsDoNotMatch": "Las contraseñas no coinciden",
+    "registrationFailed": "Error en el registro",
+    "firebaseSignInFailed": "Error al iniciar sesión con Firebase"
+  }
+}

@@ -34,6 +34,26 @@ def _stub_org_runtime(monkeypatch):
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _noop, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _seeded_roles(monkeypatch):
+    """REQ-1337: the middleware decides nothing from a role NAME — it resolves the assigned role ids
+    to the RIGHTS those roles carry. That resolution reads the loaded roles registry, which in a real
+    process comes from the schema.sql seed; these tests never build app state, so mirror the seed
+    here. ``cross_org`` is what makes platform_admin control-plane."""
+    monkeypatch.setattr(
+        "provisa.auth.middleware._loaded_roles",
+        lambda: {
+            "platform_admin": {
+                "id": "platform_admin",
+                "capabilities": ["admin", "superadmin", "platform_settings", "cross_org"],
+            },
+            "org_admin": {"id": "org_admin", "capabilities": ["user_management"]},
+            "developer": {"id": "developer", "capabilities": ["query_development"]},
+            "analyst": {"id": "analyst", "capabilities": ["usage"]},
+        },
+    )
+
+
 class _Provider(AuthProvider):
     """Accepts 'tok:<user_id>' → identity for that user; rejects anything else."""
 
@@ -369,8 +389,10 @@ def test_control_plane_host_with_non_member_org_header_rejected():
     assert "evil" in resp.json()["detail"]
 
 
-def test_platform_admin_with_subdomain_org_allowed_req1276():
-    # REQ-1276: platform admin acts in any org via subdomain
+def test_platform_admin_subdomain_nonmember_org_denied_req1327():
+    # REQ-1327: membership is the ONLY way into an org — the platform_admin role is control-plane
+    # and confers no tenant binding. Naming a non-member org via subdomain is rejected, same as
+    # for any other identity (the audited REQ-1303 recovery grant is the sanctioned way in).
     db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": []})
     app = _make_app(
@@ -380,8 +402,8 @@ def test_platform_admin_with_subdomain_org_allowed_req1276():
         "/test",
         headers=_auth("root"),
     )
-    assert resp.status_code == 200
-    assert resp.json()["active_org_id"] == "anyorg"
+    assert resp.status_code == 403
+    assert "anyorg" in resp.json()["detail"]
 
 
 # --- REQ-1318: a session must be usable on EVERY plane, not just /auth/me ------
@@ -430,13 +452,14 @@ def test_bootstrap_platform_admin_is_usable_on_tenant_plane_immediately():
     assert tenant.json()["roles"] == ["platform_admin"]
 
 
-def test_platform_admin_named_org_still_wins_over_the_default():
-    # The default org is only the no-org-named case; naming one must still select it, or a platform
-    # admin could never act in a tenant org.
+def test_platform_admin_named_org_requires_membership_req1327():
+    # REQ-1327: naming a tenant org selects it ONLY for members. A platform admin who was granted
+    # membership + a role in that org (the audited REQ-1303 path) binds it and resolves the role
+    # THAT org assigned — the platform set never carries across.
     db = _Pool(
         rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
     )
-    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
     app = _make_app(
         assignments_source="provisa",
         db_pool=db,
@@ -464,3 +487,73 @@ def test_non_admin_member_less_user_is_still_blocked_on_the_tenant_plane():
         default_org_id="root",
     )
     assert TestClient(app).get("/test", headers=_auth("stranger")).status_code == 401
+
+
+# --- REQ-1297 platform_admin is actively ignored in a tenant org ----------------
+
+
+def test_tenant_org_assignment_naming_platform_admin_is_stripped():
+    # The tenant schema CAN hold an assignment naming platform_admin — an org_admin can grant it via
+    # user_management, and a config load carried it in. In a tenant org it must resolve to nothing:
+    # not in identity.roles, so no capability, and /auth/me never reports it there.
+    db = _Pool(
+        rows_by_table={
+            "user_role_assignments": [
+                {"role_id": "platform_admin", "domain_id": "*"},
+                {"role_id": "analyst", "domain_id": "*"},
+            ]
+        }
+    )
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
+    )
+    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    assert resp.status_code == 200
+    assert resp.json()["roles"] == ["analyst"]
+    assert resp.json()["active_org_id"] == "acme"
+
+
+def test_platform_admin_only_assignment_in_tenant_org_is_refused():
+    # Nothing remains once platform_admin is dropped, so there is no role to act as. Refusing is the
+    # design: silently acting as platform_admin would be exactly the tenant-data access REQ-1297
+    # forbids, and inventing a data role would be a fallback.
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
+    )
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_role="platform_admin",
+        default_org_id="root",
+    )
+    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    assert resp.status_code == 403
+    assert "confers no rights" in resp.json()["detail"]
+
+
+def test_platform_admin_survives_in_the_root_org():
+    # Root IS the control plane's org, so the strip must not reach it — otherwise the deployment's
+    # own administrator loses the platform surfaces.
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
+    )
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "root"}]})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
+    )
+    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    assert resp.status_code == 200
+    assert resp.json()["roles"] == ["platform_admin"]
+    assert resp.json()["active_org_id"] == "root"

@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "Cargando…",
+    "intro": "Cifrado de columnas en reposo. Elija un proveedor y administre su clave maestra. El cifrado de sobre envuelve una clave de datos por columna con la clave maestra.",
+    "providerLabel": "Proveedor",
+    "providerCurrentSuffix": " (actual)",
+    "providerComingSoonSuffix": " (próximamente)",
+    "unavailableNote": "El entorno de ejecución de este proveedor aún no está disponible y no se puede seleccionar. Los campos se muestran como referencia.",
+    "keyIdLabel": "ID de clave",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "Clave maestra:",
+    "masterKeyPresent": "presente",
+    "masterKeyMissing": "ausente",
+    "generating": "Generando…",
+    "rotateKey": "Rotar clave maestra",
+    "generateKey": "Generar clave maestra",
+    "restartWarning": "{{note}} Rotar una clave maestra mientras existen datos cifrados puede hacer ilegibles las filas anteriores: rote antes de almacenar datos sensibles o planifique un recifrado.",
+    "saveTitle": "Guardar configuración de cifrado",
+    "keyGeneratedStored": "Clave maestra generada y almacenada en el llavero del sistema operativo (ID de clave: {{keyId}}).",
+    "keyGeneratedNoKeychain": "No hay llavero del sistema operativo disponible: copie esta clave y configúrela como {{envVar}}. No se mostrará de nuevo.",
+    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios.",
+    "saved": "Guardado."
+  }
+}

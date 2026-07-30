@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import select, update
 
+from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.schema_org import registered_tables, sources, table_meta_links
 from provisa.api.admin.types import MutationResult, TableInput
 from provisa.api.admin.schema_helpers import (
@@ -138,21 +139,24 @@ async def register_table(
     )
     from provisa.api.admin.capabilities import require_capability
 
-    if input.view_sql:
-        # view registration: create_view or query_development suffice
+    if input.view_sql or input.view_metrics is not None:
+        # view registration (free-hand SQL or REQ-1318 metric-composed spec):
+        # create_view or query_development suffice
         from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
         from provisa.api.app import state as _cap_state
 
         identity = _identity_from_info(info)
         if identity is not None and getattr(identity, "user_id", "anonymous") != "anonymous":
             caps = _resolved_capabilities(identity, _cap_state)
-            if not (
-                caps & {"create_view", "query_development", "admin", "superadmin", "platform_admin"}
-            ):
+            # REQ-1337: rights only — the platform_admin role id was listed here as a pseudo-right;
+            # the role carries admin/superadmin, which is what the gate must read.
+            if not (caps & {"create_view", "query_development", "admin", "superadmin"}):
                 # REQ-434/366: lacking view-create authority queues a request.
                 return await _queue_creation_request(info, "view", "create_view", input)
         # REQ-1140: a materialized view publishes only over approved relationships; the gate either
         # auto-creates them (rights) or queues them + the view and blocks (returns a queued result).
+        # A metric-composed view (view_metrics) joins ONLY through registered relationships by
+        # construction (generate_view_metrics_sql), so the gate applies to free-hand SQL alone.
         gate_result = await _apply_mv_relationship_gate(info, input)
         if gate_result is not None:
             return gate_result
@@ -166,15 +170,17 @@ async def register_table(
         return _col_err
     alias = input.alias or None
     if not alias:
+        # REQ-471: the registered virtual name is a SQL-plane identifier, so the SQL naming
+        # convention is its authority. The GraphQL surface applies gql conventions at schema
+        # generation — it never mints the SQL name (deriving the alias from a source's
+        # gql_naming_convention put camelCase into the SQL plane, e.g. dim_pet -> dimPet).
+        from provisa.api.app import state as _app_state
         from provisa.compiler.naming import apply_convention
 
-        async with pool.acquire() as conn:
-            _sres = await conn.execute_core(
-                select(sources.c.gql_naming_convention).where(sources.c.id == input.source_id)
-            )
-            src = _sres.fetchone()
-        convention = (src.gql_naming_convention if src else None) or "apollo_graphql"
-        alias = apply_convention(input.table_name, convention)
+        _sql_name = apply_convention(
+            input.table_name, getattr(_app_state, "global_sql_naming_convention", "snake")
+        )
+        alias = None if _sql_name == input.table_name else _sql_name
 
     from provisa.core.models import ColumnPreset as ColumnPresetModel
 
@@ -195,9 +201,23 @@ async def register_table(
         validate_preprocess(input.mv_preprocess)
     except ValueError as _pp_err:
         return MutationResult(success=False, message=str(_pp_err))
-    model = _table_model_from_input(input, columns, presets, alias)
+    try:
+        model = _table_model_from_input(input, columns, presets, alias)
+    except ValueError as _map_err:  # REQ-1318: view_sql+view_metrics conflict / invalid spec
+        return MutationResult(success=False, message=str(_map_err))
+    _effective_view_sql = input.view_sql
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
+        if model.view_metrics is not None:
+            # REQ-1318: compile the spec into the view SELECT against the live registries —
+            # the generated SQL persists in view_sql and flows everywhere free-hand SQL does.
+            from provisa.api.admin._metric_views import compile_view_metrics_sql
+
+            try:
+                model.view_sql = await compile_view_metrics_sql(_conn, model.view_metrics)
+            except ValueError as _vm_err:
+                return MutationResult(success=False, message=str(_vm_err))
+            _effective_view_sql = model.view_sql
         _conflict = await _domain_table_conflict(
             _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, alias
         )
@@ -208,13 +228,13 @@ async def register_table(
         )
         if _owner_conflict:
             return MutationResult(success=False, message=_owner_conflict)
-        if input.source_id == "__provisa__":
+        if input.source_id == DERIVED_SOURCE_ID:
             from provisa.api.app import state
 
             await _conn.upsert(
                 sources,
                 {
-                    "id": "__provisa__",
+                    "id": DERIVED_SOURCE_ID,
                     "type": state.federation_engine.name,
                     "description": "Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products",
                 },
@@ -275,10 +295,10 @@ async def register_table(
                     input.table_name,
                 )
 
-    if input.view_sql and input.materialize:
+    if _effective_view_sql and input.materialize:
         _sync_view_mv(
             input.table_name,
-            input.view_sql,
+            _effective_view_sql,
             input.mv_refresh_interval,
             input.change_signal,
             consistency=input.mv_consistency,  # REQ-879
@@ -309,7 +329,7 @@ async def register_table(
 
     # A newly-created materialized view is materialized immediately and its refresh job registered, so
     # it lands FRESH instead of STALE-until-restart (the event loop otherwise wires only at boot).
-    if input.view_sql and input.materialize:
+    if _effective_view_sql and input.materialize:
         from provisa.api.admin.schema_common import activate_view_mv
 
         await activate_view_mv(input.table_name)
@@ -345,10 +365,10 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
         row = _res.fetchone()
     if not row:
         return MutationResult(success=False, message=f"Table {table_id} not found")
-    if row.source_id != "__provisa__":
+    if row.source_id != DERIVED_SOURCE_ID:
         return MutationResult(
             success=False,
-            message="Table is not a virtual Provisa view (source_id != '__provisa__')",
+            message="Table is not a virtual Provisa view (source_id != '__derived__')",
         )
     if not row.view_sql:
         return MutationResult(success=False, message="Table has no view_sql")
@@ -371,7 +391,7 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
             .select_from(
                 registered_tables.join(sources, sources.c.id == registered_tables.c.source_id)
             )
-            .where(registered_tables.c.source_id != "__provisa__")
+            .where(registered_tables.c.source_id != DERIVED_SOURCE_ID)
         )
         all_tables = [dict(r._mapping) for r in _ares.fetchall()]
 

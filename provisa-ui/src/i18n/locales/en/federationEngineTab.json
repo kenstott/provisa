@@ -3,7 +3,9 @@
     "intro": "The federation engine executes every federated query. Pick the engine and configure it; other components (routing, governance, cache) are unchanged.",
     "loading": "Loading…",
     "engineLabel": "Engine",
-    "current": " (current)",
+    "current": " (running)",
+    "pendingSelection": "Saved selection: {{engine}}. The service is still running {{running}}.",
+    "envPinned": "Pinned to {{engine}} by $PROVISA_ENGINE. A selection saved here is stored but the pin wins on restart.",
     "saveButton": "Save engine selection",
     "saved": "Saved.",
     "savedRestartRequired": "Saved. Restart the service to apply the new federation engine."

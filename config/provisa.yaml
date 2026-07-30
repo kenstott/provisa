@@ -1,8 +1,10 @@
 auth:
   assignments_source: provisa
   default_assignments:
+  # REQ-1297: org_admin, not platform_admin. This single-org dev config's default identity needs
+  # DATA-plane administration of the org it lands in; platform_admin confers none.
   - domain_id: '*'
-    role_id: platform_admin
+    role_id: org_admin
   provider: basic
 cache:
   default_ttl: 300
@@ -124,17 +126,11 @@ relationships:
   target_column: name
   target_table_id: animal_breeds
 roles:
-- capabilities:
-  - source_registration
-  - table_registration
-  - create_relationship
-  - access_config
-  - query_development
-  - approve_view
-  - admin
-  domain_access:
-  - '*'
-  id: platform_admin
+# REQ-1297: platform_admin is deliberately ABSENT from this list. It is seeded by schema.sql with
+# exactly ['admin','superadmin'] — control-plane bypass and nothing else — and role_repo.upsert
+# refuses to overwrite that row, so redefining it here would be silently dropped anyway. It holds no
+# data capabilities in any org, names no column grant, and the middleware strips it from the resolved
+# assignment set in every tenant org. Data-plane administration of an org is org_admin's job.
 # org_admin: full administrative power WITHIN a single org, deliberately WITHOUT the global
 # 'admin'/'superadmin' capability. Those two bypass every capability + org check (capabilities.py),
 # which would let the holder reach superadmin platform endpoints (orgs_router) and other tenants.
@@ -211,32 +207,32 @@ tables:
   - description: Unique identifier for the pet record
     name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - description: Name of the pet
     name: name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - description: Species of the pet (e.g. dog, cat, bird)
     name: species
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - description: Breed of the pet
     name: breed_name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - description: Sale price of the pet in USD
     name: price
     visible_to:
-    - platform_admin
+    - org_admin
   - description: Whether the pet is currently available for purchase
     name: available
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: "Pet inventory \u2014 managed by the inventory department"
   domain_id: pet-store
   enable_aggregates: true
@@ -251,28 +247,28 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: status
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: photoUrls
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: tags
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: category
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: "Pets available for purchase \u2014 filtered by status from Petstore\
     \ API"
   domain_id: pet-store
@@ -286,28 +282,28 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: status
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: photoUrls
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: tags
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: category
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: Pets filtered by tag from Petstore API
   domain_id: pet-store
   schema: default
@@ -320,28 +316,28 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: status
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: photoUrls
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: tags
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: category
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: Individual pet record by ID from Petstore API
   domain_id: pet-store
   schema: default
@@ -351,12 +347,12 @@ tables:
   columns:
   - name: status
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: count
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: Pet inventory counts by status from Petstore API
   domain_id: pet-store
   schema: default
@@ -369,28 +365,28 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: petId
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: quantity
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: shipDate
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: status
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: complete
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: Individual purchase order by ID from Petstore API
   domain_id: pet-store
   schema: default
@@ -400,29 +396,29 @@ tables:
   columns:
   - name: id
     visible_to:
-    - platform_admin
+    - org_admin
   - name: username
     native_filter_type: path_param
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: firstName
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: lastName
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: email
     visible_to:
-    - platform_admin
+    - org_admin
   - name: phone
     visible_to:
-    - platform_admin
+    - org_admin
   - name: userStatus
     visible_to:
-    - platform_admin
+    - org_admin
   description: User account by username from Petstore API
   domain_id: pet-store
   schema: default
@@ -431,22 +427,22 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: email
     visible_to:
-    - platform_admin
+    - org_admin
   - name: phone
     visible_to:
-    - platform_admin
+    - org_admin
   - name: created_at
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: Prospective adopters who have submitted inquiries
   domain_id: pet-store
   schema: default
@@ -455,32 +451,32 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: pet_id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: user_id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: inquiry_type
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: message
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: status
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: submitted_at
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: "Customer adoption inquiries \u2014 managed by the front-desk/CRM team"
   domain_id: pet-store
   enable_aggregates: true
@@ -491,28 +487,28 @@ tables:
 - columns:
   - name: name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: species
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: care_level
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: avg_lifespan_years
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: typical_habitat
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: description
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   alias: animal_breeds
   description: "Full breed catalog \u2014 use to answer what care protocols apply\
     \ and which adopter profiles match each species in custody"
@@ -526,28 +522,28 @@ tables:
     visible_to: []
   - name: name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: species
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: care_level
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: avg_lifespan_years
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: typical_habitat
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: description
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   alias: animal_breed
   description: "Care requirements and placement context for a single breed \u2014\
     \ use before making a staffing assignment or adoption decision"
@@ -558,44 +554,44 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: first_name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: last_name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: hire_date
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: department
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: contact
     data_type: jsonb
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
     object_fields:
     - name: phone
       type: string
       visible_to:
-      - platform_admin
       - analyst
+      - org_admin
     - name: email
       type: string
       visible_to:
-      - platform_admin
       - analyst
+      - org_admin
     - name: ssn
       type: string
       visible_to:
-      - platform_admin
+      - org_admin
   description: "All staff eligible for breed assignments \u2014 use to identify who\
     \ can be assigned or scheduled"
   domain_id: shelter
@@ -608,44 +604,44 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: first_name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: last_name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: hire_date
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: department
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: contact
     data_type: jsonb
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
     object_fields:
     - name: phone
       type: string
       visible_to:
-      - platform_admin
       - analyst
+      - org_admin
     - name: email
       type: string
       visible_to:
-      - platform_admin
       - analyst
+      - org_admin
     - name: ssn
       type: string
       visible_to:
-      - platform_admin
+      - org_admin
   description: "Contact details and department for a single staff member \u2014 use\
     \ to route assignment requests or resolve scheduling conflicts"
   domain_id: shelter
@@ -655,28 +651,28 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: employee_id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: breed_name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: role
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: start_date
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: end_date
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: "Complete accountability map of staff to breeds \u2014 use to spot\
     \ coverage gaps or single-keeper risk across all species"
   domain_id: shelter
@@ -689,28 +685,28 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: employee_id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: breed_name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: role
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: start_date
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: end_date
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   alias: assignments_by_employee
   description: "All breeds a given staff member is accountable for \u2014 use to assess\
     \ workload before adding a new assignment"
@@ -724,28 +720,28 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: employee_id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: breed_name
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: role
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: start_date
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: end_date
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   alias: assignments_by_breed
   description: "All staff responsible for a breed \u2014 use to verify minimum keeper\
     \ coverage and identify backup gaps"
@@ -756,28 +752,28 @@ tables:
 - columns:
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: employee_id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: day_of_week
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: shift_start
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: shift_end
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: location
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   description: "Full weekly shift roster \u2014 use for shelter-wide coverage analysis\
     \ and to surface days where any location is understaffed"
   domain_id: shelter
@@ -790,28 +786,28 @@ tables:
     visible_to: []
   - name: id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: employee_id
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: day_of_week
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: shift_start
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: shift_end
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   - name: location
     visible_to:
-    - platform_admin
     - analyst
+    - org_admin
   alias: schedule_by_employee
   description: "A staff member's shift coverage for the week \u2014 use for availability\
     \ checks before scheduling a new assignment or event"
@@ -836,7 +832,7 @@ functions:
   - name: seed
     type: Int
   visible_to:
-  - platform_admin
+  - org_admin
   return_schema:
     type: array
     items:
@@ -858,7 +854,7 @@ functions:
     target: ${env:DEMO_GRPC_TARGET:-localhost:50071}
     method: /provisa.demo.RandomData/GetRandomSet
   visible_to:
-  - platform_admin
+  - org_admin
   return_schema:
     type: array
     items:
@@ -888,7 +884,7 @@ functions:
     - {name: id, type: integer}
     - {name: region, type: text}
   visible_to:
-  - platform_admin
+  - org_admin
   # REQ-1159: canonical IR-typed output dataset contract; validated on the way out.
   output_columns:
   - {name: id, type: integer}
@@ -917,7 +913,7 @@ webhooks:
   timeout_ms: 5000
   url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/pet
   visible_to:
-  - platform_admin
+  - org_admin
 - arguments:
   - name: petId
     type: Int
@@ -931,4 +927,4 @@ webhooks:
   timeout_ms: 5000
   url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
   visible_to:
-  - platform_admin
+  - org_admin

@@ -66,6 +66,8 @@ def test_table_model_from_input_maps_unique_constraints():
         data_product=False,
         enable_aggregates=False,
         enable_group_by=False,
+        modeling_role=None,  # REQ-1320
+        modeling_history=None,  # REQ-1320
         live=None,
         unique_constraints=[uc],
     )

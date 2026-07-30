@@ -21,6 +21,7 @@ import { ColorSchemeToggle } from "../theme/ColorSchemeToggle";
 import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
+import { clearSessionState } from "../lib/session";
 import type { Capability } from "../types/auth";
 
 
@@ -44,6 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "navBar.groupModel",
     items: [
       { to: "/views", labelKey: "navBar.itemViews", capability: "table_registration" },
+      { to: "/metrics", labelKey: "navBar.itemMetrics", capability: "table_registration" }, // REQ-1317
       { to: "/commands", labelKey: "navBar.itemCommands", capability: "admin" },
       { to: "/lineage", labelKey: "navBar.itemLineage", capability: "admin" }, // REQ-1160/1161
     ],
@@ -80,17 +82,23 @@ const NAV_GROUPS: NavGroup[] = [
     id: "admin",
     labelKey: "navBar.groupAdmin",
     items: [
-      { to: "/admin/orgs", labelKey: "navBar.itemOrgs", capability: "admin" },
+      // REQ-1337: administering orgs other than the one being acted in is `cross_org`.
+      { to: "/admin/orgs", labelKey: "navBar.itemOrgs", capability: "cross_org" },
       { to: "/admin/overview", labelKey: "navBar.itemOverview", capability: "admin" },
       { to: "/admin/domains", labelKey: "navBar.itemDomains", capability: "admin" },
-      { to: "/admin/cache", labelKey: "navBar.itemCache", capability: "admin" },
+      // REQ-1337: cache storage, the federation engine and the encryption/auth providers are
+      // DEPLOYMENT-WIDE settings, so each is gated on the `platform_settings` RIGHT rather than on a
+      // role name. The seed grants it to platform_admin always and to org_admin only in a
+      // single-tenant deployment (apply_tenancy_role_grants), so a multitenant org_admin never sees
+      // these entries.
+      { to: "/admin/cache", labelKey: "navBar.itemCache", capability: "platform_settings" },
       { to: "/admin/scheduled-tasks", labelKey: "navBar.itemScheduler", capability: "admin" },
       {
         to: "/admin/federation-engine",
         labelKey: "navBar.itemFederation",
-        capability: "admin",
+        capability: "platform_settings",
       },
-      { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "admin" },
+      { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
       { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "admin" },
       { to: "/admin/system-health", labelKey: "navBar.itemHealth", capability: "admin" },
       { to: "/admin/observability", labelKey: "navBar.itemObservability", capability: "admin" },
@@ -187,8 +195,10 @@ export function NavBar() {
     // Google account on the next login and never offers the account chooser.
     const { signOutFirebase } = await import("../lib/firebase");
     await signOutFirebase();
-    localStorage.removeItem("provisa_token");
-    localStorage.removeItem("provisa_org");
+    // REQ-1326: sign-out clears exactly what sign-in clears — token, org, role and the persisted
+    // Apollo snapshot. Clearing a subset left provisa_role and the cached org-scoped admin data
+    // behind for the next identity.
+    clearSessionState();
     // Full document load, not navigate(): App reads the token only on an authVersion bump (login
     // path), so an in-app navigate would keep the shell mounted and render /login inside the
     // navbar. A hard load re-reads the token-less localStorage into the public LandingPage branch

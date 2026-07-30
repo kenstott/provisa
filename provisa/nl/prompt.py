@@ -70,20 +70,38 @@ _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
 }
 
 
-def format_entities(entities: list) -> str:  # REQ-464
-    """Render a list of SchemaEntity into a compact exact-name reference block."""
+def format_entities(entities: list, table_roles: dict[str, str] | None = None) -> str:  # REQ-464
+    """Render a list of SchemaEntity into a compact exact-name reference block.
+
+    ``table_roles`` (table name → "fact" | "dimension") tags each table with its
+    star-schema role, and metric entities render as a METRICS section with the
+    semantic addressing form, so the model sees the star shape (REQ-1319, REQ-1320).
+    """
     if not entities:
         return ""
+    roles = table_roles or {}
     tables: dict[str, list[str]] = {}
+    metrics: list = []
     for e in entities:
         if e.kind == "table":
             tables.setdefault(e.exact_name, [])
         elif e.kind == "field" and e.parent:
             tables.setdefault(e.parent, []).append(e.exact_name)
+        elif e.kind == "metric":
+            metrics.append(e)
     lines = ["EXACT SCHEMA NAMES (use these verbatim — do not guess or alter case):"]
     for table, fields in tables.items():
         field_list = ", ".join(fields) if fields else "(no fields matched)"
-        lines.append(f"  table: {table}  fields: {field_list}")
+        role_tag = f" [{roles[table]}]" if table in roles else ""
+        lines.append(f"  table: {table}{role_tag}  fields: {field_list}")
+    if metrics:
+        lines.append(
+            "METRICS (governed aggregates — query as: "
+            "SELECT <dimensions>, value FROM metrics.<name> GROUP BY <dimensions>):"
+        )
+        for m in metrics:
+            desc = f" — {m.description}" if m.description else ""
+            lines.append(f"  metric: {m.exact_name}{desc}")
     return "\n".join(lines)
 
 

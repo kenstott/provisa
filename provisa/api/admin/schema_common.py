@@ -32,6 +32,7 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
+from provisa.security.rights import has_platform_bypass
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin.types import (
     MutationResult,
@@ -131,7 +132,7 @@ def _resolve_admin_context(info: StrawberryInfo) -> tuple[str, bool]:
     active_org_id = require_active_org_id(request)
     identity = getattr(request.state, "identity", None)
     caps = _resolved_capabilities(identity, _state) if identity else set()
-    is_admin = bool(caps & {"superadmin", "admin", "platform_admin"})
+    is_admin = has_platform_bypass(caps)  # REQ-1337: rights only, never the platform_admin role id
     return active_org_id, is_admin
 
 

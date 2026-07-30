@@ -195,7 +195,7 @@ export function TableEditForm({
   const effLoadProtected =
     loadProtected == null ? (editSource?.loadProtected ?? false) : loadProtected;
 
-  // A __provisa__ virtual view has no external source, so the source-freshness controls (cache TTL,
+  // A __derived__ virtual view has no external source, so the source-freshness controls (cache TTL,
   // prefer_materialized, load protection, off-peak) don't apply — the view/MV rebuild path reads only
   // materialize + mv_refresh_interval + change_signal. Materialization is driven by the "Materialized
   // View" checkbox, not prefer_materialized. Hide those fields for a view to avoid contradictory knobs.
@@ -571,7 +571,7 @@ export function TableEditForm({
         {(editingTable.changeSignal === "ttl" ||
           editingTable.changeSignal === "ttl_probe") &&
           (() => {
-            // A __provisa__ view has no Cache TTL — its ttl cadence is the materialized view's
+            // A __derived__ view has no Cache TTL — its ttl cadence is the materialized view's
             // Refresh Interval. A non-materialized view can't honor ttl (nothing to refresh).
             if (isView) {
               return editingTable.materialize ? (

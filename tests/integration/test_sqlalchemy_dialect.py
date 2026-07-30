@@ -163,10 +163,10 @@ class TestEntryPointRegistration:
 class TestLiveSQLAlchemyDialect:
     """Require the isolated Provisa server (PROVISA_URL, a private ephemeral port)."""
 
-    # REQ-1297: the live server runs tests/fixtures/sample_config.yaml, whose admin role id is
-    # platform_admin. The dbapi sends the username as the role (REQ-AK5), so it must name a role
-    # the server actually has.
-    PROVISA_URL = f"provisa+http://platform_admin:provisa@{_LIVE_HOSTPORT}"
+    # REQ-1297: the live server runs tests/fixtures/sample_config.yaml, whose data-plane admin role is
+    # org_admin — platform_admin holds no data capability and would see nothing. The dbapi sends the
+    # username as the role (REQ-AK5), so it must name a role the server actually has.
+    PROVISA_URL = f"provisa+http://org_admin:provisa@{_LIVE_HOSTPORT}"
 
     @pytest.fixture
     def engine(self):
@@ -228,7 +228,7 @@ class TestLiveSQLAlchemyDialect:
         """Connections with a role header use the role in the request pipeline."""
         from sqlalchemy import create_engine, text
 
-        role_url = f"provisa+http://platform_admin:provisa@{_LIVE_HOSTPORT}?role=platform_admin"
+        role_url = f"provisa+http://org_admin:provisa@{_LIVE_HOSTPORT}?role=org_admin"
         role_engine = create_engine(role_url)
         with role_engine.connect() as conn:
             result = conn.execute(text("SELECT 1 AS val"))

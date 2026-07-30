@@ -56,7 +56,7 @@ async def test_bitemporal_view_http_end_to_end(client):
         """
         mutation {
             registerTable(input: {
-                sourceId: "__provisa__",
+                sourceId: "__derived__",
                 domainId: "bt",
                 schemaName: "views",
                 tableName: "bt_view",

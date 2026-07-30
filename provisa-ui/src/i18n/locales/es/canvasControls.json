@@ -1,0 +1,13 @@
+{
+  "canvasControls": {
+    "toolbarLabel": "Controles del lienzo",
+    "zoomIn": "Acercar",
+    "zoomOut": "Alejar",
+    "fitToScreen": "Ajustar a la pantalla",
+    "switchToHierarchy": "Cambiar a diseño jerárquico",
+    "switchToForce": "Cambiar a diseño de fuerzas",
+    "nudgeLayout": "Ajustar diseño — desplaza los nodos seleccionados (o todos si no hay selección); mantenga presionado para seguir iterando",
+    "edgeLength": "Longitud de las aristas",
+    "edgeLengthValue": "{{value}}px"
+  }
+}

@@ -104,6 +104,13 @@ class OrgRuntime:
     # Raw-SQL governance inputs (published once per org at schema-load time).
     tables: list[dict] = field(default_factory=list)
     relationships: list[dict] = field(default_factory=list)
+    # REQ-1317: config-declared metric registry (name → Metric), published alongside tables
+    # so the raw-SQL path can expand `metrics.<name>` queries before governance.
+    metrics: dict[str, Any] = field(default_factory=dict)
+    # Raw registry rows (domains, tables, column_types, …) the on-demand domain-filtered schema
+    # builder reads. Per-org because domains ARE per-org: a process-global cache is overwritten by
+    # whichever org rebuilt last, so /data/domains hands one org's domain list to another.
+    schema_build_cache: dict = field(default_factory=dict)
 
 
 class OrgRegistry:
@@ -152,6 +159,23 @@ class OrgRegistry:
             self._runtimes[org_id] = runtime
             return runtime
 
+    async def rebuild(
+        self, org_id: str, builder: Callable[[str], Awaitable[OrgRuntime]]
+    ) -> OrgRuntime:
+        """Run ``builder`` unconditionally, under the SAME per-org lock as ``get_or_build``.
+
+        REQ-1322: provisioning must build an org's runtime even when one is already cached, but it
+        may not do so concurrently with a request that lazily builds the same org. Both paths run
+        the seeding DDL (``DROP VIEW IF EXISTS`` / ``CREATE VIEW``), and interleaving them loses the
+        DROP — Postgres rejects the second CREATE with a duplicate ``pg_type`` key and provisioning
+        fails with the org half-seeded. The lock is the whole point: build here, never at the call
+        site.
+        """
+        async with self._lock_for(org_id):
+            runtime = await builder(org_id)
+            self._runtimes[org_id] = runtime
+            return runtime
+
 
 def set_current_org(org_id: str) -> Token[str | None]:
     """Bind the active org for the current context; returns a reset token."""
@@ -195,7 +219,7 @@ class ActiveOrgPool:  # REQ-1266
 
     __slots__ = ()
 
-    def resolve(self) -> "object | None":
+    def resolve(self) -> "Database | None":
         from provisa.api.app import state
 
         return getattr(state, "tenant_db", None)

@@ -10,7 +10,7 @@
 
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Box, Button, Group, NumberInput, Select, TextInput } from "@mantine/core";
+import { ActionIcon, Badge, Box, Button, Group, NumberInput, Select, TextInput } from "@mantine/core";
 import { Play, Copy, Check, X, Sparkles } from "lucide-react";
 import { format as formatSql } from "sql-formatter";
 import CodeMirror from "@uiw/react-codemirror";
@@ -179,6 +179,16 @@ export function SqlEditorPanel({
                 />
               ) : (
                 <span>{t2.title}</span>
+              )}
+              {t2.detached && (
+                <Badge
+                  size="xs"
+                  color="orange"
+                  variant="light"
+                  data-testid={`sql-tab-detached-${t2.id}`}
+                >
+                  {t("sqlEditorPanel.detachedBadge")}
+                </Badge>
               )}
               <ActionIcon
                 variant="transparent"

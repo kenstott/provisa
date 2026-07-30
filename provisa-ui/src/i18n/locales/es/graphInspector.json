@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "Resumen",
+    "hidePanel": "Ocultar panel",
+    "nodeLabels": "Etiquetas de nodos",
+    "relationshipTypes": "Tipos de relaciones",
+    "summary": "Mostrando {{nodeCount}} nodos, {{edgeCount}} relaciones.",
+    "hint": "Haga clic en un nodo o arista para inspeccionar sus propiedades.",
+    "nodeProperties": "Propiedades del nodo",
+    "relationshipProperties": "Propiedades de la relación",
+    "copyAll": "Copiar todas las propiedades como JSON",
+    "showDetails": "Mostrar detalles",
+    "showJson": "Mostrar JSON",
+    "close": "Cerrar",
+    "domain": "Dominio",
+    "changeColor": "Cambiar color",
+    "colorSwatch": "Establecer color a {{color}}",
+    "cqlAliasLabel": "Alias CQL (UPPER_SNAKE)",
+    "gqlAliasLabel": "Alias GQL (camelCase)",
+    "saveAlias": "Guardar",
+    "graphStats": "Estadísticas del grafo",
+    "properties": "Propiedades",
+    "copyValue": "Copiar valor",
+    "resizePanel": "Redimensionar panel del inspector"
+  }
+}

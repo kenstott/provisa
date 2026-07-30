@@ -13148,9 +13148,9 @@ A claimed platform-admin slot lands the administrator in a populated deployment,
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Every org schema is seeded with exactly four default roles: platform_admin, org_admin, analyst, developer. These four ids are the whole vocabulary — there are no aliases. The role ids 'admin' and 'superadmin' are retired: they exist today as both seeded role rows and as the platform-bypass keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are replaced by platform_admin. Existing assignments naming the retired ids are rewritten to platform_admin at seed time; nothing resolves them afterward. platform_admin is the deployment-wide administrator (the role the bootstrap claim grants) and is the only one carrying the platform-bypass capabilities. org_admin administers a single org — members, invites, sources, governance — and holds no bypass. developer builds against the data: query development, view and relationship authoring, full results, write. analyst reads: usage, ad-hoc query, query development, no authoring or governance. All four are system roles (org_id NULL, identical capabilities in every org) and are not editable through the roles admin surface.
+Every org schema is seeded with exactly four default roles: platform_admin, org_admin, analyst, developer. These four ids are the whole vocabulary — there are no aliases. The role ids 'admin' and 'superadmin' are retired: they exist today as both seeded role rows and as the platform-bypass keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are replaced by platform_admin. Existing assignments naming the retired ids are rewritten to platform_admin at seed time; nothing resolves them afterward. platform_admin is the deployment-wide control-plane administrator (the role the bootstrap claim grants), responsible for org lifecycle, infra/engine settings, and recovery operations. The platform-bypass (has_platform_bypass in provisa/security/rights.py) is scoped to control-plane surfaces only and does not bypass any data-plane capability check, even in root; platform_admin holds no standing data capabilities anywhere. org_admin administers data-plane operations in a single org — members, invites, sources, governance, querying — in every org including root. developer builds against the data: query development, view and relationship authoring, full results, write. analyst reads: usage, ad-hoc query, query development, no authoring or governance. All four are system roles (org_id NULL, identical capability sets in every org) and are not editable through the roles admin surface.
 
-**Use case:** The seeded catalog was ad hoc — 'admin' and 'analyst' existed by accident of the boot seed and 'org_admin' was added later for self-service org creation, leaving no role for a person who builds views and relationships but must not administer anything. A fixed four-role catalog gives every fresh org and every fresh deployment the same starting vocabulary, and makes the platform/org administration split explicit in the role id rather than implicit in a capability keyword.
+**Use case:** The seeded catalog was ad hoc — 'admin' and 'analyst' existed by accident of the boot seed and 'org_admin' was added later for self-service org creation, leaving no role for a person who builds views and relationships but must not administer anything. A fixed four-role catalog gives every fresh org and every fresh deployment the same starting vocabulary. Separating platform_admin (control-plane, no data access) from org_admin (all data-plane administration, including in root) makes the platform/org administration split explicit in the role id and capability set, enabling auditable recovery and preventing silent data access.
 
 **Code:** `provisa/core/schema.sql`, `provisa/security/rights.py`, `provisa/auth/middleware.py`
 
@@ -13220,9 +13220,9 @@ No organization can be left with zero org_admins by an ordinary administrative a
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-When an org's administrators are unreachable, recovery runs through the platform_admin, not through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org at their own discretion; whatever verification satisfies them that the request is legitimate is a business process outside the product, not an automated check. The grant is a named operation, distinct from ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT org's audit trail so the intervention is visible to the org afterward. The same authority runs the other way - a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin invariant ([REQ-1302](#REQ-1302)), and that revocation is audited into the org's trail identically. No per-org break-glass key is ever minted - the platform_admin already holds every capability in every org, so a customer-held token would add a permanent bearer secret without adding any recovery capability that does not already exist. Tokens of that kind belong to vendors who are cryptographically unable to recover a customer's data; Provisa is not one.
+When an org's administrators are unreachable, recovery runs through the platform_admin via an explicit, audited operation — not through a silent platform bypass that leaves no trace and not through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org at their own discretion; whatever verification satisfies them that the request is legitimate is a business process outside the product, not an automated check. The grant is a named operation, distinct from ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT org's audit trail so the intervention is visible to the org afterward. The same authority runs the other way — a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin invariant ([REQ-1302](#REQ-1302)), and that revocation is audited into the org's trail identically. No per-org break-glass key is ever minted — platform_admin holds zero standing data capabilities in any org ([REQ-1327](#REQ-1327)), so a customer-held token would add a permanent bearer secret. Tokens of that kind belong to vendors who are cryptographically unable to recover a customer's data; Provisa is not one.
 
-**Use case:** This is the contact-the-vendor path every SaaS platform ends up with - Google Workspace, Atlassian and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for a Provisa deployment the provider is the platform_admin. The capability already exists implicitly via the platform bypass, which is the problem - recovery today would be an unlogged act indistinguishable from a platform_admin quietly reading a customer's org. Making it an explicit operation that lands in the org's own audit trail turns a silent backdoor into a recorded intervention.
+**Use case:** This is the contact-the-vendor path every SaaS platform ends up with — Google Workspace, Atlassian and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for a Provisa deployment the provider is the platform_admin. Separation of control-plane (platform_admin) from data-plane (org_admin) means recovery capability exists only through explicit operations that land in the org's own audit trail. Turning a potential silent backdoor into a recorded, revocable intervention enables compliance audits (SOC 2, ISO 27001) and prevents platform_admin from bypassing governance in data orgs.
 
 **Code:** `provisa/api/admin/orgs_router.py`, `provisa/api/admin/roles_router.py`, `provisa/core/org_membership.py`
 
@@ -13376,91 +13376,365 @@ An org whose provisioning failed is recoverable, not abandoned. Background provi
 
 ### REQ-1316 · Semantic Interchange (Apache Ossie) {#REQ-1316}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Provisa interoperates with Apache Ossie (incubating; formerly Open Semantic Interchange) via a boundary converter, not internal adoption. Export renders the governed model as Ossie YAML - Table to dataset (source = federated catalog.schema.table, primary/unique keys from column config and UniqueConstraint), Column to field (expression = column reference, dialect ANSI_SQL), Relationship to relationship (from/to datasets plus column lists). The CANONICAL export surface is a live endpoint that derives the document from the governed model on every read ([REQ-1321](#REQ-1321) - the interchange artifact is generated from the operating declaration, so it cannot be stale); *.ossie.yaml file download is the secondary form. Note the standard defines only the file format, not a service protocol - the live endpoint is Provisa's delivery of the standard's document, not a compliance requirement. Import ingests an Ossie semantic model (e.g. produced by the dbt or Snowflake converters) and materializes proposed Provisa tables and relationships for onboarding - it ingests definitions, never data. UI surface - export is reachable from the Model area (endpoint URL plus download); import is an upload flow that lands as a review screen of the proposed tables and relationships, which the modeler accepts or trims before anything registers - imported definitions never bypass registration review. Internal vocabulary is never renamed to Ossie's - the spec is a pre-0.2.0 draft that self-declares breaking changes, so coupling is confined to the adapter. If Provisa later adds a metrics object it adopts the Ossie metric shape natively (name, per-dialect aggregate expression, datatype, ai_context) so export of that slice is lossless. Governance, RLS, lineage, and graph semantics stay internal; they may ride an optional `provisa` custom_extensions slot for round-trip fidelity but interop never depends on other tools reading it.
 
 **Use case:** Ossie is the vendor-neutral semantic-metadata standard backed by Snowflake, Databricks, dbt Labs, Salesforce, and 50+ others, and its dataset/field/relationship/metric structure maps nearly one-to-one onto Provisa's Table/Column/Relationship model. Export lets every BI and AI tool converging on the standard consume Provisa's federated catalog; import bootstraps onboarding from ecosystems that already maintain semantic models, instead of hand-registering tables.
 
-**Code:** `provisa/core/models.py`
+**Code:** `provisa/ossie/convert.py`, `provisa/api/admin/ossie_router.py`, `provisa-ui/src/pages/metrics/OssieInterchangePanel.tsx`
 
-**Tests:** —
+**Tests:** `tests/unit/test_ossie_convert.py`, `provisa-ui/src/pages/__tests__/ossie-import.test.tsx`
 
 ### REQ-1317 · Semantic Metrics {#REQ-1317}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Provisa has a first-class Metric object - a named, governed aggregate definition with no grain of its own. Shape follows Apache Ossie's metric natively (name, aggregate ANSI-SQL expression, datatype, description, ai_context) plus Provisa governance fields (role visibility, steward/version, same pattern as tables). Dataset binding is implicit through the field references inside the expression, with relationship-derived joins when an expansion spans datasets. A metric query (metric plus a requested dimension set) is expanded by the compiler into GROUP BY SQL inside the single settled query pipeline - metrics are a compile-time expansion, never a second pipeline. Metrics appear in the UI as a third Model-nav item beside Views and Commands.
 
 **Use case:** A metric is neither a derived column (which has per-row grain) nor a view (which has fixed grain) - it is an aggregate definition whose grain is bound at query time, the concept every semantic layer since BusinessObjects has converged on. Defining it once, governed, gives every consumer the same formula for "net revenue" instead of each dashboard, agent, and view re-implementing it. Adopting Ossie's shape from birth makes interchange ([REQ-1316](#REQ-1316)) lossless for the metric slice with no translation layer.
 
-**Code:** `provisa/core/models.py`
+**Code:** `provisa/core/models.py`, `provisa/compiler/metric_expand.py`, `provisa/pgwire/_pipeline.py`, `provisa/core/repositories/metric.py`, `provisa-ui/src/pages/MetricsPage.tsx`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metric_expand.py`, `tests/unit/test_metric_admin.py`
 
 ### REQ-1318 · Views (Governed Computed Datasets) {#REQ-1318}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Views may be defined from metrics. Table gains view_metrics {metrics, dimensions, filters}, mutually exclusive with view_sql, validated at parse - one view concept, two definition forms, no separate view type. A view_metrics view closes the metric's open grain at definition time; the compiler generates its SQL, and the view regenerates whenever a referenced metric changes, so it cannot drift from the business definition by construction. Free-hand view_sql may also reference metrics inline via metric('name'), expanded at compile time with a lineage edge to the Metric object, giving hand-written views the same recompile-on-change property when they reference rather than re-implement. All definition forms use the existing materialization, refresh, debounce, and live-delivery machinery unchanged, since downstream code keys off "table with a definition". UI surface - the existing Views page gains a definition-mode toggle (SQL editor vs metric/dimension picker); views do not split into a new nav item.
 
 **Use case:** Column lineage already tracks which columns feed a free-hand view, but it cannot see definitional duplication - a hand-written SUM that re-implements net revenue keeps computing the old formula after the business definition changes, and every lineage edge it has is still valid. Referencing the metric instead of copying its formula turns that silent drift into an automatic recompile. Composing a metric with dimensions is also simply the fastest way to make a correct governed view.
 
-**Code:** `provisa/core/models.py`, `provisa/lineage/columns.py`
+**Code:** `provisa/core/models.py`, `provisa/core/config_loader.py`, `provisa/api/admin/_metric_views.py`, `provisa-ui/src/pages/tables/ViewDefinitionForm.tsx`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metric_admin.py`, `provisa-ui/src/pages/__tests__/views-definition-mode.test.tsx`
 
 ### REQ-1319 · Semantic Metrics {#REQ-1319}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MAY · **Type:** behavioral
 
-Every query surface projects metrics through one compiler expansion plus that protocol's native addressing and metadata idiom - the definition (description, ai_context) travels with the value everywhere, with no copies. SQL/pgwire: a reserved metrics schema where each metric is a relation whose selected/grouped columns are the dimension choice, description surfaced via pg_description. GraphQL: a metrics block inside the _aggregate root field ([REQ-653](#REQ-653)) with the definition in introspection docs. Bolt/Cypher: a provisa.metric() procedure, plus Metric nodes in the federated graph with DERIVES_FROM edges to columns and REFERENCES edges from consuming views, making metric lineage navigable in Neo4j Browser/Bloom. Arrow Flight: metric flight descriptors returning Arrow tables. gRPC: a metric-reference node in the query IR. MCP: list_metrics and query_metric tools carrying ai_context, so agents select governed meanings instead of composing aggregation SQL. NL: the schema matcher resolves metric vocabulary directly to metric plus dimensions. Streaming: view_metrics + materialize + Kafka sink yields push-on-change metrics from existing machinery. Observability: metric evaluations traced and exportable as OTel metrics.
+Every query surface projects metrics through one compiler expansion plus that protocol's native addressing and metadata idiom - the definition (description, ai_context) travels with the value everywhere, with no copies. SQL/pgwire: a reserved metrics schema where each metric is a relation whose selected/grouped columns are the dimension choice, description surfaced via pg_description. GraphQL: a metrics block inside the _aggregate root field ([REQ-653](#REQ-653)) with the definition in introspection docs. Bolt/Cypher: a provisa.metric() procedure, plus Fact/Dimension labels on role-tagged tables in db.labels and the label map (metric lineage as graph NODES needs a new meta-graph surface and is deferred). Arrow Flight: metric flight descriptors returning Arrow tables. gRPC: metric asks ride the semantic-SQL form through the proxy's governed path - the one expansion, no second IR representation ([REQ-1321](#REQ-1321)). MCP: list_metrics and query_metric tools carrying ai_context, so agents select governed meanings instead of composing aggregation SQL. NL: the schema matcher resolves metric vocabulary directly to metric plus dimensions. Streaming: view_metrics + materialize + Kafka sink yields push-on-change metrics from existing machinery. Observability: metric evaluations traced and exportable as OTel metrics.
 
 **Use case:** Structural aggregates (sum/avg/count) tell a consumer what is summable; metrics tell it what is meaningful. Projecting one governed definition into each protocol's own metadata channel - pg catalog comments, GraphQL docstrings, graph properties, MCP tool descriptions - means a DBeaver user, a dashboard, and an AI agent all read the same meaning of net revenue from the surface they already use, and hallucinated formulas become structurally impossible for agents that query metrics by name.
 
-**Code:** `provisa/api/mcp/tools.py`, `provisa/nl/schema_matcher.py`, `provisa/grpc/query_ir.py`
+**Code:** `provisa/compiler/metric_expand.py`, `provisa/compiler/aggregate_gen.py`, `provisa/bolt/session.py`, `provisa/api/mcp/tools.py`, `provisa/api/flight/catalog.py`, `provisa/nl/schema_matcher.py`, `provisa/pgwire/catalog_populate.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metric_tools.py`, `tests/unit/test_bolt_metric_call.py`, `tests/unit/test_nl_metrics.py`, `tests/unit/test_sql_gen_aggregate.py`
 
 ### REQ-1320 · Semantic Metrics {#REQ-1320}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 The entity/fact modeling roles ([REQ-1164](#REQ-1164)) are retained after lowering and projected into every surface, instead of being discarded at registration. The spec stays attached to the artifacts it generates - same one-source principle as view_metrics - so downstream consumers see "dimension with SCD2 history" and "fact at grain X", not plain tables. Projections: Ossie export emits role-faithful fact/dimension datasets and flags time dimensions via dimension.is_time ([REQ-1316](#REQ-1316)); each measure declared in a fact spec auto-registers a Metric object ([REQ-1317](#REQ-1317)) whose valid grouping dimensions derive from the entity attributes reachable over the fact's FK relationships; MCP and NL receive the star shape (facts, dimensions, join edges) as grounding context and the NL matcher biases join paths fact-to-dimension; the federated graph labels nodes :Fact/:Dimension so Bloom renders the star; GraphQL introspection docs and pg_description carry role and SCD mode, and enable_aggregates defaults on for facts. The lowering itself stays pure - roles are metadata carried alongside, never a change to what is generated.
 
 **Use case:** [REQ-1164](#REQ-1164) captures star/vault semantics at authoring time and evaporates them before any consumer can use them - downstream surfaces see undifferentiated tables. Retaining the role turns guesswork into derivation everywhere it matters. "Which groupings are valid for this measure" becomes computable, agents get the schema-shape context that makes generated queries correct, BI tools that infer star roles read them from the catalog instead of guessing, and the Ossie export preserves the fact/dimension distinction the standard itself is built around. This is the entity-taxonomy layer BusinessObjects universes carried and Ossie lacks - held internally, projected outward where expressible.
 
-**Code:** `provisa/mv/modeling.py`
+**Code:** `provisa/mv/modeling.py`, `provisa/api/admin/modeling_register.py`, `provisa/cypher/label_map.py`, `provisa/compiler/schema_gen.py`
 
-**Tests:** `tests/unit/test_modeling.py`
+**Tests:** `tests/unit/test_modeling.py`, `tests/unit/test_cypher_label_map.py`
 
 ## 0. Architecture & Design Principles
 
 ### REQ-1321 · Data-Model-Driven Estate {#REQ-1321}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-GOVERNING PRINCIPLE - declarative from source to consumer, and the declaration is the entire basis of platform operation. The unbroken declarative chain (source registration -> conformed entity/fact [REQ-1164](#REQ-1164)/[REQ-1320](#REQ-1320) -> metric [REQ-1317](#REQ-1317) -> view/materialization [REQ-1318](#REQ-1318) -> surface projection [REQ-1319](#REQ-1319) -> interchange [REQ-1316](#REQ-1316)) is not documentation of the system; it is the system's only input. Every operational behavior - queries compiled, MVs built, lineage recorded, protocol schemas served, definitions exported - is DERIVED from the declaration, so the model cannot disagree with operation: there is no second artifact to drift against. Metadata-as-description can lie; metadata-as-execution cannot. COROLLARY (the testable invariant): any feature that introduces operational behavior not derived from the declaration violates the architecture. New capabilities extend the declarable model and derive their runtime from it; they never add side-channel configuration, hand-maintained artifacts, or behavior the declaration does not determine. Generalizes [REQ-964](#REQ-964)'s data-model-driven estate from materialization to the full source-to-consumer span.
+GOVERNING PRINCIPLE - declarative from source to consumer, and the declaration is the entire basis of platform operation. The unbroken declarative chain (source registration -> conformed entity/fact [REQ-1164](#REQ-1164)/[REQ-1320](#REQ-1320) -> metric [REQ-1317](#REQ-1317) -> view/materialization [REQ-1318](#REQ-1318) -> surface projection [REQ-1319](#REQ-1319) -> interchange [REQ-1316](#REQ-1316)) is not documentation of the system; it is the system's only input. Every operational behavior - queries compiled, MVs built, lineage recorded, protocol schemas served, definitions exported - is DERIVED from the declaration, so the model cannot disagree with operation: there is no second artifact to drift against. Metadata-as-description can lie; metadata-as-execution cannot. COROLLARY (the testable invariant): any feature that introduces operational behavior not derived from the declaration violates the architecture. New capabilities extend the declarable model and derive their runtime from it; they never add side-channel configuration, hand-maintained artifacts, or behavior the declaration does not determine. Generalizes [REQ-964](#REQ-964)'s data-model-driven estate from materialization to the full source-to-consumer span. STATED LIMIT (the two hand-stitched seams): the chain runs boundary to boundary - it cannot reach inside systems of origin or presentation tiers, which by definition are not incorporable. Provisa cannot attest that Salesforce is configured with proper controls, nor that a workbook presents figures correctly. The guarantee is therefore conditional and precisely scoped: GIVEN the registration assertion about the origin is true, every derived artifact is provably consistent with it; GIVEN the consumer references the definition (e.g. metrics.<name>) rather than copying its formula, what is presented is what is defined. The platform's job at the seams is to make the premises explicit, few, and auditable - Ossie import shrinks the origin-side assertion (ingest existing semantic models rather than re-type them); metric references shrink presentation-side trust from re-implement-the-definition to reference-it, a seam that cannot drift, only dangle - and a dangling reference fails loudly.
 
 **Use case:** Every hop being a spec that GENERATES the next artifact (never merely describes it) yields three properties no seam-ful stack has - lineage total and exact by construction rather than reconstructed by parsing; impact analysis as graph traversal ending at actual consumers (a GraphQL field, an MCP tool, a Kafka topic); regeneration replacing stewardship, since a definition change recompiles everything downstream because downstream was generated in the first place. Competitors cannot retrofit this - their runtimes predate their catalogs, so their metadata describes from the outside. Stating the principle gives future requirements and reviews an invariant to test against.
 
-**Code:** `provisa/core/models.py`
+**Code:** `provisa/pgwire/_pipeline.py`, `provisa/api/admin/ossie_router.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_governed_chokepoint.py`
 
 ## 3. Source Registration & Data Modeling
 
 ### REQ-1322 · Semantic Metrics {#REQ-1322}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** ui
+**Status:** ✅ complete · **Priority:** MAY · **Type:** ui
 
 The Explore/SQL page generates SQL from semantic objects, not just table structure. (1) Role-aware browser - the SchemaBrowser groups by Metrics / Facts / Dimensions ([REQ-1317](#REQ-1317)/[REQ-1320](#REQ-1320) metadata); facts and dimensions render distinctly on the JoinCanvas and FK edges between them pre-draw along the star. (2) Metric-driven generation - dragging a metric onto the canvas surfaces its valid dimension set (entity attributes reachable over the fact's relationships, derived per [REQ-1320](#REQ-1320)) as selectable groupings, and the canvas emits semantic SQL against the reserved metrics schema ([REQ-1319](#REQ-1319)), e.g. SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month. The UI never reimplements join or aggregation generation - the server's compiler expansion is the single generator ([REQ-1321](#REQ-1321)); the canvas generates the ask, the pipeline generates the plan. (3) Round trip to definition - the generated query lands in the editor, editable as ordinary SQL, and the ViewModal gains save-as-metric-view, persisting the selection as a view_metrics definition ([REQ-1318](#REQ-1318)) instead of frozen SQL text. (4) Semantic SQL is the artifact; the physical expansion is a VIEW of it - a read-only preview pane (same gesture as EXPLAIN) shows the compiler-derived physical SQL for trust and debugging, and derived output is never the editable master ([REQ-1321](#REQ-1321)). Expanding the metric into the editor is an explicit detach action and a ONE-WAY TRIP: the query becomes free-hand SQL, the metric link is visibly severed, and there is no re-ingestion of edited physical SQL back into metric references - de-compiling hand-edited SQL is not attempted, ever.
 
 **Use case:** The JoinCanvas already generates SELECT/JOIN SQL from dragged tables and registered relationships, but it can only express structure - nothing tells it which tables are facts, which columns are measures, or which groupings are valid. With roles and metrics in the model, the guided field-well experience a BI tool maintains in its own separate modeling layer falls out of metadata the platform already operates on, and the saved artifact stays live against the metric definition rather than drifting as frozen SQL.
 
-**Code:** `provisa-ui/src/pages/SqlPage.tsx`, `provisa-ui/src/pages/sql/JoinCanvas.tsx`, `provisa-ui/src/pages/sql/SchemaBrowser.tsx`, `provisa-ui/src/pages/sql/ViewModal.tsx`
+**Code:** `provisa-ui/src/pages/sql/SchemaBrowser.tsx`, `provisa-ui/src/pages/sql/JoinCanvas.tsx`, `provisa-ui/src/pages/SqlPage.tsx`
+
+**Tests:** `provisa-ui/src/pages/__tests__/metric-explore.test.tsx`, `provisa-ui/src/pages/__tests__/metric-detach.test.tsx`
+
+## 11. Frontend UI & UX
+
+### REQ-1323 · Metrics Management {#REQ-1323}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The Metrics page follows the app-wide detail-then-edit pattern with inline editing: clicking a metric row expands a read-only MetricDetailPanel below it. Clicking Edit inside the panel swaps the panel for an inline edit form in place (no modal). New Metric opens an inline creation card above the table. The delete confirmation is the only modal on the page.
+
+**Use case:** Consistent detail-then-edit UX with inline editing across all admin surfaces (metrics, sources, facts) reduces cognitive load, keeps row layout clean, and provides immediate affordance for editing without modal context switches.
+
+**Code:** `provisa-ui/src/pages/MetricsPage.tsx`, `provisa-ui/src/pages/metrics/MetricDetailPanel.tsx`
+
+**Tests:** `provisa-ui/e2e/metrics-detail-edit.spec.ts`
+
+### REQ-1324 · Metrics Management {#REQ-1324}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The metric create/edit form extends fact-as-metric-source ([REQ-1320](#REQ-1320)) to the UI through a three-picker builder: source fact table (filtered to modelingRole=fact), measure column, and aggregate function (SUM/AVG/COUNT/MIN/MAX). When the builder composes the metric, the datatype is automatically derived from the aggregate: COUNT → bigint, AVG → numeric, SUM/MIN/MAX → the measure column's dataType (fallback numeric). The Datatype field remains editable as an escape hatch. The free-text expression textarea remains the escape hatch for non-fact-sourced metrics. Metric.fromFact is string|null storing the source fact table name.
+
+**Use case:** Guided metric authoring through semantic builders with automatic datatype derivation reduces expression errors and ensures correct type inference; the editable Datatype field and expression escape hatch preserve flexibility for complex derived metrics.
+
+**Code:** `provisa-ui/src/pages/MetricsPage.tsx`, `provisa-ui/src/types/admin.ts`
+
+**Tests:** `provisa-ui/e2e/metrics-detail-edit.spec.ts`
+
+## 2. Authentication & Identity
+
+### REQ-1325 · Firebase Configuration {#REQ-1325}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+
+Local development serves a static provisa-ui/public/firebase-config.js stub setting window.__PROVISA_FIREBASE__ = null (the configured-off state). In cloud deployments, ui_server.py's explicit route shadows the static file. This eliminates the unconditional 404 for /firebase-config.js on every page load in vite dev.
+
+**Use case:** Eliminates a noisy 404 in the development console for every page load when Firebase is not configured in local dev, improving developer experience and reducing noise in browser DevTools. Extends [REQ-1266](#REQ-1266) Firebase bootstrap support by providing a fallback configuration in local dev.
+
+**Code:** `provisa-ui/public/firebase-config.js`, `provisa/ui_server.py`
 
 **Tests:** —
+
+### REQ-1326 · Session Management {#REQ-1326}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Client state scoped to one signed-in session (localStorage keys provisa_token, provisa_org, provisa_role, and persisted Apollo snapshot apollo-cache / admin-schema-version) must be cleared when a session starts and when it ends. Additionally, a persisted provisa_org is honored only while /auth/me still reports membership of that org; otherwise it is discarded and the active org falls to active_org_id, else sole membership, else none.
+
+**Use case:** After the control plane was wiped, a fresh sign-in that claimed the platform-admin slot showed no rights until a logout/login cycle. The server wrote both planes and answered 200 to every request; the stale provisa_org from the previous session named a deleted org and rode on every request as X-Org-Provisa. Session state isolation prevents stale org membership from deleted orgs causing unauthorized access.
+
+**Code:** `provisa-ui/src/lib/session.ts`, `provisa-ui/src/apolloClient.ts`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/context/AuthContext.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/SessionIsolation.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-1327 · Authorization {#REQ-1327}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+platform_admin is a purely control-plane role with ZERO data capabilities anywhere — including root. All data-plane administration (members, invites, sources, tables, governance, querying) belongs to org_admin, in every org including root. Bootstrap grants the claimant BOTH roles in root: org_admin (root is their working org) and platform_admin (deployment operation: infra/engine settings, config reload, org lifecycle, audited orphaned-org recovery grants). The platform_admin role's capability set drops the admin/superadmin data-wildcard capabilities; the platform_bypass does not bypass any data-plane capability check, even in root. Demo/install config column visible_to lists must not name platform_admin (a control-plane role cannot appear in data grants); they name org_admin, analyst, developer. Single-tenant: one person holding both roles; the roles never merge because org_admin of root must not inherit deployment powers when a second org appears. When an org's administrators are unreachable, recovery runs through the named, audited grant_org_admin operation: a platform_admin invoking it grants org_admin to a named member of that org, written to that org's audit trail, and revocable through the same operation.
+
+**Use case:** Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane operations and customer data access. Unified role inheritance conflates recovery capability with standing access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation of planes makes platform_admin's actions inside customer orgs explicit, audited, and revocable, turning a standing privilege into a break-glass intervention available only through audit trails. Even in single-tenant, keeping roles separate allows the platform to scale to multi-tenant without redesigning role semantics.
+
+**Code:** `provisa/security/rights.py`, `provisa/api/admin/orgs_router.py`, `provisa/api/admin/roles_router.py`, `provisa/core/org_membership.py`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`, `tests/integration/test_invite_role_authz.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-471 · Compiler & Schema {#REQ-471}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+A registered table's virtual name (alias) is a SQL-plane identifier whose sole authority is the SQL naming convention (global_sql_naming_convention, default snake_case). The GraphQL surface applies gql naming conventions at schema generation and never mints the SQL name. Defect fixed 2026-07-29: register_table previously derived the default alias from the source's gql_naming_convention with apollo_graphql (camelCase) fallback, causing __provisa__ view/entity/fact registrations (no source) to get camelCase SQL names (e.g., dim_pet → dimPet). Now derives from global_sql_naming_convention and collapses to NULL when the normalized name equals table_name.
+
+**Use case:** Keeping SQL and GraphQL naming authorities separate ensures the SQL plane (federated query routing, native dialect emit) operates on a stable snake_case schema, while the GraphQL surface applies naming conventions independently at schema-generation time.
+
+**Code:** `provisa/api/admin/schema_mutation_ops.py`
+
+**Tests:** `tests/unit/test_naming.py`, `tests/integration/test_schema_mutation_api.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1328 · Source Identification {#REQ-1328}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+
+The sentinel source ID for definition-backed relations (views, entity/fact lowerings, metric-composed views) is renamed from __provisa__ to __derived__, centralized as provisa.core.models.DERIVED_SOURCE_ID. The name is invariant under materialization (a materialized fact is not "virtual") and clarifies the provenance relationship: "derived FROM other relations". The Tables UI renders a "derived" badge instead of printing the sentinel. No dual-accept of the old ID (no-backcompat rule).
+
+**Use case:** "Derived" is the established term (SQL-standard "derived table"; Denodo base/derived views; Dremio physical/virtual datasets). Centralizing the sentinel simplifies its use across admin APIs and UI surfaces, and the badge provides user-facing clarity about lineage.
+
+**Code:** `provisa/core/models.py`, `provisa/core/config_loader.py`, `provisa/api/admin/modeling_register.py`, `provisa/api/startup_seed.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa-ui/src/types/admin.ts`
+
+**Tests:** —
+
+### REQ-1329 · Source Identification {#REQ-1329}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
+
+Replace the sentinel source ID entirely: source_id becomes nullable, and registered relations gain an explicit definition kind (base | derived). Provenance surfaces from definition lineage, not a source slot. The sentinel remains a storage detail until this refactoring is complete, at which point registration schemas, admin APIs, and the UI all reference the explicit kind field.
+
+**Use case:** Removing the sentinel simplifies the schema model and makes the provenance relationship explicit in the type system, eliminating special-case handling and reducing surface area.
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1330 · Email Delivery {#REQ-1330}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Transactional email delivery (org invites today; any future outbound transactional mail) exists only in SaaS deployment mode and is sent exclusively through an internal EmailSender abstraction (port/adapter). Application code never imports or configures a concrete provider; it depends only on the port, so the provider can be swapped without touching call sites. The initial adapter is a transactional email service (Resend or AWS SES) sending as invites@provisa.dev, authenticated by SPF/DKIM records on provisa.dev; inbound MX for provisa.dev remains with Microsoft 365 (receiving is out of scope for the application). Prohibited transports: direct SMTP submission to Microsoft 365 (smtp.office365.com) and any locally hosted SMTP relay. Self-hosted (non-SaaS) deployments send no email: the feature is gated on SaaS mode and invite flows in self-hosted mode surface the invite link for out-of-band delivery instead of sending.
+
+**Use case:** Invites must reach users reliably without binding the codebase to one email vendor. A port/adapter seam keeps the provider a deployment detail (avoiding the Microsoft 365 SMTP basic-auth retirement and its throughput limits), while SaaS-only gating keeps self-hosted installs free of outbound-mail infrastructure, credentials, and deliverability liability.
+
+**Code:** `provisa/core/mail.py`, `provisa/core/models.py`, `provisa/api/admin/invites_router.py`
+
+**Tests:** `tests/integration/test_invite_delivery.py`
+
+### REQ-1331 · SaaS Infrastructure {#REQ-1331}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+The SaaS shared IP is fronted by an always-free e2-micro "front door" VM running a stdlib-only TCP proxy that splices every protocol port to the coordinator. The front door replaces the regional passthrough NLB, which cost ~$18/mo in forwarding-rule hours and could not wake a stopped backend.
+
+**Use case:** The e2-micro always-free tier eliminates the forwarding-rule cost entirely, and a custom proxy enables wake-on-hit (start the coordinator on traffic) and idle-stop (stop after inactivity) that a managed NLB cannot provide. The same static IP persists across coordinator stop/start cycles, keeping DNS and client configuration stable.
+
+**Code:** `terraform/gcp-saas/main.tf`, `terraform/gcp-saas/front-door/proxy.py`
+
+**Tests:** —
+
+### REQ-1332 · SaaS Infrastructure {#REQ-1332}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+When the coordinator is stopped and a client connects on any protocol port, the front door immediately triggers instances.start. HTTPS surfaces (UI 443, API 8000) return a TLS 503 "waking" page (HTML for browsers) or JSON for API clients; raw TCP ports (pgwire 5439, bolt 7687, flight 8815, mcp 8009, grpc 50051) hold the connection open up to ~110s until the listener is up, then splice the client directly to the backend.
+
+**Use case:** HTTPS clients need only refresh (browsers) or retry (API clients); no manual intervention. Raw TCP clients are transparent to the wake delay, improving UX for database drivers and CLI tools that poll for readiness.
+
+**Code:** `terraform/gcp-saas/front-door/proxy.py`
+
+**Tests:** —
+
+### REQ-1333 · SaaS Infrastructure {#REQ-1333}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+After idle_stop_minutes (default 60) of zero traffic across all protocol ports, the front door stops the coordinator via instances.stop and reduces idle cost to ~$0.65/day (disk + Cloud SQL f1-micro + static IP). A boot-grace period (default 10 min) after wake prevents the idle reaper from immediately stopping a just-booted coordinator.
+
+**Use case:** Scale-to-zero idle costs are the enabler for a viable free tier and low-commitment trials. The grace period prevents flapping: a client that connects briefly during boot won't trigger an immediate stop cycle.
+
+**Code:** `terraform/gcp-saas/front-door/proxy.py`, `terraform/gcp-saas/variables.tf`
+
+**Tests:** —
+
+### REQ-1334 · SaaS Infrastructure {#REQ-1334}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The front door serves an authenticated wake/verify API on front_door_status_port (default 9443, HTTPS only). GET /status returns coordinator state (RUNNING | STOPPED | PROVISIONING) and per-port reachability (true | false). POST /wake synchronously calls instances.start and waits for the coordinator listener to accept. Bearer token (front_door_status_token output) is required on both endpoints. This API answers even while the coordinator is stopped, making it ideal for customers and automation that cannot retry.
+
+**Use case:** Automated systems (CI/CD, integrations) that lack retry logic benefit from explicit pre-wake and status polling instead of blindly retrying a connection. The dedicated status port isolates control traffic from data ports and provides a probe endpoint for monitoring.
+
+**Code:** `terraform/gcp-saas/front-door/proxy.py`, `terraform/gcp-saas/variables.tf`, `terraform/gcp-saas/main.tf`
+
+**Tests:** —
+
+### REQ-1335 · SaaS Infrastructure {#REQ-1335}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+The coordinator machine type is e2-standard-4 (4 vCPU, 16 GB, ~25% lower per-core throughput than n2-standard-4). Boot disk is pd-balanced (not pd-ssd): with node-scheduler.include-coordinator=false and the control plane offloaded to Cloud SQL, the coordinator performs no scan spill, so pd-ssd IOPS buys nothing. When paying concurrency exists, revisit back to n2-standard-4.
+
+**Use case:** E2's lower per-core cost reduces idle-stop economics and planning-latency impact is negligible under the light concurrent load expected at first scale. The coordinator idle-stops via the front door anyway, so the choice is reversible: moving to n2 is a one-line variable change when needed.
+
+**Code:** `terraform/gcp-saas/main.tf`, `terraform/gcp-saas/variables.tf`
+
+**Tests:** —
+
+### REQ-1336 · SaaS Infrastructure {#REQ-1336}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+
+The front-door service account is granted a custom IAM role (provisaSaasFrontDoor) with three permissions only: compute.instances.start, compute.instances.stop, compute.instances.get. The role is scoped to the project, and the front door assumes this identity via the VM's service account binding. No other permissions are granted.
+
+**Use case:** Least-privilege isolation: the front door cannot modify the network, delete instances, or access storage or databases. Compromised front-door code (e.g. via supply-chain attack on the proxy.py script) cannot escalate beyond starting/stopping the coordinator and checking its status.
+
+**Code:** `terraform/gcp-saas/main.tf`
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-1337 · Access Control {#REQ-1337}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+Every authorization or visibility gate — server and UI — must test a CAPABILITY (right) the acting role carries, never a role id or name. A role id is identity only. Converting identity to capabilities happens in exactly one place per surface: capabilities_for_claims in provisa/security/rights.py. Two capabilities control deployment-wide settings: platform_settings (read/modify federation engine, cache storage, encryption provider, auth provider, config file, query-engine lifecycle) and cross_org (act in an org one is not a member of; holding this capability also marks a role CONTROL-PLANE, hence off the data plane per [REQ-1327](#REQ-1327) and unresolvable in a tenant org per [REQ-1297](#REQ-1297)). Seed: platform_admin always holds both. org_admin holds platform_settings only in SINGLE-TENANT deployments and never holds cross_org in either mode. apply_tenancy_role_grants in provisa/core/db.py re-asserts these grants on every init_schema.
+
+**Use case:** Capability-based gates decouple authorization logic from identity, enabling tenancy mode to decide grants without duplicating gate logic. Capability gates are re-evaluable at runtime; role identity gates are brittle and error-prone when tenancy changes.
+
+**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/App.tsx`, `provisa/api/admin/_platform_guard.py`, `provisa/api/admin/settings_router.py`
+
+**Tests:** `tests/unit/test_rights.py`, `tests/unit/test_governance.py`, `tests/unit/test_auth_middleware.py`, `tests/integration/test_auth_integration.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/auth-providers.spec.ts`
+
+## 3. Multi-tenancy & Organization
+
+### REQ-1338 · Schema Caching {#REQ-1338}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+
+Schema build cache (domains, tables, column_types rows) is per-org state on OrgRuntime, with AppState property shim routing reads and writes through the ContextVar-selected org runtime. Matches existing shims for tables, relationships, metrics, and roles.
+
+**Use case:** Prevents one organization's schema from overwriting another's during concurrent schema rebuilds. Ensures /data/domains and other schema endpoints return only the querying org's domains, not the last org to rebuild its schema.
+
+**Code:** `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/api/data/sdl.py`
+
+**Tests:** `tests/unit/test_org_runtime.py`
+
+## 2. Data Loading & Federation
+
+### REQ-1339 · Data Source Management {#REQ-1339}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+Org provisioning must seed every system source (including __derived__) into the new org's schema before the config load registers tables. Any config tables:row with source_id pointing to a system source has a guaranteed FK target; silent table drops from missing source_id references are prevented.
+
+**Use case:** System sources like __derived__ are seeded per-org by startup_seed._seed_built_in_sources, not declared by config. Without pre-seeding, provisioning loads config tables that reference nonexistent source_ids, silently dropping those tables from the load.
+
+**Code:** `provisa/core/models.py`, `provisa/api/startup_seed.py`
+
+**Tests:** `tests/integration/test_org_demo_seed_visible.py`
+
+## 1. Access Governance & Security
+
+### REQ-1340 · Access Control {#REQ-1340}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+Control-plane role resolution (the set of roles holding cross_org) must not depend on in-memory app state. _ungrant_control_plane resolves cross_org-holding roles from the org's own roles table on the caller's connection, never from state.roles. Platform-wide seed guarantees the roles table exists and contains the correct grants before any table registration runs.
+
+**Use case:** During provisioning, build_org_runtime populates state.roles AFTER config table registration. Without querying the roles table directly, control-plane roles are unresolvable during provisioning and platform_admin survives on every column grant of the new org, violating [REQ-1337](#REQ-1337).
+
+**Code:** `provisa/core/repositories/table.py`, `provisa/core/schema.sql`, `provisa/core/db.py`
+
+**Tests:** `tests/integration/test_governance_integration.py`, `tests/integration/test_org_demo_seed_visible.py`
+
+## 11. Frontend UI & UX
+
+### REQ-1341 · Internationalization {#REQ-1341}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+UI locale translation is performed in-session by the Claude agent via the i18n-translate skill. No external translation service or LLM API call is made. Translation is incremental: a per-locale translation memory (TM) sidecar at src/i18n/locales/<lng>/.tm.json records the English source string per key at translation time. Only missing or stale keys are retranslated.
+
+**Use case:** In-session translation via Claude agent eliminates external service dependencies and API costs, reducing operational complexity. Incremental translation memory keeps translation artifacts locally and avoids redundant retranslations, accelerating catalog updates. English catalogs (en.json + en/<ns>.json) remain the sole source of truth for keys.
+
+**Code:** `provisa-ui/src/i18n/`, `.claude/skills/i18n-translate/`
+
+**Tests:** —
+
+### REQ-1342 · Internationalization {#REQ-1342}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+UI language is selected solely from the browser's navigator.language setting (read at runtime on each session start), with English (en) as fallback. Regional locale variants (es-MX, es-419) are mapped to their base catalog (es). No per-user language override is persisted to localStorage; the provisa_lang key is retired. First non-English locale shipped is universal/neutral Spanish (es) with full catalog parity.
+
+**Use case:** Browser language detection eliminates per-user preference storage, reducing complexity and data plane footprint. Automatic regional variant mapping (e.g., es-MX → es) ensures consistent translation coverage without fragmenting catalogs. Catalog parity enforcement guarantees every locale is feature-complete on release.
+
+**Code:** `provisa-ui/src/i18n/index.ts`
+
+**Tests:** `provisa-ui/e2e/i18n.spec.ts`
 
 ## 5. Multi-Tenancy & Org Isolation
 

@@ -136,6 +136,11 @@ class FederationEngine:  # REQ-840
         default_materialize_store: Any = None,
     ) -> None:
         self.name = name
+        # The _ENGINE_BUILDERS key this instance was selected under. build_engine — the one place the
+        # runtime picks an engine — stamps the key it resolved, which is what the admin API reports as
+        # the LIVE engine. It is not always self.name: "trino"/"trino-byo" and
+        # "clickhouse"/"clickhouse-server" share a runtime, and build_pg_engine names itself "postgres".
+        self.selected_key = name
         # A zero-arg callable returning this engine's DECLARED default materialization-store DSN (or
         # None). Set per engine in build_*_engine — the ONE place an engine names its own default.
         self._default_store_fn = default_materialize_store
@@ -436,6 +441,13 @@ def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
         pooled=True,  # coordinator holds server-side pools per catalog
         transactional=False,  # DML is connector-dependent; not a general transactional store
         backend_factory=TrinoBackend,  # the only backend that references Trino
+        # DECLARED default: the platform's own tenant Postgres. Trino cannot ATTACH a sqlite/openapi
+        # source — TrinoPgBackedConnector LANDS it into that Postgres and Trino reads the replica
+        # through a generated `postgresql` catalog, which is also what
+        # backend.materialize_store_target returns. Declaring no default left the write face with no
+        # store (MaterializeStoreUnconfigured) while the read face already named one. An explicit
+        # materialize_store_url / $PROVISA_MATERIALIZE_URL still overrides it.
+        default_materialize_store=_platform_db_materialize_default,
         capabilities=frozenset(
             {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
         ),
@@ -1263,4 +1275,8 @@ def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/90
     # Complete the reach so the runtime engine's connectors include every configurable type (REQ-947):
     # live-attach plus the Provisa-direct/adapter land connectors. connector_for/federate/reconcile then
     # resolve landable sources from the registry directly rather than synthesizing per call.
-    return _ENGINE_BUILDERS[key]().complete_reach()
+    engine = _ENGINE_BUILDERS[key]().complete_reach()
+    # Record WHICH key won the precedence above, so the admin API can report the engine the process is
+    # actually running instead of the persisted config field (which the env pin overrides).
+    engine.selected_key = key
+    return engine

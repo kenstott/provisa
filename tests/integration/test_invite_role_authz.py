@@ -54,6 +54,17 @@ _ADMIN_SCHEMA = "test_req1313_admin"
 _TENANT_SCHEMA = "test_req1313_tenant"
 _ROOT_ORG = "root"
 
+# REQ-1297 seeds these four as system template roles in every org schema; platform_admin is present
+# so the "only into root" rule is proven by the org id, not by a missing row. REQ-1337: the inviter's
+# own gate reads the RIGHTS these rows carry — an empty capability list authorizes nothing however
+# the row is named — so the capabilities schema.sql seeds are mirrored here.
+_SEEDED_ROLE_CAPS: dict[str, list[str]] = {
+    "org_admin": ["user_management", "source_registration", "access_config", "query_development"],
+    "analyst": ["usage", "ad_hoc_query", "query_development"],
+    "developer": ["query_development", "create_view", "create_relationship", "write"],
+    "platform_admin": ["admin", "superadmin", "platform_settings", "cross_org"],
+}
+
 
 def _prepare_sync():
     """Both schemas, their tables, two orgs, and one org_admin in each — synchronously.
@@ -78,10 +89,8 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn, tables=[roles, user_role_assignments])
-        # REQ-1297 seeds these three as system template roles in every org schema; platform_admin
-        # is present so the "only into root" rule is proven by the org id, not by a missing row.
-        for role_id in ("org_admin", "analyst", "developer", "platform_admin"):
-            conn.execute(insert(roles).values(id=role_id))
+        for role_id, caps in _SEEDED_ROLE_CAPS.items():
+            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
         for user_id in ("alice", "bob"):
             conn.execute(
                 insert(user_role_assignments).values(
@@ -108,9 +117,13 @@ def planes(monkeypatch):
 
     # AppState routes its per-org maps through the registry, so the default org named by
     # state.org_id must have a runtime registered or every state.roles read asserts.
+    # REQ-1337: the runtime's roles registry is where a role id becomes the rights it carries, and
+    # the inviter's gate reads those rights. In a real process it comes from the schema.sql seed;
+    # here it mirrors the capability lists written into the role rows above.
+    loaded_roles = {rid: {"id": rid, "capabilities": caps} for rid, caps in _SEEDED_ROLE_CAPS.items()}
     registry = OrgRegistry()
-    registry.set(_ROOT_ORG, OrgRuntime(org_id=_ROOT_ORG, tenant_db=tenant_db))
-    registry.set("acme", OrgRuntime(org_id="acme", tenant_db=tenant_db))
+    registry.set(_ROOT_ORG, OrgRuntime(org_id=_ROOT_ORG, tenant_db=tenant_db, roles=dict(loaded_roles)))
+    registry.set("acme", OrgRuntime(org_id="acme", tenant_db=tenant_db, roles=dict(loaded_roles)))
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     # resolve_invite_role compares the invitation's org against the deployment's root org.

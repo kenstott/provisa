@@ -37,6 +37,7 @@ class _TableInfoProto(Protocol):
     column_metadata: dict[str, ColumnMetadata]
     native_filter_columns: list[dict]
     alias: str | None
+    metrics: list[dict]  # REQ-1319: role-visible single-table metrics for this table
 
 
 # --- Compilation context (built from SchemaInput alongside schema) ---
@@ -119,6 +120,10 @@ class CompilationContext:
     gql_governed_object_cols: set[tuple[int, str]] = field(default_factory=set)
     # table_name → {gql_field_name: gql_selection_string} for undeclared graphql_remote OBJECT fields
     gql_remote_extra_selections: dict[str, dict[str, str]] = field(default_factory=dict)
+    # REQ-1319: (table_id, metric_name) → inlined physical SQL aggregate expression, so the
+    # aggregate compiler selects a metric exactly like a sum/avg column (same expansion the
+    # raw-SQL pipeline applies via metric_expand).
+    metric_exprs: dict[tuple[int, str], str] = field(default_factory=dict)
 
 
 # --- Compiled query result ---

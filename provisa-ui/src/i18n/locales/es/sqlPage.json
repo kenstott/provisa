@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "Explorador SQL",
+    "tabSql": "sql",
+    "tabCanvas": "lienzo",
+    "execMs": "{{ms}} ms",
+    "queryStats": "Estadísticas de la consulta",
+    "showExpansion": "Mostrar expansión",
+    "detachToPhysical": "Desvincular a SQL físico",
+    "expansionTitle": "Expansión de la métrica",
+    "expansionLoading": "Obteniendo expansión...",
+    "detachConfirmTitle": "¿Desvincular a SQL físico?",
+    "detachConfirmBody": "Esta acción es IRREVERSIBLE: el vínculo con la métrica se romperá y la consulta pasará a ser SQL libre. No hay forma de volver a vincularla a la métrica.",
+    "detachCancel": "Cancelar",
+    "detachConfirm": "Desvincular"
+  }
+}

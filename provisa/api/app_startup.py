@@ -72,10 +72,15 @@ async def _warmup_readiness(_log: logging.Logger) -> None:
         _log.exception("readiness warmup probe failed; serving anyway")
 
     # Prime the admin GraphQL landing queries the UI hits first (Tables, Relationships,
-    # Sources, Domains). Their resolvers open the control-plane pool and read per-table
+    # Sources). Their resolvers open the control-plane pool and read per-table
     # columns for every registered table — cold on the first request, which reads as
     # "Loading tables…" hanging. Running them here (behind /ready) means the browser
     # opens onto warm pages. context_value={} → anonymous identity (dev/demo allows all).
+    #
+    # `{ domains { id } }` is NOT in this list: its resolver calls _resolve_admin_context, which
+    # requires a request-bound active org (REQ-1293 — the tenant plane is isolated by schema), so
+    # at boot it raised GraphQLError("'request'") on every start. There is no org to warm it for,
+    # and the three queries above already open the same control-plane pool.
     try:
         from provisa.api.admin.schema import admin_schema
 
@@ -83,7 +88,6 @@ async def _warmup_readiness(_log: logging.Logger) -> None:
             "{ tables { id } }",
             "{ relationships { id } }",
             "{ sources { id } }",
-            "{ domains { id } }",
         ):
             _res = await admin_schema.execute(_q, context_value={})
             if _res.errors:
@@ -322,15 +326,18 @@ async def _start_servers(_log: logging.Logger) -> None:
 
     _evaluate_licensing(_log)  # REQ-1135–1139: offline trial/license check + shell banner
 
-    if state.proto_files:
+    if state.wire_proto:
         try:
             import tempfile
             from provisa.grpc.schema_gen import compile_proto
             from provisa.grpc.server import start_grpc_server
 
-            first_proto = next(iter(state.proto_files.values()))
+            # state.wire_proto is the UNION of every role's surface (app_loaders builds it). A
+            # per-role proto would make the served descriptor depend on dict order and leave the
+            # roles it omits unservable; governance is enforced per RPC from state.contexts[role],
+            # never by which fields the wire descriptor happens to declare.
             grpc_output_dir = tempfile.mkdtemp(prefix="provisa_grpc_")
-            pb2_path, pb2_grpc_path = compile_proto(first_proto, grpc_output_dir)
+            pb2_path, pb2_grpc_path = compile_proto(state.wire_proto, grpc_output_dir)
             grpc_port = int(
                 os.environ.get("GRPC_PORT", str(state.server_cfg.get("grpc_port", 50051)))
             )

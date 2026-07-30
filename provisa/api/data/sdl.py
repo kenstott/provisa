@@ -101,6 +101,7 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
             for tbl in reg.get("tables", [])
             if tbl.get("gql_type_name")
         },
+        metrics=cache["metrics"],  # REQ-1319
     )
     return generate_schema(si)
 

@@ -190,7 +190,7 @@ class TestPayloadRoundTrip:
         from provisa.api.admin.types import ColumnInput, TableInput
 
         ti = TableInput(
-            source_id="__provisa__",
+            source_id="__derived__",
             domain_id="sales",
             schema_name="public",
             table_name="rev",

@@ -124,6 +124,25 @@ def _register_table_in_ctx(
             col_info.append((col_name, col_meta.data_type))
     ctx.aggregate_columns[t.table_id] = col_info
 
+    # REQ-1319: precompile each role-visible single-table metric into its physical inline
+    # SQL, so _compile_aggregate_field/_compile_group_by_field select a metric exactly like
+    # a sum/avg column — the same expansion the raw-SQL pipeline applies (REQ-1317).
+    from provisa.compiler.metric_expand import inline_metric_sql
+
+    for m in t.metrics:
+
+        def _resolve(col_name: str, _t: "_TableInfoProto" = t, _name: str = m["name"]) -> str:
+            if col_name.lower() not in _t.column_metadata:
+                raise ValueError(
+                    f"metric {_name!r}: column {col_name!r} is not a column of "
+                    f"table {_t.table_name!r} (REQ-1319)"
+                )
+            return col_name
+
+        ctx.metric_exprs[(t.table_id, m["name"])] = inline_metric_sql(
+            m["name"], m["expression"], t.table_name, _resolve
+        )
+
     ctx.pk_columns[t.table_id] = [
         col["column_name"] for col in t.visible_columns if col.get("is_primary_key")
     ]

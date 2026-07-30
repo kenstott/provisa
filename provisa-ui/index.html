@@ -73,6 +73,20 @@
         color: #e1e4ed;
         opacity: 0.9;
       }
+      /* Status line under the mark. Empty (and invisible) on a normal load; filled in
+         only when the app is taking long enough that the user needs to be told why. */
+      .provisa-splash-note {
+        max-width: 24rem;
+        margin-top: 6px;
+        text-align: center;
+        font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #9aa3b5;
+        opacity: 0;
+        transition: opacity 400ms ease;
+      }
+      .provisa-splash-note.provisa-splash-note-show {
+        opacity: 1;
+      }
       @keyframes provisa-splash-rise {
         from {
           opacity: 0;
@@ -103,6 +117,7 @@
           <circle cx="50" cy="35" r="4.5" fill="#10B981" />
         </svg>
         <div class="provisa-splash-word">PROVISA</div>
+        <div id="provisa-splash-note" class="provisa-splash-note" role="status" aria-live="polite"></div>
       </div>
     </div>
     <script>
@@ -248,8 +263,27 @@
           }, wait);
         }
         window.__provisaHideSplash = hide;
-        // Safety net: never trap the user behind the veil if the app never signals.
-        setTimeout(hide, 8000);
+
+        // A slow load is almost always a cold coordinator: the front door woke a
+        // scaled-to-zero VM and the bundles are being fetched while it finishes
+        // booting. Say so instead of tearing the splash down — the previous safety
+        // net removed it after 8 s whether or not React had mounted, which left a
+        // black page with no explanation on exactly the wake it was meant to cover.
+        var note = document.getElementById("provisa-splash-note");
+        function say(text) {
+          if (!note || splash.classList.contains("provisa-splash-hide")) return;
+          note.textContent = text;
+          note.classList.add("provisa-splash-note-show");
+        }
+        setTimeout(function () {
+          say("Starting up — this can take a couple of minutes after an idle period.");
+        }, 6000);
+        setTimeout(function () {
+          say("Still starting. Leave this page open; it will continue on its own.");
+        }, 30000);
+        setTimeout(function () {
+          say("This is taking longer than expected. Reload the page to try again.");
+        }, 120000);
       })();
     </script>
     <div id="root"></div>

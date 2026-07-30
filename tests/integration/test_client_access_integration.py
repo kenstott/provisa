@@ -569,9 +569,9 @@ class TestGraphSchemaEndpoint:
         assert isinstance(body["relationship_types"], list)
 
     async def test_graph_schema_headerless_caller_gets_the_unsecured_default_role(self):
-        """REQ-486: a headerless caller on an unsecured server is platform_admin, never an
-        arbitrary registered role — this state registers only 'admin', so there is no schema
-        for the caller's settled role and the endpoint says so instead of handing one over."""
+        """REQ-486: a headerless caller on an unsecured server gets the configured default role, never
+        an arbitrary registered role — this state registers only 'admin', so there is no schema for the
+        caller's settled role and the endpoint says so instead of handing one over."""
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
         from provisa.api.rest.cypher_router import router as cypher_router

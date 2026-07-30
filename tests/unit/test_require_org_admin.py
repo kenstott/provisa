@@ -110,7 +110,8 @@ async def test_platform_admin_allowed_any_org(patch):
 
 @pytest.mark.asyncio
 async def test_org_admin_of_active_org_and_member_allowed(patch):
-    patch(caps={"query_development"}, membership_row=("acme",))
+    # REQ-1337: what allows this is the user_management RIGHT, not the "org_admin" role name.
+    patch(caps={"user_management"}, membership_row=("acme",))
     await inv._require_org_admin(
         _request(identity=_identity("alice", ["org_admin:acme"]), active_org="acme"), "acme"
     )
@@ -118,8 +119,9 @@ async def test_org_admin_of_active_org_and_member_allowed(patch):
 
 @pytest.mark.asyncio
 async def test_org_admin_of_different_active_org_rejected(patch):
-    # org_admin acting in acme cannot mint an invite for beta.
-    patch(caps={"query_development"}, membership_row=("beta",))
+    # org_admin acting in acme cannot mint an invite for beta: user_management without cross_org is
+    # confined to the org being acted in (REQ-1337).
+    patch(caps={"user_management"}, membership_row=("beta",))
     with pytest.raises(HTTPException) as ei:
         await inv._require_org_admin(
             _request(identity=_identity("alice", ["org_admin:acme"]), active_org="acme"), "beta"
@@ -129,8 +131,8 @@ async def test_org_admin_of_different_active_org_rejected(patch):
 
 @pytest.mark.asyncio
 async def test_org_admin_role_but_no_membership_rejected(patch):
-    # Role claim present and active org matches, but no admin-plane membership row → reject.
-    patch(caps={"query_development"}, membership_row=None)
+    # user_management held and active org matches, but no admin-plane membership row → reject.
+    patch(caps={"user_management"}, membership_row=None)
     with pytest.raises(HTTPException) as ei:
         await inv._require_org_admin(
             _request(identity=_identity("alice", ["org_admin:acme"]), active_org="acme"), "acme"
@@ -140,7 +142,8 @@ async def test_org_admin_role_but_no_membership_rejected(patch):
 
 @pytest.mark.asyncio
 async def test_plain_authenticated_user_rejected(patch):
-    # The closed hole: an authenticated non-admin, non-org_admin user cannot invite for any org.
+    # The closed hole: an authenticated user holding no user_management right cannot invite for any
+    # org, whatever roles they name.
     patch(caps={"query_development"}, membership_row=("acme",))
     with pytest.raises(HTTPException) as ei:
         await inv._require_org_admin(

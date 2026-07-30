@@ -169,6 +169,34 @@ export interface RegisteredTable {
   enableGroupBy: boolean;
   canDeployToDb: boolean;
   live: LiveDeliveryConfig | null;
+  modelingRole?: "fact" | "dimension" | null; // REQ-1322: star-schema role for the Explore browser
+  modelingHistory?: unknown; // REQ-1322: server-owned modeling audit trail (shape not consumed by UI)
+  viewMetrics?: ViewMetricsSpec | null; // REQ-1318: declarative metric-composed view (null = free-hand SQL)
+}
+
+// REQ-1318: declarative metric-composed view definition. Mutually exclusive with
+// viewSql — the server generates (and regenerates on metric change) the view SQL.
+export interface ViewMetricsSpec {
+  metrics: string[];
+  dimensions: string[];
+  filters: string[];
+}
+
+// The sentinel source id for DERIVED relations — defined by their declaration (view_sql,
+// entity/fact lowering), not scanned from an external system. Mirrors the backend
+// provisa.core.models.DERIVED_SOURCE_ID; provenance is the definition's lineage.
+export const DERIVED_SOURCE_ID = "__derived__";
+
+// REQ-1317: a registered semantic metric. `fromFact` names the source fact when the
+// metric was auto-derived from a fact registration (REQ-1320); null for hand-authored.
+export interface Metric {
+  name: string;
+  expression: string;
+  datatype: string | null;
+  description: string | null;
+  aiContext: string | null;
+  visibleTo: string[];
+  fromFact: string | null;
 }
 
 export interface Relationship {

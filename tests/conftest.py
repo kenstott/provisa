@@ -39,52 +39,6 @@ _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
 _TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
 
-# The Trino connector plugins docker-compose.core.yml bind-mounts into the coordinator/worker.
-# The jars are release artifacts (gitignored), so a fresh git WORKTREE has empty plugin dirs and
-# the coordinator crash-loops on boot ("trino-file - No service providers of type
-# io.trino.spi.Plugin in the classpath"). _stage_trino_plugins symlinks each empty dir to the
-# primary checkout's populated one before compose up.
-_TRINO_PLUGINS = ("trino-file", "trino-sharepoint", "trino-splunk")
-
-
-def _stage_trino_plugins() -> None:
-    """Ensure the Trino plugin jars the compose stack bind-mounts exist in THIS checkout.
-
-    In a git worktree the gitignored jar dirs are empty; the primary checkout (the parent of the
-    repo's common .git dir) holds the extracted release artifacts. Symlink each empty dir to the
-    primary's populated one — compose resolves host symlinks, and a symlink stays current with the
-    primary's artifacts instead of drifting like a copy. A dir that is populated locally is left
-    alone; if the primary is missing/empty too, raise with the release-asset instruction rather
-    than letting Trino crash-loop into an opaque compose --wait failure."""
-    plugins_root = os.path.join(_REPO_ROOT, "trino", "plugins")
-    common_dir = subprocess.run(
-        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        cwd=_REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    primary_root = os.path.join(os.path.dirname(common_dir), "trino", "plugins")
-    for name in _TRINO_PLUGINS:
-        local = os.path.join(plugins_root, name)
-        if os.path.isdir(local) and not os.path.islink(local) and os.listdir(local):
-            continue  # locally populated — the normal primary-checkout case
-        primary = os.path.join(primary_root, name)
-        if os.path.islink(local) and os.path.realpath(local) == os.path.realpath(primary):
-            continue  # already staged by a previous run
-        if not (os.path.isdir(primary) and os.listdir(primary)):
-            raise RuntimeError(
-                f"Trino plugin jars missing: {primary} is empty. Download "
-                "provisa-trino-plugins-*.tar.gz from the release and extract it to "
-                "trino/plugins/ in the primary checkout — the itest Trino cannot boot without it."
-            )
-        if os.path.islink(local):
-            os.unlink(local)
-        elif os.path.isdir(local):
-            os.rmdir(local)  # empty (checked above) — replace with the symlink
-        os.symlink(primary, local)
-
-
 def _ensure_odbcsysini() -> None:
     """Make the installed SQL Server ODBC driver discoverable by pyodbc for requires_sqlserver tests.
 
@@ -331,6 +285,99 @@ if not os.environ.get("PYTEST_NO_DOCKER") and not os.environ.get("PROVISA_E2E_EX
     _allocate_itest_ports()
 
 
+
+# The Calcite-derived Trino connector plugins the compose stack bind-mounts, and the release
+# they come from. Kept in step with .github/workflows/build-dmg.yml's download-plugins job —
+# CI and the test harness must fetch the same build, or a connector behaves differently here
+# than in the shipped image.
+_TRINO_PLUGIN_RELEASE = (
+    "https://github.com/kenstott/calcite/releases/download/engine-v0.32.0"
+)
+_TRINO_PLUGINS = ("trino-sharepoint", "trino-splunk", "trino-file")
+
+
+def _download_trino_plugins(plugins: str, missing: list[str]) -> None:
+    """Fetch the plugin zips for ``missing`` into ``plugins``.
+
+    Tests provision the services they need, and Trino is no exception: without these jars it
+    aborts with "No service providers of type io.trino.spi.Plugin", which surfaces only as an
+    unhealthy container two minutes into the run. Downloading here turns that into a first-run
+    cost instead of an unexplained stack failure.
+    """
+    import urllib.request
+    import zipfile
+
+    for name in missing:
+        url = f"{_TRINO_PLUGIN_RELEASE}/{name}-plugin.zip"
+        archive = os.path.join(plugins, f"{name}-plugin.zip")
+        print(f"[conftest] downloading Trino plugin {name} from {url}")
+        urllib.request.urlretrieve(url, archive)  # noqa: S310 — pinned https release URL
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(plugins)  # noqa: S202 — trusted first-party release artifact
+        finally:
+            os.unlink(archive)
+        if not _has_jars(os.path.join(plugins, name)):
+            raise RuntimeError(f"{url} extracted no jars into {plugins}/{name}")
+
+
+def _has_jars(path: str) -> bool:
+    return os.path.isdir(path) and any(f.endswith(".jar") for f in os.listdir(path))
+
+
+def _populate_trino_plugins() -> None:
+    # Gitignored plugin jars exist only where built. Resolve the primary checkout from
+    # the git common dir (worktree-agnostic) and symlink any missing/empty plugin dir;
+    # whatever is still missing afterwards is downloaded from the pinned release.
+    plugins = os.path.join(_REPO_ROOT, "trino", "plugins")
+    if not os.path.isdir(plugins):
+        return
+    _link_trino_plugins_from_primary(plugins)
+    # Docker bind-mounts create an empty root-owned directory for a missing source, so an
+    # empty dir is indistinguishable from "never populated" — check for jars, not existence.
+    missing = [name for name in _TRINO_PLUGINS if not _has_jars(os.path.join(plugins, name))]
+    if missing:
+        _download_trino_plugins(plugins, missing)
+
+
+def _link_trino_plugins_from_primary(plugins: str) -> None:
+    common = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    primary = os.path.dirname(os.path.abspath(os.path.join(_REPO_ROOT, common)))
+    primary_plugins = os.path.join(primary, "trino", "plugins")
+    # Identity by inode, not by path string. On macOS the same directory is reachable under
+    # two distinct real paths (/Users/... and /Volumes/<root-volume>/Users/...), and a string
+    # compare called the primary checkout "different" — so every plugin dir was symlinked to
+    # ITSELF, and Docker then refused to mount them ("mkdir ...: file exists").
+    if os.path.isdir(primary_plugins) and os.path.samefile(primary_plugins, plugins):
+        return  # already the primary checkout
+    if not os.path.isdir(primary_plugins):
+        return  # nothing to borrow; the caller downloads what is missing
+    for name in os.listdir(primary_plugins):
+        src = os.path.join(primary_plugins, name)
+        dst = os.path.join(plugins, name)
+        if not os.path.isdir(src) or not any(f.endswith(".jar") for f in os.listdir(src)):
+            continue
+        if os.path.islink(dst):
+            # A link that no longer reaches jars (dangling, or self-referential from the
+            # path-string bug above) is worse than nothing: Docker fails the bind mount. Clear
+            # it and re-link rather than skipping it forever.
+            if os.path.isdir(dst) and any(f.endswith(".jar") for f in os.listdir(dst)):
+                continue
+            os.unlink(dst)
+        if os.path.isdir(dst) and any(f.endswith(".jar") for f in os.listdir(dst)):
+            continue
+        if os.path.isdir(dst):
+            os.rmdir(dst) if not os.listdir(dst) else None
+        if not os.path.exists(dst):
+            os.symlink(src, dst)
+
+
 class _DockerServiceManager:
     def pytest_collection_finish(self, session):
         if os.environ.get("PYTEST_NO_DOCKER"):
@@ -352,8 +399,24 @@ class _DockerServiceManager:
                 if item.get_closest_marker(marker):
                     needed.update(services)
 
-        if "trino" in needed:
-            _stage_trino_plugins()
+        # Trino's custom plugin jars (trino/plugins/*) are gitignored build artifacts:
+        # present only where they were built (the primary checkout). A fresh worktree
+        # mounts empty dirs and Trino fails startup ("No service providers ... in the
+        # classpath"). Populate missing plugin dirs from the primary checkout, located
+        # worktree-agnostically via the git common dir.
+        _populate_trino_plugins()
+
+        # Every run reserves FRESH ephemeral host ports (_export_isolated_ports), so a stack
+        # left over from an earlier run publishes the wrong ports and is useless. `up` would
+        # then RECREATE each container in place, and compose's --wait races the recreate: it
+        # watches the container it saw at plan time, sees the SIGTERM exit of the old one, and
+        # fails the whole bring-up ("dependency failed to start: ... exited (143)"). Tear the
+        # stale project down first so `up` always starts from nothing.
+        subprocess.run(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes", "--remove-orphans"],
+            cwd=_REPO_ROOT,
+            check=False,
+        )
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
         # exported at import time, its own network — the dev stack is never touched.

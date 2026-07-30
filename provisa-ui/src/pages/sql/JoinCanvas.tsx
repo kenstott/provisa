@@ -9,16 +9,151 @@
 // permission from the copyright holder.
 
 import React, { useState, useCallback, useMemo, useRef } from "react";
-import { Network } from "lucide-react";
+import { Network, Sigma, X } from "lucide-react";
+import { ActionIcon, Checkbox, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { CanvasTableCard } from "./CanvasTableCard";
-import { autoAliasConflicts } from "./sqlHelpers";
+import { autoAliasConflicts, buildSemanticMetricSql, metricDimensionTables } from "./sqlHelpers";
 import { CARD_W, CARD_HEADER_H, COL_ROW_H } from "./types";
-import type { CanvasTable, CanvasJoin, JoinCanvasProps } from "./types";
-import type { RegisteredTable } from "../../types/admin";
+import type { CanvasTable, CanvasJoin, CanvasMetric, JoinCanvasProps } from "./types";
+import type { Metric, RegisteredTable, Relationship } from "../../types/admin";
 
-export function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
+// REQ-1322: metric card on the canvas. Distinct accent styling; checkboxes pick
+// the dimensions the semantic query groups by. The UI never generates joins or
+// aggregation for metrics — the server compiler is the single generator (REQ-1321).
+function MetricCanvasCard({
+  cm,
+  metric,
+  tables,
+  existingRels,
+  onMove,
+  onRemove,
+  selectedDims,
+  onToggleDim,
+}: {
+  cm: CanvasMetric;
+  metric: Metric;
+  tables: RegisteredTable[];
+  existingRels: Relationship[];
+  onMove: (x: number, y: number) => void;
+  onRemove: () => void;
+  selectedDims: Set<string>;
+  onToggleDim: (dim: string) => void;
+}) {
+  const { t } = useTranslation();
+  const dragRef = useRef<{ mx: number; my: number; cx: number; cy: number } | null>(null);
+  const dimTables = useMemo(
+    () => metricDimensionTables(metric, tables, existingRels),
+    [metric, tables, existingRels],
+  );
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { mx: e.clientX, my: e.clientY, cx: cm.x, cy: cm.y };
+    const onMove_ = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      onMove(
+        dragRef.current.cx + ev.clientX - dragRef.current.mx,
+        dragRef.current.cy + ev.clientY - dragRef.current.my,
+      );
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      document.removeEventListener("mousemove", onMove_);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove_);
+    document.addEventListener("mouseup", onUp);
+  };
+  return (
+    <div
+      data-testid={`canvas-metric-card-${metric.name}`}
+      style={{
+        position: "absolute",
+        left: cm.x,
+        top: cm.y,
+        width: CARD_W + 40,
+        background: "var(--surface)",
+        border: "2px solid var(--accent)",
+        borderRadius: "6px",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+        zIndex: 10,
+        userSelect: "none",
+      }}
+    >
+      <div
+        onMouseDown={handleHeaderMouseDown}
+        style={{
+          height: CARD_HEADER_H,
+          background: "var(--accent)",
+          color: "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.3rem",
+          padding: "0 8px",
+          borderRadius: "3px 3px 0 0",
+          cursor: "grab",
+        }}
+      >
+        <Sigma size={12} aria-hidden style={{ flexShrink: 0 }} />
+        <Text
+          span
+          c="inherit"
+          fz="0.78rem"
+          fw={600}
+          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+        >
+          {metric.name}
+        </Text>
+        <ActionIcon
+          type="button"
+          variant="transparent"
+          size="xs"
+          c="rgba(255,255,255,0.7)"
+          aria-label={t("sqlJoinCanvas.removeMetric", { metricName: metric.name })}
+          data-testid="canvas-metric-card-remove"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={onRemove}
+        >
+          <X size={11} />
+        </ActionIcon>
+      </div>
+      <div style={{ maxHeight: 240, overflowY: "auto", padding: "0.3rem 0.5rem" }}>
+        <Text component="div" fz="0.62rem" c="var(--text-muted)" mb={4}>
+          {t("sqlJoinCanvas.dimensionsHeading")}
+        </Text>
+        {dimTables.length === 0 && (
+          <Text component="div" fz="0.68rem" c="var(--text-muted)" style={{ opacity: 0.6 }}>
+            {t("sqlJoinCanvas.noDimensions")}
+          </Text>
+        )}
+        {dimTables.map((tbl) =>
+          tbl.columns.map((col) => {
+            const dim = `${tbl.tableName}.${col.computedSqlAlias}`;
+            return (
+              <Checkbox
+                key={dim}
+                size="xs"
+                label={dim}
+                checked={selectedDims.has(dim)}
+                onChange={() => onToggleDim(dim)}
+                data-testid={`canvas-metric-dim-${metric.name}-${dim}`}
+                styles={{ label: { fontSize: "0.68rem", fontFamily: "monospace" } }}
+                mb={2}
+              />
+            );
+          }),
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: JoinCanvasProps) {
   const [canvasTables, setCanvasTables] = useState<CanvasTable[]>([]);
   const [canvasJoins, setCanvasJoins] = useState<CanvasJoin[]>([]);
+  const [canvasMetrics, setCanvasMetrics] = useState<CanvasMetric[]>([]);
+  const [selectedDims, setSelectedDims] = useState<Map<string, Set<string>>>(new Map());
   const [selectedColumns, setSelectedColumns] = useState<Map<string, Set<string>>>(new Map());
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null);
   const connectingRef = useRef<{ tableName: string; colName: string; colIdx: number } | null>(null);
@@ -30,8 +165,31 @@ export function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasPr
     return m;
   }, [tables]);
 
+  const metricMap = useMemo(() => {
+    const m: Record<string, Metric> = {};
+    for (const mt of metrics) m[mt.name] = mt;
+    return m;
+  }, [metrics]);
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    // REQ-1322: metric drops render a metric card, never a table card.
+    const metricName = e.dataTransfer.getData("metricName");
+    if (metricName) {
+      if (!metricMap[metricName]) return;
+      if (canvasMetrics.some((cm) => cm.name === metricName)) return;
+      const mRect = canvasRef.current?.getBoundingClientRect();
+      if (!mRect) return;
+      setCanvasMetrics((prev) => [
+        ...prev,
+        {
+          name: metricName,
+          x: Math.max(0, e.clientX - mRect.left - CARD_W / 2),
+          y: Math.max(0, e.clientY - mRect.top - CARD_HEADER_H / 2),
+        },
+      ]);
+      return;
+    }
     const tableName = e.dataTransfer.getData("tableName");
     if (!tableName) return;
     if (canvasTables.some((ct) => ct.tableName === tableName)) return;
@@ -154,6 +312,14 @@ export function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasPr
   );
 
   const handleGenerateSql = () => {
+    // REQ-1322/1321: metric cards win — emit the semantic query only; the server
+    // compiler expands it. Never generate joins/aggregation client-side for metrics.
+    if (canvasMetrics.length > 0) {
+      const cm = canvasMetrics[0];
+      const dims = [...(selectedDims.get(cm.name) ?? [])];
+      onGenerateSql(buildSemanticMetricSql(cm.name, dims));
+      return;
+    }
     if (canvasTables.length === 0) return;
     const aliasOf = (name: string) => name.replace(/\W/g, "_").toLowerCase();
     const normDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
@@ -224,6 +390,8 @@ export function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasPr
   const handleClear = () => {
     setCanvasTables([]);
     setCanvasJoins([]);
+    setCanvasMetrics([]);
+    setSelectedDims(new Map());
     setConnectingMouse(null);
     connectingRef.current = null;
   };
@@ -279,7 +447,7 @@ export function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasPr
           className="btn-primary"
           style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
           onClick={handleGenerateSql}
-          disabled={canvasTables.length === 0}
+          disabled={canvasTables.length === 0 && canvasMetrics.length === 0}
         >
           → SQL
         </button>
@@ -287,7 +455,7 @@ export function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasPr
           className="btn-secondary"
           style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
           onClick={handleClear}
-          disabled={canvasTables.length === 0}
+          disabled={canvasTables.length === 0 && canvasMetrics.length === 0}
         >
           Clear
         </button>
@@ -302,6 +470,7 @@ export function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasPr
         ref={canvasRef}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
+        data-testid="join-canvas"
         style={{
           flex: 1,
           position: "relative",
@@ -319,7 +488,7 @@ export function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasPr
           }}
         />
 
-        {canvasTables.length === 0 && (
+        {canvasTables.length === 0 && canvasMetrics.length === 0 && (
           <div
             style={{
               position: "absolute",
@@ -474,6 +643,44 @@ export function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasPr
                 ✕
               </button>
             </div>
+          );
+        })}
+
+        {canvasMetrics.map((cm) => {
+          const metric = metricMap[cm.name];
+          if (!metric) return null;
+          return (
+            <MetricCanvasCard
+              key={cm.name}
+              cm={cm}
+              metric={metric}
+              tables={tables}
+              existingRels={existingRels}
+              onMove={(x, y) =>
+                setCanvasMetrics((prev) =>
+                  prev.map((c) => (c.name === cm.name ? { ...c, x, y } : c)),
+                )
+              }
+              onRemove={() => {
+                setCanvasMetrics((prev) => prev.filter((c) => c.name !== cm.name));
+                setSelectedDims((prev) => {
+                  const next = new Map(prev);
+                  next.delete(cm.name);
+                  return next;
+                });
+              }}
+              selectedDims={selectedDims.get(cm.name) ?? new Set()}
+              onToggleDim={(dim) =>
+                setSelectedDims((prev) => {
+                  const next = new Map(prev);
+                  const dims = new Set(next.get(cm.name) ?? []);
+                  if (dims.has(dim)) dims.delete(dim);
+                  else dims.add(dim);
+                  next.set(cm.name, dims);
+                  return next;
+                })
+              }
+            />
           );
         })}
 

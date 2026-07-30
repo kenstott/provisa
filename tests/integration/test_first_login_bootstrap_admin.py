@@ -211,14 +211,21 @@ def test_claim_seats_the_admin_in_both_planes(planes):
             assignments = conn.execute(
                 text(
                     f"SELECT user_id, role_id, domain_id FROM {_TENANT_SCHEMA}.user_role_assignments"
-                    " ORDER BY user_id"
+                    " ORDER BY role_id"
                 )
             ).all()
     finally:
         engine.dispose()
 
     assert memberships == [("uid-first", _ORG)]
-    assert assignments == [("uid-first", "platform_admin", "*")]
+    # REQ-1297: two rows, because the two roles do different jobs. platform_admin carries the
+    # control-plane bypass and no data capability whatsoever, so the claimant would land in an org
+    # they cannot query. org_admin is the data-plane administrator of this one org, and the claim
+    # grants it alongside — otherwise the very first login has nothing to look at.
+    assert assignments == [
+        ("uid-first", "org_admin", "*"),
+        ("uid-first", "platform_admin", "*"),
+    ]
 
 
 def test_platform_admin_may_request_the_platform_admin_role(planes):

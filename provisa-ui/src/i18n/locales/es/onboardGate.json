@@ -1,0 +1,7 @@
+{
+  "onboardGate": {
+    "unavailableTitle": "No se puede conectar con Provisa",
+    "unavailableBody": "Provisa no pudo confirmar la identidad porque el servidor no respondió. No es un problema de la cuenta. Intente de nuevo en un momento.",
+    "retry": "Intentar de nuevo"
+  }
+}

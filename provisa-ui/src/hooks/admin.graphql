@@ -114,6 +114,11 @@ query TablesQuery {
     probeType
     apiEndpoint
     viewSql
+    viewMetrics {
+      metrics
+      dimensions
+      filters
+    }
     materialize
     mvRefreshInterval
     mvDebounceQuiet
@@ -134,6 +139,7 @@ query TablesQuery {
     enableAggregates
     enableGroupBy
     canDeployToDb
+    modelingRole
     live {
       queryId
       watermarkColumn
@@ -192,6 +198,19 @@ query RefreshPolicyPreview(
     text
     serving
     warning
+  }
+}
+
+# REQ-1317: registered semantic metrics.
+query MetricsQuery {
+  metrics {
+    name
+    expression
+    datatype
+    description
+    aiContext
+    visibleTo
+    fromFact
   }
 }
 
@@ -482,6 +501,19 @@ mutation CreateCalendar($input: CalendarInput!) {
 
 mutation DeleteCalendar($name: String!) {
   deleteCalendar(name: $name) {
+    ...MutationResult
+  }
+}
+
+# REQ-1317: create/update a semantic metric.
+mutation UpsertMetric($input: MetricInput!) {
+  upsertMetric(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteMetric($name: String!) {
+  deleteMetric(name: $name) {
     ...MutationResult
   }
 }

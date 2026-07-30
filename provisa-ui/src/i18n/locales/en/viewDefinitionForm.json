@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "Metrics",
+    "sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
+    "sqlEditHint": "This view's SQL is edited in the SQL editor.",
+    "openSqlEditor": "Open SQL editor",
+    "editInSqlEditor": "Edit in SQL editor",
+    "fieldName": "View name",
+    "fieldNamePlaceholder": "e.g. revenue_by_region",
+    "fieldDomain": "Domain",
+    "fieldDescription": "Description",
+    "fieldMetrics": "Metrics",
+    "fieldMetricsPlaceholder": "Pick one or more registered metrics",
+    "fieldDimensions": "Dimensions",
+    "fieldDimensionsPlaceholder": "Columns of the metrics' tables (one relationship hop away included)",
+    "fieldFilters": "Filters",
+    "fieldFiltersHelp": "One SQL condition per line; conditions are ANDed.",
+    "save": "Save view",
+    "saveFailed": "Save failed",
+    "cancel": "Cancel"
+  }
+}

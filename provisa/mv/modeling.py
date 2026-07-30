@@ -30,6 +30,7 @@ engines without remodeling.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 HISTORY_NONE = "none"
@@ -48,6 +49,12 @@ def _q(ident: str) -> str:
 def _dedup(seq) -> list[str]:
     """Order-preserving de-duplication."""
     return list(dict.fromkeys(seq))
+
+
+def _snake(ident: str) -> str:
+    """snake_case a metric name component: CamelCase → camel_case, non-word runs → '_' (REQ-1320)."""
+    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", ident)
+    return re.sub(r"[^a-zA-Z0-9]+", "_", s).lower()
 
 
 @dataclass(frozen=True)
@@ -111,12 +118,16 @@ def entity_registration(e: Entity) -> dict:
         "view_sql": view_sql,
         "materialize": True,
         "columns": cols,
+        # REQ-1320: retain the modeling role — metadata alongside the lowering; never
+        # changes the generated view_sql/columns.
+        "modeling_role": "dimension",
     }
     mode = _HISTORY_MODE.get(e.history)
     if mode is not None:
         # Historized entity → a bitemporal MV keyed on the entity key (REQ-1162).
         reg["mv_bitemporal_mode"] = mode
         reg["mv_bitemporal_key"] = list(e.key)
+        reg["modeling_history"] = e.history  # REQ-1320: scd2 | snapshot
     return reg
 
 
@@ -137,6 +148,20 @@ def fact_registration(f: Fact) -> dict:
         # Each dimension FK is a registered relationship to the entity — the only legal join path.
         "relationships": [
             {"source_column": d.via, "target_table": d.entity} for d in f.dimensions
+        ],
+        # REQ-1320: retain the modeling role — metadata alongside the lowering; never
+        # changes the generated view_sql/columns.
+        "modeling_role": "fact",
+        # REQ-1320: each measure auto-registers as a governed metric (semantic ref =
+        # the fact's registered table name).
+        "metrics": [
+            {
+                "name": _snake(f"{f.name}_{m.column}_{m.agg}"),
+                "expression": f"{m.agg.upper()}({f.name}.{m.column})",
+                "datatype": None,
+                "from_fact": f.name,
+            }
+            for m in f.measures
         ],
     }
 

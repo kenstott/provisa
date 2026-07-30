@@ -1,0 +1,15 @@
+{
+  "platformAdminWelcome": {
+    "title": "Usted es el administrador de la plataforma",
+    "body": "Al iniciar sesión se convirtió en el platform_admin de esta implementación — posee todas las capacidades aquí, y nadie más puede reclamar el rol ahora. También es el administrador de la organización root, que ya incluye los orígenes, tablas y dominios de demostración.",
+    "backupHeading": "Agregar un administrador de respaldo",
+    "backupBody": "Una implementación con un solo platform_admin es una implementación con una sola cuenta entre ella y la imposibilidad de administrarla. Agregar un respaldo comienza con una invitación a unirse a root:",
+    "backupStep1": "Invite a la persona a la organización root desde su página de Equipo.",
+    "backupStep2": "La persona inicia sesión y canjea la invitación, lo que la convierte en miembro de root.",
+    "backupStep3": "Asígnele el rol platform_admin en root — eso es lo que confiere la administración de toda la implementación.",
+    "openHeading": "El sitio ya está abierto para organizaciones",
+    "openBody": "A partir del próximo inicio de sesión, cualquiera que se autentique crea su propia organización. Nunca se convierte en administrador de la plataforma por iniciar sesión, e invitar personas a su organización es tarea propia como su org_admin.",
+    "goToTeam": "Invitar a alguien a root",
+    "dismiss": "Entendido"
+  }
+}

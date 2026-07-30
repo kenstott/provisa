@@ -26,6 +26,7 @@ from sqlalchemy import select
 from provisa.core.database import Database
 from provisa.core.schema_org import registered_tables as _registered_tables_t
 from provisa.api.startup_resilience import tolerate_startup_failure
+from provisa.core.models import DERIVED_SOURCE_ID
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -105,7 +106,7 @@ async def _reconcile_live_engine(conn: "Connection") -> None:  # REQ-565, REQ-81
 
 
 async def _register_user_views_in_state(conn: "Connection", raw_config: dict | None) -> None:
-    """Register __provisa__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal."""
+    """Register __derived__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal."""
     from provisa.api.app import state
 
     with tolerate_startup_failure("user views for inline expansion"):
@@ -131,7 +132,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.mv_expected_events,  # REQ-961
                         _registered_tables_t.c.mv_business_day_grain,  # REQ-962
                     ).where(
-                        _registered_tables_t.c.source_id == "__provisa__",
+                        _registered_tables_t.c.source_id == DERIVED_SOURCE_ID,
                         _registered_tables_t.c.view_sql.is_not(None),
                     )
                 )
@@ -147,8 +148,8 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
             # inline-expand it live. A materialized view is ALSO registered as an MV below — the query
             # path expands the view and, when its MV is fresh, rewrite_if_mv_match redirects to the
             # materialized table. Without the view_sql_map entry a materialized-but-unrefreshed view
-            # is unqueryable: its raw source catalog (e.g. __provisa__) reaches the engine and fails
-            # with "Catalog __provisa__ does not exist".
+            # is unqueryable: its raw source catalog (e.g. __derived__) reaches the engine and fails
+            # with "Catalog __derived__ does not exist".
             _semantic_sql = _vr["view_sql"].rstrip().rstrip(";")
             # REQ-1162: reconstruct the bitemporal spec from the persisted mode/key (None = ordinary).
             _bt_spec = None
@@ -180,7 +181,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                 from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
 
                 _mv_id = f"view-{_vr['table_name']}"
-                # REQ-932: derive the refresh gate from change_signal. A __provisa__ view has no
+                # REQ-932: derive the refresh gate from change_signal. A __derived__ view has no
                 # backing source, so resolve falls to the global default. Push signals return None
                 # (event-driven, no poll gate) → keep the ttl default until CDC-apply landing exists.
                 _sig = resolve(_vr.get("change_signal"), None)

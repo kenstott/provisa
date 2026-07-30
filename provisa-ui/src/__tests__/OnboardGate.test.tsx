@@ -32,7 +32,23 @@ vi.mock('../api/admin', async (importOriginal) => {
 // against (a TablesPage test saw useTables become undefined).
 vi.mock('../hooks/useAdminQueries', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useAdminQueries')>()),
-  useRoles: () => ({ refetch: vi.fn().mockResolvedValue({ data: { roles: [] } }) }),
+  // REQ-1337: the gate resolves the assigned role ids to the RIGHTS those roles carry, so the roles
+  // registry must be populated for a control-plane assignment to mean anything. platform_admin's
+  // seeded capability list (provisa/core/schema.sql) is what is mirrored here — `cross_org` is the
+  // right the gate reads.
+  useRoles: () => ({
+    refetch: vi.fn().mockResolvedValue({
+      data: {
+        roles: [
+          {
+            id: 'platform_admin',
+            capabilities: ['admin', 'superadmin', 'platform_settings', 'cross_org'],
+            domain_access: ['*'],
+          },
+        ],
+      },
+    }),
+  }),
   useDomains: () => ({ refetch: vi.fn().mockResolvedValue({ data: { domains: [] } }) }),
 }));
 vi.mock('../pages/OnboardOrgPage', () => ({
@@ -119,11 +135,17 @@ describe('OnboardGate', () => {
     expect(await screen.findByTestId('onboard-org-page')).toBeInTheDocument();
   });
 
-  it('lets a platform admin with no memberships through to the shell', async () => {
-    // REQ-1297: the platform operator's role is `platform_admin` — the gate keys on it exactly.
+  // REQ-1337: what lets this identity through is the `cross_org` RIGHT its assigned role carries
+  // (see the roles mock above), not the role id. With a role that carries no such right this passed
+  // only transiently — the shell renders while the identity is still loading, so findBy resolved on
+  // the first tick and the gate flipped to onboarding immediately after. The settled state is
+  // asserted below, after the bootstrap lands.
+  it('lets a control-plane principal with no memberships through to the shell', async () => {
     resolvesTo({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] });
     renderGate();
+    await waitFor(() => expect(mockBootstrapStatus).toHaveBeenCalled());
     expect(await screen.findByTestId('app-shell')).toBeInTheDocument();
+    expect(screen.queryByTestId('onboard-org-page')).not.toBeInTheDocument();
   });
 
   it('lets an org member through to the shell', async () => {
@@ -173,7 +195,7 @@ describe('identity refresh after sign-in (REQ-1291)', () => {
   it('refetches /auth/me when a sign-in bumps authVersion', async () => {
     mockFetchMe
       .mockRejectedValueOnce(new AuthMeError(401))
-      .mockResolvedValueOnce(identity({ userId: 'u1', assignments: [{ role_id: 'admin', domain_id: '*' }] }));
+      .mockResolvedValueOnce(identity({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] }));
     render(
       <SignInHarness>
         <CurrentIdentity />
@@ -192,7 +214,7 @@ describe('identity refresh after sign-in (REQ-1291)', () => {
     const onSessionExpired = vi.fn();
     mockFetchMe
       .mockRejectedValueOnce(new AuthMeError(401))
-      .mockResolvedValueOnce(identity({ userId: 'u1', assignments: [{ role_id: 'admin', domain_id: '*' }] }));
+      .mockResolvedValueOnce(identity({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] }));
     render(
       <SignInHarness>
         <OnboardGate onSessionExpired={onSessionExpired}>
@@ -237,7 +259,7 @@ describe('identity refresh after sign-in (REQ-1291)', () => {
     expect(localStorage.getItem('provisa_token')).toBe('fresh-token');
     expect(onSessionExpired).not.toHaveBeenCalled();
 
-    resolveSecond(identity({ userId: 'u1', assignments: [{ role_id: 'admin', domain_id: '*' }] }));
+    resolveSecond(identity({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] }));
     await waitFor(() => expect(screen.getByTestId('app-shell')).toBeInTheDocument());
   });
 });
@@ -272,7 +294,7 @@ describe('unclaimed platform-admin slot outranks org onboarding (REQ-1292)', () 
     // Assignments resolved from a stale identity do not administer THIS deployment: its admin slot
     // is still unclaimed. Falling through to the shell would hide that from the operator.
     const onSessionExpired = vi.fn();
-    resolvesTo({ userId: 'u1', assignments: [{ role_id: 'admin', domain_id: '*' }] });
+    resolvesTo({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] });
     mockBootstrapStatus.mockResolvedValue(true);
 
     renderGate(onSessionExpired);

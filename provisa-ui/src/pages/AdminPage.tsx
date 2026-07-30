@@ -99,7 +99,9 @@ export function AdminPage() {
   const location = useLocation();
   const activeTab = ROUTE_TO_SECTION[location.pathname] ?? "Overview";
   const { capabilities } = useAuth();
-  const isSuperAdmin = capabilities.includes("platform_admin");
+  // REQ-1337: administering orgs other than the active one is the `cross_org` RIGHT. "platform_admin"
+  // was never a capability — it was a role id folded in as a pseudo-right, which this rule forbids.
+  const canAdministerAllOrgs = capabilities.includes("cross_org");
   const [stats, setStats] = useState<Record<string, number>>({});
   const [newDomainId, setNewDomainId] = useState("");
   const [newDomainDesc, setNewDomainDesc] = useState("");
@@ -740,7 +742,7 @@ export function AdminPage() {
           <ObservabilityTab settings={settings} setSettings={setSettings} />
         )}
         {activeTab === "MCP Server" && <McpServerTab />}
-        {activeTab === "Orgs" && isSuperAdmin && <OrgsTab />}
+        {activeTab === "Orgs" && canAdministerAllOrgs && <OrgsTab />}
         {activeTab === "AI Models" && <AiModelsTab />}
       </Stack>
 

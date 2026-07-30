@@ -28,6 +28,7 @@ from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
+from provisa.security.rights import Capability
 from provisa.compiler.context import build_context
 from provisa.compiler.rls import build_rls_context
 from sqlalchemy import select
@@ -914,33 +915,36 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     tracked_webhooks: list[dict],
     gql_object_cols: dict,
     rls_rules: list[dict],
+    metrics: list[dict],  # REQ-1319: config metric registry for schema projection
 ) -> None:
     """Build and register GraphQL schemas, contexts, and protos for each role."""
     from provisa.api.app import state
 
-    for role in roles:
-        state.roles[role["id"]] = role
-        _governed_gql_types = {
-            tbl.get("gql_type_name")
-            for reg in getattr(state, "graphql_remote_sources", {}).values()
-            for tbl in reg.get("tables", [])
-            if tbl.get("gql_type_name")
-        }
-        _tbl_id_map = {(t["source_id"], t["table_name"]): t["id"] for t in tables}
-        _gov_obj_cols: set[tuple[int, str]] = set()
-        for _reg in getattr(state, "graphql_remote_sources", {}).values():
-            _src_id = _reg.get("source_id", "")
-            for _tbl in _reg.get("tables", []):
-                _tbl_id = _tbl_id_map.get((_src_id, _tbl.get("sql_name") or _tbl.get("name", "")))
-                if _tbl_id is None:
-                    continue
-                for _col in _tbl.get("columns", []):
-                    if _col.get("gql_object_type") in _governed_gql_types or _col.get(
-                        "gql_object_fields"
-                    ):
-                        _gov_obj_cols.add((_tbl_id, _col["name"]))
-        si = SchemaInput(
-            tables=tables,
+    _governed_gql_types = {
+        tbl.get("gql_type_name")
+        for reg in getattr(state, "graphql_remote_sources", {}).values()
+        for tbl in reg.get("tables", [])
+        if tbl.get("gql_type_name")
+    }
+    _tbl_id_map = {(t["source_id"], t["table_name"]): t["id"] for t in tables}
+    _gov_obj_cols: set[tuple[int, str]] = set()
+    for _reg in getattr(state, "graphql_remote_sources", {}).values():
+        _src_id = _reg.get("source_id", "")
+        for _tbl in _reg.get("tables", []):
+            _tbl_id = _tbl_id_map.get((_src_id, _tbl.get("sql_name") or _tbl.get("name", "")))
+            if _tbl_id is None:
+                continue
+            for _col in _tbl.get("columns", []):
+                if _col.get("gql_object_type") in _governed_gql_types or _col.get(
+                    "gql_object_fields"
+                ):
+                    _gov_obj_cols.add((_tbl_id, _col["name"]))
+
+    from provisa.grpc.proto_gen import generate_proto
+
+    def _schema_input(role: dict, tbls: list[dict], mtrcs: list[dict]) -> SchemaInput:
+        return SchemaInput(
+            tables=tbls,
             relationships=relationships,
             column_types=col_types_converted,
             naming_rules=naming_rules,
@@ -960,7 +964,24 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
             gql_object_columns=gql_object_cols,
             governed_gql_types=_governed_gql_types,
             gql_governed_object_cols=_gov_obj_cols,
+            metrics=mtrcs,  # REQ-1319
         )
+
+    for role in roles:
+        state.roles[role["id"]] = role
+        # REQ-1327: platform_admin is control-plane only and holds zero data capabilities in every
+        # org, root included, so it gets NO data surface at all. Generating one produced a schema
+        # whose every fully-granted table was filtered out by the column-visibility gate, leaving
+        # only the native-filter endpoint tables — a silently truncated dataset instead of a refusal.
+        # Without an entry, /data/graphql, the JSON:API, REST, Flight and SDL surfaces all answer
+        # "No schema available for role 'platform_admin'". The role dict is still registered above:
+        # control-plane capability resolution reads state.roles.
+        #
+        # REQ-1337: the test is the `cross_org` RIGHT the role carries, not its name — a deployment
+        # that mints another control-plane role is kept off the data plane on the same terms.
+        if Capability.CROSS_ORG.value in (role.get("capabilities") or []):
+            continue
+        si = _schema_input(role, tables, metrics)
         try:
             from provisa.compiler.schema_gen import build_table_path_map
 
@@ -979,9 +1000,26 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to
         # silently disable gRPC for the role. Let generate_proto raise so it surfaces at startup and
         # gets fixed at the source (the type map) — never patched around here.
-        from provisa.grpc.proto_gen import generate_proto
-
         state.proto_files[role["id"]] = generate_proto(si)
+
+    # REQ-045/REQ-143: the SERVED gRPC wire descriptor. A grpc.aio server registers exactly one
+    # generated service and stock reflection serves exactly one descriptor pool, so the wire
+    # descriptor must be the UNION of every role's surface — otherwise the compiled descriptor is
+    # whichever role happens to come first (arbitrary dict order) and roles whose tables are absent
+    # from it cannot be served at all. Governance is NOT expressed by the descriptor: every RPC
+    # projects through state.contexts[role] (grpc/server.py _handle_query_bound) and is governed by
+    # _govern_and_route_compiled, so a column the role cannot see is never SELECTed and its proto
+    # field is left unset. Per-role client stubs still come from GET /data/proto/{role}.
+    _wire_role = {
+        "id": "__wire__",
+        "domain_access": ["*"],
+        "capabilities": sorted({c for r in roles for c in (r.get("capabilities") or [])}),
+    }
+    _wire_tables = [
+        {**t, "columns": [{**c, "visible_to": []} for c in t["columns"]]} for t in tables
+    ]
+    _wire_metrics = [{**m, "visible_to": []} for m in metrics]
+    state.wire_proto = generate_proto(_schema_input(_wire_role, _wire_tables, _wire_metrics))
 
 
 def _setup_approval_hook(st: AppState) -> None:

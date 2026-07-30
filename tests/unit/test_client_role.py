@@ -126,6 +126,24 @@ from provisa.auth.middleware import AuthMiddleware  # noqa: E402
 from provisa.auth.models import AuthIdentity  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _seeded_roles(monkeypatch):
+    """REQ-1337: the acting-role choice reads the ``cross_org`` RIGHT to identify a control-plane
+    role — no role name is tested. That resolution needs the loaded roles registry, which a real
+    process gets from the schema.sql seed; mirror it here."""
+    monkeypatch.setattr(
+        "provisa.auth.middleware._loaded_roles",
+        lambda: {
+            "platform_admin": {
+                "id": "platform_admin",
+                "capabilities": ["admin", "superadmin", "platform_settings", "cross_org"],
+            },
+            "org_admin": {"id": "org_admin", "capabilities": ["user_management"]},
+            "viewer": {"id": "viewer", "capabilities": ["usage"]},
+        },
+    )
+
+
 class _State:
     pass
 
@@ -169,11 +187,13 @@ async def test_unsecured_honors_any_requested_role():
 
 
 @pytest.mark.asyncio
-async def test_unsecured_defaults_platform_admin_without_header():
+async def test_unsecured_defaults_org_admin_without_header():
     mw = AuthMiddleware(app=None, provider=None)
     req = _Req({})
     await mw.dispatch(req, _next)
-    assert req.state.role == "platform_admin"  # REQ-1297: the role id 'admin' is retired
+    # REQ-1327: the unsecured default is the DATA-plane administrator; platform_admin is
+    # control-plane only and never defaults onto the data plane.
+    assert req.state.role == "org_admin"
 
 
 @pytest.mark.asyncio
@@ -183,6 +203,51 @@ async def test_secured_honors_assigned_requested_role():
     out = await mw.dispatch(req, _next)
     assert out == "OK"
     assert req.state.role == "viewer"
+
+
+@pytest.mark.asyncio
+async def test_platform_admin_never_acts_on_the_data_plane_in_root():
+    # REQ-1327: root is the control plane's own org, so the platform_admin ASSIGNMENT lives there —
+    # but the acting role on a data path must still be the caller's data-plane role. Picking
+    # platform_admin built /data/graphql for a role with no column grants, and every fully-granted
+    # table silently vanished from the served schema.
+    mw = AuthMiddleware(
+        app=None,
+        provider=_Provider(["platform_admin", "org_admin"]),
+        default_role="platform_admin",
+    )
+    req = _Req({"authorization": "Bearer tok"})
+    out = await mw.dispatch(req, _next)
+    assert out == "OK"
+    assert req.state.role == "org_admin"
+
+
+@pytest.mark.asyncio
+async def test_requested_platform_admin_resolves_to_the_data_plane_role():
+    # A stale client tab puts platform_admin in the header. It names the acting role for the DATA
+    # surfaces, and platform_admin is not one of those — it resolves to the assigned data-plane role.
+    mw = AuthMiddleware(
+        app=None,
+        provider=_Provider(["platform_admin", "org_admin"]),
+        default_role="platform_admin",
+    )
+    req = _Req({"authorization": "Bearer tok", "x-provisa-role": "platform_admin"})
+    out = await mw.dispatch(req, _next)
+    assert out == "OK"
+    assert req.state.role == "org_admin"
+
+
+@pytest.mark.asyncio
+async def test_platform_admin_alone_keeps_the_control_plane_role():
+    # A platform operator holding nothing else is not denied: the control plane needs the role. The
+    # data surfaces refuse it instead, because no schema is generated for it (app_loaders).
+    mw = AuthMiddleware(
+        app=None, provider=_Provider(["platform_admin"]), default_role="platform_admin"
+    )
+    req = _Req({"authorization": "Bearer tok"})
+    out = await mw.dispatch(req, _next)
+    assert out == "OK"
+    assert req.state.role == "platform_admin"
 
 
 @pytest.mark.asyncio

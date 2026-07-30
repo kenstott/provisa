@@ -76,6 +76,17 @@ _TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log
 # org rebuilds root's org-registry view and re-registers it as a meta-domain table.
 _ROOT_EXTRA_TABLES = [sources, domains, registered_tables, table_columns]
 
+# REQ-1337: every gate on these routers reads a RIGHT, so a role row with an empty capability list
+# authorizes nothing however it is named. These are the capabilities schema.sql seeds, trimmed to
+# what the org-lifecycle surface asks for: cross_org is what makes platform_admin control-plane and
+# lets pat administer any org, and user_management is what lets alice administer the one org she is
+# a member of. org_admin holds no cross_org in either tenancy mode.
+_SEEDED_ROLE_CAPS: dict[str, list[str]] = {
+    "platform_admin": ["admin", "superadmin", "platform_settings", "cross_org"],
+    "org_admin": ["user_management", "source_registration", "access_config", "query_development"],
+    "analyst": ["usage", "ad_hoc_query", "query_development"],
+}
+
 # alice administers acme; bob is an ordinary member of it; pat is the platform administrator,
 # whose platform_admin assignment lives in the root (default-org) schema.
 _TOKENS = {"tok-alice": "alice", "tok-bob": "bob", "tok-pat": "pat"}
@@ -111,8 +122,8 @@ def _prepare_sync():
         org_metadata.create_all(conn, tables=[*_TENANT_TABLES, *_ROOT_EXTRA_TABLES])
         conn.execute(insert(sources).values(id="provisa-admin", type="postgres"))
         conn.execute(insert(domains).values(id="meta"))
-        for role_id in ("platform_admin", "org_admin", "analyst"):
-            conn.execute(insert(roles).values(id=role_id))
+        for role_id, caps in _SEEDED_ROLE_CAPS.items():
+            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="pat", role_id="platform_admin", domain_id="*"
@@ -125,8 +136,8 @@ def _prepare_sync():
         # as a 500 and would abort a deletion the org actually asked for.
         org_metadata.create_all(conn)
         conn.execute(insert(domains).values(id="acmeonlydomain"))
-        for role_id in ("platform_admin", "org_admin", "analyst"):
-            conn.execute(insert(roles).values(id=role_id))
+        for role_id, caps in _SEEDED_ROLE_CAPS.items():
+            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="alice", role_id="org_admin", domain_id="*"
@@ -164,7 +175,15 @@ def planes(monkeypatch):
     for org_id, db in org_dbs.items():
         registry.set(org_id, OrgRuntime(org_id=org_id, tenant_db=db))
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
-    monkeypatch.setattr(app_state, "roles", {}, raising=False)
+    # REQ-1337: the loaded roles registry is where a role id becomes the rights it carries. In a real
+    # process it comes from the schema.sql seed; these tests build their schemas by hand, so mirror
+    # the same capability lists that were written into the role rows above.
+    monkeypatch.setattr(
+        app_state,
+        "roles",
+        {rid: {"id": rid, "capabilities": caps} for rid, caps in _SEEDED_ROLE_CAPS.items()},
+        raising=False,
+    )
 
     evicted: list[str] = []
     real_invalidate = registry.invalidate

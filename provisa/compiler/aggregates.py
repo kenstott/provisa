@@ -41,11 +41,12 @@ from provisa.compiler.sql_types import (
 
 def _collect_requested_agg_funcs(
     field_node: FieldNode,
-) -> tuple[bool, dict[str, list[str]], bool]:
+) -> tuple[bool, dict[str, list[str]], list[str], bool]:
     """Parse the aggregate selection set to find which functions are requested.
 
-    Returns: (has_count, cols_by_func, has_nodes) where cols_by_func maps each aggregate
-    function name (sum/avg/stddev/variance/min/max) to its selected columns.
+    Returns: (has_count, cols_by_func, metric_names, has_nodes) where cols_by_func maps
+    each aggregate function name (sum/avg/stddev/variance/min/max) to its selected columns
+    and metric_names lists the metrics block's selected metrics (REQ-1319).
     """
     has_count = False
     cols_by_func: dict[str, list[str]] = {
@@ -56,10 +57,11 @@ def _collect_requested_agg_funcs(
         "min": [],
         "max": [],
     }
+    metric_names: list[str] = []
     has_nodes = False
 
-    def _result() -> tuple[bool, dict[str, list[str]], bool]:
-        return has_count, cols_by_func, has_nodes
+    def _result() -> tuple[bool, dict[str, list[str]], list[str], bool]:
+        return has_count, cols_by_func, metric_names, has_nodes
 
     if not field_node.selection_set:
         return _result()
@@ -79,6 +81,12 @@ def _collect_requested_agg_funcs(
                     has_count = True
                 elif agg_name in cols_by_func and agg_sel.selection_set:
                     cols_by_func[agg_name] = [
+                        s.name.value
+                        for s in agg_sel.selection_set.selections
+                        if isinstance(s, FieldNode)
+                    ]
+                elif agg_name == "metrics" and agg_sel.selection_set:  # REQ-1319
+                    metric_names = [
                         s.name.value
                         for s in agg_sel.selection_set.selections
                         if isinstance(s, FieldNode)
@@ -388,6 +396,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     cols_by_func: dict[str, list[str]] = {
         k: [] for k in ("sum", "avg", "stddev", "variance", "min", "max")
     }
+    metric_names: list[str] = []  # REQ-1319
 
     if field_node.selection_set:
         for row_sel in field_node.selection_set.selections:
@@ -407,6 +416,12 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
                             has_count = True
                         elif agg_name in cols_by_func and agg_sel.selection_set:
                             cols_by_func[agg_name] = [
+                                s.name.value
+                                for s in agg_sel.selection_set.selections
+                                if isinstance(s, FieldNode)
+                            ]
+                        elif agg_name == "metrics" and agg_sel.selection_set:  # REQ-1319
+                            metric_names = [
                                 s.name.value
                                 for s in agg_sel.selection_set.selections
                                 if isinstance(s, FieldNode)
@@ -453,6 +468,29 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
                     nested_in=f"aggregate.{func_name}",
                 )
             )
+
+    # REQ-1319: metrics under group-by — the inlined aggregate expression groups per key.
+    # A metric is a compound expression, so a per-function FILTER (WHERE ...) cannot wrap
+    # it: requesting both is a hard error, never a silently-unfiltered result.
+    if metric_names and filter_sql:
+        raise ValueError(
+            "metrics fields do not support the aggregate where/FILTER argument (REQ-1319)"
+        )
+    for m_name in metric_names:
+        m_expr = ctx.metric_exprs.get((table.table_id, m_name))
+        if m_expr is None:
+            raise ValueError(
+                f"metric {m_name!r} is not registered for table {table.table_name!r} (REQ-1319)"
+            )
+        select_parts.append(m_expr)
+        columns.append(
+            ColumnRef(
+                alias=None,
+                column=m_name,
+                field_name=m_name,
+                nested_in="aggregate.metrics",
+            )
+        )
 
     if not select_parts:
         select_parts = [_q(phys_by_cols[0])] if phys_by_cols else ["1"]
@@ -546,7 +584,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
     collector = ParamCollector()
     sources: set[str] = {table.source_id}
 
-    has_count, cols_by_func, has_nodes = _collect_requested_agg_funcs(field_node)
+    has_count, cols_by_func, metric_names, has_nodes = _collect_requested_agg_funcs(field_node)
 
     agg_key, func_aliases, col_aliases = _collect_agg_aliases(field_node)
 
@@ -579,6 +617,27 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
         )
         select_parts.extend(sp)
         columns.extend(cr)
+
+    # REQ-1319: metrics block — each selected metric inlines its precompiled physical
+    # aggregate expression as another select item, so a metric lowers into the same
+    # aggregate SQL as the sum/avg fields (one pipeline, one governance path).
+    _metrics_key = func_aliases.get("metrics", "metrics")
+    for m_name in metric_names:
+        m_expr = ctx.metric_exprs.get((table.table_id, m_name))
+        if m_expr is None:
+            raise ValueError(
+                f"metric {m_name!r} is not registered for table {table.table_name!r} (REQ-1319)"
+            )
+        m_field = col_aliases.get("metrics", {}).get(m_name, m_name)
+        select_parts.append(f"{m_expr} AS {_q(m_field)}" if m_field != m_name else m_expr)
+        columns.append(
+            ColumnRef(
+                alias=None,
+                column=m_name,
+                field_name=m_field,
+                nested_in=f"{agg_key}.{_metrics_key}",
+            )
+        )
 
     if not select_parts:
         select_parts.append("1")

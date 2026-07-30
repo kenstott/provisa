@@ -1,0 +1,7 @@
+{
+  "schemaExplorer": {
+    "selectRole": "Seleccione un rol para ver el esquema.",
+    "loadFailed": "Error al cargar el esquema: {{error}}",
+    "loading": "Cargando esquema..."
+  }
+}

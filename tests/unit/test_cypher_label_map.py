@@ -366,3 +366,114 @@ def test_from_schema_no_cross_domain_rel_when_target_already_owned():
     )
     # Both nodes owned — no traversal_only
     assert all(not nm.traversal_only for nm in lm.nodes.values())
+
+
+# ---------------------------------------------------------------------------
+# REQ-1320: star-schema modeling roles → Fact/Dimension labels
+# ---------------------------------------------------------------------------
+
+
+def _role_nm(table_id: int, modeling_role: str | None) -> NodeMapping:
+    return NodeMapping(
+        label="Orders",
+        type_name="Orders",
+        domain_label=None,
+        table_label="Orders",
+        table_id=table_id,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="orders",
+        properties={},
+        modeling_role=modeling_role,
+    )
+
+
+def test_role_label_fact():
+    assert _role_nm(1, "fact").role_label == "Fact"
+
+
+def test_role_label_dimension():
+    assert _role_nm(1, "dimension").role_label == "Dimension"
+
+
+def test_role_label_none_when_untagged():
+    assert _role_nm(1, None).role_label is None
+
+
+def test_from_schema_applies_modeling_roles_from_all_tables():
+    """all_tables carries modeling_role; every node with a matching table_id is tagged."""
+    ctx = _make_ctx(owned_table_id=1)
+    all_tables = [
+        {
+            "id": 1,
+            "table_name": "sa_orders",
+            "schema_name": "public",
+            "source_id": "pg",
+            "domain_id": "sales",
+            "modeling_role": "fact",
+        },
+    ]
+    lm = CypherLabelMap.from_schema(
+        ctx,
+        domain_access=["sales"],
+        all_tables=all_tables,
+        all_relationships=[],
+        all_column_types={},
+    )
+    nm = lm.nodes["Sales_Orders"]
+    assert nm.modeling_role == "fact"
+    assert nm.role_label == "Fact"
+
+
+def test_from_schema_without_all_tables_leaves_role_unset():
+    ctx = _make_ctx()
+    lm = CypherLabelMap.from_schema(ctx)
+    assert all(nm.modeling_role is None for nm in lm.nodes.values())
+
+
+def test_from_schema_tags_cross_domain_traversal_node_role():
+    """A cross-domain traversal_only node also gets its modeling_role from all_tables."""
+    ctx = _make_ctx(owned_table_id=1)
+    all_tables = [
+        {
+            "id": 1,
+            "table_name": "sa_orders",
+            "schema_name": "public",
+            "source_id": "pg",
+            "domain_id": "sales",
+            "modeling_role": "fact",
+        },
+        {
+            "id": 2,
+            "table_name": "l_shipments",
+            "schema_name": "logistics_schema",
+            "source_id": "pg2",
+            "domain_id": "logistics",
+            "modeling_role": "dimension",
+        },
+    ]
+    all_relationships = [
+        {
+            "source_table_id": 1,
+            "target_table_id": 2,
+            "source_column": "shipment_id",
+            "target_column": "id",
+            "alias": "SHIPPED_VIA",
+            "computed_cypher_alias": None,
+            "graphql_alias": "l_shipments",
+            "disable_cypher": False,
+        }
+    ]
+    all_column_types = {2: [ColumnMetadata("id", "integer", False)]}
+    lm = CypherLabelMap.from_schema(
+        ctx,
+        domain_access=["sales"],
+        all_tables=all_tables,
+        all_relationships=all_relationships,
+        all_column_types=all_column_types,
+    )
+    assert lm.nodes["Sales_Orders"].role_label == "Fact"
+    assert lm.nodes["Logistics_Shipments"].role_label == "Dimension"

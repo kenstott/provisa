@@ -55,6 +55,16 @@ const CACHE_KEY = "apollo-cache";
 const CACHE_VERSION_KEY = "apollo-cache-version";
 const SCHEMA_VERSION_KEY = "admin-schema-version";
 
+/** REQ-1326: discard the persisted admin snapshot. The cache is written to localStorage every 5s
+ * and restored at module load, so without this a new sign-in replays the PREVIOUS identity's roles,
+ * domains and tables — org-scoped data belonging to an org the new user may not even be a member
+ * of. Called when a session starts or ends, never mid-session. */
+export function clearPersistedAdminCache(): void {
+  localStorage.removeItem(CACHE_KEY);
+  localStorage.removeItem(SCHEMA_VERSION_KEY);
+  void client.clearStore();
+}
+
 if (typeof window !== "undefined") {
   const stored = localStorage.getItem(CACHE_KEY);
   if (stored && localStorage.getItem(CACHE_VERSION_KEY) === CACHE_VERSION) {

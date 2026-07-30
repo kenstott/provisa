@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { Metric, RegisteredTable, Relationship } from "../../types/admin";
+
 /** Add `table_col` aliases to any SELECT column whose bare name conflicts with another. */
 export function autoAliasConflicts(sql: string): string {
   // Isolate SELECT item list (between SELECT and the first FROM not inside parens)
@@ -61,4 +63,71 @@ export function autoAliasConflicts(sql: string): string {
 
 export function normalizeDomain(id: string): string {
   return id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
+}
+
+// ── REQ-1322: semantic metric helpers ────────────────────────────────────────
+
+/** Split registered tables into star-schema modeling groups for the schema browser. */
+export function groupModelingTables(tables: RegisteredTable[]): {
+  facts: RegisteredTable[];
+  dimensions: RegisteredTable[];
+} {
+  return {
+    facts: tables.filter((t) => t.modelingRole === "fact"),
+    dimensions: tables.filter((t) => t.modelingRole === "dimension"),
+  };
+}
+
+/**
+ * v1 valid-dimension set for a metric: all columns of tables whose name appears
+ * as a `table.column` reference in the metric expression, plus columns of tables
+ * one relationship hop away from those tables.
+ */
+export function metricDimensionTables(
+  metric: Metric,
+  tables: RegisteredTable[],
+  existingRels: Relationship[],
+): RegisteredTable[] {
+  const byName = new Map(tables.map((t) => [t.tableName, t]));
+  const referenced = new Set<string>();
+  for (const m of metric.expression.matchAll(/\b(\w+)\.(\w+)\b/g)) {
+    if (byName.has(m[1])) referenced.add(m[1]);
+  }
+  const oneHop = new Set<string>(referenced);
+  for (const rel of existingRels) {
+    if (referenced.has(rel.sourceTableName)) oneHop.add(rel.targetTableName);
+    if (referenced.has(rel.targetTableName)) oneHop.add(rel.sourceTableName);
+  }
+  return [...oneHop].filter((n) => byName.has(n)).map((n) => byName.get(n)!);
+}
+
+/**
+ * Semantic-only SQL for a metric (REQ-1321: the server compiler is the single
+ * generator — the UI never emits joins or aggregation for metrics).
+ * Dimensions are `table.column` refs.
+ */
+export function buildSemanticMetricSql(metricName: string, dims: string[]): string {
+  if (dims.length === 0) return `SELECT value FROM metrics.${metricName}`;
+  const dimList = dims.join(", ");
+  return `SELECT ${dimList}, value\nFROM metrics.${metricName}\nGROUP BY ${dimList}`;
+}
+
+/**
+ * REQ-1318: recognize a pure semantic metric query (single SELECT over
+ * `metrics.<name>`, no other FROM sources). Returns the metric name and the
+ * selected dimensions, or null when the SQL is not a pure metric query.
+ */
+export function parseSemanticMetricQuery(
+  sql: string,
+): { metric: string; dimensions: string[] } | null {
+  const trimmed = sql.trim().replace(/;+$/, "");
+  const m = trimmed.match(
+    /^SELECT\s+([\s\S]+?)\s+FROM\s+metrics\.(\w+)\s*(?:GROUP\s+BY\s+[\s\S]+)?$/i,
+  );
+  if (!m) return null;
+  const dimensions = m[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s && s.toLowerCase() !== "value");
+  return { metric: m[2], dimensions };
 }

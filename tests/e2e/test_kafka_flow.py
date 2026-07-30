@@ -96,7 +96,7 @@ class TestKafkaSourceRegistration:
         resp = await client.post(
             "/data/graphql",
             json={"query": f"{{ {table_name}(limit: 1) {{ __typename }} }}"},
-            headers={"X-Role": "platform_admin"},
+            headers={"X-Role": "org_admin"},
         )
         # May fail if SDL doesn't include this table, but should not 500
         assert resp.status_code in (200, 400)

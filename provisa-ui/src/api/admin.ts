@@ -626,7 +626,12 @@ export interface EngineRegistryEntry {
 }
 
 export interface FederationEngineState {
+  /** The engine the service is actually running (resolved at boot), not the persisted selection. */
   current: string;
+  /** The selection stored in the platform config — what a restart would use absent an env pin. */
+  persisted: string;
+  /** `$PROVISA_ENGINE` when the deployment pins the engine; the pin outranks `persisted`. */
+  env_pinned_engine: string | null;
   /** Current value of every config key any engine declares (connection + execution tuning). */
   config: Record<string, string | number | boolean | null>;
   engines: EngineRegistryEntry[];
@@ -1357,4 +1362,78 @@ export function streamNlResult(
     es.close();
   });
   return () => es.close();
+}
+
+// --- Apache Ossie semantic interchange (REQ-1316) ---
+
+/** The live Ossie export endpoint path (shown copyable in the Model area UI). */
+export const OSSIE_ENDPOINT_PATH = "/admin/ossie";
+
+export interface OssieColumnProposal {
+  name: string;
+  datatype: string | null;
+  description: string | null;
+  is_primary_key: boolean;
+}
+
+export interface OssieTableProposal {
+  name: string;
+  table_name: string;
+  schema_name: string;
+  source_id: string;
+  description: string | null;
+  columns: OssieColumnProposal[];
+  primary_key: string[];
+  unique_keys: string[][];
+  modeling_role?: string | null;
+  modeling_history?: string | null;
+}
+
+export interface OssieRelationshipProposal {
+  name: string;
+  from: string;
+  to: string;
+  from_columns: string[];
+  to_columns: string[];
+}
+
+export interface OssieMetricProposal {
+  name: string;
+  expression: string;
+  datatype: string | null;
+  description: string | null;
+  ai_context: string | null;
+}
+
+/** Registration PROPOSALS parsed from a posted Ossie document — nothing is
+ * registered server-side; the review screen applies checked items through the
+ * existing registration mutations (imports never bypass registration review). */
+export interface OssieImportProposals {
+  model_name: string;
+  tables: OssieTableProposal[];
+  relationships: OssieRelationshipProposal[];
+  metrics: OssieMetricProposal[];
+}
+
+/** GET the canonical live Ossie YAML document. */
+export async function fetchOssieYaml(): Promise<string> {
+  const resp = await fetch(`${API_BASE}${OSSIE_ENDPOINT_PATH}`);
+  if (!resp.ok) throw new Error(`Ossie export failed: ${resp.status}`);
+  return resp.text();
+}
+
+/** POST a raw Ossie YAML/JSON document; returns registration proposals. */
+export async function importOssie(body: string): Promise<OssieImportProposals> {
+  const resp = await fetch(`${API_BASE}${OSSIE_ENDPOINT_PATH}/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/yaml" },
+    body,
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(
+      typeof data.detail === "string" ? data.detail : `Ossie import failed: ${resp.status}`,
+    );
+  }
+  return resp.json();
 }

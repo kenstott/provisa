@@ -32,6 +32,7 @@ const AdminPage = lazy(() => import("./pages/AdminPage").then((m) => ({ default:
 const CommandsPage = lazy(() => import("./pages/CommandsPage").then((m) => ({ default: m.CommandsPage })));
 const LineagePage = lazy(() => import("./pages/LineagePage").then((m) => ({ default: m.LineagePage }))); // REQ-1160/1161
 const ViewsPage = lazy(() => import("./pages/ViewsPage").then((m) => ({ default: m.ViewsPage })));
+const MetricsPage = lazy(() => import("./pages/MetricsPage").then((m) => ({ default: m.MetricsPage })));
 const RequestsPage = lazy(() => import("./pages/RequestsPage").then((m) => ({ default: m.RequestsPage })));
 const DocsPage = lazy(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
 const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
@@ -340,6 +341,14 @@ function App() {
                     }
                   />
                   <Route
+                    path="/metrics"
+                    element={
+                      <CapabilityGate capability="table_registration" fallback={<NotAuthorized />}>
+                        <MetricsPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
                     path="/commands"
                     element={
                       <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
@@ -368,27 +377,34 @@ function App() {
                   {/* Docs reader — ungated, available to every role (bundled + live fallback) */}
                   <Route path="/docs" element={<DocsPage />} />
                   <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
-                  {[
-                    "/admin/overview",
-                    "/admin/domains",
-                    "/admin/cache",
-                    "/admin/scheduled-tasks",
-                    "/admin/federation-engine",
-                    "/admin/encryption",
-                    "/admin/auth",
-                    "/admin/system-health",
-                    "/admin/observability",
-                    "/admin/mcp-server",
-                    "/admin/local-users",
-                    "/admin/orgs",
-                    "/admin/ai-models",
-                    "/admin/security",
-                  ].map((path) => (
+                  {/* REQ-1337: each admin route names the RIGHT it needs, never a role name. The
+                      deployment-wide settings surfaces (federation engine, cache storage,
+                      encryption/auth providers) require `platform_settings`; administering other
+                      orgs requires `cross_org`. The seed decides which role carries each, so a
+                      multitenant org_admin cannot reach these even by typing the URL. */}
+                  {(
+                    [
+                      ["/admin/overview", "admin"],
+                      ["/admin/domains", "admin"],
+                      ["/admin/cache", "platform_settings"],
+                      ["/admin/scheduled-tasks", "admin"],
+                      ["/admin/federation-engine", "platform_settings"],
+                      ["/admin/encryption", "platform_settings"],
+                      ["/admin/auth", "platform_settings"],
+                      ["/admin/system-health", "admin"],
+                      ["/admin/observability", "admin"],
+                      ["/admin/mcp-server", "admin"],
+                      ["/admin/local-users", "admin"],
+                      ["/admin/orgs", "cross_org"],
+                      ["/admin/ai-models", "admin"],
+                      ["/admin/security", "platform_settings"],
+                    ] as const
+                  ).map(([path, capability]) => (
                     <Route
                       key={path}
                       path={path}
                       element={
-                        <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                        <CapabilityGate capability={capability} fallback={<NotAuthorized />}>
                           <AdminPage />
                         </CapabilityGate>
                       }

@@ -1,0 +1,20 @@
+{
+  "graphContextMenus": {
+    "color": "Color",
+    "colorSwatchLabel": "Establecer color a {{color}}",
+    "size": "Tamaño",
+    "labelBy": "Etiquetar por",
+    "labelByDefault": "predeterminado",
+    "sizeBy": "Dimensionar por",
+    "sizeByFixed": "tamaño fijo",
+    "sizeMultiplier": "Multiplicador de tamaño",
+    "lineStyle": "Estilo de línea",
+    "lineStyleSolid": "Sólida",
+    "lineStyleDashed": "Discontinua",
+    "lineStyleDotted": "Punteada",
+    "lineWidth": "Ancho de línea",
+    "filterParametersTitle": "Parámetros para {{label}}",
+    "cancel": "Cancelar",
+    "run": "Ejecutar"
+  }
+}

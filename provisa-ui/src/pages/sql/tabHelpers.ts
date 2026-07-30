@@ -27,7 +27,8 @@ export function emptyTab(id: string, title: string, sqlText = "", nlText = ""): 
 
 /** Load tab metadata + per-tab sql/nl from localStorage. Results hydrate later from IndexedDB. */
 export function loadTabsMeta(): { tabs: SqlTab[]; activeId: string } {
-  let meta: { tabs: { id: string; title: string }[]; activeId: string } | null = null;
+  let meta: { tabs: { id: string; title: string; detached?: boolean }[]; activeId: string } | null =
+    null;
   try {
     meta = JSON.parse(localStorage.getItem(TABS_KEY) ?? "null");
   } catch {
@@ -40,14 +41,15 @@ export function loadTabsMeta(): { tabs: SqlTab[]; activeId: string } {
     const legacyNl = localStorage.getItem(NL_PROMPT_KEY) ?? "";
     return { tabs: [emptyTab(id, "Query 1", legacySql, legacyNl)], activeId: id };
   }
-  const tabs = meta.tabs.map((m) =>
-    emptyTab(
+  const tabs = meta.tabs.map((m) => ({
+    ...emptyTab(
       m.id,
       m.title,
       localStorage.getItem(tabSqlKey(m.id)) ?? "",
       localStorage.getItem(tabNlKey(m.id)) ?? "",
     ),
-  );
+    detached: m.detached === true,
+  }));
   const activeId = tabs.some((t) => t.id === meta!.activeId) ? meta.activeId : tabs[0].id;
   return { tabs, activeId };
 }
@@ -56,7 +58,10 @@ export function persistTabsMeta(tabs: SqlTab[], activeId: string) {
   try {
     localStorage.setItem(
       TABS_KEY,
-      JSON.stringify({ tabs: tabs.map((t) => ({ id: t.id, title: t.title })), activeId }),
+      JSON.stringify({
+        tabs: tabs.map((t) => ({ id: t.id, title: t.title, detached: t.detached === true })),
+        activeId,
+      }),
     );
     for (const t of tabs) {
       localStorage.setItem(tabSqlKey(t.id), t.sqlText);

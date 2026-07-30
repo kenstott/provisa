@@ -45,7 +45,7 @@ from buenavista.postgres import (
 )
 
 from provisa.executor.result import ResultStream
-from provisa.security.rights import is_platform_admin as _is_platform_admin
+from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
 
@@ -78,11 +78,14 @@ async def _resolve_and_build_org(state_, identity) -> str | None:  # REQ-1266
     from provisa.api.app import ensure_org_runtime
     from provisa.api.org_resolve import resolve_session_org
 
-    is_platform_admin = _is_platform_admin(getattr(identity, "roles", []) or [])
+    # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
+    caps = capabilities_for_claims(
+        getattr(identity, "roles", []) or [], getattr(state_, "roles", {})
+    )
     org_id = await resolve_session_org(
         state_,
         user_id=getattr(identity, "user_id", None),
-        is_platform_admin=is_platform_admin,
+        can_act_any_org=can_act_cross_org(caps),
         requested_org=getattr(identity, "active_org_id", None),
     )
     if org_id is not None:

@@ -34,7 +34,7 @@ from typing import Any
 from provisa.api.mcp import tools
 from provisa.api.org_resolve import OrgResolutionError
 from provisa.api.org_runtime import reset_current_org, set_current_org
-from provisa.security.rights import is_platform_admin as _is_platform_admin
+from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
 
@@ -85,11 +85,14 @@ async def _resolve_token_org_async(token: str, state: Any) -> str | None:
         raise PermissionError("MCP OAuth requested but no auth config is loaded")
     provider = build_auth_provider(auth_config)
     identity = await provider.validate_token(token)
-    is_platform_admin = _is_platform_admin(getattr(identity, "roles", []) or [])
+    # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
+    caps = capabilities_for_claims(
+        getattr(identity, "roles", []) or [], getattr(state, "roles", {})
+    )
     return await resolve_session_org(
         state,
         user_id=getattr(identity, "user_id", None),
-        is_platform_admin=is_platform_admin,
+        can_act_any_org=can_act_cross_org(caps),
         requested_org=getattr(identity, "active_org_id", None),
     )
 
@@ -210,6 +213,35 @@ def build_mcp_server(state: Any):
         Use this when the flat table list is too large to scan by hand.
         """
         return await tools.search_catalog(state, _role(role), query, k=k)
+
+    @mcp.tool()
+    async def list_metrics(role: str | None = None) -> list[dict]:
+        """List governed metric definitions — agents select meanings by name instead of
+        composing aggregation SQL (REQ-1319).
+
+        Each entry carries name, description, ai_context (definition text written for AI
+        consumers), datatype, and from_fact. Follow up with query_metric to evaluate one
+        at a chosen grain.
+        """
+        return tools.list_metrics(state, _role(role))
+
+    @mcp.tool()
+    async def query_metric(
+        metric: str,
+        dimensions: list[str] | None = None,
+        filters: str | None = None,
+        role: str | None = None,
+    ) -> list[dict]:
+        """Query a governed metric grouped by caller-chosen dimensions (REQ-1319).
+
+        Selects the metric's governed meaning by name from the reserved ``metrics``
+        schema instead of composing aggregation SQL. Empty dimensions returns a single
+        grand-total row. ``filters`` is a raw boolean SQL condition; the governed
+        pipeline validates it.
+        """
+        return await tools.query_metric(
+            state, _role(role), metric, dimensions or [], filters=filters
+        )
 
     return mcp
 
