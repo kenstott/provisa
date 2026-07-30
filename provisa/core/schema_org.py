@@ -625,6 +625,17 @@ file_source_mtimes = Table(
     Column("synced_at", Float, nullable=False),
 )
 
+# REQ-1349: per-org overrides layered over the deployment config file. One row per top-level
+# config key the org owns (ai_models, vector_models, nl); see provisa/core/org_settings.py.
+org_settings = Table(
+    "org_settings",
+    metadata,
+    Column("key", Text, primary_key=True),
+    Column("value", JSON, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_by", Text),
+)
+
 user_role_assignments = Table(
     "user_role_assignments",
     metadata,

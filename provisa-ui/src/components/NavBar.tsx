@@ -84,26 +84,30 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       // REQ-1337: administering orgs other than the one being acted in is `cross_org`.
       { to: "/admin/orgs", labelKey: "navBar.itemOrgs", capability: "cross_org" },
-      { to: "/admin/overview", labelKey: "navBar.itemOverview", capability: "admin" },
-      { to: "/admin/domains", labelKey: "navBar.itemDomains", capability: "admin" },
+      // REQ-1349: the org-scoped rights. `observability` is read-only performance and health;
+      // `org_settings` covers the surfaces whose subject is the acting org itself. org_admin holds
+      // both in either tenancy mode, so an org administrator gets a useful Admin tab without any
+      // reach into deployment-wide settings or into another org.
+      { to: "/admin/overview", labelKey: "navBar.itemOverview", capability: "observability" },
+      { to: "/admin/domains", labelKey: "navBar.itemDomains", capability: "org_settings" },
       // REQ-1337: cache storage, the federation engine and the encryption/auth providers are
       // DEPLOYMENT-WIDE settings, so each is gated on the `platform_settings` RIGHT rather than on a
       // role name. The seed grants it to platform_admin always and to org_admin only in a
       // single-tenant deployment (apply_tenancy_role_grants), so a multitenant org_admin never sees
       // these entries.
       { to: "/admin/cache", labelKey: "navBar.itemCache", capability: "platform_settings" },
-      { to: "/admin/scheduled-tasks", labelKey: "navBar.itemScheduler", capability: "admin" },
+      { to: "/admin/scheduled-tasks", labelKey: "navBar.itemScheduler", capability: "org_settings" },
       {
         to: "/admin/federation-engine",
         labelKey: "navBar.itemFederation",
         capability: "platform_settings",
       },
       { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
-      { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "admin" },
-      { to: "/admin/system-health", labelKey: "navBar.itemHealth", capability: "admin" },
-      { to: "/admin/observability", labelKey: "navBar.itemObservability", capability: "admin" },
+      { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "org_settings" },
+      { to: "/admin/system-health", labelKey: "navBar.itemHealth", capability: "observability" },
+      { to: "/admin/observability", labelKey: "navBar.itemObservability", capability: "observability" },
       { to: "/admin/mcp-server", labelKey: "navBar.itemMcpServer", capability: "admin" },
-      { to: "/admin/requests", labelKey: "navBar.itemRequests", capability: "admin" },
+      { to: "/admin/requests", labelKey: "navBar.itemRequests", capability: "org_settings" },
     ],
   },
 ];

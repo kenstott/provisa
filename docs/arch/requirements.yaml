@@ -40671,3 +40671,91 @@
   - tests/conftest.py
   related_reqs:
   - REQ-1043
+- id: REQ-1348
+  status: complete
+  since: 2026-07
+  group: 1. Access Governance & Security
+  category: Authentication
+  priority: MUST
+  type: behavioral
+  description: >-
+    Interactive sign-in runs only on the control-plane host (`cloud.<base>`). An org
+    subdomain (`{org}.<base>`, REQ-1276) must not attempt a local sign-in: identity
+    providers authorize exact hostnames only (Firebase Authentication rejects wildcard
+    authorized domains with INVALID_AUTHORIZED_DOMAIN), and registering each org's
+    hostname with the IdP would make org creation write to an external control plane,
+    which REQ-1054 zero-provisioning forbids. Instead an org subdomain acquires the
+    bearer from the control plane through a same-site hidden-iframe postMessage relay
+    served at /auth-relay.html on the control-plane origin, and falls back to a redirect
+    handoff to `${controlPlane}/login?next=<this url>` when the control plane has no
+    session. Both the relay's requester origin and the login page's `next` target must
+    be validated as a single-label host under the same base domain, same scheme and
+    same port; replies are addressed to that exact origin, never "*". The borrowed token
+    is re-acquired periodically because the rotating Firebase SDK runs on the
+    control-plane origin only.
+  use_case: >-
+    Org subdomains cannot perform independent authentication without violating IdP
+    hostname validation constraints and zero-provisioning requirements; a secure relay
+    mechanism allows token acquisition through the control plane while maintaining
+    strict origin validation.
+  code:
+  - provisa-ui/src/lib/authHost.ts
+  - provisa-ui/src/lib/crossSubdomainAuth.ts
+  - provisa-ui/src/authRelay.ts
+  - provisa-ui/auth-relay.html
+  - provisa-ui/src/main.tsx
+  - provisa-ui/src/pages/LoginPage.tsx
+  - provisa-ui/vite.config.ts
+  tests:
+  - provisa-ui/src/__tests__/crossSubdomainAuth.test.ts
+  scenario: |
+    Given an org subdomain requests authentication without an existing session
+    When the subdomain initiates sign-in
+    Then it attempts a postMessage relay to the control-plane /auth-relay.html
+    And if the relay acquires a token from the control plane session, it returns the token to the exact subdomain origin
+    And if the control plane has no session, the subdomain falls back to a redirect to ${controlPlane}/login?next=<org subdomain url>
+    And both relay requester and login redirect target are validated as single-label hosts under the same base domain, scheme, and port
+    And replies are never sent to wildcard origins
+  related_reqs:
+  - REQ-1276
+  - REQ-1054
+- id: REQ-1349
+  status: complete
+  since: 2026-07
+  group: 1. Access Governance & Security
+  category: Administration & Roles
+  priority: MUST
+  type: behavioral
+  description: >-
+    Org-scoped admin rights define two new capabilities: `org_settings` (surfaces whose
+    subject is the org being acted in—AI model/NL provider overrides, domains, scheduled
+    tasks, pending creation requests) and `observability` (READ-ONLY performance and
+    health: admin overview, system health, traces). org_admin holds both in both tenancy
+    modes. Neither capability implies platform bypass (admin/superadmin), deployment-wide
+    settings (platform_settings), or acting in another org (cross_org). Grants are
+    re-asserted idempotently in apply_tenancy_role_grants because schema.sql's ON CONFLICT
+    (id) DO NOTHING cannot update a pre-existing role row (V1 has no migrations).
+  use_case: >-
+    Org admins need independent control over their org's configuration (AI models, NL
+    providers, domains, tasks) and observability without access to platform-level or
+    cross-org settings. Request-time resolution of org config (resolve_org_config) allows
+    configuration changes to take effect immediately on the next query without restart.
+  code:
+  - provisa/security/rights.py
+  - provisa/core/db.py
+  - provisa/core/schema.sql
+  - provisa/core/schema_org.py
+  - provisa/core/org_settings.py
+  - provisa/api/admin_router.py
+  tests:
+  - tests/unit/test_org_scoped_admin_rights.py
+  - tests/integration/test_tenancy_role_grants.py
+  - tests/integration/test_org_settings_overrides.py
+  - provisa-ui/src/__tests__/adminNavCapabilities.test.ts
+  scenario: |
+    Given an org_admin in an org without platform_settings or cross_org capabilities
+    When the org_admin modifies org AI model overrides via PUT /admin/ai-models
+    Then the org's org_settings table is updated with the delta
+    And subsequent queries in that org resolve the overridden AI model at request time
+    And the org_admin cannot access platform-wide deployment config or another org's settings
+    And traces are scoped to the acting org only (observability capability)

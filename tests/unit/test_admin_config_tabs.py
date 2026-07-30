@@ -38,6 +38,40 @@ def cfg_env(tmp_path: Path):
 
 
 @pytest.fixture
+def org_overrides(monkeypatch):
+    """REQ-1349: the acting org's override rows, held in memory instead of its schema.
+
+    The AI-models surface writes the ORG's storage, not the deployment config file. Standing in for
+    that storage keeps this module a unit test of the router while still asserting where the write
+    lands — ``tests/integration/test_org_settings_overrides.py`` drives the same functions against
+    a real org schema.
+    """
+    import types
+
+    import provisa.core.org_settings as org_settings_mod
+
+    store: dict = {}
+
+    async def _read(_db):
+        return store
+
+    async def _write(_db, updates, *, updated_by):
+        for key, value in updates.items():
+            if value is None:
+                store.pop(key, None)
+            else:
+                store[key] = value
+        return list(updates)
+
+    monkeypatch.setattr(org_settings_mod, "read_org_overrides", _read)
+    monkeypatch.setattr(org_settings_mod, "write_org_overrides", _write)
+    monkeypatch.setattr(
+        "provisa.api.app.state", types.SimpleNamespace(tenant_db=object()), raising=False
+    )
+    return store
+
+
+@pytest.fixture
 def client(cfg_env):
     app = FastAPI()
     app.include_router(security_router)
@@ -72,13 +106,22 @@ class TestSecurityPosture:
 
 
 class TestAiModels:
-    def test_get_returns_field_defaults(self, client):
+    """REQ-1349: this surface is ORG-scoped — it reads the deployment config as the base and
+    writes the acting org's overrides, never the deployment config file."""
+
+    def test_get_returns_field_defaults(self, client, org_overrides):
         body = client.get("/admin/ai-models").json()
         assert body["ai_models"]["sql_generation"]  # defaulted from AIModelsConfig
         assert body["vector_models"] == []
         assert body["nl"]["rate_limit"] is None
 
-    def test_put_persists_assignment_vector_and_rate_limit(self, client):
+    def test_get_shows_the_orgs_override_over_the_deployment_value(self, client, org_overrides):
+        org_overrides["ai_models"] = {"sql_generation": "claude-opus-4-8"}
+        assert client.get("/admin/ai-models").json()["ai_models"]["sql_generation"] == (
+            "claude-opus-4-8"
+        )
+
+    def test_put_persists_assignment_vector_and_rate_limit(self, client, cfg_env, org_overrides):
         r = client.put(
             "/admin/ai-models",
             json={
@@ -90,17 +133,20 @@ class TestAiModels:
             },
         )
         assert r.status_code == 200
-        cfg = read_config()
-        assert cfg["ai_models"]["sql_generation"] == "claude-opus-4-8"
-        assert cfg["vector_models"][0]["provider"] == "openai"
-        assert cfg["nl"]["rate_limit"] == 60
+        assert org_overrides["ai_models"]["sql_generation"] == "claude-opus-4-8"
+        assert org_overrides["vector_models"][0]["provider"] == "openai"
+        assert org_overrides["nl"]["rate_limit"] == 60
+        # The deployment config is the BASE for every org and is not the org's to edit.
+        assert yaml.safe_load(cfg_env.read_text()) == {"sources": []}
 
-    def test_blank_assignment_resets_to_default(self, client):
+    def test_blank_assignment_drops_the_org_override(self, client, org_overrides):
+        # Reverting means "use the deployment's choice", so the override goes away entirely rather
+        # than being rewritten with a value copied out of the router.
         client.put("/admin/ai-models", json={"ai_models": {"sql_generation": "x"}})
         client.put("/admin/ai-models", json={"ai_models": {"sql_generation": ""}})
-        assert "sql_generation" not in read_config().get("ai_models", {})
+        assert "ai_models" not in org_overrides
 
-    def test_invalid_vector_model_rejected(self, client):
+    def test_invalid_vector_model_rejected(self, client, org_overrides):
         r = client.put("/admin/ai-models", json={"vector_models": [{"id": "x"}]})
         assert r.status_code == 400
 
@@ -300,12 +346,18 @@ class TestEngineSpoolFields:
         } <= keys
 
 
-def test_config_files_are_valid_yaml_after_writes(client, cfg_env):
-    """Every write path leaves parseable YAML."""
+def test_config_files_are_valid_yaml_after_writes(client, cfg_env, org_overrides):
+    """Every write path leaves parseable YAML.
+
+    The AI-models write is included deliberately: since REQ-1349 it lands in the org's storage, so
+    what this asserts of it is that it leaves the deployment file alone.
+    """
     client.put("/admin/security", json={"mode": "high"})
     client.put("/admin/ai-models", json={"nl": {"rate_limit": 30}})
     client.put("/admin/cache-storage", json={"materialized_views": {"default_ttl": 120}})
-    yaml.safe_load(cfg_env.read_text())
+    parsed = yaml.safe_load(cfg_env.read_text())
+    assert "nl" not in parsed
+    assert org_overrides["nl"] == {"rate_limit": 30}
 
 
 def teardown_module(_mod):

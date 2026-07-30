@@ -366,10 +366,11 @@ function App() {
                     }
                   />
 
+                  {/* REQ-1349: approvals are the acting org's own pending creation requests. */}
                   <Route
                     path="/admin/requests"
                     element={
-                      <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                      <CapabilityGate capability="org_settings" fallback={<NotAuthorized />}>
                         <RequestsPage />
                       </CapabilityGate>
                     }
@@ -381,22 +382,25 @@ function App() {
                       deployment-wide settings surfaces (federation engine, cache storage,
                       encryption/auth providers) require `platform_settings`; administering other
                       orgs requires `cross_org`. The seed decides which role carries each, so a
-                      multitenant org_admin cannot reach these even by typing the URL. */}
+                      multitenant org_admin cannot reach these even by typing the URL.
+                      REQ-1349 adds the two org-scoped rights: `org_settings` for surfaces whose
+                      subject is the acting org (its AI/NL provider, domains, scheduled tasks,
+                      approvals) and `observability` for read-only performance and health. */}
                   {(
                     [
-                      ["/admin/overview", "admin"],
-                      ["/admin/domains", "admin"],
+                      ["/admin/overview", "observability"],
+                      ["/admin/domains", "org_settings"],
                       ["/admin/cache", "platform_settings"],
-                      ["/admin/scheduled-tasks", "admin"],
+                      ["/admin/scheduled-tasks", "org_settings"],
                       ["/admin/federation-engine", "platform_settings"],
                       ["/admin/encryption", "platform_settings"],
                       ["/admin/auth", "platform_settings"],
-                      ["/admin/system-health", "admin"],
-                      ["/admin/observability", "admin"],
+                      ["/admin/system-health", "observability"],
+                      ["/admin/observability", "observability"],
                       ["/admin/mcp-server", "admin"],
                       ["/admin/local-users", "admin"],
                       ["/admin/orgs", "cross_org"],
-                      ["/admin/ai-models", "admin"],
+                      ["/admin/ai-models", "org_settings"],
                       ["/admin/security", "platform_settings"],
                     ] as const
                   ).map(([path, capability]) => (

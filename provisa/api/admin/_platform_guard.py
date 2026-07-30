@@ -8,9 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Authorization gate for the deployment-wide settings surface (REQ-1337)."""
+"""Authorization gates for the admin settings surfaces (REQ-1337, REQ-1349).
 
-# Requirements: REQ-1297, REQ-1337
+Three rights, three scopes: ``platform_settings`` is the deployment, ``org_settings`` is the org
+being acted in, ``observability`` is read-only performance and health. Each gate names its right —
+no gate here ever tests a role name.
+"""
+
+# Requirements: REQ-1297, REQ-1337, REQ-1349
 
 from __future__ import annotations
 
@@ -42,3 +47,33 @@ def require_platform_settings(request: Request) -> None:  # REQ-1337
     if has_platform_bypass(caps) or Capability.PLATFORM_SETTINGS.value in caps:
         return
     raise HTTPException(status_code=403, detail="platform_settings capability required")
+
+
+def _require_right(request: Request, right: str) -> None:
+    """Shared body of the org-scoped gates below: platform bypass, or the named right."""
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return  # dev mode — no auth configured
+    caps = _resolved_capabilities(identity, state)
+    if has_platform_bypass(caps) or right in caps:
+        return
+    raise HTTPException(status_code=403, detail=f"{right} capability required")
+
+
+def require_org_settings(request: Request) -> None:  # REQ-1349
+    """Raise 403 unless the caller holds ``org_settings``.
+
+    Gates surfaces whose subject is the org bound to the request — its AI model / NL provider
+    overrides, domains, scheduled tasks, creation requests. The org being acted in is decided by
+    the request's ``active_org_id`` (the org-runtime router), so this gate only answers "may you
+    change org settings at all"; which org it lands in is never this gate's choice.
+    """
+    _require_right(request, Capability.ORG_SETTINGS.value)
+
+
+def require_observability(request: Request) -> None:  # REQ-1349
+    """Raise 403 unless the caller holds ``observability`` (read-only performance and health)."""
+    _require_right(request, Capability.OBSERVABILITY.value)

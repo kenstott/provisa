@@ -71,6 +71,16 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # administer any org's invites and lifecycle. Held by platform_admin only; org_admin never holds
     # it in either tenancy mode, because org authority is confined to the org being acted in.
     CROSS_ORG = "cross_org"
+    # REQ-1349: read/modify settings scoped to the ORG being acted in — the org's AI model / NL
+    # provider overrides, its domains, its scheduled tasks, its pending creation requests. Never
+    # deployment-wide (that is PLATFORM_SETTINGS) and never another org (that is CROSS_ORG).
+    # org_admin holds it in both tenancy modes; it is the right that makes the Admin tab useful to
+    # an org administrator without handing them the platform.
+    ORG_SETTINGS = "org_settings"
+    # REQ-1349: READ-ONLY performance and health surfaces — overview stats, system health, traces.
+    # Held by org_admin so a tenant operator can see how their org is performing; the data behind
+    # these surfaces is scoped to the acting org unless the principal also holds CROSS_ORG.
+    OBSERVABILITY = "observability"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
 

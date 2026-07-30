@@ -145,7 +145,7 @@ def planes(monkeypatch):
         app_state, "auth_config", {"provider": "basic", "bootstrap_superadmin": True}, raising=False
     )
 
-    async def _fake_build(org_id, *, include_demo=False):  # noqa: ARG001
+    async def _fake_build(org_id, *, include_demo=False, isolated_engine=False):  # noqa: ARG001
         return types.SimpleNamespace(tenant_db=tenant_db)
 
     async def _noop_provision(*_args, **_kwargs):

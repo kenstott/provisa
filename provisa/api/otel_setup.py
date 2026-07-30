@@ -59,9 +59,16 @@ class SpanBuffer:  # REQ-302, REQ-303
         self._lock = Lock()
 
     def push(self, span: Any) -> None:
+        from provisa.api.org_runtime import current_org
+
         ctx = span.get_span_context()
         entry = {
             "ts": time.time(),
+            # REQ-1349: the org whose request produced this span, stamped so the trace view can be
+            # scoped. A span ended outside a request (startup, background refresh) belongs to no
+            # org and records None — it is therefore invisible to an org-scoped reader, which is
+            # the intended reading: it is not that org's activity.
+            "org": current_org.get(),
             "trace_id": format(ctx.trace_id, "032x") if ctx else "",
             "span_id": format(ctx.span_id, "016x") if ctx else "",
             "name": span.name,
@@ -74,9 +81,13 @@ class SpanBuffer:  # REQ-302, REQ-303
         with self._lock:
             self._buf.appendleft(entry)
 
-    def recent(self, limit: int = 50) -> list[dict[str, Any]]:
+    def recent(self, limit: int = 50, *, org_id: str | None = None) -> list[dict[str, Any]]:
+        """The most recent spans; ``org_id`` restricts them to one org's requests (REQ-1349)."""
         with self._lock:
-            return list(self._buf)[:limit]
+            entries = list(self._buf)
+        if org_id is not None:
+            entries = [e for e in entries if e.get("org") == org_id]
+        return entries[:limit]
 
 
 # Module-level singleton — imported by settings_router

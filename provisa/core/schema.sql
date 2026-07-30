@@ -556,6 +556,18 @@ CREATE TABLE IF NOT EXISTS file_source_mtimes (
     synced_at    DOUBLE PRECISION NOT NULL
 );
 
+-- REQ-1349: per-org settings overrides. The deployment config file is the BASE for every setting;
+-- a row here narrows one top-level config key for the org whose schema this table lives in. Only
+-- keys an org administrator may own are ever written (see _ORG_OVERRIDABLE_KEYS in
+-- provisa/core/org_settings.py) — deployment-wide concerns (federation engine, cache storage,
+-- encryption, auth) have no representation here and stay gated on platform_settings.
+CREATE TABLE IF NOT EXISTS org_settings (
+    key         TEXT PRIMARY KEY,
+    value       JSONB NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by  TEXT
+);
+
 -- Orgs, users, memberships, invites are the PLATFORM control plane's global
 -- registry (see provisa/core/schema_admin.py). They are NOT created per-org
 -- here; they live in a separate control-plane database (init_registry_schema).
@@ -622,7 +634,7 @@ VALUES (
     '["source_registration","table_registration","create_relationship","create_view",
       "approve_view","approve_relationship","access_config","user_management",
       "masking_config","column_grant","view_governance","query_development",
-      "full_results","write","usage"]'::jsonb,
+      "full_results","write","usage","org_settings","observability"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )

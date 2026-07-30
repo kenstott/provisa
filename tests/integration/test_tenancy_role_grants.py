@@ -152,6 +152,52 @@ async def test_the_grant_is_idempotent(tenant_db, multitenancy):
     assert await _caps(tenant_db) == once
 
 
+@pytest.mark.parametrize("multitenancy", [True, False])
+async def test_org_scoped_rights_are_held_in_either_mode(tenant_db, multitenancy):
+    # REQ-1349: org_settings and observability name surfaces that are always the acting org's own —
+    # its AI/NL provider, domains, scheduled tasks, approvals, and its read-only performance views.
+    # Nothing about them is deployment-wide, so no tenancy condition applies to either.
+    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=multitenancy)
+
+    caps = await _caps(tenant_db)
+    assert {"org_settings", "observability"} <= caps["org_admin"]
+    # The org-scoped pair is not the platform wildcard; holding it must not admit the caller to the
+    # deployment surfaces that platform bypass opens.
+    assert not ({"admin", "superadmin"} & caps["org_admin"])
+
+
+@pytest.mark.parametrize("multitenancy", [True, False])
+async def test_org_scoped_rights_are_reasserted_on_a_pre_existing_row(tenant_db, multitenancy):
+    # REQ-1349: schema.sql seeds roles with ON CONFLICT (id) DO NOTHING, so a deployment whose
+    # org_admin row predates the rights would never receive them from the seed. This function is
+    # the seam where an existing deployment picks them up, on the next init_schema.
+    async with tenant_db.acquire() as conn:
+        await conn.execute_core(
+            text(
+                "UPDATE roles SET capabilities = COALESCE("
+                "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
+                "   WHERE v NOT IN ('\"org_settings\"'::jsonb, '\"observability\"'::jsonb)),"
+                "  '[]'::jsonb) WHERE id = 'org_admin'"
+            )
+        )
+    assert not ({"org_settings", "observability"} & (await _caps(tenant_db))["org_admin"])
+
+    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=multitenancy)
+
+    assert {"org_settings", "observability"} <= (await _caps(tenant_db))["org_admin"]
+
+
+@pytest.mark.parametrize("multitenancy", [True, False])
+async def test_no_other_role_gains_the_org_scoped_rights(tenant_db, multitenancy):
+    # REQ-1349: the grant is scoped to org_admin. A developer or analyst reads data; neither
+    # changes the org's settings nor reads its performance surfaces.
+    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=multitenancy)
+
+    caps = await _caps(tenant_db)
+    for role_id in ("developer", "analyst"):
+        assert not ({"org_settings", "observability"} & caps[role_id]), role_id
+
+
 async def test_no_other_role_gains_platform_settings(tenant_db):
     # The single-tenant grant is scoped to org_admin: developer and analyst never reach the
     # deployment-wide settings surface in either mode.
