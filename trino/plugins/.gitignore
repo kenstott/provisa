@@ -1,5 +1,8 @@
-trino-sharepoint/
-trino-splunk/
-trino-file/
-trino-calcite/
+# Plugin jar dirs are release artifacts. Listed WITHOUT a trailing slash so both the extracted
+# directory (primary checkout) and the symlink a worktree test run stages (tests/conftest.py
+# _stage_trino_plugins) are ignored — a trailing-slash rule matches only real directories.
+trino-sharepoint
+trino-splunk
+trino-file
+trino-calcite
 *.zip
