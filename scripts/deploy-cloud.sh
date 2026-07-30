@@ -237,21 +237,37 @@ verify() {
   return 1
 }
 
+# The document request above is answered by the UI container, which serves static assets the
+# moment it restarts — it says nothing about the API, whose lifespan re-seeds the bootstrap org
+# and rebuilds the org_registry view. Checking the demo data set on that signal alone read the
+# database mid-startup and failed on a view the API had not created yet. /health is served by the
+# API itself and only answers once the lifespan has completed, so it is the readiness gate.
+verify_api() {
+  echo "== verifying API readiness"
+  for i in $(seq 1 90); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE/health") || code="unreachable"
+    [ "$code" = "200" ] && { echo "$SITE/health -> 200 after $((i * 2))s"; return 0; }
+    sleep 2
+  done
+  echo "$SITE/health -> $code (never reached 200)" >&2
+  return 1
+}
+
 case "$TARGET" in
   ui)
     build_ui; push_ui; verify ;;
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    build_api; push_api; reset_state; restart; verify; verify_demo ;;
+    build_api; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
     build_cfg; push_cfg; restart; verify ;;
   all)
-    build_ui; build_api; build_cfg; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_demo ;;
+    build_ui; build_api; build_cfg; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
-    reset_state; restart; verify; verify_demo ;;
+    reset_state; restart; verify; verify_api; verify_demo ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.

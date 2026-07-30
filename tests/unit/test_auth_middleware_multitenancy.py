@@ -137,6 +137,7 @@ def _make_app(**kw):
         return {
             "user_id": request.state.identity.user_id,
             "roles": request.state.identity.roles,
+            "role": request.state.role,
             "active_org_id": request.state.active_org_id,
         }
 
@@ -245,6 +246,121 @@ def test_bootstrap_claimant_is_granted_platform_admin():
     resp = TestClient(app).get("/test", headers=_auth("first"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["platform_admin"]  # REQ-1297
+
+
+# --- REQ-1338: the claimant keeps the org_admin seat the claim writes ----------------
+#
+# _seat_claimant_in_root (api/auth_router.py) grants the claimant BOTH platform_admin and org_admin
+# in the bootstrap org. The middleware used to short-circuit the claimant with a hard-coded
+# [platform_admin] and return, so that org_admin seat was never read: every data request from the
+# deployment's own administrator resolved the control-plane role, and REQ-1327 builds no data schema
+# for a cross_org role — /data/graphql answered 400 "No schema available for role 'platform_admin'".
+
+
+def _claimant_app(assignment_rows, **kw):
+    db = _Pool(rows_by_table={"user_role_assignments": assignment_rows})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "root"}]}, claimant="first")
+    return _make_app(
+        bootstrap_superadmin=True,
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
+        **kw,
+    )
+
+
+_SEATED = [
+    {"role_id": "platform_admin", "domain_id": "*"},
+    {"role_id": "org_admin", "domain_id": "*"},
+]
+
+
+def test_bootstrap_claimant_keeps_the_org_admin_seat_granted_by_the_claim():
+    resp = TestClient(_claimant_app(_SEATED)).get("/test", headers=_auth("first"))
+    assert resp.status_code == 200
+    assert sorted(resp.json()["roles"]) == ["org_admin", "platform_admin"]
+    assert resp.json()["active_org_id"] == "root"
+
+
+def test_the_acting_role_is_one_the_caller_holds_not_the_configured_default():
+    # REQ-1338: default_role answers from deployment config, not from this user. With no header the
+    # claimant acted as "analyst" — a role nobody granted them — instead of their org_admin seat.
+    resp = TestClient(_claimant_app(_SEATED, default_role="analyst")).get(
+        "/test", headers=_auth("first")
+    )
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "org_admin"
+
+
+def test_an_ordinary_user_also_acts_as_an_assigned_role_not_the_default():
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "developer", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_role="analyst",
+    )
+    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "developer"
+
+
+def test_bootstrap_claimant_acts_as_a_data_plane_role_not_platform_admin():
+    # The acting role is what data/endpoint.py resolves the schema by. platform_admin here is the
+    # 400 the user saw.
+    resp = TestClient(_claimant_app(_SEATED, default_role="platform_admin")).get(
+        "/test", headers=_auth("first")
+    )
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "org_admin"
+
+
+def test_bootstrap_claimant_asking_for_platform_admin_gets_their_data_role():
+    # REQ-1327 at the header: the UI may send platform_admin (it is a genuinely assigned role); the
+    # data surfaces must still act as the caller's data-plane role rather than refuse the request.
+    resp = TestClient(_claimant_app(_SEATED)).get(
+        "/test", headers={**_auth("first"), "X-Provisa-Role": "platform_admin"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "org_admin"
+
+
+def test_bootstrap_claimant_may_still_name_a_specific_data_role():
+    resp = TestClient(
+        _claimant_app([*_SEATED, {"role_id": "analyst", "domain_id": "*"}])
+    ).get("/test", headers={**_auth("first"), "X-Provisa-Role": "analyst"})
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "analyst"
+
+
+def test_holding_the_bootstrap_slot_grants_platform_admin_even_with_no_tenant_row():
+    # The slot IS the grant (REQ-1297): on a deployment whose tenant plane holds nothing for the
+    # claimant, the control plane must still be reachable.
+    resp = TestClient(_claimant_app([])).get("/test", headers=_auth("first"))
+    assert resp.status_code == 200
+    assert resp.json()["roles"] == ["platform_admin"]
+
+
+def test_a_non_claimant_is_not_handed_platform_admin():
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]})
+    admin = _Pool(
+        rows_by_table={"user_org_memberships": [{"org_id": "root"}]}, claimant="somebody-else"
+    )
+    app = _make_app(
+        bootstrap_superadmin=True,
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
+    )
+    resp = TestClient(app).get("/test", headers=_auth("second"))
+    assert resp.status_code == 200
+    assert resp.json()["roles"] == ["org_admin"]
 
 
 def test_an_unclaimed_slot_is_not_taken_by_merely_authenticating():

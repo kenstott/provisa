@@ -103,9 +103,14 @@ identifier.sqlite
 /trino/catalog-install/tmp_src_*.properties
 /trino/catalog-install/e2e_*.properties
 /trino/catalog-install/test_*.properties
-/trino/catalog/e2e_*.properties
-/trino/catalog/test_*.properties
-/trino/catalog/ui_*.properties
+# EVERY file in /trino/catalog is written by Trino's FileCatalogStore when Provisa issues
+# CREATE CATALOG (catalog.management=dynamic) — none of them is authored. Committing them shipped a
+# dev-box artifact whose connection-url named the dev compose network (postgres:5432, mongodb:27017,
+# kafka:29092). catalog.create_catalog skips a catalog that already exists, so on a deployment whose
+# data plane is elsewhere the stale file WON: cloud.provisa.dev pointed inquiries_sqlite/petstore_api
+# at a Postgres holding no landed demo data and every query died with
+# SCHEMA_NOT_FOUND "Schema 'default' does not exist".
+/trino/catalog/*.properties
 sharepoint.pfx
 Volumes/
 coverage.xml

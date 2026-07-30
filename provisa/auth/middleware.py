@@ -329,6 +329,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         # Runs after token validation (the identity is proven) and before assignment
         # resolution (it short-circuits, like the superuser path). Requires the platform
         # control plane for the singleton lock.
+        bootstrap_claimant = False
         if self._bootstrap_superadmin and self._admin_pool is not None:
             # REQ-1290: READ the slot, never claim it. Claiming here made platform admin a side
             # effect of any authenticated request, so a browser holding a still-valid token took the
@@ -362,15 +363,16 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 # else: not the superadmin claimant — continue to DB-assignment resolution below.
             else:
                 await self._upsert_profile(identity)
-                # REQ-1297: the bootstrap claim grants platform_admin — the retired 'admin' role id
-                # no longer resolves anywhere.
-                boot_assignments = [RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*")]
-                identity.roles = _assignments_to_claims(boot_assignments)
-                request.state.identity = identity
-                request.state.role = PLATFORM_ADMIN_ROLE
-                request.state.assignments = boot_assignments
-                request.state.active_org_id = self._default_org_id
-                return await call_next(request)
+                # REQ-1297/REQ-1338: the claim ADDS platform_admin; it does not replace the
+                # claimant's seated roles. This branch used to short-circuit here with a hard-coded
+                # [platform_admin] and return, which threw away the org_admin grant
+                # _seat_claimant_in_root writes into the bootstrap org (auth_router.py). Every data
+                # request from the deployment's own administrator then resolved the control-plane
+                # role, which REQ-1327 deliberately builds no data schema for, so /data/graphql,
+                # JSON:API, REST and Flight all answered 400 "No schema available for role
+                # 'platform_admin'". Fall through to the normal resolution below instead — the
+                # claimant is an ordinary member of the bootstrap org plus a platform grant.
+                bootstrap_claimant = True
 
         # Platform-plane assignment read (default-org schema — the db_pool shim resolves the default
         # runtime while current_org is unset). For a default-org member this IS their assignment set;
@@ -381,6 +383,19 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             platform_assignments = await self._read_assignments(identity)
         else:
             platform_assignments = resolve_assignments(identity)
+
+        # REQ-1297: holding the bootstrap slot IS the platform_admin grant — it is what makes the
+        # control plane reachable on a deployment whose only rows are the ones the claim wrote. It is
+        # unioned in rather than substituted so the claimant keeps the org_admin seat that carries
+        # their data rights in the bootstrap org.
+        # REQ-1337: "already holds it" is asked of the cross_org RIGHT, not of the role's name.
+        if bootstrap_claimant and not any(
+            _is_control_plane_role(a.role_id, _loaded_roles()) for a in platform_assignments
+        ):
+            platform_assignments = [
+                *platform_assignments,
+                RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*"),
+            ]
 
         # Resolve active org
         if not self._multitenancy:
@@ -512,6 +527,22 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 ]
 
         role = resolve_role(identity, self._mapping_rules, self._default_role)
+        # REQ-1338: the acting role must be one the caller actually holds. resolve_role answers from
+        # the IdP claims and falls back to the deployment's default_role, which in assignments_source
+        # "provisa" says nothing about this user — a claimant seated as org_admin acted as the
+        # configured default ("analyst") on every request that named no role, i.e. as a role nobody
+        # granted them. REQ-273 already refuses a client-supplied role that is not assigned; a
+        # server-side default that is not assigned is the same claim from the other direction.
+        # Only the acting DATA role is corrected here; the assignment set itself is untouched.
+        # Scoped to assignments_source "provisa", where the DB rows ARE the authority. In "claims"
+        # mode the mapping rules (REQ-120/551) deliberately map an IdP claim to a role the token's
+        # roles claim need not name, and that mapping stays the answer.
+        if (
+            self._assignments_source == "provisa"
+            and assignments
+            and role not in {a.role_id for a in assignments}
+        ):
+            role = assignments[0].role_id
         # REQ-1327: platform_admin holds ZERO data capabilities in EVERY org, root included, so it is
         # never the acting role while the caller holds any other assignment. This is not gated on the
         # org being a tenant: in root the claimant holds BOTH platform_admin and org_admin, and
