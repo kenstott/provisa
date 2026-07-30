@@ -32,6 +32,7 @@ from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.schema_org import domains as domains_t
 from provisa.core.schema_org import registered_tables as registered_tables_t
 from provisa.core.schema_org import sources as sources_t
+from provisa.core.schema_org import table_columns as table_columns_t
 
 _CONFIG = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "fixtures", "org_demo_seed_config.yaml")
@@ -130,6 +131,25 @@ async def test_provisioning_seeds_the_derived_source_and_its_virtual_views(demo_
         }
     assert DERIVED_SOURCE_ID in source_ids, source_ids
     assert "order_totals" in derived, derived
+
+
+async def test_provisioning_strips_control_plane_roles_from_column_grants(demo_org):
+    # REQ-1337: the strip resolved the control-plane roles from the in-memory state.roles map, which
+    # build_org_runtime populates AFTER the config load has registered every table — so during a
+    # provisioning load it answered "none" and platform_admin stayed on every column grant of the
+    # new org. It is resolved from the org's own roles table now, seeded before any registration.
+    _state, rt = demo_org
+    assert rt.tenant_db is not None
+    async with rt.tenant_db.acquire() as conn:
+        grants = (
+            await conn.execute_core(
+                select(table_columns_t.c.column_name, table_columns_t.c.visible_to)
+                .select_from(table_columns_t.join(registered_tables_t))
+                .where(registered_tables_t.c.table_name == "orders")
+            )
+        ).fetchall()
+    by_col = {r[0]: r[1] for r in grants}
+    assert by_col["id"] == ["org_admin"], by_col
 
 
 async def test_org_admin_sees_the_demo_tables_on_the_admin_surface(demo_org):

@@ -18,23 +18,37 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core import domain_policy
 from provisa.core.models import Table
-from provisa.core.schema_org import registered_tables, table_columns
-from provisa.security.rights import PLATFORM_ADMIN_ROLE
+from provisa.core.schema_org import registered_tables, roles, table_columns
+from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-def _ungrant_platform_admin(role_ids: list[str] | None) -> list[str]:
-    """REQ-1297: platform_admin can never appear in a column grant.
+async def _control_plane_role_ids(conn: "Connection") -> set[str]:  # REQ-1337
+    """The ids of every role in THIS org's schema holding ``cross_org`` — the CONTROL-PLANE roles.
+
+    Read from the ``roles`` table on the caller's own connection, never from ``state.roles``: the
+    in-memory map is populated by build_org_runtime AFTER the config load has already registered
+    every table, so an in-memory read during the load resolves an empty map and strips nothing —
+    which is how a tenant org came up with ``platform_admin`` on its column grants. schema.sql
+    seeds the roles table before any table registration runs, so the DB answer is always resolved.
+    """
+    rows = (await conn.execute_core(select(roles.c.id, roles.c.capabilities))).fetchall()
+    return {r[0] for r in rows if Capability.CROSS_ORG.value in (r[1] or [])}
+
+
+def _ungrant_control_plane(role_ids: list[str] | None, control_plane: set[str]) -> list[str]:
+    """REQ-1297/REQ-1337: a CONTROL-PLANE role can never appear in a column grant.
 
     This is the single write path for ``table_columns``, so every registration source — config load,
     admin GraphQL, introspection, view creation, the modeling registrar — passes through here. The
     shipped install config named platform_admin in every column's ``visible_to``, which is what put
-    it on the column chips of a tenant org's tables. A column grant is a data-plane right;
-    platform_admin is control-plane only and holds none.
+    it on the column chips of a tenant org's tables. A column grant is a data-plane right; a role
+    holding ``cross_org`` is control-plane only and holds none. The membership test is that RIGHT,
+    never a role name.
     """
-    return [r for r in (role_ids or []) if r != PLATFORM_ADMIN_ROLE]
+    return [r for r in (role_ids or []) if r not in control_plane]
 
 _COLUMN_PROJECTION = [
     table_columns.c.column_name,
@@ -177,6 +191,7 @@ async def upsert(
         ).fetchall()
     }
     # Replace columns: delete existing, insert new
+    _control_plane = await _control_plane_role_ids(conn)
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
         object_fields_raw = getattr(col, "object_fields", [])
@@ -188,9 +203,9 @@ async def upsert(
             table_columns.insert().values(
                 table_id=table_id,
                 column_name=col.name,
-                visible_to=_ungrant_platform_admin(col.visible_to),
-                writable_by=_ungrant_platform_admin(getattr(col, "writable_by", [])),
-                unmasked_to=_ungrant_platform_admin(getattr(col, "unmasked_to", [])),
+                visible_to=_ungrant_control_plane(col.visible_to, _control_plane),
+                writable_by=_ungrant_control_plane(getattr(col, "writable_by", []), _control_plane),
+                unmasked_to=_ungrant_control_plane(getattr(col, "unmasked_to", []), _control_plane),
                 mask_type=getattr(col, "mask_type", None),
                 mask_pattern=getattr(col, "mask_pattern", None),
                 mask_replace=getattr(col, "mask_replace", None),

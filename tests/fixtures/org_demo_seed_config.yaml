@@ -22,7 +22,9 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [org_admin]
+        # REQ-1337: a config may ASK for a control-plane grant; the registration write path must
+        # refuse it. platform_admin holds cross_org, so it never reaches a column grant.
+        visible_to: [platform_admin, org_admin]
       - name: amount
         visible_to: [org_admin]
   # A Provisa-managed virtual view, exactly as config/provisa-install.yaml ships dim_pet /

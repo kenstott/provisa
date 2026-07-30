@@ -22,7 +22,7 @@ import yaml
 
 from provisa.core.models import Role
 from provisa.core.repositories import role as role_repo
-from provisa.core.repositories.table import _ungrant_platform_admin
+from provisa.core.repositories.table import _control_plane_role_ids, _ungrant_control_plane
 
 CONFIGS = [
     "config/provisa.yaml",
@@ -32,12 +32,36 @@ CONFIGS = [
 
 
 def test_column_grants_drop_platform_admin():
-    assert _ungrant_platform_admin(["platform_admin", "analyst", "org_admin"]) == [
+    # REQ-1337: the strip is keyed on the ``cross_org`` RIGHT, never a role name. The caller resolves
+    # the control-plane set from the org's own roles table; here it stands in for the schema.sql seed.
+    control_plane = {"platform_admin"}
+    assert _ungrant_control_plane(["platform_admin", "analyst", "org_admin"], control_plane) == [
         "analyst",
         "org_admin",
     ]
-    assert _ungrant_platform_admin(["platform_admin"]) == []
-    assert _ungrant_platform_admin(None) == []
+    assert _ungrant_control_plane(["platform_admin"], control_plane) == []
+    assert _ungrant_control_plane(None, control_plane) == []
+
+
+@pytest.mark.asyncio
+async def test_control_plane_roles_resolve_from_the_orgs_own_roles_table():
+    # The in-memory state.roles map is populated by build_org_runtime AFTER the config load has
+    # registered every table, so resolving the strip from it during a load answered "no control-plane
+    # roles" and left platform_admin on every column grant of a freshly provisioned org.
+    class _RolesConn:
+        async def execute_core(self, _stmt):
+            class _R:
+                @staticmethod
+                def fetchall():
+                    return [
+                        ("platform_admin", ["cross_org", "org_management"]),
+                        ("org_admin", ["query_development", "write"]),
+                        ("analyst", None),
+                    ]
+
+            return _R()
+
+    assert await _control_plane_role_ids(_RolesConn()) == {"platform_admin"}  # type: ignore[arg-type]
 
 
 class _RecordingConn:
