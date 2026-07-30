@@ -620,7 +620,12 @@ export interface EngineRegistryEntry {
 }
 
 export interface FederationEngineState {
+  /** The engine the service is actually running (resolved at boot), not the persisted selection. */
   current: string;
+  /** The selection stored in the platform config — what a restart would use absent an env pin. */
+  persisted: string;
+  /** `$PROVISA_ENGINE` when the deployment pins the engine; the pin outranks `persisted`. */
+  env_pinned_engine: string | null;
   /** Current value of every config key any engine declares (connection + execution tuning). */
   config: Record<string, string | number | boolean | null>;
   engines: EngineRegistryEntry[];

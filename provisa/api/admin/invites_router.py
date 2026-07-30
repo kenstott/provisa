@@ -22,7 +22,7 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.database import Database
 from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
-from provisa.security.rights import has_platform_bypass
+from provisa.security.rights import Capability, can_act_cross_org
 
 log = logging.getLogger(__name__)
 
@@ -49,12 +49,15 @@ async def _require_org_admin(request: Request, org_id: str) -> None:  # REQ-1266
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
         return  # dev mode — no auth configured
     caps = _resolved_capabilities(identity, _app_state)
-    if has_platform_bypass(caps):
-        return  # platform admin acts in any org
-    role_claims = {c.split(":")[0] for c in getattr(identity, "roles", [])}
+    if can_act_cross_org(caps):
+        return  # holds cross_org — acts in any org
+    # REQ-1337: RIGHTS, not role names. Issuing an invitation is user management, and the right is
+    # confined to the org being acted in because the caller does not hold cross_org.
     active_org = getattr(request.state, "active_org_id", None)
-    if "org_admin" not in role_claims or active_org != org_id:
-        raise HTTPException(status_code=403, detail=f"org_admin of {org_id} required")
+    if Capability.USER_MANAGEMENT.value not in caps or active_org != org_id:
+        raise HTTPException(
+            status_code=403, detail=f"user_management in {org_id} required"
+        )
     async with _pool(request).acquire() as conn:
         result = await conn.execute_core(
             select(user_org_memberships.c.org_id).where(
@@ -194,21 +197,25 @@ async def _deliver_invite(  # REQ-1310
 ) -> str:
     """Send the invitation and report what happened, as a value in the creation response.
 
-    Returns "not_addressed" for a link invitation, "sent", or "failed: <reason>". A send failure is
-    reported rather than raised: the invitation row is valid and its link still works, so refusing
-    the whole request would destroy a usable invitation over a mail-server problem. Reporting it
-    inline is what tells the org_admin to distribute the link themselves.
+    Returns "not_addressed" for a link invitation, "saas_only" when this deployment does not send
+    email (REQ-1330: sending exists only under multitenancy — a self-hosted org_admin distributes
+    the link themselves), "sent", or "failed: <reason>". A send failure is reported rather than
+    raised: the invitation row is valid and its link still works, so refusing the whole request
+    would destroy a usable invitation over a mail-server problem. Reporting it inline is what
+    tells the org_admin to distribute the link themselves.
     """
     if not email:
         return "not_addressed"
     from starlette.concurrency import run_in_threadpool
 
     from provisa.api.app import state as _app_state
-    from provisa.core.mail import compose_invite_message, send_message
+    from provisa.core.mail import compose_invite_message, email_sender
 
     cfg = getattr(_app_state, "config", None)
     if cfg is None:
         raise HTTPException(status_code=503, detail="Server configuration is not loaded")
+    if not getattr(cfg, "multitenancy", False):  # REQ-1330
+        return "saas_only"
     message = compose_invite_message(
         to=email,
         org_name=org_name,
@@ -222,7 +229,8 @@ async def _deliver_invite(  # REQ-1310
         token=token,
     )
     try:
-        await run_in_threadpool(send_message, cfg.mail, message)
+        sender = email_sender(cfg.mail)  # REQ-1330: the port; the provider is config, not code
+        await run_in_threadpool(sender.send, message)
     except Exception as exc:  # reported to the caller, never swallowed
         log.error("invitation to %s for org %s could not be delivered: %s", email, org_id, exc)
         return f"failed: {exc}"
@@ -240,12 +248,11 @@ async def _administered_org_scope(request: Request) -> str | None:  # REQ-1266
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
         return None  # dev mode
     caps = _resolved_capabilities(identity, _app_state)
-    if has_platform_bypass(caps):
-        return None  # platform admin: all orgs
-    role_claims = {c.split(":")[0] for c in getattr(identity, "roles", [])}
+    if can_act_cross_org(caps):
+        return None  # holds cross_org: all orgs
     active_org = getattr(request.state, "active_org_id", None)
-    if "org_admin" not in role_claims or active_org is None:
-        raise HTTPException(status_code=403, detail="org_admin required")
+    if Capability.USER_MANAGEMENT.value not in caps or active_org is None:
+        raise HTTPException(status_code=403, detail="user_management required")
     return active_org
 
 

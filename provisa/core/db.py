@@ -159,6 +159,50 @@ async def init_schema(pool: "Database", schema_sql: str, org_id: str = "default"
             await conn.execute(schema_sql)
 
 
+async def apply_tenancy_role_grants(  # REQ-1337
+    pool: "Database", org_id: str, *, multitenancy: bool
+) -> None:
+    """Assert the tenancy-dependent role grants: ``platform_settings`` and ``cross_org``.
+
+    The deployment-wide settings surface (federation engine, cache storage, encryption, auth
+    provider, the config file, query-engine lifecycle) is gated by the ``platform_settings`` RIGHT,
+    never by a role name. Which roles hold that right is the only thing tenancy decides:
+
+    * single-tenant — the org administrator IS the deployment operator, so org_admin holds it;
+    * multitenant — an org administers only its own data plane, so org_admin must NOT hold it and
+      the grant is withdrawn (a deployment flipped to multitenant keeps no stale right).
+
+    Runs on every ``init_schema``, so the seed re-asserts the mode's grant rather than depending on
+    when the schema was first created. platform_admin always holds it (seeded in schema.sql).
+    """
+    _validate_org_id(org_id)
+    if getattr(pool, "dialect", "postgresql") != "postgresql":
+        return  # portable bootstrap seeds no system roles; nothing to re-assert
+    async with pool.acquire() as conn:
+        await conn.execute(f"SET search_path TO org_{org_id}")
+        # REQ-1337: cross_org is withdrawn in BOTH modes — org authority is confined to the org
+        # being acted in, so org_admin never holds it however the deployment is configured. Only
+        # platform_admin carries it (schema.sql), and holding it is what marks a role control-plane.
+        await conn.execute(
+            "UPDATE roles SET capabilities = COALESCE("
+            "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
+            "   WHERE v <> '\"cross_org\"'::jsonb), '[]'::jsonb)"
+            " WHERE id <> 'platform_admin' AND capabilities ? 'cross_org'"
+        )
+        if multitenancy:
+            await conn.execute(
+                "UPDATE roles SET capabilities = COALESCE("
+                "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
+                "   WHERE v <> '\"platform_settings\"'::jsonb), '[]'::jsonb)"
+                " WHERE id = 'org_admin' AND capabilities ? 'platform_settings'"
+            )
+        else:
+            await conn.execute(
+                "UPDATE roles SET capabilities = capabilities || '[\"platform_settings\"]'::jsonb"
+                " WHERE id = 'org_admin' AND NOT capabilities ? 'platform_settings'"
+            )
+
+
 async def set_tenant_context(
     conn: asyncpg.Connection, tenant_id: str | None
 ) -> None:  # REQ-040, REQ-041

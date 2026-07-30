@@ -23,7 +23,7 @@ from sqlalchemy import select
 import provisa.bolt.messages as msg
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
-from provisa.security.rights import is_platform_admin as _is_platform_admin
+from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
 
@@ -267,11 +267,12 @@ class BoltSession:
         from provisa.api.app import ensure_org_runtime, state as app_state
         from provisa.api.org_resolve import resolve_session_org
 
-        is_platform_admin = _is_platform_admin(self.roles)
+        # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
+        caps = capabilities_for_claims(self.roles, getattr(app_state, "roles", {}))
         org_id = await resolve_session_org(
             app_state,
             user_id=self.user_id,
-            is_platform_admin=is_platform_admin,
+            can_act_any_org=can_act_cross_org(caps),
             requested_org=None,
         )
         if org_id is not None:

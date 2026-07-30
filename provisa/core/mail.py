@@ -8,16 +8,22 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Outbound mail (REQ-1310).
+"""Outbound mail (REQ-1310, REQ-1330).
 
 The only message Provisa sends today is the org invitation. It is composed here rather than in the
-invites router so the wording, the link and the SMTP transport are one testable unit: the delivery
+invites router so the wording, the link and the transport are one testable unit: the delivery
 test starts a real SMTP server, redeems the link it captures, and asserts on the message a person
 would actually receive.
 
+Transport sits behind the ``EmailSender`` port (REQ-1330): callers obtain a sender from
+``email_sender()`` and depend only on ``send()``. Which concrete transport backs it is a
+deployment detail selected by ``mail.provider`` — ``smtp`` (REQ-1310) or ``resend`` (the SaaS
+transactional provider). Swapping providers is a config change plus, at most, a new adapter in
+this module; no call site changes.
+
 Configuration follows the same shape as every other backing service — a section on ProvisaConfig
-(``mail:``) with the host as the switch. No host configured means no mail transport is available,
-which is a refusal at the point of sending, not a silent drop.
+(``mail:``) with the provider's own switch (SMTP host, Resend API key). An unset switch means no
+mail transport is available, which is a refusal at the point of sending, not a silent drop.
 """
 
 from __future__ import annotations
@@ -26,12 +32,13 @@ import logging
 import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
+from typing import Protocol
 
 log = logging.getLogger(__name__)
 
 
 class MailNotConfiguredError(RuntimeError):
-    """Raised when a message must be sent and no SMTP host is configured.
+    """Raised when a message must be sent and the selected provider is not configured.
 
     Deliberately not a silent no-op: an invitation the invitee never receives is indistinguishable
     from no invitation, and the org_admin who created it must be told so they can send the link
@@ -46,31 +53,99 @@ class MailMessage:
     body: str
 
 
-def send_message(mail_config, message: MailMessage) -> None:
-    """Deliver ``message`` over SMTP using ``mail_config`` (a ``MailConfig``).
+class EmailSender(Protocol):  # REQ-1330
+    """The port. Callers hold one of these and call ``send``; the provider behind it is a
+    deployment detail. Implementations are synchronous by design — they run inside a
+    ``run_in_threadpool`` at the one call site. A dedicated queue is the right shape once there
+    is more than one kind of message; there is not yet."""
 
-    Synchronous by design — it runs inside a ``run_in_threadpool`` at the one call site. A dedicated
-    queue is the right shape once there is more than one kind of message; there is not yet.
-    """
-    if not mail_config.host:
-        raise MailNotConfiguredError(
-            "No SMTP host is configured (mail.host). Set it to deliver invitations by email, or "
-            "distribute the invitation link yourself."
+    def send(self, message: MailMessage) -> None: ...
+
+
+class SmtpEmailSender:  # REQ-1310
+    """SMTP transport, for self-managed mail infrastructure and the loopback delivery test."""
+
+    def __init__(self, mail_config) -> None:
+        self._config = mail_config
+
+    def send(self, message: MailMessage) -> None:
+        cfg = self._config
+        if not cfg.host:
+            raise MailNotConfiguredError(
+                "No SMTP host is configured (mail.host). Set it to deliver invitations by email, "
+                "or distribute the invitation link yourself."
+            )
+        msg = EmailMessage()
+        msg["From"] = cfg.from_address
+        msg["To"] = message.to
+        msg["Subject"] = message.subject
+        msg.set_content(message.body)
+
+        smtp_class = smtplib.SMTP_SSL if cfg.use_ssl else smtplib.SMTP
+        with smtp_class(cfg.host, cfg.port, timeout=cfg.timeout_seconds) as smtp:
+            if cfg.use_starttls:
+                smtp.starttls()
+            if cfg.username:
+                smtp.login(cfg.username, cfg.password)
+            smtp.send_message(msg)
+        log.info("invitation mail delivered to %s", message.to)
+
+
+class ResendEmailSender:  # REQ-1330
+    """Resend HTTPS transport — the SaaS deployment's provider adapter."""
+
+    def __init__(self, mail_config) -> None:
+        self._config = mail_config
+
+    def send(self, message: MailMessage) -> None:
+        import httpx
+
+        cfg = self._config
+        if not cfg.api_key:
+            raise MailNotConfiguredError(
+                "No Resend API key is configured (mail.api_key). Set it to deliver invitations "
+                "by email, or distribute the invitation link yourself."
+            )
+        response = httpx.post(
+            cfg.api_url,
+            headers={"Authorization": f"Bearer {cfg.api_key}"},
+            json={
+                "from": cfg.from_address,
+                "to": [message.to],
+                "subject": message.subject,
+                "text": message.body,
+            },
+            timeout=cfg.timeout_seconds,
         )
-    msg = EmailMessage()
-    msg["From"] = mail_config.from_address
-    msg["To"] = message.to
-    msg["Subject"] = message.subject
-    msg.set_content(message.body)
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"Resend refused the message ({response.status_code}): {response.text}"
+            )
+        log.info("invitation mail delivered to %s via resend", message.to)
 
-    smtp_class = smtplib.SMTP_SSL if mail_config.use_ssl else smtplib.SMTP
-    with smtp_class(mail_config.host, mail_config.port, timeout=mail_config.timeout_seconds) as smtp:
-        if mail_config.use_starttls:
-            smtp.starttls()
-        if mail_config.username:
-            smtp.login(mail_config.username, mail_config.password)
-        smtp.send_message(msg)
-    log.info("invitation mail delivered to %s", message.to)
+
+_PROVIDERS = {"smtp": SmtpEmailSender, "resend": ResendEmailSender}
+
+
+def email_sender(mail_config) -> EmailSender:  # REQ-1330
+    """The configured transport behind the port. An unknown provider is a config fault and is
+    refused here, at construction, where the message names the setting."""
+    # Compose overlays interpolate PROVISA_MAIL_PROVIDER as "" when the node sets none, and the
+    # env resolver keeps a set-but-empty variable rather than the yaml default — so empty is the
+    # documented unconfigured state, not a typo.
+    if not mail_config.provider:
+        raise MailNotConfiguredError(
+            "No mail provider is configured (mail.provider / PROVISA_MAIL_PROVIDER). Set it to "
+            "deliver invitations by email, or distribute the invitation link yourself."
+        )
+    try:
+        provider = _PROVIDERS[mail_config.provider]
+    except KeyError:
+        raise MailNotConfiguredError(
+            f"Unknown mail provider '{mail_config.provider}' (mail.provider); "
+            f"expected one of: {', '.join(sorted(_PROVIDERS))}"
+        ) from None
+    return provider(mail_config)
 
 
 def invite_redemption_url(base_url: str, token: str) -> str:

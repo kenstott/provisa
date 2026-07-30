@@ -377,27 +377,34 @@ function App() {
                   {/* Docs reader — ungated, available to every role (bundled + live fallback) */}
                   <Route path="/docs" element={<DocsPage />} />
                   <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
-                  {[
-                    "/admin/overview",
-                    "/admin/domains",
-                    "/admin/cache",
-                    "/admin/scheduled-tasks",
-                    "/admin/federation-engine",
-                    "/admin/encryption",
-                    "/admin/auth",
-                    "/admin/system-health",
-                    "/admin/observability",
-                    "/admin/mcp-server",
-                    "/admin/local-users",
-                    "/admin/orgs",
-                    "/admin/ai-models",
-                    "/admin/security",
-                  ].map((path) => (
+                  {/* REQ-1337: each admin route names the RIGHT it needs, never a role name. The
+                      deployment-wide settings surfaces (federation engine, cache storage,
+                      encryption/auth providers) require `platform_settings`; administering other
+                      orgs requires `cross_org`. The seed decides which role carries each, so a
+                      multitenant org_admin cannot reach these even by typing the URL. */}
+                  {(
+                    [
+                      ["/admin/overview", "admin"],
+                      ["/admin/domains", "admin"],
+                      ["/admin/cache", "platform_settings"],
+                      ["/admin/scheduled-tasks", "admin"],
+                      ["/admin/federation-engine", "platform_settings"],
+                      ["/admin/encryption", "platform_settings"],
+                      ["/admin/auth", "platform_settings"],
+                      ["/admin/system-health", "admin"],
+                      ["/admin/observability", "admin"],
+                      ["/admin/mcp-server", "admin"],
+                      ["/admin/local-users", "admin"],
+                      ["/admin/orgs", "cross_org"],
+                      ["/admin/ai-models", "admin"],
+                      ["/admin/security", "platform_settings"],
+                    ] as const
+                  ).map(([path, capability]) => (
                     <Route
                       key={path}
                       path={path}
                       element={
-                        <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                        <CapabilityGate capability={capability} fallback={<NotAuthorized />}>
                           <AdminPage />
                         </CapabilityGate>
                       }

@@ -998,3 +998,13 @@ webhooks:
   url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
   visible_to:
   - org_admin
+# REQ-1330: outbound mail behind the EmailSender port. Values interpolate from the
+# node environment (systemd env_file -> compose overlay) so the provider selection
+# and the Resend key stay out of the baked image; the defaults are the self-hosted
+# quiet state (SMTP adapter, nothing configured), where the multitenancy gate stops
+# sending before any transport is consulted.
+mail:
+  provider: ${env:PROVISA_MAIL_PROVIDER:-smtp}
+  api_key: ${env:PROVISA_EMAIL_API_KEY:-}
+  from_address: ${env:PROVISA_MAIL_FROM:-provisa@localhost}
+  base_url: ${env:PROVISA_MAIL_BASE_URL:-http://localhost:5173}

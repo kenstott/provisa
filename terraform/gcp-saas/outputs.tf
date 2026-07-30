@@ -1,21 +1,32 @@
 output "shared_ip" {
-  description = "The single shared NetLB IP fronting every protocol port. Point provisa.dev and *.provisa.dev (subdomain-per-org) here (DNS-only)."
+  description = "The single shared IP (front-door e2-micro) fronting every protocol port. Point provisa.dev and *.provisa.dev (subdomain-per-org) here (DNS-only)."
   value       = google_compute_address.shared.address
 }
 
 output "api_endpoint" {
-  description = "HTTPS API load balancer URL (TLS on every endpoint)."
+  description = "HTTPS API URL via the front door (TLS on every endpoint)."
   value       = "https://${google_compute_address.shared.address}:${local.protocols.api.port}"
 }
 
 output "ui_endpoint" {
-  description = "Web UI load balancer URL (HTTPS)."
+  description = "Web UI URL via the front door (HTTPS)."
   value       = "https://${google_compute_address.shared.address}:${local.protocols.ui.port}"
 }
 
 output "protocol_endpoints" {
-  description = "host:port for every exposed protocol on the shared NetLB IP."
+  description = "host:port for every exposed protocol on the shared front-door IP."
   value       = { for k, v in local.enabled_protocols : k => "${google_compute_address.shared.address}:${v.port}" }
+}
+
+output "front_door_status_endpoint" {
+  description = "Authenticated wake/verify API (GET /status, POST /wake; Authorization: Bearer <front_door_status_token>)."
+  value       = "https://${google_compute_address.shared.address}:${var.front_door_status_port}/status"
+}
+
+output "front_door_status_token" {
+  description = "Bearer token for the front-door wake/verify API."
+  value       = random_password.front_door_token.result
+  sensitive   = true
 }
 
 output "coordinator_public_ip" {

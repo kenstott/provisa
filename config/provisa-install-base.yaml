@@ -98,3 +98,9 @@ observability:
   sample_rate: 1.0
 auth:
   provider: none
+# REQ-1330: outbound mail behind the EmailSender port; see provisa-install.yaml.
+mail:
+  provider: ${env:PROVISA_MAIL_PROVIDER:-smtp}
+  api_key: ${env:PROVISA_EMAIL_API_KEY:-}
+  from_address: ${env:PROVISA_MAIL_FROM:-provisa@localhost}
+  base_url: ${env:PROVISA_MAIL_BASE_URL:-http://localhost:5173}

@@ -46,6 +46,29 @@ const DEFAULT_ADMIN_ROLE: Role = {
   domain_access: ["*"],
 };
 
+// REQ-1337: a CONTROL-PLANE role is identified by the right it carries, never by its name or by
+// enumerating what it lacks. `cross_org` — acting in an org one is not a member of — is exactly the
+// control-plane authority, and REQ-1327 keeps a role holding it off the data plane entirely. This
+// mirrors is_control_plane_role() in provisa/security/rights.py.
+function isControlPlaneOnly(role: Role): boolean {
+  return role.capabilities.includes("cross_org" as Capability);
+}
+
+// The acting role sent in X-Provisa-Role while "All roles" is selected is the first of this list, so
+// the order decides which per-role schema the data surfaces get. It came straight from the `roles`
+// query, i.e. Postgres heap order, which put platform_admin ahead of org_admin for the bootstrap
+// super-admin — the GraphQL tab then built its schema for a role with zero data capabilities and the
+// demo tables whose columns are granted to analyst/org_admin vanished ("Cannot query field
+// 'ps__inquiriesGroupBy'"). Control-plane-only roles sort last; the rest sort by id so the choice is
+// stable rather than storage-dependent.
+function orderByDataPlaneFirst(roles: Role[]): Role[] {
+  return [...roles].sort((a, b) => {
+    const ca = Number(isControlPlaneOnly(a));
+    const cb = Number(isControlPlaneOnly(b));
+    return ca !== cb ? ca - cb : a.id.localeCompare(b.id);
+  });
+}
+
 function unionCapabilities(roles: Role[]): Capability[] {
   const set = new Set<Capability>();
   for (const r of roles) {
@@ -186,10 +209,10 @@ export function AuthProvider({
         }));
         if (roles.length > 0) {
           if (isDev) {
-            allRoles = roles;
+            allRoles = orderByDataPlaneFirst(roles);
           } else {
             const assignedRoleIds = new Set(userAssignments.map((a) => a.role_id));
-            allRoles = roles.filter((r) => assignedRoleIds.has(r.id));
+            allRoles = orderByDataPlaneFirst(roles.filter((r) => assignedRoleIds.has(r.id)));
           }
         }
       } catch (e) {

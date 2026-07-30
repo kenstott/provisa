@@ -141,7 +141,7 @@ class AppState:
     # __init__ (never None); the engine is the reference engine. Typed Any to avoid the runtime import.
     federation_engine: Any = None
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
-    schema_build_cache: dict = {}  # raw data for on-demand domain-filtered schema building
+    # schema_build_cache is org-routed; see the property below.
     schema_version: int = (
         0  # bumped on every _rebuild_schemas; used by clients for cache invalidation
     )
@@ -467,6 +467,17 @@ class AppState:
     def metrics(self, value: dict[str, Any]) -> None:
         self._active_runtime().metrics = value
 
+    @property
+    def schema_build_cache(self) -> dict:
+        # Raw registry rows for on-demand domain-filtered schema building. Per-org: domains,
+        # tables and column types differ between orgs, so a process-global cache would serve
+        # whichever org rebuilt last to every other one.
+        return self._active_runtime().schema_build_cache
+
+    @schema_build_cache.setter
+    def schema_build_cache(self, value: dict) -> None:
+        self._active_runtime().schema_build_cache = value
+
 
 state = AppState()
 
@@ -549,6 +560,13 @@ async def _load_and_build(
     config = parse_config_dict(raw_config)
     state.config = config
     state.multitenancy = config.multitenancy
+    # REQ-1337: org_admin holds the platform_settings right only in a single-tenant deployment.
+    # Asserted here rather than in _init_control_planes because the tenancy mode is only known once
+    # the config is parsed, which happens after the root org's schema is created.
+    from provisa.core.db import apply_tenancy_role_grants as _apply_tenancy_role_grants
+
+    assert state.tenant_db is not None
+    await _apply_tenancy_role_grants(state.tenant_db, state.org_id, multitenancy=config.multitenancy)
     if config.multitenancy:
         from provisa.core.tenant_context import TenantContextCache
 
@@ -752,7 +770,7 @@ async def build_org_runtime(org_id: str, *, include_demo: bool = False) -> OrgRu
     from provisa.api.startup_seed import _seed_built_in_sources, _resolve_pk_from_sources
     from provisa.core.config_loader import load_control_plane
     from provisa.core.database import Capabilities, create_engine_from_url
-    from provisa.core.db import init_schema
+    from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 
     rt = OrgRuntime(org_id=org_id)
@@ -783,6 +801,8 @@ async def build_org_runtime(org_id: str, *, include_demo: bool = False) -> OrgRu
         if not schema_sql_path.exists():
             raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
         await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
+        # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
+        await apply_tenancy_role_grants(state.tenant_db, org_id, multitenancy=state.multitenancy)
         await init_audit_schema(state.tenant_db, org_id=org_id)
 
         host, port, database, username, _pw = cp.tenant_parts()

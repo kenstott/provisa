@@ -904,21 +904,30 @@ class AuthConfig(
     approval_hook: dict | None = None  # REQ-247: ABAC approval hook config block
 
 
-class MailConfig(BaseModel):  # REQ-1310
-    """Outbound SMTP, used today only for org invitations.
+class MailConfig(BaseModel):  # REQ-1310, REQ-1330
+    """Outbound mail, used today only for org invitations. Sending happens only in SaaS
+    deployments (multitenancy) — REQ-1330.
 
-    host: SMTP server. Empty means no mail transport is configured — sending raises rather than
-        dropping, so an org_admin learns the invitation must be distributed by hand.
+    provider: which EmailSender adapter backs the port — "smtp" or "resend". Each adapter has its
+        own switch (host, api_key); the unset switch means no transport is configured, and sending
+        raises rather than dropping, so an org_admin learns the invitation must be distributed by
+        hand.
+    host: SMTP server (provider "smtp").
     port: SMTP port. 25 is the plain-SMTP default the local test server listens on; 587 with
         use_starttls, or 465 with use_ssl, are the usual production pairs.
-    from_address: envelope and header sender.
+    api_key: Resend API key (provider "resend"); use ``${env:PROVISA_EMAIL_API_KEY}``.
+    api_url: Resend endpoint. Overridden only by the delivery test, which captures on loopback.
+    from_address: envelope and header sender. The SaaS deployment sends as invites@provisa.dev.
     base_url: public origin of the UI, used to build the redemption link in the message. It cannot
         be derived from the request that created the invitation — that request may arrive on an
         internal address or an org subdomain, and the link must work from the invitee's mailbox.
     """
 
+    provider: str = "smtp"
     host: str = ""
     port: int = 25
+    api_key: str = ""
+    api_url: str = "https://api.resend.com/emails"
     from_address: str = "provisa@localhost"
     username: str = ""
     password: str = ""

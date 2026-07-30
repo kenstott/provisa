@@ -654,7 +654,10 @@ ON CONFLICT (id) DO NOTHING;
 -- template role. It is the role the bootstrap claim grants (REQ-1296) and the only one carrying the
 -- platform-bypass capabilities 'admin' and 'superadmin'.
 --
--- Its capability list is those two and NOTHING else. The org-scoped data capabilities it used to
+-- Its capability list is those two plus the two REQ-1337 rights held explicitly so that every gate
+-- reads a RIGHT and never a role name: platform_settings (the deployment-wide settings surface) and
+-- cross_org (acting in an org one is not a member of, which is also what marks a role CONTROL-PLANE
+-- and therefore off the data plane everywhere). NOTHING else. The org-scoped data capabilities it used to
 -- enumerate (source_registration, table_registration, query_development, column_grant, write, …)
 -- made it a data-plane role in every org schema it was seeded into, which is the opposite of what it
 -- is for: the platform operator runs org lifecycle and infrastructure, and a tenant org's data is
@@ -668,7 +671,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'platform_admin',
-    '["admin","superadmin"]'::jsonb,
+    '["admin","superadmin","platform_settings","cross_org"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -678,7 +681,7 @@ ON CONFLICT (id) DO NOTHING;
 -- (ON CONFLICT DO NOTHING leaves it alone), so correct it in place. V1 has no migrations; this is the
 -- seed asserting the system role's definition on every init_schema, the same way the retired-id
 -- rewrite below does.
-UPDATE roles SET capabilities = '["admin","superadmin"]'::jsonb WHERE id = 'platform_admin';
+UPDATE roles SET capabilities = '["admin","superadmin","platform_settings","cross_org"]'::jsonb WHERE id = 'platform_admin';
 
 -- REQ-1297: the role ids 'admin' and 'superadmin' are retired. Rewrite existing assignments naming
 -- them to platform_admin, then drop the rows, so nothing resolves them afterward. The rewrite runs

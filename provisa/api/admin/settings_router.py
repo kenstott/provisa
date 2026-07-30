@@ -18,15 +18,17 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
+from provisa.api.admin._platform_guard import require_platform_settings
 from provisa.api.admin._config_io import config_path, read_config, write_config
 
 router = APIRouter()
 
 
 @router.get("/admin/config")
-async def download_config():  # REQ-164
+async def download_config(request: Request):  # REQ-164
     """Download the ORIGINAL config YAML (the on-disk boot seed). The live-state view is
     ``/admin/config/live``; the UI diffs the two."""
+    require_platform_settings(request)  # REQ-1337
     path = config_path()
     if not path.exists():
         raise HTTPException(status_code=404, detail="Config file not found")
@@ -51,9 +53,10 @@ def _require_live_export() -> None:
 
 
 @router.get("/admin/config/live")
-async def download_live_config():  # REQ-164
+async def download_live_config(request: Request):  # REQ-164
     """The CURRENT config generated from live state (admin-created views/MVs, relationships, roles,
     rls, domains overlaid on the file base)."""
+    require_platform_settings(request)  # REQ-1337
     _require_live_export()
     from provisa.api.admin.config_export import build_live_config_yaml
 
@@ -65,9 +68,10 @@ async def download_live_config():  # REQ-164
 
 
 @router.get("/admin/config/diff")
-async def config_diff():  # REQ-164
+async def config_diff(request: Request):  # REQ-164
     """Both sides of the config diff — ``original`` (startup baseline) and ``current`` (live state) —
     NORMALIZED identically so the side-by-side view shows only genuine changes, not reordering."""
+    require_platform_settings(request)  # REQ-1337
     _require_live_export()
     from provisa.api.admin.config_export import config_diff as _diff
 
@@ -78,6 +82,7 @@ async def config_diff():  # REQ-164
 async def config_patch(request: Request):  # REQ-164
     """A unified-diff patch from the baseline to the posted (curated) config — git-apply / ``patch``
     compatible, for committing config changes made in the UI through CI/CD."""
+    require_platform_settings(request)  # REQ-1337
     _require_live_export()
     from provisa.api.admin.config_export import make_config_patch
 
@@ -98,6 +103,7 @@ async def upload_config(request: Request):  # REQ-164
     NORMALIZED on consume and the normalized form is persisted — so the on-disk file stays byte-faithful
     to the diff/patch baseline and a downloaded patch applies cleanly via ``git apply``. With the flag
     off the file is written verbatim (a hand-authored config keeps its comments/ordering)."""
+    require_platform_settings(request)  # REQ-1337
     from provisa.api.app import _load_and_build, state  # lazy to avoid circular import
 
     body = await request.body()
@@ -432,6 +438,7 @@ def _apply_scalars(body: dict, state, updated: list) -> None:
 @router.put("/admin/settings")
 async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-302, REQ-303, REQ-416
     """Update platform settings at runtime."""
+    require_platform_settings(request)  # REQ-1337
     from provisa.api.app import state
 
     body = await request.json()
@@ -478,6 +485,7 @@ async def set_domain_policy(request: Request):  # REQ-165
     config to a clean default state (no sources, tables, domains, or relationships;
     auth and roles preserved) with the new policy applied, and reloads.
     """
+    require_platform_settings(request)  # REQ-1337
     import datetime
 
     from provisa.api.app import _load_and_build
@@ -560,6 +568,7 @@ async def get_federation_engine():  # REQ-916
 @router.put("/admin/federation-engine")
 async def set_federation_engine(request: Request):  # REQ-916
     """Persist the federation-engine selection + connection config. Applied on service restart."""
+    require_platform_settings(request)  # REQ-1337
     from provisa.federation.engine import engine_registry
 
     from provisa.api.app import state
@@ -615,8 +624,9 @@ async def set_federation_engine(request: Request):  # REQ-916
 
 
 @router.get("/admin/cache-storage")
-async def get_cache_storage():  # REQ-917
+async def get_cache_storage(request: Request):  # REQ-917
     """Hot-cache (Redis) + materialize-store settings for the admin UI."""
+    require_platform_settings(request)  # REQ-1337
     from provisa.api.app import state
 
     from provisa.core.models import HotTablesConfig, MaterializedViewsConfig, WarmTablesConfig
@@ -673,6 +683,7 @@ async def get_cache_storage():  # REQ-917
 @router.put("/admin/cache-storage")
 async def set_cache_storage(request: Request):  # REQ-917
     """Persist hot-cache (Redis) + materialize-store settings. Applied on service restart."""
+    require_platform_settings(request)  # REQ-1337
     body = await request.json()
     path = config_path()
     cfg = read_config()
@@ -745,8 +756,9 @@ def _encryption_providers() -> list[dict]:
 
 
 @router.get("/admin/encryption")
-async def get_encryption():  # REQ-918
+async def get_encryption(request: Request):  # REQ-918
     """Encryption provider + master-key status for the admin UI."""
+    require_platform_settings(request)  # REQ-1337
     from provisa.encryption.providers import master_key_present
 
     cfg = read_config()
@@ -768,6 +780,7 @@ async def get_encryption():  # REQ-918
 @router.put("/admin/encryption")
 async def set_encryption(request: Request):  # REQ-918
     """Persist the encryption provider + key id. Applied on service restart."""
+    require_platform_settings(request)  # REQ-1337
     from provisa.encryption.registry import get_provider_spec
 
     body = await request.json()
@@ -806,6 +819,7 @@ async def generate_encryption_key(request: Request):  # REQ-918
     """Generate a fresh AES-256 master key and store it in the OS keychain under ``key_id``. When no
     OS keychain is available, the base64 key is returned once so the operator can set it as
     ``PROVISA_ENCRYPTION_KEY``. Never re-displayed after this call."""
+    require_platform_settings(request)  # REQ-1337
     from provisa.encryption.providers import generate_master_key_b64, store_master_key
 
     body = await request.json()
@@ -907,8 +921,9 @@ _AUTH_PROVIDERS = [
 
 
 @router.get("/admin/auth")
-async def get_auth():  # REQ-919
+async def get_auth(request: Request):  # REQ-919
     """Auth provider selection + per-provider config + role settings for the admin UI."""
+    require_platform_settings(request)  # REQ-1337
     from provisa.core.models import AuthConfig
 
     cfg = read_config()
@@ -942,6 +957,7 @@ async def get_auth():  # REQ-919
 @router.put("/admin/auth")
 async def set_auth(request: Request):  # REQ-919
     """Persist the auth provider + its config + role settings. Applied on service restart."""
+    require_platform_settings(request)  # REQ-1337
     body = await request.json()
     provider = body.get("provider")
     valid = {p["key"] for p in _AUTH_PROVIDERS}
@@ -979,13 +995,14 @@ async def set_auth(request: Request):  # REQ-919
 
 
 @router.post("/admin/query-engine/reload-catalog")
-async def reload_query_engine_catalog(catalog: str = "otel"):
+async def reload_query_engine_catalog(request: Request, catalog: str = "otel"):
     """Reload an engine catalog without a restart, then reconnect and re-run OTel DDL.
 
     Delegates to the bound engine through the seam — the engine re-registers via its coordinator
     REST API so all workers pick up the change via discovery; a native engine has no reloadable
     catalog.
     """
+    require_platform_settings(request)  # REQ-1337
     from provisa.api.app import state
     from provisa.api.startup_seed import _OPS_VIEWS
 
@@ -995,9 +1012,10 @@ async def reload_query_engine_catalog(catalog: str = "otel"):
 
 
 @router.post("/admin/query-engine/restart")
-async def restart_query_engine(container: str | None = None):
+async def restart_query_engine(request: Request, container: str | None = None):
     """Restart the query engine container (single-node dev only). Falls back to
     QUERY_ENGINE_CONTAINER env var, then the bound engine's name."""
+    require_platform_settings(request)  # REQ-1337
     import asyncio
 
     from provisa.api.app import state

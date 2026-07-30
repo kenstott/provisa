@@ -96,6 +96,10 @@ class OrgRuntime:
     # REQ-1317: config-declared metric registry (name → Metric), published alongside tables
     # so the raw-SQL path can expand `metrics.<name>` queries before governance.
     metrics: dict[str, Any] = field(default_factory=dict)
+    # Raw registry rows (domains, tables, column_types, …) the on-demand domain-filtered schema
+    # builder reads. Per-org because domains ARE per-org: a process-global cache is overwritten by
+    # whichever org rebuilt last, so /data/domains hands one org's domain list to another.
+    schema_build_cache: dict = field(default_factory=dict)
 
 
 class OrgRegistry:

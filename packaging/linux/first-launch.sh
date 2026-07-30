@@ -528,6 +528,23 @@ services:
       # bootstrap to invite-based multi-org. Absent/empty (enterprise default) keeps the
       # single-administrator REQ-1266 mode. Interpolated from the 600 systemd env_file.
       PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:-}"
+      # REQ-972..979: the deployment's federation-engine selection. resolve_deployment writes
+      # it to config.yaml (\`engine:\`) for the node tier, but the API process selects its engine
+      # from \$PROVISA_ENGINE / \$PROVISA_ENGINE_URL / \$PROVISA_MATERIALIZE_URL
+      # (federation/engine.py:build_engine, configured_engine_url, configured_materialize_url) —
+      # unforwarded, a Trino deployment booted the shipped provisa-install.yaml default (duckdb).
+      # Empty (enterprise zero-config) leaves the persisted federation_engine field in charge.
+      PROVISA_ENGINE: "\${PROVISA_ENGINE:-}"
+      PROVISA_ENGINE_URL: "\${PROVISA_ENGINE_URL:-}"
+      PROVISA_MATERIALIZE_URL: "\${PROVISA_MATERIALIZE_URL:-}"
+      # REQ-1330: outbound-mail provider selection for the EmailSender port. The
+      # provisa-install.yaml mail: section interpolates these; the Resend key stays
+      # in the 600 systemd env_file. Empty (enterprise default) leaves the SMTP
+      # adapter unconfigured — the multitenancy gate stops sending anyway.
+      PROVISA_MAIL_PROVIDER: "\${PROVISA_MAIL_PROVIDER:-}"
+      PROVISA_EMAIL_API_KEY: "\${PROVISA_EMAIL_API_KEY:-}"
+      PROVISA_MAIL_FROM: "\${PROVISA_MAIL_FROM:-}"
+      PROVISA_MAIL_BASE_URL: "\${PROVISA_MAIL_BASE_URL:-}"
   provisa-ui:
     command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key"]
     volumes:
@@ -594,7 +611,10 @@ services:
       REDIS_URL: "redis://${PRIMARY_IP}:6379"
       TRINO_HOST: "${PRIMARY_IP}"
       TRINO_PORT: "8080"
-      TRINO_FLIGHT_PORT: "8480"
+      # Arrow Flight SQL proxy — a primary singleton, like Trino itself
+      # (trino_lifecycle.connect_infra reads ZAYCHIK_HOST/ZAYCHIK_PORT).
+      ZAYCHIK_HOST: "${PRIMARY_IP}"
+      ZAYCHIK_PORT: "8480"
       FLIGHT_PORT: "8815"
       PROVISA_OTEL_S3_ENDPOINT: "http://${PRIMARY_IP}:9000"
       # REQ-1266: forward the IdP selection + Firebase backend vars into the API
@@ -689,6 +709,8 @@ install_systemd() {
              PROVISA_PGWIRE_PORT PROVISA_BOLT_PORT PROVISA_MCP_PORT \
              PROVISA_MCP_HOST PROVISA_MCP_ROLE GRPC_PORT \
              PROVISA_MULTITENANCY \
+             PROVISA_ENGINE PROVISA_ENGINE_URL PROVISA_MATERIALIZE_URL \
+             PROVISA_MAIL_PROVIDER PROVISA_EMAIL_API_KEY PROVISA_MAIL_FROM PROVISA_MAIL_BASE_URL \
              PROVISA_EXTERNAL_CONTROL_DB \
              CONFIG_DB_HOST CONFIG_DB_PORT CONFIG_DB_NAME CONFIG_DB_USER CONFIG_DB_PASSWORD; do
     if [ -n "${!var:-}" ]; then

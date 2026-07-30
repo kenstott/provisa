@@ -121,6 +121,41 @@ def test_appstate_catalog_for_routes_to_contextvar_org():
         state.org_registry.invalidate("beta")
 
 
+def test_appstate_schema_build_cache_routes_to_contextvar_org():
+    # Domains are per-org. As a process-global this cache held whatever the last org to rebuild put
+    # there, so /data/domains handed one org's domain list — meta and ops included — to every other.
+    # Both the read and the write must land on the active org's runtime.
+    from provisa.api.app import state
+
+    acme = OrgRuntime(org_id="acme")
+    beta = OrgRuntime(org_id="beta")
+    state.org_registry.set("acme", acme)
+    state.org_registry.set("beta", beta)
+    try:
+        tok = set_current_org("acme")
+        try:
+            state.schema_build_cache = {"domains": [{"id": "pet-store"}]}
+        finally:
+            reset_current_org(tok)
+
+        tok = set_current_org("beta")
+        try:
+            assert state.schema_build_cache == {}, "acme's rebuild must not reach beta"
+            state.schema_build_cache = {"domains": [{"id": "meta"}, {"id": "ops"}]}
+        finally:
+            reset_current_org(tok)
+
+        tok = set_current_org("acme")
+        try:
+            assert state.schema_build_cache["domains"] == [{"id": "pet-store"}]
+        finally:
+            reset_current_org(tok)
+        assert beta.schema_build_cache["domains"] == [{"id": "meta"}, {"id": "ops"}]
+    finally:
+        state.org_registry.invalidate("acme")
+        state.org_registry.invalidate("beta")
+
+
 def test_appstate_catalog_for_raises_for_unknown_source():
     # No bare source_to_catalog fallback: an unregistered source under the active org must raise,
     # never silently resolve to the default org's physical catalog.

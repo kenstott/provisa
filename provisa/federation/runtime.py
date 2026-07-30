@@ -68,6 +68,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         return self.engine.name
 
     @property
+    def selected_key(self) -> str:
+        """The engine-registry key this process was booted under — the LIVE selection, which is what
+        callers must report rather than the persisted config field (an env pin overrides it)."""
+        return self.engine.selected_key
+
+    @property
     def dialect(self) -> str:
         """The physical SQL dialect the bound engine speaks — the transpile target for generic
         callers, so they never hardcode a specific engine's dialect."""

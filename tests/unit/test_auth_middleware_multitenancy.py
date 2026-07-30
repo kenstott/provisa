@@ -34,6 +34,26 @@ def _stub_org_runtime(monkeypatch):
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _noop, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _seeded_roles(monkeypatch):
+    """REQ-1337: the middleware decides nothing from a role NAME — it resolves the assigned role ids
+    to the RIGHTS those roles carry. That resolution reads the loaded roles registry, which in a real
+    process comes from the schema.sql seed; these tests never build app state, so mirror the seed
+    here. ``cross_org`` is what makes platform_admin control-plane."""
+    monkeypatch.setattr(
+        "provisa.auth.middleware._loaded_roles",
+        lambda: {
+            "platform_admin": {
+                "id": "platform_admin",
+                "capabilities": ["admin", "superadmin", "platform_settings", "cross_org"],
+            },
+            "org_admin": {"id": "org_admin", "capabilities": ["user_management"]},
+            "developer": {"id": "developer", "capabilities": ["query_development"]},
+            "analyst": {"id": "analyst", "capabilities": ["usage"]},
+        },
+    )
+
+
 class _Provider(AuthProvider):
     """Accepts 'tok:<user_id>' → identity for that user; rejects anything else."""
 

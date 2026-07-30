@@ -34,7 +34,7 @@ from typing import Any
 from provisa.api.mcp import tools
 from provisa.api.org_resolve import OrgResolutionError
 from provisa.api.org_runtime import reset_current_org, set_current_org
-from provisa.security.rights import is_platform_admin as _is_platform_admin
+from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
 
@@ -85,11 +85,14 @@ async def _resolve_token_org_async(token: str, state: Any) -> str | None:
         raise PermissionError("MCP OAuth requested but no auth config is loaded")
     provider = build_auth_provider(auth_config)
     identity = await provider.validate_token(token)
-    is_platform_admin = _is_platform_admin(getattr(identity, "roles", []) or [])
+    # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
+    caps = capabilities_for_claims(
+        getattr(identity, "roles", []) or [], getattr(state, "roles", {})
+    )
     return await resolve_session_org(
         state,
         user_id=getattr(identity, "user_id", None),
-        is_platform_admin=is_platform_admin,
+        can_act_any_org=can_act_cross_org(caps),
         requested_org=getattr(identity, "active_org_id", None),
     )
 

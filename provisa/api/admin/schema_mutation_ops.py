@@ -148,9 +148,9 @@ async def register_table(
         identity = _identity_from_info(info)
         if identity is not None and getattr(identity, "user_id", "anonymous") != "anonymous":
             caps = _resolved_capabilities(identity, _cap_state)
-            if not (
-                caps & {"create_view", "query_development", "admin", "superadmin", "platform_admin"}
-            ):
+            # REQ-1337: rights only — the platform_admin role id was listed here as a pseudo-right;
+            # the role carries admin/superadmin, which is what the gate must read.
+            if not (caps & {"create_view", "query_development", "admin", "superadmin"}):
                 # REQ-434/366: lacking view-create authority queues a request.
                 return await _queue_creation_request(info, "view", "create_view", input)
         # REQ-1140: a materialized view publishes only over approved relationships; the gate either

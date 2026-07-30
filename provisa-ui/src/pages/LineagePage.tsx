@@ -26,9 +26,11 @@ import {
   Text,
   Title,
   Tooltip,
+  useMantineColorScheme,
 } from "@mantine/core";
 import { Copy, Check } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { sql as sqlLang, PostgreSQL } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
 import { LineageDag } from "../components/lineage/LineageDag";
@@ -127,6 +129,7 @@ export function LineagePage(): React.ReactElement {
   }, []);
 
   const cycles = graph?.cycles ?? [];
+  const { colorScheme } = useMantineColorScheme();
   const sqlExtensions = useMemo(
     () => [sqlLang({ dialect: PostgreSQL }), EditorView.lineWrapping],
     [],
@@ -162,6 +165,11 @@ export function LineagePage(): React.ReactElement {
               value={sql}
               onChange={setSql}
               extensions={sqlExtensions}
+              // Same scheme-aware pairing as GrpcCodeView/SqlEditorPanel: CodeMirror's built-in
+              // theme is light, so without this the panel stays white on the dark app chrome.
+              // The toggle only ever writes "light"/"dark" (theme/ColorSchemeToggle.tsx:27), so
+              // there is no "auto" case to resolve here.
+              theme={colorScheme === "light" ? undefined : oneDark}
               minHeight="72px"
               basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
               style={{ fontSize: "0.85rem" }}

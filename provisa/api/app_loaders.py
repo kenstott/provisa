@@ -28,7 +28,7 @@ from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.security.rights import PLATFORM_ADMIN_ROLE
+from provisa.security.rights import Capability
 from provisa.compiler.context import build_context
 from provisa.compiler.rls import build_rls_context
 from sqlalchemy import select
@@ -976,7 +976,10 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # Without an entry, /data/graphql, the JSON:API, REST, Flight and SDL surfaces all answer
         # "No schema available for role 'platform_admin'". The role dict is still registered above:
         # control-plane capability resolution reads state.roles.
-        if role["id"] == PLATFORM_ADMIN_ROLE:
+        #
+        # REQ-1337: the test is the `cross_org` RIGHT the role carries, not its name — a deployment
+        # that mints another control-plane role is kept off the data plane on the same terms.
+        if Capability.CROSS_ORG.value in (role.get("capabilities") or []):
             continue
         si = _schema_input(role, tables, metrics)
         try:

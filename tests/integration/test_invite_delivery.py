@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1310: an invitation addressed to an email address reaches that address.
+"""REQ-1310/REQ-1330: an invitation addressed to an email address reaches that address.
 
 The assertions run against a real SMTP server this module starts on a loopback port — a mocked send
 would prove only that a call was made, not that a message a person could act on came out the other
@@ -55,6 +55,15 @@ _ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provis
 _ADMIN_SCHEMA = "test_invmail_admin"
 _ORG_SCHEMAS = {"root": "test_invmail_root", "acme": "test_invmail_acme"}
 _TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log]
+
+# REQ-1297 seeds these as system template roles in every org schema. REQ-1337: the invite gates read
+# the RIGHTS these rows carry — an empty capability list authorizes nothing however the row is named
+# — so the capabilities schema.sql seeds are mirrored here.
+_SEEDED_ROLE_CAPS: dict[str, list[str]] = {
+    "platform_admin": ["admin", "superadmin", "platform_settings", "cross_org"],
+    "org_admin": ["user_management", "source_registration", "access_config", "query_development"],
+    "analyst": ["usage", "ad_hoc_query", "query_development"],
+}
 
 # alice administers acme. carol is the invitee — she has no account, no membership, and no way to
 # learn about the invitation except the message.
@@ -118,8 +127,8 @@ def _prepare_sync():
         for schema in _ORG_SCHEMAS.values():
             conn.execute(text(f"SET search_path TO {schema}"))
             org_metadata.create_all(conn, tables=_TENANT_TABLES)
-            for role_id in ("platform_admin", "org_admin", "analyst"):
-                conn.execute(insert(roles).values(id=role_id))
+            for role_id, caps in _SEEDED_ROLE_CAPS.items():
+                conn.execute(insert(roles).values(id=role_id, capabilities=caps))
 
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['acme']}"))
         conn.execute(
@@ -147,11 +156,14 @@ def planes(monkeypatch, smtp):
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     monkeypatch.setattr(app_state, "org_id", "root", raising=False)
 
+    # REQ-1337: the runtime's roles registry is where a role id becomes the rights it carries, and
+    # every invite gate reads those rights. In a real process it comes from the schema.sql seed;
+    # here it mirrors the capability lists written into the role rows above.
+    loaded_roles = {rid: {"id": rid, "capabilities": caps} for rid, caps in _SEEDED_ROLE_CAPS.items()}
     registry = OrgRegistry()
     for org_id, db in org_dbs.items():
-        registry.set(org_id, OrgRuntime(org_id=org_id, tenant_db=db))
+        registry.set(org_id, OrgRuntime(org_id=org_id, tenant_db=db, roles=dict(loaded_roles)))
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
-    monkeypatch.setattr(app_state, "roles", {}, raising=False)
 
     async def _org_runtime(org_id: str):
         return registry.get(org_id)
@@ -296,4 +308,121 @@ def test_no_mail_host_configured_is_reported_not_silent(planes, smtp, monkeypatc
         invite = _create_invite(client, email="carol@example.test")
 
     assert "No SMTP host is configured" in invite["delivery"]
+    assert smtp.sink.messages == []
+
+
+# --- REQ-1330: EmailSender port — SaaS-only gating and the provider adapter ---
+
+
+def test_self_hosted_deployments_send_no_email(planes, smtp, monkeypatch):
+    """REQ-1330: outbound mail exists only in SaaS mode. A self-hosted deployment creates the
+    invitation and reports saas_only — the row and its link stay valid for out-of-band delivery —
+    and no transport is touched even though SMTP is fully configured."""
+    from provisa.api.app import state as app_state
+
+    monkeypatch.setattr(
+        app_state,
+        "config",
+        SimpleNamespace(mail=planes.mail, multitenancy=False),
+        raising=False,
+    )
+    with TestClient(_make_app(planes)) as client:
+        invite = _create_invite(client, email="carol@example.test", role_id="analyst")
+        assert invite["delivery"] == "saas_only"
+
+        redeemed = client.post(
+            "/auth/redeem-invite", json={"token": invite["token"]}, headers=_auth("tok-carol")
+        )
+        assert redeemed.status_code == 200, redeemed.text
+
+    assert smtp.sink.messages == []
+
+
+@pytest.fixture
+def resend_api():
+    """A real HTTP server standing in for api.resend.com — the adapter's full request (auth
+    header, JSON shape) is what a provider would receive, not what a mock recorded."""
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    received: list[SimpleNamespace] = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802 — http.server's hook name
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            received.append(
+                SimpleNamespace(
+                    path=self.path,
+                    authorization=self.headers.get("Authorization"),
+                    payload=_json.loads(body),
+                )
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"id": "test"}')
+
+        def log_message(self, format, *args):  # noqa: A002 — http.server's signature
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield SimpleNamespace(
+        url=f"http://127.0.0.1:{server.server_address[1]}/emails", received=received
+    )
+    server.shutdown()
+    thread.join()
+
+
+def test_resend_adapter_delivers_through_the_port(planes, smtp, resend_api, monkeypatch):
+    """REQ-1330: switching mail.provider to resend re-routes delivery through the Resend adapter —
+    no call-site change — and the request carries the key, the sender and the redemption link."""
+    monkeypatch.setattr(planes.mail, "provider", "resend", raising=False)
+    monkeypatch.setattr(planes.mail, "api_key", "re_test_key", raising=False)
+    monkeypatch.setattr(planes.mail, "api_url", resend_api.url, raising=False)
+    monkeypatch.setattr(planes.mail, "from_address", "invites@provisa.dev", raising=False)
+
+    with TestClient(_make_app(planes)) as client:
+        invite = _create_invite(client, email="Carol@Example.Test", role_id="analyst")
+
+    assert invite["delivery"] == "sent"
+    assert smtp.sink.messages == []  # the SMTP adapter was never involved
+    assert len(resend_api.received) == 1
+    req = resend_api.received[0]
+    assert req.authorization == "Bearer re_test_key"
+    assert req.payload["from"] == "invites@provisa.dev"
+    assert req.payload["to"] == ["carol@example.test"]
+    assert f"https://provisa.example.test/?invite={invite['token']}" in req.payload["text"]
+
+
+def test_resend_without_api_key_is_reported_not_silent(planes, smtp, monkeypatch):
+    """Same refusal contract as the SMTP switch: the unset key surfaces in the response."""
+    monkeypatch.setattr(planes.mail, "provider", "resend", raising=False)
+    with TestClient(_make_app(planes)) as client:
+        invite = _create_invite(client, email="carol@example.test")
+
+    assert "No Resend API key is configured" in invite["delivery"]
+    assert smtp.sink.messages == []
+
+
+def test_an_unknown_provider_is_a_named_config_fault(planes, smtp, monkeypatch):
+    """A typo in mail.provider must name the setting, not vanish into a generic failure."""
+    monkeypatch.setattr(planes.mail, "provider", "sendgrid", raising=False)
+    with TestClient(_make_app(planes)) as client:
+        invite = _create_invite(client, email="carol@example.test")
+
+    assert "Unknown mail provider 'sendgrid'" in invite["delivery"]
+    assert smtp.sink.messages == []
+
+
+def test_an_empty_provider_is_the_unconfigured_refusal(planes, smtp, monkeypatch):
+    """Compose overlays interpolate PROVISA_MAIL_PROVIDER as "" on nodes that set none; that is
+    the unconfigured state and gets the same named refusal as an unset SMTP host."""
+    monkeypatch.setattr(planes.mail, "provider", "", raising=False)
+    with TestClient(_make_app(planes)) as client:
+        invite = _create_invite(client, email="carol@example.test")
+
+    assert "No mail provider is configured" in invite["delivery"]
     assert smtp.sink.messages == []

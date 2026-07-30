@@ -35,8 +35,10 @@ from provisa.core.schema_admin import (
 from provisa.core.schema_org import user_role_assignments
 from provisa.security.rights import (
     ORG_ADMIN_ROLE,
-    PLATFORM_ADMIN_ROLE,
-    is_platform_admin as _is_platform_admin,
+    PLATFORM_ADMIN_ROLE,  # GRANTED (bootstrap/recovery assignment) — never read as a gate
+    can_act_cross_org as _can_act_cross_org,
+    capabilities_for_claims as _capabilities_for_claims,
+    is_control_plane_role as _is_control_plane_role,
     is_tenant_org as _is_tenant_org,
 )
 
@@ -100,6 +102,17 @@ _SKIP_PATHS = {
     "/auth/bootstrap-status",
     "/setup/status",
 }
+
+
+def _loaded_roles() -> dict[str, dict]:  # REQ-1337
+    """The loaded roles registry — the only place a role id turns into the rights it carries.
+
+    Imported lazily: ``provisa.api.app`` imports this middleware, so a module-level import would be
+    circular.
+    """
+    from provisa.api.app import state
+
+    return getattr(state, "roles", {})
 
 
 def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
@@ -379,7 +392,13 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             # grants); it confers ZERO standing capabilities inside tenant orgs, so binding a
             # non-member org is rejected for platform admins exactly as for anyone else. Org CRUD
             # runs on the platform plane (see platform_plane below), which needs no tenant binding.
-            is_platform_admin = _is_platform_admin({a.role_id for a in platform_assignments})
+            # REQ-1337: the decision is a RIGHT (cross_org), resolved from the assigned roles'
+            # capabilities. Nothing here tests a role name.
+            can_cross_org = _can_act_cross_org(
+                _capabilities_for_claims(
+                    {a.role_id for a in platform_assignments}, _loaded_roles()
+                )
+            )
             member_org_ids: list[str] = []
             if self._admin_pool is not None:
                 async with self._admin_pool.acquire() as conn:
@@ -396,7 +415,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             # the lookup entirely) and only for a real identity (never the anonymous dev principal).
             if (
                 not member_org_ids
-                and not is_platform_admin
+                and not can_cross_org
                 and self._admin_pool is not None
                 and identity.user_id != "anonymous"
             ):
@@ -440,8 +459,8 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 active_org_id = member_org_ids[0]
             elif platform_plane:
                 active_org_id = None
-            elif is_platform_admin:
-                # REQ-1318: a platform admin holds zero org memberships by design — the platform
+            elif can_cross_org:
+                # REQ-1318: a cross_org principal holds zero org memberships by design — the platform
                 # operator is not a tenant. Without this branch they named no org, matched no
                 # membership, and fell to the tenant-path 401 on every non-platform-plane request,
                 # so /admin/graphql 401'd while /auth/me returned 200 and reported platform_admin.
@@ -486,7 +505,11 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             # control plane's own org and platform_admin is what confers control-plane capability
             # there — but it is still never the acting DATA role (see the acting-role rule below).
             if _is_tenant_org(active_org_id, self._default_org_id):
-                assignments = [a for a in assignments if a.role_id != PLATFORM_ADMIN_ROLE]
+                # REQ-1337: identified by the cross_org RIGHT the role carries, not by its name.
+                _roles = _loaded_roles()
+                assignments = [
+                    a for a in assignments if not _is_control_plane_role(a.role_id, _roles)
+                ]
 
         role = resolve_role(identity, self._mapping_rules, self._default_role)
         # REQ-1327: platform_admin holds ZERO data capabilities in EVERY org, root included, so it is
@@ -497,8 +520,12 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         # endpoint tables survived (compiler/schema_gen.py). A caller holding platform_admin ALONE
         # keeps it as the acting role: the control plane needs it, and the data surfaces refuse it
         # outright (no schema is generated for it) rather than serving an empty one.
-        _data_plane_roles = [a.role_id for a in assignments if a.role_id != PLATFORM_ADMIN_ROLE]
-        if role == PLATFORM_ADMIN_ROLE:
+        # REQ-1337: a control-plane role is one holding the cross_org RIGHT — no name is tested.
+        _all_roles = _loaded_roles()
+        _data_plane_roles = [
+            a.role_id for a in assignments if not _is_control_plane_role(a.role_id, _all_roles)
+        ]
+        if _is_control_plane_role(role, _all_roles):
             if _data_plane_roles:
                 role = _data_plane_roles[0]
             elif _is_tenant_org(active_org_id, self._default_org_id):
@@ -514,7 +541,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         requested_role = request.headers.get("x-provisa-role")
         if requested_role:
             assigned_role_ids = {a.role_id for a in assignments}
-            if requested_role == PLATFORM_ADMIN_ROLE:
+            if _is_control_plane_role(requested_role, _all_roles):
                 # REQ-1327 again, at the one place a client can name a role: the header selects the
                 # acting role for the DATA surfaces, and platform_admin is not one. It resolves to
                 # the caller's data-plane role instead of being honored; with no data-plane role the

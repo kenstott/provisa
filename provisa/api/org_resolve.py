@@ -43,7 +43,7 @@ async def resolve_session_org(
     state: Any,
     *,
     user_id: str | None,
-    is_platform_admin: bool = False,
+    can_act_any_org: bool = False,  # REQ-1337: the cross_org RIGHT, never a role name
     requested_org: str | None = None,
 ) -> str | None:
     """Resolve the org a protocol session should bind, or None to use the default runtime.
@@ -66,13 +66,13 @@ async def resolve_session_org(
             member_org_ids = [dict(r._mapping)["org_id"] for r in result.fetchall()]
 
     if requested_org is not None:
-        if is_platform_admin or requested_org in member_org_ids:
+        if can_act_any_org or requested_org in member_org_ids:
             return requested_org
         raise OrgResolutionError(f"principal not a member of org {requested_org!r}")
     if len(member_org_ids) == 1:
         return member_org_ids[0]
-    if is_platform_admin:
-        # A platform admin with no single membership and no explicit request acts on the
+    if can_act_any_org:
+        # A cross_org principal with no single membership and no explicit request acts on the
         # default org's data plane (org CRUD is a separate platform-plane concern).
         return None
     raise OrgResolutionError(

@@ -62,6 +62,15 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     MASKING_CONFIG = "masking_config"
     VIEW_GOVERNANCE = "view_governance"  # REQ-1134: see meta GOVERNANCE columns (visible_to, masks, grants)
     SUPERADMIN = "superadmin"
+    # REQ-1337: read/modify DEPLOYMENT-WIDE settings — federation engine, cache storage, encryption
+    # provider, auth provider, the config file itself, query-engine lifecycle. Distinct from ADMIN so
+    # the surface is gated by a RIGHT rather than by a role name: platform_admin always holds it,
+    # org_admin holds it only in a single-tenant deployment (see apply_tenancy_role_grants).
+    PLATFORM_SETTINGS = "platform_settings"
+    # REQ-1337: act in an org the principal is not a member of — bind any org on a protocol session,
+    # administer any org's invites and lifecycle. Held by platform_admin only; org_admin never holds
+    # it in either tenancy mode, because org authority is confined to the org being acted in.
+    CROSS_ORG = "cross_org"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
 
@@ -92,30 +101,68 @@ def is_tenant_org(org_id: str | None, root_org_id: str) -> bool:  # REQ-1297
     return org_id is not None and org_id != root_org_id
 
 
-def is_platform_admin(claims: Iterable[str]) -> bool:  # REQ-1297
-    """True when any role claim (``role`` or ``role:domain``) or resolved capability names
-    platform_admin — the single platform-bypass keyword, replacing the retired admin/superadmin
-    pair. Callers pass either an identity's role claims or the output of _resolved_capabilities,
-    which surfaces the platform_admin role id as a capability for exactly this test."""
-    return PLATFORM_ADMIN_ROLE in {c.split(":")[0].strip() for c in claims}
+def role_ids_from_claims(claims: Iterable[str]) -> set[str]:  # REQ-1297
+    """The bare role ids in a claim set, dropping the optional ``:domain`` suffix.
+
+    Identity only — NEVER an authorization answer. Every gate must resolve these ids to capabilities
+    (``capabilities_for_claims``) and test a RIGHT (REQ-1337).
+    """
+    return {c.split(":")[0].strip() for c in claims}
+
+
+def capabilities_for_claims(  # REQ-1337
+    claims: Iterable[str], roles: dict[str, dict] | None
+) -> set[str]:
+    """Resolve role CLAIMS to the union of the capabilities those roles carry.
+
+    The one conversion from role identity to rights, shared by every surface that receives raw
+    claims (pgwire, bolt, MCP, the HTTP middleware). ``roles`` is the loaded roles registry; a claim
+    naming a role absent from it contributes nothing — an unknown role grants no rights.
+    """
+    caps: set[str] = set()
+    for role_id in role_ids_from_claims(claims):
+        role = (roles or {}).get(role_id) or {}
+        for c in role.get("capabilities") or []:
+            caps.add(c)
+    return caps
 
 
 # REQ-1297: the two capability strings that mean "unrestricted". Only platform_admin carries them
-# (see the schema.sql seed), but they are CAPABILITIES, not role ids, so a gate reading a resolved
-# capability set must test for them as well as for the platform_admin id that _resolved_capabilities
-# surfaces. check_capability/has_capability above treat ADMIN the same way.
+# (see the schema.sql seed), but they are CAPABILITIES, not role ids — which is the whole point:
+# a gate names the right, and the seed decides which role holds it. check_capability/has_capability
+# above treat ADMIN the same way.
 PLATFORM_BYPASS_CAPABILITIES: frozenset[str] = frozenset(
     {Capability.ADMIN.value, Capability.SUPERADMIN.value}
 )
 
 
-def has_platform_bypass(capabilities: Iterable[str]) -> bool:  # REQ-1297
-    """True when a RESOLVED CAPABILITY set carries platform authority — either wildcard capability
-    or the platform_admin role id that ``_resolved_capabilities`` folds in. Gates reading raw role
-    CLAIMS must use ``is_platform_admin`` instead: as role ids, 'admin' and 'superadmin' are retired
-    and resolve to nothing."""
+def has_platform_bypass(capabilities: Iterable[str]) -> bool:  # REQ-1297, REQ-1337
+    """True when a RESOLVED CAPABILITY set carries platform authority.
+
+    Reads RIGHTS ONLY — the platform_admin role id is deliberately not consulted here, and no gate
+    anywhere may substitute it (REQ-1337). A surface holding raw role CLAIMS resolves them through
+    ``capabilities_for_claims`` first.
+    """
+    return bool(set(capabilities) & PLATFORM_BYPASS_CAPABILITIES)
+
+
+def is_control_plane_role(role_id: str, roles: dict[str, dict] | None) -> bool:  # REQ-1337
+    """True when a role is a CONTROL-PLANE role — decided by the rights it carries, not its name.
+
+    A control-plane role holds ``cross_org``: authority over org lifecycle, invites and
+    infrastructure across orgs. REQ-1327 keeps such a role off the data plane entirely (no schema is
+    generated for it, and it is never the acting data role), and REQ-1297 makes it unresolvable
+    inside a tenant org. Both rules read this right, so a deployment that mints another
+    control-plane role gets the same treatment without any code naming it.
+    """
+    role = (roles or {}).get(role_id) or {}
+    return Capability.CROSS_ORG.value in (role.get("capabilities") or [])
+
+
+def can_act_cross_org(capabilities: Iterable[str]) -> bool:  # REQ-1337
+    """True when a resolved capability set may act in an org the principal is not a member of."""
     caps = set(capabilities)
-    return PLATFORM_ADMIN_ROLE in caps or bool(caps & PLATFORM_BYPASS_CAPABILITIES)
+    return Capability.CROSS_ORG.value in caps or has_platform_bypass(caps)
 
 
 class InsufficientRightsError(Exception):

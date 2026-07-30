@@ -33,8 +33,16 @@ export function OnboardGate({
   onSessionExpired: () => void;
 }) {
   const { t } = useTranslation();
-  const { orgMemberships, assignments, loading, authEnabled, userId, identityErrorStatus, refresh } =
-    useAuth();
+  const {
+    orgMemberships,
+    assignments,
+    availableRoles,
+    loading,
+    authEnabled,
+    userId,
+    identityErrorStatus,
+    refresh,
+  } = useAuth();
   const token = localStorage.getItem("provisa_token");
   // REQ-1286: an unresolved identity has two causes that must NOT share a screen.
   //
@@ -146,17 +154,21 @@ export function OnboardGate({
       </div>
     );
   }
-  // A platform_admin (REQ-1297) may hold zero org memberships — the onboarding flow is for tenant
-  // users who must join/create an org, not the platform operator. Let them (resolved from
-  // /auth/me assignments) through to the shell instead of trapping them here.
-  const isPlatformAdmin = assignments.some((a) => a.role_id === "platform_admin");
+  // REQ-1337: a control-plane principal (one holding the `cross_org` RIGHT) may hold zero org
+  // memberships by design — the onboarding flow is for tenant users who must join or create an org.
+  // The assigned role ids from /auth/me are resolved to the rights those roles carry; no role name
+  // is tested here.
+  const assignedRoleIds = new Set(assignments.map((a) => a.role_id));
+  const canActCrossOrg = availableRoles.some(
+    (r) => assignedRoleIds.has(r.id) && r.capabilities.includes("cross_org"),
+  );
   if (
     authEnabled &&
     token &&
     !loading &&
     userId &&
     orgMemberships.length === 0 &&
-    !isPlatformAdmin
+    !canActCrossOrg
   ) {
     return (
       <Suspense

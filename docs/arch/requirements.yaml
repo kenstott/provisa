@@ -40105,12 +40105,18 @@
     Removing the sentinel simplifies the schema model and makes the provenance relationship explicit in the type system,
     eliminating special-case handling and reducing surface area.
 - id: REQ-1330
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Email Delivery
   priority: MUST
   type: behavioral
-  target: 2026-Q4
+  code:
+  - provisa/core/mail.py
+  - provisa/core/models.py
+  - provisa/api/admin/invites_router.py
+  tests:
+  - tests/integration/test_invite_delivery.py
   description: >-
     Transactional email delivery (org invites today; any future outbound transactional mail) exists only in SaaS
     deployment mode and is sent exclusively through an internal EmailSender abstraction (port/adapter). Application
@@ -40155,3 +40161,318 @@
   related_reqs:
   - REQ-1030
   - REQ-1298
+- id: REQ-1331
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Infrastructure
+  priority: MUST
+  type: infrastructure
+  code:
+  - terraform/gcp-saas/main.tf
+  - terraform/gcp-saas/front-door/proxy.py
+  description: >-
+    The SaaS shared IP is fronted by an always-free e2-micro "front door" VM running a stdlib-only TCP proxy
+    that splices every protocol port to the coordinator. The front door replaces the regional passthrough NLB,
+    which cost ~$18/mo in forwarding-rule hours and could not wake a stopped backend.
+  use_case: >-
+    The e2-micro always-free tier eliminates the forwarding-rule cost entirely, and a custom proxy enables
+    wake-on-hit (start the coordinator on traffic) and idle-stop (stop after inactivity) that a managed NLB
+    cannot provide. The same static IP persists across coordinator stop/start cycles, keeping DNS and client
+    configuration stable.
+- id: REQ-1332
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Infrastructure
+  priority: MUST
+  type: infrastructure
+  code:
+  - terraform/gcp-saas/front-door/proxy.py
+  description: >-
+    When the coordinator is stopped and a client connects on any protocol port, the front door immediately
+    triggers instances.start. HTTPS surfaces (UI 443, API 8000) return a TLS 503 "waking" page (HTML for browsers)
+    or JSON for API clients; raw TCP ports (pgwire 5439, bolt 7687, flight 8815, mcp 8009, grpc 50051) hold the
+    connection open up to ~110s until the listener is up, then splice the client directly to the backend.
+  use_case: >-
+    HTTPS clients need only refresh (browsers) or retry (API clients); no manual intervention. Raw TCP clients
+    are transparent to the wake delay, improving UX for database drivers and CLI tools that poll for readiness.
+  scenario: |
+    Given the coordinator is stopped and a client connects on the API port (8000)
+
+    When the front door receives the connection
+
+    Then it triggers instances.start
+
+    And returns a TLS 503 response with JSON {"status": "waking"} or an HTML page
+
+    Given the coordinator is stopped and a pgwire client connects (port 5439)
+
+    When the front door receives the connection
+
+    Then it triggers instances.start
+
+    And holds the connection open (up to 110s) without sending data
+
+    And waits for the coordinator to boot and accept on port 5439
+
+    Then splices the client directly to the backend
+- id: REQ-1333
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Infrastructure
+  priority: SHOULD
+  type: behavioral
+  code:
+  - terraform/gcp-saas/front-door/proxy.py
+  - terraform/gcp-saas/variables.tf
+  description: >-
+    After idle_stop_minutes (default 60) of zero traffic across all protocol ports, the front door stops the
+    coordinator via instances.stop and reduces idle cost to ~$0.65/day (disk + Cloud SQL f1-micro + static IP).
+    A boot-grace period (default 10 min) after wake prevents the idle reaper from immediately stopping a just-booted
+    coordinator.
+  use_case: >-
+    Scale-to-zero idle costs are the enabler for a viable free tier and low-commitment trials. The grace period
+    prevents flapping: a client that connects briefly during boot won't trigger an immediate stop cycle.
+  scenario: |
+    Given a SaaS deployment with idle_stop_minutes=60 and boot_grace_minutes=10
+
+    When no traffic arrives on any port for 60 minutes
+
+    Then the front door calls instances.stop
+
+    And the coordinator shuts down
+
+    Given the coordinator is stopped
+
+    When a new client connects
+
+    Then the front door calls instances.start
+
+    And waits 10 minutes (boot grace) before the idle reaper may stop again
+
+    Then if no new traffic arrives, instances.stop is called
+- id: REQ-1334
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Infrastructure
+  priority: SHOULD
+  type: behavioral
+  code:
+  - terraform/gcp-saas/front-door/proxy.py
+  - terraform/gcp-saas/variables.tf
+  - terraform/gcp-saas/main.tf
+  description: >-
+    The front door serves an authenticated wake/verify API on front_door_status_port (default 9443, HTTPS only).
+    GET /status returns coordinator state (RUNNING | STOPPED | PROVISIONING) and per-port reachability (true | false).
+    POST /wake synchronously calls instances.start and waits for the coordinator listener to accept. Bearer token
+    (front_door_status_token output) is required on both endpoints. This API answers even while the coordinator is
+    stopped, making it ideal for customers and automation that cannot retry.
+  use_case: >-
+    Automated systems (CI/CD, integrations) that lack retry logic benefit from explicit pre-wake and status polling
+    instead of blindly retrying a connection. The dedicated status port isolates control traffic from data ports and
+    provides a probe endpoint for monitoring.
+  scenario: |
+    Given the front door is running and the coordinator is stopped
+
+    When a client sends GET /status with the Bearer token
+
+    Then the response includes {"status": "STOPPED", "ports": {"5439": false, "443": false, ...}}
+
+    Given the coordinator is stopped
+
+    When a client sends POST /wake with the Bearer token
+
+    Then the front door calls instances.start
+
+    And polls the coordinator listener until it accepts
+
+    And returns {"status": "RUNNING"} when ready
+
+    Given an invalid or missing Bearer token
+
+    When a client requests /status or /wake
+
+    Then the front door returns 401 Unauthorized
+- id: REQ-1335
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Infrastructure
+  priority: SHOULD
+  type: structural
+  code:
+  - terraform/gcp-saas/main.tf
+  - terraform/gcp-saas/variables.tf
+  description: >-
+    The coordinator machine type is e2-standard-4 (4 vCPU, 16 GB, ~25% lower per-core throughput than n2-standard-4).
+    Boot disk is pd-balanced (not pd-ssd): with node-scheduler.include-coordinator=false and the control plane
+    offloaded to Cloud SQL, the coordinator performs no scan spill, so pd-ssd IOPS buys nothing. When paying
+    concurrency exists, revisit back to n2-standard-4.
+  use_case: >-
+    E2's lower per-core cost reduces idle-stop economics and planning-latency impact is negligible under the light
+    concurrent load expected at first scale. The coordinator idle-stops via the front door anyway, so the choice is
+    reversible: moving to n2 is a one-line variable change when needed.
+- id: REQ-1336
+  status: complete
+  since: 2026-07
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Infrastructure
+  priority: MUST
+  type: structural
+  code:
+  - terraform/gcp-saas/main.tf
+  description: >-
+    The front-door service account is granted a custom IAM role (provisaSaasFrontDoor) with three permissions only:
+    compute.instances.start, compute.instances.stop, compute.instances.get. The role is scoped to the project, and
+    the front door assumes this identity via the VM's service account binding. No other permissions are granted.
+  use_case: >-
+    Least-privilege isolation: the front door cannot modify the network, delete instances, or access storage or
+    databases. Compromised front-door code (e.g. via supply-chain attack on the proxy.py script) cannot escalate
+    beyond starting/stopping the coordinator and checking its status.
+- id: REQ-1337
+  status: complete
+  since: 2026-07
+  group: 1. Access Governance & Security
+  category: Access Control
+  priority: MUST
+  type: constraint
+  code:
+  - provisa/security/rights.py
+  - provisa/core/db.py
+  - provisa/core/schema.sql
+  - provisa-ui/src/components/NavBar.tsx
+  - provisa-ui/src/App.tsx
+  - provisa/api/admin/_platform_guard.py
+  - provisa/api/admin/settings_router.py
+  tests:
+  - tests/unit/test_rights.py
+  - tests/unit/test_governance.py
+  - tests/unit/test_auth_middleware.py
+  - tests/integration/test_auth_integration.py
+  - tests/integration/test_governance_integration.py
+  - provisa-ui/e2e/auth-providers.spec.ts
+  description: >-
+    Every authorization or visibility gate — server and UI — must test a CAPABILITY (right) the acting role carries,
+    never a role id or name. A role id is identity only. Converting identity to capabilities happens in exactly one place
+    per surface: capabilities_for_claims in provisa/security/rights.py. Two capabilities control deployment-wide settings:
+    platform_settings (read/modify federation engine, cache storage, encryption provider, auth provider, config file,
+    query-engine lifecycle) and cross_org (act in an org one is not a member of; holding this capability also marks a role
+    CONTROL-PLANE, hence off the data plane per REQ-1327 and unresolvable in a tenant org per REQ-1297). Seed: platform_admin
+    always holds both. org_admin holds platform_settings only in SINGLE-TENANT deployments and never holds cross_org in
+    either mode. apply_tenancy_role_grants in provisa/core/db.py re-asserts these grants on every init_schema.
+  use_case: >-
+    Capability-based gates decouple authorization logic from identity, enabling tenancy mode to decide grants without
+    duplicating gate logic. Capability gates are re-evaluable at runtime; role identity gates are brittle and error-prone
+    when tenancy changes.
+  scenario: |
+    Given a role with platform_settings capability
+    When a user holding that role accesses the admin UI
+    Then the Admin, Federation Engine, Cache, and Security tabs are visible
+    And server routes to the deployment-wide settings handlers accept the request
+
+    Given a multitenant deployment with org_admin in a tenant org
+    When org_admin attempts to access platform settings
+    Then the Admin, Federation Engine, Cache, and Security tabs are hidden
+    And server routes reject the request with 403
+
+    Given a single-tenant deployment with org_admin
+    When org_admin accesses the admin UI
+    Then platform settings tabs are visible
+    And server routes accept the request
+
+    Given an authorization gate in server or UI
+    When the gate evaluates permissions
+    Then it calls capabilities_for_claims to resolve rights
+    And tests capabilities, never role ids or names
+  related_reqs:
+  - REQ-1327
+  - REQ-1297
+  - REQ-1266
+- id: REQ-1338
+  status: complete
+  group: 3. Multi-tenancy & Organization
+  category: Schema Caching
+  priority: MUST
+  type: structural
+  since: 2026-07
+  description: >-
+    Schema build cache (domains, tables, column_types rows) is per-org state on OrgRuntime,
+    with AppState property shim routing reads and writes through the ContextVar-selected org runtime.
+    Matches existing shims for tables, relationships, metrics, and roles.
+  use_case: >-
+    Prevents one organization's schema from overwriting another's during concurrent schema rebuilds.
+    Ensures /data/domains and other schema endpoints return only the querying org's domains,
+    not the last org to rebuild its schema.
+  code:
+  - provisa/api/org_runtime.py
+  - provisa/api/app.py
+  - provisa/api/data/sdl.py
+  tests:
+  - tests/unit/test_org_runtime.py
+  scenario: |
+    Given two organizations with different domains configured
+    When organization A rebuilds its schema
+    Then organization B's cached schema remains unchanged
+    And /data/domains returns only organization A's domains when queried as organization A
+    And /data/domains returns only organization B's domains when queried as organization B
+- id: REQ-1339
+  status: complete
+  group: 2. Data Loading & Federation
+  category: Data Source Management
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  code:
+  - provisa/core/models.py
+  - provisa/api/startup_seed.py
+  tests:
+  - tests/integration/test_org_demo_seed_visible.py
+  description: >-
+    Org provisioning must seed every system source (including __derived__) into the new org's schema
+    before the config load registers tables. Any config tables:row with source_id pointing to a system
+    source has a guaranteed FK target; silent table drops from missing source_id references are prevented.
+  use_case: >-
+    System sources like __derived__ are seeded per-org by startup_seed._seed_built_in_sources, not declared
+    by config. Without pre-seeding, provisioning loads config tables that reference nonexistent source_ids,
+    silently dropping those tables from the load.
+  scenario: |
+    Given a new organization being provisioned
+    When provisioning begins
+    Then _seed_built_in_sources runs before config.tables are registered
+    And __derived__ and all system sources exist in the org's schema before table registration
+    And config tables with source_id: __derived__ load successfully
+- id: REQ-1340
+  status: complete
+  group: 1. Access Governance & Security
+  category: Access Control
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  code:
+  - provisa/core/repositories/table.py
+  - provisa/core/schema.sql
+  - provisa/core/db.py
+  tests:
+  - tests/integration/test_governance_integration.py
+  - tests/integration/test_org_demo_seed_visible.py
+  description: >-
+    Control-plane role resolution (the set of roles holding cross_org) must not depend on in-memory app state.
+    _ungrant_control_plane resolves cross_org-holding roles from the org's own roles table on the caller's connection,
+    never from state.roles. Platform-wide seed guarantees the roles table exists and contains the correct grants before
+    any table registration runs.
+  use_case: >-
+    During provisioning, build_org_runtime populates state.roles AFTER config table registration. Without querying
+    the roles table directly, control-plane roles are unresolvable during provisioning and platform_admin survives on
+    every column grant of the new org, violating REQ-1337.
+  scenario: |
+    Given a new org being provisioned
+    When _ungrant_control_plane runs before build_org_runtime completes
+    Then it queries the org's roles table on the connection
+    And resolves cross_org-holding roles from the table, not from state.roles
+    And correctly strips platform_admin from column grants
+  related_reqs:
+  - REQ-1337
+  - REQ-1327

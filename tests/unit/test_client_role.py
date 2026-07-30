@@ -126,6 +126,24 @@ from provisa.auth.middleware import AuthMiddleware  # noqa: E402
 from provisa.auth.models import AuthIdentity  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _seeded_roles(monkeypatch):
+    """REQ-1337: the acting-role choice reads the ``cross_org`` RIGHT to identify a control-plane
+    role — no role name is tested. That resolution needs the loaded roles registry, which a real
+    process gets from the schema.sql seed; mirror it here."""
+    monkeypatch.setattr(
+        "provisa.auth.middleware._loaded_roles",
+        lambda: {
+            "platform_admin": {
+                "id": "platform_admin",
+                "capabilities": ["admin", "superadmin", "platform_settings", "cross_org"],
+            },
+            "org_admin": {"id": "org_admin", "capabilities": ["user_management"]},
+            "viewer": {"id": "viewer", "capabilities": ["usage"]},
+        },
+    )
+
+
 class _State:
     pass
 

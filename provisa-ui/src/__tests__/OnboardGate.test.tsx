@@ -32,7 +32,23 @@ vi.mock('../api/admin', async (importOriginal) => {
 // against (a TablesPage test saw useTables become undefined).
 vi.mock('../hooks/useAdminQueries', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useAdminQueries')>()),
-  useRoles: () => ({ refetch: vi.fn().mockResolvedValue({ data: { roles: [] } }) }),
+  // REQ-1337: the gate resolves the assigned role ids to the RIGHTS those roles carry, so the roles
+  // registry must be populated for a control-plane assignment to mean anything. platform_admin's
+  // seeded capability list (provisa/core/schema.sql) is what is mirrored here — `cross_org` is the
+  // right the gate reads.
+  useRoles: () => ({
+    refetch: vi.fn().mockResolvedValue({
+      data: {
+        roles: [
+          {
+            id: 'platform_admin',
+            capabilities: ['admin', 'superadmin', 'platform_settings', 'cross_org'],
+            domain_access: ['*'],
+          },
+        ],
+      },
+    }),
+  }),
   useDomains: () => ({ refetch: vi.fn().mockResolvedValue({ data: { domains: [] } }) }),
 }));
 vi.mock('../pages/OnboardOrgPage', () => ({
@@ -119,11 +135,12 @@ describe('OnboardGate', () => {
     expect(await screen.findByTestId('onboard-org-page')).toBeInTheDocument();
   });
 
-  // The role id is `platform_admin` (provisa/security/rights.py PLATFORM_ADMIN_ROLE), which is what
-  // the gate tests for. With any other id this passed only transiently — the shell renders while the
-  // identity is still loading, so findBy resolved on the first tick and the gate flipped to
-  // onboarding immediately after. The settled state is asserted below, after the bootstrap lands.
-  it('lets a platform admin with no memberships through to the shell', async () => {
+  // REQ-1337: what lets this identity through is the `cross_org` RIGHT its assigned role carries
+  // (see the roles mock above), not the role id. With a role that carries no such right this passed
+  // only transiently — the shell renders while the identity is still loading, so findBy resolved on
+  // the first tick and the gate flipped to onboarding immediately after. The settled state is
+  // asserted below, after the bootstrap lands.
+  it('lets a control-plane principal with no memberships through to the shell', async () => {
     resolvesTo({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] });
     renderGate();
     await waitFor(() => expect(mockBootstrapStatus).toHaveBeenCalled());

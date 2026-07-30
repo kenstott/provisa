@@ -44,7 +44,8 @@ export function FederationEngineTab() {
     fetchFederationEngine()
       .then((s) => {
         setState(s);
-        setSelected(s.current);
+        // The persisted selection, not the running one: this Select edits what a restart will use.
+        setSelected(s.persisted);
         // Seed every declared key from the returned config, keeping booleans as booleans.
         const seeded: Record<string, string | boolean> = {};
         for (const key of Object.keys(s.config)) {
@@ -170,6 +171,21 @@ export function FederationEngineTab() {
           ),
         )}
       </Stack>
+
+      {state.env_pinned_engine && (
+        <Alert color="orange" variant="light" data-testid="federation-engine-env-pin">
+          {t("federationEngineTab.envPinned", { engine: state.env_pinned_engine })}
+        </Alert>
+      )}
+
+      {state.persisted !== state.current && (
+        <Alert color="blue" variant="light" data-testid="federation-engine-pending">
+          {t("federationEngineTab.pendingSelection", {
+            engine: state.persisted,
+            running: state.current,
+          })}
+        </Alert>
+      )}
 
       <Alert color="yellow" variant="light">
         {state.restart_required_note}
