@@ -104,7 +104,13 @@ def provision(state: Any, ops_views: list, retention_hours: int | None) -> None:
     state.engine_conn = trino.dbapi.connect(**state.engine_conn_kwargs)
 
     from provisa.compiler import schema_service
+    from provisa.core.trino_system_catalogs import register_system_catalogs
     from provisa.observability.ops_trino import seed_ops_trino
+
+    # REQ-1332: provisa_admin/otel/results come from the live control plane and object store, not
+    # from checked-in .properties files. Must precede seed_ops_trino, which writes into `otel`.
+    assert state.tenant_engine is not None
+    register_system_catalogs(state.engine_conn, state.tenant_engine.url, state.org_id)
 
     schema_service.init(state.federation_engine)
     seed_ops_trino(state.engine_conn, ops_views, retention_hours)
@@ -133,14 +139,18 @@ async def connect_infra(state: Any) -> None:  # REQ-143, REQ-171
             import boto3
             from botocore.config import Config as BotoConfig
 
-            _otel_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT", "http://minio:9000")
-            _otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
+            from provisa.core.trino_system_catalogs import otel_object_store
+
+            # One reading of the object-store env: the bucket this creates is the same one the
+            # `otel` Iceberg catalog is pointed at (REQ-1332).
+            _store = otel_object_store()
+            _otel_bucket = _store["bucket"]
             _s3 = boto3.client(
                 "s3",
-                endpoint_url=_otel_endpoint,
-                aws_access_key_id=os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin"),
-                aws_secret_access_key=os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin"),
-                region_name="us-east-1",
+                endpoint_url=_store["endpoint"],
+                aws_access_key_id=_store["access_key"],
+                aws_secret_access_key=_store["secret_key"],
+                region_name=_store["region"],
                 config=BotoConfig(signature_version="s3v4"),
             )
             existing = [b["Name"] for b in _s3.list_buckets().get("Buckets", [])]
@@ -236,55 +246,27 @@ async def watchdog(state: Any) -> None:
 async def reload_catalog(
     state: Any, catalog: str, ops_views: list, retention_hours: int | None
 ) -> dict:
-    """Reload a Trino catalog via the coordinator REST API, then reconnect and re-run OTel DDL."""
-    import httpx
+    """Re-register a Provisa-owned Trino catalog from runtime values, then reconnect and re-run
+    OTel DDL.
+
+    REQ-1332: the properties are rebuilt from the live control-plane URL and object-store env, not
+    read back from ``trino/catalog/*.properties`` — those files are dev fixtures whose values have
+    nothing to do with the deployment doing the reload.
+    """
+    from provisa.core.trino_system_catalogs import register_catalog, spec_for
 
     if not state.engine_conn_kwargs:
         return {"success": False, "errors": ["Query engine connection not configured"]}
-
-    host = state.engine_conn_kwargs.get("host", "localhost")
-    port = state.engine_conn_kwargs.get("port", 8080)
-    base_url = f"http://{host}:{port}"
-
-    catalog_dir = os.path.join(
-        os.environ.get("PROVISA_CATALOG_DIR", "trino/catalog"), f"{catalog}.properties"
-    )
-    if not os.path.isabs(catalog_dir):
-        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        catalog_path = os.path.join(script_dir, catalog_dir)
-    else:
-        catalog_path = catalog_dir
-
-    if not os.path.exists(catalog_path):
-        return {"success": False, "errors": [f"Catalog properties not found: {catalog_path}"]}
-
-    props: dict[str, str] = {}
-    with open(catalog_path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, _, v = line.partition("=")
-                props[k.strip()] = v.strip()
-
-    connector_name = props.pop("connector.name", None)
-    if not connector_name:
-        return {"success": False, "errors": [f"connector.name missing in {catalog_path}"]}
+    if state.engine_conn is None:
+        return {"success": False, "errors": ["Query engine not connected"]}
+    assert state.tenant_engine is not None
 
     errors: list[str] = []
-    async with httpx.AsyncClient(timeout=30) as client:
-        del_resp = await client.delete(f"{base_url}/v1/catalog/{catalog}")
-        if del_resp.status_code not in (200, 204, 404):
-            errors.append(f"DELETE /v1/catalog/{catalog} → {del_resp.status_code}: {del_resp.text}")
-
-        post_resp = await client.post(
-            f"{base_url}/v1/catalog",
-            json={"catalogName": catalog, "connectorName": connector_name, "properties": props},
-        )
-        if post_resp.status_code not in (200, 201):
-            errors.append(f"POST /v1/catalog → {post_resp.status_code}: {post_resp.text}")
-
-    if errors:
-        return {"success": False, "errors": errors}
+    try:
+        spec = spec_for(catalog, state.tenant_engine.url, state.org_id)
+        await asyncio.to_thread(register_catalog, state.engine_conn, spec)
+    except (ValueError, RuntimeError, trino.exceptions.Error) as exc:
+        return {"success": False, "errors": [str(exc)]}
 
     try:
         new_conn = trino.dbapi.connect(**state.engine_conn_kwargs)
