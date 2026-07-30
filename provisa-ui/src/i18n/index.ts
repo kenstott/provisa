@@ -12,6 +12,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import en from "./locales/en.json";
+import es from "./locales/es.json";
 
 // Frontend internationalization runtime (REQ-1012). English is the base
 // catalog and the source of truth for keys. Core keys live in en.json; each
@@ -27,9 +28,19 @@ const componentCatalog = Object.values(perComponent).reduce(
   {} as Record<string, unknown>,
 );
 
+const perComponentEs = import.meta.glob<Record<string, unknown>>(
+  "./locales/es/*.json",
+  { eager: true, import: "default" },
+);
+const componentCatalogEs = Object.values(perComponentEs).reduce(
+  (acc, mod) => ({ ...acc, ...mod }),
+  {} as Record<string, unknown>,
+);
+
 export const defaultNS = "translation";
 export const resources = {
   en: { translation: { ...en, ...componentCatalog } },
+  es: { translation: { ...es, ...componentCatalogEs } },
 } as const;
 
 void i18n
@@ -38,15 +49,17 @@ void i18n
   .init({
     resources,
     fallbackLng: "en",
+    // Regional variants (es-MX, es-419) resolve to the base catalog.
+    supportedLngs: ["en", "es"],
+    nonExplicitSupportedLngs: true,
     defaultNS,
     interpolation: {
       // React already escapes rendered values.
       escapeValue: false,
     },
     detection: {
-      order: ["localStorage", "navigator"],
-      caches: ["localStorage"],
-      lookupLocalStorage: "provisa_lang",
+      order: ["navigator"],
+      caches: [],
     },
   });
 

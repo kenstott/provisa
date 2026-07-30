@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "Métricas",
+    "newMetric": "Nueva métrica",
+    "loading": "Cargando...",
+    "empty": "Aún no hay métricas registradas.",
+    "colName": "Nombre",
+    "colExpression": "Expresión",
+    "colDatatype": "Tipo de datos",
+    "colDescription": "Descripción",
+    "colAiContext": "Contexto de IA",
+    "fromFact": "desde hecho",
+    "builderFact": "Hecho de origen",
+    "builderMeasure": "Medida",
+    "builderAgg": "Agregado",
+    "builderNoFacts": "Aún no hay tablas de hechos registradas",
+    "detail": {
+      "handAuthored": "creada manualmente",
+      "noDependents": "ninguna",
+      "field": {
+        "expression": "Expresión",
+        "datatype": "Tipo de datos",
+        "description": "Descripción",
+        "aiContext": "Contexto de IA",
+        "sourceFact": "Hecho de origen",
+        "visibleTo": "Visible para",
+        "dependentViews": "Vistas de métricas dependientes"
+      }
+    },
+    "createTitle": "Nueva métrica",
+    "editTitle": "Editar métrica",
+    "fieldName": "Nombre",
+    "fieldNamePlaceholder": "p. ej. total_revenue",
+    "fieldExpression": "Expresión",
+    "fieldExpressionPlaceholder": "p. ej. SUM(orders.amount)",
+    "fieldDatatype": "Tipo de datos",
+    "fieldDatatypePlaceholder": "p. ej. numeric",
+    "fieldDatatypeDerived": "Derivado del agregado cuando se construye a partir de una medida de hecho",
+    "fieldDescription": "Descripción",
+    "fieldAiContext": "Contexto de IA",
+    "fieldAiContextPlaceholder": "Indicaciones para la generación de consultas asistida por IA",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "saveFailed": "Error al guardar.",
+    "editMetric": "Editar métrica {{name}}",
+    "deleteMetric": "Eliminar métrica {{name}}",
+    "deleteTitle": "Eliminar métrica",
+    "deleteConfirm": "¿Eliminar la métrica \"{{name}}\"? Esta acción no se puede deshacer.",
+    "delete": "Eliminar",
+    "deleteFailed": "Error al eliminar."
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "Quitar métrica {{metricName}}",
+    "dimensionsHeading": "Dimensiones",
+    "noDimensions": "No se encontraron columnas de dimensión relacionadas"
+  }
+}

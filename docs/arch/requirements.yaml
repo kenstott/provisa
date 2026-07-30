@@ -40476,3 +40476,66 @@
   related_reqs:
   - REQ-1337
   - REQ-1327
+- id: REQ-1341
+  status: complete
+  group: 11. Frontend UI & UX
+  category: Internationalization
+  priority: SHOULD
+  type: structural
+  since: 2026-07
+  description: >-
+    UI locale translation is performed in-session by the Claude agent via the i18n-translate skill.
+    No external translation service or LLM API call is made. Translation is incremental: a per-locale
+    translation memory (TM) sidecar at src/i18n/locales/<lng>/.tm.json records the English source string
+    per key at translation time. Only missing or stale keys are retranslated.
+  use_case: >-
+    In-session translation via Claude agent eliminates external service dependencies and API costs,
+    reducing operational complexity. Incremental translation memory keeps translation artifacts locally
+    and avoids redundant retranslations, accelerating catalog updates. English catalogs (en.json +
+    en/<ns>.json) remain the sole source of truth for keys.
+  code:
+  - provisa-ui/src/i18n/
+  - .claude/skills/i18n-translate/
+  scenario: |
+    Given a Provisa i18n locale catalog (e.g., src/i18n/locales/fr.json)
+    When a locale catalog is missing or keys are stale
+    Then the Claude i18n-translate agent translates via in-session invocation
+    And stores (English key → translated value) in src/i18n/locales/fr/.tm.json
+    And subsequent updates only retranslate keys absent from .tm.json
+    And validation enforces key-set and {{placeholder}} parity per locale
+  related_reqs:
+  - REQ-1012
+- id: REQ-1342
+  status: complete
+  group: 11. Frontend UI & UX
+  category: Internationalization
+  priority: SHOULD
+  type: behavioral
+  since: 2026-07
+  description: >-
+    UI language is selected solely from the browser's navigator.language setting (read at runtime on each
+    session start), with English (en) as fallback. Regional locale variants (es-MX, es-419) are mapped to
+    their base catalog (es). No per-user language override is persisted to localStorage; the provisa_lang
+    key is retired. First non-English locale shipped is universal/neutral Spanish (es) with full catalog parity.
+  use_case: >-
+    Browser language detection eliminates per-user preference storage, reducing complexity and data plane
+    footprint. Automatic regional variant mapping (e.g., es-MX → es) ensures consistent translation coverage
+    without fragmenting catalogs. Catalog parity enforcement guarantees every locale is feature-complete on
+    release.
+  code:
+  - provisa-ui/src/i18n/index.ts
+  tests:
+  - provisa-ui/e2e/i18n.spec.ts
+  scenario: |
+    Given a browser with navigator.language set to es-MX
+    When the Provisa UI loads
+    Then the language is resolved to es (base catalog)
+    And supportedLngs ["en","es"] and nonExplicitSupportedLngs are applied
+    And no localStorage lookup for provisa_lang occurs
+    And the UI renders in Spanish
+  e2e: true
+  e2e_reason: Browser language detection and fallback behavior can only be verified through actual browser
+    navigation and session startup with different navigator.language settings.
+  related_reqs:
+  - REQ-1012
+  - REQ-1341

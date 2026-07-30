@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "Aún no se han ejecutado consultas. El historial se conserva entre sesiones.",
+    "colTime": "Hora",
+    "colRole": "Rol",
+    "colDuration": "Duración",
+    "colRows": "Filas",
+    "colSql": "SQL",
+    "colActions": "Acciones",
+    "error": "error",
+    "restore": "Restaurar",
+    "restoreLabel": "Restaurar consulta de las {{time}}"
+  }
+}

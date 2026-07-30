@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "Preajustes de columna",
+    "infoTooltip": "Inyecta valores calculados o constantes en cada fila devuelta para esta tabla. Útil para agregar identificadores de dominio, indicadores por rol o campos derivados sin modificar el esquema de origen. 'source' puede ser: constant, sql_expression o role_claim.",
+    "columnHeader": "Columna",
+    "sourceHeader": "Origen",
+    "valueHeader": "Encabezado / Valor",
+    "removeAction": "Quitar",
+    "columnPlaceholder": "— columna —",
+    "selectPlaceholder": "— seleccionar —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "Nombre del encabezado (p. ej. X-User-Id)",
+    "literalValuePlaceholder": "Valor literal",
+    "numericValuePlaceholder": "Valor numérico",
+    "addAction": "Agregar",
+    "sourceNow": "now (marca de tiempo UTC)",
+    "sourceHeaderOption": "header (encabezado de la solicitud HTTP)",
+    "sourceLiteral": "literal (valor fijo)"
+  }
+}

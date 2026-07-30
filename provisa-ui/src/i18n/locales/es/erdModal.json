@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "Diagrama de entidad-relación",
+    "domains": "Dominios",
+    "domainsTooltip": "Mostrar / ocultar dominios",
+    "columnDetailLabel": "Detalle de columnas",
+    "columnDetailAll": "Todas las columnas",
+    "columnDetailKey": "Solo claves",
+    "columnDetailNone": "Sin columnas",
+    "edgeRoutingLabel": "Trazado de aristas",
+    "edgeRoutingBezier": "Aristas curvas",
+    "edgeRoutingTaxi": "Aristas en ángulo recto",
+    "gridSnapLabel": "Ajustar a la cuadrícula",
+    "gridSnapNone": "Sin ajuste",
+    "gridSnap5": "Ajuste de 5 px",
+    "gridSnap10": "Ajuste de 10 px",
+    "gridSnap15": "Ajuste de 15 px",
+    "gridSnap20": "Ajuste de 20 px",
+    "orphans": "Huérfanas",
+    "collapseAll": "Contraer todo",
+    "expandAll": "Expandir todo",
+    "fitAll": "Ajustar todo",
+    "downloadSvg": "Descargar SVG",
+    "downloadPng": "Descargar PNG",
+    "downloadJpeg": "Descargar JPEG",
+    "close": "Cerrar",
+    "hint": "Haga clic en un grupo de dominio para contraer / expandir · las líneas discontinuas conectan dominios contraídos",
+    "resizeHandle": "Redimensionar el cuadro del dominio ({{corner}})"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schemaBrowser": {
+    "collapsePanel": "Contraer panel de esquema",
+    "expandPanel": "Expandir panel de esquema",
+    "heading": "Esquema",
+    "groupMetrics": "Métricas",
+    "groupFacts": "Hechos",
+    "groupDimensions": "Dimensiones",
+    "groupEmpty": "(ninguno)",
+    "dragMetricToCanvas": "Arrastrar métrica al lienzo",
+    "insertMetricQuery": "Hacer clic para insertar la consulta de métrica semántica",
+    "dragToCanvas": "Arrastrar al lienzo",
+    "insertQualifiedName": "Hacer doble clic para insertar el nombre calificado",
+    "insertTableReference": "Insertar referencia de tabla en el editor SQL",
+    "tableAliasName": "Alias/nombre de tabla",
+    "domainId": "ID de dominio",
+    "insertQuotedColumn": "Hacer clic para insertar la columna entre comillas",
+    "previousPage": "Página anterior",
+    "nextPage": "Página siguiente"
+  }
+}

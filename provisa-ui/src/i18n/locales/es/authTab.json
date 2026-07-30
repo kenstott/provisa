@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "La autenticación verifica quién llama; los roles y la RLS deciden qué puede ver. Elija el proveedor de identidad y configure su conexión.",
+    "providerLabel": "Proveedor",
+    "current": " (actual)",
+    "roles": "Roles",
+    "defaultRole": "Rol predeterminado",
+    "assignmentsFrom": "Asignaciones de roles desde",
+    "assignmentsSourceClaims": "Claims del token",
+    "assignmentsSourceProvisa": "Provisa (asignaciones locales)",
+    "trustUpstream": "Confiar en los encabezados de identidad del proxy ascendente",
+    "allowSimpleAuth": "Permitir autenticación simple (protección de producción — requerida para habilitar usuario/contraseña)",
+    "saveButton": "Guardar configuración de autenticación",
+    "loading": "Cargando…",
+    "saved": "Guardado.",
+    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios."
+  }
+}

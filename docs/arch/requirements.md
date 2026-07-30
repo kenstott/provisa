@@ -13709,3 +13709,29 @@ Control-plane role resolution (the set of roles holding cross_org) must not depe
 **Code:** `provisa/core/repositories/table.py`, `provisa/core/schema.sql`, `provisa/core/db.py`
 
 **Tests:** `tests/integration/test_governance_integration.py`, `tests/integration/test_org_demo_seed_visible.py`
+
+## 11. Frontend UI & UX
+
+### REQ-1341 · Internationalization {#REQ-1341}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+UI locale translation is performed in-session by the Claude agent via the i18n-translate skill. No external translation service or LLM API call is made. Translation is incremental: a per-locale translation memory (TM) sidecar at src/i18n/locales/<lng>/.tm.json records the English source string per key at translation time. Only missing or stale keys are retranslated.
+
+**Use case:** In-session translation via Claude agent eliminates external service dependencies and API costs, reducing operational complexity. Incremental translation memory keeps translation artifacts locally and avoids redundant retranslations, accelerating catalog updates. English catalogs (en.json + en/<ns>.json) remain the sole source of truth for keys.
+
+**Code:** `provisa-ui/src/i18n/`, `.claude/skills/i18n-translate/`
+
+**Tests:** —
+
+### REQ-1342 · Internationalization {#REQ-1342}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+UI language is selected solely from the browser's navigator.language setting (read at runtime on each session start), with English (en) as fallback. Regional locale variants (es-MX, es-419) are mapped to their base catalog (es). No per-user language override is persisted to localStorage; the provisa_lang key is retired. First non-English locale shipped is universal/neutral Spanish (es) with full catalog parity.
+
+**Use case:** Browser language detection eliminates per-user preference storage, reducing complexity and data plane footprint. Automatic regional variant mapping (e.g., es-MX → es) ensures consistent translation coverage without fragmenting catalogs. Catalog parity enforcement guarantees every locale is feature-complete on release.
+
+**Code:** `provisa-ui/src/i18n/index.ts`
+
+**Tests:** `provisa-ui/e2e/i18n.spec.ts`

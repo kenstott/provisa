@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "Haga clic en \"Extraer joins\" para encontrar nuevas relaciones. Se excluyen las condiciones de JOIN que ya tienen una relación registrada.",
+    "colId": "ID",
+    "colSource": "Origen",
+    "colTarget": "Destino",
+    "colCardinality": "Cardinalidad",
+    "colActions": "Acciones",
+    "idLabel": "ID de candidata",
+    "cardinalityLabel": "Cardinalidad",
+    "manyToOne": "muchos a uno",
+    "oneToMany": "uno a muchos",
+    "promoted": "Promovida",
+    "promote": "Promover"
+  }
+}

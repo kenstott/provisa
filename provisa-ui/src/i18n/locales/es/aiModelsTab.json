@@ -1,0 +1,29 @@
+{
+  "aiModelsTab": {
+    "modelsHeading": "Asignaciones de modelos de IA",
+    "modelsIntro": "Modelo usado para cada operación asistida por IA. Introduzca un nombre de modelo (p. ej. claude-haiku-4-5-20251001). Deje el campo en blanco para restablecer el valor predeterminado.",
+    "role_table_description": "Descripción de tabla",
+    "role_column_description": "Descripción de columna",
+    "role_relationship_inference": "Inferencia de relaciones",
+    "role_sql_generation": "Generación de SQL",
+    "role_table_selection": "Selección de tablas",
+    "dictNotEditable": "(configurado en formato completo proveedor/modelo — edítelo en el YAML de configuración)",
+    "nlHeading": "Consulta en lenguaje natural",
+    "nlIntro": "Solicitudes por minuto por rol para NL-a-SQL. Deje el campo vacío para no aplicar límite.",
+    "rateLimitLabel": "Límite de tasa (sol/min por rol)",
+    "vectorHeading": "Modelos vectoriales (embeddings)",
+    "vectorIntro": "Modelos de embeddings registrados disponibles para la búsqueda semántica. El registro es una lista de permitidos.",
+    "vectorId": "ID de modelo",
+    "vectorProvider": "Proveedor",
+    "vectorDimensions": "Dimensiones",
+    "vectorApiKeyEnv": "Variable de entorno de la clave de API",
+    "vectorBaseUrl": "URL base",
+    "vectorEnabled": "Habilitado",
+    "addVectorModel": "Agregar modelo vectorial",
+    "removeVectorModel": "Quitar",
+    "saveButtonLabel": "Guardar configuración de modelos de IA",
+    "loading": "Cargando…",
+    "saved": "Guardado.",
+    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios."
+  }
+}

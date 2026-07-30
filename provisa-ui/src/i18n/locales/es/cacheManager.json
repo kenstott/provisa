@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "Caché de respuestas",
+      "hot": "Tablas calientes",
+      "materialized": "Almacén materializado",
+      "setup": "Configuración"
+    },
+    "response": {
+      "loading": "Cargando estadísticas de caché...",
+      "disabledBanner": "Caché de respuestas de consultas deshabilitada (almacén: {{storeType}}). Los resultados de las consultas no se almacenan en Redis, por lo que los contadores siguientes permanecen en cero. La caché de tablas calientes y el almacén materializado son capas separadas (vea las otras pestañas) y no se ven afectados.",
+      "cachedEntries": "Entradas en caché",
+      "hitRate": "Tasa de aciertos",
+      "hits": "Aciertos",
+      "misses": "Fallos",
+      "store": "Almacén",
+      "redisKeysRaw": "Claves de Redis (sin procesar)",
+      "memory": "Memoria",
+      "evicted": "Desalojadas",
+      "expired": "Expiradas",
+      "clients": "Clientes",
+      "opsPerSec": "Ops/s",
+      "filterPlaceholder": "Filtrar por tabla o dominio…",
+      "purgeAll": "Purgar toda la caché",
+      "purging": "Purgando...",
+      "table": "Tabla",
+      "domain": "Dominio",
+      "purgeTable": "Purgar",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "Tablas de búsqueda pequeñas replicadas en Redis (o en memoria) e insertadas como CTE de VALUES para optimizar los JOIN. Siempre disponibles, independientemente del almacén de la caché de respuestas.",
+      "loadedTables": "Tablas cargadas",
+      "candidates": "Candidatas",
+      "cachedRows": "Filas en caché",
+      "empty": "No hay tablas calientes cargadas ni registradas como candidatas.",
+      "table": "Tabla",
+      "catalog": "Catálogo",
+      "schema": "Esquema",
+      "rows": "Filas",
+      "kind": "Tipo",
+      "state": "Estado",
+      "kindApi": "API",
+      "kindEngine": "motor",
+      "stateLoaded": "cargada",
+      "stateCandidate": "candidata",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "Almacén duradero donde aterrizan los orígenes no adjuntables y se escriben las vistas materializadas. Distinto de la caché de respuestas y del nivel caliente; una consulta puede usar cualquier combinación de los tres.",
+      "federationEngine": "Motor de federación",
+      "materializedViews": "Vistas materializadas",
+      "storeLabel": "Almacén:",
+      "viewButton": "+ Vista",
+      "empty": "No hay vistas materializadas definidas.",
+      "view": "Vista",
+      "sourceTables": "Tablas de origen",
+      "target": "Destino",
+      "status": "Estado",
+      "rows": "Filas",
+      "lastRefresh": "Última actualización",
+      "interval": "Intervalo",
+      "error": "Error",
+      "never": "nunca",
+      "refresh": "Actualizar",
+      "refreshing": "...",
+      "disable": "Deshabilitar",
+      "enable": "Habilitar",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "Primera página",
+      "previous": "Página anterior",
+      "next": "Página siguiente",
+      "last": "Última página",
+      "pageOf": "Página {{page}} / {{total}}"
+    }
+  }
+}
