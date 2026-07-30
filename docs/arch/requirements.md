@@ -13825,3 +13825,43 @@ Org-scoped admin rights define two new capabilities: `org_settings` (surfaces wh
 **Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/org_settings.py`, `provisa/api/admin_router.py`
 
 **Tests:** `tests/unit/test_org_scoped_admin_rights.py`, `tests/integration/test_tenancy_role_grants.py`, `tests/integration/test_org_settings_overrides.py`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`
+
+## 11. Frontend UI & UX
+
+### REQ-1350 · Internationalization {#REQ-1350}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Server-side error i18n emits stable machine codes and JSON parameters alongside English messages. ApiError (HTTPException) subclasses and registered handlers emit {detail, code, params} payloads; strawberry MutationResult gains optional code/params fields. The UI (serverMessage()/requestFailed() in provisa-ui/src/i18n/serverMessage.ts) renders localized error text from the serverErrors i18next catalog with graceful fallback to English detail/message when translations are unavailable. Unmigrated HTTPException sites and engine-error passthrough (str(e)) remain valid by design.
+
+**Use case:** Enables the UI to display localized error messages without requiring server implementations for every supported language. Stable error codes allow client-side catalog management and translation maintenance independent of server changes. Graceful fallback ensures compatibility with pre-i18n error paths.
+
+**Code:** `provisa/api/errors.py`, `provisa/api/app.py`, `provisa-ui/src/i18n/serverMessage.ts`
+
+**Tests:** `tests/unit/test_error_handling.py`
+
+### REQ-1351 · Navigation & Admin Menu {#REQ-1351}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Navigation into a nav group must resolve to a route the caller's rights admit. The remembered last-visited subnav item (localStorage provisa_nav_last_item) is a browser preference, not an entitlement; when the caller no longer holds the right that item's route requires, it is dropped and the group is entered on the first item they do hold. When the caller holds no item in the group at all, the group is not offered. This applies to clicking a nav group tab, the profile menu's Settings item, and the bare /admin URL, which must land identically.
+
+**Use case:** Denial fallback replaces the whole page including the subnav, so entering on a denied route leaves no tab to click. provisa_nav_last_item is now session-scoped (cleared by clearSessionState() at sign-in per [REQ-1326](#REQ-1326)), so one identity's remembered tab cannot cross to the next identity on a shared browser; no per-login key namespace is required because only one identity is signed in at a time.
+
+**Code:** `provisa-ui/src/lib/capabilities.ts`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/lib/session.ts`
+
+**Tests:** `provisa-ui/src/__tests__/navEntryItem.test.ts`
+
+## 1. Access Governance & Security
+
+### REQ-1352 · Administration & Roles {#REQ-1352}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+The definitions of the two system admin roles—platform_admin and org_admin—belong to provisa/core/schema.sql alone. No config file may carry a role block for either id. provisa/core/repositories/role.py::upsert returns early for both ids.
+
+**Use case:** Config load (_load_config_in_txn -> role_repo.upsert) runs AFTER provisa/core/db.py::apply_tenancy_role_grants and overwrites the capabilities column wholesale. A shipped config block that omitted org_settings or observability would silently strip both org-scoped rights from org_admin, making the Admin navigation group disappear entirely for org administrators. This constraint ensures role seeding from schema.sql cannot be overwritten. Granting TO org_admin (visible_to/writable_by/default_assignments) remains permitted — it is redefining the ROLE that is refused.
+
+**Code:** `provisa/core/schema.sql`, `provisa/core/repositories/role.py`
+
+**Tests:** `tests/unit/test_platform_admin_no_data_rights.py`

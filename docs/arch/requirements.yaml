@@ -40835,3 +40835,30 @@
   related_reqs:
   - REQ-1349
   - REQ-1326
+- id: REQ-1352
+  status: complete
+  group: 1. Access Governance & Security
+  category: Administration & Roles
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: >-
+    The definitions of the two system admin roles—platform_admin and org_admin—belong
+    to provisa/core/schema.sql alone. No config file may carry a role block for either
+    id. provisa/core/repositories/role.py::upsert returns early for both ids.
+  use_case: >-
+    Config load (_load_config_in_txn -> role_repo.upsert) runs AFTER provisa/core/db.py::apply_tenancy_role_grants
+    and overwrites the capabilities column wholesale. A shipped config block that omitted
+    org_settings or observability would silently strip both org-scoped rights from org_admin,
+    making the Admin navigation group disappear entirely for org administrators. This constraint
+    ensures role seeding from schema.sql cannot be overwritten. Granting TO org_admin
+    (visible_to/writable_by/default_assignments) remains permitted — it is redefining
+    the ROLE that is refused.
+  code:
+  - provisa/core/schema.sql
+  - provisa/core/repositories/role.py
+  tests:
+  - tests/unit/test_platform_admin_no_data_rights.py
+  related_reqs:
+  - REQ-1349
+  - REQ-1297
