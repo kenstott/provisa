@@ -14,6 +14,8 @@
     "orgNameLabel": "Organization name",
     "includeDemoLabel": "Include demo data",
     "includeDemoDesc": "Seed the new organization with sample sources so you can explore right away.",
+    "isolatedEngineLabel": "Isolated engine",
+    "isolatedEngineDesc": "Run this organization on its own dedicated federation engine instead of the shared cluster.",
     "emailRuleLabel": "Allowed email rule (optional)",
     "emailRuleDesc": "A regular expression an invitee's email must match to join, e.g. \"@acme\\.com$\". Leave blank to allow any email.",
     "autoJoinLabel": "Auto-join matching accounts",

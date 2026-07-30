@@ -87,20 +87,45 @@ def polling_provider(state: Any, catalog: str, schema: str, table: str, watermar
 # -- boot provisioning (was app.py `_apply_server_and_trino_config` Trino branch) --------------
 
 
-def provision(state: Any, ops_views: list, retention_hours: int | None) -> None:
-    """Connect the Trino terminal and seed the OTel ops catalog. Boot-time; blocking."""
-    from provisa.federation.engine import configured_engine_endpoint
+def terminal_conn_kwargs(state: Any) -> dict:
+    """The Trino terminal's connection kwargs for the CURRENT context.
 
-    trino_host, trino_port = configured_engine_endpoint()
-    state.engine_conn_kwargs = dict(
+    REQ-1043/REQ-1244: an isolated-engine org resolves its OWN coordinator; everyone else the
+    shared one (active_isolated_org is None outside an isolated org's context, boot included).
+    Resolution is separate from connecting so a sleeping coordinator (idle-stopped between
+    sessions) is only woken by actual traffic — bind_terminal stores these kwargs and the first
+    query's lazy connect does the wake."""
+    from provisa.federation.engine import configured_engine_endpoint, isolated_engine_endpoint
+
+    iso_org = state.active_isolated_org
+    if iso_org is not None:
+        trino_host, trino_port = isolated_engine_endpoint(iso_org)
+    else:
+        trino_host, trino_port = configured_engine_endpoint()
+    return dict(
         host=trino_host,
         port=trino_port,
         user="provisa",
         catalog="system",
-        schema=f"org_{state.org_id}",
+        schema=f"org_{state.active_org_id}",
         http_scheme="http",
         request_timeout=10,
     )
+
+
+def bind_terminal(state: Any) -> None:
+    """Store the terminal's connection kwargs WITHOUT connecting (REQ-1043/REQ-1244).
+
+    The dedicated coordinator of an isolated-engine org sleeps between sessions (wake-on-traffic,
+    same as the shared engine's front door). Binding only the kwargs keeps org provisioning from
+    waking — or failing against — a sleeping cluster; ``execute_trino``'s liveness/reconnect path
+    connects from these kwargs on the first real query."""
+    state.engine_conn_kwargs = terminal_conn_kwargs(state)
+
+
+def provision(state: Any, ops_views: list, retention_hours: int | None) -> None:
+    """Connect the Trino terminal and seed the OTel ops catalog. Boot-time; blocking."""
+    state.engine_conn_kwargs = terminal_conn_kwargs(state)
     state.engine_conn = trino.dbapi.connect(**state.engine_conn_kwargs)
 
     from provisa.compiler import schema_service

@@ -120,7 +120,8 @@ describe('OnboardGate', () => {
   });
 
   it('lets a platform admin with no memberships through to the shell', async () => {
-    resolvesTo({ userId: 'u1', assignments: [{ role_id: 'admin', domain_id: '*' }] });
+    // REQ-1297: the platform operator's role is `platform_admin` — the gate keys on it exactly.
+    resolvesTo({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] });
     renderGate();
     expect(await screen.findByTestId('app-shell')).toBeInTheDocument();
   });

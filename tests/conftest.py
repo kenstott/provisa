@@ -39,6 +39,51 @@ _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
 _TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
 
+# The Trino connector plugins docker-compose.core.yml bind-mounts into the coordinator/worker.
+# The jars are release artifacts (gitignored), so a fresh git WORKTREE has empty plugin dirs and
+# the coordinator crash-loops on boot ("trino-file - No service providers of type
+# io.trino.spi.Plugin in the classpath"). _stage_trino_plugins symlinks each empty dir to the
+# primary checkout's populated one before compose up.
+_TRINO_PLUGINS = ("trino-file", "trino-sharepoint", "trino-splunk")
+
+
+def _stage_trino_plugins() -> None:
+    """Ensure the Trino plugin jars the compose stack bind-mounts exist in THIS checkout.
+
+    In a git worktree the gitignored jar dirs are empty; the primary checkout (the parent of the
+    repo's common .git dir) holds the extracted release artifacts. Symlink each empty dir to the
+    primary's populated one — compose resolves host symlinks, and a symlink stays current with the
+    primary's artifacts instead of drifting like a copy. A dir that is populated locally is left
+    alone; if the primary is missing/empty too, raise with the release-asset instruction rather
+    than letting Trino crash-loop into an opaque compose --wait failure."""
+    plugins_root = os.path.join(_REPO_ROOT, "trino", "plugins")
+    common_dir = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd=_REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    primary_root = os.path.join(os.path.dirname(common_dir), "trino", "plugins")
+    for name in _TRINO_PLUGINS:
+        local = os.path.join(plugins_root, name)
+        if os.path.isdir(local) and not os.path.islink(local) and os.listdir(local):
+            continue  # locally populated — the normal primary-checkout case
+        primary = os.path.join(primary_root, name)
+        if os.path.islink(local) and os.path.realpath(local) == os.path.realpath(primary):
+            continue  # already staged by a previous run
+        if not (os.path.isdir(primary) and os.listdir(primary)):
+            raise RuntimeError(
+                f"Trino plugin jars missing: {primary} is empty. Download "
+                "provisa-trino-plugins-*.tar.gz from the release and extract it to "
+                "trino/plugins/ in the primary checkout — the itest Trino cannot boot without it."
+            )
+        if os.path.islink(local):
+            os.unlink(local)
+        elif os.path.isdir(local):
+            os.rmdir(local)  # empty (checked above) — replace with the symlink
+        os.symlink(primary, local)
+
 
 def _ensure_odbcsysini() -> None:
     """Make the installed SQL Server ODBC driver discoverable by pyodbc for requires_sqlserver tests.
@@ -306,6 +351,9 @@ class _DockerServiceManager:
                     continue
                 if item.get_closest_marker(marker):
                     needed.update(services)
+
+        if "trino" in needed:
+            _stage_trino_plugins()
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
         # exported at import time, its own network — the dev stack is never touched.
