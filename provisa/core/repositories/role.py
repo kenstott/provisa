@@ -18,14 +18,20 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Role
 from provisa.core.schema_org import roles
-from provisa.security.rights import PLATFORM_ADMIN_ROLE
+from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
 async def upsert(conn: "Connection", role: Role) -> None:  # REQ-042, REQ-059, REQ-060, REQ-1174
-    if role.id == PLATFORM_ADMIN_ROLE:
+    if role.id in (PLATFORM_ADMIN_ROLE, ORG_ADMIN_ROLE):
+        # REQ-1349: org_admin is refused on the same terms as platform_admin below. The shipped
+        # install config redefined it WITHOUT `org_settings`/`observability`, and config load runs
+        # after apply_tenancy_role_grants and overwrites `capabilities` wholesale — so an org
+        # administrator lost every admin right the seed had just granted and the Admin tab vanished.
+        # The two admin roles' definitions are the seed's, not a config file's.
+        #
         # REQ-1297: platform_admin's definition belongs to schema.sql alone — it is the control-plane
         # role and holds no standing data capabilities. Config files and the roles admin surface used
         # to be able to redefine it, and the shipped install config did exactly that: it re-granted

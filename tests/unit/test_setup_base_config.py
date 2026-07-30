@@ -45,11 +45,12 @@ def test_fileless_setup_base_parses(monkeypatch, tmp_path):
     assert parsed.sources
     assert parsed.domains
     assert parsed.roles
-    # REQ-1297: the skeleton defines the DATA-plane roles only. platform_admin is deliberately not
-    # among them — schema.sql seeds it with the control-plane bypass capabilities and nothing else,
-    # and role_repo.upsert refuses any config redefinition of that row.
+    # REQ-1297/REQ-1349: neither admin role is defined in the skeleton. schema.sql seeds both, and
+    # role_repo.upsert refuses any config redefinition — a config block loads after
+    # apply_tenancy_role_grants and overwrote org_admin's capabilities, dropping the org-scoped
+    # rights the seed had just granted.
     role_ids = {r.id for r in parsed.roles}
-    assert "org_admin" in role_ids
+    assert "org_admin" not in role_ids
     assert "platform_admin" not in role_ids
 
 

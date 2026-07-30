@@ -248,28 +248,11 @@ roles:
   - pet-store
   - shelter
   id: analyst
-- capabilities:
-  - source_registration
-  - table_registration
-  - create_relationship
-  - access_config
-  - query_development
-  - approve_view
-  - approve_relationship
-  - create_view
-  - column_grant
-  - user_management
-  - masking_config
-  - view_governance
-  - full_results
-  - usage
-  - ad_hoc_query
-  - write
-  domain_access:
-  - '*'
-  id: org_admin
-# REQ-1297: platform_admin is deliberately absent — seeded by schema.sql with only the control-plane
-# bypass capabilities, and role_repo.upsert refuses any redefinition of it.
+# REQ-1297/REQ-1349: platform_admin and org_admin are deliberately absent — both are seeded by
+# schema.sql (platform_admin with only the control-plane bypass capabilities, org_admin with the
+# org-scoped rights including org_settings/observability), and role_repo.upsert refuses any
+# redefinition of either. This file's org_admin block omitted those two rights and, loading after
+# apply_tenancy_role_grants, silently stripped them.
 server:
   limits:
     default_row_limit: 100

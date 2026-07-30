@@ -51,33 +51,11 @@ tables:
     - analyst
     - org_admin
 roles:
-# REQ-1297: platform_admin is deliberately absent. schema.sql seeds it with exactly
-# ['admin','superadmin'] — control-plane bypass only — and role_repo.upsert refuses to overwrite that
-# row. It holds no data capabilities, appears in no column grant, and is stripped from the resolved
-# assignment set in every tenant org.
-# org_admin: full administrative power WITHIN a single org, deliberately WITHOUT the global
-# 'admin'/'superadmin' capability (which bypass every capability + org check). Isolation comes from
-# active-org + membership confinement (middleware), so a tenant's first admin administers only its org.
-- id: org_admin
-  capabilities:
-  - source_registration
-  - table_registration
-  - create_relationship
-  - access_config
-  - query_development
-  - approve_view
-  - approve_relationship
-  - create_view
-  - column_grant
-  - user_management
-  - masking_config
-  - view_governance
-  - full_results
-  - usage
-  - ad_hoc_query
-  - write
-  domain_access:
-  - '*'
+# REQ-1297/REQ-1349: platform_admin and org_admin are both absent by design. schema.sql seeds each
+# — platform_admin control-plane only, org_admin with the org-scoped rights including org_settings
+# and observability — and role_repo.upsert refuses to overwrite either row. A block here loads AFTER
+# apply_tenancy_role_grants and overwrites capabilities wholesale, which is how org_admin lost both
+# org-scoped rights and its Admin tab.
 - id: analyst
   capabilities:
   - query_development

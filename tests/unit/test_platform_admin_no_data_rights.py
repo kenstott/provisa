@@ -85,6 +85,27 @@ async def test_role_upsert_refuses_to_redefine_platform_admin():
 
 
 @pytest.mark.asyncio
+async def test_role_upsert_refuses_to_redefine_org_admin():
+    # REQ-1349: the shipped install config redefined org_admin without org_settings/observability.
+    # Config load runs AFTER apply_tenancy_role_grants and overwrites `capabilities` wholesale, so
+    # the org administrator lost both org-scoped rights and the Admin tab disappeared entirely.
+    conn = _RecordingConn()
+    await role_repo.upsert(
+        conn,  # type: ignore[arg-type]
+        Role(id="org_admin", capabilities=["query_development"], domain_access=["*"]),
+    )
+    assert conn.upserts == [], "org_admin's definition belongs to schema.sql alone"
+
+
+@pytest.mark.parametrize("path", CONFIGS)
+def test_shipped_config_never_defines_org_admin(path):
+    # REQ-1349: granting TO org_admin (visible_to/writable_by/default_assignments) is fine — it is
+    # redefining the ROLE that strips its seeded rights.
+    cfg = yaml.safe_load(open(path))
+    assert "org_admin" not in {r["id"] for r in cfg.get("roles") or []}
+
+
+@pytest.mark.asyncio
 async def test_role_upsert_still_writes_other_roles():
     conn = _RecordingConn()
     await role_repo.upsert(

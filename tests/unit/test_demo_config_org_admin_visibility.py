@@ -44,9 +44,19 @@ def demo_config(request) -> dict:
         return yaml.safe_load(fh)
 
 
-def test_org_admin_is_a_configured_role_with_full_domain_access(demo_config):
-    role = next(r for r in demo_config["roles"] if r["id"] == "org_admin")
-    assert role["domain_access"] == ["*"], role
+def test_org_admin_has_full_domain_access_from_the_seed(demo_config):
+    # REQ-1349: the guarantee moved out of the configs. They redefined org_admin WITHOUT
+    # org_settings/observability, and config load runs after apply_tenancy_role_grants and
+    # overwrites capabilities wholesale — so the definition is schema.sql's alone and no config
+    # may carry an org_admin role block.
+    assert "org_admin" not in {r["id"] for r in demo_config.get("roles") or []}
+    with open(os.path.join(os.path.dirname(_CONFIG_DIR), "provisa", "core", "schema.sql")) as fh:
+        seed = fh.read()
+    block = seed[seed.index("    'org_admin',") :]
+    block = block[: block.index("ON CONFLICT")]
+    for right in ("org_settings", "observability"):
+        assert f'"{right}"' in block, right
+    assert "'[\"*\"]'::jsonb" in block, block
 
 
 def test_every_restricted_demo_column_is_visible_to_org_admin(demo_config):
