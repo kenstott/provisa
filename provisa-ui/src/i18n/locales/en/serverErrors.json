@@ -168,6 +168,7 @@
       "view_not_permitted": "Not permitted to view this org"
     },
     "platform": {
+      "right_required": "{{right}} capability required",
       "settings_capability_required": "platform_settings capability required"
     },
     "profile": {

@@ -2820,5 +2820,8 @@
   "es/serverErrors.json::serverErrors.users.assignment_not_found": "Assignment not found",
   "es/serverErrors.json::serverErrors.users.no_fields_to_update": "No fields to update",
   "es/serverErrors.json::serverErrors.users.self_role_change": "A user cannot change their own role. Ask another administrator (REQ-1308).",
-  "es/serverErrors.json::serverErrors.users.user_not_found": "User not found"
+  "es/serverErrors.json::serverErrors.users.user_not_found": "User not found",
+  "es/serverErrors.json::serverErrors.platform.right_required": "{{right}} capability required",
+  "es/onboardOrg.json::onboardOrg.isolatedEngineLabel": "Isolated engine",
+  "es/onboardOrg.json::onboardOrg.isolatedEngineDesc": "Run this organization on its own dedicated federation engine instead of the shared cluster."
 }

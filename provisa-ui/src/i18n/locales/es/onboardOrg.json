@@ -14,6 +14,8 @@
     "orgNameLabel": "Nombre de la organización",
     "includeDemoLabel": "Incluir datos de demostración",
     "includeDemoDesc": "Inicializa la nueva organización con orígenes de ejemplo para poder explorar de inmediato.",
+    "isolatedEngineLabel": "Motor aislado",
+    "isolatedEngineDesc": "Ejecutar esta organización en su propio motor de federación dedicado en lugar del clúster compartido.",
     "emailRuleLabel": "Regla de correo permitido (opcional)",
     "emailRuleDesc": "Una expresión regular que el correo del invitado debe cumplir para unirse, p. ej. \"@acme\\.com$\". Deje en blanco para permitir cualquier correo.",
     "autoJoinLabel": "Unir automáticamente las cuentas que coincidan",

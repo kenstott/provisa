@@ -168,6 +168,7 @@
       "view_not_permitted": "No tiene permiso para ver esta organización"
     },
     "platform": {
+      "right_required": "Se requiere la capacidad {{right}}",
       "settings_capability_required": "Se requiere la capacidad platform_settings"
     },
     "profile": {
