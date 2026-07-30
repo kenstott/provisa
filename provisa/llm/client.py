@@ -36,10 +36,16 @@ class ProviasLLMClient:  # REQ-355, REQ-356, REQ-358
     Supports a fallback vendor/model tried on primary failure.
     """
 
-    def __init__(self, operation: str = "column_description") -> None:
+    def __init__(
+        self, operation: str = "column_description", *, config: dict | None = None
+    ) -> None:
         from provisa.api.admin._config_io import read_config
 
-        cfg = read_config()
+        # REQ-1349: `config` is an already-resolved config — the deployment file with the acting
+        # org's overrides layered on (provisa.core.org_settings.resolve_org_config). It is passed
+        # by request paths that have an org bound; paths with no org (startup, discovery jobs)
+        # construct with none and get the deployment config, which is the base in both cases.
+        cfg = read_config() if config is None else config
         ai_models = cfg.get("ai_models", {})
         op_cfg = ai_models.get(operation, {})
 

@@ -115,6 +115,23 @@ def _loaded_roles() -> dict[str, dict]:  # REQ-1337
     return getattr(state, "roles", {})
 
 
+def _dedup_assignments(assignments: list[RoleAssignment]) -> list[RoleAssignment]:
+    """The same (role, domain) pair once, in first-seen order.
+
+    An assignment set is a set: holding a role in a domain twice grants nothing extra, but it does
+    reach /auth/me, which the UI renders as the role selector.
+    """
+    seen: set[tuple[str, str]] = set()
+    out: list[RoleAssignment] = []
+    for a in assignments:
+        key = (a.role_id, a.domain_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(a)
+    return out
+
+
 def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
     """Render resolved (role_id, domain_id) pairs into identity.roles claim strings.
 
@@ -392,10 +409,16 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         if bootstrap_claimant and not any(
             _is_control_plane_role(a.role_id, _loaded_roles()) for a in platform_assignments
         ):
-            platform_assignments = [
-                *platform_assignments,
-                RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*"),
-            ]
+            # The right-based test above reads the loaded roles map; before that map is populated the
+            # claimant's own persisted grant does not answer to it, so the union is deduplicated by
+            # (role, domain). /auth/me is the list the UI renders as the role selector, and the same
+            # assignment twice is a repeated option in it.
+            platform_assignments = _dedup_assignments(
+                [
+                    *platform_assignments,
+                    RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*"),
+                ]
+            )
 
         # Resolve active org
         if not self._multitenancy:

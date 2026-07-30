@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Hybrid server-side i18n for API errors (REQ-1348).
+"""Hybrid server-side i18n for API errors (REQ-1350).
 
 The server never translates. Every user-facing error carries a stable
 machine code plus interpolation params alongside the English message; the

@@ -71,7 +71,7 @@ async def submit_nl_query(
     job = NlJob(job_id=job_id, nl_query=body.q, role=body.role)
     await _job_store.put(job)
 
-    llm = _get_llm()
+    llm = await _get_llm(state)
     asyncio.create_task(_run_job(job_id, body.q, body.role, state, llm))
 
     return JSONResponse(status_code=202, content={"job_id": job_id})
@@ -143,8 +143,15 @@ async def _sse_generator(job_id: str) -> AsyncGenerator[str, None]:
     yield "event: timeout\ndata: {}\n\n"
 
 
-def _get_llm():
-    """Build an LLM client from config."""
+async def _get_llm(state):
+    """Build the SQL-generation LLM client for the org bound to this request (REQ-1349).
+
+    The org's ``ai_models.sql_generation`` override — the "LLM provider for NL" an org
+    administrator sets on the Admin AI Models tab — is resolved here, per request, over the
+    deployment config. No restart is involved: the next NL query uses the new provider.
+    """
+    from provisa.core.org_settings import resolve_org_config
     from provisa.llm.client import ProviasLLMClient
 
-    return ProviasLLMClient("sql_generation")
+    cfg = await resolve_org_config(state.tenant_db)
+    return ProviasLLMClient("sql_generation", config=cfg)

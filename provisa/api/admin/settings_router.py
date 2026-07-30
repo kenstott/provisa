@@ -555,19 +555,34 @@ async def get_federation_engine():  # REQ-916
     from provisa.federation.engine import engine_registry
     from provisa.core.models import ProvisaConfig
 
+    from provisa.api.app import state
+
     cfg = read_config()
 
     def _eng(key: str):
         return cfg.get(key, ProvisaConfig.model_fields[key].default)
 
+    # `current` names the engine the process actually booted — build_engine records which key won its
+    # precedence (arg > $PROVISA_ENGINE > persisted field > duckdb). Reporting the persisted field
+    # would lie about a pinned deployment, so both are returned and the tab edits `persisted`.
+    env_pinned = os.environ.get("PROVISA_ENGINE")
+    note = "Changing the federation engine takes effect after the service is restarted."
+    if env_pinned:
+        note = (
+            f"$PROVISA_ENGINE pins this deployment to {env_pinned!r}; the selection below applies "
+            "after the service is restarted with the pin removed."
+        )
+
     # Return current values for every config key any engine declares (each is a ProvisaConfig
     # field), so the tab can render per-engine fields — connection AND execution tuning — generically.
     all_keys = {f["config_key"] for e in engine_registry() for f in e["config_fields"]}
     return {
-        "current": _eng("federation_engine"),
+        "current": state.federation_engine.selected_key,
+        "persisted": _eng("federation_engine"),
+        "env_pinned_engine": env_pinned,
         "config": {k: _eng(k) for k in sorted(all_keys)},
         "engines": engine_registry(),
-        "restart_required_note": "Changing the federation engine takes effect after the service is restarted.",
+        "restart_required_note": note,
     }
 
 
@@ -1087,11 +1102,25 @@ async def recompute_schema_clusters():  # REQ-510
 
 
 @router.get("/admin/traces/recent")
-async def get_recent_traces(limit: int = 50):  # REQ-302, REQ-303
-    """Return the last N completed spans from the in-memory buffer."""
-    try:
-        from provisa.api.otel_setup import span_buffer
+async def get_recent_traces(request: Request, limit: int = 50):  # REQ-302, REQ-303, REQ-1349
+    """Return the last N completed spans from the in-memory buffer.
 
-        return {"traces": span_buffer.recent(min(limit, 200))}
-    except Exception:
-        return {"traces": []}
+    Read-only performance data, gated on the ``observability`` right. A caller without
+    ``cross_org`` sees only the spans their own org produced — a tenant operator can measure their
+    org without seeing another tenant's traffic.
+    """
+    from provisa.api.admin._platform_guard import require_observability
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state
+    from provisa.api.otel_setup import span_buffer
+    from provisa.security.rights import Capability, has_platform_bypass
+
+    require_observability(request)
+    identity = getattr(request.state, "identity", None)
+    caps = _resolved_capabilities(identity, state) if identity is not None else set()
+    org_scope = (
+        None
+        if (has_platform_bypass(caps) or Capability.CROSS_ORG.value in caps)
+        else getattr(request.state, "active_org_id", None)
+    )
+    return {"traces": span_buffer.recent(min(limit, 200), org_id=org_scope)}

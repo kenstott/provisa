@@ -30,7 +30,12 @@ export type Capability =
   // names a right; the seed decides which role carries it (platform_settings and cross_org go to
   // platform_admin always, and to org_admin only where single-tenant mode grants them).
   | 'platform_settings'
-  | 'cross_org';
+  | 'cross_org'
+  // REQ-1349: the org-scoped pair. `org_settings` gates surfaces whose subject is the acting org
+  // (its AI/NL provider, domains, scheduled tasks, approvals); `observability` gates read-only
+  // performance and health. org_admin carries both in either tenancy mode.
+  | 'org_settings'
+  | 'observability';
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;

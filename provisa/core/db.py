@@ -164,6 +164,11 @@ async def apply_tenancy_role_grants(  # REQ-1337
 ) -> None:
     """Assert the tenancy-dependent role grants: ``platform_settings`` and ``cross_org``.
 
+    Also re-asserts the two tenancy-INDEPENDENT org_admin rights (``org_settings``,
+    ``observability``, REQ-1349). The schema.sql seed uses ``ON CONFLICT (id) DO NOTHING`` and so
+    cannot add a right to an org_admin row an earlier release already created; this is the seam
+    where an existing deployment picks them up, on the next ``init_schema``.
+
     The deployment-wide settings surface (federation engine, cache storage, encryption, auth
     provider, the config file, query-engine lifecycle) is gated by the ``platform_settings`` RIGHT,
     never by a role name. Which roles hold that right is the only thing tenancy decides:
@@ -189,6 +194,16 @@ async def apply_tenancy_role_grants(  # REQ-1337
             "   WHERE v <> '\"cross_org\"'::jsonb), '[]'::jsonb)"
             " WHERE id <> 'platform_admin' AND capabilities ? 'cross_org'"
         )
+        # REQ-1349: org-scoped admin rights, granted to org_admin in BOTH tenancy modes. They name
+        # surfaces that are always the org's own — its AI/NL provider overrides, domains, scheduled
+        # tasks, creation requests, and its read-only performance views — so no tenancy condition
+        # applies. Re-asserted here because the seed cannot update a pre-existing role row.
+        for right in ("org_settings", "observability"):
+            await conn.execute(
+                "UPDATE roles SET capabilities = capabilities || "
+                f"'[\"{right}\"]'::jsonb"
+                f" WHERE id = 'org_admin' AND NOT capabilities ? '{right}'"
+            )
         if multitenancy:
             await conn.execute(
                 "UPDATE roles SET capabilities = COALESCE("

@@ -6,17 +6,22 @@
 
 """Admin AI-models / vector-models / NL rate-limit REST endpoints.
 
-Edits three platform-config keys: ``ai_models`` (per-role model assignments,
+Edits three config keys: ``ai_models`` (per-role model assignments,
 :class:`AIModelsConfig`), ``vector_models`` (embedding-model registry, a list of
-:class:`VectorModelConfig`), and ``nl.rate_limit`` (:class:`NlConfig`). All three
-bind at startup, so changes take effect only after a service restart.
+:class:`VectorModelConfig`), and ``nl.rate_limit`` (:class:`NlConfig`).
+
+REQ-1349: these three are ORG-scoped. A write lands in the acting org's ``org_settings`` table,
+layered over the deployment config, and takes effect on the next request — an org administrator
+owns which LLM provider answers their org's NL queries. The surface is gated on the
+``org_settings`` right, which org_admin holds in both tenancy modes; before REQ-1349 it had no
+server-side gate at all and wrote the deployment config file directly.
 """
 
-# Requirements: REQ-464, REQ-419, REQ-500, REQ-370
+# Requirements: REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349
 
 from fastapi import APIRouter, Request
 
-from provisa.api.admin._config_io import config_path, read_config, write_config
+from provisa.api.admin._platform_guard import require_org_settings
 from provisa.api.errors import ApiError
 
 router = APIRouter()
@@ -29,7 +34,9 @@ _AI_MODEL_ROLES = (
     "table_selection",
 )
 
-_RESTART_NOTE = "AI model settings take effect after a service restart."
+# REQ-1349: org-scoped writes are read back per request, so no restart is involved. The note is
+# kept in the payload because the UI renders it; it now states the actual behavior.
+_RESTART_NOTE = "AI model settings apply to this org and take effect on the next query."
 
 
 def _model_default(key: str):
@@ -39,10 +46,19 @@ def _model_default(key: str):
     return AIModelsConfig.model_fields[key].default
 
 
+async def _effective_config() -> dict:
+    """Deployment config with the acting org's overrides layered on (REQ-1349)."""
+    from provisa.api.app import state
+    from provisa.core.org_settings import resolve_org_config
+
+    return await resolve_org_config(state.tenant_db)
+
+
 @router.get("/admin/ai-models")
-async def get_ai_models():  # REQ-464, REQ-419, REQ-500, REQ-370
-    """Return the current AI-model assignments, vector-model registry, and NL rate limit."""
-    cfg = read_config()
+async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349
+    """Return the acting org's AI-model assignments, vector-model registry, and NL rate limit."""
+    require_org_settings(request)
+    cfg = await _effective_config()
     ai = cfg.get("ai_models", {}) or {}
     nl = cfg.get("nl", {}) or {}
 
@@ -60,25 +76,35 @@ async def get_ai_models():  # REQ-464, REQ-419, REQ-500, REQ-370
 
 
 @router.put("/admin/ai-models")
-async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
-    """Persist AI-model assignments, vector-model registry, and NL rate limit. Applied on restart."""
+async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349
+    """Persist the acting org's AI-model, vector-model, and NL rate-limit overrides.
+
+    Writes only the org's DELTA against the deployment config: a blank/empty model string removes
+    the org's override for that role, so the org falls back to the deployment's choice rather than
+    to a value baked in here.
+    """
+    require_org_settings(request)
+    from provisa.api.app import state
+    from provisa.core.org_settings import read_org_overrides, write_org_overrides
+
     body = await request.json()
-    path = config_path()
-    cfg = read_config()
+    overrides = await read_org_overrides(state.tenant_db)
+    updates: dict = {}
     updated: list[str] = []
 
     if "ai_models" in body:
-        ai = dict(cfg.get("ai_models", {}) or {})
+        ai = dict(overrides.get("ai_models") or {})
         for k, v in (body["ai_models"] or {}).items():
             if k not in _AI_MODEL_ROLES:
                 continue
-            # Blank/empty → reset to the AIModelsConfig field default (pop the key).
+            # Blank/empty → drop the org override for this role (deployment config governs again).
             if isinstance(v, str) and not v.strip():
                 ai.pop(k, None)
             else:
                 ai[k] = v
             updated.append(f"ai_models.{k}")
-        cfg["ai_models"] = ai
+        # An empty delta means "override nothing" — store None so the row is deleted outright.
+        updates["ai_models"] = ai or None
 
     if "vector_models" in body:
         # Full-list replace. Validate the required fields (REQ-500) before persisting.
@@ -90,15 +116,21 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
                     "ai_models.vector_model_fields_required",
                     "each vector_models entry requires id, provider, and dimensions",
                 )
-        cfg["vector_models"] = vms
+        updates["vector_models"] = vms or None
         updated.append("vector_models")
 
     if "nl" in body and "rate_limit" in body["nl"]:
-        nl = dict(cfg.get("nl", {}) or {})
+        nl = dict(overrides.get("nl") or {})
         rl = body["nl"]["rate_limit"]
-        nl["rate_limit"] = int(rl) if rl not in (None, "") else None
-        cfg["nl"] = nl
+        if rl in (None, ""):
+            nl.pop("rate_limit", None)
+        else:
+            nl["rate_limit"] = int(rl)
+        updates["nl"] = nl or None
         updated.append("nl.rate_limit")
 
-    write_config(path, cfg)
-    return {"success": True, "updated": updated, "restart_required": True}
+    identity = getattr(request.state, "identity", None)
+    await write_org_overrides(
+        state.tenant_db, updates, updated_by=getattr(identity, "user_id", "anonymous")
+    )
+    return {"success": True, "updated": updated, "restart_required": False}

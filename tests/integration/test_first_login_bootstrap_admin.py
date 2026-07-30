@@ -176,7 +176,12 @@ def test_first_login_claims_and_holds_platform_admin(planes):
         body = me.json()
 
     assert body["dev_mode"] is False
-    assert body["assignments"] == [{"role_id": "platform_admin", "domain_id": "*"}]
+    # REQ-1297: both roles the claim persists, each exactly once. The UI renders this list as the
+    # role selector, so a role repeated here is a repeated option in it.
+    assert sorted(body["assignments"], key=lambda a: a["role_id"]) == [
+        {"role_id": "org_admin", "domain_id": "*"},
+        {"role_id": "platform_admin", "domain_id": "*"},
+    ]
     assert body["active_org_id"] == _ORG
     # REQ-1296: the claimant is seated in the bootstrap org. Landing with no membership is what left
     # the first admin staring at an empty deployment they could not query.
@@ -237,7 +242,9 @@ def test_platform_admin_may_request_the_platform_admin_role(planes):
     assert resp.status_code == 200, resp.text
     assert resp.json() == {
         "role": "platform_admin",
-        "assigned": ["platform_admin"],
+        # REQ-1297: the claim seats both — platform_admin for the control plane, org_admin for the
+        # bootstrap org's data plane.
+        "assigned": ["org_admin", "platform_admin"],
         "active_org_id": _ORG,
     }
 

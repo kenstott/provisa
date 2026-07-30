@@ -13799,3 +13799,29 @@ tests/conftest.py stages the gitignored Trino plugin jar directories (trino-file
 **Code:** `tests/conftest.py`
 
 **Tests:** `tests/conftest.py`
+
+## 1. Access Governance & Security
+
+### REQ-1348 · Authentication {#REQ-1348}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Interactive sign-in runs only on the control-plane host (`cloud.<base>`). An org subdomain (`{org}.<base>`, [REQ-1276](#REQ-1276)) must not attempt a local sign-in: identity providers authorize exact hostnames only (Firebase Authentication rejects wildcard authorized domains with INVALID_AUTHORIZED_DOMAIN), and registering each org's hostname with the IdP would make org creation write to an external control plane, which [REQ-1054](#REQ-1054) zero-provisioning forbids. Instead an org subdomain acquires the bearer from the control plane through a same-site hidden-iframe postMessage relay served at /auth-relay.html on the control-plane origin, and falls back to a redirect handoff to `${controlPlane}/login?next=<this url>` when the control plane has no session. Both the relay's requester origin and the login page's `next` target must be validated as a single-label host under the same base domain, same scheme and same port; replies are addressed to that exact origin, never "*". The borrowed token is re-acquired periodically because the rotating Firebase SDK runs on the control-plane origin only.
+
+**Use case:** Org subdomains cannot perform independent authentication without violating IdP hostname validation constraints and zero-provisioning requirements; a secure relay mechanism allows token acquisition through the control plane while maintaining strict origin validation.
+
+**Code:** `provisa-ui/src/lib/authHost.ts`, `provisa-ui/src/lib/crossSubdomainAuth.ts`, `provisa-ui/src/authRelay.ts`, `provisa-ui/auth-relay.html`, `provisa-ui/src/main.tsx`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/vite.config.ts`
+
+**Tests:** `provisa-ui/src/__tests__/crossSubdomainAuth.test.ts`
+
+### REQ-1349 · Administration & Roles {#REQ-1349}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Org-scoped admin rights define two new capabilities: `org_settings` (surfaces whose subject is the org being acted in—AI model/NL provider overrides, domains, scheduled tasks, pending creation requests) and `observability` (READ-ONLY performance and health: admin overview, system health, traces). org_admin holds both in both tenancy modes. Neither capability implies platform bypass (admin/superadmin), deployment-wide settings (platform_settings), or acting in another org (cross_org). Grants are re-asserted idempotently in apply_tenancy_role_grants because schema.sql's ON CONFLICT (id) DO NOTHING cannot update a pre-existing role row (V1 has no migrations).
+
+**Use case:** Org admins need independent control over their org's configuration (AI models, NL providers, domains, tasks) and observability without access to platform-level or cross-org settings. Request-time resolution of org config (resolve_org_config) allows configuration changes to take effect immediately on the next query without restart.
+
+**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/org_settings.py`, `provisa/api/admin_router.py`
+
+**Tests:** `tests/unit/test_org_scoped_admin_rights.py`, `tests/integration/test_tenancy_role_grants.py`, `tests/integration/test_org_settings_overrides.py`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`

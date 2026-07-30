@@ -659,7 +659,7 @@ class ScheduledTaskType:  # REQ-533
 class MutationResult:  # REQ-533
     success: bool
     message: str
-    # Hybrid server i18n (REQ-1348): stable code + params let the UI render
+    # Hybrid server i18n (REQ-1350): stable code + params let the UI render
     # a localized message; English `message` remains the fallback.
     code: str | None = None
     params: strawberry.scalars.JSON | None = None

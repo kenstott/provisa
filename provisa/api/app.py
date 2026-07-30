@@ -1324,7 +1324,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(_ApiError)
     async def _api_error_handler(_req: _Request, exc: _ApiError):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
-        # Hybrid server i18n (REQ-1348): English detail + stable code/params
+        # Hybrid server i18n (REQ-1350): English detail + stable code/params
         # so the UI can render a localized message from its own catalog.
         return _JSONResponse(
             status_code=exc.status_code,

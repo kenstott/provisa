@@ -177,7 +177,12 @@ export async function createOrg(
 export async function updateOrgSettings(
   orgId: string,
   policy: OrgJoinPolicy,
-): Promise<{ id: string; email_rule: string | null; auto_join: boolean; auto_join_role: string | null }> {
+): Promise<{
+  id: string;
+  email_rule: string | null;
+  auto_join: boolean;
+  auto_join_role: string | null;
+}> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/settings`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -816,9 +821,11 @@ export async function fetchEncryption(): Promise<EncryptionState> {
   return resp.json();
 }
 
-export async function setEncryption(
-  body: { provider: string; key_id?: string | null; config?: Record<string, unknown> },
-): Promise<{ success: boolean; restart_required: boolean }> {
+export async function setEncryption(body: {
+  provider: string;
+  key_id?: string | null;
+  config?: Record<string, unknown>;
+}): Promise<{ success: boolean; restart_required: boolean }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/encryption`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -828,9 +835,9 @@ export async function setEncryption(
   return resp.json();
 }
 
-export async function generateEncryptionKey(
-  body: { key_id?: string | null },
-): Promise<{ stored: boolean; key_id: string; key_b64: string | null; env_var: string | null }> {
+export async function generateEncryptionKey(body: {
+  key_id?: string | null;
+}): Promise<{ stored: boolean; key_id: string; key_b64: string | null; env_var: string | null }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/encryption/generate-key`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -877,13 +884,11 @@ export async function fetchAuthConfig(): Promise<AuthConfigState> {
   return resp.json();
 }
 
-export async function setAuthConfig(
-  body: {
-    provider: string;
-    config?: Record<string, unknown>;
-    common?: Partial<AuthConfigState["common"]>;
-  },
-): Promise<{ success: boolean; restart_required: boolean }> {
+export async function setAuthConfig(body: {
+  provider: string;
+  config?: Record<string, unknown>;
+  common?: Partial<AuthConfigState["common"]>;
+}): Promise<{ success: boolean; restart_required: boolean }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/auth`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -948,9 +953,17 @@ export async function runSql(
   role: string = "admin",
   discoveryMode: boolean = false,
   statsEnabled: boolean = false,
-): Promise<{ columns: string[]; rows: Record<string, unknown>[]; error?: string; provisa_stats?: unknown }> {
+): Promise<{
+  columns: string[];
+  rows: Record<string, unknown>[];
+  error?: string;
+  provisa_stats?: unknown;
+}> {
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
     if (statsEnabled) headers["X-Provisa-Stats"] = "true";
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       method: "POST",
@@ -1308,10 +1321,7 @@ export async function recomputeSchemaClusters(): Promise<{
   return res.json();
 }
 
-export async function submitNlQuery(
-  q: string,
-  role: string,
-): Promise<{ job_id: string }> {
+export async function submitNlQuery(q: string, role: string): Promise<{ job_id: string }> {
   const res = await fetch(`${API_BASE}/query/nl`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1337,32 +1347,64 @@ export function streamNlResult(
   onDone: (state: string) => void,
   onError: (msg: string) => void,
 ): () => void {
-  const es = new EventSource(`${API_BASE}/query/nl/${jobId}/stream`);
-  es.addEventListener("branch", (e) => {
-    try {
-      onBranch(JSON.parse((e as MessageEvent).data) as NlBranchEvent);
-    } catch {
-      // ignore malformed event
-    }
-  });
-  es.addEventListener("done", (e) => {
-    try {
-      const payload = JSON.parse((e as MessageEvent).data) as { state: string };
+  // REQ-1349: read the SSE stream with fetch, not EventSource. EventSource cannot carry headers
+  // and is not routed through the window.fetch interceptor (REQ-1267/REQ-1317) that attaches the
+  // bearer token and X-Org-Provisa, so on an authenticated deployment every NL stream answered 401
+  // and the results never arrived.
+  const controller = new AbortController();
+
+  const dispatch = (event: string, data: string) => {
+    if (event === "branch") {
+      onBranch(JSON.parse(data) as NlBranchEvent);
+    } else if (event === "done") {
+      const payload = JSON.parse(data) as { state: string };
       onDone(payload.state);
-    } catch {
-      onDone("complete");
+    } else if (event === "timeout") {
+      onError("NL query timed out");
     }
-    es.close();
-  });
-  es.addEventListener("error", () => {
-    onError("Stream error");
-    es.close();
-  });
-  es.addEventListener("timeout", () => {
-    onError("NL query timed out");
-    es.close();
-  });
-  return () => es.close();
+  };
+
+  void (async () => {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/query/nl/${jobId}/stream`, { signal: controller.signal });
+    } catch (err) {
+      if (!controller.signal.aborted) onError(String(err));
+      return;
+    }
+    if (!res.ok || !res.body) {
+      onError(`NL stream failed: ${res.status}`);
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE frames are separated by a blank line; a partial trailing frame stays in the buffer.
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          let event = "message";
+          const dataLines: string[] = [];
+          for (const line of frame.split("\n")) {
+            if (line.startsWith("event:")) event = line.slice(6).trim();
+            else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+          }
+          if (dataLines.length > 0) dispatch(event, dataLines.join("\n"));
+        }
+      }
+    } catch (err) {
+      // A read or parse failure ends the stream — surface it rather than leaving the caller
+      // waiting on a "done" that will never arrive.
+      if (!controller.signal.aborted) onError(String(err));
+    }
+  })();
+
+  return () => controller.abort();
 }
 
 // --- Apache Ossie semantic interchange (REQ-1316) ---

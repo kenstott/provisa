@@ -25,6 +25,8 @@ import type { InviteInfo } from "../api/admin";
 import { CLAIMED_ADMIN_FLAG } from "../components/PlatformAdminWelcomeModal";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
 import { startSession } from "../lib/session";
+import { isOrgSubdomainHost } from "../lib/authHost";
+import { nextParam, redirectToControlPlaneLogin } from "../lib/crossSubdomainAuth";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -54,6 +56,17 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+
+  // REQ-1348: no sign-in form is reachable on an org subdomain — the identity provider only
+  // authorizes the control-plane host, so rendering one here offers a button that cannot work.
+  // Reached after a sign-out, or by navigating to /login directly.
+  useEffect(() => {
+    if (!isOrgSubdomainHost()) return;
+    // A session that survived (the subdomain relay already borrowed a bearer) means this page was
+    // reached with nothing to sign in to; go back to the app rather than out to the control plane.
+    if (localStorage.getItem("provisa_token")) navigate("/", { replace: true });
+    else redirectToControlPlaneLogin();
+  }, [navigate]);
 
   useEffect(() => {
     fetchProviderType()
@@ -103,6 +116,20 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     }
   };
 
+  // Leave /login now that a token exists, or the /login route keeps rendering this page.
+  //
+  // REQ-1348: an org subdomain that cannot sign in sends the user here with `?next=` and expects
+  // them back. `nextParam` validates the target against this deployment's own hosts, so a crafted
+  // link cannot forward a freshly-minted session off-site. The return is a full navigation rather
+  // than a route change because it crosses origins; the subdomain then borrows this session
+  // through the auth relay.
+  const finishLogin = (token: string) => {
+    onLoginSuccess(token);
+    const next = nextParam();
+    if (next) window.location.replace(next);
+    else navigate("/", { replace: true });
+  };
+
   const handleBasicLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -127,9 +154,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       await claimAndRecord();
     }
     setLoading(false);
-    onLoginSuccess(data.access_token);
-    // Leave /login now that a token exists, or the /login route keeps rendering this page.
-    navigate("/", { replace: true });
+    finishLogin(data.access_token);
   };
 
   const handleRegister = async (e: FormEvent) => {
@@ -185,9 +210,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       if (inviteToken) {
         await redeemInvite(inviteToken);
       }
-      onLoginSuccess(idToken);
-      // Leave /login now that a token exists, or the /login route keeps rendering this page.
-      navigate("/", { replace: true });
+      finishLogin(idToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("loginPage.firebaseSignInFailed"));
     } finally {
@@ -220,8 +243,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       if (inviteToken) {
         await redeemInvite(inviteToken);
       }
-      onLoginSuccess(idToken);
-      navigate("/", { replace: true });
+      finishLogin(idToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("loginPage.firebaseSignInFailed"));
     } finally {

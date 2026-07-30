@@ -66,7 +66,7 @@ def test_compile_endpoint_raises_403_on_unknown_role():
     import inspect
 
     src = inspect.getsource(compile_endpoint)
-    # REQ-1348 moved user-facing raises to ApiError(403, ...); accept either form.
+    # REQ-1350 moved user-facing raises to ApiError(403, ...); accept either form.
     assert "status_code=403" in src or re.search(r"ApiError\(\s*403", src)
 
 
