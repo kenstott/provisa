@@ -196,10 +196,61 @@ def register_catalog(conn: trino.dbapi.Connection, spec: CatalogSpec) -> None:
     log.info("Registered Trino system catalog %s (%s)", name, connector)
 
 
+# The two tables Iceberg's JdbcCatalog reads on initialize. Trino's TrinoJdbcCatalogFactory does
+# not create them, so a CREATE CATALOG against a database that lacks them fails the whole statement
+# with "Cannot check and eventually update SQL schema" / relation "iceberg_tables" does not exist.
+# Column types match db/init.sql, which is the same DDL — that file reaches the BUNDLED Postgres
+# through docker-entrypoint-initdb.d and reaches nothing else, so a managed control plane (the SaaS
+# node's Cloud SQL) never got it and every boot died registering the otel/results catalogs.
+_ICEBERG_CATALOG_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS iceberg_tables (
+        catalog_name VARCHAR(255) NOT NULL,
+        table_namespace VARCHAR(255) NOT NULL,
+        table_name VARCHAR(255) NOT NULL,
+        metadata_location VARCHAR(1000),
+        previous_metadata_location VARCHAR(1000),
+        iceberg_type VARCHAR(5),
+        PRIMARY KEY (catalog_name, table_namespace, table_name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS iceberg_namespace_properties (
+        catalog_name VARCHAR(255) NOT NULL,
+        namespace VARCHAR(255) NOT NULL,
+        property_key VARCHAR(255),
+        property_value VARCHAR(1000),
+        PRIMARY KEY (catalog_name, namespace, property_key)
+    )
+    """,
+)
+
+
+def ensure_iceberg_catalog_tables(url: URL) -> None:
+    """Create the Iceberg JDBC metastore tables in the control-plane database if they are absent.
+
+    Runs against the same database ``_iceberg_spec`` hands Trino, so the catalog Trino is about to
+    open always finds its metastore. Idempotent (``IF NOT EXISTS``) and unconditional — the tables
+    belong to the Iceberg catalog, not to any org schema, and live in the connection's default
+    schema exactly as the JDBC URL in ``_iceberg_spec`` resolves them.
+    """
+    import psycopg2
+
+    host, port, database, user, password = _pg_parts(url)
+    with psycopg2.connect(
+        host=host, port=port, dbname=database, user=user, password=password
+    ) as pg:
+        with pg.cursor() as cur:
+            for ddl in _ICEBERG_CATALOG_DDL:
+                cur.execute(ddl)
+    pg.close()
+
+
 def register_system_catalogs(conn: trino.dbapi.Connection, url: URL, org_id: str) -> None:
     """Register every Provisa-owned catalog from runtime values. Boot-time; blocking."""
     from provisa.core.catalog import wait_until_ready
 
     wait_until_ready(conn)  # a coordinator that just restarted races app boot
+    ensure_iceberg_catalog_tables(url)
     for spec in system_catalog_specs(url, org_id):
         register_catalog(conn, spec)

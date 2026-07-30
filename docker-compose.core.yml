@@ -56,11 +56,21 @@ services:
   # uid 1000 and cannot write FTE (retry-policy=TASK) exchange spooling files,
   # so every query fails with GENERIC_INTERNAL_ERROR. Chown the volume before
   # Trino starts so the mount is writable regardless of volume recreation.
+  #
+  # ./trino/catalog needs the same treatment for a different reason: with
+  # catalog.management=dynamic, CREATE CATALOG writes <name>.properties.tmp into
+  # catalog.config-dir through FileCatalogStore. On a Linux host that directory
+  # arrives root-owned, so uid 1000 gets "Permission denied" and every catalog
+  # registration fails with CATALOG_STORE_ERROR — which took the whole API down
+  # at startup, since register_system_catalogs runs inside the lifespan.
   trino-exchange-init:
     image: busybox
-    command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange"
+    command: >
+      sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange
+             && mkdir -p /etc/trino/catalog && chown -R 1000:1000 /etc/trino/catalog"
     volumes:
       - provisa_exchange:/data/provisa/exchange
+      - ./trino/catalog:/etc/trino/catalog
     restart: "no"
 
   trino:

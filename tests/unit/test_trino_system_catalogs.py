@@ -118,6 +118,35 @@ def test_register_catalog_drops_before_creating():
     assert "\"connection-url\" = 'jdbc:postgresql://10.1.2.3:6543/provisa_cloud?currentSchema=org_default'" in create
 
 
+def test_registration_ensures_the_iceberg_metastore_before_creating_any_catalog(monkeypatch):
+    # Trino's JDBC catalog factory never creates iceberg_tables; db/init.sql does, but only for the
+    # BUNDLED Postgres via docker-entrypoint-initdb.d. On a managed control plane the tables were
+    # absent, so CREATE CATALOG otel died with "Cannot check and eventually update SQL schema" and
+    # took app startup down with it. The DDL must run against the URL Trino is handed, before the
+    # first CREATE CATALOG.
+    order: list[str] = []
+    from provisa.core import catalog as catalog_module
+
+    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn: None)
+    monkeypatch.setattr(
+        tsc, "ensure_iceberg_catalog_tables", lambda url: order.append(f"ensure:{url.database}")
+    )
+    monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: order.append(spec.name))
+
+    tsc.register_system_catalogs(_Conn(), _URL, "default")
+    assert order == ["ensure:provisa_cloud", "provisa_admin", "otel", "results"]
+
+
+def test_the_iceberg_metastore_ddl_matches_db_init_sql():
+    # One definition of these tables, or the bundled and managed control planes drift apart.
+    init_sql = (_REPO / "db" / "init.sql").read_text()
+    for table in ("iceberg_tables", "iceberg_namespace_properties"):
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in init_sql
+        ddl = next(d for d in tsc._ICEBERG_CATALOG_DDL if f"EXISTS {table} " in d)
+        for column in ("catalog_name", "PRIMARY KEY"):
+            assert column in ddl
+
+
 def test_a_catalog_that_cannot_be_dropped_is_reported_not_worked_around():
     conn = _Conn(
         drop_error=trino.exceptions.TrinoQueryError(
