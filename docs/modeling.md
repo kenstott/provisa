@@ -585,6 +585,157 @@ The model does not decide the methodology. Grain, conformance, SCD choice, and t
 split remain the modeler's decisions. Provisa executes them. [tool-verified: modeling.py
 docstring lines 25-26]
 
+## Metrics (REQ-1317, REQ-1318, REQ-1320)
+
+A **metric** is a named, governed aggregate definition with no grain of its own. The grain — the
+dimensions the aggregate is broken out by — is bound at query time by the caller, not at definition
+time. That is what distinguishes a metric from a view: a view locks the grain at creation; a metric
+stays open until queried. [tool-verified: `Metric` class comment, `provisa/core/models.py` lines
+452–455: "A named, governed aggregate definition with no grain of its own... grain is bound at
+query time by the requested dimension set"]
+
+### The Metric object
+
+[tool-verified: `Metric` class, `provisa/core/models.py` lines 451–476]
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `name` | yes | snake_case, e.g. `net_revenue`. Validated: `[a-z][a-z0-9_]*` |
+| `expression` | yes | Aggregate ANSI-SQL; must include at least one aggregate function |
+| `datatype` | no | Result type hint, e.g. `number`, `integer` |
+| `description` | no | Human-readable business definition |
+| `ai_context` | no | Text for AI consumers — projects to MCP tools, pg_description, GraphQL docs, and Ossie export |
+| `visible_to` | no | Role list; defaults to `["*"]` (all roles) |
+| `from_fact` | — | Set automatically when the metric was generated from a fact measure |
+
+Column references inside the expression must be table-qualified (`orders.amount`, not `amount`).
+An unqualified column is a hard error at expansion time, not a warning.
+[tool-verified: `_expression_tables`, `provisa/compiler/metric_expand.py` lines 83–96]
+
+The metric repository validates the expression on every write. An expression that does not parse or
+contains no aggregate function is rejected; it is never stored.
+[tool-verified: `validate_expression`, `provisa/core/repositories/metric.py` lines 34–43]
+
+Example config entry:
+
+```yaml
+metrics:
+  - name: net_revenue
+    expression: "SUM(orders.amount) - SUM(orders.refunds)"
+    datatype: number
+    description: "Order revenue after refunds"
+    ai_context: "Net revenue: total order amounts minus approved refunds. Use for P&L."
+```
+
+### Querying a metric
+
+The compiler reserves the `metrics` schema. [tool-verified: `METRICS_SCHEMA = "metrics"`,
+`provisa/compiler/metric_expand.py` line 43] Every metric is addressable as a virtual relation
+inside that schema. Query it like a table — the columns you select become the dimension set and
+the GROUP BY:
+
+```sql
+-- Scalar total (no dimension)
+SELECT value FROM metrics.net_revenue;
+
+-- Broken out by region and month
+SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
+```
+
+The compiler rewrites this into a real grouped aggregate over the underlying semantic tables before
+governance runs, so RLS and masking apply to the actual columns.
+[tool-verified: `expand_metric_query` docstring, `provisa/compiler/metric_expand.py` lines 263–276:
+"BEFORE governance, so RLS/masking apply to the real columns (REQ-1317)"]
+
+`SELECT *` against a metric relation is rejected — name the dimension columns and `value`
+explicitly. [tool-verified: `expand_metric_query`, `provisa/compiler/metric_expand.py` lines 302–306]
+
+When a metric's expression spans multiple tables, the compiler joins them through registered
+relationships. A dimension that is a column of a directly-referenced table resolves to that table.
+A dimension one relationship hop away is joined in automatically. Two hops or an ambiguous
+dimension is a hard error naming the offender.
+[tool-verified: `_JoinPlan.resolve_dimension`, `provisa/compiler/metric_expand.py` lines 190–228]
+
+### Metrics from fact specs (REQ-1320)
+
+When you register a fact, each declared measure auto-registers a corresponding Metric object.
+The metric's `from_fact` field records the source fact table name, and the valid grouping
+dimensions are the entity attributes reachable over the fact's FK relationships.
+[tool-verified: `Metric.from_fact` comment, `provisa/core/models.py` line 466–467:
+"set when this metric was auto-registered from a fact spec's measure";
+`from_fact` stored in `provisa/core/repositories/metric.py` line 57]
+
+Auto-registered metrics appear on the Metrics page with a **fact** badge. You can edit them like
+any other metric. [tool-verified: `MetricsPage.tsx` lines 405–408:
+`{m.fromFact && <Badge ... data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
+
+### Metric-composed views (view_metrics, REQ-1318)
+
+A `view_metrics` view closes a metric's grain at definition time. Declare the metric names,
+dimension columns, and optional filters; the compiler generates the SELECT.
+
+[tool-verified: `ViewMetricsSpec`, `provisa/core/models.py` lines 479–492]
+
+```yaml
+tables:
+  - source_id: pg1
+    domain_id: sales
+    schema: public
+    table: monthly_revenue
+    view_metrics:
+      metrics: [net_revenue]
+      dimensions: [region, month]
+      filters: ["orders.status = 'completed'"]
+```
+
+The compiler generates (for this example):
+
+```sql
+SELECT orders.region AS region, orders.month AS month,
+       SUM(orders.amount) - SUM(orders.refunds) AS net_revenue
+FROM orders
+WHERE orders.status = 'completed'
+GROUP BY orders.region, orders.month
+```
+
+`view_metrics` and `view_sql` are mutually exclusive on the same table.
+[tool-verified: `Table` model validator, `provisa/core/models.py` lines 614–617:
+`if self.view_sql is not None and self.view_metrics is not None: raise ValueError(...)`]
+
+**Auto-regeneration on metric change.** When a metric's expression is updated, every
+`view_metrics` view that references it recompiles and the new SQL is persisted immediately.
+The view cannot drift from the metric definition by construction.
+[tool-verified: `regenerate_metric_views`, `provisa/api/admin/_metric_views.py` lines 79–117:
+"each dependent view_metrics spec recompiles against the UPDATED metric set and the fresh SQL
+is persisted"]
+
+**Inline `metric()` calls in free-hand view SQL.** Hand-written `view_sql` can also reference
+metrics via `metric('name')`. The compiler replaces each call with the metric's expression and
+records a lineage edge. This gives free-hand views the same recompile-on-change property when
+they reference a metric rather than copy its formula.
+[tool-verified: `expand_metric_calls_in_sql`, `provisa/compiler/metric_expand.py` lines 393–429]
+
+Note: config-path views using inline `metric()` calls regenerate on config reload, not on metric
+upsert. [tool-verified: `regenerate_metric_views` docstring, `_metric_views.py` lines 84–86:
+"Free-hand view_sql born from inline metric() calls carries no stored provenance, so it is not
+regenerated here (config-path views regenerate on config reload)"]
+
+### The Metrics admin page (REQ-1323, REQ-1324)
+
+Open the **Metrics** nav item to manage governed metrics. Click a row to expand a read-only detail
+panel; click **Edit** inside it to switch to inline editing (no modal). **New Metric** opens an
+inline creation card above the table. The delete confirmation is the only modal on the page.
+[tool-verified: `MetricsPage.tsx` lines 214–216 comment: "REQ-1317: registered-metrics management
+page (list / create / edit / delete). REQ-1323: detail-then-edit"]
+
+The create/edit form offers a three-picker builder for fact-sourced metrics: choose the source
+fact table (filtered to `modelingRole=fact`), a measure column, and an aggregate function
+(`SUM`, `AVG`, `COUNT`, `MIN`, `MAX`). The datatype is derived automatically:
+`COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX → the measure column's type`.
+The expression textarea remains the escape hatch for arbitrary expressions.
+[tool-verified: `deriveDatatype` function, `MetricsPage.tsx` lines 66–70;
+`applyBuilder`, `MetricsPage.tsx` lines 273–285]
+
 ## The IR payoff
 
 Every registration call goes through the same path as a hand-written MV. The entity/fact spec

@@ -10062,7 +10062,7 @@ Postgres data persists on a separate GCP persistent disk, mounted into the VM, e
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
 
-Email transport for first customer: AWS SES (or equivalent SMTP) at low volume, matching the SMTP-only EmailProvider (REQ-1020).
+Email transport for first customer: AWS SES (or equivalent SMTP) at low volume, matching the SMTP-only EmailProvider ([REQ-1330](#REQ-1330)).
 
 **Use case:** Removes dependency on GCP-only email services. SMTP provides portable, low-volume email delivery aligned with the pluggable EmailProvider abstraction.
 
@@ -10162,7 +10162,7 @@ Ephemeral sandbox sessions are subject to: (a) session-scoped TTL (e.g., 24h); (
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Free tier orgs follow a reversible archive lifecycle to reclaim disk and Postgres resources without destructive loss: idle orgs are email-nudged (REQ-1020/1022) before any action; on continued inactivity, pg_dump'd to Cloudflare R2 ([REQ-1027](#REQ-1027)) and live schema dropped; restored on re-login from R2 archive; hard tombstone (delete R2 archive) only after long tail (e.g. 12 months) with final nudge.
+Free tier orgs follow a reversible archive lifecycle to reclaim disk and Postgres resources without destructive loss: idle orgs are email-nudged ([REQ-1330](#REQ-1330)/1022) before any action; on continued inactivity, pg_dump'd to Cloudflare R2 ([REQ-1027](#REQ-1027)) and live schema dropped; restored on re-login from R2 archive; hard tombstone (delete R2 archive) only after long tail (e.g. 12 months) with final nudge.
 
 **Use case:** Dormant free accounts consume disk only (no idle compute on shared Trino/PG); archiving is disk-pressure-driven, not urgent. Reversible archive (vs. destructive delete) preserves user goodwill and simplifies re-engagement campaigns.
 
@@ -10342,7 +10342,7 @@ Hosted documentation surface: product docs and API reference published on Cloudf
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-action) map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session ([REQ-1034](#REQ-1034)/1036, no signup required); "Sign up free" routes to Firebase self-serve org provisioning ([REQ-1017](#REQ-1017)); "Contact sales" triggers SES/SMTP email delivery to sales (REQ-1020).
+Website-to-SaaS entry-point wiring: the marketing site's primary CTAs (calls-to-action) map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session ([REQ-1034](#REQ-1034)/1036, no signup required); "Sign up free" routes to Firebase self-serve org provisioning ([REQ-1017](#REQ-1017)); "Contact sales" triggers SES/SMTP email delivery to sales ([REQ-1330](#REQ-1330)).
 
 **Use case:** Converts marketing interest into activation (sandbox demo, free-tier signup, sales engagement). Clear entry-point routing ensures users experience the intended onboarding flow without friction. Marketing messaging and product capability must align (e.g., "try now" genuinely allows zero-friction exploration; "sign up free" uses self-serve Firebase, not manual approval).
 
