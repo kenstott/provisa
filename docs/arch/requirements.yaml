@@ -41093,11 +41093,33 @@
     and maintains a .tm.json translation-memory sidecar for incremental retranslation.
     Key/placeholder parity with en is enforced by the locale-diff validator.
     Translation uses per-locale domain glossaries via the i18n-translate skill.
-    Hebrew is catalog-complete; RTL layout (dir attribute / Mantine direction) is a separate future requirement.
+    Hebrew is catalog-complete with full RTL support (see REQ-1357).
   use_case: >-
     Multiple-locale support enables Provisa to serve global enterprises in their native languages,
     with translation memory and glossaries enabling incremental, efficient localization.
   code:
     - provisa-ui/src/i18n/
   related_reqs:
+    - REQ-1012
+- id: REQ-1357
+  status: complete
+  since: "2026-07"
+  group: "10. UI & Admin Surfaces"
+  category: Internationalization
+  priority: SHOULD
+  type: ui
+  description: >-
+    The Provisa UI supports right-to-left (RTL) layout for locales with RTL scripts.
+    RTL direction is determined by i18next locale (base subtags he/ar/fa/ur/yi → rtl, all others ltr).
+    Layout is implemented via Mantine DirectionProvider wrapping the app and a DirectionSync component
+    (provisa-ui/src/i18n/direction.tsx) that keeps <html dir>, <html lang>, and Mantine's direction context
+    in sync on init and runtime languageChanged events.
+  use_case: >-
+    RTL language users require properly-mirrored layouts to read and interact with the UI naturally,
+    ensuring accessibility and usability for enterprise users in RTL-script regions (Hebrew, Arabic, Farsi, Urdu, Yiddish).
+  code:
+    - provisa-ui/src/i18n/direction.tsx
+    - provisa-ui/src/main.tsx
+  related_reqs:
+    - REQ-1356
     - REQ-1012
