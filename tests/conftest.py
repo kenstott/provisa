@@ -266,6 +266,13 @@ def _allocate_itest_ports() -> None:
     # reachable off-loopback) so the requires_clickhouse e2e runs instead of skipping.
     os.environ.setdefault("CLICKHOUSE_HOST", "localhost")
     os.environ.setdefault("CLICKHOUSE_PASSWORD", "provisa")
+    # The in-process app reaches Postgres on the reserved host port above; the Trino coordinator is
+    # a container on the compose network and cannot resolve that at all. The Provisa-owned catalogs
+    # (provisa_admin/otel/results) are JDBC URLs the coordinator dials, so they take the internal
+    # service address instead — the same split the fixture configs already make when they set a
+    # source host of `postgres` while the app's own URL says `localhost`.
+    os.environ.setdefault("PROVISA_ENGINE_CONTROL_PLANE_HOST", "postgres")
+    os.environ.setdefault("PROVISA_ENGINE_CONTROL_PLANE_PORT", "5432")
     os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
     _minio = f"localhost:{os.environ['MINIO_PORT']}"
     os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://{_minio}"

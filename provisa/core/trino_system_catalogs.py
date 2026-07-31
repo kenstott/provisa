@@ -72,9 +72,29 @@ def _pg_parts(url: URL) -> tuple[str, int, str, str, str]:
     return url.host, url.port or 5432, url.database, url.username or "", url.password or ""
 
 
+def engine_visible_address(host: str, port: int) -> tuple[str, int]:
+    """The control-plane address as *Trino* reaches it, which is not always the app's.
+
+    Every property below is a JDBC URL the coordinator dials, so the address has to be resolvable
+    from Trino's network, not from the process that built the spec. In a deployment those coincide
+    — app and coordinator are containers on one compose network and both say ``postgres:5432`` — so
+    these variables are unset and this returns the URL's own address unchanged. They exist for the
+    split case, where the app runs outside the stack and reaches Postgres on a host-published
+    ephemeral port that means nothing inside the coordinator (the integration harness, which
+    publishes every service on a reserved port). This is the same distinction a source row already
+    makes: ``sources.host`` is the engine-visible host, which is why the fixture configs say
+    ``postgres`` while the app's own URL says ``localhost``.
+    """
+    return (
+        os.environ.get("PROVISA_ENGINE_CONTROL_PLANE_HOST", host),
+        int(os.environ.get("PROVISA_ENGINE_CONTROL_PLANE_PORT", port)),
+    )
+
+
 def control_plane_spec(url: URL, org_id: str) -> CatalogSpec:
     """The ``provisa_admin`` catalog: the tenant control plane, scoped to this org's schema."""
     host, port, database, user, password = _pg_parts(url)
+    host, port = engine_visible_address(host, port)
     return CatalogSpec(
         name=PROVISA_ADMIN_CATALOG,
         connector="postgresql",
@@ -102,6 +122,7 @@ def _iceberg_spec(
     name: str, url: URL, bucket: str, store: dict[str, str], extra: dict[str, str]
 ) -> CatalogSpec:
     host, port, database, user, password = _pg_parts(url)
+    host, port = engine_visible_address(host, port)
     props = {
         "iceberg.catalog.type": "jdbc",
         "iceberg.jdbc-catalog.driver-class": "org.postgresql.Driver",

@@ -14,15 +14,17 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
 
+  # REQ-1332: this overlay must not redirect catalog.config-dir at ./trino/catalog-install.
+  # Compose replaces a base volume whose target matches, so that mount overrode core's
+  # ./trino/catalog and handed Trino the checked-in staging files — which a
+  # catalog.management=dynamic Trino auto-loads. A file-loaded catalog cannot be dropped, so
+  # CREATE CATALOG IF NOT EXISTS silently no-ops against it and provisa_admin/otel/results
+  # resolve to the repo's dev values (postgres:5432/provisa) whatever the deployment is
+  # actually configured with. catalog-install/ is staging that register_system_catalogs and
+  # write_kafka_catalog_files read; it is never a catalog.config-dir.
   trino:
     ports:
       - "${TRINO_PORT:-8080}:8080"
-    volumes:
-      - ./trino/catalog-install:/etc/trino/catalog
-
-  trino-worker:
-    volumes:
-      - ./trino/catalog-install:/etc/trino/catalog
 
   zaychik:
     ports:

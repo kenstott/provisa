@@ -466,6 +466,16 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     from provisa.federation.engine import configured_engine_endpoint
 
     engine_host_early, engine_port_early = configured_engine_endpoint()
+    # Every column below except `description` is derived from the deployment itself — the control
+    # plane's backend and address, the configured engine's name and endpoint — so it is the boot's
+    # answer that is authoritative, not whatever a previous boot wrote. Leaving them out of
+    # `update_columns` (as this did) pinned the bootstrap org to the deployment it was FIRST
+    # started as: re-pinning PROVISA_ENGINE from duckdb to trino left `__derived__.type` and
+    # `provisa-otel.dialect` reading duckdb, while an org created after the re-pin read trino — one
+    # shared engine described two ways. `description` stays excluded on purpose: it is
+    # user-editable, and the set_extra coalesce below restores the seed text only when it is blank.
+    _DERIVED_FROM_DEPLOYMENT = ["type", "host", "port", "database", "username", "dialect"]
+
     async with state.tenant_db.acquire() as _conn:
         _admin_desc = (
             "Provisa internal administration database — stores source registrations, table "
@@ -484,7 +494,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
                 "description": _admin_desc,
             },
             index_elements=["id"],
-            update_columns=[],
+            update_columns=_DERIVED_FROM_DEPLOYMENT,
             set_extra={
                 "description": _sa_func.coalesce(
                     _sa_func.nullif(_sources_t.c.description, ""), _admin_desc
@@ -509,7 +519,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
                 "description": _otel_desc,
             },
             index_elements=["id"],
-            update_columns=[],
+            update_columns=_DERIVED_FROM_DEPLOYMENT,
             set_extra={
                 "description": _sa_func.coalesce(
                     _sa_func.nullif(_sources_t.c.description, ""), _otel_desc
@@ -527,7 +537,10 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
                 ),
             },
             index_elements=["id"],
-            update_columns=[],
+            # `type` alone: the sentinel has no address of its own, so the rest of
+            # _DERIVED_FROM_DEPLOYMENT is not in the inserted row and naming it here would be
+            # an update of a value this statement never supplies.
+            update_columns=["type"],
         )
         await _seed_meta_domain(_conn, org_id=eff_org)
         await _seed_ops_pg(_conn)
