@@ -1,0 +1,28 @@
+{
+  "_comment": "Relative paths (under docs/) in scope for translation. User-facing docs only — internal/planning docs (arch/, pricing/, refactor/, exports/, marketing.md, competitive_analysis.md, testing-plan.md, deployment/gcp-saas-infra-plan.md) are excluded. Sourced from docs/index.md's Documentation table plus other user-facing feature docs not yet linked there.",
+  "files": [
+    "index.md",
+    "quickstart.md",
+    "configuration.md",
+    "api-reference.md",
+    "architecture.md",
+    "security.md",
+    "sources.md",
+    "subscriptions.md",
+    "integrations.md",
+    "python-client.md",
+    "admin.md",
+    "deployment.md",
+    "import.md",
+    "releasing.md",
+    "commands.md",
+    "cypher.md",
+    "lineage.md",
+    "modeling.md",
+    "pgwire.md",
+    "remote-schemas.md",
+    "domain-principles.md",
+    "migration/hasura-ddn.md",
+    "migration/hasura-v2.md"
+  ]
+}

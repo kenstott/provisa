@@ -22,11 +22,17 @@ import "./DocsPage.css";
 const ONLINE_URL = "https://provisa.dev/docs/";
 const OFFLINE_URL = "/docs-site/";
 const PROBE_TIMEOUT_MS = 2500;
+// mkdocs-static-i18n only builds a translated tree for locales in mkdocs.yml's
+// plugins.i18n.languages list (docs/es/ today). Untranslated UI locales must
+// keep loading the English root rather than 404ing against a nonexistent path.
+const DOCS_LOCALES = ["es"];
 
 type Source = "probing" | "online" | "offline";
 
 export function DocsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const docsLng = i18n.language.split("-")[0];
+  const localePrefix = DOCS_LOCALES.includes(docsLng) ? `${docsLng}/` : "";
   // navigator.onLine === false is decided before the first paint; resolving it in the initializer
   // keeps the probe effect from setting state synchronously on mount.
   const [probed, setProbed] = useState<Source>(() =>
@@ -59,7 +65,7 @@ export function DocsPage() {
   }, []);
 
   const source: Source = override ?? probed;
-  const src = source === "online" ? ONLINE_URL : OFFLINE_URL;
+  const src = (source === "online" ? ONLINE_URL : OFFLINE_URL) + localePrefix;
   const online = source === "online";
 
   const toolbar = useMemo(

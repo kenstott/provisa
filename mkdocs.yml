@@ -24,7 +24,9 @@ theme:
         icon: material/weather-sunny
         name: Switch to light mode
   features:
-    - navigation.instant
+    # navigation.instant intentionally omitted: incompatible with
+    # mkdocs-static-i18n's per-page language switcher (it falls back to the
+    # target locale's homepage instead of the equivalent page).
     - navigation.tracking
     - navigation.sections
     - navigation.top
@@ -53,6 +55,19 @@ markdown_extensions:
 
 plugins:
   - search
+  # Serves docs/<lng>/*.md (produced by the docs-translate skill) as parallel
+  # locale trees at /docs/<lng>/. Add one `languages` entry per locale once its
+  # docs/<lng>/ tree exists — see docs/i18n/manifest.json for translation scope.
+  - i18n:
+      docs_structure: folder
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: es
+          name: Español
+          build: true
 
 # Auto-link every REQ-NNN mention to its section on the Requirements page.
 hooks:

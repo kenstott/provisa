@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - README.md
+      - README.*.md
       - docs/**
       - mkdocs.yml
       - scripts/gen_docs_index.py
@@ -40,7 +41,7 @@ jobs:
 
       - name: Build docs into site/docs
         run: |
-          pip install mkdocs-material pymdown-extensions
+          pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
           python scripts/gen_docs_index.py
           mkdocs build --strict -d site/docs
 
