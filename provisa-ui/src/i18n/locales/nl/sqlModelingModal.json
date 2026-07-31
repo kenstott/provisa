@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "SQL-modellering",
+    "description": "Extraheer JOIN-voorwaarden als nieuwe relatiekandidaten — bestaande relaties worden uitgesloten",
+    "close": "Sluiten",
+    "tabSql": "SQL",
+    "tabCanvas": "Canvas",
+    "nlPlaceholder": "Stel een vraag in gewone taal — genereert SQL…",
+    "nlLoading": "Laden",
+    "generateSql": "SQL genereren",
+    "generating": "Genereren…",
+    "copySql": "SQL kopiëren",
+    "copied": "Gekopieerd",
+    "copy": "Kopiëren",
+    "run": "Steekproef >",
+    "runningLabel": "Uitvoeren…",
+    "sampleModeLabel": "Steekproefmodus",
+    "sampleModeFirst": "Eerste",
+    "sampleModeLast": "Laatste",
+    "sampleModeRandom": "Willekeurig",
+    "sampleSizeLabel": "Aantal rijen",
+    "roleLabel": "Rol",
+    "extractJoins": "Joins extraheren",
+    "tabResults": "Resultaten",
+    "tabProfile": "Profiel",
+    "tabCandidates": "Kandidaten",
+    "tabErrors": "Fouten",
+    "tabHistory": "Historie",
+    "execMs": "{{ms}}ms"
+  }
+}

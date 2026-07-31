@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "Banco de dados",
+    "tabHistory": "Histórico",
+    "tabFavorites": "Favoritos",
+    "tabExport": "Exportar para Neo4j",
+    "domainLabels": "Rótulos de domínio",
+    "nodeLabels": "Rótulos de nós",
+    "relationshipTypes": "Tipos de relacionamento",
+    "propertyKeys": "Chaves de propriedade",
+    "loading": "Carregando…",
+    "noLabelsFound": "Nenhum rótulo encontrado",
+    "noRelTypesFound": "Nenhum tipo de relacionamento encontrado",
+    "history": "Histórico",
+    "noHistory": "Ainda sem histórico",
+    "favorites": "Favoritos",
+    "noFavorites": "Ainda sem favoritos — clique em ★ em um quadro de resultados",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "Primeira página",
+    "previousPage": "Página anterior",
+    "nextPage": "Próxima página",
+    "lastPage": "Última página",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "Executar",
+    "rename": "Renomear",
+    "remove": "Remover",
+    "renameFavoriteInput": "Nome do favorito",
+    "resizeSidebar": "Redimensionar barra lateral"
+  }
+}

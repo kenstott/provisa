@@ -1,0 +1,11 @@
+{
+  "docsPage": {
+    "title": "תיעוד",
+    "loading": "טוען…",
+    "sourceOnline": "מקוון",
+    "sourceOffline": "עותק לא מקוון",
+    "viewOnline": "שימוש בתיעוד מקוון",
+    "viewOffline": "שימוש בעותק לא מקוון",
+    "openInNewTab": "פתיחה בכרטיסייה חדשה"
+  }
+}

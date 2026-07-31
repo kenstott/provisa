@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "加载中…",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "confirm": "确认",
+    "processing": "处理中…"
+  },
+  "app": {
+    "apiUnreachable": "无法连接到 Provisa API。",
+    "notAuthorized": "您没有权限查看此页面。"
+  },
+  "theme": {
+    "toggle": "切换配色方案",
+    "light": "浅色",
+    "dark": "深色"
+  },
+  "multiSelect": {
+    "defaultLabel": "选择选项",
+    "all": "全部"
+  },
+  "roleSelector": {
+    "none": "未配置角色",
+    "all": "全部",
+    "role": "角色：{{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "用户名",
+    "colEmail": "电子邮件",
+    "colDisplayName": "显示名称",
+    "colActive": "启用",
+    "actions": "操作",
+    "empty": "暂无本地用户",
+    "yes": "是",
+    "no": "否",
+    "none": "—",
+    "expandUser": "显示 {{username}} 的分配",
+    "deleteUser": "删除用户 {{username}}",
+    "assignmentsHeading": "角色:域 分配",
+    "noAssignments": "暂无分配",
+    "removeAssignment": "移除分配 {{role}}:{{domain}}",
+    "roleLabel": "角色",
+    "domainLabel": "域",
+    "allDomains": "*（所有域）",
+    "add": "添加",
+    "createHeading": "创建用户",
+    "username": "用户名",
+    "usernameRequired": "用户名 *",
+    "password": "密码",
+    "passwordRequired": "密码 *",
+    "email": "电子邮件",
+    "emailOptional": "电子邮件（可选）",
+    "displayName": "显示名称",
+    "displayNameOptional": "显示名称（可选）",
+    "createButton": "创建用户",
+    "created": "已创建“{{username}}”",
+    "deleted": "已删除“{{username}}”",
+    "createFailed": "创建失败",
+    "assignmentFailed": "分配失败"
+  }
+}

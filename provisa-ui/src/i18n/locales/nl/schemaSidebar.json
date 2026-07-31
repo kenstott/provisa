@@ -1,0 +1,11 @@
+{
+  "schemaSidebar": {
+    "title": "Schema",
+    "collapse": "Schemapaneel samenvouwen",
+    "expand": "Schemapaneel uitvouwen",
+    "dragToCanvas": "Naar canvas slepen",
+    "doubleClickToInsert": "Dubbelklik om de gekwalificeerde naam in te voegen",
+    "insertTableReference": "Tabelverwijzing invoegen in de SQL-editor",
+    "clickToInsertColumn": "Klik om de kolom tussen aanhalingstekens in te voegen"
+  }
+}

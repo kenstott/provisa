@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "實體關係圖",
+    "domains": "領域",
+    "domainsTooltip": "顯示／隱藏領域",
+    "columnDetailLabel": "欄位詳情",
+    "columnDetailAll": "所有欄位",
+    "columnDetailKey": "僅索引鍵",
+    "columnDetailNone": "不顯示欄位",
+    "edgeRoutingLabel": "連線路徑",
+    "edgeRoutingBezier": "曲線連線",
+    "edgeRoutingTaxi": "直角連線",
+    "gridSnapLabel": "貼齊格線",
+    "gridSnapNone": "不貼齊",
+    "gridSnap5": "貼齊 5px",
+    "gridSnap10": "貼齊 10px",
+    "gridSnap15": "貼齊 15px",
+    "gridSnap20": "貼齊 20px",
+    "orphans": "孤立項目",
+    "collapseAll": "全部摺疊",
+    "expandAll": "全部展開",
+    "fitAll": "全部顯示",
+    "downloadSvg": "下載 SVG",
+    "downloadPng": "下載 PNG",
+    "downloadJpeg": "下載 JPEG",
+    "close": "關閉",
+    "hint": "按一下領域群組可摺疊／展開 · 虛線連接已摺疊的領域",
+    "resizeHandle": "調整領域方塊大小（{{corner}}）"
+  }
+}

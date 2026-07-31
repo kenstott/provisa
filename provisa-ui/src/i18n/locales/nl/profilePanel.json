@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "Voer een steekproefquery uit om de resultaatkolommen te profileren.",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "Profiel downloaden als JSON",
+    "colColumn": "Kolom",
+    "colNulls": "Nulls",
+    "colNullsTitle": "Rijen waar de waarde NULL is",
+    "colBlanks": "Leeg",
+    "colBlanksTitle": "Rijen waar de waarde een lege tekenreeks is",
+    "colDistinct": "Uniek",
+    "colDistinctTitle": "Aantal unieke waarden",
+    "colConstant": "Constant?",
+    "colConstantTitle": "Kolom heeft slechts één unieke waarde",
+    "colMin": "Min",
+    "colMax": "Max",
+    "colMean": "Gemiddelde",
+    "colMeanTitle": "Gemiddelde van numerieke waarden",
+    "colTopValues": "Meest voorkomende waarden",
+    "constantYes": "Ja ({{value}})",
+    "emptyValue": "—"
+  }
+}

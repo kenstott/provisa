@@ -1,0 +1,20 @@
+{
+  "grpcPage": {
+    "serverBadge": "gRPC • :50051",
+    "operationType": "Tipo de operação",
+    "query": "Consulta",
+    "mutation": "Mutação",
+    "command": "Comando",
+    "method": "Método",
+    "noMethods": "Nenhum método",
+    "cancel": "◼ Cancelar",
+    "send": "▶ Enviar",
+    "body": "Corpo",
+    "proto": ".proto",
+    "response": "Resposta",
+    "selectMethodPlaceholder": "Selecione um método para editar o corpo da solicitação.",
+    "loading": "Carregando…",
+    "waiting": "Aguardando resposta…",
+    "sendPrompt": "Envie uma solicitação para ver a resposta."
+  }
+}

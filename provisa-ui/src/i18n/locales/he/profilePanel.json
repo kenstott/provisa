@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "יש להריץ דגימת שאילתה כדי לבצע פרופיל לעמודות התוצאה.",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "הורדת הפרופיל כ-JSON",
+    "colColumn": "עמודה",
+    "colNulls": "ערכי NULL",
+    "colNullsTitle": "שורות שבהן הערך הוא NULL",
+    "colBlanks": "ריקים",
+    "colBlanksTitle": "שורות שבהן הערך הוא מחרוזת ריקה",
+    "colDistinct": "ייחודיים",
+    "colDistinctTitle": "מספר הערכים הייחודיים",
+    "colConstant": "קבוע?",
+    "colConstantTitle": "לעמודה יש ערך ייחודי אחד בלבד",
+    "colMin": "מינימום",
+    "colMax": "מקסימום",
+    "colMean": "ממוצע",
+    "colMeanTitle": "ממוצע הערכים המספריים",
+    "colTopValues": "ערכים מובילים",
+    "constantYes": "כן ({{value}})",
+    "emptyValue": "—"
+  }
+}

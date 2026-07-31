@@ -1,0 +1,13 @@
+{
+  "federationEngineTab": {
+    "intro": "De federatie-engine voert elke gefedereerde query uit. Kies de engine en configureer deze; overige componenten (routering, governance, cache) blijven ongewijzigd.",
+    "loading": "Laden…",
+    "engineLabel": "Engine",
+    "current": " (actief)",
+    "pendingSelection": "Opgeslagen selectie: {{engine}}. De service draait nog steeds {{running}}.",
+    "envPinned": "Vastgezet op {{engine}} door $PROVISA_ENGINE. Een hier opgeslagen selectie wordt bewaard, maar bij herstart wint de vastzetting.",
+    "saveButton": "Engineselectie opslaan",
+    "saved": "Opgeslagen.",
+    "savedRestartRequired": "Opgeslagen. Herstart de service om de nieuwe federatie-engine toe te passen."
+  }
+}

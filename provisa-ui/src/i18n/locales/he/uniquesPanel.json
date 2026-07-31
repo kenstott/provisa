@@ -1,0 +1,14 @@
+{
+  "uniquesPanel": {
+    "title": "מפתחות ייחודיים",
+    "infoTooltip": "אילוצי UNIQUE מוצהרים עבור טבלה זו — עמודה בודדת או מרוכבים. מפתחות זרים יכולים להצביע על כל מפתח ייחודי, ולקוחות רואים אותם כאילוצי UNIQUE. נזרעים מהמקור בעת הרישום; ניתן לערוך או להוסיף משלכם.",
+    "addConstraint": "אילוץ",
+    "nameLabel": "שם",
+    "namePlaceholder": "שם האילוץ (למשל users_tenant_email_key)",
+    "columnsLabel": "עמודות",
+    "columnsPlaceholder": "— בחרו עמודות —",
+    "removeConstraint": "הסרת אילוץ",
+    "summary": "אילוץ {{count}}",
+    "summary_other": "{{count}} אילוצים"
+  }
+}

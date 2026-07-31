@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "База данных",
+    "tabHistory": "История",
+    "tabFavorites": "Избранное",
+    "tabExport": "Экспорт в Neo4j",
+    "domainLabels": "Метки доменов",
+    "nodeLabels": "Метки узлов",
+    "relationshipTypes": "Типы связей",
+    "propertyKeys": "Ключи свойств",
+    "loading": "Загрузка…",
+    "noLabelsFound": "Метки не найдены",
+    "noRelTypesFound": "Типы связей не найдены",
+    "history": "История",
+    "noHistory": "История пока пуста",
+    "favorites": "Избранное",
+    "noFavorites": "В избранном пока пусто — нажмите ★ во фрейме результата",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "Первая страница",
+    "previousPage": "Предыдущая страница",
+    "nextPage": "Следующая страница",
+    "lastPage": "Последняя страница",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "Выполнить",
+    "rename": "Переименовать",
+    "remove": "Удалить",
+    "renameFavoriteInput": "Название избранного",
+    "resizeSidebar": "Изменить размер боковой панели"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "canvasControls": {
+    "toolbarLabel": "画布控件",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "fitToScreen": "适应屏幕",
+    "switchToHierarchy": "切换到层级布局",
+    "switchToForce": "切换到力导向布局",
+    "nudgeLayout": "微调布局——微调选中的节点（未选中则微调全部）；按住可持续迭代",
+    "edgeLength": "边长度",
+    "edgeLengthValue": "{{value}}px"
+  }
+}

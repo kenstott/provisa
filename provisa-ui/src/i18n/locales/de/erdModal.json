@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "Entity-Relationship-Diagramm",
+    "domains": "Domänen",
+    "domainsTooltip": "Domänen ein-/ausblenden",
+    "columnDetailLabel": "Spaltendetail",
+    "columnDetailAll": "Alle Spalten",
+    "columnDetailKey": "Nur Schlüssel",
+    "columnDetailNone": "Keine Spalten",
+    "edgeRoutingLabel": "Kantenführung",
+    "edgeRoutingBezier": "Geschwungene Kanten",
+    "edgeRoutingTaxi": "Rechtwinklige Kanten",
+    "gridSnapLabel": "Am Raster ausrichten",
+    "gridSnapNone": "Kein Einrasten",
+    "gridSnap5": "Raster 5px",
+    "gridSnap10": "Raster 10px",
+    "gridSnap15": "Raster 15px",
+    "gridSnap20": "Raster 20px",
+    "orphans": "Verwaiste",
+    "collapseAll": "Alle einklappen",
+    "expandAll": "Alle ausklappen",
+    "fitAll": "Alles einpassen",
+    "downloadSvg": "SVG herunterladen",
+    "downloadPng": "PNG herunterladen",
+    "downloadJpeg": "JPEG herunterladen",
+    "close": "Schließen",
+    "hint": "Klicken Sie auf eine Domänengruppe zum Ein-/Ausklappen · gestrichelte Linien verbinden eingeklappte Domänen",
+    "resizeHandle": "Domänenrahmen skalieren ({{corner}})"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "aiModelsTab": {
+    "modelsHeading": "AI-modeltoewijzingen",
+    "modelsIntro": "Model dat voor elke AI-ondersteunde bewerking wordt gebruikt. Voer een modelnaam in (bijv. claude-haiku-4-5-20251001). Laat leeg om terug te zetten naar de standaard.",
+    "role_table_description": "Tabelbeschrijving",
+    "role_column_description": "Kolombeschrijving",
+    "role_relationship_inference": "Relatie-inferentie",
+    "role_sql_generation": "SQL-generatie",
+    "role_table_selection": "Tabelselectie",
+    "dictNotEditable": "(geconfigureerd als volledige vendor/model-vorm — bewerken in de configuratie-YAML)",
+    "nlHeading": "Query in natuurlijke taal",
+    "nlIntro": "Verzoeken per minuut per rol voor NL-naar-SQL. Laat leeg voor onbeperkt.",
+    "rateLimitLabel": "Limiet (verz./min per rol)",
+    "vectorHeading": "Vectormodellen (embeddings)",
+    "vectorIntro": "Geregistreerde embeddingmodellen beschikbaar voor semantisch zoeken. Het register is een allowlist.",
+    "vectorId": "Model-ID",
+    "vectorProvider": "Provider",
+    "vectorDimensions": "Dimensies",
+    "vectorApiKeyEnv": "Omgevingsvariabele API-sleutel",
+    "vectorBaseUrl": "Basis-URL",
+    "vectorEnabled": "Ingeschakeld",
+    "addVectorModel": "Vectormodel toevoegen",
+    "removeVectorModel": "Verwijderen",
+    "saveButtonLabel": "AI-modelinstellingen opslaan",
+    "loading": "Laden…",
+    "saved": "Opgeslagen.",
+    "savedRestartRequired": "Opgeslagen. Start de service opnieuw om toe te passen."
+  }
+}

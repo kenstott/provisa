@@ -1,0 +1,13 @@
+{
+  "federationEngineTab": {
+    "intro": "O mecanismo de federação executa todas as consultas federadas. Escolha o mecanismo e configure-o; os demais componentes (roteamento, governança, cache) permanecem inalterados.",
+    "loading": "Carregando…",
+    "engineLabel": "Mecanismo",
+    "current": " (em execução)",
+    "pendingSelection": "Seleção salva: {{engine}}. O serviço ainda está executando {{running}}.",
+    "envPinned": "Fixado em {{engine}} por $PROVISA_ENGINE. Uma seleção salva aqui é armazenada, mas a fixação prevalece na reinicialização.",
+    "saveButton": "Salvar seleção do mecanismo",
+    "saved": "Salvo.",
+    "savedRestartRequired": "Salvo. Reinicie o serviço para aplicar o novo mecanismo de federação."
+  }
+}

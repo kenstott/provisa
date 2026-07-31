@@ -1,0 +1,30 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "לחיצה כפולה לשינוי שם",
+    "closeTab": "סגירת {{title}}",
+    "newTab": "לשונית שאילתה חדשה",
+    "detachedBadge": "מנותק",
+    "nlPlaceholder": "שאלה בשפה חופשית — מייצר SQL…",
+    "clear": "ניקוי",
+    "generate": "יצירת SQL",
+    "generating": "מייצר…",
+    "generatingSql": "מייצר SQL…",
+    "prettify": "עיצוב SQL",
+    "copySql": "העתקת SQL",
+    "copied": "הועתק",
+    "copy": "העתקה",
+    "run": "דגימה >",
+    "running": "מריץ…",
+    "saveViewTitle": "שמירת ה-SQL הנוכחי כהגדרה של ה-view \"{{tableName}}\"",
+    "saving": "שומר…",
+    "updateView": "עדכון \"{{tableName}}\"",
+    "sampleModeFirst": "ראשונות",
+    "sampleModeLast": "אחרונות",
+    "sampleModeRandom": "אקראי",
+    "sampleModeLabel": "מצב דגימה",
+    "rowCountLabel": "מספר שורות",
+    "roleLabel": "תפקיד",
+    "createView": "+ View",
+    "requestView": "בקשת View"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "platformAdminWelcome": {
+    "title": "您是平台管理员",
+    "body": "登录使您成为此部署的 platform_admin——您在此拥有所有能力，现在其他任何人都无法再获取该角色。您同时也是根组织的管理员，其中已包含演示数据源、表和域。",
+    "backupHeading": "添加备用管理员",
+    "backupBody": "只有一个 platform_admin 的部署，意味着一旦这个账号失效就无人能管理它。添加备用管理员从邀请对方加入 root 开始：",
+    "backupStep1": "在根组织的“团队”页面邀请此人加入根组织。",
+    "backupStep2": "对方登录并兑换邀请，即成为 root 的成员。",
+    "backupStep3": "在 root 中为其分配 platform_admin 角色——这才是授予部署级管理权限的操作。",
+    "openHeading": "站点现已向组织开放",
+    "openBody": "从下一次登录开始，任何完成身份验证的人都会创建自己的组织。登录不会使任何人成为平台管理员，而邀请他人加入其组织是其作为 org_admin 的自主工作。",
+    "goToTeam": "邀请他人加入 root",
+    "dismiss": "知道了"
+  }
+}

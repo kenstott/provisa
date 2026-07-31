@@ -1,0 +1,11 @@
+{
+  "schemaSidebar": {
+    "title": "Schema",
+    "collapse": "Schema-Panel einklappen",
+    "expand": "Schema-Panel ausklappen",
+    "dragToCanvas": "Auf die Arbeitsfläche ziehen",
+    "doubleClickToInsert": "Doppelklick fügt den qualifizierten Namen ein",
+    "insertTableReference": "Tabellenreferenz in den SQL-Editor einfügen",
+    "clickToInsertColumn": "Klick fügt die Spalte in Anführungszeichen ein"
+  }
+}

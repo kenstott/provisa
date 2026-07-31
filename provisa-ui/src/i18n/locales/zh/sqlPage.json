@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "SQL 资源管理器",
+    "tabSql": "sql",
+    "tabCanvas": "画布",
+    "execMs": "{{ms}} 毫秒",
+    "queryStats": "查询统计",
+    "showExpansion": "显示展开",
+    "detachToPhysical": "分离为物理 SQL",
+    "expansionTitle": "指标展开",
+    "expansionLoading": "正在获取展开结果...",
+    "detachConfirmTitle": "分离为物理 SQL？",
+    "detachConfirmBody": "这是单向操作：指标链接将被切断，查询将变为自由编写的 SQL。无法再将其重新关联到指标。",
+    "detachCancel": "取消",
+    "detachConfirm": "分离"
+  }
+}

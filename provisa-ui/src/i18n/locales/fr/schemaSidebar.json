@@ -1,0 +1,11 @@
+{
+  "schemaSidebar": {
+    "title": "Schéma",
+    "collapse": "Réduire le panneau de schéma",
+    "expand": "Développer le panneau de schéma",
+    "dragToCanvas": "Glisser vers le canevas",
+    "doubleClickToInsert": "Double-cliquer pour insérer le nom qualifié",
+    "insertTableReference": "Insérer une référence de table dans l'éditeur SQL",
+    "clickToInsertColumn": "Cliquer pour insérer la colonne entre guillemets"
+  }
+}

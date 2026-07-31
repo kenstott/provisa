@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "Aucune requête exécutée pour l'instant. L'historique persiste entre les sessions.",
+    "colTime": "Heure",
+    "colRole": "Rôle",
+    "colDuration": "Durée",
+    "colRows": "Lignes",
+    "colSql": "SQL",
+    "colActions": "Actions",
+    "error": "erreur",
+    "restore": "Restaurer",
+    "restoreLabel": "Restaurer la requête de {{time}}"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "Wird geladen...",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "confirm": "Bestätigen",
+    "processing": "Wird verarbeitet..."
+  },
+  "app": {
+    "apiUnreachable": "Die Provisa-API ist nicht erreichbar.",
+    "notAuthorized": "Sie haben keine Berechtigung, diese Seite anzuzeigen."
+  },
+  "theme": {
+    "toggle": "Farbschema umschalten",
+    "light": "Hell",
+    "dark": "Dunkel"
+  },
+  "multiSelect": {
+    "defaultLabel": "Optionen auswählen",
+    "all": "alle"
+  },
+  "roleSelector": {
+    "none": "Keine Rollen konfiguriert",
+    "all": "Alle",
+    "role": "Rolle: {{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "Benutzername",
+    "colEmail": "E-Mail",
+    "colDisplayName": "Anzeigename",
+    "colActive": "Aktiv",
+    "actions": "Aktionen",
+    "empty": "Keine lokalen Benutzer",
+    "yes": "Ja",
+    "no": "Nein",
+    "none": "—",
+    "expandUser": "Zuweisungen für {{username}} anzeigen",
+    "deleteUser": "Benutzer {{username}} löschen",
+    "assignmentsHeading": "Rolle:Domäne-Zuweisungen",
+    "noAssignments": "Keine Zuweisungen",
+    "removeAssignment": "Zuweisung {{role}}:{{domain}} entfernen",
+    "roleLabel": "Rolle",
+    "domainLabel": "Domäne",
+    "allDomains": "* (alle Domänen)",
+    "add": "Hinzufügen",
+    "createHeading": "Benutzer erstellen",
+    "username": "Benutzername",
+    "usernameRequired": "Benutzername *",
+    "password": "Passwort",
+    "passwordRequired": "Passwort *",
+    "email": "E-Mail",
+    "emailOptional": "E-Mail (optional)",
+    "displayName": "Anzeigename",
+    "displayNameOptional": "Anzeigename (optional)",
+    "createButton": "Benutzer erstellen",
+    "created": "\"{{username}}\" erstellt",
+    "deleted": "\"{{username}}\" gelöscht",
+    "createFailed": "Erstellen fehlgeschlagen",
+    "assignmentFailed": "Zuweisung fehlgeschlagen"
+  }
+}

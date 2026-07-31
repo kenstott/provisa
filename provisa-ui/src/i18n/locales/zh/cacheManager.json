@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "响应缓存",
+      "hot": "热表",
+      "materialized": "物化存储",
+      "setup": "设置"
+    },
+    "response": {
+      "loading": "正在加载缓存统计...",
+      "disabledBanner": "查询响应缓存已禁用（存储：{{storeType}}）。查询结果不会缓存到 Redis，因此下方计数器保持为零。热表缓存和物化存储缓存是独立的层（见其他标签页），不受影响。",
+      "cachedEntries": "缓存条目",
+      "hitRate": "命中率",
+      "hits": "命中",
+      "misses": "未命中",
+      "store": "存储",
+      "redisKeysRaw": "Redis 键（原始）",
+      "memory": "内存",
+      "evicted": "已逐出",
+      "expired": "已过期",
+      "clients": "客户端",
+      "opsPerSec": "操作/秒",
+      "filterPlaceholder": "按表或域筛选…",
+      "purgeAll": "清空全部缓存",
+      "purging": "正在清除...",
+      "table": "表",
+      "domain": "域",
+      "purgeTable": "清除",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "镜像到 Redis（或内存）中的小型查找表，以 VALUES CTE 形式内联以优化 JOIN。无论响应缓存存储如何，始终可用。",
+      "loadedTables": "已加载的表",
+      "candidates": "候选",
+      "cachedRows": "缓存行数",
+      "empty": "没有已加载或已注册为候选的热表。",
+      "table": "表",
+      "catalog": "目录",
+      "schema": "架构 (Schema)",
+      "rows": "行数",
+      "kind": "类型",
+      "state": "状态",
+      "kindApi": "API",
+      "kindEngine": "引擎",
+      "stateLoaded": "已加载",
+      "stateCandidate": "候选",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "持久存储，用于存放不可挂载的数据源并写入物化视图。它与响应缓存和热层不同；一个查询可以任意组合使用这三者。",
+      "federationEngine": "联邦引擎",
+      "materializedViews": "物化视图",
+      "storeLabel": "存储：",
+      "viewButton": "+ 视图",
+      "empty": "未定义物化视图。",
+      "view": "视图",
+      "sourceTables": "源表",
+      "target": "目标",
+      "status": "状态",
+      "rows": "行数",
+      "lastRefresh": "上次刷新",
+      "interval": "间隔",
+      "error": "错误",
+      "never": "从未",
+      "refresh": "刷新",
+      "refreshing": "...",
+      "disable": "禁用",
+      "enable": "启用",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "第一页",
+      "previous": "上一页",
+      "next": "下一页",
+      "last": "最后一页",
+      "pageOf": "第 {{page}} / {{total}} 页"
+    }
+  }
+}

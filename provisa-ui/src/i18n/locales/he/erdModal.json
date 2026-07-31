@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "תרשים ישויות-קשרים (ERD)",
+    "domains": "דומיינים",
+    "domainsTooltip": "הצגה / הסתרה של דומיינים",
+    "columnDetailLabel": "פירוט עמודות",
+    "columnDetailAll": "כל העמודות",
+    "columnDetailKey": "מפתחות בלבד",
+    "columnDetailNone": "ללא עמודות",
+    "edgeRoutingLabel": "ניתוב קשתות",
+    "edgeRoutingBezier": "קשתות מעוגלות",
+    "edgeRoutingTaxi": "קשתות בזווית ישרה",
+    "gridSnapLabel": "הצמדה לרשת",
+    "gridSnapNone": "ללא הצמדה",
+    "gridSnap5": "הצמדה 5px",
+    "gridSnap10": "הצמדה 10px",
+    "gridSnap15": "הצמדה 15px",
+    "gridSnap20": "הצמדה 20px",
+    "orphans": "יתומים",
+    "collapseAll": "כיווץ הכול",
+    "expandAll": "הרחבת הכול",
+    "fitAll": "התאמת הכול",
+    "downloadSvg": "הורדת SVG",
+    "downloadPng": "הורדת PNG",
+    "downloadJpeg": "הורדת JPEG",
+    "close": "סגירה",
+    "hint": "לחיצה על קבוצת דומיין מכווצת / מרחיבה · קווים מקווקווים מחברים דומיינים מכווצים",
+    "resizeHandle": "שינוי גודל תיבת הדומיין ({{corner}})"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "securityManager": {
+    "tabs": {
+      "posture": "ポスチャ",
+      "encryption": "暗号化",
+      "authentication": "認証",
+      "localUsers": "ローカルユーザー"
+    }
+  }
+}

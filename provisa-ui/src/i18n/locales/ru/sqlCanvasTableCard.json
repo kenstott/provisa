@@ -1,0 +1,7 @@
+{
+  "sqlCanvasTableCard": {
+    "removeTable": "Удалить {{tableName}} с холста",
+    "toggleColumn": "Переключить выбор столбца {{columnName}}",
+    "connectColumn": "Начать связь от {{columnName}}"
+  }
+}

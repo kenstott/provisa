@@ -1,0 +1,29 @@
+{
+  "aiModelsTab": {
+    "modelsHeading": "AIモデル割り当て",
+    "modelsIntro": "各AI支援操作に使用するモデルです。モデル名を入力してください（例: claude-haiku-4-5-20251001）。空欄にするとデフォルトにリセットされます。",
+    "role_table_description": "テーブル説明",
+    "role_column_description": "カラム説明",
+    "role_relationship_inference": "リレーションシップ推論",
+    "role_sql_generation": "SQL生成",
+    "role_table_selection": "テーブル選択",
+    "dictNotEditable": "（ベンダー/モデルの完全形式で設定済み — 設定YAMLで編集してください）",
+    "nlHeading": "自然言語クエリ",
+    "nlIntro": "自然言語からSQLへの変換における、ロールごとの毎分リクエスト数です。無制限にする場合は空欄のままにしてください。",
+    "rateLimitLabel": "レート制限（ロールごとのリクエスト/分）",
+    "vectorHeading": "ベクトル（埋め込み）モデル",
+    "vectorIntro": "セマンティック検索に利用できる登録済み埋め込みモデルです。このレジストリは許可リストです。",
+    "vectorId": "モデルID",
+    "vectorProvider": "プロバイダー",
+    "vectorDimensions": "次元数",
+    "vectorApiKeyEnv": "APIキー環境変数",
+    "vectorBaseUrl": "ベースURL",
+    "vectorEnabled": "有効",
+    "addVectorModel": "ベクトルモデルを追加",
+    "removeVectorModel": "削除",
+    "saveButtonLabel": "AIモデル設定を保存",
+    "loading": "読み込み中…",
+    "saved": "保存しました。",
+    "savedRestartRequired": "保存しました。適用するにはサービスを再起動してください。"
+  }
+}

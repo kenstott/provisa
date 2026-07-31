@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "Semantische uitwisseling (Ossie)",
+    "endpointLabel": "Endpoint:",
+    "copyEndpoint": "Endpoint-URL kopiëren",
+    "download": "Downloaden",
+    "import": "Importeren",
+    "reviewTitle": "Ossie-import beoordelen: {{model}}",
+    "reviewHint": "Er is nog niets geregistreerd. Vink alles uit wat weggelaten moet worden en pas dan toe — aangevinkte items worden geregistreerd via de standaard registratiemutaties.",
+    "tablesSection": "Tabellen ({{count}})",
+    "relationshipsSection": "Relaties ({{count}})",
+    "metricsSection": "Metrics ({{count}})",
+    "columnCount": "{{count}} kolommen",
+    "apply": "Toepassen ({{count}})",
+    "applied": "Toegepast",
+    "failed": "Mislukt",
+    "cancel": "Annuleren",
+    "close": "Sluiten"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "指標",
+    "newMetric": "新增指標",
+    "loading": "正在載入…",
+    "empty": "尚未註冊任何指標。",
+    "colName": "名稱",
+    "colExpression": "運算式",
+    "colDatatype": "數據類型",
+    "colDescription": "描述",
+    "colAiContext": "AI 內容",
+    "fromFact": "來自事實表",
+    "builderFact": "來源事實表",
+    "builderMeasure": "量值",
+    "builderAgg": "彙總",
+    "builderNoFacts": "尚未註冊任何事實表",
+    "detail": {
+      "handAuthored": "手動編寫",
+      "noDependents": "無",
+      "field": {
+        "expression": "運算式",
+        "datatype": "數據類型",
+        "description": "描述",
+        "aiContext": "AI 內容",
+        "sourceFact": "來源事實表",
+        "visibleTo": "可見對象",
+        "dependentViews": "相依的指標檢視"
+      }
+    },
+    "createTitle": "新增指標",
+    "editTitle": "編輯指標",
+    "fieldName": "名稱",
+    "fieldNamePlaceholder": "例如 total_revenue",
+    "fieldExpression": "運算式",
+    "fieldExpressionPlaceholder": "例如 SUM(orders.amount)",
+    "fieldDatatype": "數據類型",
+    "fieldDatatypePlaceholder": "例如 numeric",
+    "fieldDatatypeDerived": "由事實表量值建立時，會從彙總函數推導",
+    "fieldDescription": "描述",
+    "fieldAiContext": "AI 內容",
+    "fieldAiContextPlaceholder": "供 AI 輔助查詢產生使用的提示",
+    "save": "儲存",
+    "cancel": "取消",
+    "saveFailed": "儲存失敗。",
+    "editMetric": "編輯指標 {{name}}",
+    "deleteMetric": "刪除指標 {{name}}",
+    "deleteTitle": "刪除指標",
+    "deleteConfirm": "刪除指標「{{name}}」？此操作無法復原。",
+    "delete": "刪除",
+    "deleteFailed": "刪除失敗。"
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "移除指標 {{metricName}}",
+    "dimensionsHeading": "維度",
+    "noDimensions": "找不到相關的維度資料行"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "概要",
+    "hidePanel": "パネルを隠す",
+    "nodeLabels": "ノードラベル",
+    "relationshipTypes": "リレーションシップタイプ",
+    "summary": "{{nodeCount}} ノード、{{edgeCount}} リレーションシップを表示中。",
+    "hint": "ノードまたはエッジをクリックするとプロパティを確認できます。",
+    "nodeProperties": "ノードのプロパティ",
+    "relationshipProperties": "リレーションシップのプロパティ",
+    "copyAll": "すべてのプロパティをJSONとしてコピー",
+    "showDetails": "詳細を表示",
+    "showJson": "JSONを表示",
+    "close": "閉じる",
+    "domain": "ドメイン",
+    "changeColor": "色を変更",
+    "colorSwatch": "色を {{color}} に設定",
+    "cqlAliasLabel": "CQLエイリアス（UPPER_SNAKE）",
+    "gqlAliasLabel": "GQLエイリアス（camelCase）",
+    "saveAlias": "保存",
+    "graphStats": "グラフ統計",
+    "properties": "プロパティ",
+    "copyValue": "値をコピー",
+    "resizePanel": "インスペクターパネルをリサイズ"
+  }
+}

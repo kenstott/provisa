@@ -1,0 +1,10 @@
+{
+  "securityManager": {
+    "tabs": {
+      "posture": "Postura",
+      "encryption": "Crittografia",
+      "authentication": "Autenticazione",
+      "localUsers": "Utenti locali"
+    }
+  }
+}

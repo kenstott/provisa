@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "Carregando...",
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "delete": "Excluir",
+    "confirm": "Confirmar",
+    "processing": "Processando..."
+  },
+  "app": {
+    "apiUnreachable": "Não foi possível conectar à API do Provisa.",
+    "notAuthorized": "Sem permissão para visualizar esta página."
+  },
+  "theme": {
+    "toggle": "Alternar esquema de cores",
+    "light": "Claro",
+    "dark": "Escuro"
+  },
+  "multiSelect": {
+    "defaultLabel": "Selecionar opções",
+    "all": "todos"
+  },
+  "roleSelector": {
+    "none": "Nenhuma função configurada",
+    "all": "Todas",
+    "role": "Função: {{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "Nome de usuário",
+    "colEmail": "Email",
+    "colDisplayName": "Nome de exibição",
+    "colActive": "Ativo",
+    "actions": "Ações",
+    "empty": "Nenhum usuário local",
+    "yes": "Sim",
+    "no": "Não",
+    "none": "—",
+    "expandUser": "Mostrar atribuições de {{username}}",
+    "deleteUser": "Excluir usuário {{username}}",
+    "assignmentsHeading": "Atribuições função:domínio",
+    "noAssignments": "Nenhuma atribuição",
+    "removeAssignment": "Remover atribuição {{role}}:{{domain}}",
+    "roleLabel": "Função",
+    "domainLabel": "Domínio",
+    "allDomains": "* (todos os domínios)",
+    "add": "Adicionar",
+    "createHeading": "Criar usuário",
+    "username": "Nome de usuário",
+    "usernameRequired": "Nome de usuário *",
+    "password": "Senha",
+    "passwordRequired": "Senha *",
+    "email": "Email",
+    "emailOptional": "Email (opcional)",
+    "displayName": "Nome de exibição",
+    "displayNameOptional": "Nome de exibição (opcional)",
+    "createButton": "Criar usuário",
+    "created": "\"{{username}}\" criado",
+    "deleted": "\"{{username}}\" excluído",
+    "createFailed": "Falha ao criar",
+    "assignmentFailed": "Falha na atribuição"
+  }
+}

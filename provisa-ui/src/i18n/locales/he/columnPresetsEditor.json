@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "ערכי עמודות מוגדרים מראש",
+    "infoTooltip": "הזרקת ערכים מחושבים או קבועים לכל שורה המוחזרת עבור הטבלה הזו. שימושי להוספת מזהי דומיין, דגלים תלויי-תפקיד או שדות נגזרים בלי לשנות את סכמת המקור. 'source' יכול להיות: constant, sql_expression או role_claim.",
+    "columnHeader": "עמודה",
+    "sourceHeader": "מקור",
+    "valueHeader": "כותרת / ערך",
+    "removeAction": "הסרה",
+    "columnPlaceholder": "— עמודה —",
+    "selectPlaceholder": "— בחירה —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "שם כותרת (למשל X-User-Id)",
+    "literalValuePlaceholder": "ערך מילולי",
+    "numericValuePlaceholder": "ערך מספרי",
+    "addAction": "הוספה",
+    "sourceNow": "now (חותמת זמן UTC)",
+    "sourceHeaderOption": "header (כותרת בקשת HTTP)",
+    "sourceLiteral": "literal (ערך קבוע)"
+  }
+}

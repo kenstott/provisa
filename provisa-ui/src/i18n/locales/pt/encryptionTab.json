@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "Carregando…",
+    "intro": "Criptografia de colunas em repouso. Escolha um provedor e gerencie sua chave mestra. A criptografia de envelope encapsula uma chave de dados por coluna com a chave mestra.",
+    "providerLabel": "Provedor",
+    "providerCurrentSuffix": " (atual)",
+    "providerComingSoonSuffix": " (em breve)",
+    "unavailableNote": "O runtime deste provedor ainda não está disponível e não pode ser selecionado. Campos exibidos para referência.",
+    "keyIdLabel": "ID da chave",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "Chave mestra:",
+    "masterKeyPresent": "presente",
+    "masterKeyMissing": "ausente",
+    "generating": "Gerando…",
+    "rotateKey": "Girar chave mestra",
+    "generateKey": "Gerar chave mestra",
+    "restartWarning": "{{note}} Girar uma chave mestra enquanto existem dados criptografados pode tornar linhas anteriores ilegíveis — gire antes de armazenar dados sensíveis, ou planeje uma recriptografia.",
+    "saveTitle": "Salvar configurações de criptografia",
+    "keyGeneratedStored": "Chave mestra gerada e armazenada no keychain do SO (id da chave: {{keyId}}).",
+    "keyGeneratedNoKeychain": "Nenhum keychain do SO disponível — copie esta chave e defina-a como {{envVar}}. Ela não será exibida novamente.",
+    "savedRestartRequired": "Salvo. Reinicie o serviço para aplicar.",
+    "saved": "Salvo."
+  }
+}

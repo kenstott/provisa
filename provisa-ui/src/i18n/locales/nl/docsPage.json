@@ -1,0 +1,11 @@
+{
+  "docsPage": {
+    "title": "Documentatie",
+    "loading": "Laden…",
+    "sourceOnline": "Online",
+    "sourceOffline": "Offlinekopie",
+    "viewOnline": "Onlinedocumentatie gebruiken",
+    "viewOffline": "Offlinekopie gebruiken",
+    "openInNewTab": "Openen in nieuw tabblad"
+  }
+}

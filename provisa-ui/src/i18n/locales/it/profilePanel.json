@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "Esegui un campionamento di una query per profilare le colonne del risultato.",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "Scarica il profilo come JSON",
+    "colColumn": "Colonna",
+    "colNulls": "Null",
+    "colNullsTitle": "Righe in cui il valore è NULL",
+    "colBlanks": "Vuoti",
+    "colBlanksTitle": "Righe in cui il valore è una stringa vuota",
+    "colDistinct": "Distinti",
+    "colDistinctTitle": "Numero di valori univoci",
+    "colConstant": "Costante?",
+    "colConstantTitle": "La colonna ha un solo valore univoco",
+    "colMin": "Min",
+    "colMax": "Max",
+    "colMean": "Media",
+    "colMeanTitle": "Media dei valori numerici",
+    "colTopValues": "Valori principali",
+    "constantYes": "Sì ({{value}})",
+    "emptyValue": "—"
+  }
+}

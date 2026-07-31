@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "欄位預設集",
+    "infoTooltip": "在此資料表傳回的每個資料列中注入計算值或常數值。適合在不修改數據來源結構描述的情況下，加入網域識別碼、以角色為範圍的旗標或衍生欄位。'source' 可以是：constant、sql_expression 或 role_claim。",
+    "columnHeader": "欄位",
+    "sourceHeader": "來源",
+    "valueHeader": "標頭 / 值",
+    "removeAction": "移除",
+    "columnPlaceholder": "— 欄位 —",
+    "selectPlaceholder": "— 選取 —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "標頭名稱（例如 X-User-Id）",
+    "literalValuePlaceholder": "常值",
+    "numericValuePlaceholder": "數值",
+    "addAction": "新增",
+    "sourceNow": "now（UTC 時間戳記）",
+    "sourceHeaderOption": "header（HTTP 要求標頭）",
+    "sourceLiteral": "literal（固定值）"
+  }
+}

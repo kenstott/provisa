@@ -1,0 +1,6 @@
+{
+  "sqlModelingCanvasTableCard": {
+    "removeTable": "从画布中移除 {{tableName}}",
+    "connectColumn": "从 {{columnName}} 开始创建关系"
+  }
+}

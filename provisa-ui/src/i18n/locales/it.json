@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "Caricamento...",
+    "cancel": "Annulla",
+    "save": "Salva",
+    "delete": "Elimina",
+    "confirm": "Conferma",
+    "processing": "Elaborazione in corso..."
+  },
+  "app": {
+    "apiUnreachable": "Impossibile raggiungere l'API Provisa.",
+    "notAuthorized": "Autorizzazione insufficiente per visualizzare questa pagina."
+  },
+  "theme": {
+    "toggle": "Cambia schema colori",
+    "light": "Chiaro",
+    "dark": "Scuro"
+  },
+  "multiSelect": {
+    "defaultLabel": "Seleziona opzioni",
+    "all": "tutti"
+  },
+  "roleSelector": {
+    "none": "Nessun ruolo configurato",
+    "all": "Tutti",
+    "role": "Ruolo: {{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "Nome utente",
+    "colEmail": "Email",
+    "colDisplayName": "Nome visualizzato",
+    "colActive": "Attivo",
+    "actions": "Azioni",
+    "empty": "Nessun utente locale",
+    "yes": "Sì",
+    "no": "No",
+    "none": "—",
+    "expandUser": "Mostra assegnazioni per {{username}}",
+    "deleteUser": "Elimina utente {{username}}",
+    "assignmentsHeading": "Assegnazioni ruolo:dominio",
+    "noAssignments": "Nessuna assegnazione",
+    "removeAssignment": "Rimuovi assegnazione {{role}}:{{domain}}",
+    "roleLabel": "Ruolo",
+    "domainLabel": "Dominio",
+    "allDomains": "* (tutti i domini)",
+    "add": "Aggiungi",
+    "createHeading": "Crea utente",
+    "username": "Nome utente",
+    "usernameRequired": "Nome utente *",
+    "password": "Password",
+    "passwordRequired": "Password *",
+    "email": "Email",
+    "emailOptional": "Email (facoltativa)",
+    "displayName": "Nome visualizzato",
+    "displayNameOptional": "Nome visualizzato (facoltativo)",
+    "createButton": "Crea utente",
+    "created": "Creato \"{{username}}\"",
+    "deleted": "Eliminato \"{{username}}\"",
+    "createFailed": "Creazione non riuscita",
+    "assignmentFailed": "Assegnazione non riuscita"
+  }
+}

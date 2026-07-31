@@ -1,0 +1,18 @@
+{
+  "mcpServerTab": {
+    "intro": "שרת ה-Model Context Protocol (MCP) חושף גילוי קטלוג מנוהל וביצוע SQL לסוכני AI חיצוניים. כל קריאה כפופה לממשל לפי תפקיד הקורא — השרת לעולם אינו עובר כברירת מחדל ל-admin.",
+    "loading": "טוען…",
+    "statusLabel": "סטטוס",
+    "statusEnabled": "מופעל",
+    "statusDisabled": "מושבת",
+    "endpointLabel": "נקודת קצה",
+    "transportLabel": "תעבורה",
+    "stdioRoleLabel": "תפקיד stdio מקושר",
+    "stdioRoleNone": "לא הוגדר — קריאות stdio דורשות <code>{{envVar}}</code>",
+    "maxRowsLabel": "תקרת שורות (run_sql)",
+    "enableHint": "שרת ה-MCP הוא בהצטרפה מפורשת. יש להגדיר את משתנה הסביבה <code>{{enableEnvVar}}</code> לפורט ולהפעיל מחדש את השירות כדי להפעילו. עבור תעבורת stdio מקומית, יש להגדיר גם את <code>{{roleEnvVar}}</code> לתפקיד provisa.",
+    "toolsHeading": "כלים חשופים",
+    "colTool": "כלי",
+    "colDescription": "תיאור"
+  }
+}

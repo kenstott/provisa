@@ -1,0 +1,21 @@
+{
+  "sqlModelingResultsPanel": {
+    "downloadCsv": "CSVをダウンロード",
+    "rowCount_one": "{{count}}行",
+    "rowCount_other": "{{count}}行",
+    "filteredFrom": "（{{count}}件から絞り込み）",
+    "firstPage": "最初のページ",
+    "previousPage": "前のページ",
+    "nextPage": "次のページ",
+    "lastPage": "最後のページ",
+    "pageOf": "ページ {{page}} / {{total}}",
+    "filterPlaceholder": "絞り込み…",
+    "filterColumn": "{{column}}を絞り込み",
+    "resizeColumn": "{{column}}カラムのサイズを変更",
+    "noResults": "結果がありません。",
+    "writeSqlPrompt": "SQLを書いて「サンプル」をクリックすると実行されます。",
+    "nullValue": "null",
+    "sortAscending": "昇順にソート済み",
+    "sortDescending": "降順にソート済み"
+  }
+}

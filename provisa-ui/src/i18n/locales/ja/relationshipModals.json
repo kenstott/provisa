@@ -1,0 +1,21 @@
+{
+  "relationshipModals": {
+    "conflictTitle": "リレーションシップは既に存在します",
+    "conflictClose": "閉じる",
+    "conflictIntro": "このソースとターゲットを持つリレーションシップは既に存在します:",
+    "conflictId": "ID",
+    "conflictSource": "ソース",
+    "conflictTarget": "ターゲット",
+    "conflictCardinality": "カーディナリティ",
+    "conflictAlias": "エイリアス",
+    "reverseTitle": "逆方向リレーションシップを生成",
+    "idLabel": "ID",
+    "aliasLabel": "CQLエイリアス（UPPER_SNAKE）",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQLエイリアス（camelCase）",
+    "materializeLabel": "マテリアライズ",
+    "refreshIntervalLabel": "更新間隔（秒）",
+    "cancel": "キャンセル",
+    "save": "保存"
+  }
+}

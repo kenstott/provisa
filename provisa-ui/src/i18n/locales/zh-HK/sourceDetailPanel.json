@@ -1,0 +1,27 @@
+{
+  "sourceDetailPanel": {
+    "field": {
+      "description": "描述",
+      "type": "類型",
+      "host": "主機",
+      "port": "連接埠",
+      "database": "數據庫",
+      "username": "使用者名稱",
+      "naming": "命名",
+      "cache": "快取",
+      "cacheTtl": "快取 TTL",
+      "effectiveTtl": "生效 TTL",
+      "allowedDomains": "允許的網域"
+    },
+    "namingInherit": "繼承（全域）",
+    "cacheEnabled": "已啟用",
+    "cacheDisabled": "已停用",
+    "ttlInherit": "繼承",
+    "domainsUnrestricted": "不受限制",
+    "editTitle": "編輯",
+    "navigateTitle": "檢視已註冊的數據表",
+    "deleteTitle": "刪除數據來源「{{id}}」？",
+    "deleteTitleShort": "刪除",
+    "deleteConsequence": "此操作會移除數據來源「{{id}}」，並可能令參照它的數據表失效。"
+  }
+}

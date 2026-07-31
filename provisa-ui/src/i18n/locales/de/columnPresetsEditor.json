@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "Spalten-Presets",
+    "infoTooltip": "Fügt jedem zurückgegebenen Datensatz dieser Tabelle berechnete oder konstante Werte hinzu. Nützlich für Domänenkennungen, rollenbezogene Flags oder abgeleitete Felder, ohne das Quellschema zu ändern. 'source' kann sein: constant, sql_expression oder role_claim.",
+    "columnHeader": "Spalte",
+    "sourceHeader": "Quelle",
+    "valueHeader": "Header / Wert",
+    "removeAction": "Entfernen",
+    "columnPlaceholder": "— Spalte —",
+    "selectPlaceholder": "— auswählen —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "Header-Name (z. B. X-User-Id)",
+    "literalValuePlaceholder": "Literalwert",
+    "numericValuePlaceholder": "Numerischer Wert",
+    "addAction": "Hinzufügen",
+    "sourceNow": "now (UTC-Zeitstempel)",
+    "sourceHeaderOption": "header (HTTP-Request-Header)",
+    "sourceLiteral": "literal (fester Wert)"
+  }
+}

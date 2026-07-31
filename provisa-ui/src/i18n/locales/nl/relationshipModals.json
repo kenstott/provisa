@@ -1,0 +1,21 @@
+{
+  "relationshipModals": {
+    "conflictTitle": "Relatie bestaat al",
+    "conflictClose": "Sluiten",
+    "conflictIntro": "Er bestaat al een relatie met deze bron en dit doel:",
+    "conflictId": "ID",
+    "conflictSource": "Bron",
+    "conflictTarget": "Doel",
+    "conflictCardinality": "Kardinaliteit",
+    "conflictAlias": "Alias",
+    "reverseTitle": "Omgekeerde relatie genereren",
+    "idLabel": "ID",
+    "aliasLabel": "CQL-alias (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL-alias (camelCase)",
+    "materializeLabel": "Materialiseren",
+    "refreshIntervalLabel": "Verversingsinterval (s)",
+    "cancel": "Annuleren",
+    "save": "Opslaan"
+  }
+}

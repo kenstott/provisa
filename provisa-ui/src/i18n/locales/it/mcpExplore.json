@@ -1,0 +1,12 @@
+{
+  "mcpExplore": {
+    "title": "MCP",
+    "intro": "Conversazione con un assistente AI che esplora il catalogo ed esegue SQL tramite gli strumenti MCP governati — gli stessi strumenti usati dagli agenti esterni.",
+    "roleNote": "Ruolo attivo: {{role}}",
+    "noRole": "(nessun ruolo)",
+    "thinking": "L'assistente sta lavorando…",
+    "emptyState": "Porre una domanda sui dati — es. \"quali tabelle contengono email dei clienti?\", \"i 10 ordini più alti per importo\" o \"com'è fatta la tabella orders?\"",
+    "inputPlaceholder": "Domande sul catalogo o sui dati…",
+    "clear": "Cancella input"
+  }
+}

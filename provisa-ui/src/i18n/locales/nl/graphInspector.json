@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "Overzicht",
+    "hidePanel": "Paneel verbergen",
+    "nodeLabels": "Knooppuntlabels",
+    "relationshipTypes": "Relatietypen",
+    "summary": "{{nodeCount}} knooppunten en {{edgeCount}} relaties worden weergegeven.",
+    "hint": "Klik op een knooppunt of verbinding om de eigenschappen te inspecteren.",
+    "nodeProperties": "Knooppunteigenschappen",
+    "relationshipProperties": "Relatie-eigenschappen",
+    "copyAll": "Alle eigenschappen als JSON kopiëren",
+    "showDetails": "Details tonen",
+    "showJson": "JSON tonen",
+    "close": "Sluiten",
+    "domain": "Domein",
+    "changeColor": "Kleur wijzigen",
+    "colorSwatch": "Kleur instellen op {{color}}",
+    "cqlAliasLabel": "CQL-alias (UPPER_SNAKE)",
+    "gqlAliasLabel": "GQL-alias (camelCase)",
+    "saveAlias": "Opslaan",
+    "graphStats": "Graafstatistieken",
+    "properties": "Eigenschappen",
+    "copyValue": "Waarde kopiëren",
+    "resizePanel": "Formaat van inspectiepaneel wijzigen"
+  }
+}

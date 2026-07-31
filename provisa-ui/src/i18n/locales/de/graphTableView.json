@@ -1,0 +1,8 @@
+{
+  "graphTableView": {
+    "noRows": "Keine Zeilen",
+    "copyAsCsv": "Als CSV kopieren",
+    "copyJson": "JSON kopieren",
+    "table": "Tabellenergebnisse"
+  }
+}

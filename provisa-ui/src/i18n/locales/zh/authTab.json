@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "身份验证确认调用者身份；角色 + 行级安全决定其可见内容。请选择身份提供程序并配置其连接。",
+    "providerLabel": "提供程序",
+    "current": "（当前）",
+    "roles": "角色",
+    "defaultRole": "默认角色",
+    "assignmentsFrom": "角色分配来源",
+    "assignmentsSourceClaims": "令牌声明",
+    "assignmentsSourceProvisa": "Provisa（本地分配）",
+    "trustUpstream": "信任上游代理身份标头",
+    "allowSimpleAuth": "允许简单身份验证（生产环境防护 — 启用用户名/密码时必需）",
+    "saveButton": "保存身份验证设置",
+    "loading": "正在加载…",
+    "saved": "已保存。",
+    "savedRestartRequired": "已保存。重启服务后生效。"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "addRelationshipForm": {
+    "idLabel": "ID",
+    "idPlaceholder": "orders-to-customers",
+    "aliasLabel": "CQL-Alias (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL-Alias (camelCase)",
+    "graphqlAliasPlaceholder": "z. B. orders",
+    "sourceTableLabel": "Quelltabelle",
+    "sourceColumnLabel": "Quellspalte",
+    "selectPlaceholder": "Auswählen...",
+    "targetTypeLabel": "Zieltyp",
+    "targetTypeTable": "Tabelle",
+    "targetTypeFunction": "Funktion (berechnet)",
+    "targetTableLabel": "Zieltabelle",
+    "targetColumnLabel": "Zielspalte",
+    "functionLabel": "Funktion",
+    "functionArgLabel": "Funktionsargument (erhält die Quellspalte)",
+    "functionArgPlaceholder": "Argumentname",
+    "cardinalityLabel": "Kardinalität",
+    "cardinalityManyToOne": "n:1",
+    "cardinalityOneToMany": "1:n",
+    "cardinalityWarning": "Warnung: Liefert dieser Join mehr als eine Zeile pro Elternzeile, wird nur der erste Wert verwendet.",
+    "materializeLabel": "Materialisieren (MV für quellübergreifende Joins automatisch erstellen)",
+    "disableCypherLabel": "Aus dem Cypher-Graphen ausschließen",
+    "refreshIntervalLabel": "Aktualisierungsintervall (s)",
+    "save": "Speichern"
+  }
+}

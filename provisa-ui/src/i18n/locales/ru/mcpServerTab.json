@@ -1,0 +1,18 @@
+{
+  "mcpServerTab": {
+    "intro": "Сервер Model Context Protocol (MCP) предоставляет внешним ИИ-агентам управляемое обнаружение каталога и выполнение SQL. Каждый вызов регулируется ролью вызывающего — сервер никогда не использует роль администратора по умолчанию.",
+    "loading": "Загрузка…",
+    "statusLabel": "Статус",
+    "statusEnabled": "Включён",
+    "statusDisabled": "Отключён",
+    "endpointLabel": "Конечная точка",
+    "transportLabel": "Транспорт",
+    "stdioRoleLabel": "Привязанная роль stdio",
+    "stdioRoleNone": "не задана — для вызовов stdio требуется <code>{{envVar}}</code>",
+    "maxRowsLabel": "Предел строк (run_sql)",
+    "enableHint": "Сервер MCP включается явно. Задайте переменной окружения <code>{{enableEnvVar}}</code> номер порта и перезапустите службу, чтобы включить его. Для локального транспорта stdio также задайте <code>{{roleEnvVar}}</code> — роль provisa.",
+    "toolsHeading": "Доступные инструменты",
+    "colTool": "Инструмент",
+    "colDescription": "Описание"
+  }
+}

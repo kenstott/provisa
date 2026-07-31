@@ -1,0 +1,30 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "Двойной щелчок для переименования",
+    "closeTab": "Закрыть {{title}}",
+    "newTab": "Новая вкладка запроса",
+    "detachedBadge": "откреплено",
+    "nlPlaceholder": "Спросите обычным языком — сгенерируется SQL…",
+    "clear": "Очистить",
+    "generate": "Сгенерировать SQL",
+    "generating": "Генерация…",
+    "generatingSql": "Генерация SQL…",
+    "prettify": "Форматировать SQL",
+    "copySql": "Копировать SQL",
+    "copied": "Скопировано",
+    "copy": "Копировать",
+    "run": "Выборка >",
+    "running": "Выполнение…",
+    "saveViewTitle": "Сохранить текущий SQL как определение представления «{{tableName}}»",
+    "saving": "Сохранение…",
+    "updateView": "Обновить «{{tableName}}»",
+    "sampleModeFirst": "Первые",
+    "sampleModeLast": "Последние",
+    "sampleModeRandom": "Случайные",
+    "sampleModeLabel": "Режим выборки",
+    "rowCountLabel": "Число строк",
+    "roleLabel": "Роль",
+    "createView": "+ Представление",
+    "requestView": "Запросить представление"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "domainSelector": {
+    "all": "すべてのドメイン",
+    "label": "ドメイン：{{domain}}"
+  }
+}

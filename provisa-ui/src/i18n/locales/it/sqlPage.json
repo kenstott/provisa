@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "Esplora SQL",
+    "tabSql": "sql",
+    "tabCanvas": "canvas",
+    "execMs": "{{ms}} ms",
+    "queryStats": "Statistiche della query",
+    "showExpansion": "Mostra espansione",
+    "detachToPhysical": "Scollega in SQL fisico",
+    "expansionTitle": "Espansione della metrica",
+    "expansionLoading": "Recupero dell'espansione...",
+    "detachConfirmTitle": "Scollegare in SQL fisico?",
+    "detachConfirmBody": "Operazione IRREVERSIBILE: il collegamento alla metrica verrà interrotto e la query diventerà SQL libero. Non è possibile ricollegarla alla metrica.",
+    "detachCancel": "Annulla",
+    "detachConfirm": "Scollega"
+  }
+}

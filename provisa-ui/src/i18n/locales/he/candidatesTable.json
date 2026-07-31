@@ -1,0 +1,15 @@
+{
+  "candidatesTable": {
+    "heading": "קשרים בהצעת AI",
+    "colName": "שם",
+    "colSource": "מקור",
+    "colTarget": "יעד",
+    "colCardinality": "קרדינליות",
+    "colConfidence": "רמת ביטחון",
+    "colActions": "פעולות",
+    "accept": "קבלה",
+    "reject": "דחייה",
+    "acceptAria": "קבלת הקשר המוצע {{name}}",
+    "rejectAria": "דחיית הקשר המוצע {{name}}"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "graphTableView": {
+    "noRows": "Nessuna riga",
+    "copyAsCsv": "Copia come CSV",
+    "copyJson": "Copia JSON",
+    "table": "Risultati in tabella"
+  }
+}

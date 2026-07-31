@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "Vue d'ensemble",
+    "hidePanel": "Masquer le panneau",
+    "nodeLabels": "Étiquettes de nœuds",
+    "relationshipTypes": "Types de relations",
+    "summary": "Affichage de {{nodeCount}} nœuds, {{edgeCount}} relations.",
+    "hint": "Cliquez sur un nœud ou une arête pour inspecter ses propriétés.",
+    "nodeProperties": "Propriétés du nœud",
+    "relationshipProperties": "Propriétés de la relation",
+    "copyAll": "Copier toutes les propriétés en JSON",
+    "showDetails": "Afficher les détails",
+    "showJson": "Afficher le JSON",
+    "close": "Fermer",
+    "domain": "Domaine",
+    "changeColor": "Changer la couleur",
+    "colorSwatch": "Définir la couleur sur {{color}}",
+    "cqlAliasLabel": "Alias CQL (UPPER_SNAKE)",
+    "gqlAliasLabel": "Alias GQL (camelCase)",
+    "saveAlias": "Enregistrer",
+    "graphStats": "Statistiques du graphe",
+    "properties": "Propriétés",
+    "copyValue": "Copier la valeur",
+    "resizePanel": "Redimensionner le panneau d'inspection"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "Semantischer Austausch (Ossie)",
+    "endpointLabel": "Endpunkt:",
+    "copyEndpoint": "Endpunkt-URL kopieren",
+    "download": "Herunterladen",
+    "import": "Importieren",
+    "reviewTitle": "Ossie-Import prüfen: {{model}}",
+    "reviewHint": "Noch ist nichts registriert. Entfernen Sie die Häkchen bei allem, was Sie weglassen möchten, und wenden Sie dann an — markierte Elemente werden über die Standard-Registrierungsmutationen registriert.",
+    "tablesSection": "Tabellen ({{count}})",
+    "relationshipsSection": "Beziehungen ({{count}})",
+    "metricsSection": "Metriken ({{count}})",
+    "columnCount": "{{count}} Spalten",
+    "apply": "Anwenden ({{count}})",
+    "applied": "Angewendet",
+    "failed": "Fehlgeschlagen",
+    "cancel": "Abbrechen",
+    "close": "Schließen"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "systemHealth": {
+    "loading": "システムヘルスを読み込み中...",
+    "colComponent": "コンポーネント",
+    "colStatus": "ステータス",
+    "colDetails": "詳細",
+    "federationEngine": "フェデレーションエンジン",
+    "connected": "接続済み",
+    "disconnected": "切断",
+    "workerCount": "{{count}} ワーカー（{{active}} アクティブ）",
+    "workerCount_other": "{{count}} ワーカー（{{active}} アクティブ）",
+    "metadataDb": "メタデータDB",
+    "unpooled": "プールなし",
+    "active": "アクティブ",
+    "noPool": "プールなし",
+    "poolNotTracked": "プールは接続を追跡しません",
+    "poolConnections": "{{count}} 接続（{{idle}} アイドル）",
+    "cache": "キャッシュ",
+    "disabled": "無効",
+    "embeddedMemory": "組み込み（インメモリ）",
+    "serverConnected": "サーバー接続済み",
+    "serverUnreachable": "サーバーに到達不能",
+    "redisServer": "Redisサーバー",
+    "fakeredis": "fakeredis（インプロセス）",
+    "running": "稼働中",
+    "unreachable": "到達不能",
+    "port": "ポート {{port}}",
+    "mvRefreshLoop": "MVリフレッシュループ",
+    "stopped": "停止"
+  }
+}

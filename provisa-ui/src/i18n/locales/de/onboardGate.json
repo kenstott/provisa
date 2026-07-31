@@ -1,0 +1,7 @@
+{
+  "onboardGate": {
+    "unavailableTitle": "Provisa nicht erreichbar",
+    "unavailableBody": "Provisa konnte Ihre Identität nicht bestätigen, weil der Server nicht geantwortet hat. Das ist kein Problem mit Ihrem Konto. Versuchen Sie es gleich noch einmal.",
+    "retry": "Erneut versuchen"
+  }
+}

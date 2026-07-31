@@ -1,0 +1,31 @@
+{
+  "systemHealth": {
+    "loading": "Загрузка состояния системы...",
+    "colComponent": "Компонент",
+    "colStatus": "Статус",
+    "colDetails": "Подробности",
+    "federationEngine": "Движок федерации",
+    "connected": "Подключено",
+    "disconnected": "Отключено",
+    "workerCount": "{{count}} рабочий процесс ({{active}} активных)",
+    "workerCount_other": "{{count}} рабочих процессов ({{active}} активных)",
+    "metadataDb": "БД метаданных",
+    "unpooled": "Без пула",
+    "active": "Активно",
+    "noPool": "Нет пула",
+    "poolNotTracked": "пул не отслеживает соединения",
+    "poolConnections": "{{count}} соединений ({{idle}} простаивают)",
+    "cache": "Кеш",
+    "disabled": "Отключено",
+    "embeddedMemory": "Встроенный (в памяти)",
+    "serverConnected": "Сервер подключён",
+    "serverUnreachable": "Сервер недоступен",
+    "redisServer": "Сервер Redis",
+    "fakeredis": "fakeredis (внутри процесса)",
+    "running": "Работает",
+    "unreachable": "Недоступно",
+    "port": "порт {{port}}",
+    "mvRefreshLoop": "Цикл обновления материализованных представлений",
+    "stopped": "Остановлено"
+  }
+}

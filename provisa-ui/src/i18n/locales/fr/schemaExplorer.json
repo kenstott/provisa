@@ -1,0 +1,7 @@
+{
+  "schemaExplorer": {
+    "selectRole": "Sélectionnez un rôle pour afficher le schéma.",
+    "loadFailed": "Échec du chargement du schéma : {{error}}",
+    "loading": "Chargement du schéma..."
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "כניסה",
+    "authNotConfigured": "אימות אינו מוגדר",
+    "loading": "טוען...",
+    "signInTitle": "כניסה",
+    "firstLoginHeading": "הגדרת הפריסה הזו",
+    "firstLoginTitle": "זוהי הכניסה הראשונה",
+    "firstLoginBody": "עדיין אין מנהל לפריסה הזו. מי שנכנס ראשון הופך למנהל הפלטפורמה — עם שליטה מלאה בארגונים, במשתמשים ובמקורות נתונים. יש לבחור שיטת כניסה למטה כדי לתפוס את התפקיד.",
+    "signInWithGoogle": "כניסה עם Google",
+    "signInWithGithub": "כניסה עם GitHub",
+    "signInWithMicrosoft": "כניסה עם Microsoft",
+    "signInWithEmail": "כניסה עם אימייל",
+    "orDivider": "או",
+    "haveAccountSignIn": "יש לך חשבון? כניסה",
+    "needAccountRegister": "אין לך חשבון? הרשמה",
+    "signingIn": "נכנס...",
+    "createAccountTitle": "יצירת חשבון",
+    "username": "שם משתמש",
+    "email": "אימייל",
+    "displayName": "שם תצוגה",
+    "organization": "ארגון",
+    "password": "סיסמה",
+    "confirmPassword": "אימות סיסמה",
+    "creating": "יוצר...",
+    "createAccount": "יצירת חשבון",
+    "backToLogin": "חזרה לכניסה",
+    "loggingIn": "מתחבר...",
+    "passwordsDoNotMatch": "הסיסמאות אינן תואמות",
+    "registrationFailed": "ההרשמה נכשלה",
+    "firebaseSignInFailed": "הכניסה עם Firebase נכשלה"
+  }
+}

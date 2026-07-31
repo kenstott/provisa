@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "レスポンスキャッシュ",
+      "hot": "ホットテーブル",
+      "materialized": "マテリアライズドストア",
+      "setup": "セットアップ"
+    },
+    "response": {
+      "loading": "キャッシュ統計を読み込み中...",
+      "disabledBanner": "クエリレスポンスキャッシュは無効です（ストア: {{storeType}}）。クエリ結果はRedisにキャッシュされないため、以下のカウンターはゼロのままです。ホットテーブルキャッシュとマテリアライズドストアキャッシュは別のレイヤー（他のタブを参照）であり、影響を受けません。",
+      "cachedEntries": "キャッシュ済みエントリ",
+      "hitRate": "ヒット率",
+      "hits": "ヒット",
+      "misses": "ミス",
+      "store": "ストア",
+      "redisKeysRaw": "Redisキー（生値）",
+      "memory": "メモリ",
+      "evicted": "退避済み",
+      "expired": "期限切れ",
+      "clients": "クライアント",
+      "opsPerSec": "操作/秒",
+      "filterPlaceholder": "テーブルまたはドメインで絞り込み…",
+      "purgeAll": "全キャッシュ削除",
+      "purging": "削除中...",
+      "table": "テーブル",
+      "domain": "ドメイン",
+      "purgeTable": "削除",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "Redis（またはメモリ内）にミラーリングされ、JOINを最適化するためにVALUES CTEとしてインライン展開される小規模なルックアップテーブルです。レスポンスキャッシュのストアに関係なく常に利用できます。",
+      "loadedTables": "ロード済みテーブル",
+      "candidates": "候補",
+      "cachedRows": "キャッシュ済み行数",
+      "empty": "ロード済みまたは候補として登録されたホットテーブルはありません。",
+      "table": "テーブル",
+      "catalog": "カタログ",
+      "schema": "スキーマ",
+      "rows": "行数",
+      "kind": "種別",
+      "state": "状態",
+      "kindApi": "API",
+      "kindEngine": "エンジン",
+      "stateLoaded": "ロード済み",
+      "stateCandidate": "候補",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "アタッチ不可のソースが格納され、マテリアライズドビューが書き込まれる永続ストアです。レスポンスキャッシュおよびホット層とは別物で、1つのクエリで3つを任意に組み合わせて利用できます。",
+      "federationEngine": "フェデレーションエンジン",
+      "materializedViews": "マテリアライズドビュー",
+      "storeLabel": "ストア:",
+      "viewButton": "+ ビュー",
+      "empty": "マテリアライズドビューは定義されていません。",
+      "view": "ビュー",
+      "sourceTables": "ソーステーブル",
+      "target": "ターゲット",
+      "status": "ステータス",
+      "rows": "行数",
+      "lastRefresh": "最終更新",
+      "interval": "間隔",
+      "error": "エラー",
+      "never": "未実行",
+      "refresh": "更新",
+      "refreshing": "...",
+      "disable": "無効化",
+      "enable": "有効化",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "最初のページ",
+      "previous": "前のページ",
+      "next": "次のページ",
+      "last": "最後のページ",
+      "pageOf": "ページ {{page}} / {{total}}"
+    }
+  }
+}

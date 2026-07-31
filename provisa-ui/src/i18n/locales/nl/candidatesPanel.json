@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "Klik op \"Joins extraheren\" om nieuwe relaties te vinden. JOIN-condities die al een geregistreerde relatie hebben, worden uitgesloten.",
+    "colId": "ID",
+    "colSource": "Bron",
+    "colTarget": "Doel",
+    "colCardinality": "Kardinaliteit",
+    "colActions": "Acties",
+    "idLabel": "Kandidaat-ID",
+    "cardinalityLabel": "Kardinaliteit",
+    "manyToOne": "veel-op-één",
+    "oneToMany": "één-op-veel",
+    "promoted": "Gepromoveerd",
+    "promote": "Promoveren"
+  }
+}

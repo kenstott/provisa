@@ -1,0 +1,24 @@
+{
+  "nlPage": {
+    "guideTitle": "So formulieren Sie eine gute Frage",
+    "guideDesc": "Dieses Werkzeug erzeugt Abfragen direkt aus Ihrem Schema — es interpretiert weder Freitext noch Allgemeinwissen. Formulieren Sie Ihre Frage als Komposition der Tabellen, Felder und Beziehungen, die in Ihren Daten existieren.",
+    "guideRuleNames": "Verwenden Sie die Namen Ihrer Entitäten, keine Synonyme ({{entity}}, nicht {{synonym}})",
+    "guideRuleFilters": "Geben Sie Filter, Gruppierungen und Aggregationen so an, wie Sie es in einer Abfrage tun würden",
+    "guideRuleSchema": "Ein Feld oder eine Beziehung, die nicht in Ihrem Schema existiert, kann nicht abgefragt werden",
+    "guideExamplesLabel": "Beispiele",
+    "example1": "Zeige alle Kunden, deren Bestellungen zusammen mehr als 10.000 betragen, gruppiert nach Region",
+    "example2": "Liste die Top-5-Produkte nach Umsatz der letzten 30 Tage",
+    "example3": "Finde alle Benutzer, die nie eine Bestellung aufgegeben haben",
+    "questionPlaceholder": "Stellen Sie eine Frage in natürlicher Sprache…",
+    "questionLabel": "Frage in natürlicher Sprache",
+    "generate": "Generieren",
+    "generating": "Wird generiert…",
+    "mcpChat": "Chat ›",
+    "openInExplorer": "Im {{label}}-Explorer öffnen",
+    "openIn": "In {{label}} öffnen",
+    "notApplicable": "Für diesen Abfragetyp nicht anwendbar",
+    "noQueryGenerated": "Keine Abfrage generiert",
+    "noRowsReturned": "Keine Zeilen zurückgegeben",
+    "showingRows": "{{shown}} von {{total}} Zeilen angezeigt"
+  }
+}

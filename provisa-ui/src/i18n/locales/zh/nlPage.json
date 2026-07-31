@@ -1,0 +1,24 @@
+{
+  "nlPage": {
+    "guideTitle": "如何写出一个好问题",
+    "guideDesc": "此工具直接根据您的架构生成查询——它不会对自由文本或通用知识进行推理。请将问题表述为您数据中已有的表、字段和关系的组合。",
+    "guideRuleNames": "使用实体的实际名称，而非同义词（用 {{entity}}，而非 {{synonym}}）",
+    "guideRuleFilters": "像编写查询那样指定筛选、分组和聚合",
+    "guideRuleSchema": "如果某个字段或关系不在您的架构中，就无法被查询",
+    "guideExamplesLabel": "示例",
+    "example1": "显示订单总额超过 10,000 的所有客户，并按区域分组",
+    "example2": "列出最近 30 天内营收排名前 5 的产品",
+    "example3": "查找从未下过订单的所有用户",
+    "questionPlaceholder": "用自然语言提出问题…",
+    "questionLabel": "自然语言问题",
+    "generate": "生成",
+    "generating": "正在生成…",
+    "mcpChat": "聊天 ›",
+    "openInExplorer": "在 {{label}} 资源管理器中打开",
+    "openIn": "在 {{label}} 中打开",
+    "notApplicable": "不适用于此查询类型",
+    "noQueryGenerated": "未生成查询",
+    "noRowsReturned": "未返回任何行",
+    "showingRows": "显示 {{total}} 行中的 {{shown}} 行"
+  }
+}

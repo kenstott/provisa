@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "「結合を抽出」をクリックすると新しいリレーションシップを検出します。登録済みのリレーションシップを持つ JOIN 条件は除外されます。",
+    "colId": "ID",
+    "colSource": "ソース",
+    "colTarget": "ターゲット",
+    "colCardinality": "カーディナリティ",
+    "colActions": "操作",
+    "idLabel": "候補 ID",
+    "cardinalityLabel": "カーディナリティ",
+    "manyToOne": "多対一",
+    "oneToMany": "一対多",
+    "promoted": "昇格済み",
+    "promote": "昇格"
+  }
+}

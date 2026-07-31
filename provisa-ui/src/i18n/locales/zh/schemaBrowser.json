@@ -1,0 +1,21 @@
+{
+  "schemaBrowser": {
+    "collapsePanel": "折叠架构面板",
+    "expandPanel": "展开架构面板",
+    "heading": "架构",
+    "groupMetrics": "指标",
+    "groupFacts": "事实表",
+    "groupDimensions": "维度",
+    "groupEmpty": "（无）",
+    "dragMetricToCanvas": "将指标拖到画布",
+    "insertMetricQuery": "点击插入语义指标查询",
+    "dragToCanvas": "拖到画布",
+    "insertQualifiedName": "双击插入限定名称",
+    "insertTableReference": "在 SQL 编辑器中插入表引用",
+    "tableAliasName": "表别名/名称",
+    "domainId": "域 ID",
+    "insertQuotedColumn": "点击插入带引号的列",
+    "previousPage": "上一页",
+    "nextPage": "下一页"
+  }
+}

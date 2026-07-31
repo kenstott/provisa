@@ -1,0 +1,15 @@
+{
+  "platformAdminWelcome": {
+    "title": "Questo account è l'amministratore della piattaforma",
+    "body": "L'accesso ha reso questo account il platform_admin di questa installazione — detiene ogni funzionalità e nessun altro può ora rivendicare il ruolo. È anche l'amministratore dell'organizzazione root, che contiene già le origini, le tabelle e i domini demo.",
+    "backupHeading": "Aggiungi un amministratore di riserva",
+    "backupBody": "Un'installazione con un solo platform_admin è un'installazione con un solo account tra essa e l'impossibilità di amministrarla. L'aggiunta di una riserva inizia con un invito a unirsi a root:",
+    "backupStep1": "Invitare la persona nell'organizzazione root dalla sua pagina Team.",
+    "backupStep2": "La persona accede e riscatta l'invito, diventando membro di root.",
+    "backupStep3": "Assegnarle il ruolo platform_admin in root — è ciò che conferisce l'amministrazione dell'intera installazione.",
+    "openHeading": "Il sito è ora aperto alle organizzazioni",
+    "openBody": "Dal prossimo accesso in poi, chiunque si autentichi crea la propria organizzazione. L'accesso non rende mai amministratori della piattaforma, e invitare persone nella propria organizzazione spetta al relativo org_admin.",
+    "goToTeam": "Invita qualcuno in root",
+    "dismiss": "Ho capito"
+  }
+}

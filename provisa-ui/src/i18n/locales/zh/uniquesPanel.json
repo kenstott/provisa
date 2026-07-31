@@ -1,0 +1,14 @@
+{
+  "uniquesPanel": {
+    "title": "唯一约束",
+    "infoTooltip": "为此表声明的 UNIQUE 约束——单列或复合。外键可指向任意唯一键，客户端将它们视为 UNIQUE 约束。注册时从数据源初始填充；可编辑或自行添加。",
+    "addConstraint": "约束",
+    "nameLabel": "名称",
+    "namePlaceholder": "约束名称（例如 users_tenant_email_key）",
+    "columnsLabel": "列",
+    "columnsPlaceholder": "— 选择列 —",
+    "removeConstraint": "移除约束",
+    "summary": "{{count}} 个约束",
+    "summary_other": "{{count}} 个约束"
+  }
+}

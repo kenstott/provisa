@@ -1,0 +1,29 @@
+{
+  "addRelationshipForm": {
+    "idLabel": "ID",
+    "idPlaceholder": "orders-to-customers",
+    "aliasLabel": "כינוי CQL (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "כינוי GQL (camelCase)",
+    "graphqlAliasPlaceholder": "למשל orders",
+    "sourceTableLabel": "טבלת מקור",
+    "sourceColumnLabel": "עמודת מקור",
+    "selectPlaceholder": "בחירה...",
+    "targetTypeLabel": "סוג יעד",
+    "targetTypeTable": "טבלה",
+    "targetTypeFunction": "פונקציה (מחושב)",
+    "targetTableLabel": "טבלת יעד",
+    "targetColumnLabel": "עמודת יעד",
+    "functionLabel": "פונקציה",
+    "functionArgLabel": "ארגומנט פונקציה (מקבל את עמודת המקור)",
+    "functionArgPlaceholder": "שם ארגומנט",
+    "cardinalityLabel": "קרדינליות",
+    "cardinalityManyToOne": "רבים-לאחד",
+    "cardinalityOneToMany": "אחד-לרבים",
+    "cardinalityWarning": "אזהרה: אם ה-join מחזיר יותר משורה אחת לכל רשומת אב, ישמש רק הערך הראשון.",
+    "materializeLabel": "מטריאליזציה (יצירה אוטומטית של MV עבור joins בין מקורות)",
+    "disableCypherLabel": "החרגה מגרף Cypher",
+    "refreshIntervalLabel": "מרווח רענון (שניות)",
+    "save": "שמירה"
+  }
+}

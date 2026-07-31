@@ -1,0 +1,20 @@
+{
+  "queryPage": {
+    "selectRole": "Selecione uma função.",
+    "redirectLabel": "Redirecionamento",
+    "thresholdLabel": "Limite",
+    "thresholdPlaceholder": "tudo",
+    "redirectHint": "Todos os resultados são redirecionados para o S3",
+    "queryStats": "Estatísticas da consulta",
+    "schemaError": "Erro de esquema: {{message}}",
+    "redirectReady": "Redirecionamento pronto — {{rowCount}} linhas ({{contentType}})",
+    "download": "Baixar",
+    "dismissRedirect": "Dispensar aviso de redirecionamento",
+    "formatNone": "Nenhum",
+    "formatParquet": "Parquet",
+    "formatArrow": "Arrow",
+    "formatCsv": "CSV",
+    "formatNdjson": "NDJSON",
+    "formatJson": "JSON"
+  }
+}

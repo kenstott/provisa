@@ -1,0 +1,21 @@
+{
+  "schemaBrowser": {
+    "collapsePanel": "スキーマパネルを折りたたむ",
+    "expandPanel": "スキーマパネルを展開",
+    "heading": "スキーマ",
+    "groupMetrics": "メトリクス",
+    "groupFacts": "ファクト",
+    "groupDimensions": "ディメンション",
+    "groupEmpty": "（なし）",
+    "dragMetricToCanvas": "メトリクスをキャンバスにドラッグ",
+    "insertMetricQuery": "クリックでセマンティックメトリクスクエリを挿入",
+    "dragToCanvas": "キャンバスにドラッグ",
+    "insertQualifiedName": "ダブルクリックで修飾名を挿入",
+    "insertTableReference": "SQL エディターにテーブル参照を挿入",
+    "tableAliasName": "テーブルのエイリアス／名前",
+    "domainId": "ドメインID",
+    "insertQuotedColumn": "クリックで引用符付きの列を挿入",
+    "previousPage": "前のページ",
+    "nextPage": "次のページ"
+  }
+}

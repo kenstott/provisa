@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "Esclude questo nodo dalla query",
+    "excludeDisabledTooltip": "Nessuna chiave primaria configurata — impossibile escludere",
+    "excludeFromQuery": "Escludi dalla query",
+    "excludeCount": "Escludi {{count}} nodi",
+    "unfixPosition": "Sblocca posizione",
+    "showChildren": "Mostra figli",
+    "hideChildren": "Nascondi figli",
+    "showChildrenCircularTooltip": "Dispone i figli in cerchio attorno a questo nodo",
+    "noOutgoingTooltip": "Nessuna relazione in uscita per questo tipo di nodo",
+    "showChildrenCircular": "Mostra figli (circolare)",
+    "hideChildrenCircular": "Nascondi figli (circolare)",
+    "showParents": "Mostra genitori",
+    "hideParents": "Nascondi genitori",
+    "showParentsCircularTooltip": "Dispone i genitori in cerchio attorno a questo nodo",
+    "noIncomingTooltip": "Nessuna relazione in entrata per questo tipo di nodo",
+    "showParentsCircular": "Mostra genitori (circolare)",
+    "hideParentsCircular": "Nascondi genitori (circolare)",
+    "invertSelection": "Inverti selezione",
+    "select": "Seleziona",
+    "selectAll": "Tutti",
+    "selectAllOfType": "Tutti di questo tipo",
+    "selectConnected": "Connessi",
+    "selectChildren": "Figli",
+    "selectParents": "Genitori",
+    "removeNode": "Rimuovi nodo",
+    "removeCount": "Rimuovi {{count}} nodi"
+  }
+}

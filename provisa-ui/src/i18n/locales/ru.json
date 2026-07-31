@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "Загрузка...",
+    "cancel": "Отмена",
+    "save": "Сохранить",
+    "delete": "Удалить",
+    "confirm": "Подтвердить",
+    "processing": "Обработка..."
+  },
+  "app": {
+    "apiUnreachable": "Не удалось подключиться к API Provisa.",
+    "notAuthorized": "У вас нет разрешения на просмотр этой страницы."
+  },
+  "theme": {
+    "toggle": "Переключить цветовую схему",
+    "light": "Светлая",
+    "dark": "Тёмная"
+  },
+  "multiSelect": {
+    "defaultLabel": "Выберите параметры",
+    "all": "все"
+  },
+  "roleSelector": {
+    "none": "Роли не настроены",
+    "all": "Все",
+    "role": "Роль: {{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "Имя пользователя",
+    "colEmail": "Эл. почта",
+    "colDisplayName": "Отображаемое имя",
+    "colActive": "Активен",
+    "actions": "Действия",
+    "empty": "Нет локальных пользователей",
+    "yes": "Да",
+    "no": "Нет",
+    "none": "—",
+    "expandUser": "Показать назначения для {{username}}",
+    "deleteUser": "Удалить пользователя {{username}}",
+    "assignmentsHeading": "Назначения роль:домен",
+    "noAssignments": "Нет назначений",
+    "removeAssignment": "Удалить назначение {{role}}:{{domain}}",
+    "roleLabel": "Роль",
+    "domainLabel": "Домен",
+    "allDomains": "* (все домены)",
+    "add": "Добавить",
+    "createHeading": "Создание пользователя",
+    "username": "Имя пользователя",
+    "usernameRequired": "Имя пользователя *",
+    "password": "Пароль",
+    "passwordRequired": "Пароль *",
+    "email": "Эл. почта",
+    "emailOptional": "Эл. почта (необязательно)",
+    "displayName": "Отображаемое имя",
+    "displayNameOptional": "Отображаемое имя (необязательно)",
+    "createButton": "Создать пользователя",
+    "created": "Создан «{{username}}»",
+    "deleted": "Удалён «{{username}}»",
+    "createFailed": "Не удалось создать",
+    "assignmentFailed": "Не удалось выполнить назначение"
+  }
+}

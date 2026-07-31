@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "認証は呼び出し元が誰かを検証し、ロールと行レベルセキュリティ（RLS）が何を閲覧できるかを決定します。IDプロバイダーを選択し、その接続を構成してください。",
+    "providerLabel": "プロバイダー",
+    "current": "（現在）",
+    "roles": "ロール",
+    "defaultRole": "デフォルトロール",
+    "assignmentsFrom": "ロール割り当ての取得元",
+    "assignmentsSourceClaims": "トークンクレーム",
+    "assignmentsSourceProvisa": "Provisa（ローカル割り当て）",
+    "trustUpstream": "上流プロキシのIDヘッダーを信頼する",
+    "allowSimpleAuth": "シンプル認証を許可（本番環境ガード — ユーザー名/パスワードの有効化に必要）",
+    "saveButton": "認証設定を保存",
+    "loading": "読み込み中…",
+    "saved": "保存しました。",
+    "savedRestartRequired": "保存しました。適用するにはサービスを再起動してください。"
+  }
+}

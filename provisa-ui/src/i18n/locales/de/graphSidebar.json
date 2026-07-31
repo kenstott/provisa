@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "Datenbank",
+    "tabHistory": "Verlauf",
+    "tabFavorites": "Favoriten",
+    "tabExport": "Export nach Neo4j",
+    "domainLabels": "Domänen-Labels",
+    "nodeLabels": "Knoten-Labels",
+    "relationshipTypes": "Beziehungstypen",
+    "propertyKeys": "Eigenschaftsschlüssel",
+    "loading": "Wird geladen…",
+    "noLabelsFound": "Keine Labels gefunden",
+    "noRelTypesFound": "Keine Beziehungstypen gefunden",
+    "history": "Verlauf",
+    "noHistory": "Noch kein Verlauf",
+    "favorites": "Favoriten",
+    "noFavorites": "Noch keine Favoriten — klicken Sie auf ★ in einem Ergebnisrahmen",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "Erste Seite",
+    "previousPage": "Vorherige Seite",
+    "nextPage": "Nächste Seite",
+    "lastPage": "Letzte Seite",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "Ausführen",
+    "rename": "Umbenennen",
+    "remove": "Entfernen",
+    "renameFavoriteInput": "Favoritenname",
+    "resizeSidebar": "Seitenleiste anpassen"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "federationEngineTab": {
+    "intro": "Die Föderations-Engine führt jede föderierte Abfrage aus. Wählen Sie die Engine und konfigurieren Sie sie; andere Komponenten (Routing, Governance, Cache) bleiben unverändert.",
+    "loading": "Wird geladen…",
+    "engineLabel": "Engine",
+    "current": " (läuft)",
+    "pendingSelection": "Gespeicherte Auswahl: {{engine}}. Der Dienst läuft noch mit {{running}}.",
+    "envPinned": "Durch $PROVISA_ENGINE auf {{engine}} festgelegt. Eine hier gespeicherte Auswahl wird abgelegt, aber beim Neustart gewinnt die Festlegung.",
+    "saveButton": "Engine-Auswahl speichern",
+    "saved": "Gespeichert.",
+    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die neue Föderations-Engine zu übernehmen."
+  }
+}

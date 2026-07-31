@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "Wird geladen…",
+    "intro": "Spaltenverschlüsselung im Ruhezustand. Wählen Sie einen Anbieter und verwalten Sie dessen Masterschlüssel. Envelope-Verschlüsselung umhüllt einen Datenschlüssel pro Spalte mit dem Masterschlüssel.",
+    "providerLabel": "Anbieter",
+    "providerCurrentSuffix": " (aktuell)",
+    "providerComingSoonSuffix": " (demnächst)",
+    "unavailableNote": "Die Laufzeit dieses Anbieters ist noch nicht verfügbar und kann nicht ausgewählt werden. Felder nur zur Ansicht.",
+    "keyIdLabel": "Schlüssel-ID",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "Masterschlüssel:",
+    "masterKeyPresent": "vorhanden",
+    "masterKeyMissing": "fehlt",
+    "generating": "Wird generiert…",
+    "rotateKey": "Masterschlüssel rotieren",
+    "generateKey": "Masterschlüssel generieren",
+    "restartWarning": "{{note}} Das Rotieren eines Masterschlüssels bei vorhandenen verschlüsselten Daten kann frühere Zeilen unlesbar machen — rotieren Sie, bevor Sie sensible Daten speichern, oder planen Sie eine Neuverschlüsselung.",
+    "saveTitle": "Verschlüsselungseinstellungen speichern",
+    "keyGeneratedStored": "Masterschlüssel generiert und im OS-Schlüsselbund gespeichert (Schlüssel-ID: {{keyId}}).",
+    "keyGeneratedNoKeychain": "Kein OS-Schlüsselbund verfügbar — kopieren Sie diesen Schlüssel und setzen Sie ihn als {{envVar}}. Er wird nicht erneut angezeigt.",
+    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen.",
+    "saved": "Gespeichert."
+  }
+}

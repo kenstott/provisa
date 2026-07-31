@@ -1,0 +1,10 @@
+{
+  "securityManager": {
+    "tabs": {
+      "posture": "מצב אבטחה",
+      "encryption": "הצפנה",
+      "authentication": "אימות",
+      "localUsers": "משתמשים מקומיים"
+    }
+  }
+}

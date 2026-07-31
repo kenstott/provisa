@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "Caricamento…",
+    "intro": "Crittografia delle colonne a riposo. Scegliere un provider e gestirne la chiave master. La crittografia a busta avvolge una chiave dati per colonna con la chiave master.",
+    "providerLabel": "Provider",
+    "providerCurrentSuffix": " (corrente)",
+    "providerComingSoonSuffix": " (in arrivo)",
+    "unavailableNote": "Il runtime di questo provider non è ancora disponibile e non può essere selezionato. Campi mostrati a titolo di riferimento.",
+    "keyIdLabel": "ID chiave",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "Chiave master:",
+    "masterKeyPresent": "presente",
+    "masterKeyMissing": "mancante",
+    "generating": "Generazione…",
+    "rotateKey": "Ruota chiave master",
+    "generateKey": "Genera chiave master",
+    "restartWarning": "{{note}} La rotazione di una chiave master in presenza di dati crittografati può rendere illeggibili le righe precedenti — ruotare prima di archiviare dati sensibili, oppure pianificare una nuova crittografia.",
+    "saveTitle": "Salva impostazioni di crittografia",
+    "keyGeneratedStored": "Chiave master generata e archiviata nel portachiavi del sistema operativo (id chiave: {{keyId}}).",
+    "keyGeneratedNoKeychain": "Nessun portachiavi del sistema operativo disponibile — copiare questa chiave e impostarla come {{envVar}}. Non verrà mostrata di nuovo.",
+    "savedRestartRequired": "Salvato. Riavviare il servizio per applicare.",
+    "saved": "Salvato."
+  }
+}

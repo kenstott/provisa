@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "資料庫",
+    "tabHistory": "歷史記錄",
+    "tabFavorites": "我的最愛",
+    "tabExport": "匯出至 Neo4j",
+    "domainLabels": "網域標籤",
+    "nodeLabels": "節點標籤",
+    "relationshipTypes": "關係類型",
+    "propertyKeys": "屬性索引鍵",
+    "loading": "載入中…",
+    "noLabelsFound": "找不到標籤",
+    "noRelTypesFound": "找不到關係類型",
+    "history": "歷史記錄",
+    "noHistory": "尚無歷史記錄",
+    "favorites": "我的最愛",
+    "noFavorites": "尚無我的最愛——在結果框中按一下 ★",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "第一頁",
+    "previousPage": "上一頁",
+    "nextPage": "下一頁",
+    "lastPage": "最後一頁",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "執行",
+    "rename": "重新命名",
+    "remove": "移除",
+    "renameFavoriteInput": "我的最愛名稱",
+    "resizeSidebar": "調整側邊欄大小"
+  }
+}

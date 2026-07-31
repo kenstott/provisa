@@ -1,0 +1,20 @@
+{
+  "graphContextMenus": {
+    "color": "顏色",
+    "colorSwatchLabel": "將顏色設為 {{color}}",
+    "size": "大小",
+    "labelBy": "標籤依據",
+    "labelByDefault": "預設",
+    "sizeBy": "大小依據",
+    "sizeByFixed": "固定大小",
+    "sizeMultiplier": "大小倍數",
+    "lineStyle": "線條樣式",
+    "lineStyleSolid": "實線",
+    "lineStyleDashed": "虛線",
+    "lineStyleDotted": "點線",
+    "lineWidth": "線條寬度",
+    "filterParametersTitle": "{{label}} 的參數",
+    "cancel": "取消",
+    "run": "執行"
+  }
+}

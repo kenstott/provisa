@@ -1,0 +1,21 @@
+{
+  "sqlModelingResultsPanel": {
+    "downloadCsv": "CSV downloaden",
+    "rowCount_one": "{{count}} rij",
+    "rowCount_other": "{{count}} rijen",
+    "filteredFrom": "(gefilterd uit {{count}})",
+    "firstPage": "Eerste pagina",
+    "previousPage": "Vorige pagina",
+    "nextPage": "Volgende pagina",
+    "lastPage": "Laatste pagina",
+    "pageOf": "Pagina {{page}} / {{total}}",
+    "filterPlaceholder": "filteren…",
+    "filterColumn": "{{column}} filteren",
+    "resizeColumn": "Kolom {{column}} vergroten of verkleinen",
+    "noResults": "Geen resultaten.",
+    "writeSqlPrompt": "Schrijf SQL en klik op Steekproef om uit te voeren.",
+    "nullValue": "null",
+    "sortAscending": "oplopend gesorteerd",
+    "sortDescending": "aflopend gesorteerd"
+  }
+}

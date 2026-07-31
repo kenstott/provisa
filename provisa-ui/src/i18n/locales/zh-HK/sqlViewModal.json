@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ 檢視",
+    "titleRequest": "申請檢視",
+    "create": "建立",
+    "submitRequest": "提交申請",
+    "saving": "儲存中…",
+    "close": "關閉",
+    "noPermissionNotice": "您沒有 create_view 權限。此檢視將以建議檢視提交，待審批。",
+    "alias": "別名",
+    "aliasPlaceholder": "例如 my_view",
+    "domain": "領域",
+    "domainSelectPlaceholder": "— 選取領域 —",
+    "description": "描述",
+    "descriptionPlaceholder": "選填",
+    "saveAsMetricView": "儲存為指標檢視（{{metric}}）",
+    "hasParamsWarning": "SQL 含有未解析的參數佔位符（$1、$2、…）。請編輯 SQL，以實際值取代它們。",
+    "savedTitle": "檢視已儲存",
+    "savedMessageCreated": "檢視「{{viewId}}」已建立並註冊。",
+    "savedMessageSubmitted": "檢視「{{viewId}}」已提交審批。",
+    "editInModelViews": "在「模型／檢視」中編輯"
+  }
+}

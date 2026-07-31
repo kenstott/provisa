@@ -1,0 +1,21 @@
+{
+  "sqlModelingResultsPanel": {
+    "downloadCsv": "הורדת CSV",
+    "rowCount_one": "שורה {{count}}",
+    "rowCount_other": "{{count}} שורות",
+    "filteredFrom": "(סונן מתוך {{count}})",
+    "firstPage": "עמוד ראשון",
+    "previousPage": "עמוד קודם",
+    "nextPage": "עמוד הבא",
+    "lastPage": "עמוד אחרון",
+    "pageOf": "עמוד {{page}} / {{total}}",
+    "filterPlaceholder": "סינון…",
+    "filterColumn": "סינון {{column}}",
+    "resizeColumn": "שינוי גודל העמודה {{column}}",
+    "noResults": "אין תוצאות.",
+    "writeSqlPrompt": "יש לכתוב SQL וללחוץ על דגימה כדי להריץ.",
+    "nullValue": "null",
+    "sortAscending": "ממוין בסדר עולה",
+    "sortDescending": "ממוין בסדר יורד"
+  }
+}

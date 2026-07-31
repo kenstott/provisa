@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "Выполните выборку запроса, чтобы профилировать столбцы результата.",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "Скачать профиль как JSON",
+    "colColumn": "Столбец",
+    "colNulls": "NULL",
+    "colNullsTitle": "Строки, где значение равно NULL",
+    "colBlanks": "Пустые",
+    "colBlanksTitle": "Строки, где значение — пустая строка",
+    "colDistinct": "Уникальные",
+    "colDistinctTitle": "Количество уникальных значений",
+    "colConstant": "Константа?",
+    "colConstantTitle": "Столбец содержит только одно уникальное значение",
+    "colMin": "Мин",
+    "colMax": "Макс",
+    "colMean": "Среднее",
+    "colMeanTitle": "Среднее числовых значений",
+    "colTopValues": "Частые значения",
+    "constantYes": "Да ({{value}})",
+    "emptyValue": "—"
+  }
+}

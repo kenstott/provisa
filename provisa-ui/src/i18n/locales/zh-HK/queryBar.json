@@ -1,0 +1,7 @@
+{
+  "queryBar": {
+    "autoImputeOn": "自動推斷關係已開啟 — 按此停用",
+    "autoImputeOff": "自動推斷可見節點之間的關係",
+    "run": "執行查詢 (⌘↵)"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "graphContextMenus": {
+    "color": "צבע",
+    "colorSwatchLabel": "הגדרת הצבע ל-{{color}}",
+    "size": "גודל",
+    "labelBy": "תווית לפי",
+    "labelByDefault": "ברירת מחדל",
+    "sizeBy": "גודל לפי",
+    "sizeByFixed": "גודל קבוע",
+    "sizeMultiplier": "מכפיל גודל",
+    "lineStyle": "סגנון קו",
+    "lineStyleSolid": "רציף",
+    "lineStyleDashed": "מקווקו",
+    "lineStyleDotted": "מנוקד",
+    "lineWidth": "עובי קו",
+    "filterParametersTitle": "פרמטרים עבור {{label}}",
+    "cancel": "ביטול",
+    "run": "הרצה"
+  }
+}

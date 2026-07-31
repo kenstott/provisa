@@ -1,0 +1,15 @@
+{
+  "candidatesTable": {
+    "heading": "KI-vorgeschlagene Beziehungen",
+    "colName": "Name",
+    "colSource": "Quelle",
+    "colTarget": "Ziel",
+    "colCardinality": "Kardinalität",
+    "colConfidence": "Konfidenz",
+    "colActions": "Aktionen",
+    "accept": "Übernehmen",
+    "reject": "Ablehnen",
+    "acceptAria": "Vorgeschlagene Beziehung {{name}} übernehmen",
+    "rejectAria": "Vorgeschlagene Beziehung {{name}} ablehnen"
+  }
+}

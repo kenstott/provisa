@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "מטמון תגובות",
+      "hot": "טבלאות חמות",
+      "materialized": "מאגר Materialized",
+      "setup": "הגדרה"
+    },
+    "response": {
+      "loading": "טוען נתוני מטמון...",
+      "disabledBanner": "מטמון תגובות השאילתות מושבת (מאגר: {{storeType}}). תוצאות שאילתות אינן נשמרות במטמון ב-Redis, ולכן המונים למטה נשארים על אפס. מטמון הטבלאות החמות ומאגר ה-Materialized הם שכבות נפרדות (ראו את הלשוניות האחרות) ואינם מושפעים.",
+      "cachedEntries": "רשומות במטמון",
+      "hitRate": "שיעור פגיעות",
+      "hits": "פגיעות",
+      "misses": "החטאות",
+      "store": "מאגר",
+      "redisKeysRaw": "מפתחות Redis (גולמי)",
+      "memory": "זיכרון",
+      "evicted": "פונו",
+      "expired": "פגי תוקף",
+      "clients": "לקוחות",
+      "opsPerSec": "פעולות/שנייה",
+      "filterPlaceholder": "סינון לפי טבלה או דומיין…",
+      "purgeAll": "ניקוי כל המטמון",
+      "purging": "מנקה...",
+      "table": "טבלה",
+      "domain": "דומיין",
+      "purgeTable": "ניקוי",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "טבלאות עזר קטנות המשוכפלות ב-Redis (או בזיכרון) ומוטמעות כ-VALUES CTEs לאופטימיזציה של JOINs. זמינות תמיד ללא תלות במאגר מטמון התגובות.",
+      "loadedTables": "טבלאות טעונות",
+      "candidates": "מועמדות",
+      "cachedRows": "שורות במטמון",
+      "empty": "אין טבלאות חמות טעונות או רשומות כמועמדות.",
+      "table": "טבלה",
+      "catalog": "קטלוג",
+      "schema": "סכמה",
+      "rows": "שורות",
+      "kind": "סוג",
+      "state": "מצב",
+      "kindApi": "API",
+      "kindEngine": "engine",
+      "stateLoaded": "טעונה",
+      "stateCandidate": "מועמדת",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "מאגר עמיד שאליו נוחתים מקורות שאינם ניתנים לחיבור ישיר ושבו נכתבים Materialized Views. נפרד ממטמון התגובות ומהשכבה החמה; שאילתה יכולה להשתמש בכל שילוב של השלושה.",
+      "federationEngine": "מנוע פדרציה",
+      "materializedViews": "Materialized Views",
+      "storeLabel": "מאגר:",
+      "viewButton": "+ View",
+      "empty": "לא הוגדרו Materialized Views.",
+      "view": "View",
+      "sourceTables": "טבלאות מקור",
+      "target": "יעד",
+      "status": "סטטוס",
+      "rows": "שורות",
+      "lastRefresh": "רענון אחרון",
+      "interval": "מרווח",
+      "error": "שגיאה",
+      "never": "אף פעם",
+      "refresh": "רענון",
+      "refreshing": "...",
+      "disable": "השבתה",
+      "enable": "הפעלה",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "עמוד ראשון",
+      "previous": "עמוד קודם",
+      "next": "עמוד הבא",
+      "last": "עמוד אחרון",
+      "pageOf": "עמוד {{page}} / {{total}}"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schemaSidebar": {
+    "title": "架构",
+    "collapse": "折叠架构面板",
+    "expand": "展开架构面板",
+    "dragToCanvas": "拖到画布",
+    "doubleClickToInsert": "双击插入限定名称",
+    "insertTableReference": "在 SQL 编辑器中插入表引用",
+    "clickToInsertColumn": "点击插入带引号的列名"
+  }
+}

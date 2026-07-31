@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "取樣查詢以剖析結果資料行。",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "以 JSON 下載剖析結果",
+    "colColumn": "資料行",
+    "colNulls": "Null 值",
+    "colNullsTitle": "值為 NULL 的資料列",
+    "colBlanks": "空白值",
+    "colBlanksTitle": "值為空字串的資料列",
+    "colDistinct": "相異值",
+    "colDistinctTitle": "唯一值的數目",
+    "colConstant": "常數？",
+    "colConstantTitle": "資料行只有一個唯一值",
+    "colMin": "最小值",
+    "colMax": "最大值",
+    "colMean": "平均值",
+    "colMeanTitle": "數值的平均值",
+    "colTopValues": "最常見的值",
+    "constantYes": "是（{{value}}）",
+    "emptyValue": "—"
+  }
+}

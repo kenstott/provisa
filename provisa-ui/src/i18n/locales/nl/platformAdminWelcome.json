@@ -1,0 +1,15 @@
+{
+  "platformAdminWelcome": {
+    "title": "U bent de platformbeheerder",
+    "body": "Door aan te melden bent u de platform_admin van deze deployment geworden — u beschikt hier over elke mogelijkheid, en niemand anders kan de rol nu nog claimen. U bent ook de beheerder van de root-organisatie, die al de demobronnen, tabellen en domeinen bevat.",
+    "backupHeading": "Een reservebeheerder toevoegen",
+    "backupBody": "Een deployment met één platform_admin is een deployment waar één account staat tussen beheerbaarheid en niemand die kan beheren. Het toevoegen van een reserve begint met een uitnodiging om aan te sluiten bij root:",
+    "backupStep1": "Nodig de persoon uit voor de root-organisatie via de Team-pagina ervan.",
+    "backupStep2": "De persoon meldt zich aan en verzilvert de uitnodiging, waardoor die lid wordt van root.",
+    "backupStep3": "Wijs die persoon de rol platform_admin in root toe — dat is wat deployment-brede administratie verleent.",
+    "openHeading": "De site staat nu open voor organisaties",
+    "openBody": "Vanaf de volgende aanmelding maakt iedereen die zich authenticeert een eigen organisatie aan. Niemand wordt door aanmelden platformbeheerder, en mensen uitnodigen voor hun org is hun eigen werk als org_admin ervan.",
+    "goToTeam": "Iemand uitnodigen voor root",
+    "dismiss": "Begrepen"
+  }
+}

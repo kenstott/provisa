@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "Clique em \"Extrair junções\" para encontrar novos relacionamentos. Condições JOIN que já têm um relacionamento registrado são excluídas.",
+    "colId": "ID",
+    "colSource": "Origem",
+    "colTarget": "Destino",
+    "colCardinality": "Cardinalidade",
+    "colActions": "Ações",
+    "idLabel": "ID do candidato",
+    "cardinalityLabel": "Cardinalidade",
+    "manyToOne": "muitos-para-um",
+    "oneToMany": "um-para-muitos",
+    "promoted": "Promovido",
+    "promote": "Promover"
+  }
+}

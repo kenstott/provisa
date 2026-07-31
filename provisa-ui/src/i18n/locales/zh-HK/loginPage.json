@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "登入",
+    "authNotConfigured": "尚未設定驗證",
+    "loading": "正在載入...",
+    "signInTitle": "登入",
+    "firstLoginHeading": "設定此部署",
+    "firstLoginTitle": "這是首次登入",
+    "firstLoginBody": "此部署尚未有管理員。首先登入的人會成為平台管理員，全權管控機構、使用者及數據來源。請在下方選擇登入方式以取得此身分。",
+    "signInWithGoogle": "以 Google 登入",
+    "signInWithGithub": "以 GitHub 登入",
+    "signInWithMicrosoft": "以 Microsoft 登入",
+    "signInWithEmail": "以電郵登入",
+    "orDivider": "或",
+    "haveAccountSignIn": "已有帳戶？登入",
+    "needAccountRegister": "需要帳戶？註冊",
+    "signingIn": "正在登入...",
+    "createAccountTitle": "建立帳戶",
+    "username": "使用者名稱",
+    "email": "電郵",
+    "displayName": "顯示名稱",
+    "organization": "機構",
+    "password": "密碼",
+    "confirmPassword": "確認密碼",
+    "creating": "正在建立...",
+    "createAccount": "建立帳戶",
+    "backToLogin": "返回登入",
+    "loggingIn": "正在登入...",
+    "passwordsDoNotMatch": "兩次輸入的密碼不相符",
+    "registrationFailed": "註冊失敗",
+    "firebaseSignInFailed": "Firebase 登入失敗"
+  }
+}

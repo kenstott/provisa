@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ View",
+    "titleRequest": "בקשת View",
+    "create": "יצירה",
+    "submitRequest": "שליחת בקשה",
+    "saving": "שומר…",
+    "close": "סגירה",
+    "noPermissionNotice": "אין לך הרשאת create_view. הבקשה תישלח כתצוגה מוצעת הממתינה לאישור.",
+    "alias": "כינוי",
+    "aliasPlaceholder": "למשל my_view",
+    "domain": "דומיין",
+    "domainSelectPlaceholder": "— בחירת דומיין —",
+    "description": "תיאור",
+    "descriptionPlaceholder": "אופציונלי",
+    "saveAsMetricView": "שמירה כתצוגת מדד ({{metric}})",
+    "hasParamsWarning": "ה-SQL מכיל מצייני פרמטרים שלא נפתרו ($1, $2, …). יש לערוך את ה-SQL ולהחליף אותם בערכים מפורשים.",
+    "savedTitle": "ה-View נשמר",
+    "savedMessageCreated": "ה-View \"{{viewId}}\" נוצר ונרשם.",
+    "savedMessageSubmitted": "ה-View \"{{viewId}}\" נשלח לאישור.",
+    "editInModelViews": "עריכה ב-Model/Views"
+  }
+}

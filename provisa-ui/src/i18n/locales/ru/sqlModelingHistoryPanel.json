@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "Запросы ещё не выполнялись. История сохраняется между сеансами.",
+    "colTime": "Время",
+    "colRole": "Роль",
+    "colDuration": "Длительность",
+    "colRows": "Строки",
+    "colSql": "SQL",
+    "colActions": "Действия",
+    "error": "ошибка",
+    "restore": "Восстановить",
+    "restoreLabel": "Восстановить запрос от {{time}}"
+  }
+}

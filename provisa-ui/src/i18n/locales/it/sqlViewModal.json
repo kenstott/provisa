@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ Vista",
+    "titleRequest": "Richiedi vista",
+    "create": "Crea",
+    "submitRequest": "Invia richiesta",
+    "saving": "Salvataggio…",
+    "close": "Chiudi",
+    "noPermissionNotice": "Autorizzazione create_view non presente. La richiesta verrà inviata come vista suggerita in attesa di approvazione.",
+    "alias": "Alias",
+    "aliasPlaceholder": "ad es. my_view",
+    "domain": "Dominio",
+    "domainSelectPlaceholder": "— seleziona dominio —",
+    "description": "Descrizione",
+    "descriptionPlaceholder": "Facoltativa",
+    "saveAsMetricView": "Salva come vista metrica ({{metric}})",
+    "hasParamsWarning": "Il codice SQL contiene segnaposto di parametri non risolti ($1, $2, …). Modificare il codice SQL per sostituirli con valori letterali.",
+    "savedTitle": "Vista salvata",
+    "savedMessageCreated": "La vista \"{{viewId}}\" è stata creata e registrata.",
+    "savedMessageSubmitted": "La vista \"{{viewId}}\" è stata inviata per l'approvazione.",
+    "editInModelViews": "Modifica in Modello/Viste"
+  }
+}

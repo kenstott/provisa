@@ -1,0 +1,24 @@
+{
+  "nlPage": {
+    "guideTitle": "Come scrivere una buona domanda",
+    "guideDesc": "Questo strumento genera query direttamente dallo schema — non ragiona su testo libero o conoscenza generale. Formulare la domanda come composizione di tabelle, campi e relazioni presenti nei dati.",
+    "guideRuleNames": "Usare i nomi delle entità, non sinonimi ({{entity}}, non {{synonym}})",
+    "guideRuleFilters": "Specificare filtri, raggruppamenti e aggregazioni come in una query",
+    "guideRuleSchema": "Se un campo o una relazione non è nello schema, non può essere interrogato",
+    "guideExamplesLabel": "Esempi",
+    "example1": "Mostra tutti i clienti i cui ordini superano 10.000 in totale, raggruppati per regione",
+    "example2": "Elenca i primi 5 prodotti per fatturato negli ultimi 30 giorni",
+    "example3": "Trova tutti gli utenti che non hanno mai effettuato un ordine",
+    "questionPlaceholder": "Porre una domanda in linguaggio naturale…",
+    "questionLabel": "Domanda in linguaggio naturale",
+    "generate": "Genera",
+    "generating": "Generazione in corso…",
+    "mcpChat": "Chat ›",
+    "openInExplorer": "Apri nell'esploratore {{label}}",
+    "openIn": "Apri in {{label}}",
+    "notApplicable": "Non applicabile a questo tipo di query",
+    "noQueryGenerated": "Nessuna query generata",
+    "noRowsReturned": "Nessuna riga restituita",
+    "showingRows": "Visualizzate {{shown}} di {{total}} righe"
+  }
+}

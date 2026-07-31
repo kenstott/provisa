@@ -1,0 +1,29 @@
+{
+  "aiModelsTab": {
+    "modelsHeading": "AI 模型指派",
+    "modelsIntro": "各項 AI 輔助作業所使用的模型。輸入模型名稱（例如 claude-haiku-4-5-20251001）。留空即重設為預設值。",
+    "role_table_description": "表格描述",
+    "role_column_description": "欄描述",
+    "role_relationship_inference": "關係推斷",
+    "role_sql_generation": "SQL 產生",
+    "role_table_selection": "表格選取",
+    "dictNotEditable": "（已設定為完整的供應商/模型格式 — 請在設定 YAML 中編輯）",
+    "nlHeading": "自然語言查詢",
+    "nlIntro": "自然語言轉 SQL 的每角色每分鐘請求數。留空即不設上限。",
+    "rateLimitLabel": "速率限制（每角色每分鐘請求數）",
+    "vectorHeading": "向量（嵌入）模型",
+    "vectorIntro": "可供語義搜尋使用的已登記嵌入模型。此登錄屬允許清單。",
+    "vectorId": "模型 ID",
+    "vectorProvider": "供應商",
+    "vectorDimensions": "維度",
+    "vectorApiKeyEnv": "API 金鑰環境變數",
+    "vectorBaseUrl": "基底 URL",
+    "vectorEnabled": "已啟用",
+    "addVectorModel": "新增向量模型",
+    "removeVectorModel": "移除",
+    "saveButtonLabel": "儲存 AI 模型設定",
+    "loading": "正在載入…",
+    "saved": "已儲存。",
+    "savedRestartRequired": "已儲存。重新啟動服務後生效。"
+  }
+}

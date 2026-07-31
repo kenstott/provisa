@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "Cache de respostas",
+      "hot": "Tabelas quentes",
+      "materialized": "Armazenamento materializado",
+      "setup": "Configuração"
+    },
+    "response": {
+      "loading": "Carregando estatísticas do cache...",
+      "disabledBanner": "Cache de respostas de consulta desabilitado (armazenamento: {{storeType}}). Os resultados de consulta não são armazenados em cache no Redis, portanto os contadores abaixo permanecem em zero. O cache de tabelas quentes e o armazenamento materializado são camadas separadas (veja as outras guias) e não são afetados.",
+      "cachedEntries": "Entradas em cache",
+      "hitRate": "Taxa de acertos",
+      "hits": "Acertos",
+      "misses": "Falhas",
+      "store": "Armazenamento",
+      "redisKeysRaw": "Chaves Redis (brutas)",
+      "memory": "Memória",
+      "evicted": "Removidas",
+      "expired": "Expiradas",
+      "clients": "Clientes",
+      "opsPerSec": "Ops/s",
+      "filterPlaceholder": "Filtrar por tabela ou domínio…",
+      "purgeAll": "Limpar todo o cache",
+      "purging": "Limpando...",
+      "table": "Tabela",
+      "domain": "Domínio",
+      "purgeTable": "Limpar",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "Pequenas tabelas de consulta espelhadas no Redis (ou em memória) e embutidas como CTEs VALUES para otimizar JOINs. Sempre disponíveis, independentemente do armazenamento do cache de respostas.",
+      "loadedTables": "Tabelas carregadas",
+      "candidates": "Candidatas",
+      "cachedRows": "Linhas em cache",
+      "empty": "Nenhuma tabela quente carregada ou registrada como candidata.",
+      "table": "Tabela",
+      "catalog": "Catálogo",
+      "schema": "Esquema",
+      "rows": "Linhas",
+      "kind": "Tipo",
+      "state": "Estado",
+      "kindApi": "API",
+      "kindEngine": "engine",
+      "stateLoaded": "carregada",
+      "stateCandidate": "candidata",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "Armazenamento durável onde as fontes não anexáveis são gravadas e as exibições materializadas são escritas. Distinto do cache de respostas e da camada quente; uma consulta pode usar qualquer combinação dos três.",
+      "federationEngine": "Mecanismo de federação",
+      "materializedViews": "Exibições materializadas",
+      "storeLabel": "Armazenamento:",
+      "viewButton": "+ Exibição",
+      "empty": "Nenhuma exibição materializada definida.",
+      "view": "Exibição",
+      "sourceTables": "Tabelas de origem",
+      "target": "Destino",
+      "status": "Status",
+      "rows": "Linhas",
+      "lastRefresh": "Última atualização",
+      "interval": "Intervalo",
+      "error": "Erro",
+      "never": "nunca",
+      "refresh": "Atualizar",
+      "refreshing": "...",
+      "disable": "Desabilitar",
+      "enable": "Habilitar",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "Primeira página",
+      "previous": "Página anterior",
+      "next": "Próxima página",
+      "last": "Última página",
+      "pageOf": "Página {{page}} / {{total}}"
+    }
+  }
+}

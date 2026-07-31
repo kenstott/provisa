@@ -1,0 +1,21 @@
+{
+  "relationshipModals": {
+    "conflictTitle": "關係已存在",
+    "conflictClose": "關閉",
+    "conflictIntro": "具有此來源及目標的關係已存在：",
+    "conflictId": "ID",
+    "conflictSource": "來源",
+    "conflictTarget": "目標",
+    "conflictCardinality": "基數",
+    "conflictAlias": "別名",
+    "reverseTitle": "產生反向關係",
+    "idLabel": "ID",
+    "aliasLabel": "CQL 別名（UPPER_SNAKE）",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL 別名（camelCase）",
+    "materializeLabel": "具體化",
+    "refreshIntervalLabel": "重新整理間隔（秒）",
+    "cancel": "取消",
+    "save": "儲存"
+  }
+}

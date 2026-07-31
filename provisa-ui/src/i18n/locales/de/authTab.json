@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "Die Authentifizierung prüft, wer aufruft; Rollen + RLS entscheiden, was sichtbar ist. Wählen Sie den Identitätsanbieter und konfigurieren Sie dessen Verbindung.",
+    "providerLabel": "Anbieter",
+    "current": " (aktuell)",
+    "roles": "Rollen",
+    "defaultRole": "Standardrolle",
+    "assignmentsFrom": "Rollenzuweisungen aus",
+    "assignmentsSourceClaims": "Token-Claims",
+    "assignmentsSourceProvisa": "Provisa (lokale Zuweisungen)",
+    "trustUpstream": "Identitäts-Headern des vorgelagerten Proxys vertrauen",
+    "allowSimpleAuth": "Einfache Authentifizierung erlauben (Produktionsschutz — erforderlich, um Benutzername/Passwort zu aktivieren)",
+    "saveButton": "Auth-Einstellungen speichern",
+    "loading": "Wird geladen…",
+    "saved": "Gespeichert.",
+    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen."
+  }
+}

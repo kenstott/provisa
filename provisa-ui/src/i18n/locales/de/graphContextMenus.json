@@ -1,0 +1,20 @@
+{
+  "graphContextMenus": {
+    "color": "Farbe",
+    "colorSwatchLabel": "Farbe auf {{color}} setzen",
+    "size": "Größe",
+    "labelBy": "Beschriften nach",
+    "labelByDefault": "Standard",
+    "sizeBy": "Größe nach",
+    "sizeByFixed": "feste Größe",
+    "sizeMultiplier": "Größenfaktor",
+    "lineStyle": "Linienstil",
+    "lineStyleSolid": "Durchgezogen",
+    "lineStyleDashed": "Gestrichelt",
+    "lineStyleDotted": "Gepunktet",
+    "lineWidth": "Linienstärke",
+    "filterParametersTitle": "Parameter für {{label}}",
+    "cancel": "Abbrechen",
+    "run": "Ausführen"
+  }
+}

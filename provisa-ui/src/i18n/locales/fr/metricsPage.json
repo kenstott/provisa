@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "Métriques",
+    "newMetric": "Nouvelle métrique",
+    "loading": "Chargement…",
+    "empty": "Aucune métrique enregistrée pour l'instant.",
+    "colName": "Nom",
+    "colExpression": "Expression",
+    "colDatatype": "Type de données",
+    "colDescription": "Description",
+    "colAiContext": "Contexte IA",
+    "fromFact": "depuis la table de faits",
+    "builderFact": "Table de faits source",
+    "builderMeasure": "Mesure",
+    "builderAgg": "Agrégat",
+    "builderNoFacts": "Aucune table de faits enregistrée pour l'instant",
+    "detail": {
+      "handAuthored": "rédigée à la main",
+      "noDependents": "aucune",
+      "field": {
+        "expression": "Expression",
+        "datatype": "Type de données",
+        "description": "Description",
+        "aiContext": "Contexte IA",
+        "sourceFact": "Table de faits source",
+        "visibleTo": "Visible par",
+        "dependentViews": "Vues de métriques dépendantes"
+      }
+    },
+    "createTitle": "Nouvelle métrique",
+    "editTitle": "Modifier la métrique",
+    "fieldName": "Nom",
+    "fieldNamePlaceholder": "ex. total_revenue",
+    "fieldExpression": "Expression",
+    "fieldExpressionPlaceholder": "ex. SUM(orders.amount)",
+    "fieldDatatype": "Type de données",
+    "fieldDatatypePlaceholder": "ex. numeric",
+    "fieldDatatypeDerived": "Dérivé de l'agrégat quand la métrique est construite à partir d'une mesure de faits",
+    "fieldDescription": "Description",
+    "fieldAiContext": "Contexte IA",
+    "fieldAiContextPlaceholder": "Indications pour la génération de requêtes assistée par IA",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "saveFailed": "Échec de l'enregistrement.",
+    "editMetric": "Modifier la métrique {{name}}",
+    "deleteMetric": "Supprimer la métrique {{name}}",
+    "deleteTitle": "Supprimer la métrique",
+    "deleteConfirm": "Supprimer la métrique « {{name}} » ? Cette action est irréversible.",
+    "delete": "Supprimer",
+    "deleteFailed": "Échec de la suppression."
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "Retirer la métrique {{metricName}}",
+    "dimensionsHeading": "Dimensions",
+    "noDimensions": "Aucune colonne de dimension associée trouvée"
+  }
+}

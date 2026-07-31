@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "语义交换（Ossie）",
+    "endpointLabel": "终结点：",
+    "copyEndpoint": "复制终结点 URL",
+    "download": "下载",
+    "import": "导入",
+    "reviewTitle": "审阅 Ossie 导入：{{model}}",
+    "reviewHint": "目前尚未注册任何内容。取消勾选想要剔除的项，然后应用 — 勾选的项将通过标准注册变更进行注册。",
+    "tablesSection": "表（{{count}}）",
+    "relationshipsSection": "关系（{{count}}）",
+    "metricsSection": "指标（{{count}}）",
+    "columnCount": "{{count}} 列",
+    "apply": "应用（{{count}}）",
+    "applied": "已应用",
+    "failed": "失败",
+    "cancel": "取消",
+    "close": "关闭"
+  }
+}

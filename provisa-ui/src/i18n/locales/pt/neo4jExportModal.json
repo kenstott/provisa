@@ -1,0 +1,22 @@
+{
+  "neo4jExportModal": {
+    "title": "Exportação para Neo4j",
+    "nodeCount_one": "{{count}} nó",
+    "nodeCount_other": "{{count}} nós",
+    "edgeCount_one": "{{count}} relacionamento",
+    "edgeCount_other": "{{count}} relacionamentos",
+    "downloadScript": "Baixar script Cypher (.cypher)",
+    "divider": "— ou exportar diretamente para um servidor —",
+    "httpUrl": "URL HTTP",
+    "database": "Banco de dados",
+    "username": "Nome de usuário",
+    "password": "Senha",
+    "close": "Fechar",
+    "exportToServer": "Exportar para o servidor",
+    "exporting": "Exportando…",
+    "statementsImported_one": "{{count}} instrução importada.",
+    "statementsImported_other": "{{count}} instruções importadas.",
+    "errorsSuffix_one": " ({{count}} erro: {{first}})",
+    "errorsSuffix_other": " ({{count}} erros: {{first}})"
+  }
+}

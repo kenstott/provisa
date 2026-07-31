@@ -1,0 +1,17 @@
+{
+  "rolesTab": {
+    "heading": "Rollen — {{orgId}}",
+    "colId": "ID",
+    "colCapabilities": "Mogelijkheden",
+    "colDomainAccess": "Domeintoegang",
+    "colActions": "Acties",
+    "empty": "Geen rollen gevonden.",
+    "deleteRole": "Rol {{roleId}} verwijderen",
+    "deleted": "\"{{roleId}}\" verwijderd",
+    "pageInfo": "Pagina {{current}} / {{total}}",
+    "firstPage": "Eerste pagina",
+    "previousPage": "Vorige pagina",
+    "nextPage": "Volgende pagina",
+    "lastPage": "Laatste pagina"
+  }
+}

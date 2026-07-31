@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "Noch keine Abfragen ausgeführt. Der Verlauf bleibt über Sitzungen hinweg erhalten.",
+    "colTime": "Zeit",
+    "colRole": "Rolle",
+    "colDuration": "Dauer",
+    "colRows": "Zeilen",
+    "colSql": "SQL",
+    "colActions": "Aktionen",
+    "error": "Fehler",
+    "restore": "Wiederherstellen",
+    "restoreLabel": "Abfrage von {{time}} wiederherstellen"
+  }
+}

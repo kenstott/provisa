@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "身分驗證用於核實呼叫者身分；角色 + 行級安全決定其可見範圍。請選取身分識別提供者並設定其連線。",
+    "providerLabel": "提供者",
+    "current": "（目前）",
+    "roles": "角色",
+    "defaultRole": "預設角色",
+    "assignmentsFrom": "角色指派來自",
+    "assignmentsSourceClaims": "權杖宣告",
+    "assignmentsSourceProvisa": "Provisa（本機指派）",
+    "trustUpstream": "信任上游代理伺服器的身分識別標頭",
+    "allowSimpleAuth": "允許簡易驗證（正式環境防護 — 啟用使用者名稱／密碼所需）",
+    "saveButton": "儲存驗證設定",
+    "loading": "正在載入…",
+    "saved": "已儲存。",
+    "savedRestartRequired": "已儲存。請重新啟動服務以套用。"
+  }
+}

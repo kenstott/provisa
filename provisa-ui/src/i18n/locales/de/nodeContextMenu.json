@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "Diesen Knoten aus der Abfrage ausschließen",
+    "excludeDisabledTooltip": "Kein Primärschlüssel konfiguriert — Ausschließen nicht möglich",
+    "excludeFromQuery": "Aus Abfrage ausschließen",
+    "excludeCount": "{{count}} Knoten ausschließen",
+    "unfixPosition": "Position lösen",
+    "showChildren": "Kinder anzeigen",
+    "hideChildren": "Kinder ausblenden",
+    "showChildrenCircularTooltip": "Kinder ringförmig um diesen Knoten anordnen",
+    "noOutgoingTooltip": "Keine ausgehenden Beziehungen für diesen Knotentyp",
+    "showChildrenCircular": "Kinder anzeigen (kreisförmig)",
+    "hideChildrenCircular": "Kinder ausblenden (kreisförmig)",
+    "showParents": "Eltern anzeigen",
+    "hideParents": "Eltern ausblenden",
+    "showParentsCircularTooltip": "Eltern ringförmig um diesen Knoten anordnen",
+    "noIncomingTooltip": "Keine eingehenden Beziehungen für diesen Knotentyp",
+    "showParentsCircular": "Eltern anzeigen (kreisförmig)",
+    "hideParentsCircular": "Eltern ausblenden (kreisförmig)",
+    "invertSelection": "Auswahl umkehren",
+    "select": "Auswählen",
+    "selectAll": "Alle",
+    "selectAllOfType": "Alle dieses Typs",
+    "selectConnected": "Verbundene",
+    "selectChildren": "Kinder",
+    "selectParents": "Eltern",
+    "removeNode": "Knoten entfernen",
+    "removeCount": "{{count}} Knoten entfernen"
+  }
+}

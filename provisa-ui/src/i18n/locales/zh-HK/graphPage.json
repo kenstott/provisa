@@ -1,0 +1,6 @@
+{
+  "graphPage": {
+    "emptyStateHint": "執行 Cypher 查詢以探索圖形",
+    "emptyStateShortcut": "⌘↵ 執行"
+  }
+}

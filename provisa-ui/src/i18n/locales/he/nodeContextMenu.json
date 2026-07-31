@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "החרגת צומת זה מהשאילתה",
+    "excludeDisabledTooltip": "לא הוגדר מפתח ראשי — לא ניתן להחריג",
+    "excludeFromQuery": "החרגה מהשאילתה",
+    "excludeCount": "החרגת {{count}} צמתים",
+    "unfixPosition": "שחרור קיבוע מיקום",
+    "showChildren": "הצגת צאצאים",
+    "hideChildren": "הסתרת צאצאים",
+    "showChildrenCircularTooltip": "סידור הצאצאים בטבעת סביב צומת זה",
+    "noOutgoingTooltip": "אין קשרים יוצאים לסוג צומת זה",
+    "showChildrenCircular": "הצגת צאצאים (מעגלי)",
+    "hideChildrenCircular": "הסתרת צאצאים (מעגלי)",
+    "showParents": "הצגת הורים",
+    "hideParents": "הסתרת הורים",
+    "showParentsCircularTooltip": "סידור ההורים בטבעת סביב צומת זה",
+    "noIncomingTooltip": "אין קשרים נכנסים לסוג צומת זה",
+    "showParentsCircular": "הצגת הורים (מעגלי)",
+    "hideParentsCircular": "הסתרת הורים (מעגלי)",
+    "invertSelection": "היפוך בחירה",
+    "select": "בחירה",
+    "selectAll": "הכול",
+    "selectAllOfType": "כל אלה מהסוג הזה",
+    "selectConnected": "מחוברים",
+    "selectChildren": "צאצאים",
+    "selectParents": "הורים",
+    "removeNode": "הסרת צומת",
+    "removeCount": "הסרת {{count}} צמתים"
+  }
+}

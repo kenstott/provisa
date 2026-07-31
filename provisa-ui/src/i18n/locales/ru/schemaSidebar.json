@@ -1,0 +1,11 @@
+{
+  "schemaSidebar": {
+    "title": "Схема",
+    "collapse": "Свернуть панель схемы",
+    "expand": "Развернуть панель схемы",
+    "dragToCanvas": "Перетащите на холст",
+    "doubleClickToInsert": "Двойной щелчок вставляет полное имя",
+    "insertTableReference": "Вставить ссылку на таблицу в редактор SQL",
+    "clickToInsertColumn": "Щёлкните, чтобы вставить столбец в кавычках"
+  }
+}

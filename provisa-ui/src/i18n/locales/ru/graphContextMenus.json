@@ -1,0 +1,20 @@
+{
+  "graphContextMenus": {
+    "color": "Цвет",
+    "colorSwatchLabel": "Установить цвет {{color}}",
+    "size": "Размер",
+    "labelBy": "Подпись по",
+    "labelByDefault": "по умолчанию",
+    "sizeBy": "Размер по",
+    "sizeByFixed": "фиксированный размер",
+    "sizeMultiplier": "Множитель размера",
+    "lineStyle": "Стиль линии",
+    "lineStyleSolid": "Сплошная",
+    "lineStyleDashed": "Штриховая",
+    "lineStyleDotted": "Пунктирная",
+    "lineWidth": "Толщина линии",
+    "filterParametersTitle": "Параметры для {{label}}",
+    "cancel": "Отмена",
+    "run": "Выполнить"
+  }
+}

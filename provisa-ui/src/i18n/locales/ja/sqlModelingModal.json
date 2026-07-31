@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "SQLモデリング",
+    "description": "JOIN条件を新しいリレーションシップ候補として抽出します — 既存のリレーションシップは除外されます",
+    "close": "閉じる",
+    "tabSql": "SQL",
+    "tabCanvas": "キャンバス",
+    "nlPlaceholder": "自然な言葉で質問してください — SQLを生成します…",
+    "nlLoading": "読み込み中",
+    "generateSql": "SQLを生成",
+    "generating": "生成中…",
+    "copySql": "SQLをコピー",
+    "copied": "コピーしました",
+    "copy": "コピー",
+    "run": "サンプル >",
+    "runningLabel": "実行中…",
+    "sampleModeLabel": "サンプルモード",
+    "sampleModeFirst": "先頭",
+    "sampleModeLast": "末尾",
+    "sampleModeRandom": "ランダム",
+    "sampleSizeLabel": "行数",
+    "roleLabel": "ロール",
+    "extractJoins": "JOINを抽出",
+    "tabResults": "結果",
+    "tabProfile": "プロファイル",
+    "tabCandidates": "候補",
+    "tabErrors": "エラー",
+    "tabHistory": "履歴",
+    "execMs": "{{ms}}ms"
+  }
+}

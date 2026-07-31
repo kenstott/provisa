@@ -1,0 +1,6 @@
+{
+  "graphPage": {
+    "emptyStateHint": "Voer een Cypher-query uit om de graaf te verkennen",
+    "emptyStateShortcut": "⌘↵ om uit te voeren"
+  }
+}

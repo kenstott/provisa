@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "עוד לא הורצו שאילתות. ההיסטוריה נשמרת בין הפעלות.",
+    "colTime": "זמן",
+    "colRole": "תפקיד",
+    "colDuration": "משך",
+    "colRows": "שורות",
+    "colSql": "SQL",
+    "colActions": "פעולות",
+    "error": "שגיאה",
+    "restore": "שחזור",
+    "restoreLabel": "שחזור השאילתה מ-{{time}}"
+  }
+}

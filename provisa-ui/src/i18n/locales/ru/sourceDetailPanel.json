@@ -1,0 +1,27 @@
+{
+  "sourceDetailPanel": {
+    "field": {
+      "description": "Описание",
+      "type": "Тип",
+      "host": "Хост",
+      "port": "Порт",
+      "database": "База данных",
+      "username": "Имя пользователя",
+      "naming": "Именование",
+      "cache": "Кеш",
+      "cacheTtl": "TTL кеша",
+      "effectiveTtl": "Действующий TTL",
+      "allowedDomains": "Разрешённые домены"
+    },
+    "namingInherit": "наследовать (глобально)",
+    "cacheEnabled": "включён",
+    "cacheDisabled": "отключён",
+    "ttlInherit": "наследовать",
+    "domainsUnrestricted": "без ограничений",
+    "editTitle": "Изменить",
+    "navigateTitle": "Просмотреть зарегистрированные таблицы",
+    "deleteTitle": "Удалить источник «{{id}}»?",
+    "deleteTitleShort": "Удалить",
+    "deleteConsequence": "Это удалит источник данных «{{id}}» и может нарушить работу таблиц, которые на него ссылаются."
+  }
+}

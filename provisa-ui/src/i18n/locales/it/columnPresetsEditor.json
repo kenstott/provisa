@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "Preimpostazioni colonna",
+    "infoTooltip": "Inserisce valori calcolati o costanti in ogni riga restituita per questa tabella. Utile per aggiungere identificatori di dominio, flag legati al ruolo o campi derivati senza modificare lo schema di origine. 'source' può essere: constant, sql_expression o role_claim.",
+    "columnHeader": "Colonna",
+    "sourceHeader": "Origine",
+    "valueHeader": "Intestazione / valore",
+    "removeAction": "Rimuovi",
+    "columnPlaceholder": "— colonna —",
+    "selectPlaceholder": "— seleziona —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "Nome intestazione (es. X-User-Id)",
+    "literalValuePlaceholder": "Valore letterale",
+    "numericValuePlaceholder": "Valore numerico",
+    "addAction": "Aggiungi",
+    "sourceNow": "now (timestamp UTC)",
+    "sourceHeaderOption": "header (intestazione della richiesta HTTP)",
+    "sourceLiteral": "literal (valore fisso)"
+  }
+}

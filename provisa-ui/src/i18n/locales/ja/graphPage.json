@@ -1,0 +1,6 @@
+{
+  "graphPage": {
+    "emptyStateHint": "Cypherクエリを実行してグラフを探索してください",
+    "emptyStateShortcut": "⌘↵ で実行"
+  }
+}

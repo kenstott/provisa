@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "SQL Explorer",
+    "tabSql": "sql",
+    "tabCanvas": "canvas",
+    "execMs": "{{ms}} ms",
+    "queryStats": "Abfragestatistiken",
+    "showExpansion": "Expansion anzeigen",
+    "detachToPhysical": "In physisches SQL abkoppeln",
+    "expansionTitle": "Metrik-Expansion",
+    "expansionLoading": "Expansion wird abgerufen...",
+    "detachConfirmTitle": "In physisches SQL abkoppeln?",
+    "detachConfirmBody": "Dies ist UNUMKEHRBAR: Die Metrikverknüpfung wird getrennt und die Abfrage wird zu Freihand-SQL. Eine erneute Verknüpfung mit der Metrik ist nicht möglich.",
+    "detachCancel": "Abbrechen",
+    "detachConfirm": "Abkoppeln"
+  }
+}

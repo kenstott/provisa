@@ -1,0 +1,11 @@
+{
+  "schemaSidebar": {
+    "title": "スキーマ",
+    "collapse": "スキーマパネルを折りたたむ",
+    "expand": "スキーマパネルを展開",
+    "dragToCanvas": "キャンバスへドラッグ",
+    "doubleClickToInsert": "ダブルクリックで修飾名を挿入",
+    "insertTableReference": "SQLエディターにテーブル参照を挿入",
+    "clickToInsertColumn": "クリックで引用符付きの列を挿入"
+  }
+}

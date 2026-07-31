@@ -1,0 +1,11 @@
+{
+  "docsPage": {
+    "title": "Documentação",
+    "loading": "Carregando…",
+    "sourceOnline": "Online",
+    "sourceOffline": "Cópia offline",
+    "viewOnline": "Usar documentação online",
+    "viewOffline": "Usar cópia offline",
+    "openInNewTab": "Abrir em nova guia"
+  }
+}

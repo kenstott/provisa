@@ -1,0 +1,29 @@
+{
+  "addRelationshipForm": {
+    "idLabel": "ID",
+    "idPlaceholder": "orders-to-customers",
+    "aliasLabel": "Alias CQL (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "Alias GQL (camelCase)",
+    "graphqlAliasPlaceholder": "es. orders",
+    "sourceTableLabel": "Tabella di origine",
+    "sourceColumnLabel": "Colonna di origine",
+    "selectPlaceholder": "Seleziona...",
+    "targetTypeLabel": "Tipo di destinazione",
+    "targetTypeTable": "Tabella",
+    "targetTypeFunction": "Funzione (calcolata)",
+    "targetTableLabel": "Tabella di destinazione",
+    "targetColumnLabel": "Colonna di destinazione",
+    "functionLabel": "Funzione",
+    "functionArgLabel": "Argomento della funzione (riceve la colonna di origine)",
+    "functionArgPlaceholder": "nome argomento",
+    "cardinalityLabel": "Cardinalità",
+    "cardinalityManyToOne": "molti-a-uno",
+    "cardinalityOneToMany": "uno-a-molti",
+    "cardinalityWarning": "Attenzione: se questo join restituisce più di una riga per elemento padre, verrà usato solo il primo valore.",
+    "materializeLabel": "Materializza (crea automaticamente una MV per i join tra origini)",
+    "disableCypherLabel": "Escludi dal grafo Cypher",
+    "refreshIntervalLabel": "Intervallo di aggiornamento (s)",
+    "save": "Salva"
+  }
+}

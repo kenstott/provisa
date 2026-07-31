@@ -1,0 +1,7 @@
+{
+  "schemaExplorer": {
+    "selectRole": "スキーマを表示するにはロールを選択してください。",
+    "loadFailed": "スキーマの読み込みに失敗しました: {{error}}",
+    "loading": "スキーマを読み込み中..."
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "mcpExplore": {
+    "title": "MCP",
+    "intro": "Chatten Sie mit einem KI-Assistenten, der den Katalog für Sie erkundet und SQL über die kontrollierten MCP-Tools ausführt — dieselben Tools, die externe Agenten nutzen.",
+    "roleNote": "Aktiv als Rolle: {{role}}",
+    "noRole": "(keine Rolle)",
+    "thinking": "Assistent arbeitet…",
+    "emptyState": "Fragen Sie zu Ihren Daten — z. B. \"welche Tabellen enthalten Kunden-E-Mails?\", \"Top 10 Bestellungen nach Betrag\" oder \"wie sieht die Tabelle orders aus?\"",
+    "inputPlaceholder": "Fragen Sie zu Ihrem Katalog oder Ihren Daten…",
+    "clear": "Eingabe leeren"
+  }
+}

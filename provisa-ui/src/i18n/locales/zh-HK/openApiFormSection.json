@@ -1,0 +1,27 @@
+{
+  "openApiFormSection": {
+    "specModeLegend": "OpenAPI 規格來源",
+    "specModePath": "規格路徑／URL",
+    "specModeInline": "內嵌撰寫規格",
+    "specPathLabel": "規格路徑或 URL",
+    "specPathPlaceholder": "https://api.example.com/openapi.json 或 ./spec.yaml",
+    "specInlineLabel": "OpenAPI 規格（YAML 或 JSON）",
+    "baseUrlLabel": "基底 URL",
+    "baseUrlHint": "（留空則使用規格中的 servers[0].url）",
+    "baseUrlPlaceholder": "https://api.example.com（選填覆寫）",
+    "cacheTtlLabel": "快取 TTL（秒）",
+    "cacheTtlPlaceholder": "300",
+    "authenticationLabel": "驗證",
+    "tokenLabel": "權杖",
+    "tokenPlaceholder": "${env:API_TOKEN}",
+    "headerNameLabel": "標頭名稱",
+    "headerNamePlaceholder": "X-API-Key",
+    "apiKeyLabel": "API 金鑰",
+    "apiKeyPlaceholder": "${env:API_KEY}",
+    "previewButton": "預覽",
+    "previewLoading": "載入中...",
+    "queriesCount": "{{count}} 個查詢",
+    "mutationsCount": "{{count}} 個變更",
+    "none": "無"
+  }
+}

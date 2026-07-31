@@ -1,0 +1,15 @@
+{
+  "platformAdminWelcome": {
+    "title": "Você é o administrador da plataforma",
+    "body": "Ao entrar, você se tornou o platform_admin desta implantação — você detém todas as capacidades aqui, e ninguém mais pode reivindicar a função agora. Você também é o administrador da organização root, que já contém as fontes, tabelas e domínios de demonstração.",
+    "backupHeading": "Adicionar um administrador de backup",
+    "backupBody": "Uma implantação com um único platform_admin é uma implantação com uma única conta entre ela e a impossibilidade de administrá-la. Adicionar um backup começa com um convite para entrar em root:",
+    "backupStep1": "Convide a pessoa para a organização root pela página Equipe dela.",
+    "backupStep2": "A pessoa entra e resgata o convite, tornando-se membro de root.",
+    "backupStep3": "Atribua a ela a função platform_admin em root — é isso que confere a administração em toda a implantação.",
+    "openHeading": "O site agora está aberto para organizações",
+    "openBody": "A partir do próximo login, qualquer pessoa que se autenticar cria a própria organização. Ela nunca se torna administradora da plataforma ao entrar, e convidar pessoas para a organização é tarefa dela como org_admin.",
+    "goToTeam": "Convidar alguém para root",
+    "dismiss": "Entendi"
+  }
+}

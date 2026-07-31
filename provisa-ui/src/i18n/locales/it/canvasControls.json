@@ -1,0 +1,13 @@
+{
+  "canvasControls": {
+    "toolbarLabel": "Controlli del canvas",
+    "zoomIn": "Aumenta zoom",
+    "zoomOut": "Riduci zoom",
+    "fitToScreen": "Adatta allo schermo",
+    "switchToHierarchy": "Passa al layout gerarchico",
+    "switchToForce": "Passa al layout a forza",
+    "nudgeLayout": "Ritocca il layout — sposta leggermente i nodi selezionati (o tutti se nessuno è selezionato); tenere premuto per continuare a iterare",
+    "edgeLength": "Lunghezza degli archi",
+    "edgeLengthValue": "{{value}}px"
+  }
+}

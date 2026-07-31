@@ -1,0 +1,20 @@
+{
+  "grpcPage": {
+    "serverBadge": "gRPC • :50051",
+    "operationType": "סוג פעולה",
+    "query": "שאילתה",
+    "mutation": "מוטציה",
+    "command": "פקודה",
+    "method": "מתודה",
+    "noMethods": "אין מתודות",
+    "cancel": "◼ ביטול",
+    "send": "▶ שליחה",
+    "body": "גוף",
+    "proto": ".proto",
+    "response": "תגובה",
+    "selectMethodPlaceholder": "יש לבחור מתודה כדי לערוך את גוף הבקשה.",
+    "loading": "טוען…",
+    "waiting": "ממתין לתגובה…",
+    "sendPrompt": "יש לשלוח בקשה כדי לראות את התגובה."
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "实体关系图",
+    "domains": "域",
+    "domainsTooltip": "显示/隐藏域",
+    "columnDetailLabel": "列详情",
+    "columnDetailAll": "全部列",
+    "columnDetailKey": "仅键",
+    "columnDetailNone": "无列",
+    "edgeRoutingLabel": "连线路由",
+    "edgeRoutingBezier": "曲线连线",
+    "edgeRoutingTaxi": "直角连线",
+    "gridSnapLabel": "对齐网格",
+    "gridSnapNone": "不对齐",
+    "gridSnap5": "对齐 5px",
+    "gridSnap10": "对齐 10px",
+    "gridSnap15": "对齐 15px",
+    "gridSnap20": "对齐 20px",
+    "orphans": "孤立表",
+    "collapseAll": "全部折叠",
+    "expandAll": "全部展开",
+    "fitAll": "适应全部",
+    "downloadSvg": "下载 SVG",
+    "downloadPng": "下载 PNG",
+    "downloadJpeg": "下载 JPEG",
+    "close": "关闭",
+    "hint": "点击域分组以折叠/展开 · 虚线连接已折叠的域",
+    "resizeHandle": "调整域框大小（{{corner}}）"
+  }
+}

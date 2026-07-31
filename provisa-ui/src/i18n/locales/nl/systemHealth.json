@@ -1,0 +1,31 @@
+{
+  "systemHealth": {
+    "loading": "Systeemstatus laden...",
+    "colComponent": "Component",
+    "colStatus": "Status",
+    "colDetails": "Details",
+    "federationEngine": "Federatie-engine",
+    "connected": "Verbonden",
+    "disconnected": "Verbinding verbroken",
+    "workerCount": "{{count}} worker ({{active}} actief)",
+    "workerCount_other": "{{count}} workers ({{active}} actief)",
+    "metadataDb": "Metadata-DB",
+    "unpooled": "Zonder pool",
+    "active": "Actief",
+    "noPool": "Geen pool",
+    "poolNotTracked": "pool houdt verbindingen niet bij",
+    "poolConnections": "{{count}} verbindingen ({{idle}} inactief)",
+    "cache": "Cache",
+    "disabled": "Uitgeschakeld",
+    "embeddedMemory": "Ingebed (in-memory)",
+    "serverConnected": "Server verbonden",
+    "serverUnreachable": "Server onbereikbaar",
+    "redisServer": "Redis-server",
+    "fakeredis": "fakeredis (in-process)",
+    "running": "Actief",
+    "unreachable": "Onbereikbaar",
+    "port": "poort {{port}}",
+    "mvRefreshLoop": "MV-verversingslus",
+    "stopped": "Gestopt"
+  }
+}

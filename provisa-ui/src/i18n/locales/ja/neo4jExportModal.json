@@ -1,0 +1,22 @@
+{
+  "neo4jExportModal": {
+    "title": "Neo4jエクスポート",
+    "nodeCount_one": "{{count}} ノード",
+    "nodeCount_other": "{{count}} ノード",
+    "edgeCount_one": "{{count}} リレーションシップ",
+    "edgeCount_other": "{{count}} リレーションシップ",
+    "downloadScript": "Cypherスクリプトをダウンロード（.cypher）",
+    "divider": "— またはサーバーに直接エクスポート —",
+    "httpUrl": "HTTP URL",
+    "database": "データベース",
+    "username": "ユーザー名",
+    "password": "パスワード",
+    "close": "閉じる",
+    "exportToServer": "サーバーへエクスポート",
+    "exporting": "エクスポート中…",
+    "statementsImported_one": "{{count}} 件のステートメントをインポートしました。",
+    "statementsImported_other": "{{count}} 件のステートメントをインポートしました。",
+    "errorsSuffix_one": "（{{count}} 件のエラー: {{first}}）",
+    "errorsSuffix_other": "（{{count}} 件のエラー: {{first}}）"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "Laden...",
+    "cancel": "Annuleren",
+    "save": "Opslaan",
+    "delete": "Verwijderen",
+    "confirm": "Bevestigen",
+    "processing": "Verwerken..."
+  },
+  "app": {
+    "apiUnreachable": "Kan de Provisa API niet bereiken.",
+    "notAuthorized": "Geen machtiging om deze pagina te bekijken."
+  },
+  "theme": {
+    "toggle": "Kleurenschema wisselen",
+    "light": "Licht",
+    "dark": "Donker"
+  },
+  "multiSelect": {
+    "defaultLabel": "Opties selecteren",
+    "all": "alle"
+  },
+  "roleSelector": {
+    "none": "Geen rollen geconfigureerd",
+    "all": "Alle",
+    "role": "Rol: {{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "Gebruikersnaam",
+    "colEmail": "E-mail",
+    "colDisplayName": "Weergavenaam",
+    "colActive": "Actief",
+    "actions": "Acties",
+    "empty": "Geen lokale gebruikers",
+    "yes": "Ja",
+    "no": "Nee",
+    "none": "—",
+    "expandUser": "Toewijzingen voor {{username}} tonen",
+    "deleteUser": "Gebruiker {{username}} verwijderen",
+    "assignmentsHeading": "Rol:domein-toewijzingen",
+    "noAssignments": "Geen toewijzingen",
+    "removeAssignment": "Toewijzing {{role}}:{{domain}} verwijderen",
+    "roleLabel": "Rol",
+    "domainLabel": "Domein",
+    "allDomains": "* (alle domeinen)",
+    "add": "Toevoegen",
+    "createHeading": "Gebruiker aanmaken",
+    "username": "Gebruikersnaam",
+    "usernameRequired": "Gebruikersnaam *",
+    "password": "Wachtwoord",
+    "passwordRequired": "Wachtwoord *",
+    "email": "E-mail",
+    "emailOptional": "E-mail (optioneel)",
+    "displayName": "Weergavenaam",
+    "displayNameOptional": "Weergavenaam (optioneel)",
+    "createButton": "Gebruiker aanmaken",
+    "created": "\"{{username}}\" aangemaakt",
+    "deleted": "\"{{username}}\" verwijderd",
+    "createFailed": "Aanmaken mislukt",
+    "assignmentFailed": "Toewijzing mislukt"
+  }
+}

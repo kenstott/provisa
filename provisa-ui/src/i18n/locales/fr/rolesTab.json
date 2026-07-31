@@ -1,0 +1,17 @@
+{
+  "rolesTab": {
+    "heading": "Rôles — {{orgId}}",
+    "colId": "ID",
+    "colCapabilities": "Capacités",
+    "colDomainAccess": "Accès aux domaines",
+    "colActions": "Actions",
+    "empty": "Aucun rôle trouvé.",
+    "deleteRole": "Supprimer le rôle {{roleId}}",
+    "deleted": "« {{roleId}} » supprimé",
+    "pageInfo": "Page {{current}} / {{total}}",
+    "firstPage": "Première page",
+    "previousPage": "Page précédente",
+    "nextPage": "Page suivante",
+    "lastPage": "Dernière page"
+  }
+}

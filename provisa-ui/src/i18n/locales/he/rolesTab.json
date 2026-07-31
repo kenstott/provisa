@@ -1,0 +1,17 @@
+{
+  "rolesTab": {
+    "heading": "תפקידים — {{orgId}}",
+    "colId": "ID",
+    "colCapabilities": "יכולות",
+    "colDomainAccess": "גישה לדומיינים",
+    "colActions": "פעולות",
+    "empty": "לא נמצאו תפקידים.",
+    "deleteRole": "מחיקת תפקיד {{roleId}}",
+    "deleted": "\"{{roleId}}\" נמחק",
+    "pageInfo": "עמוד {{current}} / {{total}}",
+    "firstPage": "עמוד ראשון",
+    "previousPage": "עמוד קודם",
+    "nextPage": "עמוד הבא",
+    "lastPage": "עמוד אחרון"
+  }
+}

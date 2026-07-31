@@ -1,0 +1,21 @@
+{
+  "relationshipModals": {
+    "conflictTitle": "Relazione già esistente",
+    "conflictClose": "Chiudi",
+    "conflictIntro": "Esiste già una relazione con questa origine e questa destinazione:",
+    "conflictId": "ID",
+    "conflictSource": "Origine",
+    "conflictTarget": "Destinazione",
+    "conflictCardinality": "Cardinalità",
+    "conflictAlias": "Alias",
+    "reverseTitle": "Genera relazione inversa",
+    "idLabel": "ID",
+    "aliasLabel": "Alias CQL (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "Alias GQL (camelCase)",
+    "materializeLabel": "Materializza",
+    "refreshIntervalLabel": "Intervallo di aggiornamento (s)",
+    "cancel": "Annulla",
+    "save": "Salva"
+  }
+}

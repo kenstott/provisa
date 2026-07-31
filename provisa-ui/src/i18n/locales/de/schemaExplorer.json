@@ -1,0 +1,7 @@
+{
+  "schemaExplorer": {
+    "selectRole": "Wählen Sie eine Rolle, um das Schema anzuzeigen.",
+    "loadFailed": "Schema konnte nicht geladen werden: {{error}}",
+    "loading": "Schema wird geladen..."
+  }
+}

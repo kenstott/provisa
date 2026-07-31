@@ -1,0 +1,13 @@
+{
+  "federationEngineTab": {
+    "intro": "Le moteur de fédération exécute chaque requête fédérée. Choisissez le moteur et configurez-le ; les autres composants (routage, gouvernance, cache) sont inchangés.",
+    "loading": "Chargement…",
+    "engineLabel": "Moteur",
+    "current": " (en cours d'exécution)",
+    "pendingSelection": "Sélection enregistrée : {{engine}}. Le service exécute toujours {{running}}.",
+    "envPinned": "Épinglé sur {{engine}} par $PROVISA_ENGINE. Une sélection enregistrée ici est conservée, mais l'épinglage l'emporte au redémarrage.",
+    "saveButton": "Enregistrer la sélection du moteur",
+    "saved": "Enregistré.",
+    "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer le nouveau moteur de fédération."
+  }
+}

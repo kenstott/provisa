@@ -1,0 +1,20 @@
+{
+  "graphContextMenus": {
+    "color": "Kleur",
+    "colorSwatchLabel": "Kleur instellen op {{color}}",
+    "size": "Grootte",
+    "labelBy": "Label op basis van",
+    "labelByDefault": "standaard",
+    "sizeBy": "Grootte op basis van",
+    "sizeByFixed": "vaste grootte",
+    "sizeMultiplier": "Groottefactor",
+    "lineStyle": "Lijnstijl",
+    "lineStyleSolid": "Doorgetrokken",
+    "lineStyleDashed": "Gestreept",
+    "lineStyleDotted": "Gestippeld",
+    "lineWidth": "Lijndikte",
+    "filterParametersTitle": "Parameters voor {{label}}",
+    "cancel": "Annuleren",
+    "run": "Uitvoeren"
+  }
+}

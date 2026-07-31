@@ -1,0 +1,15 @@
+{
+  "platformAdminWelcome": {
+    "title": "您是平台管理員",
+    "body": "登入後，您已成為此部署的 platform_admin——您在此擁有所有功能，而其他人現已無法取得此角色。您同時是 root 機構的管理員，該機構已載有示範數據來源、表格及領域。",
+    "backupHeading": "新增後備管理員",
+    "backupBody": "只有一位 platform_admin 的部署，等於只有一個帳戶維繫着整個部署的管理。新增後備管理員由邀請對方加入 root 開始：",
+    "backupStep1": "在 root 機構的「團隊」頁面邀請對方加入。",
+    "backupStep2": "對方登入並兌換邀請，成為 root 的成員。",
+    "backupStep3": "在 root 中將 platform_admin 角色指派給對方——這才是授予全部署管理權的關鍵。",
+    "openHeading": "網站現已開放予各機構",
+    "openBody": "由下一次登入起，任何完成驗證的人都會建立自己的機構。登入不會使任何人成為平台管理員；邀請他人加入其機構，是其作為 org_admin 的職責。",
+    "goToTeam": "邀請他人加入 root",
+    "dismiss": "知道了"
+  }
+}

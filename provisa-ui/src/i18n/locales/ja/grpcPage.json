@@ -1,0 +1,20 @@
+{
+  "grpcPage": {
+    "serverBadge": "gRPC • :50051",
+    "operationType": "操作タイプ",
+    "query": "クエリ",
+    "mutation": "ミューテーション",
+    "command": "コマンド",
+    "method": "メソッド",
+    "noMethods": "メソッドなし",
+    "cancel": "◼ キャンセル",
+    "send": "▶ 送信",
+    "body": "ボディ",
+    "proto": ".proto",
+    "response": "レスポンス",
+    "selectMethodPlaceholder": "メソッドを選択してリクエストボディを編集してください。",
+    "loading": "読み込み中…",
+    "waiting": "レスポンスを待っています…",
+    "sendPrompt": "リクエストを送信するとレスポンスが表示されます。"
+  }
+}

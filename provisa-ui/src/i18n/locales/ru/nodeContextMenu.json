@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "Исключить этот узел из запроса",
+    "excludeDisabledTooltip": "Первичный ключ не настроен — исключение невозможно",
+    "excludeFromQuery": "Исключить из запроса",
+    "excludeCount": "Исключить узлы: {{count}}",
+    "unfixPosition": "Открепить позицию",
+    "showChildren": "Показать потомков",
+    "hideChildren": "Скрыть потомков",
+    "showChildrenCircularTooltip": "Расположить потомков кольцом вокруг этого узла",
+    "noOutgoingTooltip": "Нет исходящих связей для этого типа узла",
+    "showChildrenCircular": "Показать потомков (по кругу)",
+    "hideChildrenCircular": "Скрыть потомков (по кругу)",
+    "showParents": "Показать родителей",
+    "hideParents": "Скрыть родителей",
+    "showParentsCircularTooltip": "Расположить родителей кольцом вокруг этого узла",
+    "noIncomingTooltip": "Нет входящих связей для этого типа узла",
+    "showParentsCircular": "Показать родителей (по кругу)",
+    "hideParentsCircular": "Скрыть родителей (по кругу)",
+    "invertSelection": "Инвертировать выделение",
+    "select": "Выбрать",
+    "selectAll": "Все",
+    "selectAllOfType": "Все этого типа",
+    "selectConnected": "Связанные",
+    "selectChildren": "Потомки",
+    "selectParents": "Родители",
+    "removeNode": "Удалить узел",
+    "removeCount": "Удалить узлы: {{count}}"
+  }
+}

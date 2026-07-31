@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "Вход",
+    "authNotConfigured": "Аутентификация не настроена",
+    "loading": "Загрузка...",
+    "signInTitle": "Вход",
+    "firstLoginHeading": "Настройка этого развёртывания",
+    "firstLoginTitle": "Это первый вход",
+    "firstLoginBody": "Этим развёртыванием пока никто не администрирует. Тот, кто войдёт первым, станет администратором платформы — с полным контролем над организациями, пользователями и источниками данных. Выберите способ входа ниже, чтобы занять эту роль.",
+    "signInWithGoogle": "Войти через Google",
+    "signInWithGithub": "Войти через GitHub",
+    "signInWithMicrosoft": "Войти через Microsoft",
+    "signInWithEmail": "Войти по электронной почте",
+    "orDivider": "или",
+    "haveAccountSignIn": "Уже есть аккаунт? Войти",
+    "needAccountRegister": "Нужен аккаунт? Зарегистрироваться",
+    "signingIn": "Выполняется вход...",
+    "createAccountTitle": "Создание аккаунта",
+    "username": "Имя пользователя",
+    "email": "Электронная почта",
+    "displayName": "Отображаемое имя",
+    "organization": "Организация",
+    "password": "Пароль",
+    "confirmPassword": "Подтвердите пароль",
+    "creating": "Создание...",
+    "createAccount": "Создать аккаунт",
+    "backToLogin": "Назад ко входу",
+    "loggingIn": "Выполняется вход...",
+    "passwordsDoNotMatch": "Пароли не совпадают",
+    "registrationFailed": "Не удалось зарегистрироваться",
+    "firebaseSignInFailed": "Не удалось войти через Firebase"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "sqlCanvasTableCard": {
+    "removeTable": "Retirer {{tableName}} du canevas",
+    "toggleColumn": "Basculer la sélection de la colonne {{columnName}}",
+    "connectColumn": "Démarrer une relation depuis {{columnName}}"
+  }
+}

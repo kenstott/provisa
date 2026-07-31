@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "בטעינה...",
+    "cancel": "ביטול",
+    "save": "שמירה",
+    "delete": "מחיקה",
+    "confirm": "אישור",
+    "processing": "בעיבוד..."
+  },
+  "app": {
+    "apiUnreachable": "לא ניתן להגיע ל-API של Provisa.",
+    "notAuthorized": "אין לך הרשאה לצפות בדף זה."
+  },
+  "theme": {
+    "toggle": "החלפת ערכת צבעים",
+    "light": "בהיר",
+    "dark": "כהה"
+  },
+  "multiSelect": {
+    "defaultLabel": "בחירת אפשרויות",
+    "all": "הכול"
+  },
+  "roleSelector": {
+    "none": "לא הוגדרו תפקידים",
+    "all": "הכול",
+    "role": "תפקיד: {{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "שם משתמש",
+    "colEmail": "דוא\"ל",
+    "colDisplayName": "שם תצוגה",
+    "colActive": "פעיל",
+    "actions": "פעולות",
+    "empty": "אין משתמשים מקומיים",
+    "yes": "כן",
+    "no": "לא",
+    "none": "—",
+    "expandUser": "הצגת שיוכים עבור {{username}}",
+    "deleteUser": "מחיקת המשתמש {{username}}",
+    "assignmentsHeading": "שיוכי תפקיד:דומיין",
+    "noAssignments": "אין שיוכים",
+    "removeAssignment": "הסרת השיוך {{role}}:{{domain}}",
+    "roleLabel": "תפקיד",
+    "domainLabel": "דומיין",
+    "allDomains": "* (כל הדומיינים)",
+    "add": "הוספה",
+    "createHeading": "יצירת משתמש",
+    "username": "שם משתמש",
+    "usernameRequired": "שם משתמש *",
+    "password": "סיסמה",
+    "passwordRequired": "סיסמה *",
+    "email": "דוא\"ל",
+    "emailOptional": "דוא\"ל (אופציונלי)",
+    "displayName": "שם תצוגה",
+    "displayNameOptional": "שם תצוגה (אופציונלי)",
+    "createButton": "יצירת משתמש",
+    "created": "\"{{username}}\" נוצר",
+    "deleted": "\"{{username}}\" נמחק",
+    "createFailed": "היצירה נכשלה",
+    "assignmentFailed": "השיוך נכשל"
+  }
+}

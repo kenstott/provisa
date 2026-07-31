@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "Accesso",
+    "authNotConfigured": "Autenticazione non configurata",
+    "loading": "Caricamento...",
+    "signInTitle": "Accedi",
+    "firstLoginHeading": "Configura questa distribuzione",
+    "firstLoginTitle": "Questo è il primo accesso",
+    "firstLoginBody": "Nessuno amministra ancora questa distribuzione. Chi accede per primo diventa l'amministratore della piattaforma — con pieno controllo su organizzazioni, utenti e origini dati. Scegliere un metodo di accesso qui sotto per assumere il ruolo.",
+    "signInWithGoogle": "Accedi con Google",
+    "signInWithGithub": "Accedi con GitHub",
+    "signInWithMicrosoft": "Accedi con Microsoft",
+    "signInWithEmail": "Accedi con email",
+    "orDivider": "oppure",
+    "haveAccountSignIn": "Hai già un account? Accedi",
+    "needAccountRegister": "Serve un account? Registrati",
+    "signingIn": "Accesso in corso...",
+    "createAccountTitle": "Crea account",
+    "username": "Nome utente",
+    "email": "Email",
+    "displayName": "Nome visualizzato",
+    "organization": "Organizzazione",
+    "password": "Password",
+    "confirmPassword": "Conferma password",
+    "creating": "Creazione in corso...",
+    "createAccount": "Crea account",
+    "backToLogin": "Torna all'accesso",
+    "loggingIn": "Accesso in corso...",
+    "passwordsDoNotMatch": "Le password non corrispondono",
+    "registrationFailed": "Registrazione non riuscita",
+    "firebaseSignInFailed": "Accesso Firebase non riuscito"
+  }
+}

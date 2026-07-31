@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "Diagramme entité-relation",
+    "domains": "Domaines",
+    "domainsTooltip": "Afficher / masquer les domaines",
+    "columnDetailLabel": "Détail des colonnes",
+    "columnDetailAll": "Toutes les colonnes",
+    "columnDetailKey": "Clés seulement",
+    "columnDetailNone": "Aucune colonne",
+    "edgeRoutingLabel": "Tracé des liens",
+    "edgeRoutingBezier": "Liens courbes",
+    "edgeRoutingTaxi": "Liens à angle droit",
+    "gridSnapLabel": "Aligner sur la grille",
+    "gridSnapNone": "Aucun alignement",
+    "gridSnap5": "Alignement 5 px",
+    "gridSnap10": "Alignement 10 px",
+    "gridSnap15": "Alignement 15 px",
+    "gridSnap20": "Alignement 20 px",
+    "orphans": "Orphelines",
+    "collapseAll": "Tout réduire",
+    "expandAll": "Tout développer",
+    "fitAll": "Tout ajuster",
+    "downloadSvg": "Télécharger le SVG",
+    "downloadPng": "Télécharger le PNG",
+    "downloadJpeg": "Télécharger le JPEG",
+    "close": "Fermer",
+    "hint": "Cliquez sur un groupe de domaine pour le réduire / développer · les pointillés relient les domaines réduits",
+    "resizeHandle": "Redimensionner le cadre du domaine ({{corner}})"
+  }
+}

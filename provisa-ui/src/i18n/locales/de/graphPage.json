@@ -1,0 +1,6 @@
+{
+  "graphPage": {
+    "emptyStateHint": "Führen Sie eine Cypher-Abfrage aus, um den Graphen zu erkunden",
+    "emptyStateShortcut": "⌘↵ zum Ausführen"
+  }
+}

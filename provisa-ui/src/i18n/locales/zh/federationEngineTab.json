@@ -1,0 +1,13 @@
+{
+  "federationEngineTab": {
+    "intro": "联邦引擎执行所有联邦查询。选择引擎并进行配置；其他组件（路由、治理、缓存）保持不变。",
+    "loading": "加载中…",
+    "engineLabel": "引擎",
+    "current": "（运行中）",
+    "pendingSelection": "已保存的选择：{{engine}}。服务仍在运行 {{running}}。",
+    "envPinned": "已由 $PROVISA_ENGINE 固定为 {{engine}}。此处保存的选择会被存储，但重启时以固定值为准。",
+    "saveButton": "保存引擎选择",
+    "saved": "已保存。",
+    "savedRestartRequired": "已保存。重启服务以应用新的联邦引擎。"
+  }
+}

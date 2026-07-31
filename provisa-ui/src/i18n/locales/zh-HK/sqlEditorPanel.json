@@ -1,0 +1,30 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "連按兩下以重新命名",
+    "closeTab": "關閉 {{title}}",
+    "newTab": "新查詢分頁",
+    "detachedBadge": "已分離",
+    "nlPlaceholder": "以日常語言提問——自動產生 SQL…",
+    "clear": "清除",
+    "generate": "產生 SQL",
+    "generating": "產生中…",
+    "generatingSql": "正在產生 SQL…",
+    "prettify": "美化 SQL",
+    "copySql": "複製 SQL",
+    "copied": "已複製",
+    "copy": "複製",
+    "run": "取樣 >",
+    "running": "執行中…",
+    "saveViewTitle": "將目前 SQL 儲存為檢視「{{tableName}}」的定義",
+    "saving": "儲存中…",
+    "updateView": "更新「{{tableName}}」",
+    "sampleModeFirst": "最前",
+    "sampleModeLast": "最後",
+    "sampleModeRandom": "隨機",
+    "sampleModeLabel": "取樣模式",
+    "rowCountLabel": "資料列數",
+    "roleLabel": "角色",
+    "createView": "+ 檢視",
+    "requestView": "要求檢視"
+  }
+}

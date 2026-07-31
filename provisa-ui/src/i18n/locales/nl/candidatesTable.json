@@ -1,0 +1,15 @@
+{
+  "candidatesTable": {
+    "heading": "Door AI voorgestelde relaties",
+    "colName": "Naam",
+    "colSource": "Bron",
+    "colTarget": "Doel",
+    "colCardinality": "Kardinaliteit",
+    "colConfidence": "Betrouwbaarheid",
+    "colActions": "Acties",
+    "accept": "Accepteren",
+    "reject": "Afwijzen",
+    "acceptAria": "Voorgestelde relatie {{name}} accepteren",
+    "rejectAria": "Voorgestelde relatie {{name}} afwijzen"
+  }
+}

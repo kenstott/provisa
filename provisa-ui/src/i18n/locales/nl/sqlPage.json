@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "SQL Explorer",
+    "tabSql": "sql",
+    "tabCanvas": "canvas",
+    "execMs": "{{ms}} ms",
+    "queryStats": "Querystatistieken",
+    "showExpansion": "Expansie tonen",
+    "detachToPhysical": "Loskoppelen naar fysieke SQL",
+    "expansionTitle": "Metriekexpansie",
+    "expansionLoading": "Expansie ophalen...",
+    "detachConfirmTitle": "Loskoppelen naar fysieke SQL?",
+    "detachConfirmBody": "Dit is ONOMKEERBAAR: de koppeling met de metriek wordt verbroken en de query wordt vrije SQL. Opnieuw koppelen aan de metriek is niet mogelijk.",
+    "detachCancel": "Annuleren",
+    "detachConfirm": "Loskoppelen"
+  }
+}

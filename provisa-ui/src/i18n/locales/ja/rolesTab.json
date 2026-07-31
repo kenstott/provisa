@@ -1,0 +1,17 @@
+{
+  "rolesTab": {
+    "heading": "ロール — {{orgId}}",
+    "colId": "ID",
+    "colCapabilities": "ケイパビリティ",
+    "colDomainAccess": "ドメインアクセス",
+    "colActions": "操作",
+    "empty": "ロールが見つかりません。",
+    "deleteRole": "ロール {{roleId}} を削除",
+    "deleted": "「{{roleId}}」を削除しました",
+    "pageInfo": "ページ {{current}} / {{total}}",
+    "firstPage": "最初のページ",
+    "previousPage": "前のページ",
+    "nextPage": "次のページ",
+    "lastPage": "最後のページ"
+  }
+}

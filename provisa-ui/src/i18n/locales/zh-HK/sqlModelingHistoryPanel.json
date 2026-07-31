@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "尚未執行任何查詢。歷史記錄會跨工作階段保留。",
+    "colTime": "時間",
+    "colRole": "角色",
+    "colDuration": "耗時",
+    "colRows": "資料列",
+    "colSql": "SQL",
+    "colActions": "操作",
+    "error": "錯誤",
+    "restore": "還原",
+    "restoreLabel": "還原 {{time}} 的查詢"
+  }
+}

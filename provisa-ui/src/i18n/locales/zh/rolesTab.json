@@ -1,0 +1,17 @@
+{
+  "rolesTab": {
+    "heading": "角色 — {{orgId}}",
+    "colId": "ID",
+    "colCapabilities": "能力",
+    "colDomainAccess": "域访问",
+    "colActions": "操作",
+    "empty": "未找到角色。",
+    "deleteRole": "删除角色 {{roleId}}",
+    "deleted": "已删除“{{roleId}}”",
+    "pageInfo": "第 {{current}} / {{total}} 页",
+    "firstPage": "首页",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "lastPage": "末页"
+  }
+}

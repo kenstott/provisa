@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "Диаграмма «сущность — связь»",
+    "domains": "Домены",
+    "domainsTooltip": "Показать / скрыть домены",
+    "columnDetailLabel": "Детализация столбцов",
+    "columnDetailAll": "Все столбцы",
+    "columnDetailKey": "Только ключи",
+    "columnDetailNone": "Без столбцов",
+    "edgeRoutingLabel": "Маршрутизация связей",
+    "edgeRoutingBezier": "Изогнутые линии",
+    "edgeRoutingTaxi": "Прямоугольные линии",
+    "gridSnapLabel": "Привязка к сетке",
+    "gridSnapNone": "Без привязки",
+    "gridSnap5": "Привязка 5px",
+    "gridSnap10": "Привязка 10px",
+    "gridSnap15": "Привязка 15px",
+    "gridSnap20": "Привязка 20px",
+    "orphans": "Изолированные",
+    "collapseAll": "Свернуть все",
+    "expandAll": "Развернуть все",
+    "fitAll": "Вписать все",
+    "downloadSvg": "Скачать SVG",
+    "downloadPng": "Скачать PNG",
+    "downloadJpeg": "Скачать JPEG",
+    "close": "Закрыть",
+    "hint": "Щелкните группу домена, чтобы свернуть / развернуть · пунктирные линии соединяют свернутые домены",
+    "resizeHandle": "Изменить размер рамки домена ({{corner}})"
+  }
+}

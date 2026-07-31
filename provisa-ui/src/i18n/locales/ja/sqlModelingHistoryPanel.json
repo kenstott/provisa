@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "まだ実行されたクエリはありません。履歴はセッションをまたいで保持されます。",
+    "colTime": "時刻",
+    "colRole": "ロール",
+    "colDuration": "所要時間",
+    "colRows": "行数",
+    "colSql": "SQL",
+    "colActions": "操作",
+    "error": "エラー",
+    "restore": "復元",
+    "restoreLabel": "{{time}} のクエリを復元"
+  }
+}

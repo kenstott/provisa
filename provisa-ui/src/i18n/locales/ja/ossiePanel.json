@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "セマンティック交換（Ossie）",
+    "endpointLabel": "エンドポイント:",
+    "copyEndpoint": "エンドポイントURLをコピー",
+    "download": "ダウンロード",
+    "import": "インポート",
+    "reviewTitle": "Ossieインポートの確認: {{model}}",
+    "reviewHint": "まだ何も登録されていません。除外したい項目のチェックを外してから適用してください。チェックされた項目は標準の登録ミューテーションを通じて登録されます。",
+    "tablesSection": "テーブル（{{count}}）",
+    "relationshipsSection": "リレーションシップ（{{count}}）",
+    "metricsSection": "メトリクス（{{count}}）",
+    "columnCount": "{{count}} 列",
+    "apply": "適用（{{count}}）",
+    "applied": "適用済み",
+    "failed": "失敗",
+    "cancel": "キャンセル",
+    "close": "閉じる"
+  }
+}

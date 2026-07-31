@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ ビュー",
+    "titleRequest": "ビューをリクエスト",
+    "create": "作成",
+    "submitRequest": "リクエストを送信",
+    "saving": "保存中…",
+    "close": "閉じる",
+    "noPermissionNotice": "create_view 権限がありません。承認待ちの提案ビューとして送信されます。",
+    "alias": "エイリアス",
+    "aliasPlaceholder": "例: my_view",
+    "domain": "ドメイン",
+    "domainSelectPlaceholder": "— ドメインを選択 —",
+    "description": "説明",
+    "descriptionPlaceholder": "任意",
+    "saveAsMetricView": "メトリクスビューとして保存（{{metric}}）",
+    "hasParamsWarning": "SQL に未解決のパラメータプレースホルダー（$1、$2、…）が含まれています。SQL を編集してリテラル値に置き換えてください。",
+    "savedTitle": "ビューを保存しました",
+    "savedMessageCreated": "ビュー \"{{viewId}}\" が作成され、登録されました。",
+    "savedMessageSubmitted": "ビュー \"{{viewId}}\" が承認のため送信されました。",
+    "editInModelViews": "モデル/ビューで編集"
+  }
+}

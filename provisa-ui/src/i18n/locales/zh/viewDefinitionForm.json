@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "指标",
+    "sqlCreateHint": "自由编写的视图在 SQL 编辑器中创作：编写 SELECT，运行它，然后保存为视图。",
+    "sqlEditHint": "此视图的 SQL 在 SQL 编辑器中编辑。",
+    "openSqlEditor": "打开 SQL 编辑器",
+    "editInSqlEditor": "在 SQL 编辑器中编辑",
+    "fieldName": "视图名称",
+    "fieldNamePlaceholder": "例如 revenue_by_region",
+    "fieldDomain": "域",
+    "fieldDescription": "描述",
+    "fieldMetrics": "指标",
+    "fieldMetricsPlaceholder": "选择一个或多个已注册的指标",
+    "fieldDimensions": "维度",
+    "fieldDimensionsPlaceholder": "指标所属表的列（含一跳关系内的列）",
+    "fieldFilters": "筛选条件",
+    "fieldFiltersHelp": "每行一个 SQL 条件；各条件按 AND 组合。",
+    "save": "保存视图",
+    "saveFailed": "保存失败",
+    "cancel": "取消"
+  }
+}

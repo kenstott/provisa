@@ -1,0 +1,21 @@
+{
+  "schemaBrowser": {
+    "collapsePanel": "כיווץ חלונית הסכמה",
+    "expandPanel": "הרחבת חלונית הסכמה",
+    "heading": "סכמה",
+    "groupMetrics": "מדדים",
+    "groupFacts": "עובדות",
+    "groupDimensions": "ממדים",
+    "groupEmpty": "(אין)",
+    "dragMetricToCanvas": "גרירת מדד אל הקנבס",
+    "insertMetricQuery": "לחיצה להוספת שאילתת מדד סמנטית",
+    "dragToCanvas": "גרירה אל הקנבס",
+    "insertQualifiedName": "לחיצה כפולה להוספת שם מלא",
+    "insertTableReference": "הוספת הפניה לטבלה בעורך ה-SQL",
+    "tableAliasName": "כינוי/שם טבלה",
+    "domainId": "מזהה דומיין",
+    "insertQuotedColumn": "לחיצה להוספת עמודה במירכאות",
+    "previousPage": "עמוד קודם",
+    "nextPage": "עמוד הבא"
+  }
+}

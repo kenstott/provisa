@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "Метрики",
+    "sqlCreateHint": "Произвольные представления создаются в редакторе SQL: напишите SELECT, выполните его и сохраните как представление.",
+    "sqlEditHint": "SQL этого представления редактируется в редакторе SQL.",
+    "openSqlEditor": "Открыть редактор SQL",
+    "editInSqlEditor": "Редактировать в редакторе SQL",
+    "fieldName": "Имя представления",
+    "fieldNamePlaceholder": "например, revenue_by_region",
+    "fieldDomain": "Домен",
+    "fieldDescription": "Описание",
+    "fieldMetrics": "Метрики",
+    "fieldMetricsPlaceholder": "Выберите одну или несколько зарегистрированных метрик",
+    "fieldDimensions": "Измерения",
+    "fieldDimensionsPlaceholder": "Столбцы таблиц метрик (включая один переход по связи)",
+    "fieldFilters": "Фильтры",
+    "fieldFiltersHelp": "Одно условие SQL на строку; условия объединяются через AND.",
+    "save": "Сохранить представление",
+    "saveFailed": "Не удалось сохранить",
+    "cancel": "Отмена"
+  }
+}

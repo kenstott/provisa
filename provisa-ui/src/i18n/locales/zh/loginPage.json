@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "登录",
+    "authNotConfigured": "未配置身份验证",
+    "loading": "正在加载...",
+    "signInTitle": "登录",
+    "firstLoginHeading": "设置此部署",
+    "firstLoginTitle": "这是首次登录",
+    "firstLoginBody": "此部署尚无管理员。首位登录者将成为平台管理员 — 拥有对组织、用户和数据源的完全控制权。请在下方选择登录方式以认领。",
+    "signInWithGoogle": "使用 Google 登录",
+    "signInWithGithub": "使用 GitHub 登录",
+    "signInWithMicrosoft": "使用 Microsoft 登录",
+    "signInWithEmail": "使用电子邮件登录",
+    "orDivider": "或",
+    "haveAccountSignIn": "已有账户？登录",
+    "needAccountRegister": "没有账户？注册",
+    "signingIn": "正在登录...",
+    "createAccountTitle": "创建账户",
+    "username": "用户名",
+    "email": "电子邮件",
+    "displayName": "显示名称",
+    "organization": "组织",
+    "password": "密码",
+    "confirmPassword": "确认密码",
+    "creating": "正在创建...",
+    "createAccount": "创建账户",
+    "backToLogin": "返回登录",
+    "loggingIn": "正在登录...",
+    "passwordsDoNotMatch": "两次输入的密码不一致",
+    "registrationFailed": "注册失败",
+    "firebaseSignInFailed": "Firebase 登录失败"
+  }
+}

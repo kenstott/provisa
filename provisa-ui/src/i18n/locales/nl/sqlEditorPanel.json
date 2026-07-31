@@ -1,0 +1,30 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "Dubbelklik om de naam te wijzigen",
+    "closeTab": "{{title}} sluiten",
+    "newTab": "Nieuw querytabblad",
+    "detachedBadge": "losgekoppeld",
+    "nlPlaceholder": "Stel een vraag in gewone taal — genereert SQL…",
+    "clear": "Wissen",
+    "generate": "SQL genereren",
+    "generating": "Genereren…",
+    "generatingSql": "SQL genereren…",
+    "prettify": "SQL opmaken",
+    "copySql": "SQL kopiëren",
+    "copied": "Gekopieerd",
+    "copy": "Kopiëren",
+    "run": "Sample >",
+    "running": "Uitvoeren…",
+    "saveViewTitle": "Huidige SQL opslaan als definitie voor view \"{{tableName}}\"",
+    "saving": "Opslaan…",
+    "updateView": "\"{{tableName}}\" bijwerken",
+    "sampleModeFirst": "Eerste",
+    "sampleModeLast": "Laatste",
+    "sampleModeRandom": "Willekeurig",
+    "sampleModeLabel": "Samplemodus",
+    "rowCountLabel": "Aantal rijen",
+    "roleLabel": "Rol",
+    "createView": "+ View",
+    "requestView": "View aanvragen"
+  }
+}

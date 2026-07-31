@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "SQL 建模",
+    "description": "將 JOIN 條件擷取為新的關係候選項 — 已排除現有關係",
+    "close": "關閉",
+    "tabSql": "SQL",
+    "tabCanvas": "畫布",
+    "nlPlaceholder": "以日常語言提問 — 自動產生 SQL…",
+    "nlLoading": "載入中",
+    "generateSql": "產生 SQL",
+    "generating": "產生中…",
+    "copySql": "複製 SQL",
+    "copied": "已複製",
+    "copy": "複製",
+    "run": "取樣 >",
+    "runningLabel": "執行中…",
+    "sampleModeLabel": "取樣模式",
+    "sampleModeFirst": "最前",
+    "sampleModeLast": "最後",
+    "sampleModeRandom": "隨機",
+    "sampleSizeLabel": "資料列數",
+    "roleLabel": "角色",
+    "extractJoins": "擷取聯結",
+    "tabResults": "結果",
+    "tabProfile": "剖析",
+    "tabCandidates": "候選項",
+    "tabErrors": "錯誤",
+    "tabHistory": "歷史",
+    "execMs": "{{ms}} 毫秒"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "sourceDetailPanel": {
+    "field": {
+      "description": "説明",
+      "type": "種類",
+      "host": "ホスト",
+      "port": "ポート",
+      "database": "データベース",
+      "username": "ユーザー名",
+      "naming": "命名",
+      "cache": "キャッシュ",
+      "cacheTtl": "キャッシュ TTL",
+      "effectiveTtl": "有効 TTL",
+      "allowedDomains": "許可ドメイン"
+    },
+    "namingInherit": "継承(グローバル)",
+    "cacheEnabled": "有効",
+    "cacheDisabled": "無効",
+    "ttlInherit": "継承",
+    "domainsUnrestricted": "制限なし",
+    "editTitle": "編集",
+    "navigateTitle": "登録済みテーブルを表示",
+    "deleteTitle": "ソース「{{id}}」を削除しますか?",
+    "deleteTitleShort": "削除",
+    "deleteConsequence": "データソース「{{id}}」を削除します。これを参照するテーブルが動作しなくなる可能性があります。"
+  }
+}

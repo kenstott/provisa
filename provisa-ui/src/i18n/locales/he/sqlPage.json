@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "SQL Explorer",
+    "tabSql": "sql",
+    "tabCanvas": "canvas",
+    "execMs": "{{ms}} ms",
+    "queryStats": "נתוני שאילתה",
+    "showExpansion": "הצגת הרחבה",
+    "detachToPhysical": "ניתוק ל-SQL פיזי",
+    "expansionTitle": "הרחבת מדד",
+    "expansionLoading": "מביא הרחבה...",
+    "detachConfirmTitle": "לנתק ל-SQL פיזי?",
+    "detachConfirmBody": "פעולה זו חד-כיוונית: הקישור למדד יינתק והשאילתה תהפוך ל-SQL חופשי. אין דרך לחבר אותה מחדש למדד.",
+    "detachCancel": "ביטול",
+    "detachConfirm": "ניתוק"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "queryPage": {
+    "selectRole": "Wählen Sie eine Rolle aus.",
+    "redirectLabel": "Umleitung",
+    "thresholdLabel": "Schwellenwert",
+    "thresholdPlaceholder": "alle",
+    "redirectHint": "Alle Ergebnisse werden nach S3 umgeleitet",
+    "queryStats": "Abfragestatistiken",
+    "schemaError": "Schemafehler: {{message}}",
+    "redirectReady": "Umleitung bereit — {{rowCount}} Zeilen ({{contentType}})",
+    "download": "Herunterladen",
+    "dismissRedirect": "Umleitungshinweis ausblenden",
+    "formatNone": "Keins",
+    "formatParquet": "Parquet",
+    "formatArrow": "Arrow",
+    "formatCsv": "CSV",
+    "formatNdjson": "NDJSON",
+    "formatJson": "JSON"
+  }
+}

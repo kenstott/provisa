@@ -1,0 +1,6 @@
+{
+  "errorsPanel": {
+    "noUnsupportedConditions": "サポートされていない条件はありません。",
+    "unsupportedConditionsTitle": "サポートされていない ON 条件 — ビューを使用して単純化してください:"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "mcpServerTab": {
+    "intro": "Model Context Protocol (MCP) 伺服器向外部 AI 代理提供受治理的目錄探索及 SQL 執行。每次呼叫均按呼叫者的角色治理 — 伺服器絕不會預設為管理員。",
+    "loading": "正在載入…",
+    "statusLabel": "狀態",
+    "statusEnabled": "已啟用",
+    "statusDisabled": "已停用",
+    "endpointLabel": "端點",
+    "transportLabel": "傳輸方式",
+    "stdioRoleLabel": "已繫結的 stdio 角色",
+    "stdioRoleNone": "尚未設定 — stdio 呼叫需要 <code>{{envVar}}</code>",
+    "maxRowsLabel": "列數上限 (run_sql)",
+    "enableHint": "MCP 伺服器須明確啟用。將 <code>{{enableEnvVar}}</code> 環境變數設為連接埠並重新啟動服務即可啟用。如使用本機 stdio 傳輸，亦須將 <code>{{roleEnvVar}}</code> 設為一個 provisa 角色。",
+    "toolsHeading": "公開的工具",
+    "colTool": "工具",
+    "colDescription": "描述"
+  }
+}

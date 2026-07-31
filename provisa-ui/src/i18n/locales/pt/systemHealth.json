@@ -1,0 +1,31 @@
+{
+  "systemHealth": {
+    "loading": "Carregando integridade do sistema...",
+    "colComponent": "Componente",
+    "colStatus": "Status",
+    "colDetails": "Detalhes",
+    "federationEngine": "Mecanismo de federação",
+    "connected": "Conectado",
+    "disconnected": "Desconectado",
+    "workerCount": "{{count}} worker ({{active}} ativo)",
+    "workerCount_other": "{{count}} workers ({{active}} ativos)",
+    "metadataDb": "BD de metadados",
+    "unpooled": "Sem pool",
+    "active": "Ativo",
+    "noPool": "Nenhum pool",
+    "poolNotTracked": "o pool não rastreia conexões",
+    "poolConnections": "{{count}} conexões ({{idle}} ociosas)",
+    "cache": "Cache",
+    "disabled": "Desabilitado",
+    "embeddedMemory": "Incorporado (em memória)",
+    "serverConnected": "Servidor conectado",
+    "serverUnreachable": "Servidor inacessível",
+    "redisServer": "Servidor Redis",
+    "fakeredis": "fakeredis (no processo)",
+    "running": "Em execução",
+    "unreachable": "Inacessível",
+    "port": "porta {{port}}",
+    "mvRefreshLoop": "Loop de atualização de MV",
+    "stopped": "Parado"
+  }
+}

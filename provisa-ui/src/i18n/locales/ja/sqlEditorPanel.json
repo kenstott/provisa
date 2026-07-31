@@ -1,0 +1,30 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "ダブルクリックで名前を変更",
+    "closeTab": "{{title}} を閉じる",
+    "newTab": "新しいクエリタブ",
+    "detachedBadge": "分離",
+    "nlPlaceholder": "自然な言葉で質問 — SQLを生成します…",
+    "clear": "クリア",
+    "generate": "SQLを生成",
+    "generating": "生成中…",
+    "generatingSql": "SQLを生成中…",
+    "prettify": "SQLを整形",
+    "copySql": "SQLをコピー",
+    "copied": "コピーしました",
+    "copy": "コピー",
+    "run": "サンプル >",
+    "running": "実行中…",
+    "saveViewTitle": "現在のSQLをビュー「{{tableName}}」の定義として保存",
+    "saving": "保存中…",
+    "updateView": "「{{tableName}}」を更新",
+    "sampleModeFirst": "先頭",
+    "sampleModeLast": "末尾",
+    "sampleModeRandom": "ランダム",
+    "sampleModeLabel": "サンプルモード",
+    "rowCountLabel": "行数",
+    "roleLabel": "ロール",
+    "createView": "+ ビュー",
+    "requestView": "ビューをリクエスト"
+  }
+}

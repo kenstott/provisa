@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "Préréglages de colonnes",
+    "infoTooltip": "Injecte des valeurs calculées ou constantes dans chaque ligne renvoyée pour cette table. Utile pour ajouter des identifiants de domaine, des indicateurs liés au rôle ou des champs dérivés sans modifier le schéma source. « source » peut être : constant, sql_expression ou role_claim.",
+    "columnHeader": "Colonne",
+    "sourceHeader": "Source",
+    "valueHeader": "En-tête / valeur",
+    "removeAction": "Retirer",
+    "columnPlaceholder": "— colonne —",
+    "selectPlaceholder": "— sélectionner —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "Nom de l'en-tête (p. ex. X-User-Id)",
+    "literalValuePlaceholder": "Valeur littérale",
+    "numericValuePlaceholder": "Valeur numérique",
+    "addAction": "Ajouter",
+    "sourceNow": "now (horodatage UTC)",
+    "sourceHeaderOption": "header (en-tête de requête HTTP)",
+    "sourceLiteral": "literal (valeur fixe)"
+  }
+}

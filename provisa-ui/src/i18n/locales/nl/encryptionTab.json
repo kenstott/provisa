@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "Laden…",
+    "intro": "Kolomencryptie in rust. Kies een provider en beheer de bijbehorende hoofdsleutel. Envelope-encryptie omhult een datasleutel per kolom met de hoofdsleutel.",
+    "providerLabel": "Provider",
+    "providerCurrentSuffix": " (huidig)",
+    "providerComingSoonSuffix": " (binnenkort beschikbaar)",
+    "unavailableNote": "De runtime van deze provider is nog niet beschikbaar en kan niet worden geselecteerd. Velden ter referentie getoond.",
+    "keyIdLabel": "Sleutel-ID",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "Hoofdsleutel:",
+    "masterKeyPresent": "aanwezig",
+    "masterKeyMissing": "ontbreekt",
+    "generating": "Genereren…",
+    "rotateKey": "Hoofdsleutel roteren",
+    "generateKey": "Hoofdsleutel genereren",
+    "restartWarning": "{{note}} Het roteren van een hoofdsleutel terwijl er versleutelde gegevens bestaan, kan eerdere rijen onleesbaar maken — roteer voordat gevoelige gegevens worden opgeslagen, of plan een herversleuteling.",
+    "saveTitle": "Encryptie-instellingen opslaan",
+    "keyGeneratedStored": "Hoofdsleutel gegenereerd en opgeslagen in de OS-sleutelhanger (sleutel-id: {{keyId}}).",
+    "keyGeneratedNoKeychain": "Geen OS-sleutelhanger beschikbaar — kopieer deze sleutel en stel deze in als {{envVar}}. De sleutel wordt niet opnieuw getoond.",
+    "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen.",
+    "saved": "Opgeslagen."
+  }
+}

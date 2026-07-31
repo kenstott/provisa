@@ -1,0 +1,27 @@
+{
+  "sourceDetailPanel": {
+    "field": {
+      "description": "תיאור",
+      "type": "סוג",
+      "host": "מארח",
+      "port": "פורט",
+      "database": "מסד נתונים",
+      "username": "שם משתמש",
+      "naming": "מתן שמות",
+      "cache": "מטמון",
+      "cacheTtl": "TTL מטמון",
+      "effectiveTtl": "TTL בפועל",
+      "allowedDomains": "תחומים מורשים"
+    },
+    "namingInherit": "ירושה (גלובלי)",
+    "cacheEnabled": "מופעל",
+    "cacheDisabled": "מושבת",
+    "ttlInherit": "ירושה",
+    "domainsUnrestricted": "ללא הגבלה",
+    "editTitle": "עריכה",
+    "navigateTitle": "הצגת טבלאות רשומות",
+    "deleteTitle": "למחוק את המקור \"{{id}}\"?",
+    "deleteTitleShort": "מחיקה",
+    "deleteConsequence": "פעולה זו תסיר את מקור הנתונים \"{{id}}\" ועלולה לשבור טבלאות המפנות אליו."
+  }
+}

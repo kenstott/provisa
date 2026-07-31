@@ -1,0 +1,6 @@
+{
+  "errorsPanel": {
+    "noUnsupportedConditions": "没有不支持的条件。",
+    "unsupportedConditionsTitle": "不支持的 ON 条件——请使用视图进行简化："
+  }
+}

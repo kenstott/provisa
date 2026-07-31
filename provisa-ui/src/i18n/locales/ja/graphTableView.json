@@ -1,0 +1,8 @@
+{
+  "graphTableView": {
+    "noRows": "行がありません",
+    "copyAsCsv": "CSV としてコピー",
+    "copyJson": "JSON をコピー",
+    "table": "テーブル結果"
+  }
+}

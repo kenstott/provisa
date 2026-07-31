@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "按一下「擷取聯結」以尋找新的關係。已有註冊關係的 JOIN 條件會被排除。",
+    "colId": "ID",
+    "colSource": "來源",
+    "colTarget": "目標",
+    "colCardinality": "基數",
+    "colActions": "動作",
+    "idLabel": "候選項 ID",
+    "cardinalityLabel": "基數",
+    "manyToOne": "多對一",
+    "oneToMany": "一對多",
+    "promoted": "已提升",
+    "promote": "提升"
+  }
+}

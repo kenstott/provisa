@@ -1,0 +1,13 @@
+{
+  "federationEngineTab": {
+    "intro": "聯邦引擎執行每一個聯邦查詢。選擇引擎並進行設定；其他組件（路由、治理、快取）維持不變。",
+    "loading": "載入中…",
+    "engineLabel": "引擎",
+    "current": "（執行中）",
+    "pendingSelection": "已儲存的選擇：{{engine}}。服務目前仍在執行 {{running}}。",
+    "envPinned": "已由 $PROVISA_ENGINE 固定為 {{engine}}。在此儲存的選擇會被保存，但重新啟動時以固定值為準。",
+    "saveButton": "儲存引擎選擇",
+    "saved": "已儲存。",
+    "savedRestartRequired": "已儲存。請重新啟動服務以套用新的聯邦引擎。"
+  }
+}

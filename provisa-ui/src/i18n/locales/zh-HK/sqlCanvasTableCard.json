@@ -1,0 +1,7 @@
+{
+  "sqlCanvasTableCard": {
+    "removeTable": "從畫布移除 {{tableName}}",
+    "toggleColumn": "切換選取欄 {{columnName}}",
+    "connectColumn": "從 {{columnName}} 開始建立關係"
+  }
+}

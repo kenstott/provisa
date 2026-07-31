@@ -1,0 +1,27 @@
+{
+  "sourceDetailPanel": {
+    "field": {
+      "description": "描述",
+      "type": "类型",
+      "host": "主机",
+      "port": "端口",
+      "database": "数据库",
+      "username": "用户名",
+      "naming": "命名",
+      "cache": "缓存",
+      "cacheTtl": "缓存 TTL",
+      "effectiveTtl": "生效 TTL",
+      "allowedDomains": "允许的域"
+    },
+    "namingInherit": "继承（全局）",
+    "cacheEnabled": "已启用",
+    "cacheDisabled": "已禁用",
+    "ttlInherit": "继承",
+    "domainsUnrestricted": "无限制",
+    "editTitle": "编辑",
+    "navigateTitle": "查看已注册的表",
+    "deleteTitle": "删除数据源“{{id}}”？",
+    "deleteTitleShort": "删除",
+    "deleteConsequence": "这将移除数据源“{{id}}”，并可能破坏引用它的表。"
+  }
+}

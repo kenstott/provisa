@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "Métricas",
+    "sqlCreateHint": "Exibições livres são criadas no editor de SQL: escreva o SELECT, execute e depois salve como exibição.",
+    "sqlEditHint": "O SQL desta exibição é editado no editor de SQL.",
+    "openSqlEditor": "Abrir editor de SQL",
+    "editInSqlEditor": "Editar no editor de SQL",
+    "fieldName": "Nome da exibição",
+    "fieldNamePlaceholder": "por exemplo, revenue_by_region",
+    "fieldDomain": "Domínio",
+    "fieldDescription": "Descrição",
+    "fieldMetrics": "Métricas",
+    "fieldMetricsPlaceholder": "Escolha uma ou mais métricas registradas",
+    "fieldDimensions": "Dimensões",
+    "fieldDimensionsPlaceholder": "Colunas das tabelas das métricas (incluído um salto de relacionamento de distância)",
+    "fieldFilters": "Filtros",
+    "fieldFiltersHelp": "Uma condição SQL por linha; as condições são combinadas com AND.",
+    "save": "Salvar exibição",
+    "saveFailed": "Falha ao salvar",
+    "cancel": "Cancelar"
+  }
+}

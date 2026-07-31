@@ -1,0 +1,7 @@
+{
+  "sqlCanvasTableCard": {
+    "removeTable": "{{tableName}} をキャンバスから削除",
+    "toggleColumn": "列 {{columnName}} の選択を切り替え",
+    "connectColumn": "{{columnName}} からリレーションシップを開始"
+  }
+}

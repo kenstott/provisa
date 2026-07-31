@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "点击“提取联接”以发现新的关系。已注册关系的 JOIN 条件会被排除。",
+    "colId": "ID",
+    "colSource": "源",
+    "colTarget": "目标",
+    "colCardinality": "基数",
+    "colActions": "操作",
+    "idLabel": "候选 ID",
+    "cardinalityLabel": "基数",
+    "manyToOne": "多对一",
+    "oneToMany": "一对多",
+    "promoted": "已提升",
+    "promote": "提升"
+  }
+}

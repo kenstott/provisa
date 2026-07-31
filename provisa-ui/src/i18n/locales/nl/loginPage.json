@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "Inloggen",
+    "authNotConfigured": "Authenticatie niet geconfigureerd",
+    "loading": "Laden...",
+    "signInTitle": "Aanmelden",
+    "firstLoginHeading": "Deze implementatie instellen",
+    "firstLoginTitle": "Dit is de eerste aanmelding",
+    "firstLoginBody": "Nog niemand beheert deze implementatie. Wie zich als eerste aanmeldt, wordt de platformbeheerder — met volledige controle over organisaties, gebruikers en databronnen. Kies hieronder een aanmeldmethode om die rol te claimen.",
+    "signInWithGoogle": "Aanmelden met Google",
+    "signInWithGithub": "Aanmelden met GitHub",
+    "signInWithMicrosoft": "Aanmelden met Microsoft",
+    "signInWithEmail": "Aanmelden met e-mail",
+    "orDivider": "of",
+    "haveAccountSignIn": "Al een account? Aanmelden",
+    "needAccountRegister": "Nog geen account? Registreren",
+    "signingIn": "Aanmelden...",
+    "createAccountTitle": "Account aanmaken",
+    "username": "Gebruikersnaam",
+    "email": "E-mail",
+    "displayName": "Weergavenaam",
+    "organization": "Organisatie",
+    "password": "Wachtwoord",
+    "confirmPassword": "Wachtwoord bevestigen",
+    "creating": "Aanmaken...",
+    "createAccount": "Account aanmaken",
+    "backToLogin": "Terug naar inloggen",
+    "loggingIn": "Inloggen...",
+    "passwordsDoNotMatch": "Wachtwoorden komen niet overeen",
+    "registrationFailed": "Registratie mislukt",
+    "firebaseSignInFailed": "Aanmelden bij Firebase mislukt"
+  }
+}

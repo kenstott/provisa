@@ -1,0 +1,22 @@
+{
+  "neo4jExportModal": {
+    "title": "Export Neo4j",
+    "nodeCount_one": "{{count}} nœud",
+    "nodeCount_other": "{{count}} nœuds",
+    "edgeCount_one": "{{count}} relation",
+    "edgeCount_other": "{{count}} relations",
+    "downloadScript": "Télécharger le script Cypher (.cypher)",
+    "divider": "— ou exporter directement vers un serveur —",
+    "httpUrl": "URL HTTP",
+    "database": "Base de données",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "close": "Fermer",
+    "exportToServer": "Exporter vers le serveur",
+    "exporting": "Export en cours…",
+    "statementsImported_one": "{{count}} instruction importée.",
+    "statementsImported_other": "{{count}} instructions importées.",
+    "errorsSuffix_one": " ({{count}} erreur : {{first}})",
+    "errorsSuffix_other": " ({{count}} erreurs : {{first}})"
+  }
+}

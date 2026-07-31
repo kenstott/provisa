@@ -1,0 +1,12 @@
+{
+  "mcpExplore": {
+    "title": "MCP",
+    "intro": "Discutez avec un assistant IA qui explore le catalogue et exécute du SQL pour vous via les outils MCP gouvernés — les mêmes outils qu'utilisent les agents externes.",
+    "roleNote": "Rôle actif : {{role}}",
+    "noRole": "(aucun rôle)",
+    "thinking": "L'assistant travaille…",
+    "emptyState": "Interrogez vos données — p. ex. « quelles tables contiennent l'e-mail client ? », « les 10 plus grosses commandes par montant » ou « à quoi ressemble la table orders ? »",
+    "inputPlaceholder": "Interrogez votre catalogue ou vos données…",
+    "clear": "Effacer la saisie"
+  }
+}

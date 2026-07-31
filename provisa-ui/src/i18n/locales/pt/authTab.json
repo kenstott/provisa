@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "A autenticação verifica quem está chamando; funções + RLS decidem o que pode ser visto. Escolha o provedor de identidade e configure sua conexão.",
+    "providerLabel": "Provedor",
+    "current": " (atual)",
+    "roles": "Funções",
+    "defaultRole": "Função padrão",
+    "assignmentsFrom": "Atribuições de função de",
+    "assignmentsSourceClaims": "Declarações do token",
+    "assignmentsSourceProvisa": "Provisa (atribuições locais)",
+    "trustUpstream": "Confiar em cabeçalhos de identidade do proxy upstream",
+    "allowSimpleAuth": "Permitir autenticação simples (proteção de produção — necessária para habilitar usuário/senha)",
+    "saveButton": "Salvar configurações de autenticação",
+    "loading": "Carregando…",
+    "saved": "Salvo.",
+    "savedRestartRequired": "Salvo. Reinicie o serviço para aplicar."
+  }
+}

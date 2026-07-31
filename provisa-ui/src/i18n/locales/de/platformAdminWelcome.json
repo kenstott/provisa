@@ -1,0 +1,15 @@
+{
+  "platformAdminWelcome": {
+    "title": "Sie sind der Plattformadministrator",
+    "body": "Mit Ihrer Anmeldung wurden Sie zum platform_admin dieser Bereitstellung — Sie besitzen hier jede Fähigkeit, und niemand sonst kann die Rolle jetzt beanspruchen. Sie sind außerdem Administrator der Root-Organisation, die bereits die Demo-Quellen, -Tabellen und -Domänen enthält.",
+    "backupHeading": "Einen Ersatzadministrator hinzufügen",
+    "backupBody": "Eine Bereitstellung mit nur einem platform_admin hat genau ein Konto zwischen sich und dem Zustand, dass niemand sie mehr verwalten kann. Das Hinzufügen eines Ersatzes beginnt mit einer Einladung in root:",
+    "backupStep1": "Laden Sie die Person über die Team-Seite in die Root-Organisation ein.",
+    "backupStep2": "Sie meldet sich an und löst die Einladung ein, wodurch sie Mitglied von root wird.",
+    "backupStep3": "Weisen Sie ihr in root die Rolle platform_admin zu — das verleiht die bereitstellungsweite Administration.",
+    "openHeading": "Die Site ist jetzt für Organisationen geöffnet",
+    "openBody": "Ab der nächsten Anmeldung erstellt jeder, der sich authentifiziert, eine eigene Organisation. Niemand wird durch die Anmeldung zum Plattformadministrator, und Personen in die eigene Organisation einzuladen ist Aufgabe des jeweiligen org_admin.",
+    "goToTeam": "Jemanden in root einladen",
+    "dismiss": "Verstanden"
+  }
+}

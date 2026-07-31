@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "Responscache",
+      "hot": "Hot-tabellen",
+      "materialized": "Gematerialiseerde opslag",
+      "setup": "Configuratie"
+    },
+    "response": {
+      "loading": "Cachestatistieken laden...",
+      "disabledBanner": "Query-responscache uitgeschakeld (opslag: {{storeType}}). Queryresultaten worden niet in Redis gecachet, dus de tellers hieronder blijven op nul. Hot-tabel- en gematerialiseerde-opslagcaching zijn aparte lagen (zie de andere tabbladen) en blijven onaangetast.",
+      "cachedEntries": "Gecachete items",
+      "hitRate": "Trefferpercentage",
+      "hits": "Treffers",
+      "misses": "Missers",
+      "store": "Opslag",
+      "redisKeysRaw": "Redis-sleutels (ruw)",
+      "memory": "Geheugen",
+      "evicted": "Verwijderd",
+      "expired": "Verlopen",
+      "clients": "Clients",
+      "opsPerSec": "Ops/sec",
+      "filterPlaceholder": "Filteren op tabel of domein…",
+      "purgeAll": "Volledige cache wissen",
+      "purging": "Wissen...",
+      "table": "Tabel",
+      "domain": "Domein",
+      "purgeTable": "Wissen",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "Kleine opzoektabellen gespiegeld in Redis (of in-memory) en inline opgenomen als VALUES-CTE's om JOIN's te optimaliseren. Altijd beschikbaar, ongeacht de responscache-opslag.",
+      "loadedTables": "Geladen tabellen",
+      "candidates": "Kandidaten",
+      "cachedRows": "Gecachete rijen",
+      "empty": "Geen hot-tabellen geladen of als kandidaat geregistreerd.",
+      "table": "Tabel",
+      "catalog": "Catalogus",
+      "schema": "Schema",
+      "rows": "Rijen",
+      "kind": "Soort",
+      "state": "Status",
+      "kindApi": "API",
+      "kindEngine": "engine",
+      "stateLoaded": "geladen",
+      "stateCandidate": "kandidaat",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "Duurzame opslag waar niet-koppelbare bronnen landen en gematerialiseerde views worden weggeschreven. Verschilt van de responscache en de hot-laag; een query kan elke combinatie van de drie gebruiken.",
+      "federationEngine": "Federatie-engine",
+      "materializedViews": "Gematerialiseerde views",
+      "storeLabel": "Opslag:",
+      "viewButton": "+ View",
+      "empty": "Geen gematerialiseerde views gedefinieerd.",
+      "view": "View",
+      "sourceTables": "Brontabellen",
+      "target": "Doel",
+      "status": "Status",
+      "rows": "Rijen",
+      "lastRefresh": "Laatste vernieuwing",
+      "interval": "Interval",
+      "error": "Fout",
+      "never": "nooit",
+      "refresh": "Vernieuwen",
+      "refreshing": "...",
+      "disable": "Uitschakelen",
+      "enable": "Inschakelen",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "Eerste pagina",
+      "previous": "Vorige pagina",
+      "next": "Volgende pagina",
+      "last": "Laatste pagina",
+      "pageOf": "Pagina {{page}} / {{total}}"
+    }
+  }
+}

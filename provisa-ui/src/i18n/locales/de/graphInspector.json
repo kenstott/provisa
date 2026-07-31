@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "Übersicht",
+    "hidePanel": "Panel ausblenden",
+    "nodeLabels": "Knotenbezeichnungen",
+    "relationshipTypes": "Beziehungstypen",
+    "summary": "{{nodeCount}} Knoten, {{edgeCount}} Beziehungen werden angezeigt.",
+    "hint": "Klicken Sie auf einen Knoten oder eine Kante, um die Eigenschaften zu prüfen.",
+    "nodeProperties": "Knoteneigenschaften",
+    "relationshipProperties": "Beziehungseigenschaften",
+    "copyAll": "Alle Eigenschaften als JSON kopieren",
+    "showDetails": "Details anzeigen",
+    "showJson": "JSON anzeigen",
+    "close": "Schließen",
+    "domain": "Domäne",
+    "changeColor": "Farbe ändern",
+    "colorSwatch": "Farbe auf {{color}} setzen",
+    "cqlAliasLabel": "CQL-Alias (UPPER_SNAKE)",
+    "gqlAliasLabel": "GQL-Alias (camelCase)",
+    "saveAlias": "Speichern",
+    "graphStats": "Graphstatistiken",
+    "properties": "Eigenschaften",
+    "copyValue": "Wert kopieren",
+    "resizePanel": "Inspektor-Panel skalieren"
+  }
+}

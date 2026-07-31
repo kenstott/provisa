@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "尚未运行任何查询。历史记录会跨会话保留。",
+    "colTime": "时间",
+    "colRole": "角色",
+    "colDuration": "耗时",
+    "colRows": "行数",
+    "colSql": "SQL",
+    "colActions": "操作",
+    "error": "错误",
+    "restore": "恢复",
+    "restoreLabel": "恢复 {{time}} 的查询"
+  }
+}

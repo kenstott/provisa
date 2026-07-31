@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "回應快取",
+      "hot": "熱門表格",
+      "materialized": "具體化儲存區",
+      "setup": "設定"
+    },
+    "response": {
+      "loading": "正在載入快取統計數據...",
+      "disabledBanner": "查詢回應快取已停用（儲存區：{{storeType}}）。查詢結果不會快取於 Redis，因此以下計數器維持為零。熱門表格快取與具體化儲存區快取屬於獨立層（請見其他分頁），不受影響。",
+      "cachedEntries": "已快取項目",
+      "hitRate": "命中率",
+      "hits": "命中",
+      "misses": "未命中",
+      "store": "儲存區",
+      "redisKeysRaw": "Redis 鍵（原始）",
+      "memory": "記憶體",
+      "evicted": "已淘汰",
+      "expired": "已過期",
+      "clients": "用戶端",
+      "opsPerSec": "每秒作業數",
+      "filterPlaceholder": "按表格或領域篩選…",
+      "purgeAll": "清除所有快取",
+      "purging": "正在清除...",
+      "table": "表格",
+      "domain": "領域",
+      "purgeTable": "清除",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "鏡像至 Redis（或記憶體內）的小型查閱表格，會以 VALUES CTE 內嵌以優化 JOIN。無論回應快取儲存區為何，均可使用。",
+      "loadedTables": "已載入表格",
+      "candidates": "候選項",
+      "cachedRows": "已快取列數",
+      "empty": "沒有已載入或登記為候選項的熱門表格。",
+      "table": "表格",
+      "catalog": "目錄",
+      "schema": "結構描述",
+      "rows": "列數",
+      "kind": "種類",
+      "state": "狀態",
+      "kindApi": "API",
+      "kindEngine": "引擎",
+      "stateLoaded": "已載入",
+      "stateCandidate": "候選項",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "耐久儲存區，用於存放無法附加的數據來源，並寫入具體化檢視。有別於回應快取及熱門層；一個查詢可任意組合使用三者。",
+      "federationEngine": "聯邦引擎",
+      "materializedViews": "具體化檢視",
+      "storeLabel": "儲存區：",
+      "viewButton": "+ 檢視",
+      "empty": "尚未定義具體化檢視。",
+      "view": "檢視",
+      "sourceTables": "來源表格",
+      "target": "目標",
+      "status": "狀態",
+      "rows": "列數",
+      "lastRefresh": "上次重新整理",
+      "interval": "間隔",
+      "error": "錯誤",
+      "never": "從未",
+      "refresh": "重新整理",
+      "refreshing": "...",
+      "disable": "停用",
+      "enable": "啟用",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "第一頁",
+      "previous": "上一頁",
+      "next": "下一頁",
+      "last": "最後一頁",
+      "pageOf": "第 {{page}} / {{total}} 頁"
+    }
+  }
+}

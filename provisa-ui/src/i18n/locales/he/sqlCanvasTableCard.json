@@ -1,0 +1,7 @@
+{
+  "sqlCanvasTableCard": {
+    "removeTable": "הסרת {{tableName}} מהקנבס",
+    "toggleColumn": "החלפת מצב הבחירה של העמודה {{columnName}}",
+    "connectColumn": "התחלת קשר מ-{{columnName}}"
+  }
+}

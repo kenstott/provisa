@@ -1,0 +1,21 @@
+{
+  "schemaBrowser": {
+    "collapsePanel": "摺疊結構描述面板",
+    "expandPanel": "展開結構描述面板",
+    "heading": "結構描述",
+    "groupMetrics": "指標",
+    "groupFacts": "事實",
+    "groupDimensions": "維度",
+    "groupEmpty": "（無）",
+    "dragMetricToCanvas": "拖曳指標至畫布",
+    "insertMetricQuery": "按一下以插入語義指標查詢",
+    "dragToCanvas": "拖曳至畫布",
+    "insertQualifiedName": "按兩下以插入完整名稱",
+    "insertTableReference": "在 SQL 編輯器插入資料表參考",
+    "tableAliasName": "資料表別名／名稱",
+    "domainId": "領域 ID",
+    "insertQuotedColumn": "按一下以插入帶引號的欄位",
+    "previousPage": "上一頁",
+    "nextPage": "下一頁"
+  }
+}

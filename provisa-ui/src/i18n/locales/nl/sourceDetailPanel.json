@@ -1,0 +1,27 @@
+{
+  "sourceDetailPanel": {
+    "field": {
+      "description": "Beschrijving",
+      "type": "Type",
+      "host": "Host",
+      "port": "Poort",
+      "database": "Database",
+      "username": "Gebruikersnaam",
+      "naming": "Naamgeving",
+      "cache": "Cache",
+      "cacheTtl": "Cache-TTL",
+      "effectiveTtl": "Effectieve TTL",
+      "allowedDomains": "Toegestane domeinen"
+    },
+    "namingInherit": "overnemen (globaal)",
+    "cacheEnabled": "ingeschakeld",
+    "cacheDisabled": "uitgeschakeld",
+    "ttlInherit": "overnemen",
+    "domainsUnrestricted": "onbeperkt",
+    "editTitle": "Bewerken",
+    "navigateTitle": "Geregistreerde tabellen bekijken",
+    "deleteTitle": "Bron \"{{id}}\" verwijderen?",
+    "deleteTitleShort": "Verwijderen",
+    "deleteConsequence": "Hiermee wordt de databron \"{{id}}\" verwijderd en kunnen tabellen die ernaar verwijzen defect raken."
+  }
+}

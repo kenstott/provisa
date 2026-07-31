@@ -1,0 +1,22 @@
+{
+  "neo4jExportModal": {
+    "title": "Экспорт в Neo4j",
+    "nodeCount_one": "{{count}} узел",
+    "nodeCount_other": "{{count}} узлов",
+    "edgeCount_one": "{{count}} связь",
+    "edgeCount_other": "{{count}} связей",
+    "downloadScript": "Скачать скрипт Cypher (.cypher)",
+    "divider": "— или экспортировать напрямую на сервер —",
+    "httpUrl": "HTTP URL",
+    "database": "База данных",
+    "username": "Имя пользователя",
+    "password": "Пароль",
+    "close": "Закрыть",
+    "exportToServer": "Экспортировать на сервер",
+    "exporting": "Экспорт…",
+    "statementsImported_one": "Импортирована {{count}} инструкция.",
+    "statementsImported_other": "Импортировано инструкций: {{count}}.",
+    "errorsSuffix_one": " ({{count}} ошибка: {{first}})",
+    "errorsSuffix_other": " (ошибок: {{count}}; {{first}})"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "canvasControls": {
+    "toolbarLabel": "Commandes du canevas",
+    "zoomIn": "Zoom avant",
+    "zoomOut": "Zoom arrière",
+    "fitToScreen": "Ajuster à l'écran",
+    "switchToHierarchy": "Passer à la disposition hiérarchique",
+    "switchToForce": "Passer à la disposition par forces",
+    "nudgeLayout": "Ajuster la disposition — décale les nœuds sélectionnés (ou tous si aucun n'est sélectionné) ; maintenez pour continuer à itérer",
+    "edgeLength": "Longueur des arêtes",
+    "edgeLengthValue": "{{value}} px"
+  }
+}

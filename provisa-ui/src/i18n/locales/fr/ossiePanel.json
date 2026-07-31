@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "Échange sémantique (Ossie)",
+    "endpointLabel": "Endpoint :",
+    "copyEndpoint": "Copier l'URL de l'endpoint",
+    "download": "Télécharger",
+    "import": "Importer",
+    "reviewTitle": "Vérifier l'import Ossie : {{model}}",
+    "reviewHint": "Rien n'est encore enregistré. Décochez ce que vous voulez écarter, puis appliquez — les éléments cochés sont enregistrés via les mutations d'enregistrement standard.",
+    "tablesSection": "Tables ({{count}})",
+    "relationshipsSection": "Relations ({{count}})",
+    "metricsSection": "Métriques ({{count}})",
+    "columnCount": "{{count}} colonnes",
+    "apply": "Appliquer ({{count}})",
+    "applied": "Appliqué",
+    "failed": "Échec",
+    "cancel": "Annuler",
+    "close": "Fermer"
+  }
+}

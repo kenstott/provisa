@@ -1,0 +1,21 @@
+{
+  "sqlModelingResultsPanel": {
+    "downloadCsv": "Скачать CSV",
+    "rowCount_one": "{{count}} строка",
+    "rowCount_other": "{{count}} строк",
+    "filteredFrom": "(отфильтровано из {{count}})",
+    "firstPage": "Первая страница",
+    "previousPage": "Предыдущая страница",
+    "nextPage": "Следующая страница",
+    "lastPage": "Последняя страница",
+    "pageOf": "Страница {{page}} / {{total}}",
+    "filterPlaceholder": "фильтр…",
+    "filterColumn": "Фильтр по {{column}}",
+    "resizeColumn": "Изменить ширину столбца {{column}}",
+    "noResults": "Нет результатов.",
+    "writeSqlPrompt": "Напишите SQL и нажмите «Выборка» для выполнения.",
+    "nullValue": "null",
+    "sortAscending": "сортировка по возрастанию",
+    "sortDescending": "сортировка по убыванию"
+  }
+}

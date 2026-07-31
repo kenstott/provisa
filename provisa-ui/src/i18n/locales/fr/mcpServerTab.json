@@ -1,0 +1,18 @@
+{
+  "mcpServerTab": {
+    "intro": "Le serveur Model Context Protocol (MCP) expose la découverte gouvernée du catalogue et l'exécution SQL aux agents d'IA externes. Chaque appel est gouverné par le rôle de l'appelant — le serveur ne bascule jamais sur admin par défaut.",
+    "loading": "Chargement…",
+    "statusLabel": "Statut",
+    "statusEnabled": "Activé",
+    "statusDisabled": "Désactivé",
+    "endpointLabel": "Endpoint",
+    "transportLabel": "Transport",
+    "stdioRoleLabel": "Rôle stdio lié",
+    "stdioRoleNone": "aucun défini — les appels stdio requièrent <code>{{envVar}}</code>",
+    "maxRowsLabel": "Plafond de lignes (run_sql)",
+    "enableHint": "Le serveur MCP est optionnel. Définissez la variable d'environnement <code>{{enableEnvVar}}</code> sur un port et redémarrez le service pour l'activer. Pour le transport stdio local, définissez aussi <code>{{roleEnvVar}}</code> sur un rôle provisa.",
+    "toolsHeading": "Outils exposés",
+    "colTool": "Outil",
+    "colDescription": "Description"
+  }
+}

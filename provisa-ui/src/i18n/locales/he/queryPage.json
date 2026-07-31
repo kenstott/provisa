@@ -1,0 +1,20 @@
+{
+  "queryPage": {
+    "selectRole": "יש לבחור תפקיד.",
+    "redirectLabel": "הפניה",
+    "thresholdLabel": "סף",
+    "thresholdPlaceholder": "הכול",
+    "redirectHint": "כל התוצאות מופנות אל S3",
+    "queryStats": "נתוני שאילתה",
+    "schemaError": "שגיאת סכמה: {{message}}",
+    "redirectReady": "ההפניה מוכנה — {{rowCount}} שורות ({{contentType}})",
+    "download": "הורדה",
+    "dismissRedirect": "סגירת הודעת ההפניה",
+    "formatNone": "ללא",
+    "formatParquet": "Parquet",
+    "formatArrow": "Arrow",
+    "formatCsv": "CSV",
+    "formatNdjson": "NDJSON",
+    "formatJson": "JSON"
+  }
+}

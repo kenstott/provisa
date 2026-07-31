@@ -1,0 +1,6 @@
+{
+  "domainSelector": {
+    "all": "所有域",
+    "label": "域：{{domain}}"
+  }
+}

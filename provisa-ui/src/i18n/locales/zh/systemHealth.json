@@ -1,0 +1,31 @@
+{
+  "systemHealth": {
+    "loading": "正在加载系统健康状况…",
+    "colComponent": "组件",
+    "colStatus": "状态",
+    "colDetails": "详细信息",
+    "federationEngine": "联邦引擎",
+    "connected": "已连接",
+    "disconnected": "已断开",
+    "workerCount": "{{count}} 个工作进程（{{active}} 个活动）",
+    "workerCount_other": "{{count}} 个工作进程（{{active}} 个活动）",
+    "metadataDb": "元数据数据库",
+    "unpooled": "未使用连接池",
+    "active": "活动",
+    "noPool": "无连接池",
+    "poolNotTracked": "连接池不跟踪连接",
+    "poolConnections": "{{count}} 个连接（{{idle}} 个空闲）",
+    "cache": "缓存",
+    "disabled": "已禁用",
+    "embeddedMemory": "嵌入式（内存中）",
+    "serverConnected": "服务器已连接",
+    "serverUnreachable": "服务器不可达",
+    "redisServer": "Redis 服务器",
+    "fakeredis": "fakeredis（进程内）",
+    "running": "运行中",
+    "unreachable": "不可达",
+    "port": "端口 {{port}}",
+    "mvRefreshLoop": "物化视图刷新循环",
+    "stopped": "已停止"
+  }
+}

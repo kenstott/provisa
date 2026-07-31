@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "confirm": "Confirmer",
+    "processing": "Traitement..."
+  },
+  "app": {
+    "apiUnreachable": "Impossible de joindre l'API Provisa.",
+    "notAuthorized": "Vous n'avez pas l'autorisation de consulter cette page."
+  },
+  "theme": {
+    "toggle": "Basculer le thème de couleur",
+    "light": "Clair",
+    "dark": "Sombre"
+  },
+  "multiSelect": {
+    "defaultLabel": "Sélectionner des options",
+    "all": "tout"
+  },
+  "roleSelector": {
+    "none": "Aucun rôle configuré",
+    "all": "Tous",
+    "role": "Rôle : {{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "Nom d'utilisateur",
+    "colEmail": "E-mail",
+    "colDisplayName": "Nom d'affichage",
+    "colActive": "Actif",
+    "actions": "Actions",
+    "empty": "Aucun utilisateur local",
+    "yes": "Oui",
+    "no": "Non",
+    "none": "—",
+    "expandUser": "Afficher les affectations de {{username}}",
+    "deleteUser": "Supprimer l'utilisateur {{username}}",
+    "assignmentsHeading": "Affectations rôle:domaine",
+    "noAssignments": "Aucune affectation",
+    "removeAssignment": "Retirer l'affectation {{role}}:{{domain}}",
+    "roleLabel": "Rôle",
+    "domainLabel": "Domaine",
+    "allDomains": "* (tous les domaines)",
+    "add": "Ajouter",
+    "createHeading": "Créer un utilisateur",
+    "username": "Nom d'utilisateur",
+    "usernameRequired": "Nom d'utilisateur *",
+    "password": "Mot de passe",
+    "passwordRequired": "Mot de passe *",
+    "email": "E-mail",
+    "emailOptional": "E-mail (facultatif)",
+    "displayName": "Nom d'affichage",
+    "displayNameOptional": "Nom d'affichage (facultatif)",
+    "createButton": "Créer l'utilisateur",
+    "created": "« {{username}} » créé",
+    "deleted": "« {{username}} » supprimé",
+    "createFailed": "Échec de la création",
+    "assignmentFailed": "Échec de l'affectation"
+  }
+}

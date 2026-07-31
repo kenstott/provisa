@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "Modelagem SQL",
+    "description": "Extrair condições de JOIN como novos candidatos a relacionamento — relacionamentos existentes são excluídos",
+    "close": "Fechar",
+    "tabSql": "SQL",
+    "tabCanvas": "Canvas",
+    "nlPlaceholder": "Pergunte em linguagem natural — gera SQL…",
+    "nlLoading": "Carregando",
+    "generateSql": "Gerar SQL",
+    "generating": "Gerando…",
+    "copySql": "Copiar SQL",
+    "copied": "Copiado",
+    "copy": "Copiar",
+    "run": "Amostra >",
+    "runningLabel": "Executando…",
+    "sampleModeLabel": "Modo de amostra",
+    "sampleModeFirst": "Primeiras",
+    "sampleModeLast": "Últimas",
+    "sampleModeRandom": "Aleatórias",
+    "sampleSizeLabel": "Número de linhas",
+    "roleLabel": "Função",
+    "extractJoins": "Extrair joins",
+    "tabResults": "Resultados",
+    "tabProfile": "Perfil",
+    "tabCandidates": "Candidatos",
+    "tabErrors": "Erros",
+    "tabHistory": "Histórico",
+    "execMs": "{{ms}}ms"
+  }
+}

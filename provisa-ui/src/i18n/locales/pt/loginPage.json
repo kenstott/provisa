@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "Login",
+    "authNotConfigured": "Autenticação não configurada",
+    "loading": "Carregando...",
+    "signInTitle": "Entrar",
+    "firstLoginHeading": "Configurar esta implantação",
+    "firstLoginTitle": "Este é o primeiro login",
+    "firstLoginBody": "Ninguém administra esta implantação ainda. Quem entrar primeiro se torna o administrador da plataforma — com controle total sobre organizações, usuários e fontes de dados. Escolha um método de login abaixo para assumir.",
+    "signInWithGoogle": "Entrar com Google",
+    "signInWithGithub": "Entrar com GitHub",
+    "signInWithMicrosoft": "Entrar com Microsoft",
+    "signInWithEmail": "Entrar com e-mail",
+    "orDivider": "ou",
+    "haveAccountSignIn": "Já tem uma conta? Entrar",
+    "needAccountRegister": "Precisa de uma conta? Registrar",
+    "signingIn": "Entrando...",
+    "createAccountTitle": "Criar conta",
+    "username": "Nome de usuário",
+    "email": "E-mail",
+    "displayName": "Nome de exibição",
+    "organization": "Organização",
+    "password": "Senha",
+    "confirmPassword": "Confirmar senha",
+    "creating": "Criando...",
+    "createAccount": "Criar conta",
+    "backToLogin": "Voltar ao login",
+    "loggingIn": "Entrando...",
+    "passwordsDoNotMatch": "As senhas não coincidem",
+    "registrationFailed": "Falha no registro",
+    "firebaseSignInFailed": "Falha no login com Firebase"
+  }
+}

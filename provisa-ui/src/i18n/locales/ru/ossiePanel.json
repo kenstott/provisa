@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "Семантический обмен (Ossie)",
+    "endpointLabel": "Конечная точка:",
+    "copyEndpoint": "Копировать URL конечной точки",
+    "download": "Скачать",
+    "import": "Импортировать",
+    "reviewTitle": "Проверка импорта Ossie: {{model}}",
+    "reviewHint": "Пока ничего не зарегистрировано. Снимите отметку с того, что хотите исключить, затем примените — отмеченные элементы регистрируются через стандартные мутации регистрации.",
+    "tablesSection": "Таблицы ({{count}})",
+    "relationshipsSection": "Связи ({{count}})",
+    "metricsSection": "Метрики ({{count}})",
+    "columnCount": "{{count}} столбцов",
+    "apply": "Применить ({{count}})",
+    "applied": "Применено",
+    "failed": "Ошибка",
+    "cancel": "Отмена",
+    "close": "Закрыть"
+  }
+}

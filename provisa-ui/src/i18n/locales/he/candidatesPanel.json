@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "יש ללחוץ על \"Extract Joins\" כדי למצוא קשרים חדשים. תנאי JOIN שכבר יש להם קשר רשום אינם נכללים.",
+    "colId": "מזהה",
+    "colSource": "מקור",
+    "colTarget": "יעד",
+    "colCardinality": "Cardinality",
+    "colActions": "פעולות",
+    "idLabel": "מזהה מועמד",
+    "cardinalityLabel": "Cardinality",
+    "manyToOne": "רבים-לאחד",
+    "oneToMany": "אחד-לרבים",
+    "promoted": "קודם",
+    "promote": "קידום"
+  }
+}

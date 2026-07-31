@@ -1,0 +1,12 @@
+{
+  "securityTab": {
+    "intro": "Contrôle la posture de sécurité de la plateforme. Le mode élevé (zéro confiance) a des effets importants — lisez l'avertissement avant de l'activer.",
+    "modeLabel": "Mode de sécurité",
+    "highWarningTitle": "Le mode élevé (zéro confiance) a des effets importants",
+    "highWarning": "Le serveur pgwire ne démarrera pas, et les endpoints de données REST et GraphQL renverront 403. Seuls les clients qui déchiffrent localement (kms_key_arn configuré) peuvent accéder aux données. Vérifiez la configuration de vos clients avant l'activation.",
+    "loading": "Chargement…",
+    "saved": "Enregistré.",
+    "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer.",
+    "saveTitle": "Enregistrer la posture de sécurité"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "onboardGate": {
+    "unavailableTitle": "Provisaに接続できません",
+    "unavailableBody": "サーバーが応答しなかったため、Provisaはあなたが誰であるかを確認できませんでした。これはアカウントの問題ではありません。しばらくしてから再試行してください。",
+    "retry": "再試行"
+  }
+}

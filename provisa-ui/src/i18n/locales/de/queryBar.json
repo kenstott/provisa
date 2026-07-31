@@ -1,0 +1,7 @@
+{
+  "queryBar": {
+    "autoImputeOn": "Automatische Beziehungsableitung AN — zum Deaktivieren klicken",
+    "autoImputeOff": "Beziehungen zwischen sichtbaren Knoten automatisch ableiten",
+    "run": "Abfrage ausführen (⌘↵)"
+  }
+}

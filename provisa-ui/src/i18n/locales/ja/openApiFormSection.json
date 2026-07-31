@@ -1,0 +1,27 @@
+{
+  "openApiFormSection": {
+    "specModeLegend": "OpenAPI 仕様のソース",
+    "specModePath": "仕様のパス / URL",
+    "specModeInline": "仕様をインラインで記述",
+    "specPathLabel": "仕様のパスまたは URL",
+    "specPathPlaceholder": "https://api.example.com/openapi.json または ./spec.yaml",
+    "specInlineLabel": "OpenAPI 仕様（YAML または JSON）",
+    "baseUrlLabel": "ベース URL",
+    "baseUrlHint": "（空欄の場合は仕様の servers[0].url を使用）",
+    "baseUrlPlaceholder": "https://api.example.com（任意の上書き）",
+    "cacheTtlLabel": "キャッシュ TTL（秒）",
+    "cacheTtlPlaceholder": "300",
+    "authenticationLabel": "認証",
+    "tokenLabel": "トークン",
+    "tokenPlaceholder": "${env:API_TOKEN}",
+    "headerNameLabel": "ヘッダー名",
+    "headerNamePlaceholder": "X-API-Key",
+    "apiKeyLabel": "API キー",
+    "apiKeyPlaceholder": "${env:API_KEY}",
+    "previewButton": "プレビュー",
+    "previewLoading": "読み込み中...",
+    "queriesCount": "{{count}} 件のクエリ",
+    "mutationsCount": "{{count}} 件のミューテーション",
+    "none": "なし"
+  }
+}

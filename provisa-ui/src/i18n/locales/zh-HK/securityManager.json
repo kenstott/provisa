@@ -1,0 +1,10 @@
+{
+  "securityManager": {
+    "tabs": {
+      "posture": "安全態勢",
+      "encryption": "加密",
+      "authentication": "身分驗證",
+      "localUsers": "本機使用者"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "graphTableView": {
+    "noRows": "暂无数据行",
+    "copyAsCsv": "复制为 CSV",
+    "copyJson": "复制 JSON",
+    "table": "表格结果"
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "Response-Cache",
+      "hot": "Hot Tables",
+      "materialized": "Materialisierter Store",
+      "setup": "Einrichtung"
+    },
+    "response": {
+      "loading": "Cache-Statistiken werden geladen...",
+      "disabledBanner": "Abfrage-Response-Cache deaktiviert (Store: {{storeType}}). Abfrageergebnisse werden nicht in Redis zwischengespeichert, daher bleiben die Zähler unten auf null. Hot-Table- und Materialized-Store-Caching sind separate Ebenen (siehe die anderen Tabs) und nicht betroffen.",
+      "cachedEntries": "Gecachte Einträge",
+      "hitRate": "Trefferquote",
+      "hits": "Treffer",
+      "misses": "Fehltreffer",
+      "store": "Store",
+      "redisKeysRaw": "Redis-Schlüssel (roh)",
+      "memory": "Speicher",
+      "evicted": "Verdrängt",
+      "expired": "Abgelaufen",
+      "clients": "Clients",
+      "opsPerSec": "Ops/Sek.",
+      "filterPlaceholder": "Nach Tabelle oder Domäne filtern…",
+      "purgeAll": "Gesamten Cache leeren",
+      "purging": "Wird geleert...",
+      "table": "Tabelle",
+      "domain": "Domäne",
+      "purgeTable": "Leeren",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "Kleine Lookup-Tabellen, die in Redis (oder im Speicher) gespiegelt und als VALUES-CTEs eingebettet werden, um JOINs zu optimieren. Unabhängig vom Response-Cache-Store immer verfügbar.",
+      "loadedTables": "Geladene Tabellen",
+      "candidates": "Kandidaten",
+      "cachedRows": "Gecachte Zeilen",
+      "empty": "Keine Hot Tables geladen oder als Kandidaten registriert.",
+      "table": "Tabelle",
+      "catalog": "Katalog",
+      "schema": "Schema",
+      "rows": "Zeilen",
+      "kind": "Art",
+      "state": "Status",
+      "kindApi": "API",
+      "kindEngine": "Engine",
+      "stateLoaded": "geladen",
+      "stateCandidate": "Kandidat",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "Dauerhafter Store, in dem nicht anbindbare Quellen landen und materialisierte Sichten geschrieben werden. Getrennt vom Response-Cache und der Hot-Ebene; eine Abfrage kann jede Kombination der drei nutzen.",
+      "federationEngine": "Föderations-Engine",
+      "materializedViews": "Materialisierte Sichten",
+      "storeLabel": "Store:",
+      "viewButton": "+ Sicht",
+      "empty": "Keine materialisierten Sichten definiert.",
+      "view": "Sicht",
+      "sourceTables": "Quelltabellen",
+      "target": "Ziel",
+      "status": "Status",
+      "rows": "Zeilen",
+      "lastRefresh": "Letzte Aktualisierung",
+      "interval": "Intervall",
+      "error": "Fehler",
+      "never": "nie",
+      "refresh": "Aktualisieren",
+      "refreshing": "...",
+      "disable": "Deaktivieren",
+      "enable": "Aktivieren",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "Erste Seite",
+      "previous": "Vorherige Seite",
+      "next": "Nächste Seite",
+      "last": "Letzte Seite",
+      "pageOf": "Seite {{page}} / {{total}}"
+    }
+  }
+}

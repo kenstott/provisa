@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ Exibição",
+    "titleRequest": "Solicitar exibição",
+    "create": "Criar",
+    "submitRequest": "Enviar solicitação",
+    "saving": "Salvando…",
+    "close": "Fechar",
+    "noPermissionNotice": "Você não tem create_view. Isto será enviado como uma exibição sugerida com aprovação pendente.",
+    "alias": "Alias",
+    "aliasPlaceholder": "ex.: my_view",
+    "domain": "Domínio",
+    "domainSelectPlaceholder": "— selecionar domínio —",
+    "description": "Descrição",
+    "descriptionPlaceholder": "Opcional",
+    "saveAsMetricView": "Salvar como exibição de métrica ({{metric}})",
+    "hasParamsWarning": "O SQL contém marcadores de parâmetro não resolvidos ($1, $2, …). Edite o SQL para substituí-los por valores literais.",
+    "savedTitle": "Exibição salva",
+    "savedMessageCreated": "A exibição \"{{viewId}}\" foi criada e registrada.",
+    "savedMessageSubmitted": "A exibição \"{{viewId}}\" foi enviada para aprovação.",
+    "editInModelViews": "Editar em Modelo/Exibições"
+  }
+}

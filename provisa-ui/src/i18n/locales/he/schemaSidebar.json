@@ -1,0 +1,11 @@
+{
+  "schemaSidebar": {
+    "title": "סכמה",
+    "collapse": "צמצום חלונית הסכמה",
+    "expand": "הרחבת חלונית הסכמה",
+    "dragToCanvas": "גרירה אל הקנבס",
+    "doubleClickToInsert": "לחיצה כפולה להוספת שם מלא",
+    "insertTableReference": "הוספת הפניה לטבלה בעורך ה-SQL",
+    "clickToInsertColumn": "לחיצה להוספת עמודה במירכאות"
+  }
+}

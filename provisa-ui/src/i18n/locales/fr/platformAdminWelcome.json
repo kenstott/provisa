@@ -1,0 +1,15 @@
+{
+  "platformAdminWelcome": {
+    "title": "Vous êtes l'administrateur de la plateforme",
+    "body": "Votre connexion a fait de vous le platform_admin de ce déploiement — vous détenez ici toutes les capacités, et personne d'autre ne peut désormais revendiquer ce rôle. Vous êtes aussi l'administrateur de l'organisation root, qui contient déjà les sources, tables et domaines de démonstration.",
+    "backupHeading": "Ajouter un administrateur de secours",
+    "backupBody": "Un déploiement avec un seul platform_admin est un déploiement où un seul compte le sépare de l'impossibilité de l'administrer. Ajouter un secours commence par une invitation à rejoindre root :",
+    "backupStep1": "Invitez la personne dans l'organisation root depuis sa page Équipe.",
+    "backupStep2": "Elle se connecte et utilise l'invitation, ce qui la rend membre de root.",
+    "backupStep3": "Attribuez-lui le rôle platform_admin dans root — c'est ce qui confère l'administration à l'échelle du déploiement.",
+    "openHeading": "Le site est désormais ouvert aux organisations",
+    "openBody": "Dès la prochaine connexion, toute personne qui s'authentifie crée sa propre organisation. Elle ne devient jamais administrateur de la plateforme en se connectant, et inviter des personnes dans son organisation relève de sa responsabilité en tant qu'org_admin.",
+    "goToTeam": "Inviter quelqu'un dans root",
+    "dismiss": "Compris"
+  }
+}

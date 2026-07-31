@@ -1,0 +1,15 @@
+{
+  "candidatesTable": {
+    "heading": "AIが提案したリレーションシップ",
+    "colName": "名前",
+    "colSource": "ソース",
+    "colTarget": "ターゲット",
+    "colCardinality": "カーディナリティ",
+    "colConfidence": "信頼度",
+    "colActions": "操作",
+    "accept": "承認",
+    "reject": "却下",
+    "acceptAria": "提案されたリレーションシップ {{name}} を承認",
+    "rejectAria": "提案されたリレーションシップ {{name}} を却下"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "domainSelector": {
+    "all": "Все домены",
+    "label": "Домен: {{domain}}"
+  }
+}

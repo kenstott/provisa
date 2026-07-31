@@ -1,0 +1,29 @@
+{
+  "addRelationshipForm": {
+    "idLabel": "ID",
+    "idPlaceholder": "orders-to-customers",
+    "aliasLabel": "CQL 別名（UPPER_SNAKE）",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL 別名（camelCase）",
+    "graphqlAliasPlaceholder": "例如 orders",
+    "sourceTableLabel": "來源表格",
+    "sourceColumnLabel": "來源欄",
+    "selectPlaceholder": "選取…",
+    "targetTypeLabel": "目標類型",
+    "targetTypeTable": "表格",
+    "targetTypeFunction": "函式（計算所得）",
+    "targetTableLabel": "目標表格",
+    "targetColumnLabel": "目標欄",
+    "functionLabel": "函式",
+    "functionArgLabel": "函式引數（接收來源欄）",
+    "functionArgPlaceholder": "引數名稱",
+    "cardinalityLabel": "基數",
+    "cardinalityManyToOne": "多對一",
+    "cardinalityOneToMany": "一對多",
+    "cardinalityWarning": "警告：如果此聯結對每個父項傳回多於一行，只會使用第一個值。",
+    "materializeLabel": "具體化（為跨數據來源聯結自動建立具體化檢視）",
+    "disableCypherLabel": "從 Cypher 圖形中排除",
+    "refreshIntervalLabel": "重新整理間隔（秒）",
+    "save": "儲存"
+  }
+}

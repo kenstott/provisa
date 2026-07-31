@@ -1,0 +1,6 @@
+{
+  "graphPage": {
+    "emptyStateHint": "Выполните запрос Cypher, чтобы исследовать граф",
+    "emptyStateShortcut": "⌘↵ для запуска"
+  }
+}

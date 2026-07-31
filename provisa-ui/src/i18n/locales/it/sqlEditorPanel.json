@@ -1,0 +1,30 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "Doppio clic per rinominare",
+    "closeTab": "Chiudi {{title}}",
+    "newTab": "Nuova scheda query",
+    "detachedBadge": "scollegata",
+    "nlPlaceholder": "Chiedi in linguaggio naturale — genera SQL…",
+    "clear": "Cancella",
+    "generate": "Genera SQL",
+    "generating": "Generazione in corso…",
+    "generatingSql": "Generazione SQL in corso…",
+    "prettify": "Formatta SQL",
+    "copySql": "Copia SQL",
+    "copied": "Copiato",
+    "copy": "Copia",
+    "run": "Campione >",
+    "running": "Esecuzione in corso…",
+    "saveViewTitle": "Salva l'SQL corrente come definizione della vista \"{{tableName}}\"",
+    "saving": "Salvataggio in corso…",
+    "updateView": "Aggiorna \"{{tableName}}\"",
+    "sampleModeFirst": "Primi",
+    "sampleModeLast": "Ultimi",
+    "sampleModeRandom": "Casuali",
+    "sampleModeLabel": "Modalità campione",
+    "rowCountLabel": "Numero di righe",
+    "roleLabel": "Ruolo",
+    "createView": "+ Vista",
+    "requestView": "Richiedi vista"
+  }
+}

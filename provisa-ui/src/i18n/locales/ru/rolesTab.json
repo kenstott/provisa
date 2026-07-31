@@ -1,0 +1,17 @@
+{
+  "rolesTab": {
+    "heading": "Роли — {{orgId}}",
+    "colId": "ID",
+    "colCapabilities": "Возможности",
+    "colDomainAccess": "Доступ к доменам",
+    "colActions": "Действия",
+    "empty": "Роли не найдены.",
+    "deleteRole": "Удалить роль {{roleId}}",
+    "deleted": "Удалена «{{roleId}}»",
+    "pageInfo": "Страница {{current}} / {{total}}",
+    "firstPage": "Первая страница",
+    "previousPage": "Предыдущая страница",
+    "nextPage": "Следующая страница",
+    "lastPage": "Последняя страница"
+  }
+}

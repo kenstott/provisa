@@ -1,0 +1,20 @@
+{
+  "queryPage": {
+    "selectRole": "Selecteer een rol.",
+    "redirectLabel": "Omleiden",
+    "thresholdLabel": "Drempel",
+    "thresholdPlaceholder": "alle",
+    "redirectHint": "Alle resultaten worden omgeleid naar S3",
+    "queryStats": "Querystatistieken",
+    "schemaError": "Schemafout: {{message}}",
+    "redirectReady": "Omleiding gereed — {{rowCount}} rijen ({{contentType}})",
+    "download": "Downloaden",
+    "dismissRedirect": "Omleidingsmelding sluiten",
+    "formatNone": "Geen",
+    "formatParquet": "Parquet",
+    "formatArrow": "Arrow",
+    "formatCsv": "CSV",
+    "formatNdjson": "NDJSON",
+    "formatJson": "JSON"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "addRelationshipForm": {
+    "idLabel": "ID",
+    "idPlaceholder": "orders-to-customers",
+    "aliasLabel": "CQL-alias (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL-alias (camelCase)",
+    "graphqlAliasPlaceholder": "bijv. orders",
+    "sourceTableLabel": "Brontabel",
+    "sourceColumnLabel": "Bronkolom",
+    "selectPlaceholder": "Selecteren...",
+    "targetTypeLabel": "Doeltype",
+    "targetTypeTable": "Tabel",
+    "targetTypeFunction": "Functie (berekend)",
+    "targetTableLabel": "Doeltabel",
+    "targetColumnLabel": "Doelkolom",
+    "functionLabel": "Functie",
+    "functionArgLabel": "Functieargument (ontvangt bronkolom)",
+    "functionArgPlaceholder": "argumentnaam",
+    "cardinalityLabel": "Kardinaliteit",
+    "cardinalityManyToOne": "veel-op-één",
+    "cardinalityOneToMany": "één-op-veel",
+    "cardinalityWarning": "Waarschuwing: als deze join meer dan één rij per bovenliggende rij oplevert, wordt alleen de eerste waarde gebruikt.",
+    "materializeLabel": "Materialiseren (automatisch MV aanmaken voor joins tussen bronnen)",
+    "disableCypherLabel": "Uitsluiten van Cypher-graaf",
+    "refreshIntervalLabel": "Verversingsinterval (s)",
+    "save": "Opslaan"
+  }
+}

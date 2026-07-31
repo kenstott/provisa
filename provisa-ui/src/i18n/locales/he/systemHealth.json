@@ -1,0 +1,31 @@
+{
+  "systemHealth": {
+    "loading": "טוען את מצב תקינות המערכת...",
+    "colComponent": "רכיב",
+    "colStatus": "מצב",
+    "colDetails": "פרטים",
+    "federationEngine": "מנוע פדרציה",
+    "connected": "מחובר",
+    "disconnected": "מנותק",
+    "workerCount": "{{count}} worker ({{active}} פעיל)",
+    "workerCount_other": "{{count}} workers ({{active}} פעילים)",
+    "metadataDb": "מסד נתוני מטא-דאטה",
+    "unpooled": "ללא Pool",
+    "active": "פעיל",
+    "noPool": "אין Pool",
+    "poolNotTracked": "ה-pool אינו עוקב אחר חיבורים",
+    "poolConnections": "{{count}} חיבורים ({{idle}} במנוחה)",
+    "cache": "מטמון",
+    "disabled": "מושבת",
+    "embeddedMemory": "מוטמע (בזיכרון)",
+    "serverConnected": "השרת מחובר",
+    "serverUnreachable": "השרת אינו נגיש",
+    "redisServer": "שרת Redis",
+    "fakeredis": "fakeredis (בתוך התהליך)",
+    "running": "פועל",
+    "unreachable": "אינו נגיש",
+    "port": "פורט {{port}}",
+    "mvRefreshLoop": "לולאת רענון MV",
+    "stopped": "מופסק"
+  }
+}

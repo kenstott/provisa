@@ -1,0 +1,15 @@
+{
+  "candidatesTable": {
+    "heading": "Связи, предложенные ИИ",
+    "colName": "Имя",
+    "colSource": "Источник",
+    "colTarget": "Цель",
+    "colCardinality": "Кардинальность",
+    "colConfidence": "Уверенность",
+    "colActions": "Действия",
+    "accept": "Принять",
+    "reject": "Отклонить",
+    "acceptAria": "Принять предложенную связь {{name}}",
+    "rejectAria": "Отклонить предложенную связь {{name}}"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "Diagramma entità-relazioni",
+    "domains": "Domini",
+    "domainsTooltip": "Mostra / nascondi domini",
+    "columnDetailLabel": "Dettaglio colonne",
+    "columnDetailAll": "Tutte le colonne",
+    "columnDetailKey": "Solo chiavi",
+    "columnDetailNone": "Nessuna colonna",
+    "edgeRoutingLabel": "Instradamento archi",
+    "edgeRoutingBezier": "Archi curvi",
+    "edgeRoutingTaxi": "Archi ad angolo retto",
+    "gridSnapLabel": "Aggancia alla griglia",
+    "gridSnapNone": "Nessun aggancio",
+    "gridSnap5": "Aggancio 5px",
+    "gridSnap10": "Aggancio 10px",
+    "gridSnap15": "Aggancio 15px",
+    "gridSnap20": "Aggancio 20px",
+    "orphans": "Orfani",
+    "collapseAll": "Comprimi tutto",
+    "expandAll": "Espandi tutto",
+    "fitAll": "Adatta tutto",
+    "downloadSvg": "Scarica SVG",
+    "downloadPng": "Scarica PNG",
+    "downloadJpeg": "Scarica JPEG",
+    "close": "Chiudi",
+    "hint": "Fare clic su un gruppo di dominio per comprimerlo / espanderlo · le linee tratteggiate collegano i domini compressi",
+    "resizeHandle": "Ridimensiona riquadro del dominio ({{corner}})"
+  }
+}

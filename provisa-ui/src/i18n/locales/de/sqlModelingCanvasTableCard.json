@@ -1,0 +1,6 @@
+{
+  "sqlModelingCanvasTableCard": {
+    "removeTable": "{{tableName}} von der Arbeitsfläche entfernen",
+    "connectColumn": "Beziehung ab {{columnName}} beginnen"
+  }
+}

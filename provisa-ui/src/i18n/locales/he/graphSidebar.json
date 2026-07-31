@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "מסד נתונים",
+    "tabHistory": "היסטוריה",
+    "tabFavorites": "מועדפים",
+    "tabExport": "ייצוא ל-Neo4j",
+    "domainLabels": "תוויות דומיין",
+    "nodeLabels": "תוויות צמתים",
+    "relationshipTypes": "סוגי קשרים",
+    "propertyKeys": "מפתחות מאפיינים",
+    "loading": "בטעינה…",
+    "noLabelsFound": "לא נמצאו תוויות",
+    "noRelTypesFound": "לא נמצאו סוגי קשרים",
+    "history": "היסטוריה",
+    "noHistory": "אין היסטוריה עדיין",
+    "favorites": "מועדפים",
+    "noFavorites": "אין מועדפים עדיין — יש ללחוץ על ★ במסגרת תוצאה",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "עמוד ראשון",
+    "previousPage": "עמוד קודם",
+    "nextPage": "עמוד הבא",
+    "lastPage": "עמוד אחרון",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "הרצה",
+    "rename": "שינוי שם",
+    "remove": "הסרה",
+    "renameFavoriteInput": "שם המועדף",
+    "resizeSidebar": "שינוי גודל סרגל הצד"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "Entiteit-relatiediagram",
+    "domains": "Domeinen",
+    "domainsTooltip": "Domeinen tonen / verbergen",
+    "columnDetailLabel": "Kolomdetail",
+    "columnDetailAll": "Alle kolommen",
+    "columnDetailKey": "Alleen sleutels",
+    "columnDetailNone": "Geen kolommen",
+    "edgeRoutingLabel": "Lijnrouting",
+    "edgeRoutingBezier": "Gebogen lijnen",
+    "edgeRoutingTaxi": "Haakse lijnen",
+    "gridSnapLabel": "Uitlijnen op raster",
+    "gridSnapNone": "Niet uitlijnen",
+    "gridSnap5": "Uitlijnen 5px",
+    "gridSnap10": "Uitlijnen 10px",
+    "gridSnap15": "Uitlijnen 15px",
+    "gridSnap20": "Uitlijnen 20px",
+    "orphans": "Wezen",
+    "collapseAll": "Alles samenvouwen",
+    "expandAll": "Alles uitvouwen",
+    "fitAll": "Alles passend maken",
+    "downloadSvg": "SVG downloaden",
+    "downloadPng": "PNG downloaden",
+    "downloadJpeg": "JPEG downloaden",
+    "close": "Sluiten",
+    "hint": "Klik op een domeingroep om samen of uit te vouwen · stippellijnen verbinden samengevouwen domeinen",
+    "resizeHandle": "Domeinvak vergroten/verkleinen ({{corner}})"
+  }
+}

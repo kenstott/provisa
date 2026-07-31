@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "טוען…",
+    "intro": "הצפנת עמודות במנוחה. בחרו ספק ונהלו את מפתח האב שלו. הצפנת מעטפת עוטפת מפתח נתונים לכל עמודה באמצעות מפתח האב.",
+    "providerLabel": "ספק",
+    "providerCurrentSuffix": " (נוכחי)",
+    "providerComingSoonSuffix": " (בקרוב)",
+    "unavailableNote": "סביבת הריצה של ספק זה אינה זמינה עדיין ולא ניתן לבחור בו. השדות מוצגים לעיון בלבד.",
+    "keyIdLabel": "מזהה מפתח",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "מפתח אב:",
+    "masterKeyPresent": "קיים",
+    "masterKeyMissing": "חסר",
+    "generating": "מפיק…",
+    "rotateKey": "החלפת מפתח האב",
+    "generateKey": "הפקת מפתח אב",
+    "restartWarning": "{{note}} החלפת מפתח אב בזמן שקיימים נתונים מוצפנים עלולה להפוך שורות קודמות לבלתי קריאות — החליפו לפני אחסון נתונים רגישים, או תכננו הצפנה מחדש.",
+    "saveTitle": "שמירת הגדרות ההצפנה",
+    "keyGeneratedStored": "מפתח האב הופק ואוחסן במחזיק המפתחות של מערכת ההפעלה (מזהה מפתח: {{keyId}}).",
+    "keyGeneratedNoKeychain": "אין מחזיק מפתחות של מערכת ההפעלה — העתיקו מפתח זה והגדירו אותו כ-{{envVar}}. הוא לא יוצג שוב.",
+    "savedRestartRequired": "נשמר. הפעילו מחדש את השירות כדי להחיל.",
+    "saved": "נשמר."
+  }
+}

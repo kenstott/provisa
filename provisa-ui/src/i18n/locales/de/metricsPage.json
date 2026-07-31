@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "Metriken",
+    "newMetric": "Neue Metrik",
+    "loading": "Wird geladen...",
+    "empty": "Noch keine Metriken registriert.",
+    "colName": "Name",
+    "colExpression": "Ausdruck",
+    "colDatatype": "Datentyp",
+    "colDescription": "Beschreibung",
+    "colAiContext": "KI-Kontext",
+    "fromFact": "aus Fakt",
+    "builderFact": "Quellfakt",
+    "builderMeasure": "Kennzahl",
+    "builderAgg": "Aggregat",
+    "builderNoFacts": "Noch keine Faktentabellen registriert",
+    "detail": {
+      "handAuthored": "manuell erstellt",
+      "noDependents": "keine",
+      "field": {
+        "expression": "Ausdruck",
+        "datatype": "Datentyp",
+        "description": "Beschreibung",
+        "aiContext": "KI-Kontext",
+        "sourceFact": "Quellfakt",
+        "visibleTo": "Sichtbar für",
+        "dependentViews": "Abhängige Metriksichten"
+      }
+    },
+    "createTitle": "Neue Metrik",
+    "editTitle": "Metrik bearbeiten",
+    "fieldName": "Name",
+    "fieldNamePlaceholder": "z. B. total_revenue",
+    "fieldExpression": "Ausdruck",
+    "fieldExpressionPlaceholder": "z. B. SUM(orders.amount)",
+    "fieldDatatype": "Datentyp",
+    "fieldDatatypePlaceholder": "z. B. numeric",
+    "fieldDatatypeDerived": "Wird beim Erstellen aus einer Faktkennzahl vom Aggregat abgeleitet",
+    "fieldDescription": "Beschreibung",
+    "fieldAiContext": "KI-Kontext",
+    "fieldAiContextPlaceholder": "Hinweise für KI-gestützte Abfragegenerierung",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "saveFailed": "Speichern fehlgeschlagen.",
+    "editMetric": "Metrik {{name}} bearbeiten",
+    "deleteMetric": "Metrik {{name}} löschen",
+    "deleteTitle": "Metrik löschen",
+    "deleteConfirm": "Metrik \"{{name}}\" löschen? Dies kann nicht rückgängig gemacht werden.",
+    "delete": "Löschen",
+    "deleteFailed": "Löschen fehlgeschlagen."
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "Metrik {{metricName}} entfernen",
+    "dimensionsHeading": "Dimensionen",
+    "noDimensions": "Keine zugehörigen Dimensionsspalten gefunden"
+  }
+}

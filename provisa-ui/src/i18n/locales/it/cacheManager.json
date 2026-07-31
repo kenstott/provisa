@@ -1,0 +1,79 @@
+{
+  "cacheManager": {
+    "tabs": {
+      "response": "Cache delle risposte",
+      "hot": "Tabelle hot",
+      "materialized": "Store materializzato",
+      "setup": "Configurazione"
+    },
+    "response": {
+      "loading": "Caricamento delle statistiche della cache...",
+      "disabledBanner": "Cache delle risposte alle query disabilitata (store: {{storeType}}). I risultati delle query non vengono memorizzati nella cache Redis, quindi i contatori sottostanti restano a zero. La cache delle tabelle hot e dello store materializzato sono livelli separati (vedere le altre schede) e non sono interessate.",
+      "cachedEntries": "Voci in cache",
+      "hitRate": "Percentuale di hit",
+      "hits": "Hit",
+      "misses": "Miss",
+      "store": "Store",
+      "redisKeysRaw": "Chiavi Redis (raw)",
+      "memory": "Memoria",
+      "evicted": "Rimosse",
+      "expired": "Scadute",
+      "clients": "Client",
+      "opsPerSec": "Op/sec",
+      "filterPlaceholder": "Filtra per tabella o dominio…",
+      "purgeAll": "Svuota tutta la cache",
+      "purging": "Svuotamento in corso...",
+      "table": "Tabella",
+      "domain": "Dominio",
+      "purgeTable": "Svuota",
+      "unknown": "—"
+    },
+    "hot": {
+      "description": "Piccole tabelle di lookup replicate in Redis (o in memoria) e incorporate come CTE VALUES per ottimizzare i JOIN. Sempre disponibili indipendentemente dallo store della cache delle risposte.",
+      "loadedTables": "Tabelle caricate",
+      "candidates": "Candidate",
+      "cachedRows": "Righe in cache",
+      "empty": "Nessuna tabella hot caricata o registrata come candidata.",
+      "table": "Tabella",
+      "catalog": "Catalogo",
+      "schema": "Schema",
+      "rows": "Righe",
+      "kind": "Tipo",
+      "state": "Stato",
+      "kindApi": "API",
+      "kindEngine": "engine",
+      "stateLoaded": "caricata",
+      "stateCandidate": "candidata",
+      "unknown": "—"
+    },
+    "materialized": {
+      "description": "Store durevole in cui vengono scritte le origini non collegabili e le viste materializzate. Distinto dalla cache delle risposte e dal livello hot; una query può usare qualsiasi combinazione dei tre.",
+      "federationEngine": "Motore di federazione",
+      "materializedViews": "Viste materializzate",
+      "storeLabel": "Store:",
+      "viewButton": "+ Vista",
+      "empty": "Nessuna vista materializzata definita.",
+      "view": "Vista",
+      "sourceTables": "Tabelle di origine",
+      "target": "Destinazione",
+      "status": "Stato",
+      "rows": "Righe",
+      "lastRefresh": "Ultimo aggiornamento",
+      "interval": "Intervallo",
+      "error": "Errore",
+      "never": "mai",
+      "refresh": "Aggiorna",
+      "refreshing": "...",
+      "disable": "Disabilita",
+      "enable": "Abilita",
+      "unknown": "—"
+    },
+    "pagination": {
+      "first": "Prima pagina",
+      "previous": "Pagina precedente",
+      "next": "Pagina successiva",
+      "last": "Ultima pagina",
+      "pageOf": "Pagina {{page}} / {{total}}"
+    }
+  }
+}

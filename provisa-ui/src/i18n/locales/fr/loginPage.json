@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "Connexion",
+    "authNotConfigured": "Authentification non configurée",
+    "loading": "Chargement…",
+    "signInTitle": "Se connecter",
+    "firstLoginHeading": "Configurer ce déploiement",
+    "firstLoginTitle": "Ceci est la première connexion",
+    "firstLoginBody": "Personne n'administre encore ce déploiement. La première personne à se connecter devient l'administrateur de la plateforme — avec le contrôle total des organisations, des utilisateurs et des sources de données. Choisissez ci-dessous une méthode de connexion pour prendre ce rôle.",
+    "signInWithGoogle": "Se connecter avec Google",
+    "signInWithGithub": "Se connecter avec GitHub",
+    "signInWithMicrosoft": "Se connecter avec Microsoft",
+    "signInWithEmail": "Se connecter par e-mail",
+    "orDivider": "ou",
+    "haveAccountSignIn": "Vous avez un compte ? Connectez-vous",
+    "needAccountRegister": "Besoin d'un compte ? Inscrivez-vous",
+    "signingIn": "Connexion en cours…",
+    "createAccountTitle": "Créer un compte",
+    "username": "Nom d'utilisateur",
+    "email": "E-mail",
+    "displayName": "Nom affiché",
+    "organization": "Organisation",
+    "password": "Mot de passe",
+    "confirmPassword": "Confirmer le mot de passe",
+    "creating": "Création en cours…",
+    "createAccount": "Créer un compte",
+    "backToLogin": "Retour à la connexion",
+    "loggingIn": "Connexion en cours…",
+    "passwordsDoNotMatch": "Les mots de passe ne correspondent pas",
+    "registrationFailed": "Échec de l'inscription",
+    "firebaseSignInFailed": "Échec de la connexion Firebase"
+  }
+}

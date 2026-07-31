@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "メトリクス",
+    "newMetric": "新規メトリクス",
+    "loading": "読み込み中...",
+    "empty": "登録されたメトリクスはまだありません。",
+    "colName": "名前",
+    "colExpression": "式",
+    "colDatatype": "データ型",
+    "colDescription": "説明",
+    "colAiContext": "AIコンテキスト",
+    "fromFact": "ファクト由来",
+    "builderFact": "ソースファクト",
+    "builderMeasure": "メジャー",
+    "builderAgg": "集計",
+    "builderNoFacts": "登録されたファクトテーブルはまだありません",
+    "detail": {
+      "handAuthored": "手動作成",
+      "noDependents": "なし",
+      "field": {
+        "expression": "式",
+        "datatype": "データ型",
+        "description": "説明",
+        "aiContext": "AIコンテキスト",
+        "sourceFact": "ソースファクト",
+        "visibleTo": "参照可能ロール",
+        "dependentViews": "依存するメトリクスビュー"
+      }
+    },
+    "createTitle": "新規メトリクス",
+    "editTitle": "メトリクスを編集",
+    "fieldName": "名前",
+    "fieldNamePlaceholder": "例: total_revenue",
+    "fieldExpression": "式",
+    "fieldExpressionPlaceholder": "例: SUM(orders.amount)",
+    "fieldDatatype": "データ型",
+    "fieldDatatypePlaceholder": "例: numeric",
+    "fieldDatatypeDerived": "ファクトメジャーから作成する場合は集計から導出されます",
+    "fieldDescription": "説明",
+    "fieldAiContext": "AIコンテキスト",
+    "fieldAiContextPlaceholder": "AI支援クエリ生成のためのヒント",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "saveFailed": "保存に失敗しました。",
+    "editMetric": "メトリクス {{name}} を編集",
+    "deleteMetric": "メトリクス {{name}} を削除",
+    "deleteTitle": "メトリクスを削除",
+    "deleteConfirm": "メトリクス「{{name}}」を削除しますか？この操作は元に戻せません。",
+    "delete": "削除",
+    "deleteFailed": "削除に失敗しました。"
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "メトリクス {{metricName}} を削除",
+    "dimensionsHeading": "ディメンション",
+    "noDimensions": "関連するディメンション列が見つかりません"
+  }
+}

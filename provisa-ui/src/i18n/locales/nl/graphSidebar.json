@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "Database",
+    "tabHistory": "Geschiedenis",
+    "tabFavorites": "Favorieten",
+    "tabExport": "Exporteren naar Neo4j",
+    "domainLabels": "Domeinlabels",
+    "nodeLabels": "Knooplabels",
+    "relationshipTypes": "Relatietypen",
+    "propertyKeys": "Eigenschapssleutels",
+    "loading": "Laden…",
+    "noLabelsFound": "Geen labels gevonden",
+    "noRelTypesFound": "Geen relatietypen gevonden",
+    "history": "Geschiedenis",
+    "noHistory": "Nog geen geschiedenis",
+    "favorites": "Favorieten",
+    "noFavorites": "Nog geen favorieten — klik op ★ in een resultaatframe",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "Eerste pagina",
+    "previousPage": "Vorige pagina",
+    "nextPage": "Volgende pagina",
+    "lastPage": "Laatste pagina",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "Uitvoeren",
+    "rename": "Naam wijzigen",
+    "remove": "Verwijderen",
+    "renameFavoriteInput": "Naam van favoriet",
+    "resizeSidebar": "Zijbalk vergroten of verkleinen"
+  }
+}

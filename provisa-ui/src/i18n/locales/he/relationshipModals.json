@@ -1,0 +1,21 @@
+{
+  "relationshipModals": {
+    "conflictTitle": "הקשר כבר קיים",
+    "conflictClose": "סגירה",
+    "conflictIntro": "קשר עם מקור ויעד אלה כבר קיים:",
+    "conflictId": "מזהה",
+    "conflictSource": "מקור",
+    "conflictTarget": "יעד",
+    "conflictCardinality": "קרדינליות",
+    "conflictAlias": "כינוי",
+    "reverseTitle": "יצירת קשר הפוך",
+    "idLabel": "מזהה",
+    "aliasLabel": "כינוי CQL (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "כינוי GQL (camelCase)",
+    "materializeLabel": "מטריאליזציה",
+    "refreshIntervalLabel": "מרווח רענון (שניות)",
+    "cancel": "ביטול",
+    "save": "שמירה"
+  }
+}

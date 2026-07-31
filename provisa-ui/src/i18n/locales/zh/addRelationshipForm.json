@@ -1,0 +1,29 @@
+{
+  "addRelationshipForm": {
+    "idLabel": "ID",
+    "idPlaceholder": "orders-to-customers",
+    "aliasLabel": "CQL 别名（UPPER_SNAKE）",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL 别名（camelCase）",
+    "graphqlAliasPlaceholder": "例如 orders",
+    "sourceTableLabel": "源表",
+    "sourceColumnLabel": "源列",
+    "selectPlaceholder": "请选择…",
+    "targetTypeLabel": "目标类型",
+    "targetTypeTable": "表",
+    "targetTypeFunction": "函数（计算）",
+    "targetTableLabel": "目标表",
+    "targetColumnLabel": "目标列",
+    "functionLabel": "函数",
+    "functionArgLabel": "函数参数（接收源列）",
+    "functionArgPlaceholder": "参数名",
+    "cardinalityLabel": "基数",
+    "cardinalityManyToOne": "多对一",
+    "cardinalityOneToMany": "一对多",
+    "cardinalityWarning": "警告：如果此联接为每个父行返回多行，将只使用第一个值。",
+    "materializeLabel": "物化（为跨源联接自动创建物化视图）",
+    "disableCypherLabel": "从 Cypher 图中排除",
+    "refreshIntervalLabel": "刷新间隔（秒）",
+    "save": "保存"
+  }
+}

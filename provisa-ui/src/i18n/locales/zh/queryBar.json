@@ -1,0 +1,7 @@
+{
+  "queryBar": {
+    "autoImputeOn": "自动推断关系已开启 — 点击以禁用",
+    "autoImputeOff": "自动推断可见节点之间的关系",
+    "run": "运行查询 (⌘↵)"
+  }
+}

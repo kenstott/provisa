@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "Metrics",
+    "newMetric": "Nieuwe metric",
+    "loading": "Laden...",
+    "empty": "Nog geen metrics geregistreerd.",
+    "colName": "Naam",
+    "colExpression": "Expressie",
+    "colDatatype": "Datatype",
+    "colDescription": "Beschrijving",
+    "colAiContext": "AI-context",
+    "fromFact": "uit feit",
+    "builderFact": "Bronfeit",
+    "builderMeasure": "Meetwaarde",
+    "builderAgg": "Aggregatie",
+    "builderNoFacts": "Nog geen feitentabellen geregistreerd",
+    "detail": {
+      "handAuthored": "handmatig opgesteld",
+      "noDependents": "geen",
+      "field": {
+        "expression": "Expressie",
+        "datatype": "Datatype",
+        "description": "Beschrijving",
+        "aiContext": "AI-context",
+        "sourceFact": "Bronfeit",
+        "visibleTo": "Zichtbaar voor",
+        "dependentViews": "Afhankelijke metric-views"
+      }
+    },
+    "createTitle": "Nieuwe metric",
+    "editTitle": "Metric bewerken",
+    "fieldName": "Naam",
+    "fieldNamePlaceholder": "bijv. total_revenue",
+    "fieldExpression": "Expressie",
+    "fieldExpressionPlaceholder": "bijv. SUM(orders.amount)",
+    "fieldDatatype": "Datatype",
+    "fieldDatatypePlaceholder": "bijv. numeric",
+    "fieldDatatypeDerived": "Afgeleid van de aggregatie wanneer opgebouwd uit een feitmeetwaarde",
+    "fieldDescription": "Beschrijving",
+    "fieldAiContext": "AI-context",
+    "fieldAiContextPlaceholder": "Aanwijzingen voor AI-ondersteunde querygeneratie",
+    "save": "Opslaan",
+    "cancel": "Annuleren",
+    "saveFailed": "Opslaan mislukt.",
+    "editMetric": "Metric {{name}} bewerken",
+    "deleteMetric": "Metric {{name}} verwijderen",
+    "deleteTitle": "Metric verwijderen",
+    "deleteConfirm": "Metric \"{{name}}\" verwijderen? Dit kan niet ongedaan worden gemaakt.",
+    "delete": "Verwijderen",
+    "deleteFailed": "Verwijderen mislukt."
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "Metric {{metricName}} verwijderen",
+    "dimensionsHeading": "Dimensies",
+    "noDimensions": "Geen gerelateerde dimensiekolommen gevonden"
+  }
+}

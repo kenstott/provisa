@@ -1,0 +1,7 @@
+{
+  "onboardGate": {
+    "unavailableTitle": "無法連接 Provisa",
+    "unavailableBody": "由於伺服器沒有回應，Provisa 無法確認你的身分。這並非你的帳戶問題。請稍後再試。",
+    "retry": "再試一次"
+  }
+}

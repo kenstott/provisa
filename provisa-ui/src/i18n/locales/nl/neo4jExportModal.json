@@ -1,0 +1,22 @@
+{
+  "neo4jExportModal": {
+    "title": "Neo4j-export",
+    "nodeCount_one": "{{count}} knoop",
+    "nodeCount_other": "{{count}} knopen",
+    "edgeCount_one": "{{count}} relatie",
+    "edgeCount_other": "{{count}} relaties",
+    "downloadScript": "Cypher-script downloaden (.cypher)",
+    "divider": "— of rechtstreeks naar een server exporteren —",
+    "httpUrl": "HTTP-URL",
+    "database": "Database",
+    "username": "Gebruikersnaam",
+    "password": "Wachtwoord",
+    "close": "Sluiten",
+    "exportToServer": "Exporteren naar server",
+    "exporting": "Exporteren…",
+    "statementsImported_one": "{{count}} statement geïmporteerd.",
+    "statementsImported_other": "{{count}} statements geïmporteerd.",
+    "errorsSuffix_one": " ({{count}} fout: {{first}})",
+    "errorsSuffix_other": " ({{count}} fouten: {{first}})"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "ログイン",
+    "authNotConfigured": "認証が設定されていません",
+    "loading": "読み込み中...",
+    "signInTitle": "サインイン",
+    "firstLoginHeading": "このデプロイメントをセットアップ",
+    "firstLoginTitle": "これは最初のログインです",
+    "firstLoginBody": "このデプロイメントを管理する人はまだいません。最初にサインインした人が、組織・ユーザー・データソースを完全に管理できるプラットフォーム管理者になります。以下からサインイン方法を選択して権限を取得してください。",
+    "signInWithGoogle": "Googleでサインイン",
+    "signInWithGithub": "GitHubでサインイン",
+    "signInWithMicrosoft": "Microsoftでサインイン",
+    "signInWithEmail": "メールでサインイン",
+    "orDivider": "または",
+    "haveAccountSignIn": "アカウントをお持ちですか？サインイン",
+    "needAccountRegister": "アカウントが必要ですか？登録",
+    "signingIn": "サインイン中...",
+    "createAccountTitle": "アカウント作成",
+    "username": "ユーザー名",
+    "email": "メールアドレス",
+    "displayName": "表示名",
+    "organization": "組織",
+    "password": "パスワード",
+    "confirmPassword": "パスワード（確認）",
+    "creating": "作成中...",
+    "createAccount": "アカウント作成",
+    "backToLogin": "ログインに戻る",
+    "loggingIn": "ログイン中...",
+    "passwordsDoNotMatch": "パスワードが一致しません",
+    "registrationFailed": "登録に失敗しました",
+    "firebaseSignInFailed": "Firebaseサインインに失敗しました"
+  }
+}

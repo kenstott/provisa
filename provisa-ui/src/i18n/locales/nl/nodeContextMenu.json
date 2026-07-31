@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "Deze node uitsluiten van de query",
+    "excludeDisabledTooltip": "Geen primaire sleutel geconfigureerd — uitsluiten niet mogelijk",
+    "excludeFromQuery": "Uitsluiten van query",
+    "excludeCount": "{{count}} nodes uitsluiten",
+    "unfixPosition": "Positie losmaken",
+    "showChildren": "Kinderen tonen",
+    "hideChildren": "Kinderen verbergen",
+    "showChildrenCircularTooltip": "Kinderen in een ring rond deze node plaatsen",
+    "noOutgoingTooltip": "Geen uitgaande relaties voor dit nodetype",
+    "showChildrenCircular": "Kinderen tonen (circulair)",
+    "hideChildrenCircular": "Kinderen verbergen (circulair)",
+    "showParents": "Ouders tonen",
+    "hideParents": "Ouders verbergen",
+    "showParentsCircularTooltip": "Ouders in een ring rond deze node plaatsen",
+    "noIncomingTooltip": "Geen inkomende relaties voor dit nodetype",
+    "showParentsCircular": "Ouders tonen (circulair)",
+    "hideParentsCircular": "Ouders verbergen (circulair)",
+    "invertSelection": "Selectie omkeren",
+    "select": "Selecteren",
+    "selectAll": "Alle",
+    "selectAllOfType": "Alle van dit type",
+    "selectConnected": "Verbonden",
+    "selectChildren": "Kinderen",
+    "selectParents": "Ouders",
+    "removeNode": "Node verwijderen",
+    "removeCount": "{{count}} nodes verwijderen"
+  }
+}

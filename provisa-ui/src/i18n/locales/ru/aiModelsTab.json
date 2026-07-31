@@ -1,0 +1,29 @@
+{
+  "aiModelsTab": {
+    "modelsHeading": "Назначения моделей ИИ",
+    "modelsIntro": "Модель, используемая для каждой операции с поддержкой ИИ. Введите имя модели (например, claude-haiku-4-5-20251001). Оставьте пустым, чтобы вернуть значение по умолчанию.",
+    "role_table_description": "Описание таблицы",
+    "role_column_description": "Описание столбца",
+    "role_relationship_inference": "Вывод связей",
+    "role_sql_generation": "Генерация SQL",
+    "role_table_selection": "Выбор таблиц",
+    "dictNotEditable": "(настроено в полной форме vendor/model — редактируйте в YAML-конфигурации)",
+    "nlHeading": "Запрос на естественном языке",
+    "nlIntro": "Запросов в минуту на роль для преобразования NL в SQL. Оставьте пустым для отсутствия ограничений.",
+    "rateLimitLabel": "Лимит запросов (запр./мин на роль)",
+    "vectorHeading": "Векторные модели (эмбеддинги)",
+    "vectorIntro": "Зарегистрированные модели эмбеддингов, доступные для семантического поиска. Реестр является списком разрешённых.",
+    "vectorId": "ID модели",
+    "vectorProvider": "Провайдер",
+    "vectorDimensions": "Размерность",
+    "vectorApiKeyEnv": "Переменная окружения с ключом API",
+    "vectorBaseUrl": "Базовый URL",
+    "vectorEnabled": "Включена",
+    "addVectorModel": "Добавить векторную модель",
+    "removeVectorModel": "Удалить",
+    "saveButtonLabel": "Сохранить настройки моделей ИИ",
+    "loading": "Загрузка…",
+    "saved": "Сохранено.",
+    "savedRestartRequired": "Сохранено. Перезапустите службу, чтобы применить."
+  }
+}

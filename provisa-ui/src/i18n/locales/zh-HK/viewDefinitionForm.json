@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "指標",
+    "sqlCreateHint": "自由編寫的檢視在 SQL 編輯器中撰寫：先寫好 SELECT 並執行，再儲存為檢視。",
+    "sqlEditHint": "此檢視的 SQL 在 SQL 編輯器中編輯。",
+    "openSqlEditor": "開啟 SQL 編輯器",
+    "editInSqlEditor": "在 SQL 編輯器中編輯",
+    "fieldName": "檢視名稱",
+    "fieldNamePlaceholder": "例如 revenue_by_region",
+    "fieldDomain": "領域",
+    "fieldDescription": "描述",
+    "fieldMetrics": "指標",
+    "fieldMetricsPlaceholder": "選取一個或多個已登記的指標",
+    "fieldDimensions": "維度",
+    "fieldDimensionsPlaceholder": "指標所屬表格的欄（包括相距一個關係躍點的欄）",
+    "fieldFilters": "篩選條件",
+    "fieldFiltersHelp": "每行一個 SQL 條件；各條件以 AND 結合。",
+    "save": "儲存檢視",
+    "saveFailed": "儲存失敗",
+    "cancel": "取消"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "nlPage": {
+    "guideTitle": "Comment formuler une bonne question",
+    "guideDesc": "Cet outil génère des requêtes directement à partir de votre schéma — il ne raisonne pas sur du texte libre ni sur des connaissances générales. Formulez votre question comme une composition des tables, champs et relations qui existent dans vos données.",
+    "guideRuleNames": "Utilisez les noms de vos entités, pas des synonymes ({{entity}}, pas {{synonym}})",
+    "guideRuleFilters": "Précisez les filtres, regroupements et agrégations comme vous le feriez dans une requête",
+    "guideRuleSchema": "Si un champ ou une relation n'existe pas dans votre schéma, il ne peut pas être interrogé",
+    "guideExamplesLabel": "Exemples",
+    "example1": "Afficher tous les clients dont le total des commandes dépasse 10 000, regroupés par région",
+    "example2": "Lister les 5 premiers produits par chiffre d'affaires sur les 30 derniers jours",
+    "example3": "Trouver tous les utilisateurs qui n'ont jamais passé de commande",
+    "questionPlaceholder": "Posez une question en langage courant…",
+    "questionLabel": "Question en langage naturel",
+    "generate": "Générer",
+    "generating": "Génération…",
+    "mcpChat": "Chat ›",
+    "openInExplorer": "Ouvrir dans l'explorateur {{label}}",
+    "openIn": "Ouvrir dans {{label}}",
+    "notApplicable": "Non applicable pour ce type de requête",
+    "noQueryGenerated": "Aucune requête générée",
+    "noRowsReturned": "Aucune ligne renvoyée",
+    "showingRows": "Affichage de {{shown}} lignes sur {{total}}"
+  }
+}

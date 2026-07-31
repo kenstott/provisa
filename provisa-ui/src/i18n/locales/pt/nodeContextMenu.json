@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "Excluir este nó da consulta",
+    "excludeDisabledTooltip": "Nenhuma chave primária configurada — não é possível excluir",
+    "excludeFromQuery": "Excluir da consulta",
+    "excludeCount": "Excluir {{count}} nós",
+    "unfixPosition": "Liberar posição",
+    "showChildren": "Mostrar filhos",
+    "hideChildren": "Ocultar filhos",
+    "showChildrenCircularTooltip": "Dispor os filhos em um anel ao redor deste nó",
+    "noOutgoingTooltip": "Nenhum relacionamento de saída para este tipo de nó",
+    "showChildrenCircular": "Mostrar filhos (circular)",
+    "hideChildrenCircular": "Ocultar filhos (circular)",
+    "showParents": "Mostrar pais",
+    "hideParents": "Ocultar pais",
+    "showParentsCircularTooltip": "Dispor os pais em um anel ao redor deste nó",
+    "noIncomingTooltip": "Nenhum relacionamento de entrada para este tipo de nó",
+    "showParentsCircular": "Mostrar pais (circular)",
+    "hideParentsCircular": "Ocultar pais (circular)",
+    "invertSelection": "Inverter seleção",
+    "select": "Selecionar",
+    "selectAll": "Todos",
+    "selectAllOfType": "Todos deste tipo",
+    "selectConnected": "Conectados",
+    "selectChildren": "Filhos",
+    "selectParents": "Pais",
+    "removeNode": "Remover nó",
+    "removeCount": "Remover {{count}} nós"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "載入中…",
+    "intro": "靜態欄位加密。選擇提供者並管理其主密鑰。信封加密會以主密鑰包裝每欄的數據密鑰。",
+    "providerLabel": "提供者",
+    "providerCurrentSuffix": "（目前）",
+    "providerComingSoonSuffix": "（即將推出）",
+    "unavailableNote": "此提供者的執行環境尚未可用，無法選取。欄位僅供參考。",
+    "keyIdLabel": "密鑰 ID",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "主密鑰：",
+    "masterKeyPresent": "已存在",
+    "masterKeyMissing": "缺少",
+    "generating": "產生中…",
+    "rotateKey": "輪換主密鑰",
+    "generateKey": "產生主密鑰",
+    "restartWarning": "{{note}} 在已有加密數據的情況下輪換主密鑰，可能導致先前的資料列無法讀取——請在儲存敏感數據之前輪換，或規劃重新加密。",
+    "saveTitle": "儲存加密設定",
+    "keyGeneratedStored": "主密鑰已產生並儲存於作業系統鑰匙圈（密鑰 ID：{{keyId}}）。",
+    "keyGeneratedNoKeychain": "沒有可用的作業系統鑰匙圈——請複製此密鑰並設定為 {{envVar}}。此密鑰不會再次顯示。",
+    "savedRestartRequired": "已儲存。請重新啟動服務以套用。",
+    "saved": "已儲存。"
+  }
+}

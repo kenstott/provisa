@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ Vue",
+    "titleRequest": "Demander une vue",
+    "create": "Créer",
+    "submitRequest": "Soumettre la demande",
+    "saving": "Enregistrement…",
+    "close": "Fermer",
+    "noPermissionNotice": "Vous ne disposez pas de create_view. Ceci sera soumis comme vue suggérée en attente d'approbation.",
+    "alias": "Alias",
+    "aliasPlaceholder": "p. ex. my_view",
+    "domain": "Domaine",
+    "domainSelectPlaceholder": "— sélectionner un domaine —",
+    "description": "Description",
+    "descriptionPlaceholder": "Facultatif",
+    "saveAsMetricView": "Enregistrer comme vue de métrique ({{metric}})",
+    "hasParamsWarning": "Le SQL contient des paramètres non résolus ($1, $2, …). Modifiez le SQL pour les remplacer par des valeurs littérales.",
+    "savedTitle": "Vue enregistrée",
+    "savedMessageCreated": "La vue \"{{viewId}}\" a été créée et enregistrée.",
+    "savedMessageSubmitted": "La vue \"{{viewId}}\" a été soumise pour approbation.",
+    "editInModelViews": "Modifier dans Modèle/Vues"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "載入中...",
+    "cancel": "取消",
+    "save": "儲存",
+    "delete": "刪除",
+    "confirm": "確認",
+    "processing": "處理中..."
+  },
+  "app": {
+    "apiUnreachable": "無法連接 Provisa API。",
+    "notAuthorized": "您沒有權限檢視此頁面。"
+  },
+  "theme": {
+    "toggle": "切換色彩配置",
+    "light": "淺色",
+    "dark": "深色"
+  },
+  "multiSelect": {
+    "defaultLabel": "選取選項",
+    "all": "全部"
+  },
+  "roleSelector": {
+    "none": "未設定角色",
+    "all": "全部",
+    "role": "角色：{{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "使用者名稱",
+    "colEmail": "電郵",
+    "colDisplayName": "顯示名稱",
+    "colActive": "啟用",
+    "actions": "操作",
+    "empty": "沒有本機使用者",
+    "yes": "是",
+    "no": "否",
+    "none": "—",
+    "expandUser": "顯示 {{username}} 的指派",
+    "deleteUser": "刪除使用者 {{username}}",
+    "assignmentsHeading": "角色:網域指派",
+    "noAssignments": "沒有指派",
+    "removeAssignment": "移除指派 {{role}}:{{domain}}",
+    "roleLabel": "角色",
+    "domainLabel": "網域",
+    "allDomains": "*（所有網域）",
+    "add": "新增",
+    "createHeading": "建立使用者",
+    "username": "使用者名稱",
+    "usernameRequired": "使用者名稱 *",
+    "password": "密碼",
+    "passwordRequired": "密碼 *",
+    "email": "電郵",
+    "emailOptional": "電郵（選填）",
+    "displayName": "顯示名稱",
+    "displayNameOptional": "顯示名稱（選填）",
+    "createButton": "建立使用者",
+    "created": "已建立「{{username}}」",
+    "deleted": "已刪除「{{username}}」",
+    "createFailed": "建立失敗",
+    "assignmentFailed": "指派失敗"
+  }
+}

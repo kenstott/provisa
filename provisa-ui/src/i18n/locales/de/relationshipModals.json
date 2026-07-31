@@ -1,0 +1,21 @@
+{
+  "relationshipModals": {
+    "conflictTitle": "Beziehung existiert bereits",
+    "conflictClose": "Schließen",
+    "conflictIntro": "Eine Beziehung mit dieser Quelle und diesem Ziel existiert bereits:",
+    "conflictId": "ID",
+    "conflictSource": "Quelle",
+    "conflictTarget": "Ziel",
+    "conflictCardinality": "Kardinalität",
+    "conflictAlias": "Alias",
+    "reverseTitle": "Umgekehrte Beziehung erzeugen",
+    "idLabel": "ID",
+    "aliasLabel": "CQL-Alias (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL-Alias (camelCase)",
+    "materializeLabel": "Materialisieren",
+    "refreshIntervalLabel": "Aktualisierungsintervall (s)",
+    "cancel": "Abbrechen",
+    "save": "Speichern"
+  }
+}

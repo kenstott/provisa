@@ -1,0 +1,22 @@
+{
+  "neo4jExportModal": {
+    "title": "Neo4j 匯出",
+    "nodeCount_one": "{{count}} 個節點",
+    "nodeCount_other": "{{count}} 個節點",
+    "edgeCount_one": "{{count}} 個關係",
+    "edgeCount_other": "{{count}} 個關係",
+    "downloadScript": "下載 Cypher 指令碼（.cypher）",
+    "divider": "— 或直接匯出至伺服器 —",
+    "httpUrl": "HTTP URL",
+    "database": "資料庫",
+    "username": "使用者名稱",
+    "password": "密碼",
+    "close": "關閉",
+    "exportToServer": "匯出至伺服器",
+    "exporting": "正在匯出…",
+    "statementsImported_one": "已匯入 {{count}} 個陳述式。",
+    "statementsImported_other": "已匯入 {{count}} 個陳述式。",
+    "errorsSuffix_one": "（{{count}} 個錯誤：{{first}}）",
+    "errorsSuffix_other": "（{{count}} 個錯誤：{{first}}）"
+  }
+}

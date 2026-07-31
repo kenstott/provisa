@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "Chargement…",
+    "intro": "Chiffrement des colonnes au repos. Choisissez un fournisseur et gérez sa clé maîtresse. Le chiffrement par enveloppe protège une clé de données par colonne avec la clé maîtresse.",
+    "providerLabel": "Fournisseur",
+    "providerCurrentSuffix": " (actuel)",
+    "providerComingSoonSuffix": " (bientôt disponible)",
+    "unavailableNote": "Le runtime de ce fournisseur n'est pas encore disponible et ne peut pas être sélectionné. Champs affichés à titre indicatif.",
+    "keyIdLabel": "ID de clé",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "Clé maîtresse :",
+    "masterKeyPresent": "présente",
+    "masterKeyMissing": "absente",
+    "generating": "Génération…",
+    "rotateKey": "Effectuer une rotation de la clé maîtresse",
+    "generateKey": "Générer la clé maîtresse",
+    "restartWarning": "{{note}} Une rotation de la clé maîtresse alors que des données chiffrées existent peut rendre les lignes antérieures illisibles — effectuez la rotation avant de stocker des données sensibles, ou planifiez un rechiffrement.",
+    "saveTitle": "Enregistrer les paramètres de chiffrement",
+    "keyGeneratedStored": "Clé maîtresse générée et stockée dans le trousseau du système (ID de clé : {{keyId}}).",
+    "keyGeneratedNoKeychain": "Aucun trousseau système disponible — copiez cette clé et définissez-la comme {{envVar}}. Elle ne sera plus affichée.",
+    "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer.",
+    "saved": "Enregistré."
+  }
+}

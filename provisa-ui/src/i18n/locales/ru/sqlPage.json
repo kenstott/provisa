@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "Проводник SQL",
+    "tabSql": "sql",
+    "tabCanvas": "холст",
+    "execMs": "{{ms}} мс",
+    "queryStats": "Статистика запроса",
+    "showExpansion": "Показать развёртывание",
+    "detachToPhysical": "Отсоединить в физический SQL",
+    "expansionTitle": "Развёртывание метрики",
+    "expansionLoading": "Получение развёртывания...",
+    "detachConfirmTitle": "Отсоединить в физический SQL?",
+    "detachConfirmBody": "Это НЕОБРАТИМО: связь с метрикой будет разорвана, и запрос станет произвольным SQL. Повторно присоединить его к метрике невозможно.",
+    "detachCancel": "Отмена",
+    "detachConfirm": "Отсоединить"
+  }
+}

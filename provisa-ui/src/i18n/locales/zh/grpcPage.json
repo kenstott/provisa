@@ -1,0 +1,20 @@
+{
+  "grpcPage": {
+    "serverBadge": "gRPC • :50051",
+    "operationType": "操作类型",
+    "query": "查询",
+    "mutation": "变更",
+    "command": "命令",
+    "method": "方法",
+    "noMethods": "无方法",
+    "cancel": "◼ 取消",
+    "send": "▶ 发送",
+    "body": "正文",
+    "proto": ".proto",
+    "response": "响应",
+    "selectMethodPlaceholder": "选择一个方法以编辑请求正文。",
+    "loading": "加载中…",
+    "waiting": "等待响应…",
+    "sendPrompt": "发送请求以查看响应。"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "canvasControls": {
+    "toolbarLabel": "Canvasbediening",
+    "zoomIn": "Inzoomen",
+    "zoomOut": "Uitzoomen",
+    "fitToScreen": "Passend op scherm",
+    "switchToHierarchy": "Overschakelen naar hiërarchische lay-out",
+    "switchToForce": "Overschakelen naar force-lay-out",
+    "nudgeLayout": "Lay-out bijstellen — verschuift geselecteerde nodes (of alle als er geen geselecteerd zijn); ingedrukt houden om te blijven itereren",
+    "edgeLength": "Randlengte",
+    "edgeLengthValue": "{{value}}px"
+  }
+}

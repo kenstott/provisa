@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "語義交換（Ossie）",
+    "endpointLabel": "端點：",
+    "copyEndpoint": "複製端點 URL",
+    "download": "下載",
+    "import": "匯入",
+    "reviewTitle": "審核 Ossie 匯入：{{model}}",
+    "reviewHint": "目前尚未註冊任何項目。取消勾選你想剔除的項目後套用 — 已勾選的項目會透過標準註冊變更作業註冊。",
+    "tablesSection": "表格（{{count}}）",
+    "relationshipsSection": "關係（{{count}}）",
+    "metricsSection": "指標（{{count}}）",
+    "columnCount": "{{count}} 個資料行",
+    "apply": "套用（{{count}}）",
+    "applied": "已套用",
+    "failed": "失敗",
+    "cancel": "取消",
+    "close": "關閉"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "sqlCanvasTableCard": {
+    "removeTable": "{{tableName}} vom Canvas entfernen",
+    "toggleColumn": "Auswahl der Spalte {{columnName}} umschalten",
+    "connectColumn": "Beziehung von {{columnName}} beginnen"
+  }
+}

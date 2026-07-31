@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "SQL 建模",
+    "description": "将 JOIN 条件提取为新的关系候选——已有关系将被排除",
+    "close": "关闭",
+    "tabSql": "SQL",
+    "tabCanvas": "画布",
+    "nlPlaceholder": "用自然语言提问——自动生成 SQL…",
+    "nlLoading": "加载中",
+    "generateSql": "生成 SQL",
+    "generating": "生成中…",
+    "copySql": "复制 SQL",
+    "copied": "已复制",
+    "copy": "复制",
+    "run": "采样 >",
+    "runningLabel": "运行中…",
+    "sampleModeLabel": "采样模式",
+    "sampleModeFirst": "前几行",
+    "sampleModeLast": "后几行",
+    "sampleModeRandom": "随机",
+    "sampleSizeLabel": "行数",
+    "roleLabel": "角色",
+    "extractJoins": "提取联接",
+    "tabResults": "结果",
+    "tabProfile": "剖析",
+    "tabCandidates": "候选",
+    "tabErrors": "错误",
+    "tabHistory": "历史",
+    "execMs": "{{ms}}毫秒"
+  }
+}

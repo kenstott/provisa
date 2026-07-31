@@ -1,0 +1,27 @@
+{
+  "openApiFormSection": {
+    "specModeLegend": "Источник спецификации OpenAPI",
+    "specModePath": "Путь / URL спецификации",
+    "specModeInline": "Написать спецификацию здесь",
+    "specPathLabel": "Путь или URL спецификации",
+    "specPathPlaceholder": "https://api.example.com/openapi.json или ./spec.yaml",
+    "specInlineLabel": "Спецификация OpenAPI (YAML или JSON)",
+    "baseUrlLabel": "Базовый URL",
+    "baseUrlHint": "(оставьте пустым, чтобы использовать servers[0].url из спецификации)",
+    "baseUrlPlaceholder": "https://api.example.com (необязательное переопределение)",
+    "cacheTtlLabel": "TTL кеша (секунды)",
+    "cacheTtlPlaceholder": "300",
+    "authenticationLabel": "Аутентификация",
+    "tokenLabel": "Токен",
+    "tokenPlaceholder": "${env:API_TOKEN}",
+    "headerNameLabel": "Имя заголовка",
+    "headerNamePlaceholder": "X-API-Key",
+    "apiKeyLabel": "Ключ API",
+    "apiKeyPlaceholder": "${env:API_KEY}",
+    "previewButton": "Предпросмотр",
+    "previewLoading": "Загрузка...",
+    "queriesCount": "запросов: {{count}}",
+    "mutationsCount": "мутаций: {{count}}",
+    "none": "нет"
+  }
+}

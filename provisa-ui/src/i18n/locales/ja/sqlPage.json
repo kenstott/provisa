@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "SQLエクスプローラー",
+    "tabSql": "sql",
+    "tabCanvas": "キャンバス",
+    "execMs": "{{ms}} ms",
+    "queryStats": "クエリ統計",
+    "showExpansion": "展開を表示",
+    "detachToPhysical": "物理SQLへ切り離す",
+    "expansionTitle": "メトリクス展開",
+    "expansionLoading": "展開を取得中...",
+    "detachConfirmTitle": "物理SQLへ切り離しますか？",
+    "detachConfirmBody": "これは一方向の操作です。メトリクスとのリンクは切断され、クエリは自由記述SQLになります。メトリクスに再接続する方法はありません。",
+    "detachCancel": "キャンセル",
+    "detachConfirm": "切り離す"
+  }
+}

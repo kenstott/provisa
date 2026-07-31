@@ -1,0 +1,13 @@
+{
+  "canvasControls": {
+    "toolbarLabel": "Canvas-Steuerung",
+    "zoomIn": "Vergrößern",
+    "zoomOut": "Verkleinern",
+    "fitToScreen": "An Bildschirm anpassen",
+    "switchToHierarchy": "Zu hierarchischem Layout wechseln",
+    "switchToForce": "Zu Force-Layout wechseln",
+    "nudgeLayout": "Layout anstoßen — verschiebt ausgewählte Knoten (oder alle, wenn keine ausgewählt sind); gedrückt halten, um weiter zu iterieren",
+    "edgeLength": "Kantenlänge",
+    "edgeLengthValue": "{{value}}px"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "onboardGate": {
+    "unavailableTitle": "לא ניתן להגיע ל-Provisa",
+    "unavailableBody": "Provisa לא הצליח לאמת מי אתה מכיוון שהשרת לא הגיב. זו אינה בעיה בחשבון שלך. נסו שוב בעוד רגע.",
+    "retry": "ניסיון חוזר"
+  }
+}

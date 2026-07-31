@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "読み込み中...",
+    "cancel": "キャンセル",
+    "save": "保存",
+    "delete": "削除",
+    "confirm": "確認",
+    "processing": "処理中..."
+  },
+  "app": {
+    "apiUnreachable": "Provisa APIに接続できませんでした。",
+    "notAuthorized": "このページを表示する権限がありません。"
+  },
+  "theme": {
+    "toggle": "カラースキーム切り替え",
+    "light": "ライト",
+    "dark": "ダーク"
+  },
+  "multiSelect": {
+    "defaultLabel": "オプションを選択",
+    "all": "すべて"
+  },
+  "roleSelector": {
+    "none": "ロールが設定されていません",
+    "all": "すべて",
+    "role": "ロール: {{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "ユーザー名",
+    "colEmail": "メールアドレス",
+    "colDisplayName": "表示名",
+    "colActive": "有効",
+    "actions": "操作",
+    "empty": "ローカルユーザーがありません",
+    "yes": "はい",
+    "no": "いいえ",
+    "none": "—",
+    "expandUser": "{{username}} の割り当てを表示",
+    "deleteUser": "ユーザー {{username}} を削除",
+    "assignmentsHeading": "ロール:ドメイン割り当て",
+    "noAssignments": "割り当てがありません",
+    "removeAssignment": "割り当て {{role}}:{{domain}} を削除",
+    "roleLabel": "ロール",
+    "domainLabel": "ドメイン",
+    "allDomains": "*（すべてのドメイン）",
+    "add": "追加",
+    "createHeading": "ユーザー作成",
+    "username": "ユーザー名",
+    "usernameRequired": "ユーザー名 *",
+    "password": "パスワード",
+    "passwordRequired": "パスワード *",
+    "email": "メールアドレス",
+    "emailOptional": "メールアドレス（任意）",
+    "displayName": "表示名",
+    "displayNameOptional": "表示名（任意）",
+    "createButton": "ユーザーを作成",
+    "created": "「{{username}}」を作成しました",
+    "deleted": "「{{username}}」を削除しました",
+    "createFailed": "作成に失敗しました",
+    "assignmentFailed": "割り当てに失敗しました"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "schemaExplorer": {
+    "selectRole": "請選取角色以檢視結構描述。",
+    "loadFailed": "載入結構描述失敗：{{error}}",
+    "loading": "正在載入結構描述…"
+  }
+}

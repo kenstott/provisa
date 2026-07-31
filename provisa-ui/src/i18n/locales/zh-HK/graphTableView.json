@@ -1,0 +1,8 @@
+{
+  "graphTableView": {
+    "noRows": "沒有數據列",
+    "copyAsCsv": "複製為 CSV",
+    "copyJson": "複製 JSON",
+    "table": "數據表結果"
+  }
+}

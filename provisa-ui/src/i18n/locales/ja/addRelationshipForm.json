@@ -1,0 +1,29 @@
+{
+  "addRelationshipForm": {
+    "idLabel": "ID",
+    "idPlaceholder": "orders-to-customers",
+    "aliasLabel": "CQLエイリアス（UPPER_SNAKE）",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQLエイリアス（camelCase）",
+    "graphqlAliasPlaceholder": "例: orders",
+    "sourceTableLabel": "ソーステーブル",
+    "sourceColumnLabel": "ソース列",
+    "selectPlaceholder": "選択...",
+    "targetTypeLabel": "ターゲットタイプ",
+    "targetTypeTable": "テーブル",
+    "targetTypeFunction": "関数（計算値）",
+    "targetTableLabel": "ターゲットテーブル",
+    "targetColumnLabel": "ターゲット列",
+    "functionLabel": "関数",
+    "functionArgLabel": "関数の引数（ソース列を受け取る）",
+    "functionArgPlaceholder": "引数名",
+    "cardinalityLabel": "カーディナリティ",
+    "cardinalityManyToOne": "多対一",
+    "cardinalityOneToMany": "一対多",
+    "cardinalityWarning": "警告: この結合が親ごとに複数行を返す場合、最初の値のみが使用されます。",
+    "materializeLabel": "マテリアライズ（クロスソース結合用にMVを自動作成）",
+    "disableCypherLabel": "Cypherグラフから除外",
+    "refreshIntervalLabel": "リフレッシュ間隔（秒）",
+    "save": "保存"
+  }
+}

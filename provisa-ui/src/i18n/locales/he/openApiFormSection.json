@@ -1,0 +1,27 @@
+{
+  "openApiFormSection": {
+    "specModeLegend": "מקור מפרט OpenAPI",
+    "specModePath": "נתיב / URL של המפרט",
+    "specModeInline": "כתיבת מפרט מוטבע",
+    "specPathLabel": "נתיב או URL של המפרט",
+    "specPathPlaceholder": "https://api.example.com/openapi.json או ./spec.yaml",
+    "specInlineLabel": "מפרט OpenAPI (YAML או JSON)",
+    "baseUrlLabel": "Base URL",
+    "baseUrlHint": "(יש להשאיר ריק כדי להשתמש ב-servers[0].url מהמפרט)",
+    "baseUrlPlaceholder": "https://api.example.com (דריסה אופציונלית)",
+    "cacheTtlLabel": "TTL של מטמון (שניות)",
+    "cacheTtlPlaceholder": "300",
+    "authenticationLabel": "אימות",
+    "tokenLabel": "אסימון",
+    "tokenPlaceholder": "${env:API_TOKEN}",
+    "headerNameLabel": "שם כותרת",
+    "headerNamePlaceholder": "X-API-Key",
+    "apiKeyLabel": "מפתח API",
+    "apiKeyPlaceholder": "${env:API_KEY}",
+    "previewButton": "תצוגה מקדימה",
+    "previewLoading": "טוען...",
+    "queriesCount": "{{count}} שאילתות",
+    "mutationsCount": "{{count}} מוטציות",
+    "none": "ללא"
+  }
+}

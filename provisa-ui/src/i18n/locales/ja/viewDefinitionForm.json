@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "メトリクス",
+    "sqlCreateHint": "自由記述のビューはSQLエディターで作成します。SELECTを書いて実行し、ビューとして保存してください。",
+    "sqlEditHint": "このビューのSQLはSQLエディターで編集します。",
+    "openSqlEditor": "SQLエディターを開く",
+    "editInSqlEditor": "SQLエディターで編集",
+    "fieldName": "ビュー名",
+    "fieldNamePlaceholder": "例: revenue_by_region",
+    "fieldDomain": "ドメイン",
+    "fieldDescription": "説明",
+    "fieldMetrics": "メトリクス",
+    "fieldMetricsPlaceholder": "登録済みメトリクスを1つ以上選択",
+    "fieldDimensions": "ディメンション",
+    "fieldDimensionsPlaceholder": "メトリクスのテーブルのカラム（リレーションシップ1ホップ先を含む）",
+    "fieldFilters": "フィルター",
+    "fieldFiltersHelp": "1行につきSQL条件を1つ。条件はANDで結合されます。",
+    "save": "ビューを保存",
+    "saveFailed": "保存に失敗しました",
+    "cancel": "キャンセル"
+  }
+}

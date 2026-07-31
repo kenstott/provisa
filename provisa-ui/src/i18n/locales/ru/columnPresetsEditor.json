@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "Пресеты колонок",
+    "infoTooltip": "Внедрять вычисляемые или постоянные значения в каждую строку, возвращаемую для этой таблицы. Полезно для добавления идентификаторов домена, флагов по ролям или производных полей без изменения схемы источника. 'source' может быть: constant, sql_expression или role_claim.",
+    "columnHeader": "Колонка",
+    "sourceHeader": "Источник",
+    "valueHeader": "Заголовок / значение",
+    "removeAction": "Удалить",
+    "columnPlaceholder": "— колонка —",
+    "selectPlaceholder": "— выберите —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "Имя заголовка (например, X-User-Id)",
+    "literalValuePlaceholder": "Литеральное значение",
+    "numericValuePlaceholder": "Числовое значение",
+    "addAction": "Добавить",
+    "sourceNow": "now (метка времени UTC)",
+    "sourceHeaderOption": "header (заголовок HTTP-запроса)",
+    "sourceLiteral": "literal (фиксированное значение)"
+  }
+}

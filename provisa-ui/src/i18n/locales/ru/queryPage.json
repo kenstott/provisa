@@ -1,0 +1,20 @@
+{
+  "queryPage": {
+    "selectRole": "Выберите роль.",
+    "redirectLabel": "Перенаправление",
+    "thresholdLabel": "Порог",
+    "thresholdPlaceholder": "все",
+    "redirectHint": "Все результаты перенаправляются в S3",
+    "queryStats": "Статистика запроса",
+    "schemaError": "Ошибка схемы: {{message}}",
+    "redirectReady": "Перенаправление готово — строк: {{rowCount}} ({{contentType}})",
+    "download": "Скачать",
+    "dismissRedirect": "Скрыть уведомление о перенаправлении",
+    "formatNone": "Нет",
+    "formatParquet": "Parquet",
+    "formatArrow": "Arrow",
+    "formatCsv": "CSV",
+    "formatNdjson": "NDJSON",
+    "formatJson": "JSON"
+  }
+}

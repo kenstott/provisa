@@ -1,0 +1,24 @@
+{
+  "nlPage": {
+    "guideTitle": "Zo schrijf je een goede vraag",
+    "guideDesc": "Deze tool genereert query's rechtstreeks vanuit het schema — er wordt niet geredeneerd over vrije tekst of algemene kennis. Formuleer de vraag als een samenstelling van de tabellen, velden en relaties die in de gegevens bestaan.",
+    "guideRuleNames": "Gebruik de namen van entiteiten, geen synoniemen ({{entity}}, niet {{synonym}})",
+    "guideRuleFilters": "Geef filters, groeperingen en aggregaties op zoals in een query",
+    "guideRuleSchema": "Als een veld of relatie niet in het schema staat, kan er geen query op worden uitgevoerd",
+    "guideExamplesLabel": "Voorbeelden",
+    "example1": "Toon alle klanten met een ordertotaal boven 10.000, gegroepeerd per regio",
+    "example2": "Toon de top 5 producten op omzet in de afgelopen 30 dagen",
+    "example3": "Vind alle gebruikers die nog nooit een bestelling hebben geplaatst",
+    "questionPlaceholder": "Stel een vraag in gewone taal…",
+    "questionLabel": "Vraag in natuurlijke taal",
+    "generate": "Genereren",
+    "generating": "Genereren…",
+    "mcpChat": "Chat ›",
+    "openInExplorer": "Openen in {{label}}-verkenner",
+    "openIn": "Openen in {{label}}",
+    "notApplicable": "Niet van toepassing op dit querytype",
+    "noQueryGenerated": "Geen query gegenereerd",
+    "noRowsReturned": "Geen rijen geretourneerd",
+    "showingRows": "{{shown}} van {{total}} rijen weergegeven"
+  }
+}

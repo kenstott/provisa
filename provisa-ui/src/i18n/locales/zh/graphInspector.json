@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "概览",
+    "hidePanel": "隐藏面板",
+    "nodeLabels": "节点标签",
+    "relationshipTypes": "关系类型",
+    "summary": "正在显示 {{nodeCount}} 个节点，{{edgeCount}} 个关系。",
+    "hint": "点击节点或边以查看其属性。",
+    "nodeProperties": "节点属性",
+    "relationshipProperties": "关系属性",
+    "copyAll": "以 JSON 复制全部属性",
+    "showDetails": "显示详情",
+    "showJson": "显示 JSON",
+    "close": "关闭",
+    "domain": "域",
+    "changeColor": "更改颜色",
+    "colorSwatch": "将颜色设为 {{color}}",
+    "cqlAliasLabel": "CQL 别名（UPPER_SNAKE）",
+    "gqlAliasLabel": "GQL 别名（camelCase）",
+    "saveAlias": "保存",
+    "graphStats": "图统计",
+    "properties": "属性",
+    "copyValue": "复制值",
+    "resizePanel": "调整检查器面板大小"
+  }
+}

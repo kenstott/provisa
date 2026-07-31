@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "Обзор",
+    "hidePanel": "Скрыть панель",
+    "nodeLabels": "Метки узлов",
+    "relationshipTypes": "Типы связей",
+    "summary": "Показано узлов: {{nodeCount}}, связей: {{edgeCount}}.",
+    "hint": "Щёлкните узел или ребро, чтобы просмотреть его свойства.",
+    "nodeProperties": "Свойства узла",
+    "relationshipProperties": "Свойства связи",
+    "copyAll": "Копировать все свойства как JSON",
+    "showDetails": "Показать подробности",
+    "showJson": "Показать JSON",
+    "close": "Закрыть",
+    "domain": "Домен",
+    "changeColor": "Изменить цвет",
+    "colorSwatch": "Установить цвет {{color}}",
+    "cqlAliasLabel": "Псевдоним CQL (UPPER_SNAKE)",
+    "gqlAliasLabel": "Псевдоним GQL (camelCase)",
+    "saveAlias": "Сохранить",
+    "graphStats": "Статистика графа",
+    "properties": "Свойства",
+    "copyValue": "Копировать значение",
+    "resizePanel": "Изменить размер панели инспектора"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "queryPage": {
+    "selectRole": "ロールを選択してください。",
+    "redirectLabel": "リダイレクト",
+    "thresholdLabel": "しきい値",
+    "thresholdPlaceholder": "すべて",
+    "redirectHint": "すべての結果を S3 にリダイレクトします",
+    "queryStats": "クエリ統計",
+    "schemaError": "スキーマエラー: {{message}}",
+    "redirectReady": "リダイレクト準備完了 — {{rowCount}} 行({{contentType}})",
+    "download": "ダウンロード",
+    "dismissRedirect": "リダイレクト通知を閉じる",
+    "formatNone": "なし",
+    "formatParquet": "Parquet",
+    "formatArrow": "Arrow",
+    "formatCsv": "CSV",
+    "formatNdjson": "NDJSON",
+    "formatJson": "JSON"
+  }
+}

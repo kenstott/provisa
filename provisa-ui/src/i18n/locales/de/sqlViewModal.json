@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ Sicht",
+    "titleRequest": "Sicht anfordern",
+    "create": "Erstellen",
+    "submitRequest": "Anfrage einreichen",
+    "saving": "Wird gespeichert…",
+    "close": "Schließen",
+    "noPermissionNotice": "Sie haben kein create_view. Dies wird als vorgeschlagene Sicht zur Genehmigung eingereicht.",
+    "alias": "Alias",
+    "aliasPlaceholder": "z. B. my_view",
+    "domain": "Domäne",
+    "domainSelectPlaceholder": "— Domäne auswählen —",
+    "description": "Beschreibung",
+    "descriptionPlaceholder": "Optional",
+    "saveAsMetricView": "Als Metrik-Sicht speichern ({{metric}})",
+    "hasParamsWarning": "Das SQL enthält nicht aufgelöste Parameterplatzhalter ($1, $2, …). Bearbeiten Sie das SQL und ersetzen Sie sie durch Literalwerte.",
+    "savedTitle": "Sicht gespeichert",
+    "savedMessageCreated": "Sicht \"{{viewId}}\" wurde erstellt und registriert.",
+    "savedMessageSubmitted": "Sicht \"{{viewId}}\" wurde zur Genehmigung eingereicht.",
+    "editInModelViews": "In Modell/Sichten bearbeiten"
+  }
+}

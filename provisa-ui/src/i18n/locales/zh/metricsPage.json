@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "指标",
+    "newMetric": "新建指标",
+    "loading": "正在加载...",
+    "empty": "尚未注册任何指标。",
+    "colName": "名称",
+    "colExpression": "表达式",
+    "colDatatype": "数据类型",
+    "colDescription": "描述",
+    "colAiContext": "AI 上下文",
+    "fromFact": "来自事实表",
+    "builderFact": "源事实表",
+    "builderMeasure": "度量",
+    "builderAgg": "聚合",
+    "builderNoFacts": "尚未注册任何事实表",
+    "detail": {
+      "handAuthored": "手工编写",
+      "noDependents": "无",
+      "field": {
+        "expression": "表达式",
+        "datatype": "数据类型",
+        "description": "描述",
+        "aiContext": "AI 上下文",
+        "sourceFact": "源事实表",
+        "visibleTo": "可见对象",
+        "dependentViews": "依赖的指标视图"
+      }
+    },
+    "createTitle": "新建指标",
+    "editTitle": "编辑指标",
+    "fieldName": "名称",
+    "fieldNamePlaceholder": "例如 total_revenue",
+    "fieldExpression": "表达式",
+    "fieldExpressionPlaceholder": "例如 SUM(orders.amount)",
+    "fieldDatatype": "数据类型",
+    "fieldDatatypePlaceholder": "例如 numeric",
+    "fieldDatatypeDerived": "由事实表度量构建时从聚合派生",
+    "fieldDescription": "描述",
+    "fieldAiContext": "AI 上下文",
+    "fieldAiContextPlaceholder": "供 AI 辅助查询生成的提示",
+    "save": "保存",
+    "cancel": "取消",
+    "saveFailed": "保存失败。",
+    "editMetric": "编辑指标 {{name}}",
+    "deleteMetric": "删除指标 {{name}}",
+    "deleteTitle": "删除指标",
+    "deleteConfirm": "删除指标“{{name}}”？此操作无法撤消。",
+    "delete": "删除",
+    "deleteFailed": "删除失败。"
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "移除指标 {{metricName}}",
+    "dimensionsHeading": "维度",
+    "noDimensions": "未找到相关的维度列"
+  }
+}

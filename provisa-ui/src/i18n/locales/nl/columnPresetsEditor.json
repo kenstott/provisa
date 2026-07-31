@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "Kolomvoorinstellingen",
+    "infoTooltip": "Injecteer berekende of constante waarden in elke rij die voor deze tabel wordt geretourneerd. Handig voor het toevoegen van domeinidentificaties, rolgebonden vlaggen of afgeleide velden zonder het bronschema te wijzigen. 'source' kan zijn: constant, sql_expression of role_claim.",
+    "columnHeader": "Kolom",
+    "sourceHeader": "Bron",
+    "valueHeader": "Header / waarde",
+    "removeAction": "Verwijderen",
+    "columnPlaceholder": "— kolom —",
+    "selectPlaceholder": "— selecteren —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "Headernaam (bijv. X-User-Id)",
+    "literalValuePlaceholder": "Letterlijke waarde",
+    "numericValuePlaceholder": "Numerieke waarde",
+    "addAction": "Toevoegen",
+    "sourceNow": "now (UTC-tijdstempel)",
+    "sourceHeaderOption": "header (HTTP-request-header)",
+    "sourceLiteral": "literal (vaste waarde)"
+  }
+}

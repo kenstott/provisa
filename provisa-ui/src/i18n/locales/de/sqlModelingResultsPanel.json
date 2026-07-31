@@ -1,0 +1,21 @@
+{
+  "sqlModelingResultsPanel": {
+    "downloadCsv": "CSV herunterladen",
+    "rowCount_one": "{{count}} Zeile",
+    "rowCount_other": "{{count}} Zeilen",
+    "filteredFrom": "(gefiltert aus {{count}})",
+    "firstPage": "Erste Seite",
+    "previousPage": "Vorherige Seite",
+    "nextPage": "Nächste Seite",
+    "lastPage": "Letzte Seite",
+    "pageOf": "Seite {{page}} / {{total}}",
+    "filterPlaceholder": "filtern…",
+    "filterColumn": "{{column}} filtern",
+    "resizeColumn": "Spalte {{column}} in der Breite ändern",
+    "noResults": "Keine Ergebnisse.",
+    "writeSqlPrompt": "SQL schreiben und auf „Stichprobe“ klicken, um auszuführen.",
+    "nullValue": "null",
+    "sortAscending": "aufsteigend sortiert",
+    "sortDescending": "absteigend sortiert"
+  }
+}

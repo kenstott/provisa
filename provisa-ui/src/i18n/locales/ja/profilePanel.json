@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "クエリをサンプル実行すると結果列をプロファイルできます。",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "プロファイルをJSONとしてダウンロード",
+    "colColumn": "列",
+    "colNulls": "NULL数",
+    "colNullsTitle": "値がNULLの行数",
+    "colBlanks": "空文字数",
+    "colBlanksTitle": "値が空文字列の行数",
+    "colDistinct": "個別値数",
+    "colDistinctTitle": "一意な値の数",
+    "colConstant": "定数？",
+    "colConstantTitle": "列の一意な値が1つのみ",
+    "colMin": "最小",
+    "colMax": "最大",
+    "colMean": "平均",
+    "colMeanTitle": "数値の平均",
+    "colTopValues": "上位の値",
+    "constantYes": "はい（{{value}}）",
+    "emptyValue": "—"
+  }
+}

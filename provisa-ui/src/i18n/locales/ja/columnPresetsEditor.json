@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "列プリセット",
+    "infoTooltip": "このテーブルが返すすべての行に、計算値または定数値を挿入します。ソーススキーマを変更せずにドメイン識別子、ロールスコープのフラグ、派生フィールドを追加するのに便利です。'source' には constant、sql_expression、role_claim を指定できます。",
+    "columnHeader": "列",
+    "sourceHeader": "ソース",
+    "valueHeader": "ヘッダー / 値",
+    "removeAction": "削除",
+    "columnPlaceholder": "— 列 —",
+    "selectPlaceholder": "— 選択 —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "ヘッダー名（例: X-User-Id）",
+    "literalValuePlaceholder": "リテラル値",
+    "numericValuePlaceholder": "数値",
+    "addAction": "追加",
+    "sourceNow": "now（UTCタイムスタンプ）",
+    "sourceHeaderOption": "header（HTTPリクエストヘッダー）",
+    "sourceLiteral": "literal（固定値）"
+  }
+}

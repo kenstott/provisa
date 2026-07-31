@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "מדדים",
+    "sqlCreateHint": "Views חופשיים נכתבים בעורך ה-SQL: כתבו את ה-SELECT, הריצו אותו, ואז שמרו אותו כ-View.",
+    "sqlEditHint": "ה-SQL של ה-View הזה נערך בעורך ה-SQL.",
+    "openSqlEditor": "פתיחת עורך SQL",
+    "editInSqlEditor": "עריכה בעורך SQL",
+    "fieldName": "שם ה-View",
+    "fieldNamePlaceholder": "למשל revenue_by_region",
+    "fieldDomain": "דומיין",
+    "fieldDescription": "תיאור",
+    "fieldMetrics": "מדדים",
+    "fieldMetricsPlaceholder": "בחרו מדד רשום אחד או יותר",
+    "fieldDimensions": "ממדים",
+    "fieldDimensionsPlaceholder": "עמודות של טבלאות המדדים (כולל מרחק של קשר אחד)",
+    "fieldFilters": "מסננים",
+    "fieldFiltersHelp": "תנאי SQL אחד בכל שורה; התנאים מחוברים ב-AND.",
+    "save": "שמירת View",
+    "saveFailed": "השמירה נכשלה",
+    "cancel": "ביטול"
+  }
+}

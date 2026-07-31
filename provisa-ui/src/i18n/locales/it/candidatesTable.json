@@ -1,0 +1,15 @@
+{
+  "candidatesTable": {
+    "heading": "Relazioni suggerite dall'AI",
+    "colName": "Nome",
+    "colSource": "Origine",
+    "colTarget": "Destinazione",
+    "colCardinality": "Cardinalità",
+    "colConfidence": "Attendibilità",
+    "colActions": "Azioni",
+    "accept": "Accetta",
+    "reject": "Rifiuta",
+    "acceptAria": "Accetta la relazione suggerita {{name}}",
+    "rejectAria": "Rifiuta la relazione suggerita {{name}}"
+  }
+}

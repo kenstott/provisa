@@ -1,0 +1,20 @@
+{
+  "grpcPage": {
+    "serverBadge": "gRPC • :50051",
+    "operationType": "Тип операции",
+    "query": "Запрос",
+    "mutation": "Мутация",
+    "command": "Команда",
+    "method": "Метод",
+    "noMethods": "Нет методов",
+    "cancel": "◼ Отмена",
+    "send": "▶ Отправить",
+    "body": "Тело",
+    "proto": ".proto",
+    "response": "Ответ",
+    "selectMethodPlaceholder": "Выберите метод для редактирования тела запроса.",
+    "loading": "Загрузка…",
+    "waiting": "Ожидание ответа…",
+    "sendPrompt": "Отправьте запрос, чтобы увидеть ответ."
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "L'autenticazione verifica chi effettua la chiamata; ruoli + RLS decidono cosa può vedere. Scegliere il provider di identità e configurarne la connessione.",
+    "providerLabel": "Provider",
+    "current": " (corrente)",
+    "roles": "Ruoli",
+    "defaultRole": "Ruolo predefinito",
+    "assignmentsFrom": "Assegnazioni dei ruoli da",
+    "assignmentsSourceClaims": "Claim del token",
+    "assignmentsSourceProvisa": "Provisa (assegnazioni locali)",
+    "trustUpstream": "Considera attendibili le intestazioni di identità del proxy upstream",
+    "allowSimpleAuth": "Consenti autenticazione semplice (protezione di produzione — necessaria per abilitare nome utente/password)",
+    "saveButton": "Salva impostazioni di autenticazione",
+    "loading": "Caricamento in corso…",
+    "saved": "Salvato.",
+    "savedRestartRequired": "Salvato. Riavviare il servizio per applicare."
+  }
+}

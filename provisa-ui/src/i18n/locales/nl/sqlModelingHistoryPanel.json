@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "Nog geen queries uitgevoerd. Geschiedenis blijft bewaard tussen sessies.",
+    "colTime": "Tijd",
+    "colRole": "Rol",
+    "colDuration": "Duur",
+    "colRows": "Rijen",
+    "colSql": "SQL",
+    "colActions": "Acties",
+    "error": "fout",
+    "restore": "Herstellen",
+    "restoreLabel": "Query van {{time}} herstellen"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "Anmeldung",
+    "authNotConfigured": "Authentifizierung nicht konfiguriert",
+    "loading": "Wird geladen...",
+    "signInTitle": "Anmelden",
+    "firstLoginHeading": "Dieses Deployment einrichten",
+    "firstLoginTitle": "Dies ist die erste Anmeldung",
+    "firstLoginBody": "Noch niemand verwaltet dieses Deployment. Wer sich zuerst anmeldet, wird Plattform-Administrator — mit voller Kontrolle über Organisationen, Benutzer und Datenquellen. Wählen Sie unten eine Anmeldemethode, um die Rolle zu übernehmen.",
+    "signInWithGoogle": "Mit Google anmelden",
+    "signInWithGithub": "Mit GitHub anmelden",
+    "signInWithMicrosoft": "Mit Microsoft anmelden",
+    "signInWithEmail": "Mit E-Mail anmelden",
+    "orDivider": "oder",
+    "haveAccountSignIn": "Sie haben ein Konto? Anmelden",
+    "needAccountRegister": "Noch kein Konto? Registrieren",
+    "signingIn": "Anmeldung läuft...",
+    "createAccountTitle": "Konto erstellen",
+    "username": "Benutzername",
+    "email": "E-Mail",
+    "displayName": "Anzeigename",
+    "organization": "Organisation",
+    "password": "Passwort",
+    "confirmPassword": "Passwort bestätigen",
+    "creating": "Wird erstellt...",
+    "createAccount": "Konto erstellen",
+    "backToLogin": "Zurück zur Anmeldung",
+    "loggingIn": "Anmeldung läuft...",
+    "passwordsDoNotMatch": "Passwörter stimmen nicht überein",
+    "registrationFailed": "Registrierung fehlgeschlagen",
+    "firebaseSignInFailed": "Firebase-Anmeldung fehlgeschlagen"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "Database",
+    "tabHistory": "Cronologia",
+    "tabFavorites": "Preferiti",
+    "tabExport": "Esporta in Neo4j",
+    "domainLabels": "Etichette di dominio",
+    "nodeLabels": "Etichette dei nodi",
+    "relationshipTypes": "Tipi di relazione",
+    "propertyKeys": "Chiavi delle proprietà",
+    "loading": "Caricamento…",
+    "noLabelsFound": "Nessuna etichetta trovata",
+    "noRelTypesFound": "Nessun tipo di relazione trovato",
+    "history": "Cronologia",
+    "noHistory": "Nessuna cronologia",
+    "favorites": "Preferiti",
+    "noFavorites": "Nessun preferito — fare clic su ★ in un riquadro dei risultati",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "Prima pagina",
+    "previousPage": "Pagina precedente",
+    "nextPage": "Pagina successiva",
+    "lastPage": "Ultima pagina",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "Esegui",
+    "rename": "Rinomina",
+    "remove": "Rimuovi",
+    "renameFavoriteInput": "Nome del preferito",
+    "resizeSidebar": "Ridimensiona barra laterale"
+  }
+}

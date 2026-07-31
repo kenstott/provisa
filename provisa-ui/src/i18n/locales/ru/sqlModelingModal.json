@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "SQL-моделирование",
+    "description": "Извлечь условия JOIN как кандидатов на новые связи — существующие связи исключаются",
+    "close": "Закрыть",
+    "tabSql": "SQL",
+    "tabCanvas": "Холст",
+    "nlPlaceholder": "Спросите обычным языком — сгенерирует SQL…",
+    "nlLoading": "Загрузка",
+    "generateSql": "Сгенерировать SQL",
+    "generating": "Генерация…",
+    "copySql": "Копировать SQL",
+    "copied": "Скопировано",
+    "copy": "Копировать",
+    "run": "Выборка >",
+    "runningLabel": "Выполнение…",
+    "sampleModeLabel": "Режим выборки",
+    "sampleModeFirst": "Первые",
+    "sampleModeLast": "Последние",
+    "sampleModeRandom": "Случайные",
+    "sampleSizeLabel": "Число строк",
+    "roleLabel": "Роль",
+    "extractJoins": "Извлечь соединения",
+    "tabResults": "Результаты",
+    "tabProfile": "Профиль",
+    "tabCandidates": "Кандидаты",
+    "tabErrors": "Ошибки",
+    "tabHistory": "История",
+    "execMs": "{{ms}} мс"
+  }
+}

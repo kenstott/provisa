@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "L'authentification vérifie qui appelle ; les rôles et la RLS décident de ce qui est visible. Choisissez le fournisseur d'identité et configurez sa connexion.",
+    "providerLabel": "Fournisseur",
+    "current": " (actuel)",
+    "roles": "Rôles",
+    "defaultRole": "Rôle par défaut",
+    "assignmentsFrom": "Attributions de rôles depuis",
+    "assignmentsSourceClaims": "Claims du jeton",
+    "assignmentsSourceProvisa": "Provisa (attributions locales)",
+    "trustUpstream": "Faire confiance aux en-têtes d'identité du proxy amont",
+    "allowSimpleAuth": "Autoriser l'authentification simple (garde-fou de production — requis pour activer nom d'utilisateur/mot de passe)",
+    "saveButton": "Enregistrer les paramètres d'authentification",
+    "loading": "Chargement…",
+    "saved": "Enregistré.",
+    "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer."
+  }
+}

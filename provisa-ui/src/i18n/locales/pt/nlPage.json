@@ -1,0 +1,24 @@
+{
+  "nlPage": {
+    "guideTitle": "Como escrever uma boa pergunta",
+    "guideDesc": "Esta ferramenta gera consultas diretamente do esquema — ela não raciocina sobre texto livre ou conhecimento geral. Formule a pergunta como uma composição das tabelas, campos e relacionamentos que existem nos dados.",
+    "guideRuleNames": "Use os nomes das entidades, não sinônimos ({{entity}}, não {{synonym}})",
+    "guideRuleFilters": "Especifique filtros, agrupamentos e agregações como faria em uma consulta",
+    "guideRuleSchema": "Se um campo ou relacionamento não está no esquema, ele não pode ser consultado",
+    "guideExamplesLabel": "Exemplos",
+    "example1": "Mostrar todos os clientes cujos pedidos somam mais de 10.000, agrupados por região",
+    "example2": "Listar os 5 produtos com maior receita nos últimos 30 dias",
+    "example3": "Encontrar todos os usuários que nunca fizeram um pedido",
+    "questionPlaceholder": "Faça uma pergunta em linguagem natural…",
+    "questionLabel": "Pergunta em linguagem natural",
+    "generate": "Gerar",
+    "generating": "Gerando…",
+    "mcpChat": "Chat ›",
+    "openInExplorer": "Abrir no explorador {{label}}",
+    "openIn": "Abrir em {{label}}",
+    "notApplicable": "Não aplicável para este tipo de consulta",
+    "noQueryGenerated": "Nenhuma consulta gerada",
+    "noRowsReturned": "Nenhuma linha retornada",
+    "showingRows": "Mostrando {{shown}} de {{total}} linhas"
+  }
+}

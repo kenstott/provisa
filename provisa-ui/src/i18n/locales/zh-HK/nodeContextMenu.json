@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "將此節點從查詢中排除",
+    "excludeDisabledTooltip": "未設定主索引鍵 — 無法排除",
+    "excludeFromQuery": "從查詢中排除",
+    "excludeCount": "排除 {{count}} 個節點",
+    "unfixPosition": "取消固定位置",
+    "showChildren": "顯示子節點",
+    "hideChildren": "隱藏子節點",
+    "showChildrenCircularTooltip": "將子節點環繞此節點排列",
+    "noOutgoingTooltip": "此節點類型沒有外向關係",
+    "showChildrenCircular": "顯示子節點（環形）",
+    "hideChildrenCircular": "隱藏子節點（環形）",
+    "showParents": "顯示父節點",
+    "hideParents": "隱藏父節點",
+    "showParentsCircularTooltip": "將父節點環繞此節點排列",
+    "noIncomingTooltip": "此節點類型沒有內向關係",
+    "showParentsCircular": "顯示父節點（環形）",
+    "hideParentsCircular": "隱藏父節點（環形）",
+    "invertSelection": "反向選取",
+    "select": "選取",
+    "selectAll": "全部",
+    "selectAllOfType": "此類型全部",
+    "selectConnected": "已連接",
+    "selectChildren": "子節點",
+    "selectParents": "父節點",
+    "removeNode": "移除節點",
+    "removeCount": "移除 {{count}} 個節點"
+  }
+}

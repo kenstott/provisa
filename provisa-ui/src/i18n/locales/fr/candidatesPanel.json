@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "Cliquez sur « Extraire les jointures » pour trouver de nouvelles relations. Les conditions JOIN ayant déjà une relation enregistrée sont exclues.",
+    "colId": "ID",
+    "colSource": "Source",
+    "colTarget": "Cible",
+    "colCardinality": "Cardinalité",
+    "colActions": "Actions",
+    "idLabel": "ID du candidat",
+    "cardinalityLabel": "Cardinalité",
+    "manyToOne": "plusieurs-à-un",
+    "oneToMany": "un-à-plusieurs",
+    "promoted": "Promu",
+    "promote": "Promouvoir"
+  }
+}

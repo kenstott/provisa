@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "Klicken Sie auf \"Joins extrahieren\", um neue Beziehungen zu finden. JOIN-Bedingungen mit bereits registrierter Beziehung werden ausgeschlossen.",
+    "colId": "ID",
+    "colSource": "Quelle",
+    "colTarget": "Ziel",
+    "colCardinality": "Kardinalität",
+    "colActions": "Aktionen",
+    "idLabel": "Kandidaten-ID",
+    "cardinalityLabel": "Kardinalität",
+    "manyToOne": "n:1",
+    "oneToMany": "1:n",
+    "promoted": "Übernommen",
+    "promote": "Übernehmen"
+  }
+}

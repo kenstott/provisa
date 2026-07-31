@@ -1,0 +1,12 @@
+{
+  "mcpExplore": {
+    "title": "MCP",
+    "intro": "Chat met een AI-assistent die de catalogus verkent en SQL uitvoert via de governed MCP-tools — dezelfde tools die externe agents gebruiken.",
+    "roleNote": "Actief als rol: {{role}}",
+    "noRole": "(geen rol)",
+    "thinking": "Assistent is bezig…",
+    "emptyState": "Stel een vraag over de data — bijv. \"welke tabellen bevatten klant-e-mail?\", \"top 10 orders op bedrag\" of \"hoe ziet de tabel orders eruit?\"",
+    "inputPlaceholder": "Stel een vraag over de catalogus of data…",
+    "clear": "Invoer wissen"
+  }
+}

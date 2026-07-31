@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "Predefinições de coluna",
+    "infoTooltip": "Injeta valores calculados ou constantes em cada linha retornada para esta tabela. Útil para adicionar identificadores de domínio, sinalizadores por função ou campos derivados sem modificar o esquema da fonte. 'source' pode ser: constant, sql_expression ou role_claim.",
+    "columnHeader": "Coluna",
+    "sourceHeader": "Fonte",
+    "valueHeader": "Cabeçalho / valor",
+    "removeAction": "Remover",
+    "columnPlaceholder": "— coluna —",
+    "selectPlaceholder": "— selecionar —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "Nome do cabeçalho (ex.: X-User-Id)",
+    "literalValuePlaceholder": "Valor literal",
+    "numericValuePlaceholder": "Valor numérico",
+    "addAction": "Adicionar",
+    "sourceNow": "now (timestamp UTC)",
+    "sourceHeaderOption": "header (cabeçalho da requisição HTTP)",
+    "sourceLiteral": "literal (valor fixo)"
+  }
+}

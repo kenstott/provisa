@@ -1,0 +1,11 @@
+{
+  "docsPage": {
+    "title": "文件",
+    "loading": "載入中…",
+    "sourceOnline": "線上",
+    "sourceOffline": "離線副本",
+    "viewOnline": "使用線上文件",
+    "viewOffline": "使用離線副本",
+    "openInNewTab": "在新分頁開啟"
+  }
+}

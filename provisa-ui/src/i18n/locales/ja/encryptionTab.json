@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "読み込み中…",
+    "intro": "保存時の列暗号化です。プロバイダーを選択し、そのマスターキーを管理します。エンベロープ暗号化により、列ごとのデータキーをマスターキーでラップします。",
+    "providerLabel": "プロバイダー",
+    "providerCurrentSuffix": "（現在）",
+    "providerComingSoonSuffix": "（近日提供）",
+    "unavailableNote": "このプロバイダーのランタイムはまだ利用できないため選択できません。フィールドは参考として表示されています。",
+    "keyIdLabel": "キーID",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "マスターキー：",
+    "masterKeyPresent": "あり",
+    "masterKeyMissing": "なし",
+    "generating": "生成中…",
+    "rotateKey": "マスターキーのローテーション",
+    "generateKey": "マスターキーの生成",
+    "restartWarning": "{{note}} 暗号化データが存在する状態でマスターキーをローテーションすると、既存の行が読み取れなくなる可能性があります。機密データを保存する前にローテーションするか、再暗号化を計画してください。",
+    "saveTitle": "暗号化設定を保存",
+    "keyGeneratedStored": "マスターキーを生成し、OS のキーチェーンに保存しました（キーID：{{keyId}}）。",
+    "keyGeneratedNoKeychain": "OS のキーチェーンが利用できません。このキーをコピーして {{envVar}} として設定してください。再表示されません。",
+    "savedRestartRequired": "保存しました。適用するにはサービスを再起動してください。",
+    "saved": "保存しました。"
+  }
+}

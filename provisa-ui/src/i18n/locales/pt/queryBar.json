@@ -1,0 +1,7 @@
+{
+  "queryBar": {
+    "autoImputeOn": "Imputação automática de relacionamentos ATIVADA — clique para desabilitar",
+    "autoImputeOff": "Imputar automaticamente relacionamentos entre os nós visíveis",
+    "run": "Executar consulta (⌘↵)"
+  }
+}

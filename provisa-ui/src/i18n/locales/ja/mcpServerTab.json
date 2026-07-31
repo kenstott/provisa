@@ -1,0 +1,18 @@
+{
+  "mcpServerTab": {
+    "intro": "Model Context Protocol（MCP）サーバーは、ガバナンスされたカタログ検出とSQL実行を外部AIエージェントに公開します。すべての呼び出しは呼び出し元のロールでガバナンスされ、サーバーが管理者権限をデフォルトとすることはありません。",
+    "loading": "読み込み中…",
+    "statusLabel": "ステータス",
+    "statusEnabled": "有効",
+    "statusDisabled": "無効",
+    "endpointLabel": "エンドポイント",
+    "transportLabel": "トランスポート",
+    "stdioRoleLabel": "バインド済みstdioロール",
+    "stdioRoleNone": "未設定 — stdio呼び出しには <code>{{envVar}}</code> が必要です",
+    "maxRowsLabel": "行数上限（run_sql）",
+    "enableHint": "MCPサーバーはオプトインです。環境変数 <code>{{enableEnvVar}}</code> にポートを設定し、サービスを再起動すると有効になります。ローカルのstdioトランスポートの場合は、<code>{{roleEnvVar}}</code> にprovisaロールも設定してください。",
+    "toolsHeading": "公開ツール",
+    "colTool": "ツール",
+    "colDescription": "説明"
+  }
+}

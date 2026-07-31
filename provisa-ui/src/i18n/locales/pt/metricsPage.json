@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "Métricas",
+    "newMetric": "Nova métrica",
+    "loading": "Carregando...",
+    "empty": "Nenhuma métrica registrada ainda.",
+    "colName": "Nome",
+    "colExpression": "Expressão",
+    "colDatatype": "Tipo de dados",
+    "colDescription": "Descrição",
+    "colAiContext": "Contexto de IA",
+    "fromFact": "a partir de fato",
+    "builderFact": "Fato de origem",
+    "builderMeasure": "Medida",
+    "builderAgg": "Agregação",
+    "builderNoFacts": "Nenhuma tabela de fatos registrada ainda",
+    "detail": {
+      "handAuthored": "criada manualmente",
+      "noDependents": "nenhuma",
+      "field": {
+        "expression": "Expressão",
+        "datatype": "Tipo de dados",
+        "description": "Descrição",
+        "aiContext": "Contexto de IA",
+        "sourceFact": "Fato de origem",
+        "visibleTo": "Visível para",
+        "dependentViews": "Exibições de métricas dependentes"
+      }
+    },
+    "createTitle": "Nova métrica",
+    "editTitle": "Editar métrica",
+    "fieldName": "Nome",
+    "fieldNamePlaceholder": "ex.: total_revenue",
+    "fieldExpression": "Expressão",
+    "fieldExpressionPlaceholder": "ex.: SUM(orders.amount)",
+    "fieldDatatype": "Tipo de dados",
+    "fieldDatatypePlaceholder": "ex.: numeric",
+    "fieldDatatypeDerived": "Derivado da agregação quando criado a partir de uma medida de fato",
+    "fieldDescription": "Descrição",
+    "fieldAiContext": "Contexto de IA",
+    "fieldAiContextPlaceholder": "Dicas para geração de consultas assistida por IA",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "saveFailed": "Falha ao salvar.",
+    "editMetric": "Editar métrica {{name}}",
+    "deleteMetric": "Excluir métrica {{name}}",
+    "deleteTitle": "Excluir métrica",
+    "deleteConfirm": "Excluir a métrica \"{{name}}\"? Isso não pode ser desfeito.",
+    "delete": "Excluir",
+    "deleteFailed": "Falha ao excluir."
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "Remover métrica {{metricName}}",
+    "dimensionsHeading": "Dimensões",
+    "noDimensions": "Nenhuma coluna de dimensão relacionada encontrada"
+  }
+}

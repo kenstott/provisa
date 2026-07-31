@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "Interscambio semantico (Ossie)",
+    "endpointLabel": "Endpoint:",
+    "copyEndpoint": "Copia URL dell'endpoint",
+    "download": "Scarica",
+    "import": "Importa",
+    "reviewTitle": "Rivedi importazione Ossie: {{model}}",
+    "reviewHint": "Non è ancora stato registrato nulla. Deseleziona ciò che vuoi escludere, poi applica — gli elementi selezionati vengono registrati tramite le mutation di registrazione standard.",
+    "tablesSection": "Tabelle ({{count}})",
+    "relationshipsSection": "Relazioni ({{count}})",
+    "metricsSection": "Metriche ({{count}})",
+    "columnCount": "{{count}} colonne",
+    "apply": "Applica ({{count}})",
+    "applied": "Applicato",
+    "failed": "Non riuscito",
+    "cancel": "Annulla",
+    "close": "Chiudi"
+  }
+}

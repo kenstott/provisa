@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "数据库",
+    "tabHistory": "历史记录",
+    "tabFavorites": "收藏",
+    "tabExport": "导出到 Neo4j",
+    "domainLabels": "域标签",
+    "nodeLabels": "节点标签",
+    "relationshipTypes": "关系类型",
+    "propertyKeys": "属性键",
+    "loading": "加载中…",
+    "noLabelsFound": "未找到标签",
+    "noRelTypesFound": "未找到关系类型",
+    "history": "历史记录",
+    "noHistory": "暂无历史记录",
+    "favorites": "收藏",
+    "noFavorites": "暂无收藏——在结果框中点击 ★",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "第一页",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "lastPage": "最后一页",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "运行",
+    "rename": "重命名",
+    "remove": "移除",
+    "renameFavoriteInput": "收藏名称",
+    "resizeSidebar": "调整侧边栏大小"
+  }
+}

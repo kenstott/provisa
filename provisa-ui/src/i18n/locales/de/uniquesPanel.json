@@ -1,0 +1,14 @@
+{
+  "uniquesPanel": {
+    "title": "Unique-Constraints",
+    "infoTooltip": "Deklarierte UNIQUE-Constraints für diese Tabelle — einspaltig oder zusammengesetzt. Fremdschlüssel können auf jeden eindeutigen Schlüssel zeigen, und Clients sehen diese als UNIQUE-Constraints. Bei der Registrierung aus der Quelle übernommen; bearbeiten Sie sie oder fügen Sie eigene hinzu.",
+    "addConstraint": "Constraint",
+    "nameLabel": "Name",
+    "namePlaceholder": "Constraint-Name (z. B. users_tenant_email_key)",
+    "columnsLabel": "Spalten",
+    "columnsPlaceholder": "— Spalten auswählen —",
+    "removeConstraint": "Constraint entfernen",
+    "summary": "{{count}} Constraint",
+    "summary_other": "{{count}} Constraints"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ 视图",
+    "titleRequest": "申请视图",
+    "create": "创建",
+    "submitRequest": "提交申请",
+    "saving": "保存中…",
+    "close": "关闭",
+    "noPermissionNotice": "您没有 create_view 权限。此视图将作为待审批的建议视图提交。",
+    "alias": "别名",
+    "aliasPlaceholder": "例如 my_view",
+    "domain": "域",
+    "domainSelectPlaceholder": "— 选择域 —",
+    "description": "描述",
+    "descriptionPlaceholder": "可选",
+    "saveAsMetricView": "保存为指标视图（{{metric}}）",
+    "hasParamsWarning": "SQL 中包含未解析的参数占位符（$1、$2 等）。请编辑 SQL，将它们替换为字面值。",
+    "savedTitle": "视图已保存",
+    "savedMessageCreated": "视图 \"{{viewId}}\" 已创建并注册。",
+    "savedMessageSubmitted": "视图 \"{{viewId}}\" 已提交待审批。",
+    "editInModelViews": "在模型/视图中编辑"
+  }
+}

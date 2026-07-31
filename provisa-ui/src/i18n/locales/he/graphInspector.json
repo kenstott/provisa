@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "סקירה כללית",
+    "hidePanel": "הסתרת החלונית",
+    "nodeLabels": "תוויות צמתים",
+    "relationshipTypes": "סוגי קשרים",
+    "summary": "מוצגים {{nodeCount}} צמתים, {{edgeCount}} קשרים.",
+    "hint": "יש ללחוץ על צומת או קשת כדי לבחון את המאפיינים.",
+    "nodeProperties": "מאפייני צומת",
+    "relationshipProperties": "מאפייני קשר",
+    "copyAll": "העתקת כל המאפיינים כ-JSON",
+    "showDetails": "הצגת פרטים",
+    "showJson": "הצגת JSON",
+    "close": "סגירה",
+    "domain": "דומיין",
+    "changeColor": "שינוי צבע",
+    "colorSwatch": "הגדרת הצבע ל-{{color}}",
+    "cqlAliasLabel": "כינוי CQL‏ (UPPER_SNAKE)",
+    "gqlAliasLabel": "כינוי GQL‏ (camelCase)",
+    "saveAlias": "שמירה",
+    "graphStats": "סטטיסטיקות גרף",
+    "properties": "מאפיינים",
+    "copyValue": "העתקת ערך",
+    "resizePanel": "שינוי גודל חלונית הבחינה"
+  }
+}

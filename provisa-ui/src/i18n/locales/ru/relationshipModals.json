@@ -1,0 +1,21 @@
+{
+  "relationshipModals": {
+    "conflictTitle": "Связь уже существует",
+    "conflictClose": "Закрыть",
+    "conflictIntro": "Связь с этим источником и целью уже существует:",
+    "conflictId": "ID",
+    "conflictSource": "Источник",
+    "conflictTarget": "Цель",
+    "conflictCardinality": "Кардинальность",
+    "conflictAlias": "Псевдоним",
+    "reverseTitle": "Сгенерировать обратную связь",
+    "idLabel": "ID",
+    "aliasLabel": "CQL-псевдоним (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL-псевдоним (camelCase)",
+    "materializeLabel": "Материализовать",
+    "refreshIntervalLabel": "Интервал обновления (с)",
+    "cancel": "Отмена",
+    "save": "Сохранить"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "Double-cliquez pour renommer",
+    "closeTab": "Fermer {{title}}",
+    "newTab": "Nouvel onglet de requête",
+    "detachedBadge": "détaché",
+    "nlPlaceholder": "Posez votre question en langage courant — génère du SQL…",
+    "clear": "Effacer",
+    "generate": "Générer le SQL",
+    "generating": "Génération…",
+    "generatingSql": "Génération du SQL…",
+    "prettify": "Formater le SQL",
+    "copySql": "Copier le SQL",
+    "copied": "Copié",
+    "copy": "Copier",
+    "run": "Échantillon >",
+    "running": "Exécution…",
+    "saveViewTitle": "Enregistrer le SQL actuel comme définition de la vue « {{tableName}} »",
+    "saving": "Enregistrement…",
+    "updateView": "Mettre à jour « {{tableName}} »",
+    "sampleModeFirst": "Premiers",
+    "sampleModeLast": "Derniers",
+    "sampleModeRandom": "Aléatoire",
+    "sampleModeLabel": "Mode d'échantillonnage",
+    "rowCountLabel": "Nombre de lignes",
+    "roleLabel": "Rôle",
+    "createView": "+ Vue",
+    "requestView": "Demander une vue"
+  }
+}

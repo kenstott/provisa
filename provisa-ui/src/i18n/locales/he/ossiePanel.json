@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "חילופין סמנטיים (Ossie)",
+    "endpointLabel": "נקודת קצה:",
+    "copyEndpoint": "העתקת כתובת ה-URL של נקודת הקצה",
+    "download": "הורדה",
+    "import": "ייבוא",
+    "reviewTitle": "סקירת ייבוא Ossie: {{model}}",
+    "reviewHint": "עדיין לא נרשם דבר. יש לבטל סימון של כל מה שברצונך לגזום ואז להחיל — פריטים מסומנים נרשמים דרך מוטציות הרישום הסטנדרטיות.",
+    "tablesSection": "טבלאות ({{count}})",
+    "relationshipsSection": "קשרים ({{count}})",
+    "metricsSection": "מדדים ({{count}})",
+    "columnCount": "{{count}} עמודות",
+    "apply": "החלה ({{count}})",
+    "applied": "הוחל",
+    "failed": "נכשל",
+    "cancel": "ביטול",
+    "close": "סגירה"
+  }
+}

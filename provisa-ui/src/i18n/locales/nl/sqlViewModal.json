@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ View",
+    "titleRequest": "View aanvragen",
+    "create": "Aanmaken",
+    "submitRequest": "Aanvraag indienen",
+    "saving": "Opslaan…",
+    "close": "Sluiten",
+    "noPermissionNotice": "Machtiging create_view ontbreekt. Dit wordt ingediend als een voorgestelde view in afwachting van goedkeuring.",
+    "alias": "Alias",
+    "aliasPlaceholder": "bijv. my_view",
+    "domain": "Domein",
+    "domainSelectPlaceholder": "— domein selecteren —",
+    "description": "Beschrijving",
+    "descriptionPlaceholder": "Optioneel",
+    "saveAsMetricView": "Opslaan als metric-view ({{metric}})",
+    "hasParamsWarning": "SQL bevat onopgeloste parameterplaatshouders ($1, $2, …). Bewerk de SQL om ze te vervangen door letterlijke waarden.",
+    "savedTitle": "View opgeslagen",
+    "savedMessageCreated": "View \"{{viewId}}\" is aangemaakt en geregistreerd.",
+    "savedMessageSubmitted": "View \"{{viewId}}\" is ingediend ter goedkeuring.",
+    "editInModelViews": "Bewerken in Model/Views"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "מדדים",
+    "newMetric": "מדד חדש",
+    "loading": "טוען...",
+    "empty": "עדיין לא נרשמו מדדים.",
+    "colName": "שם",
+    "colExpression": "ביטוי",
+    "colDatatype": "סוג נתונים",
+    "colDescription": "תיאור",
+    "colAiContext": "הקשר AI",
+    "fromFact": "מטבלת עובדות",
+    "builderFact": "טבלת עובדות מקור",
+    "builderMeasure": "Measure",
+    "builderAgg": "אגרגציה",
+    "builderNoFacts": "עדיין לא נרשמו טבלאות עובדות",
+    "detail": {
+      "handAuthored": "נכתב ידנית",
+      "noDependents": "ללא",
+      "field": {
+        "expression": "ביטוי",
+        "datatype": "סוג נתונים",
+        "description": "תיאור",
+        "aiContext": "הקשר AI",
+        "sourceFact": "טבלת עובדות מקור",
+        "visibleTo": "גלוי עבור",
+        "dependentViews": "Views תלויים של מדדים"
+      }
+    },
+    "createTitle": "מדד חדש",
+    "editTitle": "עריכת מדד",
+    "fieldName": "שם",
+    "fieldNamePlaceholder": "למשל total_revenue",
+    "fieldExpression": "ביטוי",
+    "fieldExpressionPlaceholder": "למשל SUM(orders.amount)",
+    "fieldDatatype": "סוג נתונים",
+    "fieldDatatypePlaceholder": "למשל numeric",
+    "fieldDatatypeDerived": "נגזר מהאגרגציה כאשר המדד נבנה מ-Measure של טבלת עובדות",
+    "fieldDescription": "תיאור",
+    "fieldAiContext": "הקשר AI",
+    "fieldAiContextPlaceholder": "רמזים ליצירת שאילתות בסיוע AI",
+    "save": "שמירה",
+    "cancel": "ביטול",
+    "saveFailed": "השמירה נכשלה.",
+    "editMetric": "עריכת המדד {{name}}",
+    "deleteMetric": "מחיקת המדד {{name}}",
+    "deleteTitle": "מחיקת מדד",
+    "deleteConfirm": "למחוק את המדד \"{{name}}\"? פעולה זו אינה ניתנת לביטול.",
+    "delete": "מחיקה",
+    "deleteFailed": "המחיקה נכשלה."
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "הסרת המדד {{metricName}}",
+    "dimensionsHeading": "ממדים",
+    "noDimensions": "לא נמצאו עמודות ממד קשורות"
+  }
+}

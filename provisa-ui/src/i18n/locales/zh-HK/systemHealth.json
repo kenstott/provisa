@@ -1,0 +1,31 @@
+{
+  "systemHealth": {
+    "loading": "正在載入系統健康狀態…",
+    "colComponent": "元件",
+    "colStatus": "狀態",
+    "colDetails": "詳細資訊",
+    "federationEngine": "聯邦引擎",
+    "connected": "已連線",
+    "disconnected": "已中斷連線",
+    "workerCount": "{{count}} 個工作者（{{active}} 個作用中）",
+    "workerCount_other": "{{count}} 個工作者（{{active}} 個作用中）",
+    "metadataDb": "中繼數據資料庫",
+    "unpooled": "未使用連線集區",
+    "active": "作用中",
+    "noPool": "沒有連線集區",
+    "poolNotTracked": "連線集區不追蹤連線",
+    "poolConnections": "{{count}} 個連線（{{idle}} 個閒置）",
+    "cache": "快取",
+    "disabled": "已停用",
+    "embeddedMemory": "內嵌（記憶體內）",
+    "serverConnected": "伺服器已連線",
+    "serverUnreachable": "無法連接伺服器",
+    "redisServer": "Redis 伺服器",
+    "fakeredis": "fakeredis（處理程序內）",
+    "running": "執行中",
+    "unreachable": "無法連接",
+    "port": "連接埠 {{port}}",
+    "mvRefreshLoop": "具體化檢視重新整理迴圈",
+    "stopped": "已停止"
+  }
+}

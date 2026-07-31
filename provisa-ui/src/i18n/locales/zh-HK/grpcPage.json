@@ -1,0 +1,20 @@
+{
+  "grpcPage": {
+    "serverBadge": "gRPC • :50051",
+    "operationType": "操作類型",
+    "query": "查詢",
+    "mutation": "變更",
+    "command": "命令",
+    "method": "方法",
+    "noMethods": "沒有方法",
+    "cancel": "◼ 取消",
+    "send": "▶ 傳送",
+    "body": "內文",
+    "proto": ".proto",
+    "response": "回應",
+    "selectMethodPlaceholder": "選取方法以編輯請求內文。",
+    "loading": "載入中…",
+    "waiting": "正在等候回應…",
+    "sendPrompt": "傳送請求以檢視回應。"
+  }
+}

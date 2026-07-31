@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "抽样查询以分析结果列。",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "以 JSON 下载分析结果",
+    "colColumn": "列",
+    "colNulls": "空值",
+    "colNullsTitle": "值为 NULL 的行",
+    "colBlanks": "空白",
+    "colBlanksTitle": "值为空字符串的行",
+    "colDistinct": "去重计数",
+    "colDistinctTitle": "唯一值的数量",
+    "colConstant": "常量？",
+    "colConstantTitle": "该列只有一个唯一值",
+    "colMin": "最小值",
+    "colMax": "最大值",
+    "colMean": "平均值",
+    "colMeanTitle": "数值的平均值",
+    "colTopValues": "高频值",
+    "constantYes": "是（{{value}}）",
+    "emptyValue": "—"
+  }
+}

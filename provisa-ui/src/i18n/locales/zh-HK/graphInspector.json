@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "概覽",
+    "hidePanel": "隱藏面板",
+    "nodeLabels": "節點標籤",
+    "relationshipTypes": "關係類型",
+    "summary": "正在顯示 {{nodeCount}} 個節點、{{edgeCount}} 個關係。",
+    "hint": "按一下節點或邊以檢視其屬性。",
+    "nodeProperties": "節點屬性",
+    "relationshipProperties": "關係屬性",
+    "copyAll": "以 JSON 複製所有屬性",
+    "showDetails": "顯示詳情",
+    "showJson": "顯示 JSON",
+    "close": "關閉",
+    "domain": "領域",
+    "changeColor": "變更顏色",
+    "colorSwatch": "將顏色設為 {{color}}",
+    "cqlAliasLabel": "CQL 別名（UPPER_SNAKE）",
+    "gqlAliasLabel": "GQL 別名（camelCase）",
+    "saveAlias": "儲存",
+    "graphStats": "圖形統計",
+    "properties": "屬性",
+    "copyValue": "複製值",
+    "resizePanel": "調整檢視面板大小"
+  }
+}

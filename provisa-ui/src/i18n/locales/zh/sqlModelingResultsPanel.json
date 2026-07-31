@@ -1,0 +1,21 @@
+{
+  "sqlModelingResultsPanel": {
+    "downloadCsv": "下载 CSV",
+    "rowCount_one": "{{count}} 行",
+    "rowCount_other": "{{count}} 行",
+    "filteredFrom": "（从 {{count}} 行筛选）",
+    "firstPage": "首页",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "lastPage": "末页",
+    "pageOf": "第 {{page}} / {{total}} 页",
+    "filterPlaceholder": "筛选…",
+    "filterColumn": "筛选{{column}}",
+    "resizeColumn": "调整{{column}}列宽",
+    "noResults": "无结果。",
+    "writeSqlPrompt": "编写 SQL 并点击“采样”执行。",
+    "nullValue": "null",
+    "sortAscending": "已升序排序",
+    "sortDescending": "已降序排序"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "graphContextMenus": {
+    "color": "色",
+    "colorSwatchLabel": "色を {{color}} に設定",
+    "size": "サイズ",
+    "labelBy": "ラベル基準",
+    "labelByDefault": "デフォルト",
+    "sizeBy": "サイズ基準",
+    "sizeByFixed": "固定サイズ",
+    "sizeMultiplier": "サイズ倍率",
+    "lineStyle": "線種",
+    "lineStyleSolid": "実線",
+    "lineStyleDashed": "破線",
+    "lineStyleDotted": "点線",
+    "lineWidth": "線幅",
+    "filterParametersTitle": "{{label}} のパラメータ",
+    "cancel": "キャンセル",
+    "run": "実行"
+  }
+}

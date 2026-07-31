@@ -1,0 +1,22 @@
+{
+  "neo4jExportModal": {
+    "title": "ייצוא ל-Neo4j",
+    "nodeCount_one": "צומת {{count}}",
+    "nodeCount_other": "{{count}} צמתים",
+    "edgeCount_one": "קשר {{count}}",
+    "edgeCount_other": "{{count}} קשרים",
+    "downloadScript": "הורדת סקריפט Cypher (.cypher)",
+    "divider": "— או ייצוא ישירות לשרת —",
+    "httpUrl": "HTTP URL",
+    "database": "מסד נתונים",
+    "username": "שם משתמש",
+    "password": "סיסמה",
+    "close": "סגירה",
+    "exportToServer": "ייצוא לשרת",
+    "exporting": "מייצא…",
+    "statementsImported_one": "יובאה הצהרה {{count}}.",
+    "statementsImported_other": "יובאו {{count}} הצהרות.",
+    "errorsSuffix_one": " ({{count}} שגיאה: {{first}})",
+    "errorsSuffix_other": " ({{count}} שגיאות: {{first}})"
+  }
+}

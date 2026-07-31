@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "מידול SQL",
+    "description": "חילוץ תנאי JOIN כמועמדי קשר חדשים — קשרים קיימים אינם נכללים",
+    "close": "סגירה",
+    "tabSql": "SQL",
+    "tabCanvas": "קנבס",
+    "nlPlaceholder": "שאלה בשפה חופשית — מייצר SQL…",
+    "nlLoading": "טוען",
+    "generateSql": "יצירת SQL",
+    "generating": "מייצר…",
+    "copySql": "העתקת SQL",
+    "copied": "הועתק",
+    "copy": "העתקה",
+    "run": "דגימה >",
+    "runningLabel": "מריץ…",
+    "sampleModeLabel": "מצב דגימה",
+    "sampleModeFirst": "ראשונות",
+    "sampleModeLast": "אחרונות",
+    "sampleModeRandom": "אקראיות",
+    "sampleSizeLabel": "מספר שורות",
+    "roleLabel": "תפקיד",
+    "extractJoins": "חילוץ Joins",
+    "tabResults": "תוצאות",
+    "tabProfile": "פרופיל",
+    "tabCandidates": "מועמדים",
+    "tabErrors": "שגיאות",
+    "tabHistory": "היסטוריה",
+    "execMs": "{{ms}}ms"
+  }
+}

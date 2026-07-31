@@ -1,0 +1,21 @@
+{
+  "schemaBrowser": {
+    "collapsePanel": "Свернуть панель схемы",
+    "expandPanel": "Развернуть панель схемы",
+    "heading": "Схема",
+    "groupMetrics": "Метрики",
+    "groupFacts": "Факты",
+    "groupDimensions": "Измерения",
+    "groupEmpty": "(нет)",
+    "dragMetricToCanvas": "Перетащите метрику на холст",
+    "insertMetricQuery": "Щелкните, чтобы вставить семантический запрос метрики",
+    "dragToCanvas": "Перетащите на холст",
+    "insertQualifiedName": "Двойной щелчок вставляет полное имя",
+    "insertTableReference": "Вставить ссылку на таблицу в редактор SQL",
+    "tableAliasName": "Псевдоним/имя таблицы",
+    "domainId": "Идентификатор домена",
+    "insertQuotedColumn": "Щелкните, чтобы вставить столбец в кавычках",
+    "previousPage": "Предыдущая страница",
+    "nextPage": "Следующая страница"
+  }
+}

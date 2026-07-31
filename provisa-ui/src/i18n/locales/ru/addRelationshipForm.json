@@ -1,0 +1,29 @@
+{
+  "addRelationshipForm": {
+    "idLabel": "ID",
+    "idPlaceholder": "orders-to-customers",
+    "aliasLabel": "Псевдоним CQL (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "Псевдоним GQL (camelCase)",
+    "graphqlAliasPlaceholder": "например, orders",
+    "sourceTableLabel": "Исходная таблица",
+    "sourceColumnLabel": "Исходный столбец",
+    "selectPlaceholder": "Выберите...",
+    "targetTypeLabel": "Тип цели",
+    "targetTypeTable": "Таблица",
+    "targetTypeFunction": "Функция (вычисляемая)",
+    "targetTableLabel": "Целевая таблица",
+    "targetColumnLabel": "Целевой столбец",
+    "functionLabel": "Функция",
+    "functionArgLabel": "Аргумент функции (получает исходный столбец)",
+    "functionArgPlaceholder": "имя аргумента",
+    "cardinalityLabel": "Кардинальность",
+    "cardinalityManyToOne": "многие к одному",
+    "cardinalityOneToMany": "один ко многим",
+    "cardinalityWarning": "Внимание: если это соединение возвращает больше одной строки на родителя, будет использовано только первое значение.",
+    "materializeLabel": "Материализовать (автосоздание материализованного представления для межисточниковых соединений)",
+    "disableCypherLabel": "Исключить из графа Cypher",
+    "refreshIntervalLabel": "Интервал обновления (с)",
+    "save": "Сохранить"
+  }
+}

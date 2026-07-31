@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ Представление",
+    "titleRequest": "Запросить представление",
+    "create": "Создать",
+    "submitRequest": "Отправить запрос",
+    "saving": "Сохранение…",
+    "close": "Закрыть",
+    "noPermissionNotice": "У вас нет права create_view. Это будет отправлено как предложенное представление, ожидающее утверждения.",
+    "alias": "Псевдоним",
+    "aliasPlaceholder": "например, my_view",
+    "domain": "Домен",
+    "domainSelectPlaceholder": "— выберите домен —",
+    "description": "Описание",
+    "descriptionPlaceholder": "Необязательно",
+    "saveAsMetricView": "Сохранить как представление метрики ({{metric}})",
+    "hasParamsWarning": "SQL содержит неразрешённые заполнители параметров ($1, $2, …). Отредактируйте SQL, заменив их литеральными значениями.",
+    "savedTitle": "Представление сохранено",
+    "savedMessageCreated": "Представление \"{{viewId}}\" создано и зарегистрировано.",
+    "savedMessageSubmitted": "Представление \"{{viewId}}\" отправлено на утверждение.",
+    "editInModelViews": "Редактировать в разделе «Модель/Представления»"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "אימות מוודא מי מבצע את הקריאה; תפקידים + RLS קובעים מה מותר לראות. יש לבחור את ספק הזהויות ולהגדיר את החיבור אליו.",
+    "providerLabel": "ספק",
+    "current": " (נוכחי)",
+    "roles": "תפקידים",
+    "defaultRole": "תפקיד ברירת מחדל",
+    "assignmentsFrom": "שיוכי תפקידים מ",
+    "assignmentsSourceClaims": "Claims של אסימון",
+    "assignmentsSourceProvisa": "Provisa (שיוכים מקומיים)",
+    "trustUpstream": "מתן אמון בכותרות זהות של proxy במעלה הזרם",
+    "allowSimpleAuth": "אפשור אימות פשוט (מגן פרודקשן — נדרש כדי להפעיל שם משתמש/סיסמה)",
+    "saveButton": "שמירת הגדרות אימות",
+    "loading": "טוען…",
+    "saved": "נשמר.",
+    "savedRestartRequired": "נשמר. יש להפעיל מחדש את השירות כדי להחיל."
+  }
+}

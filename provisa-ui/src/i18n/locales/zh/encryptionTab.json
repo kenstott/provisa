@@ -1,0 +1,24 @@
+{
+  "encryptionTab": {
+    "loading": "加载中…",
+    "intro": "静态列加密。选择提供程序并管理其主密钥。信封加密使用主密钥包装每列的数据密钥。",
+    "providerLabel": "提供程序",
+    "providerCurrentSuffix": "（当前）",
+    "providerComingSoonSuffix": "（即将推出）",
+    "unavailableNote": "此提供程序的运行时尚不可用，无法选择。字段仅供参考。",
+    "keyIdLabel": "密钥 ID",
+    "keyIdPlaceholder": "master",
+    "masterKeyLabel": "主密钥：",
+    "masterKeyPresent": "已存在",
+    "masterKeyMissing": "缺失",
+    "generating": "生成中…",
+    "rotateKey": "轮换主密钥",
+    "generateKey": "生成主密钥",
+    "restartWarning": "{{note}} 在已有加密数据的情况下轮换主密钥可能导致先前的行无法读取——请在存储敏感数据前轮换，或规划重新加密。",
+    "saveTitle": "保存加密设置",
+    "keyGeneratedStored": "主密钥已生成并存储在操作系统密钥链中（密钥 ID：{{keyId}}）。",
+    "keyGeneratedNoKeychain": "没有可用的操作系统密钥链——请复制此密钥并将其设置为 {{envVar}}。此密钥不会再次显示。",
+    "savedRestartRequired": "已保存。重启服务以生效。",
+    "saved": "已保存。"
+  }
+}

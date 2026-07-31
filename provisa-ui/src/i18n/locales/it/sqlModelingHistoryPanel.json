@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "Nessuna query eseguita. La cronologia viene conservata tra le sessioni.",
+    "colTime": "Ora",
+    "colRole": "Ruolo",
+    "colDuration": "Durata",
+    "colRows": "Righe",
+    "colSql": "SQL",
+    "colActions": "Azioni",
+    "error": "errore",
+    "restore": "Ripristina",
+    "restoreLabel": "Ripristina query del {{time}}"
+  }
+}

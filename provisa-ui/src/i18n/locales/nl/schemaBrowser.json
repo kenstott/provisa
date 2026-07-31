@@ -1,0 +1,21 @@
+{
+  "schemaBrowser": {
+    "collapsePanel": "Schemapaneel samenvouwen",
+    "expandPanel": "Schemapaneel uitvouwen",
+    "heading": "Schema",
+    "groupMetrics": "Metrics",
+    "groupFacts": "Feiten",
+    "groupDimensions": "Dimensies",
+    "groupEmpty": "(geen)",
+    "dragMetricToCanvas": "Metric naar canvas slepen",
+    "insertMetricQuery": "Klik om semantische metric-query in te voegen",
+    "dragToCanvas": "Naar canvas slepen",
+    "insertQualifiedName": "Dubbelklik om gekwalificeerde naam in te voegen",
+    "insertTableReference": "Tabelverwijzing invoegen in SQL-editor",
+    "tableAliasName": "Tabelalias/-naam",
+    "domainId": "Domein-ID",
+    "insertQuotedColumn": "Klik om kolom tussen aanhalingstekens in te voegen",
+    "previousPage": "Vorige pagina",
+    "nextPage": "Volgende pagina"
+  }
+}

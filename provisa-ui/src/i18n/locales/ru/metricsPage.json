@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "Метрики",
+    "newMetric": "Новая метрика",
+    "loading": "Загрузка...",
+    "empty": "Метрики ещё не зарегистрированы.",
+    "colName": "Имя",
+    "colExpression": "Выражение",
+    "colDatatype": "Тип данных",
+    "colDescription": "Описание",
+    "colAiContext": "Контекст ИИ",
+    "fromFact": "из факта",
+    "builderFact": "Исходный факт",
+    "builderMeasure": "Мера",
+    "builderAgg": "Агрегат",
+    "builderNoFacts": "Таблицы фактов ещё не зарегистрированы",
+    "detail": {
+      "handAuthored": "создано вручную",
+      "noDependents": "нет",
+      "field": {
+        "expression": "Выражение",
+        "datatype": "Тип данных",
+        "description": "Описание",
+        "aiContext": "Контекст ИИ",
+        "sourceFact": "Исходный факт",
+        "visibleTo": "Видимость",
+        "dependentViews": "Зависимые представления метрик"
+      }
+    },
+    "createTitle": "Новая метрика",
+    "editTitle": "Редактировать метрику",
+    "fieldName": "Имя",
+    "fieldNamePlaceholder": "например, total_revenue",
+    "fieldExpression": "Выражение",
+    "fieldExpressionPlaceholder": "например, SUM(orders.amount)",
+    "fieldDatatype": "Тип данных",
+    "fieldDatatypePlaceholder": "например, numeric",
+    "fieldDatatypeDerived": "Выводится из агрегата при построении из меры факта",
+    "fieldDescription": "Описание",
+    "fieldAiContext": "Контекст ИИ",
+    "fieldAiContextPlaceholder": "Подсказки для генерации запросов с помощью ИИ",
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "saveFailed": "Не удалось сохранить.",
+    "editMetric": "Редактировать метрику {{name}}",
+    "deleteMetric": "Удалить метрику {{name}}",
+    "deleteTitle": "Удалить метрику",
+    "deleteConfirm": "Удалить метрику \"{{name}}\"? Это действие нельзя отменить.",
+    "delete": "Удалить",
+    "deleteFailed": "Не удалось удалить."
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "Убрать метрику {{metricName}}",
+    "dimensionsHeading": "Измерения",
+    "noDimensions": "Связанные столбцы измерений не найдены"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "Explorateur SQL",
+    "tabSql": "sql",
+    "tabCanvas": "canevas",
+    "execMs": "{{ms}} ms",
+    "queryStats": "Statistiques de requête",
+    "showExpansion": "Afficher l'expansion",
+    "detachToPhysical": "Détacher en SQL physique",
+    "expansionTitle": "Expansion de la métrique",
+    "expansionLoading": "Récupération de l'expansion…",
+    "detachConfirmTitle": "Détacher en SQL physique ?",
+    "detachConfirmBody": "Cette action est IRRÉVERSIBLE : le lien avec la métrique sera rompu et la requête deviendra du SQL libre. Il n'existe aucun moyen de la rattacher à la métrique.",
+    "detachCancel": "Annuler",
+    "detachConfirm": "Détacher"
+  }
+}

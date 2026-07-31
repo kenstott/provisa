@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "Metrieken",
+    "sqlCreateHint": "Vrije views worden opgesteld in de SQL-editor: schrijf de SELECT, voer die uit en sla het resultaat op als view.",
+    "sqlEditHint": "De SQL van deze view wordt bewerkt in de SQL-editor.",
+    "openSqlEditor": "SQL-editor openen",
+    "editInSqlEditor": "Bewerken in SQL-editor",
+    "fieldName": "Viewnaam",
+    "fieldNamePlaceholder": "bijv. revenue_by_region",
+    "fieldDomain": "Domein",
+    "fieldDescription": "Beschrijving",
+    "fieldMetrics": "Metrieken",
+    "fieldMetricsPlaceholder": "Kies een of meer geregistreerde metrieken",
+    "fieldDimensions": "Dimensies",
+    "fieldDimensionsPlaceholder": "Kolommen van de tabellen van de metrieken (inclusief één relatiestap verderop)",
+    "fieldFilters": "Filters",
+    "fieldFiltersHelp": "Eén SQL-conditie per regel; condities worden met AND gecombineerd.",
+    "save": "View opslaan",
+    "saveFailed": "Opslaan mislukt",
+    "cancel": "Annuleren"
+  }
+}

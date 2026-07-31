@@ -1,0 +1,6 @@
+{
+  "domainSelector": {
+    "all": "所有領域",
+    "label": "領域：{{domain}}"
+  }
+}

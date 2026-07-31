@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "Metriche",
+    "sqlCreateHint": "Le viste libere si creano nell'editor SQL: scrivere la SELECT, eseguirla e salvarla come vista.",
+    "sqlEditHint": "L'SQL di questa vista si modifica nell'editor SQL.",
+    "openSqlEditor": "Apri l'editor SQL",
+    "editInSqlEditor": "Modifica nell'editor SQL",
+    "fieldName": "Nome della vista",
+    "fieldNamePlaceholder": "es. revenue_by_region",
+    "fieldDomain": "Dominio",
+    "fieldDescription": "Descrizione",
+    "fieldMetrics": "Metriche",
+    "fieldMetricsPlaceholder": "Seleziona una o più metriche registrate",
+    "fieldDimensions": "Dimensioni",
+    "fieldDimensionsPlaceholder": "Colonne delle tabelle delle metriche (incluse quelle a una relazione di distanza)",
+    "fieldFilters": "Filtri",
+    "fieldFiltersHelp": "Una condizione SQL per riga; le condizioni sono combinate con AND.",
+    "save": "Salva vista",
+    "saveFailed": "Salvataggio non riuscito",
+    "cancel": "Annulla"
+  }
+}

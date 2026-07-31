@@ -1,0 +1,27 @@
+{
+  "openApiFormSection": {
+    "specModeLegend": "OpenAPI 规范来源",
+    "specModePath": "规范路径 / URL",
+    "specModeInline": "内联编写规范",
+    "specPathLabel": "规范路径或 URL",
+    "specPathPlaceholder": "https://api.example.com/openapi.json 或 ./spec.yaml",
+    "specInlineLabel": "OpenAPI 规范（YAML 或 JSON）",
+    "baseUrlLabel": "基础 URL",
+    "baseUrlHint": "（留空则使用规范中的 servers[0].url）",
+    "baseUrlPlaceholder": "https://api.example.com（可选覆盖）",
+    "cacheTtlLabel": "缓存 TTL（秒）",
+    "cacheTtlPlaceholder": "300",
+    "authenticationLabel": "身份验证",
+    "tokenLabel": "令牌",
+    "tokenPlaceholder": "${env:API_TOKEN}",
+    "headerNameLabel": "标头名称",
+    "headerNamePlaceholder": "X-API-Key",
+    "apiKeyLabel": "API 密钥",
+    "apiKeyPlaceholder": "${env:API_KEY}",
+    "previewButton": "预览",
+    "previewLoading": "加载中...",
+    "queriesCount": "{{count}} 个查询",
+    "mutationsCount": "{{count}} 个变更",
+    "none": "无"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "mcpExplore": {
+    "title": "MCP",
+    "intro": "与 AI 助手对话，它通过受治理的 MCP 工具（与外部代理使用的相同工具）为您探索目录并运行 SQL。",
+    "roleNote": "当前角色：{{role}}",
+    "noRole": "（无角色）",
+    "thinking": "助手正在处理…",
+    "emptyState": "询问您的数据——例如\"哪些表包含客户电子邮件？\"、\"按金额排名前 10 的订单\"或\"orders 表是什么样的？\"",
+    "inputPlaceholder": "询问您的目录或数据…",
+    "clear": "清除输入"
+  }
+}

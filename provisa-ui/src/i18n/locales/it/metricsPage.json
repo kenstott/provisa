@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "Metriche",
+    "newMetric": "Nuova metrica",
+    "loading": "Caricamento...",
+    "empty": "Nessuna metrica ancora registrata.",
+    "colName": "Nome",
+    "colExpression": "Espressione",
+    "colDatatype": "Tipo di dati",
+    "colDescription": "Descrizione",
+    "colAiContext": "Contesto AI",
+    "fromFact": "da tabella dei fatti",
+    "builderFact": "Tabella dei fatti di origine",
+    "builderMeasure": "Misura",
+    "builderAgg": "Aggregazione",
+    "builderNoFacts": "Nessuna tabella dei fatti ancora registrata",
+    "detail": {
+      "handAuthored": "creata manualmente",
+      "noDependents": "nessuna",
+      "field": {
+        "expression": "Espressione",
+        "datatype": "Tipo di dati",
+        "description": "Descrizione",
+        "aiContext": "Contesto AI",
+        "sourceFact": "Tabella dei fatti di origine",
+        "visibleTo": "Visibile a",
+        "dependentViews": "Viste metriche dipendenti"
+      }
+    },
+    "createTitle": "Nuova metrica",
+    "editTitle": "Modifica metrica",
+    "fieldName": "Nome",
+    "fieldNamePlaceholder": "es. total_revenue",
+    "fieldExpression": "Espressione",
+    "fieldExpressionPlaceholder": "es. SUM(orders.amount)",
+    "fieldDatatype": "Tipo di dati",
+    "fieldDatatypePlaceholder": "es. numeric",
+    "fieldDatatypeDerived": "Derivato dall'aggregazione quando costruita da una misura di una tabella dei fatti",
+    "fieldDescription": "Descrizione",
+    "fieldAiContext": "Contesto AI",
+    "fieldAiContextPlaceholder": "Suggerimenti per la generazione di query assistita dall'AI",
+    "save": "Salva",
+    "cancel": "Annulla",
+    "saveFailed": "Salvataggio non riuscito.",
+    "editMetric": "Modifica metrica {{name}}",
+    "deleteMetric": "Elimina metrica {{name}}",
+    "deleteTitle": "Elimina metrica",
+    "deleteConfirm": "Eliminare la metrica \"{{name}}\"? L'operazione non può essere annullata.",
+    "delete": "Elimina",
+    "deleteFailed": "Eliminazione non riuscita."
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "Rimuovi metrica {{metricName}}",
+    "dimensionsHeading": "Dimensioni",
+    "noDimensions": "Nessuna colonna dimensione correlata trovata"
+  }
+}

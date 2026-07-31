@@ -1,0 +1,12 @@
+{
+  "securityTab": {
+    "intro": "Controlla la postura di sicurezza della piattaforma. La modalità alta (zero-trust) ha effetti rilevanti — leggere l'avviso prima di abilitarla.",
+    "modeLabel": "Modalità di sicurezza",
+    "highWarningTitle": "La modalità alta (zero-trust) ha effetti rilevanti",
+    "highWarning": "Il server pgwire non si avvierà e gli endpoint dati REST e GraphQL restituiranno 403. Solo i client che decifrano localmente (kms_key_arn configurato) possono accedere ai dati. Verificare la configurazione dei client prima di abilitare.",
+    "loading": "Caricamento…",
+    "saved": "Salvato.",
+    "savedRestartRequired": "Salvato. Riavviare il servizio per applicare.",
+    "saveTitle": "Salva postura di sicurezza"
+  }
+}

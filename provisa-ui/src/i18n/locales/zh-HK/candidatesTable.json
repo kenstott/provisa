@@ -1,0 +1,15 @@
+{
+  "candidatesTable": {
+    "heading": "AI 建議的關係",
+    "colName": "名稱",
+    "colSource": "來源",
+    "colTarget": "目標",
+    "colCardinality": "基數",
+    "colConfidence": "信賴度",
+    "colActions": "操作",
+    "accept": "接受",
+    "reject": "拒絕",
+    "acceptAria": "接受建議的關係 {{name}}",
+    "rejectAria": "拒絕建議的關係 {{name}}"
+  }
+}

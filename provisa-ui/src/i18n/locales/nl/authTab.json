@@ -1,0 +1,18 @@
+{
+  "authTab": {
+    "intro": "Authenticatie verifieert wie de aanroep doet; rollen + RLS bepalen wat zichtbaar is. Kies de identiteitsprovider en configureer de verbinding.",
+    "providerLabel": "Provider",
+    "current": " (huidig)",
+    "roles": "Rollen",
+    "defaultRole": "Standaardrol",
+    "assignmentsFrom": "Roltoewijzingen uit",
+    "assignmentsSourceClaims": "Tokenclaims",
+    "assignmentsSourceProvisa": "Provisa (lokale toewijzingen)",
+    "trustUpstream": "Identiteitsheaders van upstream-proxy vertrouwen",
+    "allowSimpleAuth": "Eenvoudige authenticatie toestaan (productiebeveiliging — vereist om gebruikersnaam/wachtwoord in te schakelen)",
+    "saveButton": "Authenticatie-instellingen opslaan",
+    "loading": "Laden…",
+    "saved": "Opgeslagen.",
+    "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen."
+  }
+}

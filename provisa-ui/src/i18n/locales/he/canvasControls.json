@@ -1,0 +1,13 @@
+{
+  "canvasControls": {
+    "toolbarLabel": "פקדי קנבס",
+    "zoomIn": "התקרבות",
+    "zoomOut": "התרחקות",
+    "fitToScreen": "התאמה למסך",
+    "switchToHierarchy": "מעבר לפריסה היררכית",
+    "switchToForce": "מעבר לפריסת כוח",
+    "nudgeLayout": "דחיפת פריסה — דוחף את הצמתים הנבחרים (או את כולם אם לא נבחר דבר); החזקה ממשיכה את האיטרציה",
+    "edgeLength": "אורך קשת",
+    "edgeLengthValue": "{{value}}px"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "SQL-Modellierung",
+    "description": "JOIN-Bedingungen als neue Beziehungskandidaten extrahieren — bestehende Beziehungen sind ausgeschlossen",
+    "close": "Schließen",
+    "tabSql": "SQL",
+    "tabCanvas": "Canvas",
+    "nlPlaceholder": "Frage in natürlicher Sprache stellen — erzeugt SQL…",
+    "nlLoading": "Wird geladen",
+    "generateSql": "SQL erzeugen",
+    "generating": "Wird erzeugt…",
+    "copySql": "SQL kopieren",
+    "copied": "Kopiert",
+    "copy": "Kopieren",
+    "run": "Stichprobe >",
+    "runningLabel": "Wird ausgeführt…",
+    "sampleModeLabel": "Stichprobenmodus",
+    "sampleModeFirst": "Erste",
+    "sampleModeLast": "Letzte",
+    "sampleModeRandom": "Zufällig",
+    "sampleSizeLabel": "Zeilenanzahl",
+    "roleLabel": "Rolle",
+    "extractJoins": "Joins extrahieren",
+    "tabResults": "Ergebnisse",
+    "tabProfile": "Profil",
+    "tabCandidates": "Kandidaten",
+    "tabErrors": "Fehler",
+    "tabHistory": "Verlauf",
+    "execMs": "{{ms}} ms"
+  }
+}

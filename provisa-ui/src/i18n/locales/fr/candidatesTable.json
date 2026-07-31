@@ -1,0 +1,15 @@
+{
+  "candidatesTable": {
+    "heading": "Relations suggérées par l'IA",
+    "colName": "Nom",
+    "colSource": "Source",
+    "colTarget": "Cible",
+    "colCardinality": "Cardinalité",
+    "colConfidence": "Confiance",
+    "colActions": "Actions",
+    "accept": "Accepter",
+    "reject": "Rejeter",
+    "acceptAria": "Accepter la relation suggérée {{name}}",
+    "rejectAria": "Rejeter la relation suggérée {{name}}"
+  }
+}

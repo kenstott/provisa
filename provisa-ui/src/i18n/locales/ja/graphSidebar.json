@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "データベース",
+    "tabHistory": "履歴",
+    "tabFavorites": "お気に入り",
+    "tabExport": "Neo4jへエクスポート",
+    "domainLabels": "ドメインラベル",
+    "nodeLabels": "ノードラベル",
+    "relationshipTypes": "リレーションシップタイプ",
+    "propertyKeys": "プロパティキー",
+    "loading": "読み込み中…",
+    "noLabelsFound": "ラベルが見つかりません",
+    "noRelTypesFound": "リレーションシップタイプが見つかりません",
+    "history": "履歴",
+    "noHistory": "履歴はまだありません",
+    "favorites": "お気に入り",
+    "noFavorites": "お気に入りはまだありません — 結果フレームの ★ をクリックしてください",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "最初のページ",
+    "previousPage": "前のページ",
+    "nextPage": "次のページ",
+    "lastPage": "最後のページ",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "実行",
+    "rename": "名前を変更",
+    "remove": "削除",
+    "renameFavoriteInput": "お気に入りの名前",
+    "resizeSidebar": "サイドバーのサイズ変更"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "列预设",
+    "infoTooltip": "向此表返回的每一行注入计算值或常量值。适用于在不修改数据源架构的情况下添加域标识符、按角色作用域的标志或派生字段。'source' 可以是：constant、sql_expression 或 role_claim。",
+    "columnHeader": "列",
+    "sourceHeader": "来源",
+    "valueHeader": "标头 / 值",
+    "removeAction": "移除",
+    "columnPlaceholder": "— 列 —",
+    "selectPlaceholder": "— 选择 —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "标头名称（例如 X-User-Id）",
+    "literalValuePlaceholder": "字面值",
+    "numericValuePlaceholder": "数值",
+    "addAction": "添加",
+    "sourceNow": "now（UTC 时间戳）",
+    "sourceHeaderOption": "header（HTTP 请求标头）",
+    "sourceLiteral": "literal（固定值）"
+  }
+}

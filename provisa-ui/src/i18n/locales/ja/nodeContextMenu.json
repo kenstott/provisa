@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "このノードをクエリから除外します",
+    "excludeDisabledTooltip": "主キーが設定されていません — 除外できません",
+    "excludeFromQuery": "クエリから除外",
+    "excludeCount": "{{count}}個のノードを除外",
+    "unfixPosition": "位置の固定を解除",
+    "showChildren": "子を表示",
+    "hideChildren": "子を非表示",
+    "showChildrenCircularTooltip": "子をこのノードの周りにリング状に配置します",
+    "noOutgoingTooltip": "このノードタイプには送信リレーションシップがありません",
+    "showChildrenCircular": "子を表示（円形）",
+    "hideChildrenCircular": "子を非表示（円形）",
+    "showParents": "親を表示",
+    "hideParents": "親を非表示",
+    "showParentsCircularTooltip": "親をこのノードの周りにリング状に配置します",
+    "noIncomingTooltip": "このノードタイプには受信リレーションシップがありません",
+    "showParentsCircular": "親を表示（円形）",
+    "hideParentsCircular": "親を非表示（円形）",
+    "invertSelection": "選択を反転",
+    "select": "選択",
+    "selectAll": "すべて",
+    "selectAllOfType": "同じタイプすべて",
+    "selectConnected": "接続されたノード",
+    "selectChildren": "子",
+    "selectParents": "親",
+    "removeNode": "ノードを削除",
+    "removeCount": "{{count}}個のノードを削除"
+  }
+}

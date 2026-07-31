@@ -1,0 +1,18 @@
+{
+  "mcpServerTab": {
+    "intro": "Der Model-Context-Protocol-(MCP-)Server stellt governte Katalogerkennung und SQL-Ausführung für externe KI-Agenten bereit. Jeder Aufruf wird über die Rolle des Aufrufers governt — der Server fällt nie auf Admin zurück.",
+    "loading": "Wird geladen…",
+    "statusLabel": "Status",
+    "statusEnabled": "Aktiviert",
+    "statusDisabled": "Deaktiviert",
+    "endpointLabel": "Endpunkt",
+    "transportLabel": "Transport",
+    "stdioRoleLabel": "Gebundene stdio-Rolle",
+    "stdioRoleNone": "nicht gesetzt — stdio-Aufrufe erfordern <code>{{envVar}}</code>",
+    "maxRowsLabel": "Zeilenobergrenze (run_sql)",
+    "enableHint": "Der MCP-Server ist Opt-in. Setzen Sie die Umgebungsvariable <code>{{enableEnvVar}}</code> auf einen Port und starten Sie den Dienst neu, um ihn zu aktivieren. Für den lokalen stdio-Transport setzen Sie zusätzlich <code>{{roleEnvVar}}</code> auf eine Provisa-Rolle.",
+    "toolsHeading": "Bereitgestellte Tools",
+    "colTool": "Tool",
+    "colDescription": "Beschreibung"
+  }
+}

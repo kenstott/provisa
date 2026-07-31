@@ -1,0 +1,6 @@
+{
+  "sqlModelingCanvasTableCard": {
+    "removeTable": "הסרת {{tableName}} מהקנבס",
+    "connectColumn": "התחלת קשר מ-{{columnName}}"
+  }
+}

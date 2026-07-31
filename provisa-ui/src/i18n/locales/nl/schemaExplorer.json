@@ -1,0 +1,7 @@
+{
+  "schemaExplorer": {
+    "selectRole": "Selecteer een rol om het schema te bekijken.",
+    "loadFailed": "Laden van schema mislukt: {{error}}",
+    "loading": "Schema laden..."
+  }
+}

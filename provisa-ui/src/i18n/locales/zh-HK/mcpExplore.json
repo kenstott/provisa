@@ -1,0 +1,12 @@
+{
+  "mcpExplore": {
+    "title": "MCP",
+    "intro": "與 AI 助理對話，助理會透過受治理的 MCP 工具（與外部代理使用的相同工具）為你探索目錄並執行 SQL。",
+    "roleNote": "目前角色：{{role}}",
+    "noRole": "（無角色）",
+    "thinking": "助理處理中…",
+    "emptyState": "查詢你的數據——例如「哪些資料表包含客戶電郵？」、「按金額排列的前 10 張訂單」，或「orders 資料表的結構是怎樣的？」",
+    "inputPlaceholder": "查詢你的目錄或數據…",
+    "clear": "清除輸入"
+  }
+}

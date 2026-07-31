@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "ER図",
+    "domains": "ドメイン",
+    "domainsTooltip": "ドメインの表示／非表示",
+    "columnDetailLabel": "列の詳細",
+    "columnDetailAll": "全列",
+    "columnDetailKey": "キーのみ",
+    "columnDetailNone": "列なし",
+    "edgeRoutingLabel": "エッジのルーティング",
+    "edgeRoutingBezier": "曲線エッジ",
+    "edgeRoutingTaxi": "直角エッジ",
+    "gridSnapLabel": "グリッドにスナップ",
+    "gridSnapNone": "スナップなし",
+    "gridSnap5": "5pxスナップ",
+    "gridSnap10": "10pxスナップ",
+    "gridSnap15": "15pxスナップ",
+    "gridSnap20": "20pxスナップ",
+    "orphans": "孤立テーブル",
+    "collapseAll": "すべて折りたたむ",
+    "expandAll": "すべて展開",
+    "fitAll": "全体表示",
+    "downloadSvg": "SVGをダウンロード",
+    "downloadPng": "PNGをダウンロード",
+    "downloadJpeg": "JPEGをダウンロード",
+    "close": "閉じる",
+    "hint": "ドメイングループをクリックで折りたたみ／展開 · 破線は折りたたまれたドメインを接続します",
+    "resizeHandle": "ドメインボックスのサイズ変更（{{corner}}）"
+  }
+}

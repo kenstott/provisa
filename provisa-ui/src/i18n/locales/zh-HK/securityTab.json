@@ -1,0 +1,12 @@
+{
+  "securityTab": {
+    "intro": "控制平台的安全性狀態。高（零信任）模式影響重大——啟用前請先閱讀警告。",
+    "modeLabel": "安全模式",
+    "highWarningTitle": "高（零信任）模式影響重大",
+    "highWarning": "pgwire 伺服器將不會啟動，而 REST 及 GraphQL 數據端點將傳回 403。只有可在本機解密的用戶端（已設定 kms_key_arn）才能存取數據。啟用前請先確認您的用戶端已完成設定。",
+    "loading": "載入中…",
+    "saved": "已儲存。",
+    "savedRestartRequired": "已儲存。請重新啟動服務以套用。",
+    "saveTitle": "儲存安全性狀態"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "SQL Explorer",
+    "tabSql": "sql",
+    "tabCanvas": "畫布",
+    "execMs": "{{ms}} 毫秒",
+    "queryStats": "查詢統計數據",
+    "showExpansion": "顯示展開結果",
+    "detachToPhysical": "分離為實體 SQL",
+    "expansionTitle": "指標展開",
+    "expansionLoading": "正在擷取展開結果...",
+    "detachConfirmTitle": "分離為實體 SQL？",
+    "detachConfirmBody": "此操作不可逆轉：指標連結會被切斷，查詢會變成自由編寫的 SQL。之後無法重新連結至該指標。",
+    "detachCancel": "取消",
+    "detachConfirm": "分離"
+  }
+}

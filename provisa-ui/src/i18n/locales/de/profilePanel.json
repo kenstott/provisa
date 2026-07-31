@@ -1,0 +1,23 @@
+{
+  "profilePanel": {
+    "emptyState": "Führen Sie eine Stichprobenabfrage aus, um die Ergebnisspalten zu profilieren.",
+    "downloadJson": "↓ JSON",
+    "downloadJsonLabel": "Profil als JSON herunterladen",
+    "colColumn": "Spalte",
+    "colNulls": "Nullwerte",
+    "colNullsTitle": "Zeilen mit dem Wert NULL",
+    "colBlanks": "Leerwerte",
+    "colBlanksTitle": "Zeilen mit leerer Zeichenkette",
+    "colDistinct": "Distinct",
+    "colDistinctTitle": "Anzahl eindeutiger Werte",
+    "colConstant": "Konstant?",
+    "colConstantTitle": "Spalte hat nur einen eindeutigen Wert",
+    "colMin": "Min",
+    "colMax": "Max",
+    "colMean": "Mittelwert",
+    "colMeanTitle": "Mittelwert der numerischen Werte",
+    "colTopValues": "Häufigste Werte",
+    "constantYes": "Ja ({{value}})",
+    "emptyValue": "—"
+  }
+}

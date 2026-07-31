@@ -1,0 +1,14 @@
+{
+  "uniquesPanel": {
+    "title": "Contraintes uniques",
+    "infoTooltip": "Contraintes UNIQUE déclarées pour cette table — sur une colonne ou composites. Les clés étrangères peuvent cibler toute clé unique, et les clients les voient comme des contraintes UNIQUE. Initialisées depuis la source à l'enregistrement ; modifiez-les ou ajoutez les vôtres.",
+    "addConstraint": "Contrainte",
+    "nameLabel": "Nom",
+    "namePlaceholder": "nom de la contrainte (p. ex. users_tenant_email_key)",
+    "columnsLabel": "Colonnes",
+    "columnsPlaceholder": "— sélectionner des colonnes —",
+    "removeConstraint": "Supprimer la contrainte",
+    "summary": "{{count}} contrainte",
+    "summary_other": "{{count}} contraintes"
+  }
+}

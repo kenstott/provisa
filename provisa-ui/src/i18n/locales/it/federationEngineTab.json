@@ -1,0 +1,13 @@
+{
+  "federationEngineTab": {
+    "intro": "Il motore di federazione esegue ogni query federata. Scegliere il motore e configurarlo; gli altri componenti (routing, governance, cache) restano invariati.",
+    "loading": "Caricamento…",
+    "engineLabel": "Motore",
+    "current": " (in esecuzione)",
+    "pendingSelection": "Selezione salvata: {{engine}}. Il servizio sta ancora eseguendo {{running}}.",
+    "envPinned": "Bloccato su {{engine}} da $PROVISA_ENGINE. Una selezione salvata qui viene memorizzata, ma al riavvio prevale il blocco.",
+    "saveButton": "Salva la selezione del motore",
+    "saved": "Salvato.",
+    "savedRestartRequired": "Salvato. Riavviare il servizio per applicare il nuovo motore di federazione."
+  }
+}

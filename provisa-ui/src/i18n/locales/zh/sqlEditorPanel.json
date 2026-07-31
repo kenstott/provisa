@@ -1,0 +1,30 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "双击重命名",
+    "closeTab": "关闭 {{title}}",
+    "newTab": "新建查询标签页",
+    "detachedBadge": "已分离",
+    "nlPlaceholder": "用自然语言提问——自动生成 SQL…",
+    "clear": "清除",
+    "generate": "生成 SQL",
+    "generating": "生成中…",
+    "generatingSql": "正在生成 SQL…",
+    "prettify": "格式化 SQL",
+    "copySql": "复制 SQL",
+    "copied": "已复制",
+    "copy": "复制",
+    "run": "采样 >",
+    "running": "运行中…",
+    "saveViewTitle": "将当前 SQL 保存为视图“{{tableName}}”的定义",
+    "saving": "保存中…",
+    "updateView": "更新“{{tableName}}”",
+    "sampleModeFirst": "开头",
+    "sampleModeLast": "末尾",
+    "sampleModeRandom": "随机",
+    "sampleModeLabel": "采样模式",
+    "rowCountLabel": "行数",
+    "roleLabel": "角色",
+    "createView": "+ 视图",
+    "requestView": "请求视图"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "docsPage": {
+    "title": "Documentation",
+    "loading": "Chargement…",
+    "sourceOnline": "En ligne",
+    "sourceOffline": "Copie hors ligne",
+    "viewOnline": "Utiliser la documentation en ligne",
+    "viewOffline": "Utiliser la copie hors ligne",
+    "openInNewTab": "Ouvrir dans un nouvel onglet"
+  }
+}
