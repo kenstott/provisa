@@ -15,12 +15,13 @@ import { installAuthFetch } from './lib/authFetch.ts'
 import '@mantine/core/styles.css'
 import '@mantine/dates/styles.css'
 import '@mantine/notifications/styles.css'
-import { MantineProvider, localStorageColorSchemeManager } from '@mantine/core'
+import { DirectionProvider, MantineProvider, localStorageColorSchemeManager } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
 import { I18nextProvider } from 'react-i18next'
 import { theme } from './theme/theme.ts'
 import './theme/tokens.css'
 import i18n from './i18n/index.ts'
+import { DirectionSync } from './i18n/direction.tsx'
 import './index.css'
 import App from './App.tsx'
 import { isOrgSubdomainHost } from './lib/authHost.ts'
@@ -58,16 +59,19 @@ async function bootstrap() {
   }
 
   createRoot(document.getElementById('root')!).render(
-    <MantineProvider
-      theme={theme}
-      defaultColorScheme="dark"
-      colorSchemeManager={colorSchemeManager}
-    >
-      <I18nextProvider i18n={i18n}>
-        <Notifications />
-        <App />
-      </I18nextProvider>
-    </MantineProvider>,
+    <DirectionProvider>
+      <MantineProvider
+        theme={theme}
+        defaultColorScheme="dark"
+        colorSchemeManager={colorSchemeManager}
+      >
+        <I18nextProvider i18n={i18n}>
+          <DirectionSync />
+          <Notifications />
+          <App />
+        </I18nextProvider>
+      </MantineProvider>
+    </DirectionProvider>,
   )
 
   // Dismiss the pre-React convergence-splash once the app has mounted and painted its
