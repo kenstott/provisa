@@ -563,7 +563,12 @@ async def _execute_one_field(
     # is not cacheable — never read or written — so a per-session value can't leak.
     _rls = rls.rules if rls.has_rules() else {}
     ck = cache_key(compiled.sql, compiled.params, role_id, _rls)
-    _cache_off = no_cache or output_format != "json" or not is_cacheable(compiled.sql, _rls)[0]
+    _cache_off = (
+        no_cache
+        or force_redirect
+        or output_format != "json"
+        or not is_cacheable(compiled.sql, _rls)[0]
+    )
     cached = None if _cache_off else await check_cache(state.response_cache_store, ck, org_id)
 
     # Route decision — the result cache is the first candidate route (REQ-865),

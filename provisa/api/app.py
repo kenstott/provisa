@@ -615,6 +615,16 @@ async def _load_and_build(
     config = parse_config_dict(raw_config)
     state.config = config
     state.multitenancy = config.multitenancy
+    # REQ-1337: multitenancy demands per-org schema isolation (org_<id> schema + search_path on
+    # PostgreSQL). The portable/SQLite bootstrap (_init_schema_portable) writes every org into one
+    # flat file with no per-org scoping, so a multitenant deployment on a non-PG tenant DB would
+    # silently mix orgs' data. Fail loudly at startup instead of letting that combination run.
+    if config.multitenancy and getattr(state.tenant_db, "dialect", "postgresql") != "postgresql":
+        raise RuntimeError(
+            "multitenancy=true requires a PostgreSQL TENANT_DATABASE_URL "
+            f"(got dialect={getattr(state.tenant_db, 'dialect', None)!r}); "
+            "the portable/SQLite bootstrap has no per-org schema isolation"
+        )
     # REQ-1337: org_admin holds the platform_settings right only in a single-tenant deployment.
     # Asserted here rather than in _init_control_planes because the tenancy mode is only known once
     # the config is parsed, which happens after the root org's schema is created.

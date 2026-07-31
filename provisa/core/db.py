@@ -17,7 +17,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import asyncpg
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 from sqlalchemy.schema import CreateSchema
 
 if TYPE_CHECKING:
@@ -112,6 +112,33 @@ _SEED_DOMAINS: tuple[tuple[str, str], ...] = (
     ("shelter", "Animal shelter staff and breed management"),
 )
 
+# REQ-1266/REQ-1297: the four system template roles, mirrored from schema.sql's seed (lines
+# 623-712) so non-PostgreSQL (SQLite/portable) deployments reach parity with PostgreSQL/SaaS
+# deployments on role seeding. schema.sql is PG-only DDL and cannot be shared verbatim, so this is
+# a second literal by necessity, not by choice; keep the two in sync on any capability change.
+# platform_settings/cross_org are intentionally absent from org_admin here — those are
+# tenancy-conditional and asserted by apply_tenancy_role_grants after seeding, on every dialect.
+_SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
+    (
+        "org_admin",
+        [
+            "source_registration", "table_registration", "create_relationship", "create_view",
+            "approve_view", "approve_relationship", "access_config", "user_management",
+            "masking_config", "column_grant", "view_governance", "query_development",
+            "full_results", "write", "usage", "org_settings", "observability",
+        ],
+    ),
+    ("analyst", ["usage", "ad_hoc_query", "query_development"]),
+    (
+        "developer",
+        [
+            "query_development", "create_view", "create_relationship", "full_results", "write",
+            "usage", "ad_hoc_query",
+        ],
+    ),
+    ("platform_admin", ["admin", "superadmin", "platform_settings", "cross_org"]),
+)
+
 
 async def _init_schema_portable(pool: "Database") -> None:
     """Bootstrap the tenant plane from portable SQLAlchemy metadata.
@@ -121,7 +148,7 @@ async def _init_schema_portable(pool: "Database") -> None:
     neutral mirror; ``create_all`` emits per-dialect DDL. Org isolation is the
     default schema on these single-tenant backends (no ``search_path``)."""
     from provisa.core import schema_org
-    from provisa.core.schema_org import domains
+    from provisa.core.schema_org import domains, roles
 
     async with pool.engine.begin() as conn:
         await conn.run_sync(schema_org.metadata.create_all)
@@ -131,6 +158,14 @@ async def _init_schema_portable(pool: "Database") -> None:
             if result.fetchone() is None:
                 await conn.execute_core(
                     insert(domains).values(id=domain_id, description=description)
+                )
+        for role_id, capabilities in _SEED_ROLES:
+            result = await conn.execute_core(select(roles.c.id).where(roles.c.id == role_id))
+            if result.fetchone() is None:
+                await conn.execute_core(
+                    insert(roles).values(
+                        id=role_id, capabilities=capabilities, domain_access=["*"], org_id=None
+                    )
                 )
 
 
@@ -159,6 +194,38 @@ async def init_schema(pool: "Database", schema_sql: str, org_id: str = "default"
             await conn.execute(schema_sql)
 
 
+async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy: bool) -> None:
+    """Portable (SQLite/non-PG) mirror of ``apply_tenancy_role_grants``'s tenancy-conditional UPDATEs.
+
+    Same rights, same rules, run through SQLAlchemy Core instead of PG jsonb operators since the
+    portable ``roles.capabilities`` column round-trips as a plain Python list."""
+    from provisa.core.schema_org import roles
+
+    async with pool.acquire() as conn:
+        result = await conn.execute_core(select(roles.c.id, roles.c.capabilities))
+        for role_id, capabilities in result.fetchall():
+            caps = set(capabilities or [])
+            changed = False
+            if role_id != "platform_admin" and "cross_org" in caps:
+                caps.discard("cross_org")
+                changed = True
+            if role_id == "org_admin":
+                for right in ("org_settings", "observability"):
+                    if right not in caps:
+                        caps.add(right)
+                        changed = True
+                if multitenancy and "platform_settings" in caps:
+                    caps.discard("platform_settings")
+                    changed = True
+                elif not multitenancy and "platform_settings" not in caps:
+                    caps.add("platform_settings")
+                    changed = True
+            if changed:
+                await conn.execute_core(
+                    update(roles).where(roles.c.id == role_id).values(capabilities=sorted(caps))
+                )
+
+
 async def apply_tenancy_role_grants(  # REQ-1337
     pool: "Database", org_id: str, *, multitenancy: bool
 ) -> None:
@@ -182,7 +249,8 @@ async def apply_tenancy_role_grants(  # REQ-1337
     """
     _validate_org_id(org_id)
     if getattr(pool, "dialect", "postgresql") != "postgresql":
-        return  # portable bootstrap seeds no system roles; nothing to re-assert
+        await _apply_tenancy_role_grants_portable(pool, multitenancy=multitenancy)
+        return
     async with pool.acquire() as conn:
         await conn.execute(f"SET search_path TO org_{org_id}")
         # REQ-1337: cross_org is withdrawn in BOTH modes — org authority is confined to the org
