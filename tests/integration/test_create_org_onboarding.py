@@ -107,7 +107,7 @@ def planes(monkeypatch):
     async def _fake_provision_org(*_a, **_k):
         return None
 
-    async def _fake_build_org_runtime(org_id, *, include_demo=False):
+    async def _fake_build_org_runtime(org_id, *, include_demo=False, isolated_engine=False):
         import types as _types
 
         return _types.SimpleNamespace(tenant_db=admin_db, org_id=org_id)
