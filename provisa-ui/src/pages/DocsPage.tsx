@@ -23,15 +23,17 @@ const ONLINE_URL = "https://provisa.dev/docs/";
 const OFFLINE_URL = "/docs-site/";
 const PROBE_TIMEOUT_MS = 2500;
 // mkdocs-static-i18n only builds a translated tree for locales in mkdocs.yml's
-// plugins.i18n.languages list (docs/es/ today). Untranslated UI locales must
-// keep loading the English root rather than 404ing against a nonexistent path.
-const DOCS_LOCALES = ["es"];
+// plugins.i18n.languages list. Untranslated UI locales must keep loading the
+// English root rather than 404ing against a nonexistent path.
+const DOCS_LOCALES = ["es", "fr", "de", "pt", "it", "zh", "zh-HK", "ru", "he"];
 
 type Source = "probing" | "online" | "offline";
 
 export function DocsPage() {
   const { t, i18n } = useTranslation();
-  const docsLng = i18n.language.split("-")[0];
+  // "zh-HK" must be checked before stripping the region suffix (line below) —
+  // it's a distinct docs tree from plain "zh", unlike other regional variants.
+  const docsLng = DOCS_LOCALES.includes(i18n.language) ? i18n.language : i18n.language.split("-")[0];
   const localePrefix = DOCS_LOCALES.includes(docsLng) ? `${docsLng}/` : "";
   // navigator.onLine === false is decided before the first paint; resolving it in the initializer
   // keeps the probe effect from setting state synchronously on mount.

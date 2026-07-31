@@ -68,6 +68,42 @@ plugins:
         - locale: es
           name: Español
           build: true
+        - locale: fr
+          name: Français
+          build: true
+        - locale: de
+          name: Deutsch
+          build: true
+        - locale: pt
+          name: Português
+          build: true
+        - locale: it
+          name: Italiano
+          build: true
+        - locale: zh
+          name: 中文
+          build: true
+        - locale: ru
+          name: Русский
+          build: true
+        - locale: he
+          name: עברית
+          build: true
+        # zh-HK must stay LAST: mkdocs_static_i18n's apply_user_overrides()
+        # snapshots the current (already locale-mutated) theme.language value
+        # as the "original" the first time a per-language theme: override
+        # applies, then unconditionally restores that snapshot before every
+        # later locale build — so this override would permanently corrupt
+        # theme.language to the literal string "zh-HK" for every locale
+        # built after it. Placing it last confines the corruption to zh-HK's
+        # own build.
+        - locale: zh-HK
+          name: 繁體中文（香港）
+          build: true
+          # mkdocs-material ships no partials/languages/zh-HK.html; zh-Hant is
+          # the closest supported theme-chrome locale (Traditional Chinese).
+          theme:
+            language: zh-Hant
 
 # Auto-link every REQ-NNN mention to its section on the Requirements page.
 hooks:

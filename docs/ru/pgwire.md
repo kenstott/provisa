@@ -1,0 +1,198 @@
+# Сервер Provisa pgwire
+
+Provisa предоставляет эндпоинт по протоколу проводного взаимодействия PostgreSQL (pgwire). Любой инструмент, говорящий на клиентском протоколе PostgreSQL — psycopg2, asyncpg, DBeaver, Tableau, JDBC — может подключиться и запрашивать данные Provisa через тот же конвейер governance, который управляет HTTP API. (REQ-266)
+
+Запросы проходят через полный стек governance: применение RLS, правила маскирования, защиту связей, проверки доступа к домену. (REQ-001, REQ-002, REQ-263) Интерфейс pgwire — не обходной путь. (REQ-002, REQ-266)
+
+---
+
+## Детали подключения
+
+Сервер запускается, когда `PROVISA_PGWIRE_PORT` установлен в ненулевое целое число. По умолчанию отключён. (REQ-527) [tool-verified: `app.py:1739`]
+
+```
+Host: 0.0.0.0  (all interfaces)
+Port: $PROVISA_PGWIRE_PORT
+```
+
+**TLS.** Установите `PROVISA_PGWIRE_CERT` и `PROVISA_PGWIRE_KEY` в пути к PEM-сертификату и ключу. Когда оба присутствуют, сервер оборачивает входящие соединения в TLS. Когда отсутствуют, TLS отключён, и сервер отвечает `N` на запросы согласования SSL. (REQ-530) [tool-verified: `server.py:1746-1750`]
+
+**Сообщаемая версия сервера.** Клиенты видят `14.0.provisa`. Инструменты, включающие функции по номеру версии, могут вести себя так, как будто подключены к PostgreSQL 14. (REQ-579) [tool-verified: `server.py:208`]
+
+---
+
+## Аутентификация
+
+Два режима, управляемые ключом `provider` в `auth_config`:
+
+| Режим | Значение `provider` | Поведение |
+|------|-----------------|-----------|
+| Trust | `none` (или middleware аутентификации неактивен) | Имя пользователя, отправленное клиентом, используется напрямую как `role_id`. Пароль игнорируется. |
+| Simple | `simple` | Пароль проверяется провайдером аутентификации `simple` (bcrypt). Имя пользователя становится `role_id` при успехе. (REQ-124) |
+
+Любое другое значение `provider` возвращает ошибку FATAL при входе. (REQ-529) Протокол всегда использует тип аутентификации PG 3 (пароль открытым текстом). (REQ-529) Не используйте режим trust через незашифрованное соединение. [tool-verified: `server.py:282-311`]
+
+---
+
+## Что работает
+
+### SELECT
+
+Все операторы SELECT проходят через конвейер governance (`_pipeline.py`). (REQ-001, REQ-262, REQ-266) Конвейер:
+
+1. Переписывает семантический SQL в физический SQL (`rewrite_semantic_to_physical`)
+2. Применяет governance (RLS, маскирование, доступ к домену) (REQ-263)
+3. Проверяет по зарегистрированной схеме (REQ-011)
+4. Маршрутизирует на Trino или прямой пул источника (REQ-027, REQ-028)
+
+Многооператорные простые запросы поддерживаются. Операторы, разделённые точкой с запятой, разбиваются и выполняются по порядку. (REQ-580) [tool-verified: `server.py:318-381`]
+
+Параметризованные запросы (`$1`, `$2`, ...) поддерживаются как в режиме простого запроса, так и в режиме расширенного запроса (Bind/Execute). Параметры подставляются как литералы перед выполнением. (REQ-581) [tool-verified: `server.py:78-85`]
+
+`SELECT * FROM fn(args)` и `SELECT fn(args)` — где `fn` называет зарегистрированную отслеживаемую функцию — перехватываются до конвейера governance и маршрутизируются через единый управляемый исполнитель (`invoke_tracked_function`). Результат — типизированный набор строк, идентичный тому, что возвращает любая другая поверхность для этой команды. `writable_by` и правила governance применяются внутри исполнителя. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
+
+### DDL
+
+Операторы DDL обнаруживаются регулярным выражением в `server.py` и диспетчеризуются в `DdlHandler`. Роль должна иметь возможность (capability) `"ddl"`. (REQ-042) Без неё оператор отклоняется с SQLSTATE 42501. [tool-verified: `ddl_handler.py:82-83`]
+
+Распознаваемые формы DDL:
+
+```
+CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
+ALTER TABLE / INDEX / SEQUENCE / VIEW
+DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
+```
+
+[tool-verified: `server.py:56-61`]
+
+Существуют два пути выполнения в зависимости от `ddl_catalog`: (REQ-582)
+
+**Путь Trino** — используется, когда `ddl_catalog` — это Iceberg, Hive или другой незарегистрированный каталог Trino (например, `iceberg`, `hive`, `otel`, `results`). На этом пути поддерживаются только `CREATE TABLE` и `CREATE VIEW`. Попытка `ALTER`, `DROP` или `CREATE INDEX` вызывает ошибку. Имя таблицы полностью квалифицировано как `catalog.schema.table`. [tool-verified: `ddl_handler.py:92-100`]
+
+**Прямой путь** — используется, когда `ddl_catalog` совпадает с идентификатором зарегистрированного источника. Поддерживается полный DDL: CREATE, ALTER, DROP, индексы, последовательности. `CREATE TABLE` и `CREATE VIEW` квалифицированы по схеме как `schema.table`. Весь остальной DDL (ALTER, DROP, CREATE INDEX) проходит как есть после установки контекста схемы. Для источников PostgreSQL и SQLite контекст устанавливается через `SET search_path TO schema`. Для MySQL и MariaDB контекст устанавливается через `USE schema`. [tool-verified: `ddl_handler.py:139-170`, `ddl_handler.py:207-213`]
+
+После DDL на любом из путей новая таблица регистрируется в контексте компиляции роли, так что она немедленно доступна для запросов. (REQ-583) [tool-verified: `ddl_handler.py:216-250`]
+
+**Разрешение цели записи.** Каталог и схема DDL берутся из полей `ddl_catalog` и `ddl_schema` домена. Если `ddl_catalog` не установлен, система по умолчанию использует каталог Iceberg. Если `ddl_schema` не установлен, по умолчанию используется ID домена. Домен разрешается через список `domain_access` роли. (REQ-584) [tool-verified: `app.py:804-811`, `ddl_handler.py:104-115`]
+
+### COPY
+
+Поддерживаются оба варианта: `COPY ... TO STDOUT` и `COPY ... FROM STDIN`. (REQ-585) [tool-verified: `copy_handler.py:231-257`]
+
+**COPY TO STDOUT** — экспортирует результаты запроса в проводном формате PG COPY. Работают две формы:
+
+```sql
+-- Table reference
+COPY my_table TO STDOUT WITH (FORMAT csv)
+
+-- Arbitrary query
+COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
+```
+
+Поддерживаемые форматы: `text` (с разделителями табуляции, по умолчанию) и `csv`. Бинарный формат для вывода COPY не поддерживается. [tool-verified: `copy_handler.py:36-52`]
+
+**COPY FROM STDIN** — вставляет строки в целевую таблицу. Ограничено источниками с типами `postgresql`, `mysql`, `sqlite` или `mariadb`. (REQ-586) Попытка COPY FROM для источника только Trino (например, Iceberg) вызывает ошибку прав доступа. [tool-verified: `copy_handler.py:65`, `copy_handler.py:351-356`]
+
+```sql
+COPY my_table (col1, col2) FROM STDIN WITH (FORMAT text)
+```
+
+Если список столбцов не указан, столбцы выводятся из зарегистрированной схемы. [tool-verified: `copy_handler.py:357`]
+
+### Транзакции и команды сессии
+
+SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET и DEALLOCATE перехватываются и возвращают пустой успешный ответ. (REQ-587) Сервер не хранит состояние транзакций — изоляция транзакций и откат не поддерживаются. (REQ-587) [tool-verified: `catalog.py:27-31`, `catalog.py:1129-1132`]
+
+---
+
+## Перехват каталога
+
+Запросы к `information_schema` и `pg_catalog` обрабатываются локально без обращения к Trino. (REQ-532) Слой перехвата строит базу данных DuckDB в памяти на каждый запрос, заполненную из контекста компиляции роли. (REQ-532) [tool-verified: `catalog.py:210-213`]
+
+Перехватываемые таблицы:
+
+**information_schema:** `schemata`, `tables`, `columns`, `views`, `table_constraints`, `key_column_usage`, `referential_constraints`
+
+**pg_catalog:** `pg_namespace`, `pg_class`, `pg_attribute`, `pg_type`, `pg_attrdef`, `pg_description`, `pg_index`, `pg_constraint`, `pg_proc`, `pg_roles`, `pg_auth_members`, `pg_database`, `pg_settings`, `pg_tables`, `pg_stat_user_tables`, `pg_statio_user_tables`, `pg_am`, `pg_extension`, `pg_enum`, `pg_stat_activity`
+
+[tool-verified: `catalog.py:39-67`]
+
+`pg_constraint` заполняется реальными данными PK и FK, выведенными из полей `pk_columns` и `joins` доменной модели. (REQ-392, REQ-399) Инструменты BI, проверяющие связи по внешним ключам (Tableau, DBeaver и т. д.), увидят граф соединений, известный Provisa. [tool-verified: `catalog.py:551-632`] Однозначные соединения между одной и той же парой источник/цель, чьи целевые столбцы вместе образуют составной первичный ключ цели, схлопываются в одну строку FK с многоэлементными массивами `conkey`/`confkey`. (REQ-1094) [tool-verified: `catalog_constraints.py`]
+
+`pg_index` заполняется одной строкой на каждое ограничение первичного ключа и UNIQUE (`indrelid` = oid таблицы, `indkey` = упорядоченные attnum ключа, установлены `indisprimary`/`indisunique`). Клиенты, разрешающие столбцы ключа через `pg_index.indkey`, а не через `pg_constraint` — например, DataGrip — обнаруживают правильные столбцы через стандартное соединение `pg_index` → `pg_attribute`. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
+
+Также перехватываются следующие скалярные выражения: (REQ-588)
+- `current_user`, `session_user` → аутентифицированный `role_id`
+- `current_database()` → `"provisa"`
+- `current_schema()` → `"public"`
+- `version()` → `"PostgreSQL 14.0 on Provisa"`
+- `pg_backend_pid()` → `0`
+- `current_setting(...)` → возвращает значение из фиксированной таблицы настроек
+- `SHOW <setting>` → возвращает значение из той же таблицы настроек
+
+[tool-verified: `catalog.py:168-207`, `catalog.py:1076-1120`]
+
+---
+
+## Бинарное кодирование параметров
+
+Протокол расширенного запроса (Bind/Execute) поддерживает параметры в бинарной кодировке. (REQ-589) Следующие OID типов декодируются из бинарного вида: [tool-verified: `postgres.py:69-97`]
+
+| OID | Тип PG | Тип Python |
+|-----|---------|-------------|
+| 16 | bool | bool |
+| 17 | bytea | bytes |
+| 20 | int8 | int |
+| 21 | int2 | int |
+| 23 | int4 | int |
+| 25 | text | str |
+| 700 | float4 | float |
+| 701 | float8 | float |
+| 1043 | varchar | str |
+| 1082 | date | datetime.date |
+| 1114 | timestamp | datetime.datetime |
+| 1184 | timestamptz | datetime.datetime (UTC) |
+| 1700 | numeric | decimal.Decimal |
+| 2950 | uuid | str |
+
+Любой OID, отсутствующий в этой таблице, вызывает ошибку `"Unsupported binary parameter type: <oid>"`. (REQ-589) [tool-verified: `postgres.py:579`]
+
+Столбцы результата также отправляются в бинарном виде, если клиент это запрашивает, для того же набора типов плюс ARRAY, JSON, INTERVAL и BIGINT. (REQ-589) [tool-verified: `postgres.py:191-244`]
+
+---
+
+## Рекомендации по драйверам
+
+**Нативные драйверы Python (psycopg2, asyncpg).** Они по умолчанию согласовывают протокол расширенного запроса и используют бинарную кодировку для большинства типов. Точность типов здесь наивысшая — столбцы `NUMERIC` приходят как `Decimal`, `TIMESTAMP` как `datetime` и так далее. Используйте их для ETL на Python, скриптов или прямой интеграции.
+
+**JDBC (драйвер PostgreSQL JDBC).** Используйте его для инструментов Java-экосистемы: DBeaver, Tableau, Power BI, Metabase, операторов Airflow JDBC. JDBC по умолчанию использует протокол простого запроса, что избегает сложностей бинарной кодировки. Строка подключения:
+
+```
+jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
+```
+
+Некоторые BI-инструменты на базе JDBC при подключении отправляют залп запросов к `information_schema` и `pg_catalog`, чтобы заполнить свой браузер схемы. Все они обрабатываются слоем перехвата каталога — при исследовании схемы трафик к Trino не генерируется. (REQ-532)
+
+**Когда какой предпочесть.** Если клиент на Python, используйте psycopg2 или asyncpg для лучшей обработки типов. Если клиент — BI-инструмент или любое JVM-приложение, используйте JDBC. Избегайте смешивания ожиданий бинарного и текстового протокола в одном соединении, если вы наблюдаете неожиданности при преобразовании типов — поведение JDBC в текстовом режиме проще для анализа.
+
+---
+
+## Оговорки и ограничения
+
+**Только SQL; без мутаций DML.** Слушатель pgwire разбирает и выполняет только SQL — строки GraphQL и Cypher не принимаются. (REQ-614) Обычные `INSERT`, `UPDATE` и `DELETE` не маршрутизируются на путь записи. (REQ-615) Записывайте данные через `COPY FROM STDIN` (записываемые источники) или `CREATE TABLE AS`; мутации на уровне строк вместо этого проходят через пути записи GraphQL, Cypher или Trino.
+
+**COPY и DDL требуют возможности `ddl`.** И `COPY` (в любом направлении), и DDL зависят от возможности `ddl` роли; роли без неё получают SQLSTATE 42501. (REQ-616)
+
+**Нет реальной поддержки транзакций.** BEGIN/COMMIT/ROLLBACK принимаются и молча игнорируются. Каждый оператор выполняется независимо. (REQ-587) [tool-verified: `server.py:146-158` — `in_transaction()` always returns `False`]
+
+**Таймаут DDL 60 секунд, таймаут запроса 120 секунд.** Они жёстко закодированы в потоках обработчиков. (REQ-590) Долго выполняющийся DDL против удалённых источников (изменения схемы на больших таблицах) может истечь по таймауту. [tool-verified: `ddl_handler.py:136`, `server.py:186`]
+
+**COPY FROM работает только для записываемых источников.** Iceberg, Hive, источники только Trino и типы источников только для чтения не принимают COPY FROM. Ошибка — SQLSTATE 42501. (REQ-586) [tool-verified: `copy_handler.py:65`]
+
+**Формат вывода COPY — text или csv.** Бинарный формат PG COPY (`FORMAT binary`) не реализован. [inferred: only `text` and `csv` branches exist in `_rows_to_copy_text` / `_rows_to_copy_csv`]
+
+**DDL на пути Trino — только CREATE.** ALTER, DROP и CREATE INDEX для каталогов Iceberg или Hive не поддерживаются. Используйте зарегистрированный источник SQL как `ddl_catalog`, если вам нужен полный DDL. (REQ-582) [tool-verified: `ddl_handler.py:92-100`]
+
+**Подстановка параметров литеральная.** Параметры `$1`, `$2`, ... подставляются как литералы SQL перед выполнением, а не отправляются как связанные параметры вышестоящему движку. Это означает, что вышестоящий движок никогда не видит подготовленный оператор. Для Trino это не имеет практического значения; для источников с прямым пулом это обходит кеширование подготовленных операторов. (REQ-581) [tool-verified: `server.py:78-85`]
+
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** Эти таблицы существуют в слое каталога, но являются пустыми заглушками. Инструменты мониторинга, запрашивающие их, получат ноль строк, а не ошибки. (REQ-532) [tool-verified: `catalog.py:519-535`, `catalog.py:639-934`] (`pg_index` заполняется — см. Перехват каталога.)
