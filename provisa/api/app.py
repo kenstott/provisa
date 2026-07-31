@@ -77,7 +77,7 @@ from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
-from provisa.core.config_loader import load_config, parse_config_dict
+from provisa.core.config_loader import config_replace_mode, load_config, parse_config_dict
 from provisa.core.database import Database
 from provisa.core.schema_org import (
     domains as _domains_t,
@@ -694,12 +694,7 @@ async def _load_and_build(
         # let a secondary wipe primary-registered rows, so it is hard-disabled off the primary. Secrets
         # (source passwords) are file-only by design — schema.sql never stores them — so every node must
         # parse this file for source pools; PG holds only the shared, primary-written schema.
-        _is_primary = os.environ.get("PROVISA_ROLE", "primary").strip().lower() != "secondary"
-        _replace_mode = _is_primary and os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
+        _replace_mode = config_replace_mode(os.environ)
         # Populate the org-prefixed catalog-name map FIRST so load_config's physical registration
         # AND column introspection resolve each source under the name the compiler later emits
         # (state.catalog_for). build_org_runtime does the same before its load_config; the default

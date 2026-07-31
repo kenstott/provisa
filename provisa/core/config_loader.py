@@ -16,7 +16,7 @@
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Mapping
 
 import yaml
 from sqlalchemy import column as _sa_column
@@ -1029,6 +1029,21 @@ async def _validate_existing_domains(conn: "Connection", default_domain: str) ->
             f"naming.use_domains=false permits only domain {default_domain!r}; "
             f"re-register these sources: {offenders}"
         )
+
+
+def config_replace_mode(environ: Mapping[str, str]) -> bool:  # REQ-1229
+    """Single-writer cluster invariant: replace mode is hard-disabled off the primary.
+
+    A node with PROVISA_ROLE=secondary may only upsert (idempotent no-ops under the
+    load_config advisory lock) — replace would let it wipe primary-registered rows.
+    On the primary, replace is opt-in via PROVISA_CONFIG_REPLACE.
+    """
+    is_primary = environ.get("PROVISA_ROLE", "primary").strip().lower() != "secondary"
+    return is_primary and environ.get("PROVISA_CONFIG_REPLACE", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266
