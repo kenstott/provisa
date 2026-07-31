@@ -19,11 +19,12 @@ Contents (shared across all orgs, single logical location):
 
 - Org registry and membership: ``orgs``, ``user_profiles``,
   ``user_org_memberships``, ``local_users``, ``org_invites``
-- SaaS billing (formerly the raw ``platform`` schema): ``tenants``,
-  ``tenant_config``
+- SaaS billing: the plan/limit/Lemon-Squeezy/KMS columns on ``orgs`` (REQ-1355 —
+  the org is the billing subject; there is no separate ``tenants`` row), plus the
+  per-org encrypted config in ``org_config``
 
 Mirrors the post-migration shape of the corresponding tables in
-``provisa/core/schema.sql`` and ``provisa/api/billing/tenant_db.py`` with
+``provisa/core/schema.sql`` and ``provisa/api/billing/org_db.py`` with
 portable types (see ``provisa/core/schema_org.py`` for the type mapping).
 
 Cross-model references to the per-org ``roles`` table (``org_invites.role_id``)
@@ -95,6 +96,17 @@ orgs = Table(
     # engine. Chosen at org creation (pre-billing surface: the onboarding create-org checkbox);
     # the org-runtime builder reads it to bind a dedicated EngineRuntime.
     Column("isolated_engine", Boolean, nullable=False, server_default=false()),
+    # REQ-1355: the org IS the billing subject. These columns were the ``tenants`` table, whose
+    # UUID pk duplicated the org and forced every billing call site to carry a second identifier.
+    # The externally-visible billing key is now the org slug.
+    Column("plan", Text, nullable=False, server_default="trial"),
+    Column("source_limit", Integer, nullable=False, server_default="2"),
+    Column("ls_customer_id", Text),  # Lemon Squeezy customer id (REQ-1075)
+    Column("ls_subscription_id", Text),  # Lemon Squeezy subscription id (REQ-1075)
+    # Nullable, unlike the NOT NULL ``tenants.kms_key_arn``: an org created through onboarding
+    # exists before billing initializes it, and there is no key to invent for it (REQ-693 rejects
+    # client-side decrypt when this is unset, which is the correct state for such an org).
+    Column("kms_key_arn", Text),
 )
 
 user_profiles = Table(
@@ -182,36 +194,26 @@ org_invites = Table(
     Column("used_by", Text),
 )
 
-# SaaS billing — formerly the raw PG ``platform`` schema in tenant_db.py.
-tenants = Table(
-    "tenants",
+# Per-org encrypted configuration — formerly ``tenant_config``, keyed by the ``tenants`` UUID.
+# REQ-1355: org == tenant, so the key is the org slug and the billing columns it used to carry
+# live on ``orgs`` itself.
+org_config = Table(
+    "org_config",
     metadata,
     Column("id", Uuid, primary_key=True),
-    Column("kms_key_arn", Text, nullable=False),
-    Column("ls_customer_id", Text),  # Lemon Squeezy customer id (REQ-1075)
-    Column("plan", Text, nullable=False, server_default="trial"),
-    Column("source_limit", Integer, nullable=False, server_default="2"),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-)
-
-tenant_config = Table(
-    "tenant_config",
-    metadata,
-    Column("id", Uuid, primary_key=True),
-    Column("tenant_id", Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
     Column("entity_type", Text, nullable=False),
     Column("entity_id", Text, nullable=False),
     Column("encrypted_dek", LargeBinary, nullable=False),
     Column("ciphertext", LargeBinary, nullable=False),
     Column("iv", LargeBinary, nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    UniqueConstraint("tenant_id", "entity_type", "entity_id"),
+    UniqueConstraint("org_id", "entity_type", "entity_id"),
 )
 
 
-# The org/user/invite registry. ``tenants``/``tenant_config`` are bootstrapped
-# separately by the billing module (``platform`` PG schema), so they are excluded
-# here to avoid creating a duplicate copy in the default schema.
+# The org/user/invite registry. ``org_config`` is bootstrapped separately by the billing
+# module, so it is excluded here.
 REGISTRY_TABLES = [
     orgs,
     user_profiles,

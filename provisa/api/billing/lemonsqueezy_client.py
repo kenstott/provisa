@@ -37,18 +37,18 @@ def _headers() -> dict[str, str]:
     }
 
 
-async def create_checkout(variant_id: str, tenant_id: str, redirect_url: str) -> str:  # REQ-1075
+async def create_checkout(variant_id: str, org_id: str, redirect_url: str) -> str:  # REQ-1075
     """Create a Lemon Squeezy checkout for ``variant_id`` and return its hosted URL.
 
-    ``tenant_id`` is carried in checkout ``custom_data`` so the subscription webhook can
-    resolve the tenant. Returns ``checkout.data.attributes.url``.
+    ``org_id`` is carried in checkout ``custom_data`` so the subscription webhook can resolve the
+    org (REQ-1355 — the org is the billing subject). Returns ``checkout.data.attributes.url``.
     """
     store_id = os.environ["LEMONSQUEEZY_STORE_ID"]
     body = {
         "data": {
             "type": "checkouts",
             "attributes": {
-                "checkout_data": {"custom": {"tenant_id": tenant_id}},
+                "checkout_data": {"custom": {"org_id": org_id}},
                 "product_options": {"redirect_url": redirect_url},
             },
             "relationships": {

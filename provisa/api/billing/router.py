@@ -7,20 +7,21 @@
 
 Billing is provided by Lemon Squeezy as Merchant of Record (REQ-1075). Checkout goes
 through the hosted Lemon Squeezy flow; plan lifecycle is driven by signed webhooks.
+
+REQ-1355: every endpoint identifies the subject by ``org_id``. There is no separate tenant id.
 """
 
-# Requirements: REQ-073, REQ-074, REQ-1075
+# Requirements: REQ-073, REQ-074, REQ-1075, REQ-1355
 
 from __future__ import annotations
 
 import json
-import uuid
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from provisa.api.billing.kms import create_tenant_key
+from provisa.api.billing.kms import create_org_key
 from provisa.api.errors import ApiError
 from provisa.api.billing.lemonsqueezy_client import (
     create_checkout,
@@ -28,51 +29,66 @@ from provisa.api.billing.lemonsqueezy_client import (
     verify_webhook_signature,
 )
 from provisa.api.billing.models import PLAN_LIMITS, plan_from_variant
-from provisa.api.billing.tenant_db import (
-    create_tenant,
-    get_tenant,
-    get_tenant_by_ls_customer,
-    update_tenant_ls_customer,
-    update_tenant_plan,
+from provisa.api.billing.org_db import (
+    get_org_billing,
+    get_org_by_ls_customer,
+    set_org_kms_key,
+    update_org_ls_customer,
+    update_org_plan,
 )
 
 router = APIRouter(tags=["billing"])
 
 
 class SignupBody(BaseModel):
-    email: str
+    org_id: str
 
 
 class CheckoutBody(BaseModel):
-    tenant_id: str
+    org_id: str
     variant_id: str
     redirect_url: str
 
 
-def _pool(request: Request):
-    return request.app.state.tenant_db
+def _pool(request: Request):  # pyright: ignore[reportUnusedParameter]
+    # Platform control plane: the billing columns live on ``orgs``, which is a registry table.
+    # This used to read ``request.app.state.tenant_db`` — the per-org data plane, which has never
+    # held the billing tables.
+    from provisa.api.app import state
+
+    assert state.admin_db is not None
+    return state.admin_db
 
 
-@router.post("/signup")  # REQ-073
-async def signup(_body: SignupBody, request: Request):
+@router.post("/signup")  # REQ-073, REQ-1355
+async def signup(body: SignupBody, request: Request):
+    """Initialize billing for an existing org: mint its KMS customer key.
+
+    The org is created by ``/admin/orgs`` (which provisions its schema); this only attaches the
+    billing facts. Rebinding an existing key would strand every DEK already wrapped under the old
+    one, so a second call is rejected rather than silently rotating."""
     pool = _pool(request)
-    temp_id = str(uuid.uuid4())
-    key_arn = await create_tenant_key(temp_id)
-    tenant = await create_tenant(pool, key_arn)
+    org = await get_org_billing(pool, body.org_id)
+    if org is None:
+        raise ApiError(404, "billing.org_not_found", "Org not found")
+    if org.kms_key_arn:
+        raise ApiError(409, "billing.already_initialized", "Org billing is already initialized")
+    key_arn = await create_org_key(body.org_id)
+    await set_org_kms_key(pool, body.org_id, key_arn)
     return {
-        "tenant_id": str(tenant.id),
-        "plan": tenant.plan.value,
-        "source_limit": tenant.source_limit,
+        "org_id": org.org_id,
+        "plan": org.plan.value,
+        "source_limit": org.source_limit,
     }
 
 
-@router.post("/checkout")  # REQ-073, REQ-1075
+@router.post("/checkout")  # REQ-073, REQ-1075, REQ-1355
 async def checkout(body: CheckoutBody, request: Request):
     pool = _pool(request)
-    tenant = await get_tenant(pool, body.tenant_id)
-    if tenant is None:
-        raise ApiError(404, "billing.tenant_not_found", "Tenant not found")
-    url = await create_checkout(body.variant_id, body.tenant_id, body.redirect_url)
+    org = await get_org_billing(pool, body.org_id)
+    if org is None:
+        raise ApiError(404, "billing.org_not_found", "Org not found")
+    url = await create_checkout(body.variant_id, body.org_id, body.redirect_url)
     return {"checkout_url": url}
 
 
@@ -81,7 +97,7 @@ _ACTIVATE_EVENTS = {"subscription_created", "subscription_updated"}
 _DEACTIVATE_EVENTS = {"subscription_cancelled", "subscription_expired"}
 
 
-@router.post("/webhook")  # REQ-073, REQ-074, REQ-1075
+@router.post("/webhook")  # REQ-073, REQ-074, REQ-1075, REQ-1355
 async def webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("X-Signature", "")
@@ -91,63 +107,66 @@ async def webhook(request: Request):
     event = json.loads(payload)
     meta = event.get("meta") or {}
     event_name = meta.get("event_name", "")
-    attrs = (event.get("data") or {}).get("attributes") or {}
+    data = event.get("data") or {}
+    attrs = data.get("attributes") or {}
     ls_customer_id = attrs.get("customer_id")
     if ls_customer_id is not None:
         ls_customer_id = str(ls_customer_id)
+    ls_subscription_id = data.get("id")
+    if ls_subscription_id is not None:
+        ls_subscription_id = str(ls_subscription_id)
 
     pool = _pool(request)
 
     if event_name in _ACTIVATE_EVENTS:
-        # tenant_id is carried in the checkout custom_data and echoed back in meta.custom_data.
-        tenant_id = (meta.get("custom_data") or {}).get("tenant_id")
-        if tenant_id is None and ls_customer_id is not None:
-            resolved = await get_tenant_by_ls_customer(pool, ls_customer_id)
-            tenant_id = str(resolved.id) if resolved else None
-        if tenant_id is None:
+        # org_id is carried in the checkout custom_data and echoed back in meta.custom_data.
+        org_id = (meta.get("custom_data") or {}).get("org_id")
+        if org_id is None and ls_customer_id is not None:
+            resolved = await get_org_by_ls_customer(pool, ls_customer_id)
+            org_id = resolved.org_id if resolved else None
+        if org_id is None:
             raise ApiError(
-                400, "billing.webhook_missing_tenant_linkage", "Webhook missing tenant linkage"
+                400, "billing.webhook_missing_org_linkage", "Webhook missing org linkage"
             )
         if ls_customer_id is not None:
-            await update_tenant_ls_customer(pool, tenant_id, ls_customer_id)
+            await update_org_ls_customer(pool, org_id, ls_customer_id, ls_subscription_id)
         plan_name = plan_from_variant(attrs.get("variant_name", ""))
-        await update_tenant_plan(pool, tenant_id, plan_name, PLAN_LIMITS[plan_name])
+        await update_org_plan(pool, org_id, plan_name, PLAN_LIMITS[plan_name])
 
     elif event_name in _DEACTIVATE_EVENTS:
         if ls_customer_id is None:
             raise ApiError(400, "billing.webhook_missing_customer_id", "Webhook missing customer id")
-        tenant = await get_tenant_by_ls_customer(pool, ls_customer_id)
-        if tenant:
-            await update_tenant_plan(pool, str(tenant.id), "trial", PLAN_LIMITS["trial"])
+        org = await get_org_by_ls_customer(pool, ls_customer_id)
+        if org:
+            await update_org_plan(pool, org.org_id, "trial", PLAN_LIMITS["trial"])
 
     return JSONResponse(content={"received": True})
 
 
-@router.get("/portal")  # REQ-073, REQ-074, REQ-1075
-async def portal(tenant_id: str, request: Request):
+@router.get("/portal")  # REQ-073, REQ-074, REQ-1075, REQ-1355
+async def portal(org_id: str, request: Request):
     pool = _pool(request)
-    tenant = await get_tenant(pool, tenant_id)
-    if tenant is None:
-        raise ApiError(404, "billing.tenant_not_found", "Tenant not found")
-    if not tenant.ls_customer_id:
-        raise ApiError(
-            400, "billing.tenant_no_ls_customer", "Tenant has no Lemon Squeezy customer"
-        )
-    url = await get_customer_portal_url(tenant.ls_customer_id)
+    org = await get_org_billing(pool, org_id)
+    if org is None:
+        raise ApiError(404, "billing.org_not_found", "Org not found")
+    if not org.ls_customer_id:
+        raise ApiError(400, "billing.org_no_ls_customer", "Org has no Lemon Squeezy customer")
+    url = await get_customer_portal_url(org.ls_customer_id)
     return {"portal_url": url}
 
 
-@router.get("/status")  # REQ-073, REQ-074, REQ-1075
-async def status(tenant_id: str, request: Request):
+@router.get("/status")  # REQ-073, REQ-074, REQ-1075, REQ-1355
+async def status(org_id: str, request: Request):
     pool = _pool(request)
-    tenant = await get_tenant(pool, tenant_id)
-    if tenant is None:
-        raise ApiError(404, "billing.tenant_not_found", "Tenant not found")
+    org = await get_org_billing(pool, org_id)
+    if org is None:
+        raise ApiError(404, "billing.org_not_found", "Org not found")
     return {
-        "tenant_id": str(tenant.id),
-        "kms_key_arn": tenant.kms_key_arn,
-        "ls_customer_id": tenant.ls_customer_id,
-        "plan": tenant.plan.value,
-        "source_limit": tenant.source_limit,
-        "created_at": tenant.created_at.isoformat(),
+        "org_id": org.org_id,
+        "kms_key_arn": org.kms_key_arn,
+        "ls_customer_id": org.ls_customer_id,
+        "ls_subscription_id": org.ls_subscription_id,
+        "plan": org.plan.value,
+        "source_limit": org.source_limit,
+        "created_at": org.created_at.isoformat(),
     }

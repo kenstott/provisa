@@ -6,6 +6,6 @@
 
 """Control plane package for REQ-073 hosted SaaS deployment."""
 
-from provisa.control_plane.models import DataPlane, Tenant
+from provisa.control_plane.models import DataPlane, Org
 
-__all__ = ["DataPlane", "Tenant"]
+__all__ = ["DataPlane", "Org"]

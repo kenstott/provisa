@@ -4,9 +4,13 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Control plane data models for REQ-073 hosted SaaS deployment."""
+"""Control plane data models for REQ-073 hosted SaaS deployment.
 
-# Requirements: REQ-073
+REQ-1355: org == tenant. ``Org`` here is the routing record of the registry — the org id is the
+same slug that keys ``orgs`` in the platform plane, not a second identifier.
+"""
+
+# Requirements: REQ-073, REQ-1355
 
 from __future__ import annotations
 
@@ -14,16 +18,16 @@ from dataclasses import dataclass
 
 
 @dataclass
-class DataPlane:  # REQ-073
+class DataPlane:  # REQ-073, REQ-1355
     id: str
-    tenant_id: str
+    org_id: str
     endpoint: str
     region: str
     active: bool
 
 
 @dataclass
-class Tenant:  # REQ-073
+class Org:  # REQ-073, REQ-1355
     id: str
     name: str
     data_plane_id: str

@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -36,10 +35,14 @@ def plan_from_variant(variant_name: str) -> str:  # REQ-1075
 
 
 @dataclass
-class Tenant:  # REQ-073, REQ-074, REQ-1075
-    id: uuid.UUID
-    kms_key_arn: str
+class OrgBilling:  # REQ-073, REQ-074, REQ-1075, REQ-1355
+    """The billing facts of one org. Replaces ``Tenant``: org == tenant, and the org slug —
+    not a second UUID — is the externally-visible billing key."""
+
+    org_id: str
+    kms_key_arn: str | None
     ls_customer_id: str | None
+    ls_subscription_id: str | None
     plan: Plan
     source_limit: int
     created_at: datetime

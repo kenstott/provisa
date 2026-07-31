@@ -4,9 +4,14 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Control plane FastAPI router for REQ-073."""
+"""Control plane FastAPI router for REQ-073.
 
-# Requirements: REQ-073
+REQ-1355: the routes are ``/control-plane/orgs*``. They were ``/control-plane/tenants*`` and had no
+clients — ``app.include_router`` sat behind a ``state.multitenancy`` branch that never ran (fixed in
+f61d2974), so every one of these paths 404'd for the whole life of the prefix.
+"""
+
+# Requirements: REQ-073, REQ-1355
 
 from __future__ import annotations
 
@@ -16,7 +21,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
-from provisa.control_plane.models import DataPlane, Tenant
+from provisa.control_plane.models import DataPlane, Org
 from provisa.control_plane.store import ControlPlaneStore
 
 router = APIRouter(prefix="/control-plane", tags=["control-plane"])
@@ -31,7 +36,7 @@ def _require_multitenancy() -> None:
         raise ApiError(403, "control_plane.multitenancy_disabled", "multitenancy is not enabled")
 
 
-class RegisterTenantRequest(BaseModel):  # REQ-457
+class RegisterOrgRequest(BaseModel):  # REQ-457
     id: str
     name: str
     data_plane_id: str
@@ -39,43 +44,43 @@ class RegisterTenantRequest(BaseModel):  # REQ-457
 
 class RegisterDataPlaneRequest(BaseModel):  # REQ-456
     id: str
-    tenant_id: str
+    org_id: str
     endpoint: str
     region: str
 
 
-@router.post("/tenants")
-def register_tenant(body: RegisterTenantRequest) -> dict:  # REQ-073, REQ-592
+@router.post("/orgs")
+def register_org(body: RegisterOrgRequest) -> dict:  # REQ-073, REQ-592
     _require_multitenancy()
-    tenant = Tenant(
+    org = Org(
         id=body.id,
         name=body.name,
         data_plane_id=body.data_plane_id,
         created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
     )
-    _store.register_tenant(tenant)
+    _store.register_org(org)
     return {
-        "id": tenant.id,
-        "name": tenant.name,
-        "data_plane_id": tenant.data_plane_id,
-        "created_at": tenant.created_at,
+        "id": org.id,
+        "name": org.name,
+        "data_plane_id": org.data_plane_id,
+        "created_at": org.created_at,
     }
 
 
-@router.get("/tenants")
-def list_tenants() -> list[dict]:  # REQ-073, REQ-592
+@router.get("/orgs")
+def list_orgs() -> list[dict]:  # REQ-073, REQ-592
     _require_multitenancy()
     return [
-        {"id": t.id, "name": t.name, "data_plane_id": t.data_plane_id, "created_at": t.created_at}
-        for t in _store.list_tenants()
+        {"id": o.id, "name": o.name, "data_plane_id": o.data_plane_id, "created_at": o.created_at}
+        for o in _store.list_orgs()
     ]
 
 
-@router.get("/tenants/{tenant_id}/route")
-def route_tenant(tenant_id: str) -> dict:  # REQ-073
+@router.get("/orgs/{org_id}/route")
+def route_org(org_id: str) -> dict:  # REQ-073
     _require_multitenancy()
     try:
-        dp = _store.route_query(tenant_id)
+        dp = _store.route_query(org_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -88,7 +93,7 @@ def register_data_plane(body: RegisterDataPlaneRequest) -> dict:  # REQ-073, REQ
     _require_multitenancy()
     dp = DataPlane(
         id=body.id,
-        tenant_id=body.tenant_id,
+        org_id=body.org_id,
         endpoint=body.endpoint,
         region=body.region,
         active=True,
@@ -96,7 +101,7 @@ def register_data_plane(body: RegisterDataPlaneRequest) -> dict:  # REQ-073, REQ
     _store.register_data_plane(dp)
     return {
         "id": dp.id,
-        "tenant_id": dp.tenant_id,
+        "org_id": dp.org_id,
         "endpoint": dp.endpoint,
         "region": dp.region,
         "active": dp.active,
@@ -109,7 +114,7 @@ def list_data_planes() -> list[dict]:  # REQ-073, REQ-506
     return [
         {
             "id": dp.id,
-            "tenant_id": dp.tenant_id,
+            "org_id": dp.org_id,
             "endpoint": dp.endpoint,
             "region": dp.region,
             "active": dp.active,

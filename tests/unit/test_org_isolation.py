@@ -71,20 +71,20 @@ class TestPlatformSchemaIsolation:
     # vanilla SQLAlchemy metadata only — no PG-only ``CREATE SCHEMA platform`` / ``platform.*``
     # qualification (SQLite has no schemas). The billing tables live in the shared registry
     # metadata and are created via ``metadata.create_all``.
-    def test_billing_tables_are_schema_unqualified(self):  # REQ-696
-        import provisa.api.billing.tenant_db as td
-        from provisa.core.schema_admin import tenant_config, tenants
+    def test_billing_tables_are_schema_unqualified(self):  # REQ-696, REQ-1355
+        import provisa.api.billing.org_db as od
+        from provisa.core.schema_admin import org_config, orgs
 
         # No raw PG-schema DDL constant survives, and the Table objects carry no
         # ``platform`` schema — they are created in the platform engine's default schema.
-        assert not hasattr(td, "BILLING_SCHEMA_SQL")
-        assert tenants.schema is None
-        assert tenant_config.schema is None
+        assert not hasattr(od, "BILLING_SCHEMA_SQL")
+        assert orgs.schema is None
+        assert org_config.schema is None
 
     @pytest.mark.asyncio
-    async def test_init_billing_schema_uses_portable_metadata(self):  # REQ-696
-        from provisa.api.billing.tenant_db import init_billing_schema
-        from provisa.core.schema_admin import tenant_config, tenants
+    async def test_init_billing_schema_uses_portable_metadata(self):  # REQ-696, REQ-1355
+        from provisa.api.billing.org_db import init_billing_schema
+        from provisa.core.schema_admin import org_config
 
         sync_conn = AsyncMock()
         begin_ctx = AsyncMock(
@@ -100,28 +100,19 @@ class TestPlatformSchemaIsolation:
         sync_conn.run_sync.assert_awaited_once()
         fn = sync_conn.run_sync.await_args.args[0]
         created = MagicMock()
-        with patch.object(tenants.metadata, "create_all") as create_all:
+        with patch.object(org_config.metadata, "create_all") as create_all:
             fn(created)
         create_all.assert_called_once()
-        assert create_all.call_args.kwargs["tables"] == [tenants, tenant_config]
+        # REQ-1355: only ``org_config`` is created here. The plan/limit/Lemon-Squeezy/KMS columns
+        # ride on ``orgs``, which ``init_registry_schema`` already creates.
+        assert create_all.call_args.kwargs["tables"] == [org_config]
 
     @pytest.mark.asyncio
-    async def test_create_tenant_inserts_into_unqualified_tenants(self):  # REQ-696
-        from provisa.api.billing.tenant_db import create_tenant
+    async def test_kms_key_binds_on_unqualified_orgs(self):  # REQ-696, REQ-1355
+        from provisa.api.billing.org_db import set_org_kms_key
 
-        result = MagicMock()
-        result.fetchone.return_value = MagicMock(
-            _mapping={
-                "id": "11111111-0000-0000-0000-000000000001",
-                "kms_key_arn": "arn:aws:kms:us-east-1:123:key/abc",
-                "ls_customer_id": None,
-                "plan": "trial",
-                "source_limit": 2,
-                "created_at": None,
-            }
-        )
         mock_conn = AsyncMock()
-        mock_conn.execute_core = AsyncMock(return_value=result)
+        mock_conn.execute_core = AsyncMock(return_value=MagicMock())
         mock_pool = MagicMock()
         mock_pool.acquire = MagicMock(
             return_value=AsyncMock(
@@ -130,9 +121,9 @@ class TestPlatformSchemaIsolation:
             )
         )
 
-        await create_tenant(mock_pool, "arn:aws:kms:us-east-1:123:key/abc")
+        await set_org_kms_key(mock_pool, "acme", "arn:aws:kms:us-east-1:123:key/abc")
         stmt = mock_conn.execute_core.await_args.args[0]
-        assert stmt.table.name == "tenants"
+        assert stmt.table.name == "orgs"
         assert stmt.table.schema is None  # no platform.* qualification
 
 

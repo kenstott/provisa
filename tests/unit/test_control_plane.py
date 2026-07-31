@@ -12,7 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from provisa.control_plane.models import DataPlane, Tenant
+from provisa.control_plane.models import DataPlane, Org
 from provisa.control_plane.store import ControlPlaneStore
 
 
@@ -21,14 +21,14 @@ from provisa.control_plane.store import ControlPlaneStore
 # ---------------------------------------------------------------------------
 
 
-def test_register_and_get_tenant():
+def test_register_and_get_org():
     store = ControlPlaneStore()
-    tenant = Tenant(
-        id="t1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
+    org = Org(
+        id="o1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
     )
-    store.register_tenant(tenant)
-    result = store.get_tenant("t1")
-    assert result.id == "t1"
+    store.register_org(org)
+    result = store.get_org("o1")
+    assert result.id == "o1"
     assert result.name == "Acme"
 
 
@@ -36,17 +36,17 @@ def test_register_and_route_query():
     store = ControlPlaneStore()
     dp = DataPlane(
         id="dp1",
-        tenant_id="t1",
+        org_id="o1",
         endpoint="https://dp1.example.com",
         region="us-east-1",
         active=True,
     )
     store.register_data_plane(dp)
-    tenant = Tenant(
-        id="t1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
+    org = Org(
+        id="o1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
     )
-    store.register_tenant(tenant)
-    result = store.route_query("t1")
+    store.register_org(org)
+    result = store.route_query("o1")
     assert result.endpoint == "https://dp1.example.com"
 
 
@@ -54,41 +54,41 @@ def test_route_query_inactive_data_plane_raises():
     store = ControlPlaneStore()
     dp = DataPlane(
         id="dp1",
-        tenant_id="t1",
+        org_id="o1",
         endpoint="https://dp1.example.com",
         region="us-east-1",
         active=False,
     )
     store.register_data_plane(dp)
-    tenant = Tenant(
-        id="t1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
+    org = Org(
+        id="o1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
     )
-    store.register_tenant(tenant)
+    store.register_org(org)
     with pytest.raises(ValueError):
-        store.route_query("t1")
+        store.route_query("o1")
 
 
-def test_get_tenant_missing_raises():
+def test_get_org_missing_raises():
     store = ControlPlaneStore()
     with pytest.raises(KeyError):
-        store.get_tenant("nonexistent")
+        store.get_org("nonexistent")
 
 
-def test_list_tenants_and_data_planes():
+def test_list_orgs_and_data_planes():
     store = ControlPlaneStore()
     dp = DataPlane(
         id="dp1",
-        tenant_id="t1",
+        org_id="o1",
         endpoint="https://dp1.example.com",
         region="us-east-1",
         active=True,
     )
     store.register_data_plane(dp)
-    tenant = Tenant(
-        id="t1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
+    org = Org(
+        id="o1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
     )
-    store.register_tenant(tenant)
-    assert len(store.list_tenants()) == 1
+    store.register_org(org)
+    assert len(store.list_orgs()) == 1
     assert len(store.list_data_planes()) == 1
 
 
@@ -121,7 +121,7 @@ def test_router_register_data_plane(client):
         "/control-plane/data-planes",
         json={
             "id": "dp1",
-            "tenant_id": "t1",
+            "org_id": "o1",
             "endpoint": "https://dp1.example.com",
             "region": "us-east-1",
         },
@@ -132,30 +132,30 @@ def test_router_register_data_plane(client):
     assert data["active"] is True
 
 
-def test_router_register_and_list_tenants(client):
+def test_router_register_and_list_orgs(client):
     client.post(
         "/control-plane/data-planes",
         json={
             "id": "dp1",
-            "tenant_id": "t1",
+            "org_id": "o1",
             "endpoint": "https://dp1.example.com",
             "region": "us-east-1",
         },
     )
     resp = client.post(
-        "/control-plane/tenants",
-        json={"id": "t1", "name": "Acme", "data_plane_id": "dp1"},
+        "/control-plane/orgs",
+        json={"id": "o1", "name": "Acme", "data_plane_id": "dp1"},
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["id"] == "t1"
+    assert data["id"] == "o1"
     assert "created_at" in data
 
-    list_resp = client.get("/control-plane/tenants")
+    list_resp = client.get("/control-plane/orgs")
     assert list_resp.status_code == 200
-    tenants = list_resp.json()
-    assert len(tenants) == 1
-    assert tenants[0]["name"] == "Acme"
+    orgs = list_resp.json()
+    assert len(orgs) == 1
+    assert orgs[0]["name"] == "Acme"
 
 
 def test_router_route_returns_endpoint(client):
@@ -163,22 +163,22 @@ def test_router_route_returns_endpoint(client):
         "/control-plane/data-planes",
         json={
             "id": "dp1",
-            "tenant_id": "t1",
+            "org_id": "o1",
             "endpoint": "https://dp1.example.com",
             "region": "us-east-1",
         },
     )
     client.post(
-        "/control-plane/tenants",
-        json={"id": "t1", "name": "Acme", "data_plane_id": "dp1"},
+        "/control-plane/orgs",
+        json={"id": "o1", "name": "Acme", "data_plane_id": "dp1"},
     )
-    resp = client.get("/control-plane/tenants/t1/route")
+    resp = client.get("/control-plane/orgs/o1/route")
     assert resp.status_code == 200
     assert resp.json() == {"endpoint": "https://dp1.example.com"}
 
 
-def test_router_route_missing_tenant_returns_404(client):
-    resp = client.get("/control-plane/tenants/nonexistent/route")
+def test_router_route_missing_org_returns_404(client):
+    resp = client.get("/control-plane/orgs/nonexistent/route")
     assert resp.status_code == 404
 
 
@@ -187,7 +187,7 @@ def test_router_list_data_planes(client):
         "/control-plane/data-planes",
         json={
             "id": "dp1",
-            "tenant_id": "t1",
+            "org_id": "o1",
             "endpoint": "https://dp1.example.com",
             "region": "us-east-1",
         },
@@ -211,5 +211,5 @@ def test_router_multitenancy_disabled_returns_403(monkeypatch):
     app = FastAPI()
     app.include_router(control_plane_router)
     with TestClient(app) as tc:
-        resp = tc.get("/control-plane/tenants")
+        resp = tc.get("/control-plane/orgs")
     assert resp.status_code == 403

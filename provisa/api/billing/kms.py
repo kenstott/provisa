@@ -23,13 +23,13 @@ def _kms_client():
     return boto3.client("kms", region_name=region)
 
 
-async def create_tenant_key(tenant_id: str) -> str:  # REQ-073, REQ-074
-    """Create KMS CMK for tenant. Returns KeyArn."""
+async def create_org_key(org_id: str) -> str:  # REQ-073, REQ-074, REQ-1355
+    """Create the KMS CMK for an org. Returns KeyArn."""
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
         None,
         lambda: _kms_client().create_key(
-            Description=f"provisa-tenant-{tenant_id}",
+            Description=f"provisa-org-{org_id}",
             KeyUsage="ENCRYPT_DECRYPT",
         ),
     )

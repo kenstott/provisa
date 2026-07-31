@@ -35,7 +35,7 @@ async def bring_up_platform(
         name="platform",
     )
     await init_registry_schema(db, org_id)
-    from provisa.api.billing.tenant_db import init_billing_schema
+    from provisa.api.billing.org_db import init_billing_schema
 
     await init_billing_schema(db)
     return db

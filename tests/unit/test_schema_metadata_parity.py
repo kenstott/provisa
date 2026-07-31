@@ -51,9 +51,9 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1306: the auto-join opt-out written when a user deliberately leaves an org.
     "org_auto_join_optouts",
     # Billing tables are now portable metadata too (schema_admin), created via
-    # metadata.create_all — no raw SQL DDL to mirror.
-    "tenants",
-    "tenant_config",
+    # metadata.create_all — no raw SQL DDL to mirror. REQ-1355: the billing subject is ``orgs``
+    # itself (already listed above); only the per-org encrypted config, ``org_config``, is separate.
+    "org_config",
 }
 
 # No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.
