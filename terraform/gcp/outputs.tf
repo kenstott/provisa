@@ -4,7 +4,7 @@ output "shared_ip" {
 }
 
 output "api_endpoint" {
-  description = "HTTPS API load balancer URL (REQ-1227: TLS on every endpoint; self-signed cert)"
+  description = "HTTPS API load balancer URL (REQ-1226: TLS on every endpoint; self-signed cert)"
   value       = "https://${google_compute_address.shared.address}:${local.protocols.api.port}"
 }
 

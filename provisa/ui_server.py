@@ -42,7 +42,7 @@ _REPO_STATIC = Path(__file__).resolve().parent.parent / "static"
 STATIC_DIR = _PACKAGED_UI if _PACKAGED_UI.is_dir() else _REPO_STATIC
 
 # API container reachable via Docker network hostname; override via env var.
-# REQ-1227: in a cluster deploy every endpoint serves TLS, so the API listens
+# REQ-1226: in a cluster deploy every endpoint serves TLS, so the API listens
 # HTTPS on 8000. The node compose overlay (first-launch.sh) sets PROVISA_API_URL
 # to the https:// upstream on the UI service whenever it enables TLS; the desktop
 # default stays plaintext. A plaintext http:// hop to a TLS port fails with
@@ -54,7 +54,7 @@ API_BASE_URL = os.environ.get("PROVISA_API_URL", "http://provisa:8000")
 # cert is the node's public wildcard (e.g. *.provisa.dev) or a self-signed node
 # cert, neither of which can match the Docker service name "provisa", so TLS
 # hostname verification is structurally impossible here. The node itself is the
-# trust boundary (REQ-1227); verify is disabled only for this proxy leg — the
+# trust boundary (REQ-1226); verify is disabled only for this proxy leg — the
 # browser->UI leg is unaffected.
 _API_VERIFY = not API_BASE_URL.startswith("https://")
 

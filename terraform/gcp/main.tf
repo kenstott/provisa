@@ -134,7 +134,7 @@ locals {
   # One row per externally-reachable protocol. `enabled` gates the whole chain:
   # firewall port, health check, backend service, forwarding rule, instance-group
   # named_port, and (for wire protocols) the container listener env var. Add a row
-  # here and every layer follows. api uses an HTTPS /health probe (REQ-1227: TLS on
+  # here and every layer follows. api uses an HTTPS /health probe (REQ-1226: TLS on
   # every endpoint); the rest use a TCP connect probe. `env`/`port_env` drive
   # first-launch's protocol overlay.
   protocols = {
@@ -391,7 +391,7 @@ resource "google_compute_instance" "secondary" {
 # service passthrough NLB with all_ports=true fronts every listener on one static
 # IP — the destination port is preserved to the node, so a single `*.provisa.dev`
 # record serves api/ui/flight/pgwire/bolt/mcp/grpc alike. One HTTPS /health probe
-# on the API port (REQ-1227) gates backend liveness for the whole stack; first-
+# on the API port (REQ-1226) gates backend liveness for the whole stack; first-
 # launch brings all listeners up together, so app-level /health is the signal.
 # The firewall (local.protocol_ports) still restricts which ports actually reach
 # the node, so all_ports on the rule is not a widening of the attack surface.

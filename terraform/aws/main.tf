@@ -177,7 +177,7 @@ locals {
   # One row per externally-reachable protocol. `enabled` gates the whole chain:
   # node SG ingress port, NLB target group, listener, target attachments, and (for
   # wire protocols) the container listener env var. Add a row here and every layer
-  # follows. api uses an HTTPS /health probe (REQ-1227: TLS on every endpoint); the
+  # follows. api uses an HTTPS /health probe (REQ-1226: TLS on every endpoint); the
   # rest use a TCP connect probe. `env`/`port` drive first-launch's protocol overlay.
   protocols = {
     api    = { port = 8000, enabled = true, probe = "https", path = "/health", env = null }
@@ -348,7 +348,7 @@ resource "aws_instance" "secondary" {
 # node, so one `*.provisa.dev` record serves api/ui/flight/pgwire/bolt/mcp/grpc
 # alike. This is the AWS equivalent of GCP's all_ports passthrough forwarding rule:
 # one target group + listener per enabled protocol, all on the same NLB DNS name.
-# The api target group probes app-level HTTPS /health (REQ-1227); the rest use a
+# The api target group probes app-level HTTPS /health (REQ-1226); the rest use a
 # TCP connect probe, since first-launch brings all listeners up together.
 
 resource "aws_lb" "shared" {
@@ -365,7 +365,7 @@ resource "aws_lb_target_group" "protocol" {
   protocol = "TCP"
   vpc_id   = aws_vpc.main.id
 
-  # api probes app-level HTTPS /health (REQ-1227); AWS does not validate the cert,
+  # api probes app-level HTTPS /health (REQ-1226); AWS does not validate the cert,
   # so the node's self-signed (or operator wildcard) cert is accepted. Every other
   # protocol uses a TCP connect probe — first-launch brings all listeners up together.
   health_check {

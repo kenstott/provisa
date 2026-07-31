@@ -111,7 +111,7 @@ def ensure_cert() -> tuple[str, str] | None:
 
     Returns None on ANY failure so the caller falls back to plain HTTP. Never raises."""
     try:
-        # REQ-1227: in a clustered/deploy tier the node is served under one self-signed
+        # REQ-1226: in a clustered/deploy tier the node is served under one self-signed
         # cert supplied via PROVISA_TLS_CERT/KEY (first-launch generates it, all protocol
         # listeners share it). Prefer that pair so MCP presents the same identity as the
         # API/UI/pgwire/bolt/flight/gRPC endpoints instead of a second, divergent cert.

@@ -309,7 +309,7 @@ class TestReq530TLS:
         assert cert is None and key is None
 
         # Confirm app_startup.py reads CERT+KEY and only builds ssl_ctx when both are present.
-        # REQ-1227: TLS resolution is centralized in _resolve_tls(), which returns a (cert, key)
+        # REQ-1226: TLS resolution is centralized in _resolve_tls(), which returns a (cert, key)
         # tuple only when both are set (gated by `if cert and key:`) and None otherwise; the pgwire
         # start-up gates SSLContext creation on that tuple being non-None.
         src = inspect.getsource(app_mod)

@@ -914,7 +914,7 @@ There is only one view type — always intradomain (the output belongs to a doma
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Schema endpoint returns node_labels with a `pk: string | null` field per label, designating the primary key column name. Allows graph UI to construct reliable `WHERE NOT n.<pk> IN [<value>]` exclusion clauses (instead of heuristic-based `id(n)` fallback), enabling "Exclude from query", deep-linking to nodes, "show related to this entity", and inspector PK highlighting.
+Schema endpoint returns node_labels with a `pk: string | null` field (first PK column) and a `pk_columns: string[]` field per label, designating the primary key column name(s) (absorbs [REQ-398](#REQ-398)). Allows graph UI to construct reliable `WHERE NOT n.<pk> IN [<value>]` exclusion clauses (instead of heuristic-based `id(n)` fallback), enabling "Exclude from query", deep-linking to nodes, "show related to this entity", and inspector PK highlighting.
 
 **Use case:** Explicit PK designation in schema enables semantic graph operations and node-centric navigation without node ID heuristics.
 
@@ -3078,7 +3078,7 @@ Table-level `enable_aggregates` and `enable_group_by` flags in provisa.yaml (bot
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-Labels in Cypher write clauses (CREATE, SET, DELETE) must resolve to exactly one NodeMeta via the semantic label map. Ambiguous or unknown labels are hard errors at translation time; no fuzzy matching or implicit selection is permitted.
+Labels in Cypher write clauses (CREATE, SET, DELETE) must resolve to exactly one NodeMeta via the semantic label map. Ambiguous or unknown labels are hard errors at translation time; no fuzzy matching or implicit selection is permitted. New labels cannot be created via write clauses — only pre-registered tables are writable (absorbs [REQ-662](#REQ-662)).
 
 **Use case:** Single-label resolution ensures write operations are unambiguous and cannot accidentally target the wrong table.
 
@@ -4416,7 +4416,7 @@ The pgwire listener accepts only SQL statements. GraphQL and Cypher query string
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-The pgwire listener does not support DML mutations (INSERT, UPDATE, DELETE). SQL statements of these types are not routed to a write path.
+The pgwire listener does not support DML mutations (INSERT, UPDATE, DELETE). SQL statements of these types are not routed to a write path. This restriction covers DML statements only — COPY ... FROM STDIN bulk import and DDL are a separate path gated by the `ddl` capability ([REQ-585](#REQ-585), [REQ-616](#REQ-616)).
 
 **Use case:** Read-only restriction on pgwire keeps the connection appropriate for analytics tools and prevents accidental data modification via SQL clients.
 
@@ -4562,7 +4562,7 @@ Sink output format is JSON (one message per row, keyed by optional column).
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Polling-based subscription provider for sources without native CDC. A `watermark_column` (monotonic timestamp or sequence, e.g. `updated_at`) must be declared on the table config. Without a `watermark_column`, poll subscriptions are unavailable for that source. Part of Phase AM (Live Query Engine). Note: Poll-based subscriptions cannot detect hard deletes — a deleted row leaves no updated watermark value and will not appear in any poll. Applications requiring delete visibility must use soft deletes (e.g. a `deleted_at` flag) that update the watermark column; the delete is then visible as an update event containing the soft-delete marker.
+Polling-based subscription provider for sources without native CDC. A `watermark_column` (monotonic timestamp or sequence, e.g. `updated_at`) must be declared on the table config. Without a `watermark_column`, poll subscriptions are unavailable for that source and config validation fails at startup when poll delivery is configured anyway (absorbs [REQ-283](#REQ-283)). Part of Phase AM (Live Query Engine). Note: Poll-based subscriptions cannot detect hard deletes — a deleted row leaves no updated watermark value and will not appear in any poll. Applications requiring delete visibility must use soft deletes (e.g. a `deleted_at` flag) that update the watermark column; the delete is then visible as an update event containing the soft-delete marker.
 
 **Use case:** Poll-based subscriptions enable live delivery for sources that do not support CDC or LISTEN/NOTIFY.
 
@@ -5634,7 +5634,7 @@ macOS and Windows use an extension model: the container/compute tier is the only
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-The dev environment runs the Python backend (uvicorn, port 8000) and UI (vite dev server, port 3000) on the host, never in containers. `docker-compose.app.yml` and `docker-compose.airgap.yml` are packaged-product only and must never be included in dev compose stacks. `start-ui-install.sh --demo` is the only dev mode flag; `--demo` always implies obs. Ports 8000 and 3000 must never appear in any dev compose file.
+The dev environment runs the Python backend (uvicorn, port 8000) and UI (vite dev server, port 3000) on the host, never in containers. Port 8000 applies to the start-ui-install.sh flow; the start-ui.sh flow listens on 8001 ([REQ-618](#REQ-618)) — the two dev scripts use different ports by design. `docker-compose.app.yml` and `docker-compose.airgap.yml` are packaged-product only and must never be included in dev compose stacks. `start-ui-install.sh --demo` is the only dev mode flag; `--demo` always implies obs. Ports 8000 and 3000 must never appear in any dev compose file.
 
 **Use case:** Host-based uvicorn + vite in dev avoids port conflicts with containerised services and enables hot-reload without rebuilding images.
 
@@ -6566,7 +6566,7 @@ Table configuration persists `enable_aggregates` and `enable_group_by` boolean c
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Masking SELECT expressions only; WHERE, JOIN ON, and other predicates use physical unmasked columns unchanged. Masking injection operates on the SELECT projection list exclusively, preserving query filtering and join semantics.
+Masking SELECT expressions only; predicates that remain in the query (JOIN ON, RLS-injected filters) use physical unmasked columns unchanged — user-written WHERE/HAVING references to masked columns never reach this stage, rejected at validation time by V005 ([REQ-531](#REQ-531)). ORDER BY, LIMIT, GROUP BY, and all other clauses likewise remain unchanged, and masking returns a new immutable CompiledQuery, never mutating the input (absorbs [REQ-744](#REQ-744)). Masking injection operates on the SELECT projection list exclusively, preserving query filtering and join semantics.
 
 **Use case:** Separating masked SELECT projections from unmasked predicates ensures query filters remain executable while users see masked values.
 
@@ -12254,18 +12254,6 @@ GCP/Docker cluster deployment must serve all endpoints over HTTPS with TLS encry
 
 **Tests:** —
 
-### REQ-1227 · Clustered Deployment Configuration {#REQ-1227}
-
-**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
-
-In a clustered Provisa deployment, only the primary node loads the data config file from disk. The primary registers all datasources into the shared PostgreSQL backend. Secondary nodes do not load their own config file; instead, they connect to the primary's shared PostgreSQL and rebuild their in-memory schemas from what the primary registered there, establishing a single source of truth for the cluster.
-
-**Use case:** Centralizing config registration to the primary node ensures runtime-added datasources propagate to secondaries automatically without manual sync or config duplication across nodes.
-
-**Code:** —
-
-**Tests:** —
-
 ### REQ-1228 · HTTPS/TLS Configuration {#REQ-1228}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
@@ -12280,15 +12268,15 @@ HTTPS/TLS encryption ([REQ-1226](#REQ-1226)) applies to ALL protocol endpoints i
 
 ### REQ-1229 · Clustered Deployment Configuration {#REQ-1229}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
 In a clustered Provisa deployment, only the primary node may modify the config row store (DELETE, INSERT, UPDATE). Secondary nodes set PROVISA_ROLE=secondary, which forces load_config replace=OFF to prevent them from overwriting shared config rows. Concurrent identical config upserts across the cluster are serialized by a PostgreSQL advisory lock and are idempotent no-ops. All nodes load a byte-identical baked config file at startup; no runtime "pull config from primary PG" path exists.
 
 **Use case:** The single-writer invariant prevents secondaries from accidentally corrupting the shared config store. Advisory lock serialization ensures concurrent upserts are safe and idempotent. Byte-identical baked configs guarantee schema consistency across the cluster at startup.
 
-**Code:** —
+**Code:** `provisa/core/config_loader.py`, `provisa/api/app.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_config_replace_mode.py`
 
 ### REQ-1230 · Clustered Deployment Configuration {#REQ-1230}
 
@@ -12586,7 +12574,7 @@ Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pendin
 
 All protocol surfaces (API port 8000, UI port 3000, Arrow Flight 8815, pgwire 5439, Bolt 7687, MCP 8009, gRPC 50051) must be fronted by a single shared external passthrough load-balancer endpoint per cloud provider, not one LB per protocol. This is required by the subdomain-as-org model ([REQ-1233](#REQ-1233)): {org}.provisa.dev must resolve to one A record and reach every protocol by preserving the destination port to the backend node.
 
-**Use case:** Enables the subdomain-as-org identity model where a single DNS name and IP address serve all protocols. Cloud-specific realizations: GCP uses a backend-service passthrough NLB forwarding rule with all_ports=true on one static IP; AWS uses a single Network Load Balancer with one listener/target-group per protocol port sharing the NLB's endpoint; Azure uses a single Standard Load Balancer with one LB rule per protocol port on a single frontend public IP. Backend liveness is gated by the API HTTPS /health probe. Refs: [REQ-1233](#REQ-1233), [REQ-1239](#REQ-1239), [REQ-1240](#REQ-1240), [REQ-1227](#REQ-1227).
+**Use case:** Enables the subdomain-as-org identity model where a single DNS name and IP address serve all protocols. Cloud-specific realizations: GCP uses a backend-service passthrough NLB forwarding rule with all_ports=true on one static IP; AWS uses a single Network Load Balancer with one listener/target-group per protocol port sharing the NLB's endpoint; Azure uses a single Standard Load Balancer with one LB rule per protocol port on a single frontend public IP. Backend liveness is gated by the API HTTPS /health probe. Refs: [REQ-1233](#REQ-1233), [REQ-1239](#REQ-1239), [REQ-1240](#REQ-1240), [REQ-1226](#REQ-1226).
 
 **Code:** —
 
@@ -12636,7 +12624,7 @@ Helm chart must ship a served UI surface: a provisa-ui Deployment + Service expo
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
 
-Helm chart must support operator TLS on every endpoint ([REQ-1227](#REQ-1227) parity): PROVISA_TLS_CERT and PROVISA_TLS_KEY env vars, a TLS cert Secret mounted into provisa and provisa-ui containers, uvicorn --ssl-certfile/--ssl-keyfile flags, and /health probes using scheme: HTTPS when TLS enabled.
+Helm chart must support operator TLS on every endpoint ([REQ-1226](#REQ-1226) parity): PROVISA_TLS_CERT and PROVISA_TLS_KEY env vars, a TLS cert Secret mounted into provisa and provisa-ui containers, uvicorn --ssl-certfile/--ssl-keyfile flags, and /health probes using scheme: HTTPS when TLS enabled.
 
 **Use case:** Ensures Kubernetes deployments meet enterprise TLS requirements for all protocol endpoints, matching the Terraform cloud-VM deployment model where the operator can supply their own certificates or use cert-manager integration.
 

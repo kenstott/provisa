@@ -84,6 +84,7 @@
       open in some edge cases.
 - id: REQ-003
   status: complete
+  superseded_by: REQ-001
   group: 1. Access Governance & Security
   category: Query Governance
   priority: MUST
@@ -381,6 +382,7 @@
       unify across heterogeneous sources.
 - id: REQ-042
   status: complete
+  superseded_by: REQ-746
   group: 1. Access Governance & Security
   category: Security
   priority: MUST
@@ -1544,6 +1546,7 @@
     rationale: ''
 - id: REQ-125
   status: complete
+  superseded_by: REQ-1264
   group: 2. Authentication & Identity
   category: Authentication
   priority: MUST
@@ -2828,8 +2831,9 @@
   category: Domain Model
   priority: SHOULD
   type: structural
-  description: 'Schema endpoint returns node_labels with a `pk: string | null` field per label, designating
-    the primary key column name. Allows graph UI to construct reliable `WHERE NOT n.<pk> IN [<value>]`
+  description: 'Schema endpoint returns node_labels with a `pk: string | null` field (first PK column)
+    and a `pk_columns: string[]` field per label, designating the primary key column name(s) (absorbs
+    REQ-398). Allows graph UI to construct reliable `WHERE NOT n.<pk> IN [<value>]`
     exclusion clauses (instead of heuristic-based `id(n)` fallback), enabling "Exclude from query", deep-linking
     to nodes, "show related to this entity", and inspector PK highlighting.'
   use_case: Explicit PK designation in schema enables semantic graph operations and node-centric navigation
@@ -7136,6 +7140,7 @@
       Denodo also supports role-based query capability restrictions.
 - id: REQ-198
   status: complete
+  superseded_by: REQ-882
   group: 5. Query Languages, Compilation & Operations
   category: Aggregates
   priority: SHOULD
@@ -7969,6 +7974,7 @@
       Cypher as a query frontend over federated relational data with automatic governance enforcement.
 - id: REQ-346
   status: rejected
+  superseded_by: REQ-818
   rejection_reason: 'Superseded by REQ-818. Cypher is no longer read-only: CREATE/DELETE/SET now execute
     as governed direct table writes through the mutation pipeline. The still-true parts — MERGE/ DETACH/REMOVE
     and APOC are rejected — are carried by REQ-818 and REQ-671. This entry''s blanket "strictly read-only,
@@ -8127,6 +8133,7 @@
       support any graph query (none over federated relational data) do not apply governed SQL-layer wrapping.
 - id: REQ-350
   status: complete
+  superseded_by: REQ-750
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
   priority: SHOULD
@@ -9607,7 +9614,8 @@
   type: constraint
   description: Labels in Cypher write clauses (CREATE, SET, DELETE) must resolve to exactly one NodeMeta
     via the semantic label map. Ambiguous or unknown labels are hard errors at translation time; no fuzzy
-    matching or implicit selection is permitted.
+    matching or implicit selection is permitted. New labels cannot be created via write clauses — only
+    pre-registered tables are writable (absorbs REQ-662).
   use_case: Single-label resolution ensures write operations are unambiguous and cannot accidentally target
     the wrong table.
   code:
@@ -9630,6 +9638,7 @@
       until implementation is complete.
 - id: REQ-662
   status: complete
+  superseded_by: REQ-661
   since: 2026-07
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
@@ -11781,6 +11790,7 @@
   - app-developer
 - id: REQ-044
   status: complete
+  superseded_by: REQ-029
   group: 8. Client Access & Protocols
   category: API & Integration
   priority: SHOULD
@@ -12003,6 +12013,7 @@
       at driver transport time.
 - id: REQ-130
   status: complete
+  superseded_by: REQ-272
   group: 8. Client Access & Protocols
   category: JDBC/ODBC Integration
   priority: MUST
@@ -12727,6 +12738,7 @@
       in the space.
 - id: REQ-398
   status: complete
+  superseded_by: REQ-392
   group: 8. Client Access & Protocols
   category: API & Integration
   priority: SHOULD
@@ -13594,6 +13606,7 @@
       these layers.
 - id: REQ-608
   status: complete
+  superseded_by: REQ-711
   group: 8. Client Access & Protocols
   category: SQL & Multi-Protocol Client Access
   priority: SHOULD
@@ -13662,7 +13675,8 @@
   priority: MUST
   type: constraint
   description: The pgwire listener does not support DML mutations (INSERT, UPDATE, DELETE). SQL statements
-    of these types are not routed to a write path.
+    of these types are not routed to a write path. This restriction covers DML statements only — COPY
+    ... FROM STDIN bulk import and DDL are a separate path gated by the `ddl` capability (REQ-585, REQ-616).
   use_case: Read-only restriction on pgwire keeps the connection appropriate for analytics tools and prevents
     accidental data modification via SQL clients.
   code:
@@ -14042,7 +14056,8 @@
   type: behavioral
   description: 'Polling-based subscription provider for sources without native CDC. A `watermark_column`
     (monotonic timestamp or sequence, e.g. `updated_at`) must be declared on the table config. Without
-    a `watermark_column`, poll subscriptions are unavailable for that source. Part of Phase AM (Live Query
+    a `watermark_column`, poll subscriptions are unavailable for that source and config validation fails
+    at startup when poll delivery is configured anyway (absorbs REQ-283). Part of Phase AM (Live Query
     Engine). Note: Poll-based subscriptions cannot detect hard deletes — a deleted row leaves no updated
     watermark value and will not appear in any poll. Applications requiring delete visibility must use
     soft deletes (e.g. a `deleted_at` flag) that update the watermark column; the delete is then visible
@@ -14154,6 +14169,7 @@
       and event trigger systems.
 - id: REQ-283
   status: complete
+  superseded_by: REQ-260
   group: 9. Live Data & Events
   category: Live Query Engine (Unified Subscription & Sink Delivery)
   priority: MUST
@@ -14183,6 +14199,7 @@
     rationale: ''
 - id: REQ-285
   status: complete
+  superseded_by: REQ-813
   group: 9. Live Data & Events
   category: Live Query Engine (Unified Subscription & Sink Delivery)
   priority: MUST
@@ -16326,6 +16343,7 @@
     rationale: ''
 - id: REQ-330
   status: complete
+  superseded_by: REQ-815
   group: 11. Platform, Infrastructure & Delivery
   category: Infrastructure & Observability
   priority: MAY
@@ -16599,6 +16617,7 @@
     rationale: ''
 - id: REQ-558
   status: complete
+  superseded_by: REQ-618
   group: 11. Platform, Infrastructure & Delivery
   category: Infrastructure
   priority: SHOULD
@@ -16745,6 +16764,7 @@
       on primary node is a production HA pattern not available in Hasura's self-hosted model without Kubernetes.
 - id: REQ-562
   status: complete
+  superseded_by: REQ-1229
   group: 11. Platform, Infrastructure & Delivery
   category: Installer & Packaging
   priority: MUST
@@ -16851,6 +16871,7 @@
       platforms.
 - id: REQ-592
   status: complete
+  superseded_by: REQ-695
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: SHOULD
@@ -17159,7 +17180,8 @@
   priority: MUST
   type: constraint
   description: The dev environment runs the Python backend (uvicorn, port 8000) and UI (vite dev server,
-    port 3000) on the host, never in containers. `docker-compose.app.yml` and `docker-compose.airgap.yml`
+    port 3000) on the host, never in containers. Port 8000 applies to the start-ui-install.sh flow; the
+    start-ui.sh flow listens on 8001 (REQ-618) — the two dev scripts use different ports by design. `docker-compose.app.yml` and `docker-compose.airgap.yml`
     are packaged-product only and must never be included in dev compose stacks. `start-ui-install.sh --demo`
     is the only dev mode flag; `--demo` always implies obs. Ports 8000 and 3000 must never appear in any
     dev compose file.
@@ -19732,8 +19754,11 @@
   category: Security
   priority: MUST
   type: behavioral
-  description: Masking SELECT expressions only; WHERE, JOIN ON, and other predicates use physical unmasked
-    columns unchanged. Masking injection operates on the SELECT projection list exclusively, preserving
+  description: Masking SELECT expressions only; predicates that remain in the query (JOIN ON, RLS-injected
+    filters) use physical unmasked columns unchanged — user-written WHERE/HAVING references to masked
+    columns never reach this stage, rejected at validation time by V005 (REQ-531). ORDER BY, LIMIT, GROUP BY, and all other clauses likewise remain unchanged, and
+    masking returns a new immutable CompiledQuery, never mutating the input (absorbs REQ-744). Masking
+    injection operates on the SELECT projection list exclusively, preserving
     query filtering and join semantics.
   use_case: Separating masked SELECT projections from unmasked predicates ensures query filters remain
     executable while users see masked values.
@@ -19871,6 +19896,7 @@
     rationale: ''
 - id: REQ-744
   status: complete
+  superseded_by: REQ-740
   group: 1. Access Governance & Security
   category: Security
   priority: MUST
@@ -20872,6 +20898,7 @@
     rationale: Variable-length edge deserialization is internal framework work.
 - id: REQ-772
   status: complete
+  superseded_by: REQ-349
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
   priority: SHOULD
@@ -24453,6 +24480,7 @@
   - REQ-870
 - id: REQ-872
   status: complete
+  superseded_by: REQ-1156
   since: 2026-07
   group: 2. Authentication & Identity
   category: Authorization
@@ -26000,6 +26028,7 @@
   - REQ-896
 - id: REQ-903
   status: complete
+  superseded_by: REQ-904
   since: 2026-07
   group: 4. Source Connectors
   category: PostgreSQL Deployment
@@ -26646,6 +26675,7 @@
   related_reqs: []
 - id: REQ-927
   status: complete
+  superseded_by: REQ-926
   since: 2026-07
   group: 9. Live Data & Events
   category: Change Subscriptions
@@ -30556,6 +30586,7 @@
   - REQ-1054
 - id: REQ-1056
   status: proposed
+  superseded_by: REQ-1234
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy & Routing
   priority: MUST
@@ -34661,6 +34692,7 @@
     '
 - id: REQ-1205
   status: complete
+  superseded_by: REQ-1253
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (GCP)
   priority: MUST
@@ -35378,43 +35410,6 @@
     And HTTPS endpoints are served using the provided TLS credentials
 
     '
-- id: REQ-1227
-  status: complete
-  group: 11. Platform, Infrastructure & Delivery
-  category: Clustered Deployment Configuration
-  priority: MUST
-  type: infrastructure
-  description: In a clustered Provisa deployment, only the primary node loads the data config file from
-    disk. The primary registers all datasources into the shared PostgreSQL backend. Secondary nodes do
-    not load their own config file; instead, they connect to the primary's shared PostgreSQL and rebuild
-    their in-memory schemas from what the primary registered there, establishing a single source of truth
-    for the cluster.
-  use_case: Centralizing config registration to the primary node ensures runtime-added datasources propagate
-    to secondaries automatically without manual sync or config duplication across nodes.
-  since: 2026-07
-  scenario: 'Given a clustered deployment with a primary and secondary node
-
-    When the primary starts
-
-    Then it loads the config file from disk
-
-    And registers all datasources into the shared PostgreSQL
-
-    When the secondary starts
-
-    Then it does not load the config file from disk
-
-    And it connects to the primary''s shared PostgreSQL
-
-    And it rebuilds in-memory schemas from the registered datasources
-
-    When a datasource is added at runtime via the API
-
-    Then the primary registers it into shared PostgreSQL
-
-    And the secondary''s next schema rebuild reads the new datasource automatically
-
-    '
 - id: REQ-1228
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -35471,11 +35466,17 @@
 
     '
 - id: REQ-1229
-  status: proposed
+  status: complete
+  since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Clustered Deployment Configuration
   priority: MUST
   type: constraint
+  code:
+  - provisa/core/config_loader.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_config_replace_mode.py
   description: In a clustered Provisa deployment, only the primary node may modify the config row store
     (DELETE, INSERT, UPDATE). Secondary nodes set PROVISA_ROLE=secondary, which forces load_config replace=OFF
     to prevent them from overwriting shared config rows. Concurrent identical config upserts across the
@@ -35615,6 +35616,7 @@
     '
 - id: REQ-1232
   status: complete
+  superseded_by: REQ-1276
   group: 13. Multi-Tenancy & Organizations
   category: Authentication
   priority: MUST
@@ -35771,6 +35773,7 @@
     '
 - id: REQ-1236
   status: accepted
+  superseded_by: REQ-1235
   group: 13. Multi-Tenancy & Organizations
   category: Org Identity & Subdomain Addressing
   priority: MUST
@@ -36441,7 +36444,7 @@
     rule with all_ports=true on one static IP; AWS uses a single Network Load Balancer with one listener/target-group
     per protocol port sharing the NLB''s endpoint; Azure uses a single Standard Load Balancer with one
     LB rule per protocol port on a single frontend public IP. Backend liveness is gated by the API HTTPS
-    /health probe. Refs: REQ-1233, REQ-1239, REQ-1240, REQ-1227.'
+    /health probe. Refs: REQ-1233, REQ-1239, REQ-1240, REQ-1226.'
 - id: REQ-1254
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -36477,7 +36480,7 @@
     '
   related:
   - REQ-1253
-  - REQ-1227
+  - REQ-1226
 - id: REQ-1255
   status: proposed
   group: 13. Multi-Tenancy & Organizations
@@ -36550,7 +36553,7 @@
   priority: MUST
   type: infrastructure
   target: 2026-Q4
-  description: 'Helm chart must support operator TLS on every endpoint (REQ-1227 parity): PROVISA_TLS_CERT
+  description: 'Helm chart must support operator TLS on every endpoint (REQ-1226 parity): PROVISA_TLS_CERT
     and PROVISA_TLS_KEY env vars, a TLS cert Secret mounted into provisa and provisa-ui containers, uvicorn
     --ssl-certfile/--ssl-keyfile flags, and /health probes using scheme: HTTPS when TLS enabled.'
   use_case: Ensures Kubernetes deployments meet enterprise TLS requirements for all protocol endpoints,
@@ -41035,3 +41038,35 @@
     When source registration runs at config load or admin source registration
     Then the catalog is dropped and recreated
     And new connection properties and credentials take effect
+- id: REQ-1355
+  status: accepted
+  group: "13. Multi-Tenancy & Organizations"
+  category: Tenancy Architecture
+  priority: MUST
+  type: constraint
+  target: "2026-Q3"
+  description: >-
+    Org is the canonical tenancy subject in Provisa; "tenant" terminology is retired.
+    The legacy tenants/tenant_config tables are not a separate subject but attributes of orgs.
+    Billing fields (plan, ls_customer_id, ls_subscription_id, kms_key_arn) and tenant_config
+    migrate to orgs; org resolution has one path (OrgRoutingMiddleware only).
+    Naming: tenant_db → org_db, tenant_id → org_id, TenantMiddleware → retired.
+  use_case: >-
+    Having two org resolution paths (TenantMiddleware and OrgRoutingMiddleware) creates
+    correctness risk: identity context can be ambiguous at request-handling time. Consolidating
+    to one canonical subject and one resolution path eliminates this defect. Unifying the schema
+    (orgs table as source of truth for billing and org config) simplifies routing middleware
+    and removes the redundant tenants table.
+  code:
+    - provisa/core/schema_admin.py
+    - provisa/api/middleware/tenant_middleware.py
+    - provisa/api/app.py
+    - provisa/core/repositories/org.py
+  related_reqs:
+    - REQ-1075
+    - REQ-456
+    - REQ-462
+    - REQ-594
+    - REQ-1266
+    - REQ-1044
+    - REQ-1053

@@ -381,7 +381,7 @@ async def start_grpc_server(
     pb2_path: str,
     pb2_grpc_path: str,
     tls: tuple[str, str] | None = None,
-) -> grpc.aio.Server:  # REQ-045, REQ-143, REQ-1227
+) -> grpc.aio.Server:  # REQ-045, REQ-143, REQ-1226
     """Start a gRPC async server with the Provisa service.
 
     Args:
@@ -390,7 +390,7 @@ async def start_grpc_server(
         pb2_path: Path to generated _pb2.py module.
         pb2_grpc_path: Path to generated _pb2_grpc.py module.
         tls: Optional ``(cert_path, key_path)``. When set the server binds a TLS
-            secure port (REQ-1227); otherwise it binds an insecure port.
+            secure port (REQ-1226); otherwise it binds an insecure port.
 
     Returns:
         The started grpc.aio.Server.

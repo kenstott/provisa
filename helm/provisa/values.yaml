@@ -22,7 +22,7 @@ deployment:
   # Optional external materialization-store DSN.
   materializeUrl: ""
 
-# Operator TLS on every in-cluster endpoint (REQ-1227 / REQ-1257 parity with the
+# Operator TLS on every in-cluster endpoint (REQ-1226 / REQ-1257 parity with the
 # cloud-VM deploy). Supply the cert as a standard kubernetes.io/tls Secret holding
 # tls.crt and tls.key — issue it with cert-manager or your PKI. When enabled the
 # API and UI containers serve uvicorn over HTTPS and the app's wire-protocol

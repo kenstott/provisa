@@ -309,7 +309,7 @@ def _evaluate_licensing(_log: logging.Logger) -> None:
 def _resolve_tls(cert_env: str, key_env: str) -> tuple[str, str] | None:
     """Per-server cert/key from its own env vars, else the node-wide PROVISA_TLS_CERT/KEY pair.
 
-    REQ-1227: every protocol endpoint serves TLS in a cluster deploy. Certs are provisioned once per
+    REQ-1226: every protocol endpoint serves TLS in a cluster deploy. Certs are provisioned once per
     node — first-launch.sh generates a self-signed pair when none is supplied — and every server
     points at the same pair unless a per-protocol override is set."""
     cert = os.environ.get(cert_env) or os.environ.get("PROVISA_TLS_CERT")
@@ -371,7 +371,7 @@ async def _start_servers(_log: logging.Logger) -> None:
                 _flight_cert_bytes = _f.read()
             with open(_fk, "rb") as _f:
                 _flight_key_bytes = _f.read()
-            # grpc+tls scheme + tls_certificates make FlightServerBase bind a TLS listener (REQ-1227).
+            # grpc+tls scheme + tls_certificates make FlightServerBase bind a TLS listener (REQ-1226).
             flight_server = ProvisaFlightServer(
                 state,
                 location=f"grpc+tls://0.0.0.0:{flight_port}",

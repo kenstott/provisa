@@ -123,7 +123,7 @@ resource "azurerm_role_assignment" "blob_reader" {
 # Standard LB with one frontend public IP fronts every listener; one LB rule per
 # enabled protocol preserves the destination port to the node, so a single
 # `*.provisa.dev` record serves api/ui/flight/pgwire/bolt/mcp/grpc alike. The api
-# rule gets an HTTPS /health probe (REQ-1227: TLS on every endpoint); the rest use
+# rule gets an HTTPS /health probe (REQ-1226: TLS on every endpoint); the rest use
 # a TCP connect probe. The NSG (local.enabled_protocols) still restricts which
 # ports actually reach the node.
 
@@ -234,7 +234,7 @@ locals {
   # ── Protocol surface ─────────────────────────────────────────────────────────
   # One row per externally-reachable protocol. `enabled` gates the whole chain: NSG
   # port, LB probe, LB rule, and (for wire protocols) the container listener env var.
-  # Add a row here and every layer follows. api uses an HTTPS /health probe (REQ-1227:
+  # Add a row here and every layer follows. api uses an HTTPS /health probe (REQ-1226:
   # TLS on every endpoint); the rest use a TCP connect probe. `env` drives first-launch's
   # protocol overlay.
   protocols = {
