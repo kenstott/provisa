@@ -1,31 +1,113 @@
 {
   "tour": {
+    "nav": {
+      "done": "完了",
+      "next": "次へ ({{current}}/{{total}})",
+      "back": "戻る",
+      "start": "開始",
+      "docs": "ドキュメント"
+    },
     "steps": {
-      "step0": {"title": "ようこそ、ツアーを始めましょう", "description": "🧭 このコンパスからいつでもツアーを再開できます。いつでも離脱可能 — アプリをクリックするか <kbd>Esc</kbd> を押してください。<p><strong>Provisa</strong> は、データパスに関与しない、フェデレーテッドデータ向けのガバナンス済みクエリコンパイラです。</p><p>🎯 <strong>コアはたった一つの短い演習です：</strong>いくつかのデータベースを接続し、それらを<strong>7つの方法</strong>でクエリします — あるいは構文をスキップして、普通の英語で質問するだけでも構いません。所要時間は約5分、<strong>お使いのデスクトップから直接</strong>：サーバーもインフラ構築も不要です（それらは後で、準備ができたときに）。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>それ<em>以降</em>のこと — 追加のソース、フェデレーション、ファイル、リレーションシップ、ビュー、スケジュール実行のパイプライン — は、プラットフォームとともに<strong>成長</strong>していく方法であり、初日に必要なものではありません。コアがどこで終わるかは、その都度お知らせします。</p><p>準備はいいですか？まずソースを接続しましょう。→</p>"},
-      "step1": {"title": "まずはソースから", "description": "フェデレーションしたいものはすべてここに登録します：<div class='tour-tags'><span>🗄️ データベース</span><span>🏢 ウェアハウス</span><span>🔌 API</span><span>📄 ファイル</span><span>☁️ SaaS</span></div><p>Provisa はこれらすべてを、クエリ可能な一つの<strong>グラフ</strong>へと統合します。</p>"},
-      "step2": {"title": "ソースを登録する", "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他30種類以上。"},
-      "step3": {"title": "35種類以上のソースタイプ", "description": "1つのコネクタ一覧があらゆるカテゴリをカバーします：<ul><li><strong>データベース</strong> — PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>クラウドウェアハウス</strong> — Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析 / OLAP</strong> — ClickHouse、Druid、Pinot</li><li><strong>レイク＆ファイル</strong> — Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL＆グラフ</strong> — MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong> — REST、GraphQL、gRPC</li><li><strong>ストリーミング</strong> — Kafka</li><li><strong>エンタープライズ SaaS</strong> — SharePoint、Splunk · 加えて政府データのサブスクリプション</li></ul>1つ選び、接続情報を入力し、保存するだけです。この一覧は固定ではありません — ネイティブなフェデレーションエンジンは<strong>拡張可能</strong>です：カスタムの Postgres FDW や DuckDB 拡張を設定で宣言すれば、コード不要で新しいソースタイプに Provisa が対応します。"},
-      "step4": {"title": "すべてがテーブルになる", "description": "ソースが何であれ — Mongo のコレクション、Kafka のトピック、REST エンドポイント、グラフ — Provisa はそれを2次元の<strong>テーブル</strong>に分解します：あらゆるソースを横断して同じ形でクエリできます。<p>📁 テーブルは<strong>ドメイン</strong>にグループ化され、それぞれをデータスチュワードが担当し、モデルが進化する中で品質を守ります。</p>"},
-      "step5": {"title": "カラムとポリシーを選ぶ", "description": "ソース、スキーマ、テーブルを選び、次にカラムを選択します — 各カラムには独自のポリシーがあります：<ul><li>🎭 <strong>マスキング</strong> — ロールごとに値を非表示にする</li><li>👁️ <strong>可視性</strong> — カラムの表示・非表示</li><li>🏷️ <strong>エイリアス</strong> — モデル用に名前を変更</li></ul><p>これでセットアップは完了です — ソース1つとテーブルいくつか。🚀 では次はそれをクエリしてみましょう。→</p>"},
-      "step6": {"title": "SQL（7つのサーフェスのうち1つ目）", "description": "SQL は SQL エクスプローラーで使えます。標準的な SQL が全ソースにまたがってフェデレーションされ、1つの文の中で Postgres と Mongo と CSV を結合できます。さらに、モデル自体のメタデータやあらゆる活動トレースも、ここではクエリ可能なテーブルです — 監査ログやリネージをライブデータに直接結合できます。<p>🔌 このエクスプローラーだけでなく、同じガバナンス済み SQL が複数のワイヤープロトコル経由でも動作します。お使いのツールがすでに話せるものを選んでください：</p><ul><li><strong>pgwire</strong> — Postgres 互換のクライアント全般 — psql、DBeaver、Tableau、Power BI — がそのまま接続できます。</li><li><strong>JDBC</strong> — あらゆる Java/JVM アプリ、ETL パイプライン、JDBC 対応 BI ツールに組み込めます。</li><li><strong>Arrow Flight SQL</strong> — ADBC クライアント向けの列指向ストリーミング — 行の再エンコード不要で、大規模な結果セット向けに設計されています。</li><li><strong>DuckDB · airport</strong> — DuckDB から Provisa を ATTACH し、その場でガバナンス済みフェデレーションをクエリできます。</li></ul>"},
-      "step7": {"title": "GraphQL（7つのサーフェスのうち2つ目）", "description": "◈ 同じクエリを GraphQL として表現すると：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>リレーションシップに対するグルーピングと集計 — 🎯 単一のエンドポイント、📖 自己記述的なスキーマ。</p><p>🔌 <strong>任意の GraphQL クライアント</strong> — Apollo、Relay、urql — からアクセスでき、フェデレーションを有効にすれば、Provisa を<strong>Apollo スーパーグラフのサブグラフ</strong>として組み込めます。既存のグラフと並んで、フェデレーテッドモデルを合成できます。</p>"},
-      "step8": {"title": "Cypher（7つのサーフェスのうち3つ目）", "description": "🕸️ Cypher でフェデレーテッドモデルをグラフとしてトラバースします：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ このトラバースは<strong>複数のソースをまたいで</strong>実行されます — 単一のグラフデータベースは不要です。</p><p>🔌 そして<strong>Bolt</strong> クライアント — Neo4j Browser、Bloom — であれば、コードを変更せずに同じトラバースをワイヤー経由で実行できます。</p>"},
-      "step9": {"title": "gRPC（7つのサーフェスのうち4つ目）", "description": "⚙️ 登録済みのエンティティはすべて gRPC サービスでもあります：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>任意の gRPC クライアントから呼び出せます — 📐 強く型付けされ、🚀 高スループットです。</p>"},
-      "step10": {"title": "JSON:API（7つのサーフェスのうち5つ目）", "description": "🧩 仕様準拠の JSON:API サーフェス：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 ページングと 🔍 フィルタリングを標準サポート。</p>"},
-      "step11": {"title": "OpenAPI / REST（7つのサーフェスのうち6つ目）", "description": "🌐 そして OpenAPI で記述されたシンプルな REST エンドポイント：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 完全に記述されているため、どの REST クライアントやコードジェネレーターからも利用できます。</p>"},
-      "step12": {"title": "MCP（7つのサーフェスのうち7つ目）", "description": "🤖 7つ目のサーフェスは、エージェントが<strong>あなたのデータについて推論する</strong>ことを可能にします。これは同じガバナンス済みツール群 — カタログの検索、テーブルの説明、SQL の実行、リレーションシップの追跡 — を駆動し、それらを<em>連鎖</em>させることで、単一のクエリでは答えられない質問に答えます。すべての呼び出しは<strong>あなた</strong>のロールのガバナンスに従います。<p>🔌 同じ<strong>MCP サーバー</strong>は Claude Desktop、Claude Code、その他あらゆる MCP クライアントに接続でき、エージェントがガバナンスに沿ってあなたのモデルを探索・推論できます。</p><p>🔑 ご自身の LLM キーを使用します。この例のやり取りはサンプルです。</p><p>残るサーフェスはあと1つ — それが7つすべてをあなたの代わりに書いてくれるものです。→</p>"},
-      "step13": {"title": "質問するだけ — 7つすべてを書いてくれるサーフェス", "description": "💬 <em>「ユーザーごとの問い合わせ数を表示して」</em><p>🎁 これが集大成です：<strong>7つのどれも学ぶ必要はありません。</strong>普通の英語で質問すれば、Provisa はあなたの質問をすべてのクエリ言語に同時にコンパイルします — 以下の各パネルは、その1文を SQL、GraphQL、Cypher、gRPC、JSON:API、REST として表したものです。</p><p>お使いのツールがすでに話せるサーフェスを使うか、それらすべてをスキップして質問するだけでも構いません。</p><p>🔑 ライブの自然言語クエリはご自身の LLM キーを使用します。この例はサンプルです。</p><p>✅ 1つのモデル、<strong>8つのサーフェス</strong> — クエリ用の7つと、それらを書いてくれる1つ。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"},
-      "step14": {"title": "これが5分でわかるコアです", "description": "✅ 今まさに一部始終を見ていただきました：<strong>1つのソースを7つの方法でクエリ — あるいは普通の英語で質問するだけ。</strong>これが約束のすべてです — ここで止めても構いません。<p><kbd>Esc</kbd> はいつでも押せます。🧭 上部のコンパスがいつでもこのツアーを再生します。</p><p>👉 この先はすべて<strong>Provisa があなたとともにどう成長するか</strong>です — 必須の手順ではなく、任意で深めていける部分です：</p><ul><li>🔗 複数ソースのテーブルを1つの<strong>グラフ</strong>にリンクする</li><li>🔐 それを<strong>ガバナンス</strong>する — ロール、行レベルセキュリティ、カラムマスキング</li><li>🏗️ <strong>配信パイプライン</strong>を構築する — ビュー、マテリアライズドウェアハウス、リネージ</li><li>⚙️ それを<strong>運用</strong>する — エンジンを選び、本番環境へ出荷する</li></ul><p>続けますか？→</p>"},
-      "step15": {"title": "グラフを接続する", "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>リレーションシップは、異なるデータベースをまたいでも、複数ソースのテーブルをリンクし、フラットなテーブルをトラバース可能な<strong>グラフ</strong>に変えます。</p><p>🛡️ それらは<strong>強制</strong>することもできます：探索の自由を与えつつ、適切なガードレールを設けられます。</p>"},
-      "step16": {"title": "リレーションシップを定義する", "description": "🔗 ソースのカラムをターゲットのカラムにマッピングし、<strong>カーディナリティ</strong>を設定します：<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ あるいは AI に Provisa がリレーションシップを<strong>推論</strong>させることもできます。</p>"},
-      "step17": {"title": "ERD を見る", "description": "エンティティ・リレーションシップ図は、あなたのフェデレーテッドモデル全体をレンダリングします — 登録済みのすべてのテーブルと、それらの間のリレーションシップです。"},
-      "step18": {"title": "アクセス制御（RBAC）", "description": "🔐 テーブルを登録すると、カラム単位のアクセス権が設定され、ロールに直接連動します：<div class='tour-tags'><span>👁️ 読み取り</span><span>✏️ 書き込み</span></div><p>これが<strong>ロールベースのアクセス制御</strong>です — ロール自体は、この Security ページで定義します。</p>"},
-      "step19": {"title": "行レベルセキュリティ", "description": "🔎 ロールが定義されたら、さらに細かく — 属性ベースの述語で、各ロールが閲覧できる<strong>行</strong>を制限できます：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 データ駆動で、行単位で強制されます — すべてのソースとプロトコルを横断して。</p>"},
-      "step20": {"title": "配信パイプラインを構築する", "description": "🔧 別途 ETL ツールを用意しなくても、ここで配信パイプライン全体を組み立てられます：<ul><li>👁️ <strong>ビュー</strong> — 任意のテーブルに対して、一時的またはマテリアライズドで、ビューに対するビューも可能です。</li><li>⚡ <strong>コマンド</strong> — ガバナンス済みで型付けされた操作（HTTP サービス、Python モデル、ストアドプロシージャ）で、二つの役割を兼ねます：パイプライン内のステップとして、<em>かつ</em>下流のアプリやエージェントがデータを操作するために呼び出す一級市民の API として — すべてのサーフェスから呼び出し可能で、完全にガバナンスされトレースされます。</li><li>⭐ <strong>エンティティとファクト</strong> — ディメンションやファクトを一度宣言すれば、Provisa がウェアハウスを生成します。手法にとらわれず：3NF（Inmon）、スタースキーマ（Kimball）、Data Vault のいずれにも対応します。</li><li>📏 <strong>メトリクス</strong> — ガバナンス済みの集計定義（「純収益」など）で、粒度はクエリ時に決定されます。一度定義すれば、SQL、GraphQL、AI エージェントを含むすべてのサーフェスが同じ数値を計算し、メトリクスに基づくビューはその定義が変わると再生成されます。</li></ul>"},
-      "step21": {"title": "ライブウェアハウスにマテリアライズする", "description": "🏗️ ビューをマテリアライズすると、スクリプトではなく宣言によるフル機能の ETL エンジンが手に入ります：<ul><li>📅 実際の<strong>ビジネスカレンダー</strong>に基づく<strong>スケジュールスナップショット</strong> — 繰り返しルール、祝日、営業日ゲーティング、締め処理の猶予期間により、単なる時計ではなく<em>あなた</em>のレポーティングカレンダーに合わせて実行されます。</li><li>🗄️ <strong>保存方法</strong> — <strong>replace</strong>、<strong>upsert</strong>、あるいは <strong>snapshot</strong> / <strong>delta</strong> による履歴保持、加えて増分計算にも対応します。</li><li>🕰️ <strong>タイムトラベル</strong> — バイテンポラルな履歴。任意の時点のモデルをクエリできます。</li><li>⚡ デバウンス付きの<strong>ニアリアルタイム</strong>更新、または入力の変化に応じた鮮度駆動の再パブリッシュ。</li></ul>"},
-      "step22": {"title": "リネージ、エンドツーエンド", "description": "🧬 <strong>リネージはブラックボックスではありません。</strong>これは実際のクエリを解析したものです。各結果カラムは、その変換をさかのぼって追跡され — <code>name_upper</code> を追ってみてください — それを供給する正確な<strong>ソースカラム</strong>への結合までたどれます。<p>コマンドは宣言的に定義されているため、すべてのステップが記録されます。マテリアライズドビューは定義上、完全なリネージを保持します。何も実行されません — クエリは解析されるだけです。</p><p>→ 最後は、本番環境での運用です。</p>"},
-      "step23": {"title": "運用する", "description": "Admin ページがプラットフォームを運用します：<ul><li>⚙️ <strong>フェデレーションエンジン</strong>の選択と設定 — プラガブルです：DuckDB（組み込み、ゼロコンフィグ）、Trino、PostgreSQL、ClickHouse、あるいはクラウドウェアハウスを一級エンジンとして使用（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。いつでも切り替え可能で、モデル、サーフェス、その上のガバナンスは変わりません。</li><li>🔗 選んだエンジンごとに、独自の<strong>ライブな外部データ</strong>アクセスが付いてきます — Parquet、Iceberg、Delta をその場で、ゼロコピーで読み取り、認証情報も自動的にプロビジョニングされます。ライブでリンクできないものは、ガバナンス済みのレプリカとして着地します。</li><li>🔑 <strong>暗号化キー</strong>の管理と<strong>認証プロバイダー</strong>の設定</li><li>📊 完全な<strong>オブザーバビリティ</strong> — エンタープライズ級のトレース管理のため、任意の OpenTelemetry コレクターへリダイレクト可能</li></ul><p>同じモデルがローカル開発から本番環境まで、各ステップで検証されながら移行します — 書き換え不要です：</p><ul><li><strong>開発</strong> — 組み込み DuckDB、Docker 不要。ローカルで構築・検証します。</li><li><strong>大規模検証</strong> — Docker で、エンジンとオブザーバビリティを立ち上げます。本番エンジンに対して動作を検証します。</li><li><strong>昇格</strong> — 自社のインフラを指定し、CI/CD を通してビルドし、本番環境へ出荷します。</li></ul>"},
-      "step24": {"title": "ツアーは以上です — 次はあなたの番です", "description": "🎉 最初の場所に戻ってきました。ここからはあなたの番です：<ul><li>1️⃣ 実際の<strong>ソース</strong>を1つ登録する</li><li>2️⃣ いくつかの<strong>テーブル</strong>を公開し、<strong>リレーションシップ</strong>を1つか2つ描く</li><li>3️⃣ <strong>Explore</strong> から、任意の言語でクエリする：</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p><kbd>pgwire</kbd> や <kbd>Bolt</kbd> のツールを向けるだけで — すべてがそのまま動きます。</p><p>📚 <strong>Docs</strong> タブに完全なガイドがあります。🧭 上部のコンパスがいつでもこのツアーを再生します。Provisa をお楽しみください。</p>"}
+      "step0": {
+        "title": "ようこそ、ツアーを始めましょう",
+        "description": "🧭 このコンパスからいつでもツアーを再開できます。いつでも離脱可能 — アプリをクリックするか <kbd>Esc</kbd> を押してください。<p><strong>Provisa</strong> は、データパスに関与しない、フェデレーテッドデータ向けのガバナンス済みクエリコンパイラです。</p><p>🎯 <strong>コアはたった一つの短い演習です：</strong>いくつかのデータベースを接続し、それらを<strong>7つの方法</strong>でクエリします — あるいは構文をスキップして、普通の英語で質問するだけでも構いません。所要時間は約5分、<strong>お使いのデスクトップから直接</strong>：サーバーもインフラ構築も不要です（それらは後で、準備ができたときに）。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>それ<em>以降</em>のこと — 追加のソース、フェデレーション、ファイル、リレーションシップ、ビュー、スケジュール実行のパイプライン — は、プラットフォームとともに<strong>成長</strong>していく方法であり、初日に必要なものではありません。コアがどこで終わるかは、その都度お知らせします。</p><p>準備はいいですか？まずソースを接続しましょう。→</p>"
+      },
+      "step1": {
+        "title": "まずはソースから",
+        "description": "フェデレーションしたいものはすべてここに登録します：<div class='tour-tags'><span>🗄️ データベース</span><span>🏢 ウェアハウス</span><span>🔌 API</span><span>📄 ファイル</span><span>☁️ SaaS</span></div><p>Provisa はこれらすべてを、クエリ可能な一つの<strong>グラフ</strong>へと統合します。</p>"
+      },
+      "step2": {
+        "title": "ソースを登録する",
+        "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他30種類以上。"
+      },
+      "step3": {
+        "title": "35種類以上のソースタイプ",
+        "description": "1つのコネクタ一覧があらゆるカテゴリをカバーします：<ul><li><strong>データベース</strong> — PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>クラウドウェアハウス</strong> — Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析 / OLAP</strong> — ClickHouse、Druid、Pinot</li><li><strong>レイク＆ファイル</strong> — Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL＆グラフ</strong> — MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong> — REST、GraphQL、gRPC</li><li><strong>ストリーミング</strong> — Kafka</li><li><strong>エンタープライズ SaaS</strong> — SharePoint、Splunk · 加えて政府データのサブスクリプション</li></ul>1つ選び、接続情報を入力し、保存するだけです。この一覧は固定ではありません — ネイティブなフェデレーションエンジンは<strong>拡張可能</strong>です：カスタムの Postgres FDW や DuckDB 拡張を設定で宣言すれば、コード不要で新しいソースタイプに Provisa が対応します。"
+      },
+      "step4": {
+        "title": "すべてがテーブルになる",
+        "description": "ソースが何であれ — Mongo のコレクション、Kafka のトピック、REST エンドポイント、グラフ — Provisa はそれを2次元の<strong>テーブル</strong>に分解します：あらゆるソースを横断して同じ形でクエリできます。<p>📁 テーブルは<strong>ドメイン</strong>にグループ化され、それぞれをデータスチュワードが担当し、モデルが進化する中で品質を守ります。</p>"
+      },
+      "step5": {
+        "title": "カラムとポリシーを選ぶ",
+        "description": "ソース、スキーマ、テーブルを選び、次にカラムを選択します — 各カラムには独自のポリシーがあります：<ul><li>🎭 <strong>マスキング</strong> — ロールごとに値を非表示にする</li><li>👁️ <strong>可視性</strong> — カラムの表示・非表示</li><li>🏷️ <strong>エイリアス</strong> — モデル用に名前を変更</li></ul><p>これでセットアップは完了です — ソース1つとテーブルいくつか。🚀 では次はそれをクエリしてみましょう。→</p>"
+      },
+      "step6": {
+        "title": "SQL（7つのサーフェスのうち1つ目）",
+        "description": "SQL は SQL エクスプローラーで使えます。標準的な SQL が全ソースにまたがってフェデレーションされ、1つの文の中で Postgres と Mongo と CSV を結合できます。さらに、モデル自体のメタデータやあらゆる活動トレースも、ここではクエリ可能なテーブルです — 監査ログやリネージをライブデータに直接結合できます。<p>🔌 このエクスプローラーだけでなく、同じガバナンス済み SQL が複数のワイヤープロトコル経由でも動作します。お使いのツールがすでに話せるものを選んでください：</p><ul><li><strong>pgwire</strong> — Postgres 互換のクライアント全般 — psql、DBeaver、Tableau、Power BI — がそのまま接続できます。</li><li><strong>JDBC</strong> — あらゆる Java/JVM アプリ、ETL パイプライン、JDBC 対応 BI ツールに組み込めます。</li><li><strong>Arrow Flight SQL</strong> — ADBC クライアント向けの列指向ストリーミング — 行の再エンコード不要で、大規模な結果セット向けに設計されています。</li><li><strong>DuckDB · airport</strong> — DuckDB から Provisa を ATTACH し、その場でガバナンス済みフェデレーションをクエリできます。</li></ul>"
+      },
+      "step7": {
+        "title": "GraphQL（7つのサーフェスのうち2つ目）",
+        "description": "◈ 同じクエリを GraphQL として表現すると：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>リレーションシップに対するグルーピングと集計 — 🎯 単一のエンドポイント、📖 自己記述的なスキーマ。</p><p>🔌 <strong>任意の GraphQL クライアント</strong> — Apollo、Relay、urql — からアクセスでき、フェデレーションを有効にすれば、Provisa を<strong>Apollo スーパーグラフのサブグラフ</strong>として組み込めます。既存のグラフと並んで、フェデレーテッドモデルを合成できます。</p>"
+      },
+      "step8": {
+        "title": "Cypher（7つのサーフェスのうち3つ目）",
+        "description": "🕸️ Cypher でフェデレーテッドモデルをグラフとしてトラバースします：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ このトラバースは<strong>複数のソースをまたいで</strong>実行されます — 単一のグラフデータベースは不要です。</p><p>🔌 そして<strong>Bolt</strong> クライアント — Neo4j Browser、Bloom — であれば、コードを変更せずに同じトラバースをワイヤー経由で実行できます。</p>"
+      },
+      "step9": {
+        "title": "gRPC（7つのサーフェスのうち4つ目）",
+        "description": "⚙️ 登録済みのエンティティはすべて gRPC サービスでもあります：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>任意の gRPC クライアントから呼び出せます — 📐 強く型付けされ、🚀 高スループットです。</p>"
+      },
+      "step10": {
+        "title": "JSON:API（7つのサーフェスのうち5つ目）",
+        "description": "🧩 仕様準拠の JSON:API サーフェス：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 ページングと 🔍 フィルタリングを標準サポート。</p>"
+      },
+      "step11": {
+        "title": "OpenAPI / REST（7つのサーフェスのうち6つ目）",
+        "description": "🌐 そして OpenAPI で記述されたシンプルな REST エンドポイント：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 完全に記述されているため、どの REST クライアントやコードジェネレーターからも利用できます。</p>"
+      },
+      "step12": {
+        "title": "MCP（7つのサーフェスのうち7つ目）",
+        "description": "🤖 7つ目のサーフェスは、エージェントが<strong>あなたのデータについて推論する</strong>ことを可能にします。これは同じガバナンス済みツール群 — カタログの検索、テーブルの説明、SQL の実行、リレーションシップの追跡 — を駆動し、それらを<em>連鎖</em>させることで、単一のクエリでは答えられない質問に答えます。すべての呼び出しは<strong>あなた</strong>のロールのガバナンスに従います。<p>🔌 同じ<strong>MCP サーバー</strong>は Claude Desktop、Claude Code、その他あらゆる MCP クライアントに接続でき、エージェントがガバナンスに沿ってあなたのモデルを探索・推論できます。</p><p>🔑 ご自身の LLM キーを使用します。この例のやり取りはサンプルです。</p><p>残るサーフェスはあと1つ — それが7つすべてをあなたの代わりに書いてくれるものです。→</p>"
+      },
+      "step13": {
+        "title": "質問するだけ — 7つすべてを書いてくれるサーフェス",
+        "description": "💬 <em>「ユーザーごとの問い合わせ数を表示して」</em><p>🎁 これが集大成です：<strong>7つのどれも学ぶ必要はありません。</strong>普通の英語で質問すれば、Provisa はあなたの質問をすべてのクエリ言語に同時にコンパイルします — 以下の各パネルは、その1文を SQL、GraphQL、Cypher、gRPC、JSON:API、REST として表したものです。</p><p>お使いのツールがすでに話せるサーフェスを使うか、それらすべてをスキップして質問するだけでも構いません。</p><p>🔑 ライブの自然言語クエリはご自身の LLM キーを使用します。この例はサンプルです。</p><p>✅ 1つのモデル、<strong>8つのサーフェス</strong> — クエリ用の7つと、それらを書いてくれる1つ。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+      },
+      "step14": {
+        "title": "これが5分でわかるコアです",
+        "description": "✅ 今まさに一部始終を見ていただきました：<strong>1つのソースを7つの方法でクエリ — あるいは普通の英語で質問するだけ。</strong>これが約束のすべてです — ここで止めても構いません。<p><kbd>Esc</kbd> はいつでも押せます。🧭 上部のコンパスがいつでもこのツアーを再生します。</p><p>👉 この先はすべて<strong>Provisa があなたとともにどう成長するか</strong>です — 必須の手順ではなく、任意で深めていける部分です：</p><ul><li>🔗 複数ソースのテーブルを1つの<strong>グラフ</strong>にリンクする</li><li>🔐 それを<strong>ガバナンス</strong>する — ロール、行レベルセキュリティ、カラムマスキング</li><li>🏗️ <strong>配信パイプライン</strong>を構築する — ビュー、マテリアライズドウェアハウス、リネージ</li><li>⚙️ それを<strong>運用</strong>する — エンジンを選び、本番環境へ出荷する</li></ul><p>続けますか？→</p>"
+      },
+      "step15": {
+        "title": "グラフを接続する",
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>リレーションシップは、異なるデータベースをまたいでも、複数ソースのテーブルをリンクし、フラットなテーブルをトラバース可能な<strong>グラフ</strong>に変えます。</p><p>🛡️ それらは<strong>強制</strong>することもできます：探索の自由を与えつつ、適切なガードレールを設けられます。</p>"
+      },
+      "step16": {
+        "title": "リレーションシップを定義する",
+        "description": "🔗 ソースのカラムをターゲットのカラムにマッピングし、<strong>カーディナリティ</strong>を設定します：<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ あるいは AI に Provisa がリレーションシップを<strong>推論</strong>させることもできます。</p>"
+      },
+      "step17": {
+        "title": "ERD を見る",
+        "description": "エンティティ・リレーションシップ図は、あなたのフェデレーテッドモデル全体をレンダリングします — 登録済みのすべてのテーブルと、それらの間のリレーションシップです。"
+      },
+      "step18": {
+        "title": "アクセス制御（RBAC）",
+        "description": "🔐 テーブルを登録すると、カラム単位のアクセス権が設定され、ロールに直接連動します：<div class='tour-tags'><span>👁️ 読み取り</span><span>✏️ 書き込み</span></div><p>これが<strong>ロールベースのアクセス制御</strong>です — ロール自体は、この Security ページで定義します。</p>"
+      },
+      "step19": {
+        "title": "行レベルセキュリティ",
+        "description": "🔎 ロールが定義されたら、さらに細かく — 属性ベースの述語で、各ロールが閲覧できる<strong>行</strong>を制限できます：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 データ駆動で、行単位で強制されます — すべてのソースとプロトコルを横断して。</p>"
+      },
+      "step20": {
+        "title": "配信パイプラインを構築する",
+        "description": "🔧 別途 ETL ツールを用意しなくても、ここで配信パイプライン全体を組み立てられます：<ul><li>👁️ <strong>ビュー</strong> — 任意のテーブルに対して、一時的またはマテリアライズドで、ビューに対するビューも可能です。</li><li>⚡ <strong>コマンド</strong> — ガバナンス済みで型付けされた操作（HTTP サービス、Python モデル、ストアドプロシージャ）で、二つの役割を兼ねます：パイプライン内のステップとして、<em>かつ</em>下流のアプリやエージェントがデータを操作するために呼び出す一級市民の API として — すべてのサーフェスから呼び出し可能で、完全にガバナンスされトレースされます。</li><li>⭐ <strong>エンティティとファクト</strong> — ディメンションやファクトを一度宣言すれば、Provisa がウェアハウスを生成します。手法にとらわれず：3NF（Inmon）、スタースキーマ（Kimball）、Data Vault のいずれにも対応します。</li><li>📏 <strong>メトリクス</strong> — ガバナンス済みの集計定義（「純収益」など）で、粒度はクエリ時に決定されます。一度定義すれば、SQL、GraphQL、AI エージェントを含むすべてのサーフェスが同じ数値を計算し、メトリクスに基づくビューはその定義が変わると再生成されます。</li></ul>"
+      },
+      "step21": {
+        "title": "ライブウェアハウスにマテリアライズする",
+        "description": "🏗️ ビューをマテリアライズすると、スクリプトではなく宣言によるフル機能の ETL エンジンが手に入ります：<ul><li>📅 実際の<strong>ビジネスカレンダー</strong>に基づく<strong>スケジュールスナップショット</strong> — 繰り返しルール、祝日、営業日ゲーティング、締め処理の猶予期間により、単なる時計ではなく<em>あなた</em>のレポーティングカレンダーに合わせて実行されます。</li><li>🗄️ <strong>保存方法</strong> — <strong>replace</strong>、<strong>upsert</strong>、あるいは <strong>snapshot</strong> / <strong>delta</strong> による履歴保持、加えて増分計算にも対応します。</li><li>🕰️ <strong>タイムトラベル</strong> — バイテンポラルな履歴。任意の時点のモデルをクエリできます。</li><li>⚡ デバウンス付きの<strong>ニアリアルタイム</strong>更新、または入力の変化に応じた鮮度駆動の再パブリッシュ。</li></ul>"
+      },
+      "step22": {
+        "title": "リネージ、エンドツーエンド",
+        "description": "🧬 <strong>リネージはブラックボックスではありません。</strong>これは実際のクエリを解析したものです。各結果カラムは、その変換をさかのぼって追跡され — <code>name_upper</code> を追ってみてください — それを供給する正確な<strong>ソースカラム</strong>への結合までたどれます。<p>コマンドは宣言的に定義されているため、すべてのステップが記録されます。マテリアライズドビューは定義上、完全なリネージを保持します。何も実行されません — クエリは解析されるだけです。</p><p>→ 最後は、本番環境での運用です。</p>"
+      },
+      "step23": {
+        "title": "運用する",
+        "description": "Admin ページがプラットフォームを運用します：<ul><li>⚙️ <strong>フェデレーションエンジン</strong>の選択と設定 — プラガブルです：DuckDB（組み込み、ゼロコンフィグ）、Trino、PostgreSQL、ClickHouse、あるいはクラウドウェアハウスを一級エンジンとして使用（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。いつでも切り替え可能で、モデル、サーフェス、その上のガバナンスは変わりません。</li><li>🔗 選んだエンジンごとに、独自の<strong>ライブな外部データ</strong>アクセスが付いてきます — Parquet、Iceberg、Delta をその場で、ゼロコピーで読み取り、認証情報も自動的にプロビジョニングされます。ライブでリンクできないものは、ガバナンス済みのレプリカとして着地します。</li><li>🔑 <strong>暗号化キー</strong>の管理と<strong>認証プロバイダー</strong>の設定</li><li>📊 完全な<strong>オブザーバビリティ</strong> — エンタープライズ級のトレース管理のため、任意の OpenTelemetry コレクターへリダイレクト可能</li></ul><p>同じモデルがローカル開発から本番環境まで、各ステップで検証されながら移行します — 書き換え不要です：</p><ul><li><strong>開発</strong> — 組み込み DuckDB、Docker 不要。ローカルで構築・検証します。</li><li><strong>大規模検証</strong> — Docker で、エンジンとオブザーバビリティを立ち上げます。本番エンジンに対して動作を検証します。</li><li><strong>昇格</strong> — 自社のインフラを指定し、CI/CD を通してビルドし、本番環境へ出荷します。</li></ul>"
+      },
+      "step24": {
+        "title": "ツアーは以上です — 次はあなたの番です",
+        "description": "🎉 最初の場所に戻ってきました。ここからはあなたの番です：<ul><li>1️⃣ 実際の<strong>ソース</strong>を1つ登録する</li><li>2️⃣ いくつかの<strong>テーブル</strong>を公開し、<strong>リレーションシップ</strong>を1つか2つ描く</li><li>3️⃣ <strong>Explore</strong> から、任意の言語でクエリする：</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p><kbd>pgwire</kbd> や <kbd>Bolt</kbd> のツールを向けるだけで — すべてがそのまま動きます。</p><p>📚 <strong>Docs</strong> タブに完全なガイドがあります。🧭 上部のコンパスがいつでもこのツアーを再生します。Provisa をお楽しみください。</p>"
+      }
     }
   }
 }

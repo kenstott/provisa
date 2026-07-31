@@ -1,5 +1,12 @@
 {
   "tour": {
+    "nav": {
+      "done": "Done",
+      "next": "Next ({{current}}/{{total}})",
+      "back": "Back",
+      "start": "Start",
+      "docs": "Docs"
+    },
     "steps": {
       "step0": {
         "title": "Welcome, let's take the tour",

@@ -1,5 +1,12 @@
 {
   "tour": {
+    "nav": {
+      "done": "Listo",
+      "next": "Siguiente ({{current}}/{{total}})",
+      "back": "Atrás",
+      "start": "Empezar",
+      "docs": "Documentación"
+    },
     "steps": {
       "step0": {
         "title": "Bienvenido, hagamos la visita guiada",

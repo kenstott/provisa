@@ -342,8 +342,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
             title: t(`tour.steps.${step.key}.title`),
             description: t(`tour.steps.${step.key}.description`),
             showButtons: i === 0 ? ["next", "close"] : ["previous", "next", "close"],
-            nextBtnText: isLast ? "Done" : `Next (${i + 1}/${TOUR_STEPS.length})`,
-            prevBtnText: "Back",
+            nextBtnText: isLast
+              ? t("tour.nav.done")
+              : t("tour.nav.next", { current: i + 1, total: TOUR_STEPS.length }),
+            prevBtnText: t("tour.nav.back"),
             onNextClick: () => {
               clickIfPresent(step.clickAfterNext);
               if (isLast) endTour(true);
@@ -365,7 +367,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
                 const startBtn = document.createElement("button");
                 startBtn.type = "button";
                 startBtn.className = "driver-popover-start-btn";
-                startBtn.textContent = "Start";
+                startBtn.textContent = t("tour.nav.start");
                 startBtn.addEventListener("click", () => {
                   clickIfPresent(step.clickAfterNext);
                   setActiveStep(0);
@@ -377,7 +379,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
                 const docsBtn = document.createElement("button");
                 docsBtn.type = "button";
                 docsBtn.className = "driver-popover-docs-btn";
-                docsBtn.textContent = "Docs";
+                docsBtn.textContent = t("tour.nav.docs");
                 docsBtn.addEventListener("click", () => {
                   endTour(true);
                   navigate("/docs");

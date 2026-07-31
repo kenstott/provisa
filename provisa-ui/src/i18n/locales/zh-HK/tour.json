@@ -1,31 +1,113 @@
 {
   "tour": {
+    "nav": {
+      "done": "完成",
+      "next": "下一步 ({{current}}/{{total}})",
+      "back": "上一步",
+      "start": "開始",
+      "docs": "文件"
+    },
     "steps": {
-      "step0": {"title": "歡迎，一起來導覽", "description": "🧭 隨時可按這個指南針重新開啟導覽。想離開就離開——按一下應用程式或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是一個受管治的聯邦數據查詢編譯器，本身不會經手數據路徑。</p><p>🎯 <strong>整個核心其實只是一個小練習：</strong>連接幾個數據庫，然後用<strong>七種方式</strong>查詢——或者略過語法，直接用日常英語提問。大約五分鐘，<strong>就在你的桌面上完成</strong>：毋須伺服器，毋須架設基礎設施（那是之後、當你準備好時才需要的）。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>在那之後的<em>一切</em>——更多數據來源、聯邦、檔案、關係、檢視、排程管線——都是你如何隨平台<strong>成長</strong>，而不是第一天就要用到的東西。我們會標明核心到哪裡結束。</p><p>準備好了嗎？我們先連接一個數據來源。→</p>"},
-      "step1": {"title": "由「數據來源」開始", "description": "所有你想聯邦查詢的對象都在這裡登記：<div class='tour-tags'><span>🗄️ 數據庫</span><span>🏢 數據倉庫</span><span>🔌 API</span><span>📄 檔案</span><span>☁️ SaaS</span></div><p>Provisa 將它們統一成一個可查詢的<strong>圖譜</strong>。</p>"},
-      "step2": {"title": "登記數據來源", "description": "➕ 新連接由這個按鈕開始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及 30 多種其他類型。"},
-      "step3": {"title": "35 種以上的數據來源類型", "description": "一份連接器清單涵蓋所有類別：<ul><li><strong>數據庫</strong>——PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>雲端數據倉庫</strong>——Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析／OLAP</strong>——ClickHouse、Druid、Pinot</li><li><strong>數據湖與檔案</strong>——Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL 與圖數據庫</strong>——MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong>——REST、GraphQL、gRPC</li><li><strong>串流</strong>——Kafka</li><li><strong>企業級 SaaS</strong>——SharePoint、Splunk，另加政府數據訂閱</li></ul>選一種，填寫連接資訊，儲存即可。這份清單並非固定——原生聯邦引擎是<strong>可擴充</strong>的：只要在設定中宣告自訂的 Postgres FDW 或 DuckDB 擴充功能，Provisa 就能連接新的數據來源類型，毋須撰寫程式碼。"},
-      "step4": {"title": "一切都會變成一個表格", "description": "無論數據來源是甚麼——Mongo 集合、Kafka 主題、REST 端點、圖數據——Provisa 都會將它分解成一個二維<strong>表格</strong>：以統一的形態，跨所有數據來源進行查詢。<p>📁 將表格分組成<strong>領域</strong>，每個領域由一位數據管家負責，隨著模型演變守護其品質。</p>"},
-      "step5": {"title": "選取欄位與原則", "description": "選擇數據來源、結構描述及表格，然後選取欄位——每個欄位都有自己的原則：<ul><li>🎭 <strong>遮罩</strong>——按角色遮蔽數值</li><li>👁️ <strong>可見性</strong>——顯示或隱藏欄位</li><li>🏷️ <strong>別名</strong>——為模型重新命名</li></ul><p>設定就是這麼簡單——一個數據來源加幾個表格。🚀 現在來查詢一下。→</p>"},
-      "step6": {"title": "SQL（七種介面之一）", "description": "SQL 位於 SQL 探索器中。標準 SQL 可跨所有數據來源聯邦查詢——在同一句陳述式中將 Postgres 連接到 Mongo 再連接到 CSV。而模型自身的中繼數據，以及每一項活動追蹤，本身在這裡也是可查詢的表格——可以直接將稽核記錄或血緣連接到即時數據。<p>🔌 不只這個探索器——同一套受管治的 SQL 可透過多種線路協定運作；你的工具用哪種協定就用哪種：</p><ul><li><strong>pgwire</strong>——所有 Postgres 相容的客戶端——psql、DBeaver、Tableau、Power BI——開箱即用。</li><li><strong>JDBC</strong>——可直接用於任何 Java/JVM 應用程式、ETL 管線，或支援 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>——為 ADBC 客戶端提供欄式串流——毋須逐列重新編碼，專為大型結果集而設。</li><li><strong>DuckDB · airport</strong>——從 DuckDB 用 ATTACH 連接 Provisa，原地查詢受管治的聯邦數據。</li></ul>"},
-      "step7": {"title": "GraphQL（七種介面之二）", "description": "◈ 同一個查詢，以 GraphQL 表達：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>對你的關係進行分組與彙總——🎯 單一端點，📖 自我描述的結構描述。</p><p>🔌 可從<strong>任何 GraphQL 客戶端</strong>存取——Apollo、Relay、urql——啟用聯邦功能後，更可將 Provisa 作為子圖加入 <strong>Apollo 超級圖（supergraph）</strong>，讓你的聯邦模型與現有圖譜一併組合。</p>"},
-      "step8": {"title": "Cypher（七種介面之三）", "description": "🕸️ 用 Cypher 將聯邦模型當作圖譜來遍歷：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ 這個遍歷可<strong>跨數據來源</strong>執行——毋須單一圖數據庫。</p><p>🔌 而任何 <strong>Bolt</strong> 客戶端——Neo4j Browser、Bloom——都能透過線路執行同樣的遍歷，毋須更改程式碼。</p>"},
-      "step9": {"title": "gRPC（七種介面之四）", "description": "⚙️ 每個已登記的實體同時也是一個 gRPC 服務：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>可從任何 gRPC 客戶端呼叫——📐 強型別，🚀 高吞吐量。</p>"},
-      "step10": {"title": "JSON:API（七種介面之五）", "description": "🧩 一個符合規格的 JSON:API 介面：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 分頁與 🔍 篩選開箱即用。</p>"},
-      "step11": {"title": "OpenAPI / REST（七種介面之六）", "description": "🌐 還有一個以 OpenAPI 描述的純 REST 端點：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 描述完整，任何 REST 客戶端或程式碼產生器都可以使用。</p>"},
-      "step12": {"title": "MCP（七種介面之七）", "description": "🤖 第七種介面讓代理程式（agent）能<strong>對你的數據進行推理</strong>。它驅動的是同一套受管治工具——搜尋目錄、描述表格、執行 SQL、追蹤關係——並將它們<em>串連</em>起來，回答單一查詢無法解答的問題，每次呼叫都受<strong>你</strong>角色的治理規則約束。<p>🔌 同一個 <strong>MCP 伺服器</strong>可接入 Claude Desktop、Claude Code，或任何 MCP 客戶端，讓代理程式以受管治的方式探索並推理你的模型。</p><p>🔑 使用你自己的 LLM 金鑰；此互動範例為預錄示範。</p><p>還剩最後一種介面——就是那個能替你寫出其餘七種的介面。→</p>"},
-      "step13": {"title": "直接問——那個替你寫出全部七種的介面", "description": "💬 <em>「顯示每個使用者的查詢數目」</em><p>🎁 這就是壓軸功能：<strong>你根本不必學習前面那七種介面。</strong>用日常英語提問，Provisa 會將你的問題同時編譯成每一種查詢語言——下面每個面板，都是同一句話對應的 SQL、GraphQL、Cypher、gRPC、JSON:API 及 REST 版本。</p><p>用你的工具已經懂的介面——或者全部略過，直接發問。</p><p>🔑 即時的自然語言查詢使用你自己的 LLM 金鑰；此範例為預錄示範。</p><p>✅ 一個模型，<strong>八種介面</strong>——七種用來查詢，還有一種能寫出全部七種。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"},
-      "step14": {"title": "這就是五分鐘的核心內容", "description": "✅ 你剛才完整看過一次：<strong>一個數據來源，用七種方式查詢——或者直接用日常英語提問。</strong>這就是整個承諾——你完全可以在此打住。<p>隨時按 <kbd>Esc</kbd>；🧭 上方的指南針隨時可重播這個導覽。</p><p>👉 接下來的一切，都是 <strong>Provisa 如何隨你成長</strong>——是選用的深化功能，不是必要步驟：</p><ul><li>🔗 將跨數據來源的表格連結成一個<strong>圖譜</strong></li><li>🔐 對它進行<strong>治理</strong>——角色、行級安全、欄位遮罩</li><li>🏗️ 建構一條<strong>交付管線</strong>——檢視、具體化數據倉庫、血緣</li><li>⚙️ <strong>營運</strong>它——選擇引擎，部署到生產環境</li></ul><p>要繼續嗎？→</p>"},
-      "step15": {"title": "連接圖譜", "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>關係將表格跨數據來源連結起來——即使是跨不同數據庫——把扁平的表格變成一個可遍歷的<strong>圖譜</strong>。</p><p>🛡️ 這些關係也可以被<strong>強制執行</strong>：給予使用者自由探索的空間，同時設有合理的防護措施。</p>"},
-      "step16": {"title": "定義關係", "description": "🔗 將來源欄位對應到目標欄位，並設定<strong>基數</strong>：<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ 也可以讓 Provisa 用 AI 為你<strong>推斷</strong>關係。</p>"},
-      "step17": {"title": "查看 ERD", "description": "實體關係圖（ERD）會呈現你整個聯邦模型——每個已登記的表格，以及它們之間的關係。"},
-      "step18": {"title": "存取控制（RBAC）", "description": "🔐 登記表格時會設定逐欄位的存取權限，並直接連結到角色：<div class='tour-tags'><span>👁️ 讀取</span><span>✏️ 寫入</span></div><p>這就是<strong>角色型存取控制</strong>——而角色本身則在「安全」頁面定義。</p>"},
-      "step19": {"title": "行級安全", "description": "🔎 有了角色之後，可以再細緻一點——用屬性型判斷式限制每個角色可以看到哪些<strong>資料列</strong>：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 由數據驅動，並按資料列逐一強制執行——涵蓋每個數據來源與每種協定。</p>"},
-      "step20": {"title": "建構你的交付管線", "description": "🔧 直接在這裡組合整條交付管線——毋須另一套 ETL 工具：<ul><li>👁️ <strong>檢視</strong>——建立於任何表格之上，可為暫時性或具體化，也可檢視之上再建檢視。</li><li>⚡ <strong>命令</strong>——受管治、有型別的操作（HTTP 服務、Python 模型、預存程序），身兼兩職：既是管線中的一個步驟，<em>也</em>是一個一流的 API，供下游應用程式與代理程式呼叫以操作你的數據——可從每種介面呼叫，並全面受管治與追蹤。</li><li>⭐ <strong>實體與事實</strong>——只需宣告一次維度或事實，Provisa 即可產生數據倉庫，不受方法論限制：3NF（Inmon）、星型結構描述（Kimball），或 Data Vault。</li><li>📏 <strong>指標</strong>——受管治的彙總定義（例如「淨收入」），粒度於查詢時綁定。定義一次；每種介面——SQL、GraphQL、AI 代理程式——都算出同一個數值，而建構於指標之上的檢視，會在指標定義變更時自動重新產生。</li></ul>"},
-      "step21": {"title": "具體化為即時數據倉庫", "description": "🏗️ 將檢視具體化，即可獲得一個完整的 ETL 引擎，以宣告方式而非撰寫指令碼方式建立：<ul><li>📅 按真實<strong>營業日曆</strong>執行的<strong>排程快照</strong>——重複規則、假期、營業日限制，以及結算寬限期，讓它按<em>你</em>的報表日曆觸發，而不只是照著時鐘。</li><li>🗄️ <strong>儲存方式……</strong>——<strong>取代</strong>、<strong>更新插入（upsert）</strong>，或用<strong>快照</strong>／<strong>差異（delta）</strong>保留歷史，並支援增量運算。</li><li>🕰️ <strong>時光回溯</strong>——雙時態歷史記錄；可查詢模型在任何時間點的狀態。</li><li>⚡ 以防彈跳（debounce）方式進行<strong>近乎即時</strong>的重新整理，或按新鮮度驅動、隨輸入變化重新發佈。</li></ul>"},
-      "step22": {"title": "血緣，從頭到尾", "description": "🧬 <strong>血緣並非黑箱。</strong>這是一個真實查詢，經過分析後的結果。每個結果欄位都會沿其轉換過程回溯——追蹤 <code>name_upper</code>——並連結到餵入它的確切<strong>來源欄位</strong>。<p>命令以宣告方式定義，因此每一步都會被記錄下來；具體化檢視按定義即保留完整血緣。這個過程不會實際執行任何東西——查詢只是被分析而已。</p><p>→ 最後一站：在生產環境中營運它。</p>"},
-      "step23": {"title": "營運它", "description": "「管理」頁面負責營運整個平台：<ul><li>⚙️ 選擇並設定你的<strong>聯邦引擎</strong>——可插拔：DuckDB（內嵌、零設定）、Trino、PostgreSQL、ClickHouse，或以雲端數據倉庫作為一流引擎（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。隨時可以更換——模型、介面，以及在其上的治理規則都不會改變。</li><li>🔗 無論你選用哪個引擎，都會帶來其本身的<strong>即時外部數據</strong>連接能力——Parquet、Iceberg、Delta 原地讀取，零複製，憑證自動佈建。任何無法即時連接的，都會落地成受管治的複本。</li><li>🔑 管理<strong>加密金鑰</strong>並設定<strong>驗證提供者</strong></li><li>📊 完整的<strong>可觀測性</strong>——可導向任何 OpenTelemetry 收集器，進行企業級追蹤管理</li></ul><p>同一個模型可從本機開發環境走到生產環境，每一步都經過驗證——毋須重寫：</p><ul><li><strong>開發</strong>——內嵌式 DuckDB，毋須 Docker。在本機建構與驗證。</li><li><strong>大規模驗證</strong>——Docker，啟動引擎與可觀測性堆疊。在正式引擎上驗證行為。</li><li><strong>晉升</strong>——指向你自己的基礎設施，透過 CI/CD 建構，部署到生產環境。</li></ul>"},
-      "step24": {"title": "導覽結束——現在輪到你了", "description": "🎉 你已回到起點。現在讓它成為屬於你的一套：<ul><li>1️⃣ 登記你其中一個真實的<strong>數據來源</strong></li><li>2️⃣ 公開幾個<strong>表格</strong>，畫出一兩個<strong>關係</strong></li><li>3️⃣ 在「探索」中用任何語言查詢：</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>把 <kbd>pgwire</kbd> 或 <kbd>Bolt</kbd> 工具指向它——一切都能直接運作。</p><p>📚 「<strong>文件</strong>」分頁有完整指南。🧭 上方的指南針隨時可重播這個導覽。祝你使用 Provisa 愉快。</p>"}
+      "step0": {
+        "title": "歡迎，一起來導覽",
+        "description": "🧭 隨時可按這個指南針重新開啟導覽。想離開就離開——按一下應用程式或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是一個受管治的聯邦數據查詢編譯器，本身不會經手數據路徑。</p><p>🎯 <strong>整個核心其實只是一個小練習：</strong>連接幾個數據庫，然後用<strong>七種方式</strong>查詢——或者略過語法，直接用日常英語提問。大約五分鐘，<strong>就在你的桌面上完成</strong>：毋須伺服器，毋須架設基礎設施（那是之後、當你準備好時才需要的）。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>在那之後的<em>一切</em>——更多數據來源、聯邦、檔案、關係、檢視、排程管線——都是你如何隨平台<strong>成長</strong>，而不是第一天就要用到的東西。我們會標明核心到哪裡結束。</p><p>準備好了嗎？我們先連接一個數據來源。→</p>"
+      },
+      "step1": {
+        "title": "由「數據來源」開始",
+        "description": "所有你想聯邦查詢的對象都在這裡登記：<div class='tour-tags'><span>🗄️ 數據庫</span><span>🏢 數據倉庫</span><span>🔌 API</span><span>📄 檔案</span><span>☁️ SaaS</span></div><p>Provisa 將它們統一成一個可查詢的<strong>圖譜</strong>。</p>"
+      },
+      "step2": {
+        "title": "登記數據來源",
+        "description": "➕ 新連接由這個按鈕開始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及 30 多種其他類型。"
+      },
+      "step3": {
+        "title": "35 種以上的數據來源類型",
+        "description": "一份連接器清單涵蓋所有類別：<ul><li><strong>數據庫</strong>——PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>雲端數據倉庫</strong>——Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析／OLAP</strong>——ClickHouse、Druid、Pinot</li><li><strong>數據湖與檔案</strong>——Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL 與圖數據庫</strong>——MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong>——REST、GraphQL、gRPC</li><li><strong>串流</strong>——Kafka</li><li><strong>企業級 SaaS</strong>——SharePoint、Splunk，另加政府數據訂閱</li></ul>選一種，填寫連接資訊，儲存即可。這份清單並非固定——原生聯邦引擎是<strong>可擴充</strong>的：只要在設定中宣告自訂的 Postgres FDW 或 DuckDB 擴充功能，Provisa 就能連接新的數據來源類型，毋須撰寫程式碼。"
+      },
+      "step4": {
+        "title": "一切都會變成一個表格",
+        "description": "無論數據來源是甚麼——Mongo 集合、Kafka 主題、REST 端點、圖數據——Provisa 都會將它分解成一個二維<strong>表格</strong>：以統一的形態，跨所有數據來源進行查詢。<p>📁 將表格分組成<strong>領域</strong>，每個領域由一位數據管家負責，隨著模型演變守護其品質。</p>"
+      },
+      "step5": {
+        "title": "選取欄位與原則",
+        "description": "選擇數據來源、結構描述及表格，然後選取欄位——每個欄位都有自己的原則：<ul><li>🎭 <strong>遮罩</strong>——按角色遮蔽數值</li><li>👁️ <strong>可見性</strong>——顯示或隱藏欄位</li><li>🏷️ <strong>別名</strong>——為模型重新命名</li></ul><p>設定就是這麼簡單——一個數據來源加幾個表格。🚀 現在來查詢一下。→</p>"
+      },
+      "step6": {
+        "title": "SQL（七種介面之一）",
+        "description": "SQL 位於 SQL 探索器中。標準 SQL 可跨所有數據來源聯邦查詢——在同一句陳述式中將 Postgres 連接到 Mongo 再連接到 CSV。而模型自身的中繼數據，以及每一項活動追蹤，本身在這裡也是可查詢的表格——可以直接將稽核記錄或血緣連接到即時數據。<p>🔌 不只這個探索器——同一套受管治的 SQL 可透過多種線路協定運作；你的工具用哪種協定就用哪種：</p><ul><li><strong>pgwire</strong>——所有 Postgres 相容的客戶端——psql、DBeaver、Tableau、Power BI——開箱即用。</li><li><strong>JDBC</strong>——可直接用於任何 Java/JVM 應用程式、ETL 管線，或支援 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>——為 ADBC 客戶端提供欄式串流——毋須逐列重新編碼，專為大型結果集而設。</li><li><strong>DuckDB · airport</strong>——從 DuckDB 用 ATTACH 連接 Provisa，原地查詢受管治的聯邦數據。</li></ul>"
+      },
+      "step7": {
+        "title": "GraphQL（七種介面之二）",
+        "description": "◈ 同一個查詢，以 GraphQL 表達：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>對你的關係進行分組與彙總——🎯 單一端點，📖 自我描述的結構描述。</p><p>🔌 可從<strong>任何 GraphQL 客戶端</strong>存取——Apollo、Relay、urql——啟用聯邦功能後，更可將 Provisa 作為子圖加入 <strong>Apollo 超級圖（supergraph）</strong>，讓你的聯邦模型與現有圖譜一併組合。</p>"
+      },
+      "step8": {
+        "title": "Cypher（七種介面之三）",
+        "description": "🕸️ 用 Cypher 將聯邦模型當作圖譜來遍歷：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ 這個遍歷可<strong>跨數據來源</strong>執行——毋須單一圖數據庫。</p><p>🔌 而任何 <strong>Bolt</strong> 客戶端——Neo4j Browser、Bloom——都能透過線路執行同樣的遍歷，毋須更改程式碼。</p>"
+      },
+      "step9": {
+        "title": "gRPC（七種介面之四）",
+        "description": "⚙️ 每個已登記的實體同時也是一個 gRPC 服務：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>可從任何 gRPC 客戶端呼叫——📐 強型別，🚀 高吞吐量。</p>"
+      },
+      "step10": {
+        "title": "JSON:API（七種介面之五）",
+        "description": "🧩 一個符合規格的 JSON:API 介面：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 分頁與 🔍 篩選開箱即用。</p>"
+      },
+      "step11": {
+        "title": "OpenAPI / REST（七種介面之六）",
+        "description": "🌐 還有一個以 OpenAPI 描述的純 REST 端點：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 描述完整，任何 REST 客戶端或程式碼產生器都可以使用。</p>"
+      },
+      "step12": {
+        "title": "MCP（七種介面之七）",
+        "description": "🤖 第七種介面讓代理程式（agent）能<strong>對你的數據進行推理</strong>。它驅動的是同一套受管治工具——搜尋目錄、描述表格、執行 SQL、追蹤關係——並將它們<em>串連</em>起來，回答單一查詢無法解答的問題，每次呼叫都受<strong>你</strong>角色的治理規則約束。<p>🔌 同一個 <strong>MCP 伺服器</strong>可接入 Claude Desktop、Claude Code，或任何 MCP 客戶端，讓代理程式以受管治的方式探索並推理你的模型。</p><p>🔑 使用你自己的 LLM 金鑰；此互動範例為預錄示範。</p><p>還剩最後一種介面——就是那個能替你寫出其餘七種的介面。→</p>"
+      },
+      "step13": {
+        "title": "直接問——那個替你寫出全部七種的介面",
+        "description": "💬 <em>「顯示每個使用者的查詢數目」</em><p>🎁 這就是壓軸功能：<strong>你根本不必學習前面那七種介面。</strong>用日常英語提問，Provisa 會將你的問題同時編譯成每一種查詢語言——下面每個面板，都是同一句話對應的 SQL、GraphQL、Cypher、gRPC、JSON:API 及 REST 版本。</p><p>用你的工具已經懂的介面——或者全部略過，直接發問。</p><p>🔑 即時的自然語言查詢使用你自己的 LLM 金鑰；此範例為預錄示範。</p><p>✅ 一個模型，<strong>八種介面</strong>——七種用來查詢，還有一種能寫出全部七種。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+      },
+      "step14": {
+        "title": "這就是五分鐘的核心內容",
+        "description": "✅ 你剛才完整看過一次：<strong>一個數據來源，用七種方式查詢——或者直接用日常英語提問。</strong>這就是整個承諾——你完全可以在此打住。<p>隨時按 <kbd>Esc</kbd>；🧭 上方的指南針隨時可重播這個導覽。</p><p>👉 接下來的一切，都是 <strong>Provisa 如何隨你成長</strong>——是選用的深化功能，不是必要步驟：</p><ul><li>🔗 將跨數據來源的表格連結成一個<strong>圖譜</strong></li><li>🔐 對它進行<strong>治理</strong>——角色、行級安全、欄位遮罩</li><li>🏗️ 建構一條<strong>交付管線</strong>——檢視、具體化數據倉庫、血緣</li><li>⚙️ <strong>營運</strong>它——選擇引擎，部署到生產環境</li></ul><p>要繼續嗎？→</p>"
+      },
+      "step15": {
+        "title": "連接圖譜",
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>關係將表格跨數據來源連結起來——即使是跨不同數據庫——把扁平的表格變成一個可遍歷的<strong>圖譜</strong>。</p><p>🛡️ 這些關係也可以被<strong>強制執行</strong>：給予使用者自由探索的空間，同時設有合理的防護措施。</p>"
+      },
+      "step16": {
+        "title": "定義關係",
+        "description": "🔗 將來源欄位對應到目標欄位，並設定<strong>基數</strong>：<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ 也可以讓 Provisa 用 AI 為你<strong>推斷</strong>關係。</p>"
+      },
+      "step17": {
+        "title": "查看 ERD",
+        "description": "實體關係圖（ERD）會呈現你整個聯邦模型——每個已登記的表格，以及它們之間的關係。"
+      },
+      "step18": {
+        "title": "存取控制（RBAC）",
+        "description": "🔐 登記表格時會設定逐欄位的存取權限，並直接連結到角色：<div class='tour-tags'><span>👁️ 讀取</span><span>✏️ 寫入</span></div><p>這就是<strong>角色型存取控制</strong>——而角色本身則在「安全」頁面定義。</p>"
+      },
+      "step19": {
+        "title": "行級安全",
+        "description": "🔎 有了角色之後，可以再細緻一點——用屬性型判斷式限制每個角色可以看到哪些<strong>資料列</strong>：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 由數據驅動，並按資料列逐一強制執行——涵蓋每個數據來源與每種協定。</p>"
+      },
+      "step20": {
+        "title": "建構你的交付管線",
+        "description": "🔧 直接在這裡組合整條交付管線——毋須另一套 ETL 工具：<ul><li>👁️ <strong>檢視</strong>——建立於任何表格之上，可為暫時性或具體化，也可檢視之上再建檢視。</li><li>⚡ <strong>命令</strong>——受管治、有型別的操作（HTTP 服務、Python 模型、預存程序），身兼兩職：既是管線中的一個步驟，<em>也</em>是一個一流的 API，供下游應用程式與代理程式呼叫以操作你的數據——可從每種介面呼叫，並全面受管治與追蹤。</li><li>⭐ <strong>實體與事實</strong>——只需宣告一次維度或事實，Provisa 即可產生數據倉庫，不受方法論限制：3NF（Inmon）、星型結構描述（Kimball），或 Data Vault。</li><li>📏 <strong>指標</strong>——受管治的彙總定義（例如「淨收入」），粒度於查詢時綁定。定義一次；每種介面——SQL、GraphQL、AI 代理程式——都算出同一個數值，而建構於指標之上的檢視，會在指標定義變更時自動重新產生。</li></ul>"
+      },
+      "step21": {
+        "title": "具體化為即時數據倉庫",
+        "description": "🏗️ 將檢視具體化，即可獲得一個完整的 ETL 引擎，以宣告方式而非撰寫指令碼方式建立：<ul><li>📅 按真實<strong>營業日曆</strong>執行的<strong>排程快照</strong>——重複規則、假期、營業日限制，以及結算寬限期，讓它按<em>你</em>的報表日曆觸發，而不只是照著時鐘。</li><li>🗄️ <strong>儲存方式……</strong>——<strong>取代</strong>、<strong>更新插入（upsert）</strong>，或用<strong>快照</strong>／<strong>差異（delta）</strong>保留歷史，並支援增量運算。</li><li>🕰️ <strong>時光回溯</strong>——雙時態歷史記錄；可查詢模型在任何時間點的狀態。</li><li>⚡ 以防彈跳（debounce）方式進行<strong>近乎即時</strong>的重新整理，或按新鮮度驅動、隨輸入變化重新發佈。</li></ul>"
+      },
+      "step22": {
+        "title": "血緣，從頭到尾",
+        "description": "🧬 <strong>血緣並非黑箱。</strong>這是一個真實查詢，經過分析後的結果。每個結果欄位都會沿其轉換過程回溯——追蹤 <code>name_upper</code>——並連結到餵入它的確切<strong>來源欄位</strong>。<p>命令以宣告方式定義，因此每一步都會被記錄下來；具體化檢視按定義即保留完整血緣。這個過程不會實際執行任何東西——查詢只是被分析而已。</p><p>→ 最後一站：在生產環境中營運它。</p>"
+      },
+      "step23": {
+        "title": "營運它",
+        "description": "「管理」頁面負責營運整個平台：<ul><li>⚙️ 選擇並設定你的<strong>聯邦引擎</strong>——可插拔：DuckDB（內嵌、零設定）、Trino、PostgreSQL、ClickHouse，或以雲端數據倉庫作為一流引擎（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。隨時可以更換——模型、介面，以及在其上的治理規則都不會改變。</li><li>🔗 無論你選用哪個引擎，都會帶來其本身的<strong>即時外部數據</strong>連接能力——Parquet、Iceberg、Delta 原地讀取，零複製，憑證自動佈建。任何無法即時連接的，都會落地成受管治的複本。</li><li>🔑 管理<strong>加密金鑰</strong>並設定<strong>驗證提供者</strong></li><li>📊 完整的<strong>可觀測性</strong>——可導向任何 OpenTelemetry 收集器，進行企業級追蹤管理</li></ul><p>同一個模型可從本機開發環境走到生產環境，每一步都經過驗證——毋須重寫：</p><ul><li><strong>開發</strong>——內嵌式 DuckDB，毋須 Docker。在本機建構與驗證。</li><li><strong>大規模驗證</strong>——Docker，啟動引擎與可觀測性堆疊。在正式引擎上驗證行為。</li><li><strong>晉升</strong>——指向你自己的基礎設施，透過 CI/CD 建構，部署到生產環境。</li></ul>"
+      },
+      "step24": {
+        "title": "導覽結束——現在輪到你了",
+        "description": "🎉 你已回到起點。現在讓它成為屬於你的一套：<ul><li>1️⃣ 登記你其中一個真實的<strong>數據來源</strong></li><li>2️⃣ 公開幾個<strong>表格</strong>，畫出一兩個<strong>關係</strong></li><li>3️⃣ 在「探索」中用任何語言查詢：</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>把 <kbd>pgwire</kbd> 或 <kbd>Bolt</kbd> 工具指向它——一切都能直接運作。</p><p>📚 「<strong>文件</strong>」分頁有完整指南。🧭 上方的指南針隨時可重播這個導覽。祝你使用 Provisa 愉快。</p>"
+      }
     }
   }
 }
