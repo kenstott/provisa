@@ -120,6 +120,12 @@ export default defineConfig((config) => ({
   },
   server: {
     port: 3000,
+    // REQ-1348: cross-subdomain sign-in only exists between two hosts under one base domain, so it
+    // cannot be exercised on `localhost` — the relay's `isSiblingOrigin` check needs a real base
+    // domain to compare. The e2e maps `*.provisa.test` and `*.example.test` (the non-sibling case)
+    // to 127.0.0.1 with Chromium's host-resolver-rules; Vite rejects a Host it was not told to
+    // serve, so both zones are named here. `.test` is reserved (RFC 6761) and resolves nowhere.
+    allowedHosts: [".provisa.test", ".example.test"],
     watch: {
       // macOS creates binary ._* AppleDouble files on exFAT volumes — exclude from watching
       ignored: ["**/._*"],
@@ -142,7 +148,11 @@ export default defineConfig((config) => ({
       },
       "/health": "http://127.0.0.1:8000",
       "/setup": "http://127.0.0.1:8000",
-      "/auth": "http://127.0.0.1:8000",
+      // REQ-1348: the trailing slash matters. Vite matches a proxy key as a path PREFIX, so a bare
+      // "/auth" also captured "/auth-relay.html" — the control plane's cross-subdomain token
+      // endpoint — and forwarded it to the API, which has no such route. Every auth endpoint lives
+      // under /auth/ (auth_router's prefix + a path), so the relay is the only thing this excludes.
+      "/auth/": "http://127.0.0.1:8000",
     },
   },
 }));

@@ -215,11 +215,16 @@ class TestFederationEngine:
         monkeypatch.setenv("PROVISA_ENGINE", "trino")
         body = (await client.get("/admin/federation-engine")).json()
         assert body["env_pinned_engine"] == "trino"
-        assert "$PROVISA_ENGINE" in body["restart_required_note"]
+        # The pin is reported as data only. FederationEngineTab renders its own translated alert
+        # from `env_pinned_engine`, so restating the pin in the server's note put two pin banners
+        # on the page — one of them un-translatable server prose.
+        pinned_note = body["restart_required_note"]
+        assert "PROVISA_ENGINE" not in pinned_note
 
         monkeypatch.delenv("PROVISA_ENGINE")
         body = (await client.get("/admin/federation-engine")).json()
         assert body["env_pinned_engine"] is None
+        assert body["restart_required_note"] == pinned_note
 
     async def test_set_federation_engine_unknown(self, client):
         resp = await client.put("/admin/federation-engine", json={"engine": "no-such-engine-xyz"})

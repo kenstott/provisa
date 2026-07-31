@@ -142,3 +142,6 @@ docs_site/
 site/docs/
 site/.wrangler/
 .test-all-run.log
+
+# Terraform plan binaries embed resolved variable values, including the Cloud SQL password.
+*.tfplan

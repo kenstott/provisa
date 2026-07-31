@@ -566,12 +566,10 @@ async def get_federation_engine():  # REQ-916
     # precedence (arg > $PROVISA_ENGINE > persisted field > duckdb). Reporting the persisted field
     # would lie about a pinned deployment, so both are returned and the tab edits `persisted`.
     env_pinned = os.environ.get("PROVISA_ENGINE")
+    # The pin is reported as data (`env_pinned_engine`) and the tab renders its own alert for it
+    # (FederationEngineTab's `federationEngineTab.envPinned`). Restating it here too put two pin
+    # banners on the page, one of them un-translatable because it is server prose.
     note = "Changing the federation engine takes effect after the service is restarted."
-    if env_pinned:
-        note = (
-            f"$PROVISA_ENGINE pins this deployment to {env_pinned!r}; the selection below applies "
-            "after the service is restarted with the pin removed."
-        )
 
     # Return current values for every config key any engine declares (each is a ProvisaConfig
     # field), so the tab can render per-engine fields — connection AND execution tuning — generically.

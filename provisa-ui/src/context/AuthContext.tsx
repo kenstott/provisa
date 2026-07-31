@@ -22,26 +22,33 @@ import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys"
 // middleware honours X-Provisa-Role only for roles the caller is actually assigned, so claiming
 // platform_admin here would 403 every request. platform_admin carries only the control-plane bypass:
 // it grants no capability the data surfaces gate on and names no column grant.
-const DEFAULT_ADMIN_ROLE: Role = {
+//
+// REQ-1352: this list is org_admin's schema.sql seed, verbatim. It is a second copy of a definition
+// that belongs to the seed alone, so it drifts silently — it had gained `ad_hoc_query` and
+// `read_restricted`, which the seed does not grant, and never gained the REQ-1349 pair
+// `org_settings`/`observability`, so a dev-mode org administrator saw no Admin navigation group at
+// all. `authContextDefaultAdminRole.test.ts` pins it to the seed so the next divergence fails a test
+// instead of removing a tab.
+export const DEFAULT_ADMIN_ROLE: Role = {
   id: "org_admin",
   capabilities: [
     "source_registration",
     "table_registration",
     "create_relationship",
-    "access_config",
-    "query_development",
+    "create_view",
     "approve_view",
     "approve_relationship",
-    "create_view",
-    "column_grant",
+    "access_config",
     "user_management",
     "masking_config",
+    "column_grant",
     "view_governance",
+    "query_development",
     "full_results",
-    "usage",
-    "read_restricted",
-    "ad_hoc_query",
     "write",
+    "usage",
+    "org_settings",
+    "observability",
   ] as Capability[],
   domain_access: ["*"],
 };
