@@ -78,7 +78,7 @@ function GuidanceBanner() {
           <Text size="sm" c="dimmed">
             {t("nlPage.guideDesc")}
           </Text>
-          <Stack component="ul" gap={4} style={{ margin: 0, paddingLeft: 18 }}>
+          <Stack component="ul" gap={4} style={{ margin: 0, paddingInlineStart: 18 }}>
             <Text component="li" size="sm" c="dimmed">
               <Trans i18nKey="nlPage.guideRuleNames" t={t}>
                 Use the names of your entities, not synonyms (<Text component="em" fs="normal" c="blue" span>Orders</Text>, not <Text component="em" fs="normal" c="blue" span>purchases</Text>)
@@ -94,7 +94,7 @@ function GuidanceBanner() {
           <Text size="xs" fw={700} tt="uppercase" c="dimmed">
             {t("nlPage.guideExamplesLabel")}
           </Text>
-          <Stack component="ul" gap={4} style={{ margin: 0, paddingLeft: 18 }}>
+          <Stack component="ul" gap={4} style={{ margin: 0, paddingInlineStart: 18 }}>
             {examples.map((ex) => (
               <Text component="li" key={ex} size="sm" fs="italic" c="indigo">
                 {ex}

@@ -26,7 +26,7 @@ function StatusDot({ ok }: { ok: boolean | null }) {
         height: 10,
         borderRadius: "50%",
         background: color,
-        marginRight: "0.5rem",
+        marginInlineEnd: "0.5rem",
       }}
     />
   );

@@ -458,7 +458,7 @@ export function RelationshipsPage() {
                   : t("relationshipsPage.sortDescending")
                 : t("relationshipsPage.sortNone");
               return (
-                <Table.Th key={col} style={{ width, whiteSpace: "nowrap", ...(col === "source" ? { paddingLeft: "2rem" } : {}) }}>
+                <Table.Th key={col} style={{ width, whiteSpace: "nowrap", ...(col === "source" ? { paddingInlineStart: "2rem" } : {}) }}>
                   <Group gap={4} wrap="nowrap" component="span">
                     <button
                       type="button"

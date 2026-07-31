@@ -23,7 +23,7 @@ export function FieldLabel({
       <Text component="span" size="sm">
         {text}
         {required && (
-          <Text component="span" c="red" aria-hidden style={{ marginLeft: 2 }}>
+          <Text component="span" c="red" aria-hidden style={{ marginInlineStart: 2 }}>
             *
           </Text>
         )}

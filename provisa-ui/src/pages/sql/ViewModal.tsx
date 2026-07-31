@@ -139,7 +139,7 @@ export function ViewModal({
             {t("sqlViewModal.noPermissionNotice")}
           </Alert>
         )}
-        <Stack gap="sm" style={{ overflow: "auto", flex: 1, paddingRight: "1rem" }}>
+        <Stack gap="sm" style={{ overflow: "auto", flex: 1, paddingInlineEnd: "1rem" }}>
           <Group gap="sm" style={{ flexShrink: 0 }} grow>
             <TextInput
               label={t("sqlViewModal.alias")}

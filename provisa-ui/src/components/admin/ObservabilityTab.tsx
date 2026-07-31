@@ -170,7 +170,7 @@ function TraceFeed() {
       <Group flex={1} justify="flex-end" align="center" gap="0.4rem">
         <ActionIcon
           className="trace-pause-btn"
-          style={{ marginLeft: "0.5rem" }}
+          style={{ marginInlineStart: "0.5rem" }}
           onClick={() => setPaused((p) => !p)}
           aria-label={paused ? t("observabilityTab.resume") : t("observabilityTab.pause")}
           title={paused ? t("observabilityTab.resume") : t("observabilityTab.pause")}

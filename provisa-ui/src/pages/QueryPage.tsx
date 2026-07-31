@@ -269,7 +269,7 @@ const checkboxUnchecked = (
     viewBox="0 0 15 15"
     stroke="currentColor"
     fill="none"
-    style={{ marginRight: "var(--px-4)" }}
+    style={{ marginInlineEnd: "var(--px-4)" }}
   >
     <rect x="1.5" y="1.5" width="12" height="12" rx="1.5" strokeWidth="1.5" />
   </svg>
@@ -280,7 +280,7 @@ const checkboxChecked = (
     height={15}
     viewBox="0 0 15 15"
     fill="currentColor"
-    style={{ fill: "hsl(var(--color-info))", marginRight: "var(--px-4)" }}
+    style={{ fill: "hsl(var(--color-info))", marginInlineEnd: "var(--px-4)" }}
   >
     <rect x="1.5" y="1.5" width="12" height="12" rx="1.5" />
     <path

@@ -681,7 +681,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                     style={{
                       position: "absolute",
                       top: "0.4rem",
-                      right: "0.4rem",
+                      insetInlineEnd: "0.4rem",
                       opacity: 0,
                       transition: "opacity 0.15s",
                       background: "rgba(30,30,40,0.85)",
@@ -830,7 +830,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                         <Text
                           size="0.7rem"
                           c="dimmed"
-                          style={{ paddingRight: "0.75rem" }}
+                          style={{ paddingInlineEnd: "0.75rem" }}
                         >
                           {t("sqlModelingModal.execMs", { ms: execMs })}
                         </Text>

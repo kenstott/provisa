@@ -45,7 +45,7 @@ export function SchemaSidebar({
       style={{
         display: "flex",
         flexShrink: 0,
-        borderRight: "1px solid var(--border)",
+        borderInlineEnd: "1px solid var(--border)",
         position: "relative",
       }}
     >
@@ -62,7 +62,7 @@ export function SchemaSidebar({
           radius={0}
           style={{
             position: "absolute",
-            right: -13,
+            insetInlineEnd: -13,
             top: "50%",
             transform: "translateY(-50%)",
             zIndex: 30,
@@ -70,7 +70,7 @@ export function SchemaSidebar({
             height: 40,
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderLeft: "none",
+            borderInlineStart: "none",
             borderRadius: "0 4px 4px 0",
             color: "var(--text-muted)",
             fontSize: "0.55rem",
@@ -247,7 +247,7 @@ export function SchemaSidebar({
                               <Box
                                 style={{
                                   flexShrink: 0,
-                                  paddingRight: "0.35rem",
+                                  paddingInlineEnd: "0.35rem",
                                   color: "var(--primary)",
                                   opacity: 0.7,
                                   fontSize: "0.65rem",
@@ -303,7 +303,7 @@ export function SchemaSidebar({
                                       color: "var(--text-muted)",
                                       opacity: 0.5,
                                       fontFamily: "monospace",
-                                      paddingRight: "0.1rem",
+                                      paddingInlineEnd: "0.1rem",
                                     }}
                                   >
                                     {col.dataType}
@@ -331,7 +331,7 @@ export function SchemaSidebar({
                                     <Box
                                       style={{
                                         flexShrink: 0,
-                                        paddingRight: "0.5rem",
+                                        paddingInlineEnd: "0.5rem",
                                         color: "var(--text-muted)",
                                         opacity: 0.6,
                                         fontSize: "0.65rem",

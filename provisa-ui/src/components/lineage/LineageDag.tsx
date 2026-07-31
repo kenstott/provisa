@@ -223,7 +223,7 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
         style={{
           position: "absolute",
           top: 8,
-          right: 8,
+          insetInlineEnd: 8,
           display: "flex",
           gap: 4,
           opacity: hovered ? 1 : 0,

@@ -118,7 +118,7 @@ export function SchemaBrowser({
       style={{
         display: "flex",
         flexShrink: 0,
-        borderRight: "1px solid var(--border)",
+        borderInlineEnd: "1px solid var(--border)",
         position: "relative",
       }}
     >
@@ -131,7 +131,7 @@ export function SchemaBrowser({
         radius={0}
         style={{
           position: "absolute",
-          right: -13,
+          insetInlineEnd: -13,
           top: "50%",
           transform: "translateY(-50%)",
           zIndex: 30,
@@ -139,7 +139,7 @@ export function SchemaBrowser({
           height: 40,
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderLeft: "none",
+          borderInlineStart: "none",
           borderRadius: "0 4px 4px 0",
           color: "var(--text-muted)",
           fontSize: "0.55rem",
@@ -258,7 +258,7 @@ export function SchemaBrowser({
                               aria-hidden
                               style={{
                                 flexShrink: 0,
-                                marginRight: "0.35rem",
+                                marginInlineEnd: "0.35rem",
                                 color: "var(--accent)",
                                 opacity: 0.7,
                               }}
@@ -444,7 +444,7 @@ export function SchemaBrowser({
                                         aria-hidden
                                         style={{
                                           flexShrink: 0,
-                                          marginRight: "0.35rem",
+                                          marginInlineEnd: "0.35rem",
                                           color: "var(--primary)",
                                           opacity: 0.7,
                                         }}
@@ -533,7 +533,7 @@ export function SchemaBrowser({
                                               color: "var(--text-muted)",
                                               opacity: 0.5,
                                               fontFamily: "monospace",
-                                              paddingRight: "0.1rem",
+                                              paddingInlineEnd: "0.1rem",
                                             }}
                                           >
                                             {col.dataType}
@@ -547,7 +547,7 @@ export function SchemaBrowser({
                                             aria-hidden
                                             style={{
                                               flexShrink: 0,
-                                              marginRight: "0.5rem",
+                                              marginInlineEnd: "0.5rem",
                                               color: "var(--text-muted)",
                                               opacity: 0.6,
                                             }}

@@ -374,7 +374,7 @@ export function Sidebar({
                             >
                               {node.tableLabel}
                               {labelCounts[compoundLabel] !== undefined && (
-                                <span style={{ opacity: 0.7, fontSize: "0.7em", marginLeft: "0.25em" }}>
+                                <span style={{ opacity: 0.7, fontSize: "0.7em", marginInlineStart: "0.25em" }}>
                                   ({labelCounts[compoundLabel].toLocaleString()})
                                 </span>
                               )}

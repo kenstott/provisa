@@ -174,7 +174,7 @@ export function QueryBar({
         aria-pressed={autoImpute}
         title={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")}
         onClick={onToggleAutoImpute}
-        style={{ marginRight: 4, alignSelf: "stretch", height: "auto", width: 38 }}
+        style={{ marginInlineEnd: 4, alignSelf: "stretch", height: "auto", width: 38 }}
       >
         <CirclePlus size={16} aria-hidden />
       </ActionIcon>

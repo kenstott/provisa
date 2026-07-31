@@ -70,7 +70,7 @@
 
 .nl-guide-rules {
   margin: 0;
-  padding-left: 18px;
+  padding-inline-start: 18px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -97,7 +97,7 @@
 
 .nl-guide-examples {
   margin: 0;
-  padding-left: 18px;
+  padding-inline-start: 18px;
   display: flex;
   flex-direction: column;
   gap: 4px;

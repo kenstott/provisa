@@ -154,7 +154,7 @@ export function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: C
               c="var(--text-muted)"
               fz="0.6rem"
               ff="monospace"
-              style={{ opacity: 0.5, marginLeft: 4 }}
+              style={{ opacity: 0.5, marginInlineStart: 4 }}
             >
               {col.dataType}
             </Text>

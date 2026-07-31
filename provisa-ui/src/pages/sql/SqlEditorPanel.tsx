@@ -387,7 +387,7 @@ export function SqlEditorPanel({
           style={{
             position: "absolute",
             top: "0.4rem",
-            right: "4.2rem",
+            insetInlineEnd: "4.2rem",
             opacity: 0,
             transition: "opacity 0.15s",
             background: "rgba(30,30,40,0.85)",
@@ -414,7 +414,7 @@ export function SqlEditorPanel({
           style={{
             position: "absolute",
             top: "0.4rem",
-            right: "0.4rem",
+            insetInlineEnd: "0.4rem",
             opacity: 0,
             transition: "opacity 0.15s",
             background: "rgba(30,30,40,0.85)",

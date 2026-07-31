@@ -368,7 +368,7 @@ export function ResultsPanel({
                                   onMouseDown={(e) => handleResizeStart(c, e)}
                                   style={{
                                     position: "absolute",
-                                    right: 0,
+                                    insetInlineEnd: 0,
                                     top: 0,
                                     bottom: 0,
                                     width: "5px",
@@ -490,7 +490,7 @@ export function ResultsPanel({
                                   <div
                                     style={{
                                       position: "absolute",
-                                      left: 0,
+                                      insetInlineStart: 0,
                                       top: 0,
                                       bottom: 0,
                                       width: `${nullPct}%`,
@@ -592,7 +592,7 @@ export function ResultsPanel({
                                       <div
                                         style={{
                                           position: "absolute",
-                                          left: 0,
+                                          insetInlineStart: 0,
                                           top: 0,
                                           bottom: 0,
                                           width: `${barPct}%`,
@@ -614,7 +614,7 @@ export function ResultsPanel({
                                     >
                                       {value.slice(0, 22)}
                                     </span>
-                                    <span style={{ color: "var(--text-muted)", fontSize: "0.65rem", marginLeft: "auto", flexShrink: 0 }}>
+                                    <span style={{ color: "var(--text-muted)", fontSize: "0.65rem", marginInlineStart: "auto", flexShrink: 0 }}>
                                       ×{count}
                                     </span>
                                   </div>
@@ -658,7 +658,7 @@ export function ResultsPanel({
               <ul
                 style={{
                   margin: 0,
-                  paddingLeft: "1.25rem",
+                  paddingInlineStart: "1.25rem",
                   display: "flex",
                   flexDirection: "column",
                   gap: "0.3rem",
@@ -808,8 +808,8 @@ export function ResultsPanel({
                     key={i}
                     style={{
                       marginBottom: "0.75rem",
-                      borderLeft: "2px solid var(--primary)",
-                      paddingLeft: "0.75rem",
+                      borderInlineStart: "2px solid var(--primary)",
+                      paddingInlineStart: "0.75rem",
                     }}
                   >
                     <div

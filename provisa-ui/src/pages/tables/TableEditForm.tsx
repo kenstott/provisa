@@ -933,7 +933,7 @@ export function TableEditForm({
                   <Table.Td
                     colSpan={2}
                     style={{
-                      paddingLeft: "1.5rem",
+                      paddingInlineStart: "1.5rem",
                       color: "var(--text-muted)",
                       fontSize: "0.75rem",
                     }}

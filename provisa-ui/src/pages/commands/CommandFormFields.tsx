@@ -449,7 +449,7 @@ export function CommandFormFields({
             {/* REQ-1159: a dataset arg (table_ref/result_set) carries an IR-typed column contract. */}
             {form.actionType === "function" &&
               DATASET_ARG_KINDS.has(arg.argKind ?? "column_value") && (
-                <div style={{ marginLeft: 24, marginBottom: 12 }} data-testid={`dataset-columns-${i}`}>
+                <div style={{ marginInlineStart: 24, marginBottom: 12 }} data-testid={`dataset-columns-${i}`}>
                   <Title order={6} c="dimmed" mb={4}>
                     input dataset columns
                   </Title>

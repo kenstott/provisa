@@ -14,7 +14,7 @@
 }
 .driver-popover-description ul {
   margin: 8px 0 2px;
-  padding-left: 18px;
+  padding-inline-start: 18px;
 }
 .driver-popover-description li {
   margin: 3px 0;
@@ -48,7 +48,7 @@
 /* "Start" button — restarts the tour from step 0. Prepended into the footer's
  * button row and pushed to the left so it reads as separate from Back/Next. */
 .driver-popover-start-btn {
-  margin-right: auto;
+  margin-inline-end: auto;
   cursor: pointer;
   font-size: 13px;
   padding: 3px 10px;

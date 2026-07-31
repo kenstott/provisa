@@ -188,7 +188,7 @@ export function LineagePage(): React.ReactElement {
                 style={{
                   position: "absolute",
                   top: 4,
-                  right: 4,
+                  insetInlineEnd: 4,
                   zIndex: 1,
                   opacity: sqlHovered ? 1 : 0,
                   transition: "opacity 150ms ease",

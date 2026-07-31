@@ -297,7 +297,7 @@ export function ResultsPanel({
                       onMouseDown={(e) => handleResizeStart(c, e)}
                       style={{
                         position: "absolute",
-                        right: 0,
+                        insetInlineEnd: 0,
                         top: 0,
                         bottom: 0,
                         width: "5px",

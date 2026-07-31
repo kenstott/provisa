@@ -127,7 +127,7 @@ function SqlPanel({
               <span className="provisa-tools-chevron">{aliasesExpanded ? "▾" : "▸"}</span>
             </div>
             {aliasesExpanded && (
-              <ul style={{ margin: "4px 0 0 0", paddingLeft: 16, listStyle: "none" }}>
+              <ul style={{ margin: "4px 0 0 0", paddingInlineStart: 16, listStyle: "none" }}>
                 {compiled.column_aliases.map((a: { column: string; field_name: string }) => (
                   <li key={a.column}>
                     {a.column} → {a.field_name}

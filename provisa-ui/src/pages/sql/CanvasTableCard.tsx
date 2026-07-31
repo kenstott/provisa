@@ -174,7 +174,7 @@ export function CanvasTableCard({
                 background: selected ? "var(--primary)" : "transparent",
                 color: "#fff",
                 flexShrink: 0,
-                marginRight: 5,
+                marginInlineEnd: 5,
               }}
             >
               {selected && <Check size={9} strokeWidth={3} />}
@@ -194,7 +194,7 @@ export function CanvasTableCard({
                 c="var(--text-muted)"
                 fz="0.6rem"
                 ff="monospace"
-                style={{ opacity: 0.5, marginLeft: 4 }}
+                style={{ opacity: 0.5, marginInlineStart: 4 }}
               >
                 {col.dataType}
               </Text>

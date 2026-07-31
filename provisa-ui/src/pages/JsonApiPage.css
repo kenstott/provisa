@@ -15,7 +15,7 @@
   width: 260px;
   flex-shrink: 0;
   padding: 1rem;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -400,7 +400,7 @@
   display: flex;
   gap: 0.3rem;
   flex-wrap: wrap;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .jsonapi-rel-link {

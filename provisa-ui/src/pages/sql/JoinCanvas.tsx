@@ -459,7 +459,7 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
         >
           Clear
         </button>
-        <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginLeft: "0.5rem" }}>
+        <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginInlineStart: "0.5rem" }}>
           {canvasTables.length > 0
             ? `${canvasTables.length} table${canvasTables.length !== 1 ? "s" : ""}, ${canvasJoins.length} join${canvasJoins.length !== 1 ? "s" : ""}`
             : ""}
