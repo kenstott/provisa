@@ -74,7 +74,17 @@ async def get_customer_portal_url(customer_id: str) -> str:  # REQ-1075
 
 def verify_webhook_signature(raw_body: bytes, signature: str) -> bool:  # REQ-1075, REQ-074
     """Verify a Lemon Squeezy webhook: HMAC-SHA256 over the RAW request body keyed by
-    ``LEMONSQUEEZY_SIGNING_SECRET``, compared to the hex ``X-Signature`` header in constant time."""
-    secret = os.environ["LEMONSQUEEZY_SIGNING_SECRET"].encode()
+    ``LEMONSQUEEZY_SIGNING_SECRET``, compared to the hex ``X-Signature`` header in constant time.
+
+    A missing secret is a deployment misconfiguration, never a reason to accept the payload — it
+    raises. The bare ``os.environ[...]`` KeyError this replaces surfaced as an opaque 500 with
+    ``{"type": "KeyError"}`` and no indication of which variable was absent."""
+    configured = os.environ.get("LEMONSQUEEZY_SIGNING_SECRET")
+    if not configured:
+        raise RuntimeError(
+            "LEMONSQUEEZY_SIGNING_SECRET is not set — Lemon Squeezy webhooks cannot be "
+            "authenticated. Set it to the signing secret from the store's webhook settings."
+        )
+    secret = configured.encode()
     expected = hmac.new(secret, raw_body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature or "")

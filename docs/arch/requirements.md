@@ -382,11 +382,11 @@ SET LOCAL scopes app.tenant_id to the current database transaction. When the tra
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-TenantMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health, /docs, /openapi.json}`. Requests to these paths bypass tenant resolution entirely and do not require a JWT with a tenant_id claim.
+AuthMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health, /live, /ready, /data/openapi/*, /auth/login, /auth/provider-type, /auth/bootstrap-status, /setup/status}`. Requests to these paths bypass the bearer-token gate entirely and do not require a JWT. The set is exact — every entry is an unauthenticated hole, so an addition is a deliberate edit. [REQ-1355](#REQ-1355) moved this set out of TenantMiddleware, which was registered behind a flag that was always False at app-factory time and therefore never ran, leaving the billing webhook to 401 on the auth gate.
 
-**Use case:** Skip-path exemptions allow Lemon Squeezy billing webhooks, health checks, and OpenAPI docs to function without tenant JWTs while all other paths enforce tenant isolation.
+**Use case:** Skip-path exemptions allow Lemon Squeezy billing webhooks (which authenticate by HMAC signature, not a bearer token), health/liveness probes, the pre-login provider probes, and OpenAPI docs to function without a JWT while all other paths enforce authentication.
 
-**Code:** `provisa/api/middleware/tenant_middleware.py`
+**Code:** `provisa/auth/middleware.py`
 
 **Tests:** `tests/e2e/test_security.py`, `tests/unit/test_tenancy_requirements.py`, `tests/integration/test_security_integration_extra.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
 
@@ -13867,3 +13867,43 @@ Trino source-catalog registration drops and recreates the catalog rather than sk
 **Code:** `provisa/core/catalog.py`, `provisa/core/trino_system_catalogs.py`
 
 **Tests:** `tests/unit/test_source_catalog_refresh.py`, `tests/unit/test_trino_system_catalogs.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1355 · Tenancy Architecture {#REQ-1355}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+
+Org is the canonical tenancy subject in Provisa; "tenant" terminology is retired. The legacy tenants/tenant_config tables are not a separate subject but attributes of orgs. Billing fields (plan, ls_customer_id, ls_subscription_id, kms_key_arn) and tenant_config migrate to orgs; org resolution has one path (OrgRoutingMiddleware only). Naming: tenant_db → org_db, tenant_id → org_id, TenantMiddleware → retired.
+
+**Use case:** The two nominal org resolution paths were not merely ambiguous — neither ran. Both TenantMiddleware and _OrgRoutingMiddleware were registered inside create_app behind `if state.multitenancy:`, and that flag is assigned in _load_and_build, which lifespan invokes only after create_app returns; both entrypoints use uvicorn factory mode, so the guard always read the False default. With no request-lifetime binder for current_org, AppState._active_runtime fell through to the DEFAULT org's runtime on every authenticated HTTP request, so a member of one org read another org's data plane. The same dead guard hid the control-plane router (404 on every endpoint) and TenantMiddleware's skip-path set (the Lemon Squeezy webhook 401'd before its signature was checked). One canonical subject, one resolution path, and no create_app branch on a flag that is unset at factory time.
+
+**Code:** `provisa/core/schema_admin.py`, `provisa/auth/middleware.py`, `provisa/api/app.py`, `provisa/core/repositories/org.py`
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-1356 · Internationalization {#REQ-1356}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+The Provisa UI ships 13 locale catalogs: en (source of truth), es, fr, de, nl, he, ja, zh (Simplified), zh-HK (Traditional/HK with exact-tag matching before base zh fallback), ru, it, pt, hi. Each non-English locale mirrors en's structure (core catalog + 94 per-component namespace files, 2,825 keys) and maintains a .tm.json translation-memory sidecar for incremental retranslation. Key/placeholder parity with en is enforced by the locale-diff validator. Translation uses per-locale domain glossaries via the i18n-translate skill. Hebrew is catalog-complete with full RTL support (see [REQ-1357](#REQ-1357)).
+
+**Use case:** Multiple-locale support enables Provisa to serve global enterprises in their native languages, with translation memory and glossaries enabling incremental, efficient localization.
+
+**Code:** `provisa-ui/src/i18n/`
+
+**Tests:** —
+
+### REQ-1357 · Internationalization {#REQ-1357}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The Provisa UI supports right-to-left (RTL) layout for locales with RTL scripts. RTL direction is determined by i18next locale (base subtags he/ar/fa/ur/yi → rtl, all others ltr). Layout is implemented via Mantine DirectionProvider wrapping the app and a DirectionSync component (provisa-ui/src/i18n/direction.tsx) that keeps <html dir>, <html lang>, and Mantine's direction context in sync on init and runtime languageChanged events.
+
+**Use case:** RTL language users require properly-mirrored layouts to read and interact with the UI naturally, ensuring accessibility and usability for enterprise users in RTL-script regions (Hebrew, Arabic, Farsi, Urdu, Yiddish).
+
+**Code:** `provisa-ui/src/i18n/direction.tsx`, `provisa-ui/src/main.tsx`
+
+**Tests:** —

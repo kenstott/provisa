@@ -14,6 +14,7 @@ provisa_admin therefore pointed at the bundled Postgres instead of Cloud SQL.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -49,11 +50,32 @@ class _Conn:
         return _Cursor(self.executed, self._drop_error)
 
 
+@pytest.fixture(autouse=True)
+def _control_plane_address_from_the_url_only(monkeypatch):
+    # tests/conftest.py exports PROVISA_ENGINE_CONTROL_PLANE_HOST/_PORT so the containerized Trino
+    # in the integration lanes dials `postgres:5432` instead of the host-side port. These unit
+    # tests assert the derivation FROM the passed URL, so the ambient override has to come off or
+    # every spec here reports the compose address rather than the one under test.
+    monkeypatch.delenv("PROVISA_ENGINE_CONTROL_PLANE_HOST", raising=False)
+    monkeypatch.delenv("PROVISA_ENGINE_CONTROL_PLANE_PORT", raising=False)
+
+
 def test_no_system_catalog_is_shipped_as_a_mounted_properties_file():
-    # docker-compose.core.yml mounts ./trino/catalog at /etc/trino/catalog; a file here shadows
-    # the runtime registration. Staging copies live in trino/catalog-install/, which is not mounted.
+    # docker-compose.core.yml mounts ./trino/catalog at /etc/trino/catalog; a COMMITTED file here
+    # shadows the runtime registration with the authoring machine's connection values. Trino's own
+    # FileCatalogStore also writes into this directory whenever Provisa issues CREATE CATALOG, so
+    # the guarantee is about what is TRACKED, not what is on disk — see
+    # tests/unit/test_trino_catalog_dir_not_committed.py. Staging copies live in
+    # trino/catalog-install/, which is not mounted.
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", "trino/catalog/*.properties"],
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
     for name in tsc.SYSTEM_CATALOGS:
-        assert not (_REPO / "trino" / "catalog" / f"{name}.properties").exists(), name
+        assert f"trino/catalog/{name}.properties" not in tracked, name
 
 
 def test_control_plane_spec_uses_the_live_control_plane_not_the_dev_postgres():

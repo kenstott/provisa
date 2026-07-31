@@ -11,7 +11,10 @@
 """Org resolution for the non-HTTP protocol entrypoints (REQ-1266).
 
 The HTTP path resolves ``active_org_id`` in ``AuthMiddleware`` and binds it in the
-``_OrgRoutingMiddleware``. The wire protocols (pgwire/bolt/flight/gRPC) authenticate a
+``_OrgRoutingMiddleware`` (REQ-1355: registered unconditionally in ``create_app`` — it spent a
+release behind a ``state.multitenancy`` guard that is always False at factory time, so nothing
+bound the ContextVar and every request fell through to the default org's runtime). The wire
+protocols (pgwire/bolt/flight/gRPC) authenticate a
 principal but have no middleware chain, so they resolve the org here — once, at session
 establishment — using the SAME membership rule as the HTTP middleware:
 

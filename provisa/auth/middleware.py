@@ -101,6 +101,13 @@ _SKIP_PATHS = {
     # uninitialized — the same class of public fact as the provider name above.
     "/auth/bootstrap-status",
     "/setup/status",
+    # REQ-594, REQ-1355: the billing entrypoints authenticate by something other than a bearer
+    # token and cannot carry one. /billing/webhook is called by Lemon Squeezy, which proves itself
+    # with the HMAC-SHA256 X-Signature header verified in the handler (verify_webhook_signature);
+    # /billing/signup is the pre-account entrypoint, so no token exists yet. These skips used to
+    # live in TenantMiddleware, which never registered — the webhook 401'd instead.
+    "/billing/signup",
+    "/billing/webhook",
 }
 
 

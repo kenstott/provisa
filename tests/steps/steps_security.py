@@ -8,7 +8,7 @@
 REQ-040 — SQL enforcement layer (RLS injection + column stripping),
 REQ-531 — Predicate guard rejecting masked columns from WHERE/HAVING (V005),
 REQ-554 — Default row cap (DEFAULT_SAMPLE_SIZE) for roles lacking full_results,
-REQ-594 — TenantMiddleware skip-path exemptions bypass tenant resolution,
+REQ-594 — AuthMiddleware skip-path exemptions bypass the bearer-token gate,
 REQ-740 — Masking SELECT expressions only; WHERE/JOIN ON use physical unmasked columns,
 REQ-741 — Column masking output uses ANSI SQL dialects independent of source type,
 REQ-742 — Type-aware masking validation at config load time,
@@ -63,7 +63,7 @@ from provisa.security.masking import (
     validate_masking_rule,
 )
 
-from provisa.api.middleware.tenant_middleware import TenantMiddleware, _SKIP_PATHS
+from provisa.auth.middleware import AuthMiddleware, _SKIP_PATHS
 
 scenarios("../features/REQ-039.feature")
 scenarios("../features/REQ-040.feature")
@@ -446,7 +446,7 @@ def results_capped_at_default(shared_data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# REQ-594 — TenantMiddleware skip-path exemptions bypass tenant resolution
+# REQ-594 — AuthMiddleware skip-path exemptions bypass the bearer-token gate
 # ---------------------------------------------------------------------------
 
 
@@ -454,7 +454,7 @@ def _make_request(path: str) -> MagicMock:
     """Build a minimal Starlette-like request with the given path and NO identity.
 
     The absence of `state.identity` is critical: it proves that skip paths do
-    not require a JWT with a tenant_id claim — a non-skip path would 401 here.
+    not require a JWT — a non-skip path would 401 here.
     """
     request = MagicMock()
     request.url.path = path
@@ -469,13 +469,21 @@ def _make_request(path: str) -> MagicMock:
 def request_to_skip_path(shared_data: dict) -> None:
     # The canonical skip-path set must match the requirement exactly.
     # Swagger/OpenAPI relocated under /data/openapi/ so the UI owns /docs.
+    # REQ-1355: the set moved onto AuthMiddleware, which also owns the liveness probes and the
+    # pre-login public reads. Every entry is an unauthenticated hole, so the assertion stays exact.
     expected = {
         "/billing/signup",
         "/billing/webhook",
         "/health",
+        "/live",
+        "/ready",
         "/data/openapi/docs",
         "/data/openapi/redoc",
         "/data/openapi/openapi.json",
+        "/auth/login",
+        "/auth/provider-type",
+        "/auth/bootstrap-status",
+        "/setup/status",
     }
     assert _SKIP_PATHS == expected
 
@@ -488,14 +496,14 @@ def request_to_skip_path(shared_data: dict) -> None:
         assert getattr(req.state, "identity", None) is None
 
 
-@when("TenantMiddleware processes the request")
+@when("AuthMiddleware processes the request")
 def middleware_processes_skip_request(shared_data: dict) -> None:
     import asyncio
 
     sentinel_responses: dict[str, object] = {}
     call_next_invoked: dict[str, bool] = {}
 
-    middleware = TenantMiddleware(MagicMock())
+    middleware = AuthMiddleware(MagicMock())
 
     async def _run() -> None:
         for path, request in shared_data["requests"].items():
@@ -516,8 +524,8 @@ def middleware_processes_skip_request(shared_data: dict) -> None:
     shared_data["call_next_invoked"] = call_next_invoked
 
 
-@then("tenant resolution is bypassed and no JWT tenant_id claim is required")
-def skip_path_bypasses_tenant_resolution(shared_data: dict) -> None:
+@then("the bearer-token gate is bypassed and no JWT is required")
+def skip_path_bypasses_the_token_gate(shared_data: dict) -> None:
     sentinel_responses = shared_data["sentinel_responses"]
     call_next_invoked = shared_data["call_next_invoked"]
 
@@ -529,11 +537,12 @@ def skip_path_bypasses_tenant_resolution(shared_data: dict) -> None:
         assert call_next_invoked[path] is True, f"{path}: call_next not invoked"
         assert result is sentinel, f"{path}: response was not passthrough from call_next"
 
-        # No tenant context was resolved or attached for the skip path — proving
-        # tenant resolution was bypassed entirely.
+        # No identity or role was resolved or attached for the skip path — proving the auth
+        # gate was bypassed entirely rather than passing an anonymous principal through it.
         request = shared_data["requests"][path]
-        assert getattr(request.state, "tenant_id", None) is None
-        assert getattr(request.state, "tenant_context", None) is None
+        assert getattr(request.state, "identity", None) is None
+        assert getattr(request.state, "role", None) is None
+        assert getattr(request.state, "active_org_id", None) is None
 
         # And it succeeded with no identity present — no JWT tenant_id required.
         from starlette.responses import JSONResponse

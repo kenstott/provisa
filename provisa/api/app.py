@@ -1362,30 +1362,48 @@ def create_app() -> FastAPI:
     # REQ-1266: per-request org routing. Added BEFORE wire_auth so AuthMiddleware (added later →
     # outermost → runs first) has already resolved request.state.active_org_id when this runs. Binds
     # the current_org ContextVar for the selected org and lazily builds its data-plane runtime on a
-    # miss (e.g. after a process restart — the registry is in-memory, no TTL). Only engages under
-    # multitenancy; single-org deployments never bind a non-default org.
-    if state.multitenancy:
-        from starlette.middleware.base import BaseHTTPMiddleware as _OrgBaseHTTPMiddleware
+    # miss (e.g. after a process restart — the registry is in-memory, no TTL).
+    #
+    # REQ-1355: registered UNCONDITIONALLY. This used to sit behind `if state.multitenancy:`, which
+    # is always False here — the flag is assigned in _load_and_build, which lifespan runs AFTER
+    # create_app returns — so the middleware never installed and no HTTP request ever bound its org.
+    # _active_runtime() then resolved the DEFAULT org's data plane for every caller, i.e. a cross-org
+    # read. The single-org case needs no guard: the dispatch below no-ops when the request carries no
+    # org or carries the default one.
+    from starlette.middleware.base import BaseHTTPMiddleware as _OrgBaseHTTPMiddleware
 
-        class _OrgRoutingMiddleware(_OrgBaseHTTPMiddleware):
-            async def dispatch(self, request, call_next):
-                active_org = getattr(request.state, "active_org_id", None)
-                # No org bound (unauthenticated, or a default-org request): the AppState shims resolve
-                # the default-org runtime. Never fabricate a non-default org here.
-                if active_org is None or active_org == state.org_id:
-                    return await call_next(request)
-                # Keep existing tenant cache-key call sites (which read request.state.tenant_id)
-                # pointed at the same id space as the org router.
-                request.state.tenant_id = active_org
+    class _OrgRoutingMiddleware(_OrgBaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            active_org = getattr(request.state, "active_org_id", None)
+            # No org bound (unauthenticated, or a default-org request): the AppState shims resolve
+            # the default-org runtime. Never fabricate a non-default org here.
+            if active_org is None or active_org == state.org_id:
+                return await call_next(request)
+            # Keep existing tenant cache-key call sites (which read request.state.tenant_id)
+            # pointed at the same id space as the org router.
+            request.state.tenant_id = active_org
 
-                await ensure_org_runtime(active_org)
-                token = set_current_org(active_org)
-                try:
-                    return await call_next(request)
-                finally:
-                    reset_current_org(token)
+            await ensure_org_runtime(active_org)
+            token = set_current_org(active_org)
+            try:
+                response = await call_next(request)
+            finally:
+                reset_current_org(token)
+            # REQ-462: tag the trace with the org that served the request. Folded in from the
+            # former _TenantSpanMiddleware, which was registered under the same dead guard.
+            try:
+                from opentelemetry import trace as _trace
 
-        app.add_middleware(_OrgRoutingMiddleware)
+                _span = _trace.get_current_span()
+                if _span.is_recording():
+                    _span.set_attribute("org_id", active_org)
+            except (ImportError, AttributeError):
+                # Best-effort span decoration: tolerate an absent OTel install or a no-op shim
+                # span lacking is_recording/set_attribute. Never break a request for a tag.
+                pass
+            return response
+
+    app.add_middleware(_OrgRoutingMiddleware)
 
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth
@@ -1393,33 +1411,6 @@ def create_app() -> FastAPI:
     # ActiveOrgPool, not state.tenant_db: the middleware outlives the request, and the tenant
     # control plane it must read is whichever org the request binds (REQ-1266).
     wire_auth(app, state.auth_config, db_pool=ActiveOrgPool(), admin_pool=state.admin_db)
-
-    if state.multitenancy:
-        from provisa.api.middleware.tenant_middleware import TenantMiddleware
-
-        app.add_middleware(TenantMiddleware)
-
-        from starlette.middleware.base import BaseHTTPMiddleware as _BaseHTTPMiddleware
-
-        class _TenantSpanMiddleware(_BaseHTTPMiddleware):
-            async def dispatch(self, request, call_next):
-                response = await call_next(request)
-                tenant_id = getattr(request.state, "tenant_id", None)
-                if tenant_id:
-                    try:
-                        from opentelemetry import trace as _trace
-
-                        _span = _trace.get_current_span()
-                        if _span.is_recording():
-                            _span.set_attribute("tenant_id", tenant_id)
-                    except (ImportError, AttributeError):
-                        # Best-effort span decoration: tolerate an absent OTel install or a
-                        # no-op shim span that lacks is_recording/set_attribute. Never break
-                        # request handling for a telemetry tag.
-                        pass
-                return response
-
-        app.add_middleware(_TenantSpanMiddleware)
 
     app.include_router(data_router)
     app.include_router(redirect_unwrap_router)
@@ -1594,10 +1585,13 @@ def create_app() -> FastAPI:
 
     app.include_router(billing_router, prefix="/billing", tags=["billing"])
 
-    if state.multitenancy:
-        from provisa.control_plane.router import router as control_plane_router
+    # REQ-1355: included unconditionally. The former `if state.multitenancy:` guard read the flag
+    # before _load_and_build assigns it, so it was always False and the router never mounted —
+    # every control-plane endpoint 404'd on the deployments that need it. Multitenancy is enforced
+    # per request by the router's own _require_multitenancy(), which 403s when it is off.
+    from provisa.control_plane.router import router as control_plane_router
 
-        app.include_router(control_plane_router)
+    app.include_router(control_plane_router)
 
     @app.api_route("/health", methods=["GET", "HEAD"])
     async def health():  # noqa: F841  # pyright: ignore[reportUnusedFunction]

@@ -105,6 +105,24 @@ def _server_coverage_env() -> dict:
 # different worktrees kill each other's stacks mid-run (observed: `down` from one worktree
 # SIGTERMs the other's Trino, failing its `--wait` with exit 143). Ports are already per-run
 # ephemeral; the project name must be per-checkout too.
+def _needs_shared_stack(items) -> bool:
+    """True when this session has any item that talks to the shared compose stack.
+
+    ``tests/unit`` touches no external service and ``tests/mvmvp`` brings up its own isolated
+    Postgres (docker-compose.mvmvp.yml); everything else — integration, steps/BDD, features, e2e —
+    runs against the isolated core stack. This is the SAME predicate ``_wait_for_trino`` uses to
+    decide whether to block on Trino. They used to disagree: provisioning keyed on ``"integration"
+    in fspath`` while the wait keyed on "outside unit/mvmvp", so a plain
+    ``pytest tests/steps/steps_security.py`` never brought a stack up, then sat 360s on the Trino
+    probe and errored every item at setup with connection-refused.
+    """
+    if not items:
+        return False
+    here = os.path.dirname(__file__)
+    self_provisioned = tuple(os.path.join(here, sub) + os.sep for sub in ("unit", "mvmvp"))
+    return not all(str(item.path).startswith(self_provisioned) for item in items)
+
+
 def _default_itest_project() -> str:
     import hashlib
     import re
@@ -403,8 +421,7 @@ class _DockerServiceManager:
     def pytest_collection_finish(self, session):
         if os.environ.get("PYTEST_NO_DOCKER"):
             return
-        integration = [i for i in session.items if "integration" in str(i.fspath)]
-        if not integration:
+        if not _needs_shared_stack(session.items):
             return
 
         # Which marker services this run needs (kafka/mongo/neo4j/…). schema-registry
@@ -617,23 +634,13 @@ def _wait_for_trino(request):  # pyright: ignore
     Set PROVISA_SKIP_TRINO_WAIT=1 when the test session provisions its own
     Trino (e.g. helm/minikube tests) and external Trino is not available.
 
-    A pure ``tests/unit`` session touches no external service, so the wait is
-    skipped when every collected item lives under tests/unit — otherwise a unit
-    run with no Trino would block 6 minutes and then error at setup. The
-    ``tests/mvmvp`` suite self-provisions its own isolated Postgres stack (via
-    docker-compose.mvmvp.yml) and never touches the shared Trino, so it is
-    exempt on the same basis. Any item outside those roots
-    (integration/features/e2e against the shared stack) keeps the wait engaged.
+    Engaged exactly when ``_needs_shared_stack`` says this session uses the shared compose stack —
+    the same predicate that decides whether the stack is brought up at all, so the wait can never
+    outlive the provisioning again.
     """
     if os.environ.get("PROVISA_SKIP_TRINO_WAIT"):
         return
-    here = os.path.dirname(__file__)
-    self_provisioned = tuple(
-        os.path.join(here, sub) + os.sep for sub in ("unit", "mvmvp")
-    )
-    if request.session.items and all(
-        str(item.path).startswith(self_provisioned) for item in request.session.items
-    ):
+    if not _needs_shared_stack(request.session.items):
         return
     host = os.environ.get("TRINO_HOST", "localhost")
     port = int(os.environ.get("TRINO_PORT", "8080"))
@@ -695,6 +702,10 @@ def _reserve_flight_port():  # pyright: ignore
     # canonical SQLAlchemy async URL as the platform plane — one place names the
     # driver, so no fixture hand-builds it.
     os.environ.setdefault("TENANT_DATABASE_URL", _cp_url)
+    # REQ-594, REQ-1075: the Lemon Squeezy webhook authenticates by HMAC over the raw body keyed
+    # by this secret, and verify_webhook_signature raises without it. A fixed test value lets the
+    # skip-path tests reach the signature check (and get a clean 400) instead of a 500.
+    os.environ.setdefault("LEMONSQUEEZY_SIGNING_SECRET", "test-signing-secret")
 
 
 @pytest.fixture(scope="session")
@@ -881,11 +892,18 @@ async def live_client(provisa_server):
 
 
 @pytest.fixture(scope="session")
-def provisa_server():
+def provisa_server(_reserve_flight_port):
     """Start the Provisa server subprocess if not already running.
 
     Used by requires_provisa_server tests — injected automatically via
     pytest_collection_modifyitems, not requested directly.
+
+    Depends on ``_reserve_flight_port`` explicitly: that fixture is what exports
+    PLATFORM_DATABASE_URL/TENANT_DATABASE_URL for the isolated stack, and being autouse does not
+    order it ahead of this one. Without the dependency the subprocess inherited no
+    PLATFORM_DATABASE_URL at all, fell back to the dev control plane on :5432, and died in
+    ``bring_up_platform`` with connection-refused — every requires_provisa_server test erroring at
+    setup with a bare "exited early (code 3)".
     """
     server_url = os.environ.get("PROVISA_URL", "http://localhost:8000")
     if _server_reachable(server_url):
@@ -925,11 +943,26 @@ def provisa_server():
         "PROVISA_CONFIG": _live_cfg,
         **_server_coverage_env(),
     }
+    # Keep the subprocess's own output. It used to go to DEVNULL, which turned every startup
+    # failure into a bare "exited early (code 3)" and forced a hand-reconstruction of this env to
+    # find out why. The log survives the run for a follow-up read.
+    _server_log_path = os.path.abspath(
+        os.path.join(_REPO_ROOT, ".pytest_cache", "provisa_server.log")
+    )
+    os.makedirs(os.path.dirname(_server_log_path), exist_ok=True)
+    _server_log = open(_server_log_path, "w")
+
+    def _server_log_tail(lines: int = 30) -> str:
+        _server_log.flush()
+        with open(_server_log_path) as fh:
+            tail = fh.read().splitlines()[-lines:]
+        return "\n".join(tail) or "(no output)"
+
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", f"--port={_port}"],
         cwd=_REPO_ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=_server_log,
+        stderr=subprocess.STDOUT,
         env=server_env,
     )
     deadline = time.monotonic() + 90
@@ -937,11 +970,17 @@ def provisa_server():
         if _server_reachable(server_url):
             break
         if proc.poll() is not None:
-            raise RuntimeError(f"Provisa server exited early (code {proc.returncode})")
+            raise RuntimeError(
+                f"Provisa server exited early (code {proc.returncode}); "
+                f"log {_server_log_path}:\n{_server_log_tail()}"
+            )
         time.sleep(2)
     else:
         proc.terminate()
-        raise RuntimeError(f"Provisa server did not become reachable at {server_url} within 90s")
+        raise RuntimeError(
+            f"Provisa server did not become reachable at {server_url} within 90s; "
+            f"log {_server_log_path}:\n{_server_log_tail()}"
+        )
 
     # HTTP /health can precede the Flight gRPC bind; wait for the Flight port before yielding so
     # requires_provisa_server tests never race the bind. Publish the port for Flight/ADBC clients.
@@ -950,7 +989,10 @@ def provisa_server():
         if _tcp_reachable(_host, _flight_port):
             break
         if proc.poll() is not None:
-            raise RuntimeError(f"Provisa server exited before Flight bind (code {proc.returncode})")
+            raise RuntimeError(
+                f"Provisa server exited before Flight bind (code {proc.returncode}); "
+                f"log {_server_log_path}:\n{_server_log_tail()}"
+            )
         time.sleep(1)
     else:
         proc.terminate()

@@ -1,8 +1,8 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-594 — Security
-  # TenantMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health, /docs, /openapi.json}`. Requests…
+  # AuthMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health, /live, /ready, /data/openapi/*, /au…
 
   Scenario: REQ-594 default behaviour
     Given a request to /billing/signup, /billing/webhook, /health, /docs, or /openapi.json
-    When TenantMiddleware processes the request
-    Then tenant resolution is bypassed and no JWT tenant_id claim is required
+    When AuthMiddleware processes the request
+    Then the bearer-token gate is bypassed and no JWT is required
