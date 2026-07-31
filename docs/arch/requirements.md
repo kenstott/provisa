@@ -13907,3 +13907,15 @@ The Provisa UI supports right-to-left (RTL) layout for locales with RTL scripts.
 **Code:** `provisa-ui/src/i18n/direction.tsx`, `provisa-ui/src/main.tsx`
 
 **Tests:** —
+
+### REQ-1358 · Internationalization {#REQ-1358}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The in-app guided product tour (provisa-ui/src/tour/) is now integrated into the app-level i18n system. All 25 tour step titles and descriptions are extracted into per-locale i18n namespace files (provisa-ui/src/i18n/locales/<lng>/tour.json) keyed as tour.steps.step0..step24 with title and description fields. The TourStep interface carries a `key` field instead of inline copy. useTour.tsx calls t(`tour.steps.${step.key}.title`) and .description via useTranslation(), and translations are complete for all 13 supported locales (en, es, fr, de, nl, he, ja, zh, zh-HK, ru, it, pt, hi), preserving embedded HTML/SVG/code/emoji verbatim and leaving product/technology proper nouns untranslated.
+
+**Use case:** Enables the product tour to surface in users' native languages alongside the rest of the UI, ensuring onboarding is accessible and consistent across all supported locales.
+
+**Code:** `provisa-ui/src/tour/tourSteps.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/i18n/locales/`
+
+**Tests:** —

@@ -20,6 +20,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
@@ -262,6 +263,7 @@ function waitForElement(selector: string, timeoutMs = 15000): Promise<HTMLElemen
 
 export function TourProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   // The active step index drives the tour. null = not running. A state value
   // (not a ref) is what makes the runner effect fire reliably: startTour sets
   // it to 0, and every Next/Back is just another setState — no dependence on an
@@ -337,8 +339,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
         driverRef.current.highlight({
           element,
           popover: {
-            title: step.title,
-            description: step.description,
+            title: t(`tour.steps.${step.key}.title`),
+            description: t(`tour.steps.${step.key}.description`),
             showButtons: i === 0 ? ["next", "close"] : ["previous", "next", "close"],
             nextBtnText: isLast ? "Done" : `Next (${i + 1}/${TOUR_STEPS.length})`,
             prevBtnText: "Back",
@@ -395,7 +397,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [activeStep, navigate, endTour]);
+  }, [activeStep, navigate, endTour, t]);
 
   // Start the tour. Resumes from saved progress by default; pass { restart: true } to force step 0.
   const startTour = useCallback((opts?: { restart?: boolean }) => {

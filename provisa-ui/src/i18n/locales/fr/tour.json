@@ -1,0 +1,106 @@
+{
+  "tour": {
+    "steps": {
+      "step0": {
+        "title": "Bienvenue, découvrons la visite guidée",
+        "description": "🧭 Cette boussole rouvre la visite à tout moment. Quittez quand vous voulez — cliquez dans l'application ou appuyez sur <kbd>Échap</kbd>.<p><strong>Provisa</strong> est un compilateur de requêtes gouverné pour les données fédérées, qui reste hors du chemin des données.</p><p>🎯 <strong>Tout le cœur du produit tient en un court exercice :</strong> connectez quelques bases de données, puis interrogez-les de <strong>sept façons</strong> — ou passez la syntaxe et posez simplement votre question en langage naturel. Environ cinq minutes, <strong>directement depuis votre poste de travail</strong> : aucun serveur, aucune infrastructure à déployer (cela viendra plus tard, quand vous serez prêt).</p><div class='tour-tags'><span>Langage naturel</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Tout ce qui vient <em>après</em> — davantage de sources, la fédération, les fichiers, les relations, les vues, les pipelines planifiés — c'est la façon dont vous <strong>grandissez</strong> avec la plateforme, pas ce dont vous avez besoin dès le premier jour. Nous indiquerons où s'arrête le cœur du produit.</p><p>Prêt ? Connectons une source. →</p>"
+      },
+      "step1": {
+        "title": "Commencez par les sources",
+        "description": "Tout ce que vous voulez fédérer se déclare ici :<div class='tour-tags'><span>🗄️ Bases de données</span><span>🏢 Entrepôts</span><span>🔌 API</span><span>📄 Fichiers</span><span>☁️ SaaS</span></div><p>Provisa les unifie toutes en un seul <strong>graphe</strong> interrogeable.</p>"
+      },
+      "step2": {
+        "title": "Enregistrer une source",
+        "description": "➕ Les nouvelles connexions démarrent avec ce bouton — PostgreSQL, Snowflake, MongoDB, une API REST, un CSV, et plus de 30 autres."
+      },
+      "step3": {
+        "title": "Plus de 35 types de sources",
+        "description": "Une seule liste de connecteurs couvre toutes les catégories :<ul><li><strong>Bases de données</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Entrepôts cloud</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytique / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Lacs de données &amp; fichiers</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL &amp; graphe</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>API</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>SaaS d'entreprise</strong> — SharePoint, Splunk · ainsi que des abonnements à des données publiques</li></ul>Choisissez-en une, renseignez la connexion, Enregistrer. La liste n'est pas figée — les moteurs de fédération natifs sont <strong>extensibles</strong> : déclarez un FDW Postgres personnalisé ou une extension DuckDB dans la configuration, et Provisa atteint un nouveau type de source, sans code."
+      },
+      "step4": {
+        "title": "Tout devient une table",
+        "description": "Quelle que soit la source — une collection Mongo, un topic Kafka, un point de terminaison REST, un graphe — Provisa la décompose en une <strong>table</strong> 2D : une forme uniforme pour interroger toutes les sources.<p>📁 Regroupez les tables en <strong>domaines</strong>, chacun confié à un intendant des données qui veille sur la qualité du modèle à mesure qu'il évolue.</p>"
+      },
+      "step5": {
+        "title": "Choisissez les colonnes et la politique",
+        "description": "Sélectionnez une source, un schéma et une table, puis choisissez les colonnes — chacune avec sa propre politique :<ul><li>🎭 <strong>Masquage</strong> — masquer les valeurs selon le rôle</li><li>👁️ <strong>Visibilité</strong> — afficher ou masquer la colonne</li><li>🏷️ <strong>Alias</strong> — renommer pour le modèle</li></ul><p>C'est toute la configuration — une source et quelques tables. 🚀 Interrogeons-la maintenant. →</p>"
+      },
+      "step6": {
+        "title": "SQL (1 sur 7 surfaces)",
+        "description": "Le SQL vit dans l'explorateur SQL. Du SQL standard fédéré sur toutes les sources — joignez Postgres à Mongo et à un CSV en une seule instruction. Et les métadonnées du modèle lui-même, ainsi que toutes les traces d'activité, sont elles-mêmes des tables interrogeables ici — joignez votre journal d'audit ou votre traçabilité directement aux données en direct.<p>🔌 Pas seulement cet explorateur — le même SQL gouverné circule via plusieurs protocoles filaires ; votre outil choisit celui qu'il parle déjà :</p><ul><li><strong>pgwire</strong> — tout client compatible Postgres — psql, DBeaver, Tableau, Power BI — se connecte immédiatement.</li><li><strong>JDBC</strong> — s'intègre dans toute application Java/JVM, tout pipeline ETL ou tout outil BI compatible JDBC.</li><li><strong>Arrow Flight SQL</strong> — diffusion en flux colonnaire pour les clients ADBC — sans réencodage ligne par ligne, conçu pour les gros volumes de résultats.</li><li><strong>DuckDB · airport</strong> — faites un ATTACH de Provisa depuis DuckDB et interrogez la fédération gouvernée sur place.</li></ul>"
+      },
+      "step7": {
+        "title": "GraphQL (2 sur 7 surfaces)",
+        "description": "◈ La même requête, exprimée en GraphQL :<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Regroupement et agrégats sur vos relations — 🎯 un seul point de terminaison, 📖 un schéma auto-documenté.</p><p>🔌 Interrogez-le depuis <strong>n'importe quel client GraphQL</strong> — Apollo, Relay, urql — et, avec la fédération activée, intégrez Provisa dans un <strong>supergraph Apollo comme sous-graphe</strong>, pour que votre modèle fédéré se compose aux côtés de vos graphes existants.</p>"
+      },
+      "step8": {
+        "title": "Cypher (3 sur 7 surfaces)",
+        "description": "🕸️ Parcourez le modèle fédéré comme un graphe avec Cypher :<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ Ce parcours s'exécute <strong>sur plusieurs sources</strong> — aucune base de données graphe unique n'est requise.</p><p>🔌 Et tout client <strong>Bolt</strong> — Neo4j Browser, Bloom — exécute ce même parcours sur le fil, sans aucun changement de code.</p>"
+      },
+      "step9": {
+        "title": "gRPC (4 sur 7 surfaces)",
+        "description": "⚙️ Chaque entité enregistrée est aussi un service gRPC :<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Appelez-le depuis n'importe quel client gRPC — 📐 fortement typé, 🚀 à haut débit.</p>"
+      },
+      "step10": {
+        "title": "JSON:API (5 sur 7 surfaces)",
+        "description": "🧩 Une surface JSON:API conforme à la spécification :<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Pagination et 🔍 filtrage intégrés d'origine.</p>"
+      },
+      "step11": {
+        "title": "OpenAPI / REST (6 sur 7 surfaces)",
+        "description": "🌐 Et un point de terminaison REST classique, décrit par OpenAPI :<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Entièrement décrit, pour que tout client REST ou générateur de code puisse le consommer.</p>"
+      },
+      "step12": {
+        "title": "MCP (7 sur 7 surfaces)",
+        "description": "🤖 La septième surface permet à un agent de <strong>raisonner avec vos données</strong>. Il pilote ces mêmes outils gouvernés — parcourir le catalogue, décrire les tables, exécuter du SQL, suivre les relations — et les <em>enchaîne</em> pour répondre à des questions qu'aucune requête isolée ne pourrait résoudre, chaque appel restant soumis à la gouvernance de <strong>votre</strong> rôle.<p>🔌 Le même <strong>serveur MCP</strong> se branche sur Claude Desktop, Claude Code ou tout client MCP, pour que les agents explorent et raisonnent sur votre modèle de façon gouvernée.</p><p>🔑 Utilise votre propre clé LLM ; cet échange est un exemple préenregistré.</p><p>Il reste une surface — celle qui écrit les sept autres pour vous. →</p>"
+      },
+      "step13": {
+        "title": "Demandez simplement — la surface qui écrit les sept autres",
+        "description": "💬 <em>\"afficher le nombre de demandes par utilisateur\"</em><p>🎁 Voici la pièce maîtresse : <strong>vous n'avez besoin d'apprendre aucune de ces sept surfaces.</strong> Posez votre question en langage naturel et Provisa la compile simultanément dans chaque langage de requête — chaque panneau ci-dessous restitue cette même phrase en SQL, GraphQL, Cypher, gRPC, JSON:API et REST.</p><p>Utilisez la surface que vos outils parlent déjà — ou passez-les toutes et posez simplement la question.</p><p>🔑 Les requêtes en langage naturel en direct utilisent votre propre clé LLM ; celle-ci est un exemple préenregistré.</p><p>✅ Un seul modèle, <strong>huit surfaces</strong> — sept pour interroger, et celle qui les écrit.</p><div class='tour-tags'><span>Langage naturel</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+      },
+      "step14": {
+        "title": "Voilà le cœur en cinq minutes",
+        "description": "✅ Vous venez de le voir de bout en bout : <strong>une source, interrogée de sept façons — ou simplement demandée en langage naturel.</strong> C'est toute la promesse — et vous pourriez vous arrêter ici.<p>Appuyez sur <kbd>Échap</kbd> à tout moment ; 🧭 la boussole en haut relance cette visite quand vous le souhaitez.</p><p>👉 Tout ce qui suit montre <strong>comment Provisa grandit avec vous</strong> — une profondeur optionnelle, pas des étapes obligatoires :</p><ul><li>🔗 Relier les tables entre sources en un seul <strong>graphe</strong></li><li>🔐 Le <strong>gouverner</strong> — rôles, sécurité au niveau des lignes, masquage de colonnes</li><li>🏗️ Construire un <strong>pipeline de livraison</strong> — vues, entrepôt matérialisé, traçabilité</li><li>⚙️ L'<strong>exploiter</strong> — choisir un moteur, déployer en production</li></ul><p>On continue ? →</p>"
+      },
+      "step15": {
+        "title": "Connecter le graphe",
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Les relations lient les tables entre les sources — même entre des bases de données différentes — transformant des tables plates en un <strong>graphe</strong> parcourable.</p><p>🛡️ Elles peuvent aussi être <strong>appliquées</strong> : donnez aux utilisateurs la liberté d'explorer, avec des garde-fous raisonnables.</p>"
+      },
+      "step16": {
+        "title": "Définir une relation",
+        "description": "🔗 Associez une colonne source à une colonne cible et définissez la <strong>cardinalité</strong> :<div class='tour-tags'><span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span></div><p>✨ Ou laissez Provisa <strong>déduire</strong> les relations pour vous grâce à l'IA.</p>"
+      },
+      "step17": {
+        "title": "Consulter le diagramme entité-relation",
+        "description": "Le diagramme entité-relation affiche l'ensemble de votre modèle fédéré — chaque table enregistrée et les relations qui les lient."
+      },
+      "step18": {
+        "title": "Contrôle d'accès (RBAC)",
+        "description": "🔐 L'enregistrement d'une table définit l'accès par colonne, directement rattaché aux rôles :<div class='tour-tags'><span>👁️ Lecture</span><span>✏️ Écriture</span></div><p>C'est le <strong>contrôle d'accès basé sur les rôles</strong> — et les rôles eux-mêmes se définissent ici, sur la page Sécurité.</p>"
+      },
+      "step19": {
+        "title": "Sécurité au niveau des lignes",
+        "description": "🔎 Une fois les rôles définis, allez plus loin — restreignez les <strong>lignes</strong> visibles par chaque rôle avec des prédicats basés sur des attributs :<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Piloté par les données et appliqué ligne par ligne — sur toutes les sources et tous les protocoles.</p>"
+      },
+      "step20": {
+        "title": "Construisez votre pipeline de livraison",
+        "description": "🔧 Composez tout votre pipeline de livraison ici même — sans outil ETL séparé :<ul><li>👁️ <strong>Vues</strong> — sur n'importe quelle table, éphémères ou matérialisées, et des vues sur des vues.</li><li>⚡ <strong>Commandes</strong> — des opérations typées et gouvernées (un service HTTP, un modèle Python, une procédure stockée) qui remplissent un double rôle : une étape au sein de votre pipeline, <em>et</em> une API de premier plan que les applications et agents en aval appellent pour agir sur vos données — invocable depuis toutes les surfaces, entièrement gouvernée et tracée.</li><li>⭐ <strong>Entités &amp; faits</strong> — déclarez une dimension ou un fait une seule fois, et Provisa génère l'entrepôt, indépendamment de la méthodologie : 3NF (Inmon), schéma en étoile (Kimball), ou Data Vault.</li><li>📏 <strong>Métriques</strong> — des définitions d'agrégats gouvernées (&ldquo;revenu net&rdquo;) dont la granularité se lie au moment de la requête. Définissez une seule fois ; chaque surface — SQL, GraphQL, agents IA — calcule le même chiffre, et les vues construites sur une métrique se régénèrent quand sa définition change.</li></ul>"
+      },
+      "step21": {
+        "title": "Matérialiser en un entrepôt vivant",
+        "description": "🏗️ Matérialisez une vue et vous obtenez un moteur ETL complet, déclaré et non scripté :<ul><li>📅 <strong>Instantanés planifiés</strong> sur de véritables <strong>calendriers métier</strong> — règles de récurrence, jours fériés, restriction aux jours ouvrés, et une période de grâce de clôture, pour qu'il se déclenche selon <em>votre</em> calendrier de reporting, pas seulement une horloge.</li><li>🗄️ <strong>Enregistrer sous…</strong> — <strong>remplacer</strong>, <strong>upsert</strong>, ou conserver l'historique avec <strong>instantané</strong> / <strong>delta</strong>, plus le calcul incrémental.</li><li>🕰️ <strong>Voyage dans le temps</strong> — historique bitemporel ; interrogez le modèle tel qu'il était à n'importe quel instant.</li><li>⚡ Actualisation en <strong>quasi temps réel</strong> avec anti-rebond, ou republication pilotée par la fraîcheur à mesure que les entrées changent.</li></ul>"
+      },
+      "step22": {
+        "title": "Traçabilité, de bout en bout",
+        "description": "🧬 <strong>La traçabilité n'est pas opaque.</strong> Voici une requête réelle, analysée. Chaque colonne de résultat est retracée à travers ses transformations — suivez <code>name_upper</code> — et ses jointures jusqu'aux <strong>colonnes sources</strong> exactes qui l'alimentent.<p>Les commandes sont définies de façon déclarative, si bien que chaque étape est capturée ; les vues matérialisées conservent une traçabilité complète par construction. Rien ne s'exécute — la requête est seulement analysée.</p><p>→ Dernière étape : l'exploiter en production.</p>"
+      },
+      "step23": {
+        "title": "Exploitez-le",
+        "description": "Les pages Admin pilotent la plateforme :<ul><li>⚙️ Choisissez et configurez votre <strong>moteur de fédération</strong> — enfichable : DuckDB (embarqué, sans configuration), Trino, PostgreSQL, ClickHouse, ou un entrepôt cloud comme moteur de premier plan (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Changez-en à tout moment — le modèle, les surfaces et la gouvernance au-dessus ne changent jamais.</li><li>🔗 Quel que soit le moteur choisi, il apporte son propre accès aux <strong>données externes en direct</strong> — Parquet, Iceberg, Delta lus sur place, sans copie, avec des identifiants provisionnés automatiquement. Tout ce qu'il ne peut pas lier en direct atterrit sous forme de réplique gouvernée.</li><li>🔑 Gérez les <strong>clés de chiffrement</strong> et configurez les <strong>fournisseurs d'authentification</strong></li><li>📊 <strong>Observabilité</strong> complète — redirigez vers tout collecteur OpenTelemetry pour une gestion des traces de niveau entreprise</li></ul><p>Le même modèle voyage du poste de développement local jusqu'à la production, validé à chaque étape — sans réécriture :</p><ul><li><strong>Développer</strong> — DuckDB embarqué, sans Docker. Construire et valider en local.</li><li><strong>Valider à l'échelle</strong> — Docker, démarrer un moteur et l'observabilité. Prouver le comportement face à des moteurs de production.</li><li><strong>Promouvoir</strong> — pointer vers votre propre infrastructure, construire via CI/CD, déployer en production.</li></ul>"
+      },
+      "step24": {
+        "title": "Fin de la visite — à vous de jouer",
+        "description": "🎉 Vous voilà de retour au point de départ. Maintenant, faites-en votre propre usage :<ul><li>1️⃣ Enregistrez l'une de vos <strong>sources</strong> réelles</li><li>2️⃣ Exposez quelques <strong>tables</strong>, tracez une <strong>relation</strong> ou deux</li><li>3️⃣ Interrogez-les depuis <strong>Explorer</strong> dans n'importe quel langage :</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Pointez vos outils <kbd>pgwire</kbd> ou <kbd>Bolt</kbd> dessus — tout fonctionne simplement.</p><p>📚 L'onglet <strong>Docs</strong> contient les guides complets. 🧭 La boussole en haut relance cette visite à tout moment. Profitez bien de Provisa.</p>"
+      }
+    }
+  }
+}
