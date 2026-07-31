@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1352: source catalog registration drops and recreates, so credentials refresh.
+"""REQ-1354: source catalog registration drops and recreates, so credentials refresh.
 
 Trino cannot report a live catalog's properties back, and ``CREATE CATALOG IF NOT EXISTS`` is a
 no-op against an existing catalog. Registration that skipped when the catalog existed therefore

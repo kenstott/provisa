@@ -2946,7 +2946,7 @@ Relationships in Provisa exist solely as join metadata in the semantic layer (Jo
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Bidirectional traversal syntax (a)-[]-(b) is rewritten at compile time to a UNION ALL of all matching directed forward and backward relationships from the semantic layer. Every relationship in the semantic layer is directional; bidirectional syntax is sugar that expands to both directions.
+Bidirectional traversal syntax (a)-[]-(b) is rewritten at compile time to a UNION ALL of all matching directed forward and backward relationships from the semantic layer. Every relationship in the semantic layer is directional; bidirectional syntax is sugar that expands to both directions. When only a single relationship direction exists in the schema, the UNION is skipped and a single directed branch is emitted (absorbs [REQ-758](#REQ-758)).
 
 **Use case:** Bidirectional sugar covers common graph traversal patterns without requiring stewards to register both directions of every relationship.
 
@@ -7524,7 +7524,7 @@ Trino memory overflow handling uses Fault-Tolerant Execution (FTE) with task.ret
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET statements execute as direct table writes through the same write pipeline as GraphQL and SQL mutations, with RLS injection, dialect transpilation, and post-mutation hooks. Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected. All writes are governed by table/view write rights like any other write. This supersedes [REQ-346](#REQ-346) (read-only constraint), which is now inaccurate.
+Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET statements execute as direct table writes through the same write pipeline as GraphQL and SQL mutations, with RLS injection, dialect transpilation, and all post-mutation hooks (response cache invalidation, MV stale marking, Kafka change events, Kafka sink triggers, hot-table reload — absorbs [REQ-798](#REQ-798)). Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected. All writes are governed by table/view write rights like any other write. This supersedes [REQ-346](#REQ-346) (read-only constraint), which is now inaccurate.
 
 **Use case:** Write support enables graph users to mutate data via Cypher while maintaining governance consistency with SQL and GraphQL mutations.
 
@@ -9612,9 +9612,9 @@ Snowflake federation engine must be promoted from a source-only connector (feder
 
 ### REQ-989 · Platform Defaults {#REQ-989}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Zero-config default stack must be fully embedded and in-process with no external dependencies: default federation engine is duckdb (not trino), default materialize store is duckdb's native embedded store (not platform tenant DB via Postgres), and default control-plane store is sqlite (not embedded_pg). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks) remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store overrides.
+Zero-config default stack must be fully embedded and in-process with no external dependencies: default federation engine is duckdb (not trino), default materialize store is duckdb's native embedded store (not platform tenant DB via Postgres), and default control-plane store is sqlite (not embedded_pg). Desktop installers default to this stack via the `native` preset declared in config/capabilities.yaml (absorbs [REQ-972](#REQ-972)). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks) remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store overrides.
 
 **Use case:** Organizations and developers need instant local startup with zero Docker, no Trino cluster, no Postgres dependency — everything embedded for true out-of-the-box instant start. The zero-config path must serve as an approachable entry point while preserving full enterprise engine/store pluggability via configuration.
 
@@ -12752,7 +12752,7 @@ Firebase single-admin bootstrap is an optional convenience for cloud-appliance d
 
 **Code:** —
 
-**Tests:** `tests/integration/test_org_creator_role_request.py`
+**Tests:** `tests/integration/test_org_creator_role_request.py`, `tests/unit/test_source_catalog_refresh.py`
 
 ### REQ-1267 · Runtime Auth-Enforcement Gate {#REQ-1267}
 
@@ -13865,3 +13865,17 @@ Requirement groups are a closed canonical enumeration defined in docs/arch/group
 **Code:** `docs/arch/groups.yaml`, `provisa/tools/req_schema.py`, `scripts/validate_requirements.py`
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1354 · Catalog Registration {#REQ-1354}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Trino source-catalog registration drops and recreates the catalog rather than skipping when it already exists, ensuring connection properties and credentials refresh on every registration. A catalog that refuses to drop is statically file-loaded and must raise an error, never be silently worked around.
+
+**Use case:** Trino exposes no way to read a live catalog's properties back, and CREATE CATALOG IF NOT EXISTS no-ops against an existing catalog. Without dropping and recreating, each source is pinned to the credentials it first booted with, preventing credential rotation or connection property updates.
+
+**Code:** `provisa/core/catalog.py`, `provisa/core/trino_system_catalogs.py`
+
+**Tests:** `tests/unit/test_source_catalog_refresh.py`, `tests/unit/test_trino_system_catalogs.py`

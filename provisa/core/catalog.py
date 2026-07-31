@@ -101,7 +101,7 @@ def create_catalog(
     ``catalog_name`` (REQ-1266) is the org-prefixed physical catalog name; when omitted
     the bare per-source name is used (default-org / single-org behavior).
 
-    REQ-1352: this used to skip when the catalog already existed, which pinned a catalog to
+    REQ-1354: this used to skip when the catalog already existed, which pinned a catalog to
     whatever credentials and connection properties it was first created with. Trino exposes no
     way to read a live catalog's properties back and ``CREATE CATALOG IF NOT EXISTS`` no-ops
     against an existing one, so refreshing means dropping first — the same reasoning as

@@ -48,6 +48,7 @@
       whitelists that must be managed per-endpoint.
 - id: REQ-002
   status: complete
+  superseded_by: REQ-266
   group: 1. Access Governance & Security
   category: Query Governance
   priority: MUST
@@ -1302,6 +1303,7 @@
       is advisory rather than enforced at compile time.
 - id: REQ-613
   status: complete
+  superseded_by: REQ-596
   group: 1. Access Governance & Security
   category: Query Governance
   priority: MUST
@@ -9185,6 +9187,8 @@
   description: Bidirectional traversal syntax (a)-[]-(b) is rewritten at compile time to a UNION ALL of
     all matching directed forward and backward relationships from the semantic layer. Every relationship
     in the semantic layer is directional; bidirectional syntax is sugar that expands to both directions.
+    When only a single relationship direction exists in the schema, the UNION is skipped and a single
+    directed branch is emitted (absorbs REQ-758).
   use_case: Bidirectional sugar covers common graph traversal patterns without requiring stewards to register
     both directions of every relationship.
   code:
@@ -11344,6 +11348,7 @@
   - data-engineer
 - id: REQ-051
   status: complete
+  superseded_by: REQ-045
   group: 7. Result Delivery
   category: Output & Delivery
   priority: SHOULD
@@ -15206,6 +15211,7 @@
     rationale: ''
 - id: REQ-620
   status: complete
+  superseded_by: REQ-533
   group: 10. UI & Admin Surfaces
   category: Admin & Configuration
   priority: SHOULD
@@ -15749,6 +15755,7 @@
       Hasura, Trino (Starburst), and Dremio.
 - id: REQ-073
   status: complete
+  superseded_by: REQ-1243
   group: 11. Platform, Infrastructure & Delivery
   category: Commercial Positioning
   priority: MAY
@@ -17917,6 +17924,7 @@
     rationale: Cursor-based pagination (edges/pageInfo/Relay spec) is standard in Hasura and Apollo Federation.
 - id: REQ-219
   status: complete
+  superseded_by: REQ-258
   group: 12. Migration & Compatibility (Hasura)
   category: 'Hasura v2 Parity: Medium-Complexity Features'
   priority: SHOULD
@@ -18040,6 +18048,7 @@
     rationale: PostgreSQL enum auto-detection and GraphQL enum type generation is available in Hasura.
 - id: REQ-222
   status: complete
+  superseded_by: REQ-256
   group: 12. Migration & Compatibility (Hasura)
   category: 'Hasura v2 Parity: Medium-Complexity Features'
   priority: SHOULD
@@ -19111,6 +19120,7 @@
   - provisa-client/tests/test_adbc.py
 - id: REQ-712
   status: complete
+  superseded_by: REQ-595
   group: 6. Execution, Routing, Caching & Performance
   category: Cache
   priority: MUST
@@ -20237,6 +20247,7 @@
     rationale: Path objects are standard in graph databases; Provisa matches Neo4j wire format.
 - id: REQ-754
   status: complete
+  superseded_by: REQ-573
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
   priority: SHOULD
@@ -20377,6 +20388,7 @@
     rationale: Map projections are a Neo4j feature; translation to Trino MAP is the unique aspect.
 - id: REQ-758
   status: complete
+  superseded_by: REQ-575
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
   priority: SHOULD
@@ -21707,6 +21719,7 @@
   - data-engineer
 - id: REQ-798
   status: complete
+  superseded_by: REQ-818
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: MUST
@@ -22410,9 +22423,10 @@
   type: behavioral
   description: Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET statements
     execute as direct table writes through the same write pipeline as GraphQL and SQL mutations, with
-    RLS injection, dialect transpilation, and post-mutation hooks. Non-direct write patterns (MERGE, DETACH,
-    REMOVE) are unsupported and rejected. All writes are governed by table/view write rights like any
-    other write. This supersedes REQ-346 (read-only constraint), which is now inaccurate.
+    RLS injection, dialect transpilation, and all post-mutation hooks (response cache invalidation, MV
+    stale marking, Kafka change events, Kafka sink triggers, hot-table reload — absorbs REQ-798). Non-direct
+    write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected. All writes are governed by table/view
+    write rights like any other write. This supersedes REQ-346 (read-only constraint), which is now inaccurate.
   use_case: Write support enables graph users to mutate data via Cypher while maintaining governance consistency
     with SQL and GraphQL mutations.
   code:
@@ -28324,6 +28338,7 @@
   - REQ-875
 - id: REQ-972
   status: complete
+  superseded_by: REQ-989
   since: 2026-07
   group: 11. Platform, Infrastructure & Delivery
   category: Desktop Installation
@@ -28914,13 +28929,15 @@
   target: 2026-Q3
   group: 11. Platform, Infrastructure & Delivery
   category: Platform Defaults
-  priority: SHOULD
+  priority: MUST
   type: structural
   description: 'Zero-config default stack must be fully embedded and in-process with no external dependencies:
     default federation engine is duckdb (not trino), default materialize store is duckdb''s native embedded
     store (not platform tenant DB via Postgres), and default control-plane store is sqlite (not embedded_pg).
-    External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks) remain selectable
-    via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store overrides.'
+    Desktop installers default to this stack via the `native` preset declared in config/capabilities.yaml
+    (absorbs REQ-972). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks)
+    remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store
+    overrides.'
   use_case: Organizations and developers need instant local startup with zero Docker, no Trino cluster,
     no Postgres dependency — everything embedded for true out-of-the-box instant start. The zero-config
     path must serve as an approachable entry point while preserving full enterprise engine/store pluggability
@@ -29796,6 +29813,7 @@
   - REQ-1014
 - id: REQ-1017
   status: proposed
+  superseded_by: REQ-1271
   group: 11. Platform, Infrastructure & Delivery
   category: Self-Service Provisioning
   priority: MUST
@@ -36940,6 +36958,7 @@
   - REQ-1264
   tests:
   - tests/integration/test_org_creator_role_request.py
+  - tests/unit/test_source_catalog_refresh.py
 - id: REQ-1267
   status: proposed
   group: 2. Authentication & Identity
@@ -38224,19 +38243,20 @@
     time; nothing resolves them afterward. platform_admin is the deployment-wide control-plane administrator
     (the role the bootstrap claim grants), responsible for org lifecycle, infra/engine settings, and recovery
     operations. The platform-bypass (has_platform_bypass in provisa/security/rights.py) is scoped to control-plane
-    surfaces only and does not bypass any data-plane capability check, even in root; platform_admin holds no
-    standing data capabilities anywhere. org_admin administers data-plane operations in a single org — members,
-    invites, sources, governance, querying — in every org including root. developer builds against the data:
-    query development, view and relationship authoring, full results, write. analyst reads: usage, ad-hoc
-    query, query development, no authoring or governance. All four are system roles (org_id NULL, identical
-    capability sets in every org) and are not editable through the roles admin surface.'
+    surfaces only and does not bypass any data-plane capability check, even in root; platform_admin holds
+    no standing data capabilities anywhere. org_admin administers data-plane operations in a single org
+    — members, invites, sources, governance, querying — in every org including root. developer builds
+    against the data: query development, view and relationship authoring, full results, write. analyst
+    reads: usage, ad-hoc query, query development, no authoring or governance. All four are system roles
+    (org_id NULL, identical capability sets in every org) and are not editable through the roles admin
+    surface.'
   use_case: The seeded catalog was ad hoc — 'admin' and 'analyst' existed by accident of the boot seed
     and 'org_admin' was added later for self-service org creation, leaving no role for a person who builds
     views and relationships but must not administer anything. A fixed four-role catalog gives every fresh
     org and every fresh deployment the same starting vocabulary. Separating platform_admin (control-plane,
     no data access) from org_admin (all data-plane administration, including in root) makes the platform/org
-    administration split explicit in the role id and capability set, enabling auditable recovery and
-    preventing silent data access.
+    administration split explicit in the role id and capability set, enabling auditable recovery and preventing
+    silent data access.
   code:
   - provisa/core/schema.sql
   - provisa/security/rights.py
@@ -38308,10 +38328,9 @@
   - REQ-1296
   - REQ-1266
   - REQ-1303
-  impact_note: >-
-    Corrected 2026-07-29. Prior recording conflated platform_admin's control-plane operations with
-    standing data access in all orgs. Corrected text reflects the settled design: platform_admin is
-    control-plane only with zero data capabilities. platform-bypass is control-plane only.
+  impact_note: 'Corrected 2026-07-29. Prior recording conflated platform_admin''s control-plane operations
+    with standing data access in all orgs. Corrected text reflects the settled design: platform_admin
+    is control-plane only with zero data capabilities. platform-bypass is control-plane only.'
 - id: REQ-1298
   status: proposed
   group: 1. Access Governance & Security
@@ -38660,15 +38679,16 @@
     org's audit trail so the intervention is visible to the org afterward. The same authority runs the
     other way — a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin
     invariant (REQ-1302), and that revocation is audited into the org's trail identically. No per-org
-    break-glass key is ever minted — platform_admin holds zero standing data capabilities in any org
-    (REQ-1327), so a customer-held token would add a permanent bearer secret. Tokens of that kind belong
-    to vendors who are cryptographically unable to recover a customer's data; Provisa is not one.
+    break-glass key is ever minted — platform_admin holds zero standing data capabilities in any org (REQ-1327),
+    so a customer-held token would add a permanent bearer secret. Tokens of that kind belong to vendors
+    who are cryptographically unable to recover a customer's data; Provisa is not one.
   use_case: This is the contact-the-vendor path every SaaS platform ends up with — Google Workspace, Atlassian
     and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for a Provisa
     deployment the provider is the platform_admin. Separation of control-plane (platform_admin) from data-plane
-    (org_admin) means recovery capability exists only through explicit operations that land in the org's own
-    audit trail. Turning a potential silent backdoor into a recorded, revocable intervention enables compliance
-    audits (SOC 2, ISO 27001) and prevents platform_admin from bypassing governance in data orgs.
+    (org_admin) means recovery capability exists only through explicit operations that land in the org's
+    own audit trail. Turning a potential silent backdoor into a recorded, revocable intervention enables
+    compliance audits (SOC 2, ISO 27001) and prevents platform_admin from bypassing governance in data
+    orgs.
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/api/admin/roles_router.py
@@ -38713,10 +38733,10 @@
   - REQ-1299
   - REQ-1302
   - REQ-1327
-  impact_note: >-
-    Corrected 2026-07-29. Prior recording stated "the platform_admin already holds every capability in every org,"
-    which contradicts the settled design where platform_admin is control-plane only (REQ-1327). Corrected text
-    reflects that platform_admin has zero standing data capabilities and recovery is audited and revocable.
+  impact_note: Corrected 2026-07-29. Prior recording stated "the platform_admin already holds every capability
+    in every org," which contradicts the settled design where platform_admin is control-plane only (REQ-1327).
+    Corrected text reflects that platform_admin has zero standing data capabilities and recovery is audited
+    and revocable.
 - id: REQ-1304
   status: proposed
   group: 1. Access Governance & Security
@@ -39625,11 +39645,13 @@
     everywhere, with no copies. SQL/pgwire: a reserved metrics schema where each metric is a relation
     whose selected/grouped columns are the dimension choice, description surfaced via pg_description.
     GraphQL: a metrics block inside the _aggregate root field (REQ-653) with the definition in introspection
-    docs. Bolt/Cypher: a provisa.metric() procedure, plus Fact/Dimension labels on role-tagged tables in db.labels
-    and the label map (metric lineage as graph NODES needs a new meta-graph surface and is deferred). Arrow Flight: metric flight descriptors returning Arrow tables. gRPC: metric asks ride the semantic-SQL form through the proxy''s
-    governed path - the one expansion, no second IR representation (REQ-1321). MCP: list_metrics and query_metric tools carrying ai_context, so agents select
-    governed meanings instead of composing aggregation SQL. NL: the schema matcher resolves metric vocabulary
-    directly to metric plus dimensions. Streaming: view_metrics + materialize + Kafka sink yields push-on-change
+    docs. Bolt/Cypher: a provisa.metric() procedure, plus Fact/Dimension labels on role-tagged tables
+    in db.labels and the label map (metric lineage as graph NODES needs a new meta-graph surface and is
+    deferred). Arrow Flight: metric flight descriptors returning Arrow tables. gRPC: metric asks ride
+    the semantic-SQL form through the proxy''s governed path - the one expansion, no second IR representation
+    (REQ-1321). MCP: list_metrics and query_metric tools carrying ai_context, so agents select governed
+    meanings instead of composing aggregation SQL. NL: the schema matcher resolves metric vocabulary directly
+    to metric plus dimensions. Streaming: view_metrics + materialize + Kafka sink yields push-on-change
     metrics from existing machinery. Observability: metric evaluations traced and exportable as OTel metrics.'
   use_case: Structural aggregates (sum/avg/count) tell a consumer what is summable; metrics tell it what
     is meaningful. Projecting one governed definition into each protocol's own metadata channel - pg catalog
@@ -39841,11 +39863,10 @@
   priority: SHOULD
   type: ui
   since: 2026-07
-  description: >-
-    The Metrics page follows the app-wide detail-then-edit pattern with inline editing: clicking a metric
-    row expands a read-only MetricDetailPanel below it. Clicking Edit inside the panel swaps the panel for
-    an inline edit form in place (no modal). New Metric opens an inline creation card above the table. The
-    delete confirmation is the only modal on the page.
+  description: 'The Metrics page follows the app-wide detail-then-edit pattern with inline editing: clicking
+    a metric row expands a read-only MetricDetailPanel below it. Clicking Edit inside the panel swaps
+    the panel for an inline edit form in place (no modal). New Metric opens an inline creation card above
+    the table. The delete confirmation is the only modal on the page.'
   use_case: Consistent detail-then-edit UX with inline editing across all admin surfaces (metrics, sources,
     facts) reduces cognitive load, keeps row layout clean, and provides immediate affordance for editing
     without modal context switches.
@@ -39855,9 +39876,8 @@
   tests:
   - provisa-ui/e2e/metrics-detail-edit.spec.ts
   e2e: true
-  e2e_reason: >-
-    Inline editing, detail panel expansion, form state swapping, and modal absence are only verifiable
-    through full UI interaction, not unit tests.
+  e2e_reason: Inline editing, detail panel expansion, form state swapping, and modal absence are only
+    verifiable through full UI interaction, not unit tests.
   related_reqs:
   - REQ-1317
   - REQ-1320
@@ -39868,13 +39888,13 @@
   priority: SHOULD
   type: ui
   since: 2026-07
-  description: >-
-    The metric create/edit form extends fact-as-metric-source (REQ-1320) to the UI through a three-picker
-    builder: source fact table (filtered to modelingRole=fact), measure column, and aggregate function
-    (SUM/AVG/COUNT/MIN/MAX). When the builder composes the metric, the datatype is automatically derived
-    from the aggregate: COUNT → bigint, AVG → numeric, SUM/MIN/MAX → the measure column's dataType (fallback
-    numeric). The Datatype field remains editable as an escape hatch. The free-text expression textarea remains
-    the escape hatch for non-fact-sourced metrics. Metric.fromFact is string|null storing the source fact table name.
+  description: 'The metric create/edit form extends fact-as-metric-source (REQ-1320) to the UI through
+    a three-picker builder: source fact table (filtered to modelingRole=fact), measure column, and aggregate
+    function (SUM/AVG/COUNT/MIN/MAX). When the builder composes the metric, the datatype is automatically
+    derived from the aggregate: COUNT → bigint, AVG → numeric, SUM/MIN/MAX → the measure column''s dataType
+    (fallback numeric). The Datatype field remains editable as an escape hatch. The free-text expression
+    textarea remains the escape hatch for non-fact-sourced metrics. Metric.fromFact is string|null storing
+    the source fact table name.'
   use_case: Guided metric authoring through semantic builders with automatic datatype derivation reduces
     expression errors and ensures correct type inference; the editable Datatype field and expression escape
     hatch preserve flexibility for complex derived metrics.
@@ -39884,8 +39904,7 @@
   tests:
   - provisa-ui/e2e/metrics-detail-edit.spec.ts
   e2e: true
-  e2e_reason: >-
-    Builder picker behavior, automatic datatype derivation, expression composition, and UI state
+  e2e_reason: Builder picker behavior, automatic datatype derivation, expression composition, and UI state
     synchronization with saved metrics are only verifiable through full UI interaction.
   related_reqs:
   - REQ-1317
@@ -39898,22 +39917,19 @@
   priority: SHOULD
   type: infrastructure
   since: 2026-07
-  description: >-
-    Local development serves a static provisa-ui/public/firebase-config.js stub setting
-    window.__PROVISA_FIREBASE__ = null (the configured-off state). In cloud deployments,
-    ui_server.py's explicit route shadows the static file. This eliminates the unconditional
-    404 for /firebase-config.js on every page load in vite dev.
-  use_case: >-
-    Eliminates a noisy 404 in the development console for every page load when Firebase is not
-    configured in local dev, improving developer experience and reducing noise in browser DevTools.
-    Extends REQ-1266 Firebase bootstrap support by providing a fallback configuration in local dev.
+  description: Local development serves a static provisa-ui/public/firebase-config.js stub setting window.__PROVISA_FIREBASE__
+    = null (the configured-off state). In cloud deployments, ui_server.py's explicit route shadows the
+    static file. This eliminates the unconditional 404 for /firebase-config.js on every page load in vite
+    dev.
+  use_case: Eliminates a noisy 404 in the development console for every page load when Firebase is not
+    configured in local dev, improving developer experience and reducing noise in browser DevTools. Extends
+    REQ-1266 Firebase bootstrap support by providing a fallback configuration in local dev.
   code:
   - provisa-ui/public/firebase-config.js
   - provisa/ui_server.py
   e2e: true
-  e2e_reason: >-
-    Static file serving in development and runtime route shadowing in cloud deployments are only
-    verifiable through end-to-end deployment and network testing.
+  e2e_reason: Static file serving in development and runtime route shadowing in cloud deployments are
+    only verifiable through end-to-end deployment and network testing.
   related_reqs:
   - REQ-1266
 - id: REQ-1326
@@ -39923,18 +39939,15 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: >-
-    Client state scoped to one signed-in session (localStorage keys provisa_token, provisa_org,
-    provisa_role, and persisted Apollo snapshot apollo-cache / admin-schema-version) must be cleared
-    when a session starts and when it ends. Additionally, a persisted provisa_org is honored only
-    while /auth/me still reports membership of that org; otherwise it is discarded and the active
-    org falls to active_org_id, else sole membership, else none.
-  use_case: >-
-    After the control plane was wiped, a fresh sign-in that claimed the platform-admin slot showed
-    no rights until a logout/login cycle. The server wrote both planes and answered 200 to every
-    request; the stale provisa_org from the previous session named a deleted org and rode on every
-    request as X-Org-Provisa. Session state isolation prevents stale org membership from deleted orgs
-    causing unauthorized access.
+  description: Client state scoped to one signed-in session (localStorage keys provisa_token, provisa_org,
+    provisa_role, and persisted Apollo snapshot apollo-cache / admin-schema-version) must be cleared when
+    a session starts and when it ends. Additionally, a persisted provisa_org is honored only while /auth/me
+    still reports membership of that org; otherwise it is discarded and the active org falls to active_org_id,
+    else sole membership, else none.
+  use_case: After the control plane was wiped, a fresh sign-in that claimed the platform-admin slot showed
+    no rights until a logout/login cycle. The server wrote both planes and answered 200 to every request;
+    the stale provisa_org from the previous session named a deleted org and rode on every request as X-Org-Provisa.
+    Session state isolation prevents stale org membership from deleted orgs causing unauthorized access.
   code:
   - provisa-ui/src/lib/session.ts
   - provisa-ui/src/apolloClient.ts
@@ -39943,22 +39956,32 @@
   - provisa-ui/src/context/AuthContext.tsx
   tests:
   - provisa-ui/src/__tests__/SessionIsolation.test.tsx
-  scenario: |
-    Given a user with prior session data in localStorage from a deleted org
+  scenario: 'Given a user with prior session data in localStorage from a deleted org
+
     When the user signs in to a fresh session
+
     Then all localStorage state (provisa_token, provisa_org, provisa_role, apollo-cache,
+
     admin-schema-version) is cleared before any API request
+
     And the active org is reconciled against /auth/me membership
+
     And if provisa_org names a deleted org, it is discarded and org falls to active_org_id or sole
+
     membership
 
+
     Given a user with an active session
+
     When the user logs out
+
     Then all client state is cleared from localStorage and Apollo cache
+
     And subsequent navigation finds no persisted session state
+
+    '
   e2e: true
-  e2e_reason: >-
-    Session lifecycle behavior (sign-in clearing stale state, logout cleanup, org membership
+  e2e_reason: Session lifecycle behavior (sign-in clearing stale state, logout cleanup, org membership
     reconciliation) is only verifiable through full sign-in/logout round-trips with server state changes.
 - id: REQ-1327
   status: complete
@@ -39967,25 +39990,26 @@
   priority: MUST
   type: constraint
   since: 2026-07
-  description: >-
-    platform_admin is a purely control-plane role with ZERO data capabilities anywhere — including root. All data-plane
-    administration (members, invites, sources, tables, governance, querying) belongs to org_admin, in every org including
-    root. Bootstrap grants the claimant BOTH roles in root: org_admin (root is their working org) and platform_admin
-    (deployment operation: infra/engine settings, config reload, org lifecycle, audited orphaned-org recovery grants).
-    The platform_admin role's capability set drops the admin/superadmin data-wildcard capabilities; the platform_bypass
-    does not bypass any data-plane capability check, even in root. Demo/install config column visible_to lists must not
-    name platform_admin (a control-plane role cannot appear in data grants); they name org_admin, analyst, developer.
-    Single-tenant: one person holding both roles; the roles never merge because org_admin of root must not inherit
-    deployment powers when a second org appears. When an org's administrators are unreachable, recovery runs through the
-    named, audited grant_org_admin operation: a platform_admin invoking it grants org_admin to a named member of that
-    org, written to that org's audit trail, and revocable through the same operation.
-  use_case: >-
-    Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane operations and customer data
-    access. Unified role inheritance conflates recovery capability with standing access and creates a silent backdoor
-    that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation of planes makes platform_admin's actions
-    inside customer orgs explicit, audited, and revocable, turning a standing privilege into a break-glass intervention
-    available only through audit trails. Even in single-tenant, keeping roles separate allows the platform to scale to
-    multi-tenant without redesigning role semantics.
+  description: 'platform_admin is a purely control-plane role with ZERO data capabilities anywhere — including
+    root. All data-plane administration (members, invites, sources, tables, governance, querying) belongs
+    to org_admin, in every org including root. Bootstrap grants the claimant BOTH roles in root: org_admin
+    (root is their working org) and platform_admin (deployment operation: infra/engine settings, config
+    reload, org lifecycle, audited orphaned-org recovery grants). The platform_admin role''s capability
+    set drops the admin/superadmin data-wildcard capabilities; the platform_bypass does not bypass any
+    data-plane capability check, even in root. Demo/install config column visible_to lists must not name
+    platform_admin (a control-plane role cannot appear in data grants); they name org_admin, analyst,
+    developer. Single-tenant: one person holding both roles; the roles never merge because org_admin of
+    root must not inherit deployment powers when a second org appears. When an org''s administrators are
+    unreachable, recovery runs through the named, audited grant_org_admin operation: a platform_admin
+    invoking it grants org_admin to a named member of that org, written to that org''s audit trail, and
+    revocable through the same operation.'
+  use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
+    operations and customer data access. Unified role inheritance conflates recovery capability with standing
+    access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
+    of planes makes platform_admin's actions inside customer orgs explicit, audited, and revocable, turning
+    a standing privilege into a break-glass intervention available only through audit trails. Even in
+    single-tenant, keeping roles separate allows the platform to scale to multi-tenant without redesigning
+    role semantics.
   code:
   - provisa/security/rights.py
   - provisa/api/admin/orgs_router.py
@@ -39994,55 +40018,67 @@
   tests:
   - tests/integration/test_org_lifecycle.py
   - tests/integration/test_invite_role_authz.py
-  scenario: |
-    Given a platform_admin and a tenant org they do not hold org_admin in
+  scenario: 'Given a platform_admin and a tenant org they do not hold org_admin in
 
-    When the platform_admin attempts to query that tenant org's data without holding org_admin
+
+    When the platform_admin attempts to query that tenant org''s data without holding org_admin
+
 
     Then the query is rejected
+
 
     And platform_bypass does not exempt the access
 
 
+
     Given a platform_admin who needs to recover an orphaned tenant org
+
 
     When they invoke grant_org_admin naming a member of that org
 
-    Then that member is assigned org_admin in that org's schema
 
-    And the operation is recorded in that org's audit trail
+    Then that member is assigned org_admin in that org''s schema
+
+
+    And the operation is recorded in that org''s audit trail
+
 
     And the platform_admin does not gain org_admin or any data access in that org
+
 
     And they can later revoke org_admin through the same operation
 
 
+
     Given a single-tenant deployment with one person holding both platform_admin and org_admin in root
 
-    When they query root's data or administer sources
+
+    When they query root''s data or administer sources
+
 
     Then they act as org_admin only (the capability check)
 
+
     And platform_bypass is never consulted for data-plane operations
 
+    '
   e2e: true
-  e2e_reason: >-
-    platform_bypass scoping to control-plane only and role separation (platform_admin never grants data access) are only
-    verifiable end-to-end with real role resolution across both planes and live audit trail writes. Single-tenant role
-    non-merging is only verifiable when the second org appears.
+  e2e_reason: platform_bypass scoping to control-plane only and role separation (platform_admin never
+    grants data access) are only verifiable end-to-end with real role resolution across both planes and
+    live audit trail writes. Single-tenant role non-merging is only verifiable when the second org appears.
   related_reqs:
   - REQ-1297
   - REQ-1298
   - REQ-1303
   - REQ-1305
-  impact_note: >-
-    Formalizes the settled design on 2026-07-29, correcting defective prior recordings in REQ-1303 and REQ-1297.
-    The platform/tenant separation (platform_admin = control-plane only, zero data access anywhere including root;
-    org_admin = all data-plane administration in every org) was the design intent but was contradicted by recorded
-    text ("platform_admin already holds every capability in every org"). Amended REQ-1303 and REQ-1297 now state
-    the separation correctly. REQ-1327 documents the full refined constraint: capability-set changes (no admin/superadmin
-    data wildcards), bootstrap dual-role grant, visible_to lists never naming platform_admin, role non-merging in
-    single-tenant. Invite-escalation validation must ensure platform-level invites never resolve to org_admin (REQ-1298 area).
+  impact_note: 'Formalizes the settled design on 2026-07-29, correcting defective prior recordings in
+    REQ-1303 and REQ-1297. The platform/tenant separation (platform_admin = control-plane only, zero data
+    access anywhere including root; org_admin = all data-plane administration in every org) was the design
+    intent but was contradicted by recorded text ("platform_admin already holds every capability in every
+    org"). Amended REQ-1303 and REQ-1297 now state the separation correctly. REQ-1327 documents the full
+    refined constraint: capability-set changes (no admin/superadmin data wildcards), bootstrap dual-role
+    grant, visible_to lists never naming platform_admin, role non-merging in single-tenant. Invite-escalation
+    validation must ensure platform-level invites never resolve to org_admin (REQ-1298 area).'
 - id: REQ-471
   status: complete
   since: 2026-07
@@ -40050,16 +40086,16 @@
   category: Compiler & Schema
   priority: MUST
   type: constraint
-  description: >-
-    A registered table's virtual name (alias) is a SQL-plane identifier whose sole authority is the SQL naming convention
-    (global_sql_naming_convention, default snake_case). The GraphQL surface applies gql naming conventions at schema generation
-    and never mints the SQL name. Defect fixed 2026-07-29: register_table previously derived the default alias from the source's
-    gql_naming_convention with apollo_graphql (camelCase) fallback, causing __provisa__ view/entity/fact registrations (no source)
-    to get camelCase SQL names (e.g., dim_pet → dimPet). Now derives from global_sql_naming_convention and collapses to NULL when
-    the normalized name equals table_name.
-  use_case: >-
-    Keeping SQL and GraphQL naming authorities separate ensures the SQL plane (federated query routing, native dialect emit)
-    operates on a stable snake_case schema, while the GraphQL surface applies naming conventions independently at schema-generation time.
+  description: 'A registered table''s virtual name (alias) is a SQL-plane identifier whose sole authority
+    is the SQL naming convention (global_sql_naming_convention, default snake_case). The GraphQL surface
+    applies gql naming conventions at schema generation and never mints the SQL name. Defect fixed 2026-07-29:
+    register_table previously derived the default alias from the source''s gql_naming_convention with
+    apollo_graphql (camelCase) fallback, causing __provisa__ view/entity/fact registrations (no source)
+    to get camelCase SQL names (e.g., dim_pet → dimPet). Now derives from global_sql_naming_convention
+    and collapses to NULL when the normalized name equals table_name.'
+  use_case: Keeping SQL and GraphQL naming authorities separate ensures the SQL plane (federated query
+    routing, native dialect emit) operates on a stable snake_case schema, while the GraphQL surface applies
+    naming conventions independently at schema-generation time.
   code:
   - provisa/api/admin/schema_mutation_ops.py
   tests:
@@ -40072,16 +40108,14 @@
   category: Source Identification
   priority: MUST
   type: structural
-  description: >-
-    The sentinel source ID for definition-backed relations (views, entity/fact lowerings, metric-composed views)
-    is renamed from __provisa__ to __derived__, centralized as provisa.core.models.DERIVED_SOURCE_ID.
-    The name is invariant under materialization (a materialized fact is not "virtual") and clarifies the provenance
-    relationship: "derived FROM other relations". The Tables UI renders a "derived" badge instead of printing
-    the sentinel. No dual-accept of the old ID (no-backcompat rule).
-  use_case: >-
-    "Derived" is the established term (SQL-standard "derived table"; Denodo base/derived views; Dremio physical/virtual datasets).
-    Centralizing the sentinel simplifies its use across admin APIs and UI surfaces, and the badge provides
-    user-facing clarity about lineage.
+  description: 'The sentinel source ID for definition-backed relations (views, entity/fact lowerings,
+    metric-composed views) is renamed from __provisa__ to __derived__, centralized as provisa.core.models.DERIVED_SOURCE_ID.
+    The name is invariant under materialization (a materialized fact is not "virtual") and clarifies the
+    provenance relationship: "derived FROM other relations". The Tables UI renders a "derived" badge instead
+    of printing the sentinel. No dual-accept of the old ID (no-backcompat rule).'
+  use_case: '"Derived" is the established term (SQL-standard "derived table"; Denodo base/derived views;
+    Dremio physical/virtual datasets). Centralizing the sentinel simplifies its use across admin APIs
+    and UI surfaces, and the badge provides user-facing clarity about lineage.'
   code:
   - provisa/core/models.py
   - provisa/core/config_loader.py
@@ -40096,14 +40130,12 @@
   category: Source Identification
   priority: MUST
   type: structural
-  description: >-
-    Replace the sentinel source ID entirely: source_id becomes nullable, and registered relations gain an explicit
-    definition kind (base | derived). Provenance surfaces from definition lineage, not a source slot.
-    The sentinel remains a storage detail until this refactoring is complete, at which point registration schemas,
-    admin APIs, and the UI all reference the explicit kind field.
-  use_case: >-
-    Removing the sentinel simplifies the schema model and makes the provenance relationship explicit in the type system,
-    eliminating special-case handling and reducing surface area.
+  description: 'Replace the sentinel source ID entirely: source_id becomes nullable, and registered relations
+    gain an explicit definition kind (base | derived). Provenance surfaces from definition lineage, not
+    a source slot. The sentinel remains a storage detail until this refactoring is complete, at which
+    point registration schemas, admin APIs, and the UI all reference the explicit kind field.'
+  use_case: Removing the sentinel simplifies the schema model and makes the provenance relationship explicit
+    in the type system, eliminating special-case handling and reducing surface area.
 - id: REQ-1330
   status: complete
   since: 2026-07
@@ -40117,47 +40149,58 @@
   - provisa/api/admin/invites_router.py
   tests:
   - tests/integration/test_invite_delivery.py
-  description: >-
-    Transactional email delivery (org invites today; any future outbound transactional mail) exists only in SaaS
-    deployment mode and is sent exclusively through an internal EmailSender abstraction (port/adapter). Application
-    code never imports or configures a concrete provider; it depends only on the port, so the provider can be swapped
-    without touching call sites. The initial adapter is a transactional email service (Resend or AWS SES) sending as
-    invites@provisa.dev, authenticated by SPF/DKIM records on provisa.dev; inbound MX for provisa.dev remains with
-    Microsoft 365 (receiving is out of scope for the application). Prohibited transports: direct SMTP submission to
-    Microsoft 365 (smtp.office365.com) and any locally hosted SMTP relay. Self-hosted (non-SaaS) deployments send no
-    email: the feature is gated on SaaS mode and invite flows in self-hosted mode surface the invite link for
-    out-of-band delivery instead of sending.
-  use_case: >-
-    Invites must reach users reliably without binding the codebase to one email vendor. A port/adapter seam keeps the
-    provider a deployment detail (avoiding the Microsoft 365 SMTP basic-auth retirement and its throughput limits),
-    while SaaS-only gating keeps self-hosted installs free of outbound-mail infrastructure, credentials, and
-    deliverability liability.
-  scenario: |
-    Given a SaaS-mode deployment with the transactional provider adapter configured
+  description: 'Transactional email delivery (org invites today; any future outbound transactional mail)
+    exists only in SaaS deployment mode and is sent exclusively through an internal EmailSender abstraction
+    (port/adapter). Application code never imports or configures a concrete provider; it depends only
+    on the port, so the provider can be swapped without touching call sites. The initial adapter is a
+    transactional email service (Resend or AWS SES) sending as invites@provisa.dev, authenticated by SPF/DKIM
+    records on provisa.dev; inbound MX for provisa.dev remains with Microsoft 365 (receiving is out of
+    scope for the application). Prohibited transports: direct SMTP submission to Microsoft 365 (smtp.office365.com)
+    and any locally hosted SMTP relay. Self-hosted (non-SaaS) deployments send no email: the feature is
+    gated on SaaS mode and invite flows in self-hosted mode surface the invite link for out-of-band delivery
+    instead of sending.'
+  use_case: Invites must reach users reliably without binding the codebase to one email vendor. A port/adapter
+    seam keeps the provider a deployment detail (avoiding the Microsoft 365 SMTP basic-auth retirement
+    and its throughput limits), while SaaS-only gating keeps self-hosted installs free of outbound-mail
+    infrastructure, credentials, and deliverability liability.
+  scenario: 'Given a SaaS-mode deployment with the transactional provider adapter configured
+
 
     When an org admin sends a member invite
 
+
     Then the invite email is dispatched through the EmailSender port
 
+
     And the message is sent as invites@provisa.dev via the configured provider adapter
+
 
     And no application module outside the adapter references the concrete provider
 
 
+
     Given a self-hosted (non-SaaS) deployment
+
 
     When an org admin creates a member invite
 
+
     Then no email is sent
+
 
     And the invite link is returned for out-of-band delivery
 
 
+
     Given the provider is swapped (e.g. Resend to SES)
+
 
     When the new adapter is configured
 
+
     Then invite flows work unchanged with no modification to any caller of the EmailSender port
+
+    '
   related_reqs:
   - REQ-1030
   - REQ-1298
@@ -40171,15 +40214,13 @@
   code:
   - terraform/gcp-saas/main.tf
   - terraform/gcp-saas/front-door/proxy.py
-  description: >-
-    The SaaS shared IP is fronted by an always-free e2-micro "front door" VM running a stdlib-only TCP proxy
-    that splices every protocol port to the coordinator. The front door replaces the regional passthrough NLB,
-    which cost ~$18/mo in forwarding-rule hours and could not wake a stopped backend.
-  use_case: >-
-    The e2-micro always-free tier eliminates the forwarding-rule cost entirely, and a custom proxy enables
-    wake-on-hit (start the coordinator on traffic) and idle-stop (stop after inactivity) that a managed NLB
-    cannot provide. The same static IP persists across coordinator stop/start cycles, keeping DNS and client
-    configuration stable.
+  description: The SaaS shared IP is fronted by an always-free e2-micro "front door" VM running a stdlib-only
+    TCP proxy that splices every protocol port to the coordinator. The front door replaces the regional
+    passthrough NLB, which cost ~$18/mo in forwarding-rule hours and could not wake a stopped backend.
+  use_case: The e2-micro always-free tier eliminates the forwarding-rule cost entirely, and a custom proxy
+    enables wake-on-hit (start the coordinator on traffic) and idle-stop (stop after inactivity) that
+    a managed NLB cannot provide. The same static IP persists across coordinator stop/start cycles, keeping
+    DNS and client configuration stable.
 - id: REQ-1332
   status: complete
   since: 2026-07
@@ -40189,34 +40230,44 @@
   type: infrastructure
   code:
   - terraform/gcp-saas/front-door/proxy.py
-  description: >-
-    When the coordinator is stopped and a client connects on any protocol port, the front door immediately
-    triggers instances.start. HTTPS surfaces (UI 443, API 8000) return a TLS 503 "waking" page (HTML for browsers)
-    or JSON for API clients; raw TCP ports (pgwire 5439, bolt 7687, flight 8815, mcp 8009, grpc 50051) hold the
-    connection open up to ~110s until the listener is up, then splice the client directly to the backend.
-  use_case: >-
-    HTTPS clients need only refresh (browsers) or retry (API clients); no manual intervention. Raw TCP clients
-    are transparent to the wake delay, improving UX for database drivers and CLI tools that poll for readiness.
-  scenario: |
-    Given the coordinator is stopped and a client connects on the API port (8000)
+  description: When the coordinator is stopped and a client connects on any protocol port, the front door
+    immediately triggers instances.start. HTTPS surfaces (UI 443, API 8000) return a TLS 503 "waking"
+    page (HTML for browsers) or JSON for API clients; raw TCP ports (pgwire 5439, bolt 7687, flight 8815,
+    mcp 8009, grpc 50051) hold the connection open up to ~110s until the listener is up, then splice the
+    client directly to the backend.
+  use_case: HTTPS clients need only refresh (browsers) or retry (API clients); no manual intervention.
+    Raw TCP clients are transparent to the wake delay, improving UX for database drivers and CLI tools
+    that poll for readiness.
+  scenario: 'Given the coordinator is stopped and a client connects on the API port (8000)
+
 
     When the front door receives the connection
 
+
     Then it triggers instances.start
+
 
     And returns a TLS 503 response with JSON {"status": "waking"} or an HTML page
 
+
     Given the coordinator is stopped and a pgwire client connects (port 5439)
+
 
     When the front door receives the connection
 
+
     Then it triggers instances.start
+
 
     And holds the connection open (up to 110s) without sending data
 
+
     And waits for the coordinator to boot and accept on port 5439
 
+
     Then splices the client directly to the backend
+
+    '
 - id: REQ-1333
   status: complete
   since: 2026-07
@@ -40227,32 +40278,40 @@
   code:
   - terraform/gcp-saas/front-door/proxy.py
   - terraform/gcp-saas/variables.tf
-  description: >-
-    After idle_stop_minutes (default 60) of zero traffic across all protocol ports, the front door stops the
-    coordinator via instances.stop and reduces idle cost to ~$0.65/day (disk + Cloud SQL f1-micro + static IP).
-    A boot-grace period (default 10 min) after wake prevents the idle reaper from immediately stopping a just-booted
-    coordinator.
-  use_case: >-
-    Scale-to-zero idle costs are the enabler for a viable free tier and low-commitment trials. The grace period
-    prevents flapping: a client that connects briefly during boot won't trigger an immediate stop cycle.
-  scenario: |
-    Given a SaaS deployment with idle_stop_minutes=60 and boot_grace_minutes=10
+  description: After idle_stop_minutes (default 60) of zero traffic across all protocol ports, the front
+    door stops the coordinator via instances.stop and reduces idle cost to ~$0.65/day (disk + Cloud SQL
+    f1-micro + static IP). A boot-grace period (default 10 min) after wake prevents the idle reaper from
+    immediately stopping a just-booted coordinator.
+  use_case: 'Scale-to-zero idle costs are the enabler for a viable free tier and low-commitment trials.
+    The grace period prevents flapping: a client that connects briefly during boot won''t trigger an immediate
+    stop cycle.'
+  scenario: 'Given a SaaS deployment with idle_stop_minutes=60 and boot_grace_minutes=10
+
 
     When no traffic arrives on any port for 60 minutes
 
+
     Then the front door calls instances.stop
+
 
     And the coordinator shuts down
 
+
     Given the coordinator is stopped
+
 
     When a new client connects
 
+
     Then the front door calls instances.start
+
 
     And waits 10 minutes (boot grace) before the idle reaper may stop again
 
+
     Then if no new traffic arrives, instances.stop is called
+
+    '
 - id: REQ-1334
   status: complete
   since: 2026-07
@@ -40264,38 +40323,48 @@
   - terraform/gcp-saas/front-door/proxy.py
   - terraform/gcp-saas/variables.tf
   - terraform/gcp-saas/main.tf
-  description: >-
-    The front door serves an authenticated wake/verify API on front_door_status_port (default 9443, HTTPS only).
-    GET /status returns coordinator state (RUNNING | STOPPED | PROVISIONING) and per-port reachability (true | false).
-    POST /wake synchronously calls instances.start and waits for the coordinator listener to accept. Bearer token
-    (front_door_status_token output) is required on both endpoints. This API answers even while the coordinator is
-    stopped, making it ideal for customers and automation that cannot retry.
-  use_case: >-
-    Automated systems (CI/CD, integrations) that lack retry logic benefit from explicit pre-wake and status polling
-    instead of blindly retrying a connection. The dedicated status port isolates control traffic from data ports and
-    provides a probe endpoint for monitoring.
-  scenario: |
-    Given the front door is running and the coordinator is stopped
+  description: The front door serves an authenticated wake/verify API on front_door_status_port (default
+    9443, HTTPS only). GET /status returns coordinator state (RUNNING | STOPPED | PROVISIONING) and per-port
+    reachability (true | false). POST /wake synchronously calls instances.start and waits for the coordinator
+    listener to accept. Bearer token (front_door_status_token output) is required on both endpoints. This
+    API answers even while the coordinator is stopped, making it ideal for customers and automation that
+    cannot retry.
+  use_case: Automated systems (CI/CD, integrations) that lack retry logic benefit from explicit pre-wake
+    and status polling instead of blindly retrying a connection. The dedicated status port isolates control
+    traffic from data ports and provides a probe endpoint for monitoring.
+  scenario: 'Given the front door is running and the coordinator is stopped
+
 
     When a client sends GET /status with the Bearer token
 
+
     Then the response includes {"status": "STOPPED", "ports": {"5439": false, "443": false, ...}}
+
 
     Given the coordinator is stopped
 
+
     When a client sends POST /wake with the Bearer token
+
 
     Then the front door calls instances.start
 
+
     And polls the coordinator listener until it accepts
+
 
     And returns {"status": "RUNNING"} when ready
 
+
     Given an invalid or missing Bearer token
+
 
     When a client requests /status or /wake
 
+
     Then the front door returns 401 Unauthorized
+
+    '
 - id: REQ-1335
   status: complete
   since: 2026-07
@@ -40306,15 +40375,13 @@
   code:
   - terraform/gcp-saas/main.tf
   - terraform/gcp-saas/variables.tf
-  description: >-
-    The coordinator machine type is e2-standard-4 (4 vCPU, 16 GB, ~25% lower per-core throughput than n2-standard-4).
-    Boot disk is pd-balanced (not pd-ssd): with node-scheduler.include-coordinator=false and the control plane
-    offloaded to Cloud SQL, the coordinator performs no scan spill, so pd-ssd IOPS buys nothing. When paying
-    concurrency exists, revisit back to n2-standard-4.
-  use_case: >-
-    E2's lower per-core cost reduces idle-stop economics and planning-latency impact is negligible under the light
-    concurrent load expected at first scale. The coordinator idle-stops via the front door anyway, so the choice is
-    reversible: moving to n2 is a one-line variable change when needed.
+  description: 'The coordinator machine type is e2-standard-4 (4 vCPU, 16 GB, ~25% lower per-core throughput
+    than n2-standard-4). Boot disk is pd-balanced (not pd-ssd): with node-scheduler.include-coordinator=false
+    and the control plane offloaded to Cloud SQL, the coordinator performs no scan spill, so pd-ssd IOPS
+    buys nothing. When paying concurrency exists, revisit back to n2-standard-4.'
+  use_case: 'E2''s lower per-core cost reduces idle-stop economics and planning-latency impact is negligible
+    under the light concurrent load expected at first scale. The coordinator idle-stops via the front
+    door anyway, so the choice is reversible: moving to n2 is a one-line variable change when needed.'
 - id: REQ-1336
   status: complete
   since: 2026-07
@@ -40324,14 +40391,13 @@
   type: structural
   code:
   - terraform/gcp-saas/main.tf
-  description: >-
-    The front-door service account is granted a custom IAM role (provisaSaasFrontDoor) with three permissions only:
-    compute.instances.start, compute.instances.stop, compute.instances.get. The role is scoped to the project, and
-    the front door assumes this identity via the VM's service account binding. No other permissions are granted.
-  use_case: >-
-    Least-privilege isolation: the front door cannot modify the network, delete instances, or access storage or
-    databases. Compromised front-door code (e.g. via supply-chain attack on the proxy.py script) cannot escalate
-    beyond starting/stopping the coordinator and checking its status.
+  description: 'The front-door service account is granted a custom IAM role (provisaSaasFrontDoor) with
+    three permissions only: compute.instances.start, compute.instances.stop, compute.instances.get. The
+    role is scoped to the project, and the front door assumes this identity via the VM''s service account
+    binding. No other permissions are granted.'
+  use_case: 'Least-privilege isolation: the front door cannot modify the network, delete instances, or
+    access storage or databases. Compromised front-door code (e.g. via supply-chain attack on the proxy.py
+    script) cannot escalate beyond starting/stopping the coordinator and checking its status.'
 - id: REQ-1337
   status: complete
   since: 2026-07
@@ -40354,39 +40420,55 @@
   - tests/integration/test_auth_integration.py
   - tests/integration/test_governance_integration.py
   - provisa-ui/e2e/auth-providers.spec.ts
-  description: >-
-    Every authorization or visibility gate — server and UI — must test a CAPABILITY (right) the acting role carries,
-    never a role id or name. A role id is identity only. Converting identity to capabilities happens in exactly one place
-    per surface: capabilities_for_claims in provisa/security/rights.py. Two capabilities control deployment-wide settings:
-    platform_settings (read/modify federation engine, cache storage, encryption provider, auth provider, config file,
-    query-engine lifecycle) and cross_org (act in an org one is not a member of; holding this capability also marks a role
-    CONTROL-PLANE, hence off the data plane per REQ-1327 and unresolvable in a tenant org per REQ-1297). Seed: platform_admin
-    always holds both. org_admin holds platform_settings only in SINGLE-TENANT deployments and never holds cross_org in
-    either mode. apply_tenancy_role_grants in provisa/core/db.py re-asserts these grants on every init_schema.
-  use_case: >-
-    Capability-based gates decouple authorization logic from identity, enabling tenancy mode to decide grants without
-    duplicating gate logic. Capability gates are re-evaluable at runtime; role identity gates are brittle and error-prone
-    when tenancy changes.
-  scenario: |
-    Given a role with platform_settings capability
+  description: 'Every authorization or visibility gate — server and UI — must test a CAPABILITY (right)
+    the acting role carries, never a role id or name. A role id is identity only. Converting identity
+    to capabilities happens in exactly one place per surface: capabilities_for_claims in provisa/security/rights.py.
+    Two capabilities control deployment-wide settings: platform_settings (read/modify federation engine,
+    cache storage, encryption provider, auth provider, config file, query-engine lifecycle) and cross_org
+    (act in an org one is not a member of; holding this capability also marks a role CONTROL-PLANE, hence
+    off the data plane per REQ-1327 and unresolvable in a tenant org per REQ-1297). Seed: platform_admin
+    always holds both. org_admin holds platform_settings only in SINGLE-TENANT deployments and never holds
+    cross_org in either mode. apply_tenancy_role_grants in provisa/core/db.py re-asserts these grants
+    on every init_schema.'
+  use_case: Capability-based gates decouple authorization logic from identity, enabling tenancy mode to
+    decide grants without duplicating gate logic. Capability gates are re-evaluable at runtime; role identity
+    gates are brittle and error-prone when tenancy changes.
+  scenario: 'Given a role with platform_settings capability
+
     When a user holding that role accesses the admin UI
+
     Then the Admin, Federation Engine, Cache, and Security tabs are visible
+
     And server routes to the deployment-wide settings handlers accept the request
 
+
     Given a multitenant deployment with org_admin in a tenant org
+
     When org_admin attempts to access platform settings
+
     Then the Admin, Federation Engine, Cache, and Security tabs are hidden
+
     And server routes reject the request with 403
 
+
     Given a single-tenant deployment with org_admin
+
     When org_admin accesses the admin UI
+
     Then platform settings tabs are visible
+
     And server routes accept the request
 
+
     Given an authorization gate in server or UI
+
     When the gate evaluates permissions
+
     Then it calls capabilities_for_claims to resolve rights
+
     And tests capabilities, never role ids or names
+
+    '
   related_reqs:
   - REQ-1327
   - REQ-1297
@@ -40398,26 +40480,29 @@
   priority: MUST
   type: structural
   since: 2026-07
-  description: >-
-    Schema build cache (domains, tables, column_types rows) is per-org state on OrgRuntime,
+  description: Schema build cache (domains, tables, column_types rows) is per-org state on OrgRuntime,
     with AppState property shim routing reads and writes through the ContextVar-selected org runtime.
     Matches existing shims for tables, relationships, metrics, and roles.
-  use_case: >-
-    Prevents one organization's schema from overwriting another's during concurrent schema rebuilds.
-    Ensures /data/domains and other schema endpoints return only the querying org's domains,
-    not the last org to rebuild its schema.
+  use_case: Prevents one organization's schema from overwriting another's during concurrent schema rebuilds.
+    Ensures /data/domains and other schema endpoints return only the querying org's domains, not the last
+    org to rebuild its schema.
   code:
   - provisa/api/org_runtime.py
   - provisa/api/app.py
   - provisa/api/data/sdl.py
   tests:
   - tests/unit/test_org_runtime.py
-  scenario: |
-    Given two organizations with different domains configured
+  scenario: 'Given two organizations with different domains configured
+
     When organization A rebuilds its schema
-    Then organization B's cached schema remains unchanged
-    And /data/domains returns only organization A's domains when queried as organization A
-    And /data/domains returns only organization B's domains when queried as organization B
+
+    Then organization B''s cached schema remains unchanged
+
+    And /data/domains returns only organization A''s domains when queried as organization A
+
+    And /data/domains returns only organization B''s domains when queried as organization B
+
+    '
 - id: REQ-1339
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -40430,20 +40515,24 @@
   - provisa/api/startup_seed.py
   tests:
   - tests/integration/test_org_demo_seed_visible.py
-  description: >-
-    Org provisioning must seed every system source (including __derived__) into the new org's schema
-    before the config load registers tables. Any config tables:row with source_id pointing to a system
-    source has a guaranteed FK target; silent table drops from missing source_id references are prevented.
-  use_case: >-
-    System sources like __derived__ are seeded per-org by startup_seed._seed_built_in_sources, not declared
-    by config. Without pre-seeding, provisioning loads config tables that reference nonexistent source_ids,
-    silently dropping those tables from the load.
-  scenario: |
-    Given a new organization being provisioned
+  description: Org provisioning must seed every system source (including __derived__) into the new org's
+    schema before the config load registers tables. Any config tables:row with source_id pointing to a
+    system source has a guaranteed FK target; silent table drops from missing source_id references are
+    prevented.
+  use_case: System sources like __derived__ are seeded per-org by startup_seed._seed_built_in_sources,
+    not declared by config. Without pre-seeding, provisioning loads config tables that reference nonexistent
+    source_ids, silently dropping those tables from the load.
+  scenario: 'Given a new organization being provisioned
+
     When provisioning begins
+
     Then _seed_built_in_sources runs before config.tables are registered
-    And __derived__ and all system sources exist in the org's schema before table registration
+
+    And __derived__ and all system sources exist in the org''s schema before table registration
+
     And config tables with source_id: __derived__ load successfully
+
+    '
 - id: REQ-1340
   status: complete
   group: 1. Access Governance & Security
@@ -40458,21 +40547,24 @@
   tests:
   - tests/integration/test_governance_integration.py
   - tests/integration/test_org_demo_seed_visible.py
-  description: >-
-    Control-plane role resolution (the set of roles holding cross_org) must not depend on in-memory app state.
-    _ungrant_control_plane resolves cross_org-holding roles from the org's own roles table on the caller's connection,
-    never from state.roles. Platform-wide seed guarantees the roles table exists and contains the correct grants before
-    any table registration runs.
-  use_case: >-
-    During provisioning, build_org_runtime populates state.roles AFTER config table registration. Without querying
-    the roles table directly, control-plane roles are unresolvable during provisioning and platform_admin survives on
-    every column grant of the new org, violating REQ-1337.
-  scenario: |
-    Given a new org being provisioned
+  description: Control-plane role resolution (the set of roles holding cross_org) must not depend on in-memory
+    app state. _ungrant_control_plane resolves cross_org-holding roles from the org's own roles table
+    on the caller's connection, never from state.roles. Platform-wide seed guarantees the roles table
+    exists and contains the correct grants before any table registration runs.
+  use_case: During provisioning, build_org_runtime populates state.roles AFTER config table registration.
+    Without querying the roles table directly, control-plane roles are unresolvable during provisioning
+    and platform_admin survives on every column grant of the new org, violating REQ-1337.
+  scenario: 'Given a new org being provisioned
+
     When _ungrant_control_plane runs before build_org_runtime completes
-    Then it queries the org's roles table on the connection
+
+    Then it queries the org''s roles table on the connection
+
     And resolves cross_org-holding roles from the table, not from state.roles
+
     And correctly strips platform_admin from column grants
+
+    '
   related_reqs:
   - REQ-1337
   - REQ-1327
@@ -40483,26 +40575,30 @@
   priority: SHOULD
   type: structural
   since: 2026-07
-  description: >-
-    UI locale translation is performed in-session by the Claude agent via the i18n-translate skill.
-    No external translation service or LLM API call is made. Translation is incremental: a per-locale
+  description: 'UI locale translation is performed in-session by the Claude agent via the i18n-translate
+    skill. No external translation service or LLM API call is made. Translation is incremental: a per-locale
     translation memory (TM) sidecar at src/i18n/locales/<lng>/.tm.json records the English source string
-    per key at translation time. Only missing or stale keys are retranslated.
-  use_case: >-
-    In-session translation via Claude agent eliminates external service dependencies and API costs,
+    per key at translation time. Only missing or stale keys are retranslated.'
+  use_case: In-session translation via Claude agent eliminates external service dependencies and API costs,
     reducing operational complexity. Incremental translation memory keeps translation artifacts locally
-    and avoids redundant retranslations, accelerating catalog updates. English catalogs (en.json +
-    en/<ns>.json) remain the sole source of truth for keys.
+    and avoids redundant retranslations, accelerating catalog updates. English catalogs (en.json + en/<ns>.json)
+    remain the sole source of truth for keys.
   code:
   - provisa-ui/src/i18n/
   - .claude/skills/i18n-translate/
-  scenario: |
-    Given a Provisa i18n locale catalog (e.g., src/i18n/locales/fr.json)
+  scenario: 'Given a Provisa i18n locale catalog (e.g., src/i18n/locales/fr.json)
+
     When a locale catalog is missing or keys are stale
+
     Then the Claude i18n-translate agent translates via in-session invocation
+
     And stores (English key → translated value) in src/i18n/locales/fr/.tm.json
+
     And subsequent updates only retranslate keys absent from .tm.json
+
     And validation enforces key-set and {{placeholder}} parity per locale
+
+    '
   related_reqs:
   - REQ-1012
 - id: REQ-1342
@@ -40512,27 +40608,32 @@
   priority: SHOULD
   type: behavioral
   since: 2026-07
-  description: >-
-    UI language is selected solely from the browser's navigator.language setting (read at runtime on each
-    session start), with English (en) as fallback. Regional locale variants (es-MX, es-419) are mapped to
-    their base catalog (es). No per-user language override is persisted to localStorage; the provisa_lang
-    key is retired. First non-English locale shipped is universal/neutral Spanish (es) with full catalog parity.
-  use_case: >-
-    Browser language detection eliminates per-user preference storage, reducing complexity and data plane
-    footprint. Automatic regional variant mapping (e.g., es-MX → es) ensures consistent translation coverage
-    without fragmenting catalogs. Catalog parity enforcement guarantees every locale is feature-complete on
-    release.
+  description: UI language is selected solely from the browser's navigator.language setting (read at runtime
+    on each session start), with English (en) as fallback. Regional locale variants (es-MX, es-419) are
+    mapped to their base catalog (es). No per-user language override is persisted to localStorage; the
+    provisa_lang key is retired. First non-English locale shipped is universal/neutral Spanish (es) with
+    full catalog parity.
+  use_case: Browser language detection eliminates per-user preference storage, reducing complexity and
+    data plane footprint. Automatic regional variant mapping (e.g., es-MX → es) ensures consistent translation
+    coverage without fragmenting catalogs. Catalog parity enforcement guarantees every locale is feature-complete
+    on release.
   code:
   - provisa-ui/src/i18n/index.ts
   tests:
   - provisa-ui/e2e/i18n.spec.ts
-  scenario: |
-    Given a browser with navigator.language set to es-MX
+  scenario: 'Given a browser with navigator.language set to es-MX
+
     When the Provisa UI loads
+
     Then the language is resolved to es (base catalog)
+
     And supportedLngs ["en","es"] and nonExplicitSupportedLngs are applied
+
     And no localStorage lookup for provisa_lang occurs
+
     And the UI renders in Spanish
+
+    '
   e2e: true
   e2e_reason: Browser language detection and fallback behavior can only be verified through actual browser
     navigation and session startup with different navigator.language settings.
@@ -40572,26 +40673,35 @@
   priority: MUST
   type: behavioral
   description: OrgRuntime (provisa/api/org_runtime.py) carries isolated_engine/federation_engine/engine_conn/engine_conn_kwargs.
-    AppState.federation_engine/engine_conn/engine_conn_kwargs are routed properties resolving through the
-    current_org ContextVar. An org with a dedicated engine resolves its own EngineRuntime; every other org
-    falls through to the default-org (shared) engine. build_org_runtime binds the dedicated EngineRuntime
+    AppState.federation_engine/engine_conn/engine_conn_kwargs are routed properties resolving through
+    the current_org ContextVar. An org with a dedicated engine resolves its own EngineRuntime; every other
+    org falls through to the default-org (shared) engine. build_org_runtime binds the dedicated EngineRuntime
     before source registration so the org's catalogs land on its engine; shutdown closes each org engine
     with its org bound.
   use_case: Per-org federation-engine routing isolates catalog and execution scope per tenant, ensuring
     source registrations and queries execute against the org's dedicated or shared engine without cross-org
     interference.
-  scenario: |
-    Given an isolated org with its own federation engine
+  scenario: 'Given an isolated org with its own federation engine
+
     When a source is registered for that org
-    Then the catalog lands on the org's dedicated engine, not the shared pool
+
+    Then the catalog lands on the org''s dedicated engine, not the shared pool
+
 
     Given a non-isolated org
+
     When a source is registered
+
     Then the catalog lands on the default-org (shared) engine
 
+
     Given an org with a bound EngineRuntime during shutdown
+
     When org lifecycle completes
+
     Then the dedicated engine shuts down with its org bound
+
+    '
   code:
   - provisa/api/org_runtime.py
   - provisa/api/app.py
@@ -40610,19 +40720,26 @@
   priority: MUST
   type: behavioral
   description: isolated_engine_endpoint(org_id) in provisa/federation/engine.py resolves a dedicated Trino
-    coordinator endpoint using PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE (an {org_id}-templated hostname) and
-    PROVISA_ISOLATED_ENGINE_PORT. If an isolated org is deployed to an environment without the template
+    coordinator endpoint using PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE (an {org_id}-templated hostname)
+    and PROVISA_ISOLATED_ENGINE_PORT. If an isolated org is deployed to an environment without the template
     configured, resolution is a hard error (never silently routing to the shared coordinator).
   use_case: Isolated orgs must route exclusively to their dedicated Trino coordinator, with no silent
-    fallback to shared infrastructure; missing configuration is a deployment defect requiring explicit remediation.
-  scenario: |
-    Given an isolated org and PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE configured
+    fallback to shared infrastructure; missing configuration is a deployment defect requiring explicit
+    remediation.
+  scenario: 'Given an isolated org and PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE configured
+
     When isolated_engine_endpoint is called with the org_id
+
     Then a Trino coordinator endpoint is resolved using the template and port
 
+
     Given an isolated org and PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE not configured
+
     When isolated_engine_endpoint is called
+
     Then resolution raises a hard error
+
+    '
   code:
   - provisa/federation/engine.py
   tests:
@@ -40639,8 +40756,8 @@
   type: infrastructure
   description: The dedicated federation-engine cluster idles/sleeps between sessions like the shared engine's
     front door. bind_terminal (backend lifecycle hook in provisa/federation/backend.py and trino_lifecycle.bind_terminal)
-    stores terminal connection kwargs without connecting. TrinoBackend.execute and execute_sync accept a
-    kwargs-only (unconnected) terminal; execute_trino's liveness path connects on the first real query.
+    stores terminal connection kwargs without connecting. TrinoBackend.execute and execute_sync accept
+    a kwargs-only (unconnected) terminal; execute_trino's liveness path connects on the first real query.
     Traffic wakes the cluster; org provisioning never does.
   use_case: Dedicated engines reduce operational cost by sleeping when idle, waking only on actual query
     execution, avoiding provisioning/deprovisioning cycles or always-on compute overhead.
@@ -40664,7 +40781,8 @@
     into a git worktree by symlinking from the primary checkout before compose up. The itest Trino coordinator
     crash-loops without these plugins present.
   use_case: Integration tests need access to Trino plugins that are excluded from git; symlinking from
-    the primary checkout ensures worktree isolation while preventing duplicate jars and avoiding storage overhead.
+    the primary checkout ensures worktree isolation while preventing duplicate jars and avoiding storage
+    overhead.
   code:
   - tests/conftest.py
   tests:
@@ -40678,26 +40796,20 @@
   category: Authentication
   priority: MUST
   type: behavioral
-  description: >-
-    Interactive sign-in runs only on the control-plane host (`cloud.<base>`). An org
-    subdomain (`{org}.<base>`, REQ-1276) must not attempt a local sign-in: identity
-    providers authorize exact hostnames only (Firebase Authentication rejects wildcard
-    authorized domains with INVALID_AUTHORIZED_DOMAIN), and registering each org's
-    hostname with the IdP would make org creation write to an external control plane,
-    which REQ-1054 zero-provisioning forbids. Instead an org subdomain acquires the
-    bearer from the control plane through a same-site hidden-iframe postMessage relay
-    served at /auth-relay.html on the control-plane origin, and falls back to a redirect
-    handoff to `${controlPlane}/login?next=<this url>` when the control plane has no
-    session. Both the relay's requester origin and the login page's `next` target must
-    be validated as a single-label host under the same base domain, same scheme and
-    same port; replies are addressed to that exact origin, never "*". The borrowed token
-    is re-acquired periodically because the rotating Firebase SDK runs on the
-    control-plane origin only.
-  use_case: >-
-    Org subdomains cannot perform independent authentication without violating IdP
-    hostname validation constraints and zero-provisioning requirements; a secure relay
-    mechanism allows token acquisition through the control plane while maintaining
-    strict origin validation.
+  description: 'Interactive sign-in runs only on the control-plane host (`cloud.<base>`). An org subdomain
+    (`{org}.<base>`, REQ-1276) must not attempt a local sign-in: identity providers authorize exact hostnames
+    only (Firebase Authentication rejects wildcard authorized domains with INVALID_AUTHORIZED_DOMAIN),
+    and registering each org''s hostname with the IdP would make org creation write to an external control
+    plane, which REQ-1054 zero-provisioning forbids. Instead an org subdomain acquires the bearer from
+    the control plane through a same-site hidden-iframe postMessage relay served at /auth-relay.html on
+    the control-plane origin, and falls back to a redirect handoff to `${controlPlane}/login?next=<this
+    url>` when the control plane has no session. Both the relay''s requester origin and the login page''s
+    `next` target must be validated as a single-label host under the same base domain, same scheme and
+    same port; replies are addressed to that exact origin, never "*". The borrowed token is re-acquired
+    periodically because the rotating Firebase SDK runs on the control-plane origin only.'
+  use_case: Org subdomains cannot perform independent authentication without violating IdP hostname validation
+    constraints and zero-provisioning requirements; a secure relay mechanism allows token acquisition
+    through the control plane while maintaining strict origin validation.
   code:
   - provisa-ui/src/lib/authHost.ts
   - provisa-ui/src/lib/crossSubdomainAuth.ts
@@ -40708,14 +40820,24 @@
   - provisa-ui/vite.config.ts
   tests:
   - provisa-ui/src/__tests__/crossSubdomainAuth.test.ts
-  scenario: |
-    Given an org subdomain requests authentication without an existing session
+  scenario: 'Given an org subdomain requests authentication without an existing session
+
     When the subdomain initiates sign-in
+
     Then it attempts a postMessage relay to the control-plane /auth-relay.html
-    And if the relay acquires a token from the control plane session, it returns the token to the exact subdomain origin
-    And if the control plane has no session, the subdomain falls back to a redirect to ${controlPlane}/login?next=<org subdomain url>
-    And both relay requester and login redirect target are validated as single-label hosts under the same base domain, scheme, and port
+
+    And if the relay acquires a token from the control plane session, it returns the token to the exact
+    subdomain origin
+
+    And if the control plane has no session, the subdomain falls back to a redirect to ${controlPlane}/login?next=<org
+    subdomain url>
+
+    And both relay requester and login redirect target are validated as single-label hosts under the same
+    base domain, scheme, and port
+
     And replies are never sent to wildcard origins
+
+    '
   related_reqs:
   - REQ-1276
   - REQ-1054
@@ -40726,20 +40848,17 @@
   category: Administration & Roles
   priority: MUST
   type: behavioral
-  description: >-
-    Org-scoped admin rights define two new capabilities: `org_settings` (surfaces whose
-    subject is the org being acted in—AI model/NL provider overrides, domains, scheduled
-    tasks, pending creation requests) and `observability` (READ-ONLY performance and
-    health: admin overview, system health, traces). org_admin holds both in both tenancy
-    modes. Neither capability implies platform bypass (admin/superadmin), deployment-wide
-    settings (platform_settings), or acting in another org (cross_org). Grants are
-    re-asserted idempotently in apply_tenancy_role_grants because schema.sql's ON CONFLICT
-    (id) DO NOTHING cannot update a pre-existing role row (V1 has no migrations).
-  use_case: >-
-    Org admins need independent control over their org's configuration (AI models, NL
-    providers, domains, tasks) and observability without access to platform-level or
-    cross-org settings. Request-time resolution of org config (resolve_org_config) allows
-    configuration changes to take effect immediately on the next query without restart.
+  description: 'Org-scoped admin rights define two new capabilities: `org_settings` (surfaces whose subject
+    is the org being acted in—AI model/NL provider overrides, domains, scheduled tasks, pending creation
+    requests) and `observability` (READ-ONLY performance and health: admin overview, system health, traces).
+    org_admin holds both in both tenancy modes. Neither capability implies platform bypass (admin/superadmin),
+    deployment-wide settings (platform_settings), or acting in another org (cross_org). Grants are re-asserted
+    idempotently in apply_tenancy_role_grants because schema.sql''s ON CONFLICT (id) DO NOTHING cannot
+    update a pre-existing role row (V1 has no migrations).'
+  use_case: Org admins need independent control over their org's configuration (AI models, NL providers,
+    domains, tasks) and observability without access to platform-level or cross-org settings. Request-time
+    resolution of org config (resolve_org_config) allows configuration changes to take effect immediately
+    on the next query without restart.
   code:
   - provisa/security/rights.py
   - provisa/core/db.py
@@ -40752,13 +40871,19 @@
   - tests/integration/test_tenancy_role_grants.py
   - tests/integration/test_org_settings_overrides.py
   - provisa-ui/src/__tests__/adminNavCapabilities.test.ts
-  scenario: |
-    Given an org_admin in an org without platform_settings or cross_org capabilities
+  scenario: 'Given an org_admin in an org without platform_settings or cross_org capabilities
+
     When the org_admin modifies org AI model overrides via PUT /admin/ai-models
-    Then the org's org_settings table is updated with the delta
+
+    Then the org''s org_settings table is updated with the delta
+
     And subsequent queries in that org resolve the overridden AI model at request time
-    And the org_admin cannot access platform-wide deployment config or another org's settings
+
+    And the org_admin cannot access platform-wide deployment config or another org''s settings
+
     And traces are scoped to the acting org only (observability capability)
+
+    '
 - id: REQ-1350
   status: complete
   group: 10. UI & Admin Surfaces
@@ -40766,34 +40891,38 @@
   priority: SHOULD
   type: behavioral
   since: 2026-07
-  description: >-
-    Server-side error i18n emits stable machine codes and JSON parameters alongside English messages.
-    ApiError (HTTPException) subclasses and registered handlers emit {detail, code, params} payloads; strawberry
-    MutationResult gains optional code/params fields. The UI (serverMessage()/requestFailed() in
-    provisa-ui/src/i18n/serverMessage.ts) renders localized error text from the serverErrors i18next
-    catalog with graceful fallback to English detail/message when translations are unavailable.
-    Unmigrated HTTPException sites and engine-error passthrough (str(e)) remain valid by design.
-  use_case: >-
-    Enables the UI to display localized error messages without requiring server implementations for every
-    supported language. Stable error codes allow client-side catalog management and translation maintenance
-    independent of server changes. Graceful fallback ensures compatibility with pre-i18n error paths.
+  description: Server-side error i18n emits stable machine codes and JSON parameters alongside English
+    messages. ApiError (HTTPException) subclasses and registered handlers emit {detail, code, params}
+    payloads; strawberry MutationResult gains optional code/params fields. The UI (serverMessage()/requestFailed()
+    in provisa-ui/src/i18n/serverMessage.ts) renders localized error text from the serverErrors i18next
+    catalog with graceful fallback to English detail/message when translations are unavailable. Unmigrated
+    HTTPException sites and engine-error passthrough (str(e)) remain valid by design.
+  use_case: Enables the UI to display localized error messages without requiring server implementations
+    for every supported language. Stable error codes allow client-side catalog management and translation
+    maintenance independent of server changes. Graceful fallback ensures compatibility with pre-i18n error
+    paths.
   code:
   - provisa/api/errors.py
   - provisa/api/app.py
   - provisa-ui/src/i18n/serverMessage.ts
   tests:
   - tests/unit/test_error_handling.py
-  scenario: |
-    Given a mutation or query that results in an error with code auth.not_authorized
+  scenario: 'Given a mutation or query that results in an error with code auth.not_authorized
+
     When the error is caught by the registered ApiError handler
+
     Then the response includes {detail: "English message", code: "auth.not_authorized", params: {...}}
+
     And the UI calls serverMessage(response) to render the error
+
     And the i18next catalog serverErrors.AUTH_DENIED is rendered if available
+
     And if the translation key is missing, the detail fallback is rendered
+
+    '
   e2e: true
-  e2e_reason: >-
-    Error handling, code/params emission, and UI fallback rendering require real server-to-client round-trip
-    with actual i18next catalog lookup and missing-key fallback behavior verification.
+  e2e_reason: Error handling, code/params emission, and UI fallback rendering require real server-to-client
+    round-trip with actual i18next catalog lookup and missing-key fallback behavior verification.
   related_reqs:
   - REQ-1341
   - REQ-1342
@@ -40804,20 +40933,17 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: >-
-    Navigation into a nav group must resolve to a route the caller's rights admit.
-    The remembered last-visited subnav item (localStorage provisa_nav_last_item) is
-    a browser preference, not an entitlement; when the caller no longer holds the
-    right that item's route requires, it is dropped and the group is entered on the
-    first item they do hold. When the caller holds no item in the group at all, the
-    group is not offered. This applies to clicking a nav group tab, the profile menu's
-    Settings item, and the bare /admin URL, which must land identically.
-  use_case: >-
-    Denial fallback replaces the whole page including the subnav, so entering on a
-    denied route leaves no tab to click. provisa_nav_last_item is now session-scoped
-    (cleared by clearSessionState() at sign-in per REQ-1326), so one identity's
-    remembered tab cannot cross to the next identity on a shared browser; no per-login
-    key namespace is required because only one identity is signed in at a time.
+  description: Navigation into a nav group must resolve to a route the caller's rights admit. The remembered
+    last-visited subnav item (localStorage provisa_nav_last_item) is a browser preference, not an entitlement;
+    when the caller no longer holds the right that item's route requires, it is dropped and the group
+    is entered on the first item they do hold. When the caller holds no item in the group at all, the
+    group is not offered. This applies to clicking a nav group tab, the profile menu's Settings item,
+    and the bare /admin URL, which must land identically.
+  use_case: Denial fallback replaces the whole page including the subnav, so entering on a denied route
+    leaves no tab to click. provisa_nav_last_item is now session-scoped (cleared by clearSessionState()
+    at sign-in per REQ-1326), so one identity's remembered tab cannot cross to the next identity on a
+    shared browser; no per-login key namespace is required because only one identity is signed in at a
+    time.
   code:
   - provisa-ui/src/lib/capabilities.ts
   - provisa-ui/src/components/NavBar.tsx
@@ -40825,13 +40951,19 @@
   - provisa-ui/src/lib/session.ts
   tests:
   - provisa-ui/src/__tests__/navEntryItem.test.ts
-  scenario: |
-    Given a signed-in user with limited capabilities in a nav group
+  scenario: 'Given a signed-in user with limited capabilities in a nav group
+
     When the user navigates to a group tab or /admin URL
+
     Then the system checks if the cached last-visited item (from provisa_nav_last_item)
-    And if the user no longer holds the right for that item's route, it is dropped
+
+    And if the user no longer holds the right for that item''s route, it is dropped
+
     And the group is entered on the first item the user holds rights for
+
     And if the user holds no items in the group at all, the group is not offered in nav
+
+    '
   related_reqs:
   - REQ-1349
   - REQ-1326
@@ -40842,18 +40974,15 @@
   priority: MUST
   type: constraint
   since: 2026-07
-  description: >-
-    The definitions of the two system admin roles—platform_admin and org_admin—belong
-    to provisa/core/schema.sql alone. No config file may carry a role block for either
-    id. provisa/core/repositories/role.py::upsert returns early for both ids.
-  use_case: >-
-    Config load (_load_config_in_txn -> role_repo.upsert) runs AFTER provisa/core/db.py::apply_tenancy_role_grants
-    and overwrites the capabilities column wholesale. A shipped config block that omitted
-    org_settings or observability would silently strip both org-scoped rights from org_admin,
-    making the Admin navigation group disappear entirely for org administrators. This constraint
-    ensures role seeding from schema.sql cannot be overwritten. Granting TO org_admin
-    (visible_to/writable_by/default_assignments) remains permitted — it is redefining
-    the ROLE that is refused.
+  description: The definitions of the two system admin roles—platform_admin and org_admin—belong to provisa/core/schema.sql
+    alone. No config file may carry a role block for either id. provisa/core/repositories/role.py::upsert
+    returns early for both ids.
+  use_case: Config load (_load_config_in_txn -> role_repo.upsert) runs AFTER provisa/core/db.py::apply_tenancy_role_grants
+    and overwrites the capabilities column wholesale. A shipped config block that omitted org_settings
+    or observability would silently strip both org-scoped rights from org_admin, making the Admin navigation
+    group disappear entirely for org administrators. This constraint ensures role seeding from schema.sql
+    cannot be overwritten. Granting TO org_admin (visible_to/writable_by/default_assignments) remains
+    permitted — it is redefining the ROLE that is refused.
   code:
   - provisa/core/schema.sql
   - provisa/core/repositories/role.py
@@ -40864,28 +40993,45 @@
   - REQ-1297
 - id: REQ-1353
   status: complete
-  group: "0. Architecture & Design Principles"
+  group: 0. Architecture & Design Principles
   category: Requirements Taxonomy
   priority: MUST
   type: constraint
   since: 2026-07
-  description: >-
-    Requirement groups are a closed canonical enumeration defined in docs/arch/groups.yaml.
-    Every requirement's `group` field must exactly match a name in that file. New groups
-    must be added to groups.yaml (with a scope line) before use. Non-canonical group strings
-    are rejected by provisa/tools/req_schema.py (Pydantic field validator) and caught by
-    scripts/validate_requirements.py in CI.
-  use_case: >-
-    Prevents free-text group drift that caused 45 variant strings to accumulate across
-    the requirements corpus. A closed canonical enumeration with schema enforcement ensures
-    all requirements are consistently categorized and discoverable under a stable set of
-    high-level design areas.
+  description: Requirement groups are a closed canonical enumeration defined in docs/arch/groups.yaml.
+    Every requirement's `group` field must exactly match a name in that file. New groups must be added
+    to groups.yaml (with a scope line) before use. Non-canonical group strings are rejected by provisa/tools/req_schema.py
+    (Pydantic field validator) and caught by scripts/validate_requirements.py in CI.
+  use_case: Prevents free-text group drift that caused 45 variant strings to accumulate across the requirements
+    corpus. A closed canonical enumeration with schema enforcement ensures all requirements are consistently
+    categorized and discoverable under a stable set of high-level design areas.
   code:
   - docs/arch/groups.yaml
   - provisa/tools/req_schema.py
   - scripts/validate_requirements.py
   unit_test: false
-  unit_test_reason: >-
-    Enforcement of canonical requirement groups is validated by req_schema.py's Pydantic
-    field validator and scripts/validate_requirements.py in CI on every requirements.yaml
-    change; no separate unit test is needed since the constraint is self-verifying.
+  unit_test_reason: Enforcement of canonical requirement groups is validated by req_schema.py's Pydantic
+    field validator and scripts/validate_requirements.py in CI on every requirements.yaml change; no separate
+    unit test is needed since the constraint is self-verifying.
+- id: REQ-1354
+  status: complete
+  group: "3. Source Registration & Data Modeling"
+  category: Catalog Registration
+  priority: MUST
+  type: behavioral
+  since: "2026-07"
+  description: >-
+    Trino source-catalog registration drops and recreates the catalog rather than skipping when it already exists, ensuring connection properties and credentials refresh on every registration. A catalog that refuses to drop is statically file-loaded and must raise an error, never be silently worked around.
+  use_case: >-
+    Trino exposes no way to read a live catalog's properties back, and CREATE CATALOG IF NOT EXISTS no-ops against an existing catalog. Without dropping and recreating, each source is pinned to the credentials it first booted with, preventing credential rotation or connection property updates.
+  code:
+    - provisa/core/catalog.py
+    - provisa/core/trino_system_catalogs.py
+  tests:
+    - tests/unit/test_source_catalog_refresh.py
+    - tests/unit/test_trino_system_catalogs.py
+  scenario: |
+    Given a Trino catalog is already registered with old credentials
+    When source registration runs at config load or admin source registration
+    Then the catalog is dropped and recreated
+    And new connection properties and credentials take effect

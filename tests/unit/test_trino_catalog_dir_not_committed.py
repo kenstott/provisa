@@ -20,7 +20,7 @@ file WIN over the correct registration rather than be corrected by it. That is h
 cloud.provisa.dev ended up with inquiries_sqlite / petstore_api / pet_store_sqlite pointing at the
 dev compose network's `postgres:5432` while the landed SQLite and OpenAPI demo data lived in the
 deployment's Cloud SQL instance: the catalogs resolved, held no `default` schema, and every demo
-query died with FederationError SCHEMA_NOT_FOUND "Schema 'default' does not exist". REQ-1352 made
+query died with FederationError SCHEMA_NOT_FOUND "Schema 'default' does not exist". REQ-1354 made
 registration drop-and-recreate, so a dynamic file no longer wins — but a file Trino loads
 statically still cannot be dropped, and now fails registration loudly instead of shadowing it.
 
