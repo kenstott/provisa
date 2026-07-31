@@ -21,6 +21,7 @@ from provisa.events import handlers, probes
 from provisa.events.content_hash import content_hash
 from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.federation import store_writer
+from tests.helpers import DsnEngine
 
 _COLS = [("id", "bigint"), ("status", "text")]
 
@@ -40,7 +41,7 @@ async def test_unchanged_replace_land_skips_write_and_repost(tmp_path, monkeypat
         return rows
 
     land = make_source_land(
-        _dsn(tmp_path),
+        DsnEngine(_dsn(tmp_path)),
         schema="",
         table="orders",
         columns=_COLS,
@@ -59,7 +60,7 @@ async def test_unchanged_replace_land_skips_write_and_repost(tmp_path, monkeypat
         writes += 1
         return await real_land(*args, **kwargs)
 
-    monkeypatch.setattr(handlers.store_writer, "land", counting_land)
+    monkeypatch.setattr(store_writer, "land", counting_land)
     result = await land([{"e": 1}], prior_hash=prior)
     assert result is None  # unchanged → no re-post
     assert writes == 0  # REQ-981: the redundant store write is skipped
@@ -73,7 +74,7 @@ async def test_changed_replace_land_posts_and_persists_new_hash(tmp_path):
         return rows
 
     land = make_source_land(
-        _dsn(tmp_path),
+        DsnEngine(_dsn(tmp_path)),
         schema="",
         table="orders",
         columns=_COLS,
@@ -108,7 +109,7 @@ async def test_append_shape_is_not_gated(tmp_path):
         return rows
 
     land = make_source_land(
-        _dsn(tmp_path),
+        DsnEngine(_dsn(tmp_path)),
         schema="",
         table="orders",
         columns=_COLS,
@@ -131,7 +132,7 @@ async def test_mv_generate_gates_identical_recompute(tmp_path):
         return [{"id": 7, "status": "agg"}]
 
     generate = make_mv_generate(
-        _dsn(tmp_path), schema="", table="mv_daily", columns=_COLS, run_query=run_query
+        DsnEngine(_dsn(tmp_path)), schema="", table="mv_daily", columns=_COLS, run_query=run_query
     )
     _et, _p, digest = await generate([{"e": 1}], prior_hash=None)
     assert await generate([{"e": 2}], prior_hash=digest) is None  # unchanged recompute → no ripple
@@ -158,7 +159,7 @@ async def test_probe_type_overrides_old_watermark_heuristic(tmp_path):
         return rows
 
     land = make_source_land(
-        _dsn(tmp_path),
+        DsnEngine(_dsn(tmp_path)),
         schema="",
         table="orders",
         columns=_COLS,

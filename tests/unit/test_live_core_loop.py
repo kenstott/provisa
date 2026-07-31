@@ -29,6 +29,7 @@ from provisa.events.processor import (
     TableProcessor,
 )
 from provisa.federation import store_writer
+from tests.helpers import DsnEngine
 
 _COLS = [("id", "bigint"), ("status", "text")]
 
@@ -306,7 +307,7 @@ def _bound_gate(fn, node):
 
 def _src_proc(db, dsn, *, preprocess, node="s.orders", deps=None):
     land = make_source_land(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="orders",
         columns=_COLS,
@@ -456,7 +457,7 @@ async def test_req957_claimed_upstream_error_short_circuits_before_produce(tmp_p
         return [dict(r) for r in _ROWS]
 
     land = make_source_land(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="orders",
         columns=_COLS,

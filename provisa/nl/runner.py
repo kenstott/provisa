@@ -27,6 +27,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
+from provisa.grpc.proto_gen import _to_proto_type_name
 from provisa.nl.job import BranchResult, InMemoryJobStore, NlTarget, RedisJobStore
 from provisa.nl.loop import (
     LLMClient,
@@ -55,7 +56,7 @@ def _generate_grpc_query(
     nm = user_nodes.get(type_name)
     if nm is None:
         return None, "NOT_APPLICABLE"
-    return f"Query{nm.table_label}", None
+    return f"Query{_to_proto_type_name(nm.type_name)}", None
 
 
 def _generate_jsonapi_query(

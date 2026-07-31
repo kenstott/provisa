@@ -22,6 +22,7 @@ from provisa.events.handlers import make_mv_generate
 from provisa.events.lineage import derive_output_schema, infer_pk
 from provisa.events.processor import MVTableProcessor
 from provisa.federation import store_writer
+from tests.helpers import DsnEngine
 
 _COLS = [("id", "bigint"), ("status", "text")]
 
@@ -135,7 +136,7 @@ async def test_make_mv_generate_persist_upsert_lands_upsert(tmp_path):
         return [{"id": 1, "status": "a"}]
 
     gen = make_mv_generate(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="mv",
         columns=_COLS,
@@ -281,7 +282,7 @@ async def test_persist_and_emit_are_independent(tmp_path):
         return [{"id": 1, "status": "a"}]
 
     gen = make_mv_generate(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="mv",
         columns=_COLS,

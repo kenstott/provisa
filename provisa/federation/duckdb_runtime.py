@@ -322,6 +322,112 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             )
         self._expose_landed(source, store, mat_table)
 
+    async def land_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """Land ``rows`` into a store table already named ``schema.table`` (the per-fire source
+        refresh path — no source-object physical-name exposure, that is boot-time reconcile's job).
+        Duckdb-native dispatch mirroring ``materialize_source``: through the engine's own connection
+        for an embedded DuckDB store (REQ-989), else the server-store write face."""
+        store = self.ensure_materialize_attached()
+        if self._store_is_duckdb():
+            from provisa.federation.store_connection import land_duckdb_native
+
+            return land_duckdb_native(
+                self._con,
+                catalog=store,
+                schema=schema,
+                table=table,
+                columns=columns,
+                rows=rows,
+                change_signal=change_signal,
+                watermark_column=watermark_column,
+            )
+        return await store_writer.land(
+            self._store_dsn(),
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            change_signal=change_signal,
+            watermark_column=watermark_column,
+            pk_columns=pk_columns,
+            match_floor=match_floor,
+            shape=shape,
+        )
+
+    async def reconcile_mv_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
+    ) -> str:
+        """Converge an MV's OWN store table to its output ``columns`` (REQ-970). Duckdb-native
+        dispatch mirroring ``attach_landed_source``: through the engine's own connection for an
+        embedded DuckDB store (REQ-989), else the server-store write face."""
+        store = self.ensure_materialize_attached()
+        if self._store_is_duckdb():
+            from provisa.federation.store_connection import reconcile_duckdb_native
+
+            return reconcile_duckdb_native(
+                self._con, catalog=store, schema=schema, table=table, columns=columns
+            )
+        return await store_writer.reconcile_table(
+            self._store_dsn(), schema=schema, table=table, columns=columns, pk_columns=pk_columns
+        )
+
+    async def persist_mv_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        persist: str,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+    ) -> str:
+        """Land an MV's recomputed ``rows`` into its OWN store table under the declared PERSISTENCE
+        outcome (REQ-965). Duckdb-native dispatch mirroring ``materialize_source``: through the
+        engine's own connection for an embedded DuckDB store (REQ-989), else the server-store write
+        face."""
+        store = self.ensure_materialize_attached()
+        if self._store_is_duckdb():
+            from provisa.federation.store_connection import persist_duckdb_native
+
+            return persist_duckdb_native(
+                self._con,
+                catalog=store,
+                schema=schema,
+                table=table,
+                columns=columns,
+                rows=rows,
+                persist=persist,
+                pk_columns=pk_columns,
+            )
+        return await store_writer.persist_land(
+            self._store_dsn(),
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            persist=persist,
+            pk_columns=pk_columns,
+            match_floor=match_floor,
+        )
+
     def _expose_landed(self, source: Any, store: str, mat_table: str) -> None:
         """Create the engine's physical-named READ view over the landed store table (idempotent)."""
         phys = self._phys_name(source)
@@ -357,7 +463,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         def _run() -> QueryResult:
             res = self._con.execute(duck_sql, params) if params else self._con.execute(duck_sql)
             cols = [d[0] for d in res.description] if res.description else []
-            return QueryResult(rows=res.fetchall(), column_names=cols)
+            types = [str(d[1]) for d in res.description] if res.description else []
+            return QueryResult(rows=res.fetchall(), column_names=cols, column_types=types)
 
         return await loop.run_in_executor(None, _run)
 

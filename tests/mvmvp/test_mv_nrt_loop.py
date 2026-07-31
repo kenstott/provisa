@@ -25,6 +25,7 @@ from provisa.events import queue, supervisor
 from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.events.processor import MVTableProcessor, OwnershipLost, SourceTableProcessor
 from provisa.federation import store_writer
+from tests.helpers import DsnEngine
 
 # The isolated stack + control_plane fixtures live in tests/mvmvp/conftest.py (shared with the
 # cascade/trigger/emit e2e suites so the compose stack is provisioned once per session).
@@ -39,7 +40,7 @@ def _src(db, store, *, dep, fetch, name="src"):
         dependents_of=dep,
         name=name,
         land=make_source_land(
-            store,
+            DsnEngine(store),
             schema="",
             table="orders",
             columns=_COLS,
@@ -59,7 +60,7 @@ def _mv(node, table, run, db, store, *, dep):
         watermark_column=None,
         dependents_of=dep,
         name=node,
-        generate=make_mv_generate(store, schema="", table=table, columns=_COLS, run_query=run),
+        generate=make_mv_generate(DsnEngine(store), schema="", table=table, columns=_COLS, run_query=run),
         db=db,
     )
 

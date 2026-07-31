@@ -24,6 +24,7 @@ from provisa.events import queue
 from provisa.events.content_hash import content_hash
 from provisa.events.handlers import make_source_land
 from provisa.events.processor import SourceTableProcessor
+from tests.helpers import DsnEngine
 
 _COLS = [("id", "bigint"), ("status", "text")]
 
@@ -91,7 +92,7 @@ async def test_replace_land_gated_when_content_unchanged(tmp_path):
         return list(rows)
 
     land = make_source_land(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="orders",
         columns=_COLS,
@@ -117,7 +118,7 @@ async def test_replace_land_not_gated_when_content_changes(tmp_path):
         return list(state["rows"])
 
     land = make_source_land(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="orders",
         columns=_COLS,
@@ -141,7 +142,7 @@ async def test_append_shape_is_never_gated(tmp_path):
         return [{"id": 1, "status": "new"}]
 
     land = make_source_land(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="orders",
         columns=_COLS,
@@ -188,7 +189,7 @@ async def test_processor_gates_second_identical_land(tmp_path):
         db=None,
         name="src",
         land=make_source_land(
-            store,
+            DsnEngine(store),
             schema="",
             table="orders",
             columns=_COLS,

@@ -32,6 +32,7 @@ from provisa.events import queue, supervisor
 from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.events.processor import MVTableProcessor, SourceTableProcessor
 from provisa.federation import store_writer
+from tests.helpers import DsnEngine
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
@@ -48,7 +49,7 @@ def _src(db, store, *, dep, fetch, name="src"):
         dependents_of=dep,
         name=name,
         land=make_source_land(
-            store,
+            DsnEngine(store),
             schema="",
             table="orders",
             columns=_COLS,
@@ -69,7 +70,7 @@ def _mv(node, run, db, store, *, dep):
         dependents_of=dep,
         name=node,
         generate=make_mv_generate(
-            store, schema="", table=_TABLE[node], columns=_COLS, run_query=run, pk_columns=["id"]
+            DsnEngine(store), schema="", table=_TABLE[node], columns=_COLS, run_query=run, pk_columns=["id"]
         ),
         db=db,
     )

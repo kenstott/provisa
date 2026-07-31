@@ -122,6 +122,10 @@ _GRANT_FUNCTIONS = {
     # Validates which role an invitation may CONFER and into which org — a statement about the grant
     # being minted, not about the inviter's authority.
     ("provisa/api/admin/invites_router.py", "resolve_invite_role"),
+    # Portable (SQLite/non-PG) mirror of apply_tenancy_role_grants's own grant-plane UPDATEs — the
+    # PG path expresses the identical role-id-keyed asserts as raw SQL text (not a Python Compare
+    # node), so only this Core-based mirror needs the exemption; same REQ-1337 grant semantics.
+    ("provisa/core/db.py", "_apply_tenancy_role_grants_portable"),
 }
 
 _ROLE_ID_LITERALS = {"platform_admin", "org_admin", "developer", "analyst"}

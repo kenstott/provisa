@@ -263,6 +263,107 @@ class NativeEngineBackend(EngineBackend):
             reconciled.append((src.id, reg["table_name"]))
         return reconciled
 
+    # -- store write face --------------------------------------------------
+
+    async def land_source_table(
+        self,
+        state: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """Land ``rows`` through the runtime when it holds the store's own connection (DuckDB, REQ-989
+        — a second connection cannot open a file the engine already ATTACHed); otherwise the base
+        ``store_writer`` DSN path (every other native store) applies unchanged."""
+        runtime = self._runtime_for(state)
+        if hasattr(runtime, "land_table"):
+            return await runtime.land_table(
+                schema=schema,
+                table=table,
+                columns=columns,
+                rows=rows,
+                change_signal=change_signal,
+                watermark_column=watermark_column,
+                pk_columns=pk_columns,
+                match_floor=match_floor,
+                shape=shape,
+            )
+        return await super().land_source_table(
+            state,
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            change_signal=change_signal,
+            watermark_column=watermark_column,
+            pk_columns=pk_columns,
+            match_floor=match_floor,
+            shape=shape,
+        )
+
+    async def reconcile_mv_table(
+        self,
+        state: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
+    ) -> str:
+        """Converge an MV's store table through the runtime's own connection when it holds one
+        (DuckDB, REQ-989); otherwise the base ``store_writer`` DSN path applies unchanged."""
+        runtime = self._runtime_for(state)
+        if hasattr(runtime, "reconcile_mv_table"):
+            return await runtime.reconcile_mv_table(
+                schema=schema, table=table, columns=columns, pk_columns=pk_columns
+            )
+        return await super().reconcile_mv_table(
+            state, schema=schema, table=table, columns=columns, pk_columns=pk_columns
+        )
+
+    async def persist_mv_table(
+        self,
+        state: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        persist: str,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+    ) -> str:
+        """Persist an MV's recomputed rows through the runtime's own connection when it holds one
+        (DuckDB, REQ-989); otherwise the base ``store_writer`` DSN path applies unchanged."""
+        runtime = self._runtime_for(state)
+        if hasattr(runtime, "persist_mv_table"):
+            return await runtime.persist_mv_table(
+                schema=schema,
+                table=table,
+                columns=columns,
+                rows=rows,
+                persist=persist,
+                pk_columns=pk_columns,
+                match_floor=match_floor,
+            )
+        return await super().persist_mv_table(
+            state,
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            persist=persist,
+            pk_columns=pk_columns,
+            match_floor=match_floor,
+        )
+
     # -- execution -------------------------------------------------------------
 
     async def execute(

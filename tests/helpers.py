@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 
+from provisa.federation import store_writer
 
 _ALIAS_RE = re.compile(r"\b(t|a|j|n|sub|cte)\d+\b", re.IGNORECASE)
 _QUOTED_ALIAS_RE = re.compile(r'"(t|a|j|n|sub|cte)\d+"', re.IGNORECASE)
@@ -20,6 +21,22 @@ def _normalize_sql(sql: str) -> str:
     sql = _QUOTED_ALIAS_RE.sub("__alias__", sql)
     sql = _ALIAS_RE.sub("__alias__", sql)
     return re.sub(r"\s+", " ", sql).strip()
+
+
+class DsnEngine:
+    """Minimal write-face stand-in for a non-embedded store: forwards to ``store_writer`` against a
+    fixed DSN, mirroring ``EngineBackend``'s base-class default (the path every non-DuckDB engine
+    actually takes in production). ``make_source_land``/``make_mv_generate``/``make_mv_incremental``
+    take an ``engine`` write-face object, not a bare DSN string."""
+
+    def __init__(self, dsn: str) -> None:
+        self._dsn = dsn
+
+    async def land_source_table(self, **kw):
+        return await store_writer.land(self._dsn, **kw)
+
+    async def persist_mv_table(self, **kw):
+        return await store_writer.persist_land(self._dsn, **kw)
 
 
 def stub_materialization_noop(state) -> None:

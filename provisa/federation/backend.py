@@ -86,6 +86,92 @@ class EngineBackend:
         del state
         return []
 
+    async def land_source_table(
+        self,
+        state: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """Land a source's ``rows`` into the materialization store (the per-fire refresh write
+        face). Base default writes through ``store_writer`` against the engine's own store DSN — the
+        universal path every backend supports. A native engine whose store is embedded and shares a
+        single connection (DuckDB, REQ-989) overrides this to write through that connection instead."""
+        del state
+        from provisa.federation import store_writer
+
+        return await store_writer.land(
+            self.engine.materialize_store(),
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            change_signal=change_signal,
+            watermark_column=watermark_column,
+            pk_columns=pk_columns,
+            match_floor=match_floor,
+            shape=shape,
+        )
+
+    async def reconcile_mv_table(
+        self,
+        state: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
+    ) -> str:
+        """Converge an MV's OWN store table to its output ``columns`` (REQ-970). Base default writes
+        through ``store_writer``; a native engine with an embedded single-connection store overrides
+        this to converge through that connection instead."""
+        del state
+        from provisa.federation import store_writer
+
+        return await store_writer.reconcile_table(
+            self.engine.materialize_store(),
+            schema=schema,
+            table=table,
+            columns=columns,
+            pk_columns=pk_columns,
+        )
+
+    async def persist_mv_table(
+        self,
+        state: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        persist: str,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+    ) -> str:
+        """Land an MV's recomputed ``rows`` into its OWN store table under the declared PERSISTENCE
+        outcome (REQ-965). Base default writes through ``store_writer``; a native engine with an
+        embedded single-connection store overrides this to write through that connection instead."""
+        del state
+        from provisa.federation import store_writer
+
+        return await store_writer.persist_land(
+            self.engine.materialize_store(),
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            persist=persist,
+            pk_columns=pk_columns,
+            match_floor=match_floor,
+        )
+
     async def watchdog(self, state: Any) -> None:
         """No external process to watch."""
 

@@ -164,3 +164,27 @@ async def test_org_admin_sees_the_built_in_domains(demo_org):
     assert "ops" in ids, ids
     assert "meta" in ids, ids
     assert "sales-analytics" in ids, ids
+
+
+async def test_compiled_pipeline_forces_engine_route_for_view_backed_query(demo_org):
+    """REQ-135/REQ-1163: order_totals' view_sql collapses onto ONE real source (sales-pg) once
+    expanded, so the router's normal cost decision would otherwise legitimately pick Route.DIRECT.
+    The DIRECT branch's fallback rebuilds physical SQL from the UN-expanded governed SQL, handing
+    a literal ``order_totals`` reference to a native driver that has no such table — the same class
+    of bug that broke ``fact_pet_inquiries`` (500: no such table views.fact_pet_inquiries) in the
+    demo config. _govern_and_route_compiled must force Route.ENGINE for any view-referencing query,
+    mirroring the guard _govern_and_route (the raw-SQL path) already has."""
+    from provisa.pgwire import _pipeline
+    from provisa.transpiler.router import Route
+
+    state, _rt = demo_org
+    plan = await _pipeline._govern_and_route_compiled(
+        'SELECT * FROM "sales_analytics"."order_totals"', "org_admin", state=state
+    )
+    assert plan.route == Route.ENGINE, plan.route
+    assert plan.exec_sql is not None
+    # the view was inline-expanded onto its base table BEFORE routing — the FROM clause must be
+    # the view's defining subquery over "public"."orders", not a bare, un-routable "order_totals"
+    # table reference (what the DIRECT-branch fallback would hand a native driver).
+    exec_sql = plan.exec_sql.lower()
+    assert 'from (select "id", "amount" from "public"."orders")' in exec_sql, exec_sql

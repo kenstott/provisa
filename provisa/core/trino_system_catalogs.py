@@ -91,6 +91,18 @@ def engine_visible_address(host: str, port: int) -> tuple[str, int]:
     )
 
 
+def engine_visible_s3_endpoint(endpoint: str) -> str:
+    """The object-store endpoint as *Trino* reaches it, mirroring ``engine_visible_address``.
+
+    ``otel_object_store()["endpoint"]`` is read for two different callers — the app's own boto3
+    client (REQ-1332: "one reading of the object-store env") and the Iceberg catalog spec Trino
+    dials — which coincide in a deployment (app and coordinator share a compose network) but not in
+    the split integration-harness case, where the app reaches MinIO on a host-published port that
+    means nothing inside the Trino container. Unset, this returns the endpoint unchanged.
+    """
+    return os.environ.get("PROVISA_ENGINE_OTEL_S3_ENDPOINT", endpoint)
+
+
 def control_plane_spec(url: URL, org_id: str) -> CatalogSpec:
     """The ``provisa_admin`` catalog: the tenant control plane, scoped to this org's schema."""
     host, port, database, user, password = _pg_parts(url)
@@ -132,7 +144,7 @@ def _iceberg_spec(
         "iceberg.jdbc-catalog.catalog-name": name,
         "iceberg.jdbc-catalog.default-warehouse-dir": f"s3://{bucket}/warehouse",
         "fs.native-s3.enabled": "true",
-        "s3.endpoint": store["endpoint"],
+        "s3.endpoint": engine_visible_s3_endpoint(store["endpoint"]),
         "s3.aws-access-key": store["access_key"],
         "s3.aws-secret-key": store["secret_key"],
         "s3.path-style-access": "true",

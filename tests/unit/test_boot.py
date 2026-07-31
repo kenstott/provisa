@@ -20,6 +20,7 @@ from provisa.events.boot import (
 )
 from provisa.events.processor import MVTableProcessor, SourceTableProcessor
 from provisa.federation.engine import build_duckdb_engine
+from tests.helpers import DsnEngine as _DsnEngine
 
 
 async def _noop_handle(pending):
@@ -120,7 +121,7 @@ def test_specs_from_config_binds_materialized_sources_and_mvs():
         tables=tables,
         mvs=[_mv("daily")],
         engine=engine,
-        store_dsn="sqlite://",
+        engine_runtime=_DsnEngine("sqlite://"),
         source_fetch=lambda s, t: _fetch,
         mv_columns=lambda m: [("d", "date")],
         mv_run_query=lambda m: _run_query,

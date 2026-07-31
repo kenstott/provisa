@@ -851,6 +851,28 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         _exec_sql, governed_sql, gov_ctx, ctx, state, nf_args=_nf_args
     )
 
+    # REQ-135/REQ-1163: a query referencing a __derived__ view MUST route through the engine, where
+    # the view was already inline-expanded above. A view's virtual source has no native driver/
+    # catalog — if routing picks DIRECT (legitimate once expansion collapses the query onto a single
+    # real source), the DIRECT branch's non-optimized fallback rebuilds physical SQL from the
+    # UN-expanded ``governed_sql`` and hands the raw view ref to a native pool. Force ENGINE so the
+    # ENGINE branch's already-expanded ``_exec_sql`` is what actually executes. Same guard
+    # ``_govern_and_route`` (the raw-SQL/pgwire path) already applies.
+    if _view_map and decision.route != Route.ENGINE:
+        import sqlglot as _sg3
+        import sqlglot.expressions as _exp3
+
+        _refs_view = any(
+            t.name in _view_map
+            for t in _sg3.parse_one(governed_sql, read="postgres").find_all(_exp3.Table)
+        )
+        if _refs_view:
+            from provisa.transpiler.router import RouteDecision
+
+            decision = RouteDecision(
+                route=Route.ENGINE, source_id=None, dialect=None, reason="query references a view"
+            )
+
     # REQ-1194/REQ-1195: sink delivery materializes via the federation engine's CTAS terminal, so the
     # plan MUST carry engine-physical SQL. Force ENGINE regardless of the route the rows would take.
     if deliver is not None and decision.route != Route.ENGINE:

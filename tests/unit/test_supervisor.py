@@ -20,6 +20,7 @@ from provisa.core.schema_org import event_status, events, node_freshness_state
 from provisa.events import queue, supervisor
 from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.events.processor import MVTableProcessor, SourceTableProcessor
+from tests.helpers import DsnEngine
 
 _COLS = [("id", "bigint"), ("status", "text")]
 
@@ -58,7 +59,7 @@ async def test_change_propagates_through_dag_in_one_drain(tmp_path):
         dependents_of=dep,
         name="src",
         land=make_source_land(
-            store,
+            DsnEngine(store),
             schema="",
             table="orders",
             columns=_COLS,
@@ -76,7 +77,7 @@ async def test_change_propagates_through_dag_in_one_drain(tmp_path):
         dependents_of=dep,
         name="mv",
         generate=make_mv_generate(
-            store, schema="", table="mv_daily", columns=_COLS, run_query=run_query
+            DsnEngine(store), schema="", table="mv_daily", columns=_COLS, run_query=run_query
         ),
         db=None,
     )
@@ -151,7 +152,7 @@ async def test_three_level_cascade_one_recompute_per_node(tmp_path):
             dependents_of=dep,
             name="src",
             land=make_source_land(
-                store,
+                DsnEngine(store),
                 schema="",
                 table="orders",
                 columns=_COLS,
@@ -170,7 +171,7 @@ async def test_three_level_cascade_one_recompute_per_node(tmp_path):
             watermark_column=None,
             dependents_of=dep,
             name=node,
-            generate=make_mv_generate(store, schema="", table=table, columns=_COLS, run_query=run),
+            generate=make_mv_generate(DsnEngine(store), schema="", table=table, columns=_COLS, run_query=run),
             db=None,
         )
 
@@ -227,7 +228,7 @@ async def test_debounced_intermediate_defers_then_ripples_once(tmp_path, monkeyp
             dependents_of=dep,
             name="mv.a",
             generate=make_mv_generate(
-                store, schema="", table="mv_a", columns=_COLS, run_query=run_a
+                DsnEngine(store), schema="", table="mv_a", columns=_COLS, run_query=run_a
             ),
             db=cp,
             debounce_quiet=100,
@@ -240,7 +241,7 @@ async def test_debounced_intermediate_defers_then_ripples_once(tmp_path, monkeyp
             dependents_of=dep,
             name="mv.b",
             generate=make_mv_generate(
-                store, schema="", table="mv_b", columns=_COLS, run_query=run_b
+                DsnEngine(store), schema="", table="mv_b", columns=_COLS, run_query=run_b
             ),
             db=cp,
         )

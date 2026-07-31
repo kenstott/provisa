@@ -44,6 +44,7 @@ from provisa.events.deadlines import PeriodicCalendar
 from provisa.events.freshness_reader import make_db_freshness_of
 from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.events.processor import MVTableProcessor, SourceTableProcessor
+from tests.helpers import DsnEngine
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -96,7 +97,7 @@ def _procs(db, store, *, mv_rows):
         db=db,
         name="src-box",
         land=make_source_land(
-            store,
+            DsnEngine(store),
             schema="main",
             table="s_transactions",
             columns=_SRC_COLS,
@@ -115,7 +116,7 @@ def _procs(db, store, *, mv_rows):
         db=db,
         name="mv-box",
         generate=make_mv_generate(
-            store,
+            DsnEngine(store),
             schema="main",
             table="mat_daily_sales",
             columns=_MV_COLS,

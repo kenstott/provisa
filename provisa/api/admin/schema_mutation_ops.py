@@ -218,6 +218,16 @@ async def register_table(
             except ValueError as _vm_err:
                 return MutationResult(success=False, message=str(_vm_err))
             _effective_view_sql = model.view_sql
+        if _effective_view_sql and input.materialize:
+            # A materialized view's queryable schema must be where it actually lands, not a fixed
+            # placeholder — same seam _sync_view_mv/schema_common.py uses for the MV's own refresh
+            # target. Hardcoding "views" here broke query-time resolution independently of engine
+            # (a DuckDB deployment's MV lands under its attached mat_store schema, not "views").
+            from provisa.api.app import state as _mv_state
+
+            _, model.schema_name = _mv_state.federation_engine.materialize_store_target(
+                _mv_state.org_id
+            )
         _conflict = await _domain_table_conflict(
             _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, alias
         )

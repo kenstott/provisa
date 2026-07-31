@@ -294,6 +294,73 @@ class EngineRuntime:  # REQ-825, REQ-840
         convergent + idempotent. No-op on a broad federator. Returns the reconciled (source, table)."""
         return await self._backend.reconcile_landed_tables(self._state)
 
+    async def land_source_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """Land a source's ``rows`` into the materialization store through the write face — delegated
+        to the backend so an embedded single-connection store (DuckDB, REQ-989) writes through the
+        engine's own connection instead of a second connection onto the same file."""
+        return await self._backend.land_source_table(
+            self._state,
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            change_signal=change_signal,
+            watermark_column=watermark_column,
+            pk_columns=pk_columns,
+            match_floor=match_floor,
+            shape=shape,
+        )
+
+    async def reconcile_mv_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
+    ) -> str:
+        """Converge an MV's OWN store table to its output ``columns`` (REQ-970) — delegated to the
+        backend."""
+        return await self._backend.reconcile_mv_table(
+            self._state, schema=schema, table=table, columns=columns, pk_columns=pk_columns
+        )
+
+    async def persist_mv_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        persist: str,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+    ) -> str:
+        """Land an MV's recomputed ``rows`` into its OWN store table under the declared PERSISTENCE
+        outcome (REQ-965) — delegated to the backend."""
+        return await self._backend.persist_mv_table(
+            self._state,
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            persist=persist,
+            pk_columns=pk_columns,
+            match_floor=match_floor,
+        )
+
     async def provision_infra(self) -> None:
         """Boot-time engine-terminal infra (Arrow Flight proxy, object store, results schema).
         No-op for a native engine."""

@@ -131,7 +131,7 @@ def specs_from_config(
     tables: list[Any],
     mvs: list[Any],
     engine: Any,
-    store_dsn: str,
+    engine_runtime: Any,
     source_fetch: Callable[[Any, Any], Any],
     mv_columns: Callable[[Any], list[tuple[str, str]] | None],
     mv_run_query: Callable[[Any], Any],
@@ -181,7 +181,7 @@ def specs_from_config(
         node = f"{tbl.schema_name}.{tbl.table_name}"
         mat_table = f"{src.id}__{tbl.schema_name}__{tbl.table_name}"  # matches _mat_table_name
         handle = make_source_land(
-            store_dsn,
+            engine_runtime,
             schema=store_schema,
             table=mat_table,
             columns=args.columns,
@@ -259,7 +259,7 @@ def specs_from_config(
             from provisa.events.handlers import make_mv_incremental
 
             handle = make_mv_incremental(
-                store_dsn,
+                engine_runtime,
                 schema=mv.target_schema,
                 table=mv.target_table,
                 columns=cols,
@@ -270,7 +270,7 @@ def specs_from_config(
             )
         else:
             handle = make_mv_generate(
-                store_dsn,
+                engine_runtime,
                 schema=mv.target_schema,
                 table=mv.target_table,
                 columns=cols,

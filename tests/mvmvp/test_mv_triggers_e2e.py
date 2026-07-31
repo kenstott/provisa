@@ -37,6 +37,7 @@ from provisa.events.freshness_reader import make_db_freshness_of
 from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.events.processor import MVTableProcessor, SourceTableProcessor
 from provisa.federation import store_writer
+from tests.helpers import DsnEngine
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
@@ -95,7 +96,7 @@ async def test_watermark_append_accumulates_across_fires(control_plane):
         dependents_of=lambda _n: [],
         name="src",
         land=make_source_land(
-            store,
+            DsnEngine(store),
             schema="",
             table="orders",
             columns=_COLS,
@@ -126,7 +127,7 @@ def _periodic_mv(cp, store, *, run, expected):
         dependents_of=lambda _n: [],
         name="mv-box",
         generate=make_mv_generate(
-            store, schema="", table="mv_a", columns=_COLS, run_query=run, pk_columns=["id"]
+            DsnEngine(store), schema="", table="mv_a", columns=_COLS, run_query=run, pk_columns=["id"]
         ),
         deadline_source=PeriodicCalendar(cal, "daily"),
         expected_events=expected,
@@ -205,7 +206,7 @@ async def test_forced_regen_bypasses_hash_gate_and_ripples(control_plane):
         dependents_of=dep,
         name="src",
         land=make_source_land(
-            store,
+            DsnEngine(store),
             schema="",
             table="orders",
             columns=_COLS,
@@ -218,12 +219,12 @@ async def test_forced_regen_bypasses_hash_gate_and_ripples(control_plane):
     )
     mv_a = MVTableProcessor(
         "mv.a", change_signal="ttl", watermark_column=None, dependents_of=dep, name="mv.a",
-        generate=make_mv_generate(store, schema="", table="mv_a", columns=_COLS, run_query=run_a,
+        generate=make_mv_generate(DsnEngine(store), schema="", table="mv_a", columns=_COLS, run_query=run_a,
                                   pk_columns=["id"]), db=cp,
     )
     mv_b = MVTableProcessor(
         "mv.b", change_signal="ttl", watermark_column=None, dependents_of=dep, name="mv.b",
-        generate=make_mv_generate(store, schema="", table="mv_b", columns=_COLS, run_query=run_b,
+        generate=make_mv_generate(DsnEngine(store), schema="", table="mv_b", columns=_COLS, run_query=run_b,
                                   pk_columns=["id"]), db=cp,
     )
     procs = [src, mv_a, mv_b]

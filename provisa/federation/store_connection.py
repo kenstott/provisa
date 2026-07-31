@@ -99,6 +99,67 @@ def reconcile_duckdb_native(
     return "recreated"
 
 
+def persist_duckdb_native(
+    con: Any,
+    *,
+    catalog: str,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    rows: list[dict],
+    persist: str,
+    pk_columns: list[str] | None = None,
+) -> str:
+    """Apply an MV's recomputed ``rows`` to its OWN DuckDB store table under the declared
+    PERSISTENCE outcome (REQ-965), through the engine's own connection (REQ-989) — the duckdb-native
+    mirror of ``store_writer.persist_land``/``apply_persistence`` for a store the engine itself holds
+    the file handle for.
+
+    - ``replace`` -> DELETE + bulk INSERT (full current-state refresh).
+    - ``append``  -> bulk INSERT, upsert-by-key (DELETE matching PKs then INSERT) when a PK is given.
+    - ``upsert``  -> DELETE matching PKs then bulk INSERT (a recompute carries each row's full current
+      values, so a delete+reinsert converges identically to a partial-row UPDATE).
+
+    An invalid persistence value, or ``upsert`` without a PK, is an EXPLICIT error (never a silent
+    downgrade). Returns the qualified store-table name."""
+    from provisa.events.outcomes import (
+        PERSIST_APPEND,
+        PERSIST_REPLACE,
+        PERSIST_UPSERT,
+        require_pk,
+        validate_persist,
+    )
+
+    validate_persist(persist)
+    require_pk(persist, set(), pk_columns)
+    dialect = _duckdb_dialect()
+    _ensure_schema(con, catalog, schema, dialect)
+    con.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
+    qualified = _qualified(catalog, schema, table)
+    colnames = [name for name, _ in columns]
+
+    def _bulk_insert(data_rows: list[dict]) -> None:
+        if not data_rows:
+            return
+        collist = ", ".join(f'"{cn}"' for cn in colnames)
+        placeholders = ", ".join("?" * len(colnames))
+        data = [tuple(r.get(cn) for cn in colnames) for r in data_rows]
+        con.executemany(f"INSERT INTO {qualified} ({collist}) VALUES ({placeholders})", data)
+
+    if persist == PERSIST_REPLACE:
+        con.execute(f"DELETE FROM {qualified}")
+        _bulk_insert(rows)
+        return qualified
+    pk = list(pk_columns or ())
+    if persist in (PERSIST_APPEND, PERSIST_UPSERT) and pk and rows:
+        pk_list = ", ".join(f'"{c}"' for c in pk)
+        placeholders = ", ".join("(" + ", ".join("?" * len(pk)) + ")" for _ in rows)
+        params = [v for r in rows for v in (r.get(c) for c in pk)]
+        con.execute(f"DELETE FROM {qualified} WHERE ({pk_list}) IN ({placeholders})", params)
+    _bulk_insert(rows)
+    return qualified
+
+
 def land_duckdb_native(
     con: Any,
     *,

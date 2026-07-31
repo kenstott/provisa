@@ -146,3 +146,4 @@ site/.wrangler/
 
 # Terraform plan binaries embed resolved variable values, including the Cloud SQL password.
 *.tfplan
+.scratch/

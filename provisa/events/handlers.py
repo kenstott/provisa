@@ -12,17 +12,21 @@
 
 A processor's ``handle`` turns its claimed events into the node's work and reports the node's own
 change (event_type, payload) so the base loop can re-post it. These factories build those callables
-against the real collaborators — the write face (``store_writer``) plus an injected row source
-(a source loader, or the engine running the MV's SQL) — so the variants stay thin and the wiring is
-testable end-to-end.
+against the real collaborators — the engine's write face (``EngineRuntime.land_source_table`` /
+``persist_mv_table``) plus an injected row source (a source loader, or the engine running the MV's
+SQL) — so the variants stay thin and the wiring is testable end-to-end.
 
 - ``make_source_land`` → ``SourceTableProcessor.land``: fetch the source's rows and land them via the
   write face; the node's event is the landing shape (append / replace).
 - ``make_mv_generate`` → ``MVTableProcessor.generate``: the engine runs the MV's SQL, the result is
   landed via the write face (an MV is a full ``replace`` unless it is incrementally maintained).
 
-The engine is never the writer — landing always goes through ``store_writer``; the engine only reads
-(for an MV, it computes the SELECT). A very large MV is the separate MPP-native materialization path.
+The engine's OWN write face is always the one writer for a fire's rows — never a bare-DSN
+``store_writer`` call here, since a native engine may hold the store's own connection (DuckDB's
+single-writer-per-file constraint, REQ-989) and the write must go through it, not a second one; the
+seam (``EngineRuntime.land_source_table`` / ``reconcile_mv_table`` / ``persist_mv_table``) dispatches
+to ``store_writer`` itself for every other engine. The engine only reads otherwise (for an MV, it
+computes the SELECT). A very large MV is the separate MPP-native materialization path.
 """
 
 from __future__ import annotations
@@ -34,7 +38,6 @@ from provisa.core.change_signal import APPEND, REPLACE
 from provisa.events.content_hash import content_hash
 from provisa.events.probes import WATERMARK, probe_shape
 from provisa.events.processor import NodeContext, PreflightQuarantine, PreprocessError
-from provisa.federation import store_writer
 
 _SHAPE_TO_EVENT = {APPEND: "append"}  # replace is the fallback below; delta is the push/CDC path
 
@@ -82,7 +85,7 @@ async def _apply_preflight(
 
 
 def make_source_land(
-    store_dsn: str,
+    engine: Any,
     *,
     schema: str,
     table: str,
@@ -127,8 +130,7 @@ def make_source_land(
             digest = content_hash(rows, pk_columns)
             if not forced and digest == prior_hash:
                 return None
-        loc = await store_writer.land(
-            store_dsn,
+        loc = await engine.land_source_table(
             schema=schema,
             table=table,
             columns=columns,
@@ -144,7 +146,7 @@ def make_source_land(
 
 
 def make_mv_generate(
-    store_dsn: str,
+    engine: Any,
     *,
     schema: str,
     table: str,
@@ -183,8 +185,7 @@ def make_mv_generate(
         # REQ-968: a forced regen recomputes + re-lands regardless of an unchanged hash (gate bypass).
         if not forced and digest == prior_hash:
             return None  # recomputed output identical → no land, no downstream ripple
-        loc = await store_writer.persist_land(
-            store_dsn,
+        loc = await engine.persist_mv_table(
             schema=schema,
             table=table,
             columns=columns,
@@ -244,7 +245,7 @@ def _collect_delta_rows(pending: list[dict]) -> list[dict]:
 
 
 def make_mv_incremental(
-    store_dsn: str,
+    engine: Any,
     *,
     schema: str,
     table: str,
@@ -294,8 +295,7 @@ def make_mv_incremental(
         del ctx, preprocess
         delta_rows = _collect_delta_rows(pending)
         if delta_rows and not forced:
-            loc = await store_writer.persist_land(
-                store_dsn,
+            loc = await engine.persist_mv_table(
                 schema=schema,
                 table=table,
                 columns=columns,
@@ -311,8 +311,7 @@ def make_mv_incremental(
         digest = content_hash(rows, pk_columns)
         if not forced and digest == prior_hash:
             return None
-        loc = await store_writer.persist_land(
-            store_dsn,
+        loc = await engine.persist_mv_table(
             schema=schema,
             table=table,
             columns=columns,

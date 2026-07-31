@@ -38,6 +38,7 @@ from provisa.events.processor import MVTableProcessor, SourceTableProcessor
 from provisa.federation import store_writer
 from provisa.subscriptions.pg_provider import PgNotificationProvider
 from provisa.subscriptions.pg_triggers import _trigger_sql
+from tests.helpers import DsnEngine
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
@@ -53,7 +54,7 @@ def _src(db, store, *, dep, fetch):
         dependents_of=dep,
         name="src",
         land=make_source_land(
-            store,
+            DsnEngine(store),
             schema="",
             table="orders",
             columns=_COLS,
@@ -75,7 +76,7 @@ def _emit_mv(db, store, *, run, emit, router):
         dependents_of=lambda _n: [],  # unused when emit_outcomes is set — routing is per-shape
         name="mv.a",
         generate=make_mv_generate(
-            store, schema="", table="mv_a", columns=_COLS, run_query=run, pk_columns=["id"]
+            DsnEngine(store), schema="", table="mv_a", columns=_COLS, run_query=run, pk_columns=["id"]
         ),
         emit_outcomes=frozenset(emit),
         subscribers_of=router,
@@ -91,7 +92,7 @@ def _plain_mv(node, db, store, *, run):
         dependents_of=lambda _n: [],
         name=node,
         generate=make_mv_generate(
-            store, schema="", table=_TABLE[node], columns=_COLS, run_query=run, pk_columns=["id"]
+            DsnEngine(store), schema="", table=_TABLE[node], columns=_COLS, run_query=run, pk_columns=["id"]
         ),
         db=db,
     )

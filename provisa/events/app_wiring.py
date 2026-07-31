@@ -82,16 +82,15 @@ def _mv_pk(mv: Any) -> list[str]:
 
 
 async def _reconcile_mv_store_schemas(
-    store_dsn: str, mvs: list[Any], mv_cols: dict[str, list[tuple[str, str]]], log: Any
+    engine: Any, mvs: list[Any], mv_cols: dict[str, list[tuple[str, str]]], log: Any
 ) -> None:
     """REQ-970: reconcile each derived node's store table to its SELECT-derived output schema through
-    the existing ``reconcile_table`` machinery — created when absent, KEPT when the shape matches,
-    RECREATED (drop + reland next fire) when the SELECT drifts the output columns. Best-effort per MV
-    at this boot boundary: a store/table not yet reachable is skipped (the per-fire persist_land
-    re-creates if absent regardless)."""
+    the engine's write face (``reconcile_mv_table`` — duckdb-native for an embedded store, per REQ-989;
+    ``store_writer`` otherwise) — created when absent, KEPT when the shape matches, RECREATED (drop +
+    reland next fire) when the SELECT drifts the output columns. Best-effort per MV at this boot
+    boundary: a store/table not yet reachable is skipped (the per-fire persist_land re-creates if
+    absent regardless)."""
     from sqlalchemy.exc import SQLAlchemyError
-
-    from provisa.federation import store_writer
 
     for mv in mvs:
         key = f"{mv.target_schema}.{mv.target_table}"
@@ -99,8 +98,7 @@ async def _reconcile_mv_store_schemas(
         if not cols:
             continue
         try:
-            await store_writer.reconcile_table(
-                store_dsn,
+            await engine.reconcile_mv_table(
                 schema=mv.target_schema,
                 table=mv.target_table,
                 columns=cols,
@@ -258,7 +256,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # REQ-970: reconcile each derived node's store table to its SELECT-derived schema (existing
         # reconcile_table machinery). REQ-965: build the demand-driven per-shape emit router. Both in
         # module helpers to keep this boot function within the complexity ceiling.
-        await _reconcile_mv_store_schemas(store_dsn, mvs, _mv_cols, log)
+        await _reconcile_mv_store_schemas(engine, mvs, _mv_cols, log)
         subscribers_of = _build_subscribers_of(mvs, dependents_of)
 
         def mv_columns(mv: Any) -> list[tuple[str, str]] | None:
@@ -360,7 +358,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             tables=registered_tables,
             mvs=mvs,
             engine=engine.engine,  # the FederationEngine (federate classification)
-            store_dsn=store_dsn,
+            engine_runtime=engine,  # the EngineRuntime write face (land/reconcile/persist)
             source_fetch=source_fetch,
             mv_columns=mv_columns,
             mv_run_query=mv_run_query,

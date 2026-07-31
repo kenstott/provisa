@@ -60,12 +60,23 @@ def _rcol(name, dt="bigint", pk=False):
     return {"column_name": name, "data_type": dt, "is_primary_key": pk, "native_filter_type": None}
 
 
+async def _noop_reconcile(**_kw):
+    return "mat.noop"
+
+
+async def _noop_land(**_kw):
+    return "mat.noop"
+
+
 def _state(*, ready=True):
     if not ready:
         return SimpleNamespace(tenant_db=None, federation_engine=None, config=None)
     engine = SimpleNamespace(
         engine=build_duckdb_engine(),
         materialize_store_dsn=lambda: "sqlite://",
+        reconcile_mv_table=_noop_reconcile,
+        land_source_table=_noop_land,
+        persist_mv_table=_noop_land,
     )
     config = SimpleNamespace(
         sources=[
@@ -126,6 +137,9 @@ def _state_with_mv(*, column_types):
         engine=build_duckdb_engine(),
         materialize_store_dsn=lambda: "sqlite://",
         execute_engine=_execute_engine,
+        reconcile_mv_table=_noop_reconcile,
+        land_source_table=_noop_land,
+        persist_mv_table=_noop_land,
     )
     mv = SimpleNamespace(
         target_schema="analytics",

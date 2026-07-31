@@ -23,6 +23,7 @@ from provisa.events.deadlines import PeriodicCalendar
 from provisa.events.handlers import make_mv_generate, make_mv_incremental, make_source_land
 from provisa.events.processor import MVTableProcessor, NodeContext, SourceTableProcessor
 from provisa.federation import store_writer
+from tests.helpers import DsnEngine
 
 _COLS = [("id", "bigint"), ("status", "text")]
 
@@ -87,7 +88,7 @@ def _const_mv(db, dsn, *, node="mv.a", deps=("down.x",)):
         ]  # CONSTANT output → the hash gate would suppress a re-fire
 
     gen = make_mv_generate(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="mv",
         columns=_COLS,
@@ -146,7 +147,7 @@ async def test_regen_by_source_relands_and_cascades_forward(tmp_path):
         return [{"id": 1, "status": "a"}]  # constant → forced land bypasses the output gate
 
     land = make_source_land(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="src",
         columns=_COLS,
@@ -164,7 +165,7 @@ async def test_regen_by_source_relands_and_cascades_forward(tmp_path):
             return [{"id": 1, "status": "a"}]
 
         mv_gen = make_mv_generate(
-            dsn,
+            DsnEngine(dsn),
             schema="",
             table="mvb",
             columns=_COLS,
@@ -220,7 +221,7 @@ async def test_regen_by_window_pegs_the_requested_period(tmp_path):
         return [{"id": 1, "status": "a"}]
 
     gen = make_mv_generate(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="mvw",
         columns=_COLS,
@@ -263,7 +264,7 @@ async def test_regen_window_id_mismatch_fails_loud(tmp_path):
         return [{"id": 1, "status": "a"}]
 
     gen = make_mv_generate(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="mvw",
         columns=_COLS,
@@ -422,7 +423,7 @@ async def test_incremental_applies_only_the_delta(tmp_path):
         return [{"id": 1, "status": "a"}, {"id": 2, "status": "b"}]
 
     gen = make_mv_incremental(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="mvi",
         columns=_COLS,
@@ -446,7 +447,7 @@ async def test_incremental_full_recompute_when_no_delta(tmp_path):
         return [{"id": 1, "status": "a"}]
 
     gen = make_mv_incremental(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="mvi",
         columns=_COLS,

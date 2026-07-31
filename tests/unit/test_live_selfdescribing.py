@@ -22,6 +22,7 @@ from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.events.processor import MVTableProcessor, SourceTableProcessor
 from provisa.federation import store_writer
 from provisa.mv.models import MVDefinition
+from tests.helpers import DsnEngine
 
 _COLS = [("id", "bigint"), ("status", "text")]
 
@@ -120,7 +121,7 @@ async def test_sql_only_mv_auto_processes_zero_config(tmp_path):
         return [{"id": 1, "status": "new"}]
 
     land = make_source_land(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="src",
         columns=_COLS,
@@ -131,7 +132,7 @@ async def test_sql_only_mv_auto_processes_zero_config(tmp_path):
         probe_type="none",
     )
     gen = make_mv_generate(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="hot",
         columns=_COLS,
@@ -197,8 +198,8 @@ async def test_dq_scorecard_is_an_mv_over_warn_error_emissions(tmp_path):
     def error_hook(streams, ctx):
         raise ValueError("schema drift")  # REQ-957 fatal → an error event about the node
 
-    warn_gen = make_mv_generate(dsn, schema="", table="ok1", columns=_COLS, run_query=run_ok)
-    err_gen = make_mv_generate(dsn, schema="", table="ok2", columns=_COLS, run_query=run_ok)
+    warn_gen = make_mv_generate(DsnEngine(dsn), schema="", table="ok1", columns=_COLS, run_query=run_ok)
+    err_gen = make_mv_generate(DsnEngine(dsn), schema="", table="ok2", columns=_COLS, run_query=run_ok)
     async with _db(tmp_path) as db:
         warn_mv = MVTableProcessor(
             "dq.warn",
@@ -248,7 +249,7 @@ async def test_scd2_history_is_an_mv_over_an_append_emit(tmp_path):
         return [{"id": 1, "status": current["status"]}]  # the upstream's current snapshot
 
     history_gen = make_mv_generate(
-        dsn,
+        DsnEngine(dsn),
         schema="",
         table="hist",
         columns=_COLS,

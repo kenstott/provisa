@@ -167,6 +167,14 @@ class IsolatedServer:
             "PROVISA_BOLT_PORT": str(self.bolt_port),
             "OTEL_SDK_DISABLED": "true",
         }
+        if self._engine == "trino" and self._control_plane != "sqlite":
+            # This app subprocess runs on the bare host, but Trino runs inside the compose
+            # network's container — see trino_system_catalogs.engine_visible_address(). Without
+            # these, the JDBC catalog Trino registers dials the app's own host-published Postgres
+            # address, which resolves to nothing inside the Trino container.
+            env.setdefault("PROVISA_ENGINE_CONTROL_PLANE_HOST", "postgres")
+            env.setdefault("PROVISA_ENGINE_CONTROL_PLANE_PORT", "5432")
+            env.setdefault("PROVISA_ENGINE_OTEL_S3_ENDPOINT", "http://minio:9000")
         self._stderr_file = tempfile.NamedTemporaryFile(
             prefix="isolated-server-", suffix=".stderr", delete=False
         )

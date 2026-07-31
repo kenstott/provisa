@@ -35,7 +35,7 @@ from provisa.mv.modeling import (
     fact_registration,
 )
 
-_SCHEMA = "views"  # __derived__ views land under a fixed schema, like hand-registered views
+_SCHEMA = "views"  # placeholder — register_table overrides this to the real materialize target
 
 
 def _columns(names: list[str], visible_to: list[str]) -> list[ColumnInput]:
