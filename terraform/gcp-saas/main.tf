@@ -9,6 +9,12 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    # dns.tf — the control-plane and org-wildcard A records. v5 renamed cloudflare_record to
+    # cloudflare_dns_record and changed its schema, so the major is pinned, not left to float.
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 4.0"
+    }
   }
 }
 

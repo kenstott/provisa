@@ -335,3 +335,27 @@ variable "mail_base_url" {
   type        = string
   default     = ""
 }
+
+# ── Public DNS (see dns.tf) ────────────────────────────────────────────────────
+# The subdomain-per-org model needs `cloud.<zone>` and `*.<zone>` pointing at the shared
+# front-door IP. Blank leaves DNS entirely alone, for a domain hosted somewhere other than
+# Cloudflare or managed by hand.
+
+variable "dns_zone" {
+  description = "Cloudflare zone to manage the control-plane and org-wildcard A records in (e.g. provisa.dev). Blank = terraform manages no DNS."
+  type        = string
+  default     = ""
+}
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token scoped Zone.DNS:Edit on dns_zone. Required only when dns_zone is set."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "dns_ttl" {
+  description = "TTL for the managed A records. Short by design: the shared IP is the only thing every protocol resolves through, so a re-IP must propagate fast."
+  type        = number
+  default     = 300
+}
