@@ -4,9 +4,11 @@
 
 1. מופע Hasura v2 פועל (v2.x) עם מטא-דאטה מיוצא.
 2. יצוא מטא-דאטה באמצעות ה-CLI של Hasura:
+
    ```bash
    hasura metadata export --endpoint http://localhost:8080
    ```
+
    זה יוצר ספריית `metadata/` המכילה `sources.yaml`, `actions.yaml`,
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, וכו'.
 3. Python 3.11+ עם חבילת `provisa` מותקנת.
@@ -20,13 +22,13 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ### ארגומנטים
 
 | ארגומנט | נדרש | תיאור |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `metadata_dir` | כן | נתיב לספריית המטא-דאטה המיוצאת של Hasura v2 |
 
 ### אפשרויות
 
 | אפשרות | ברירת מחדל | תיאור |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | נתיב קובץ YAML של פלט |
 | `--source-overrides FILE` | None | קובץ YAML עם דריסות חיבור לכל-מקור |
 | `--domain-map KEY=VAL ...` | None | מיפויי סכמה-לדומיין (למשל `public=core hr=people`) |
@@ -59,7 +61,7 @@ default:
 ## מטריצת שוויון תכונות
 
 | תכונת Hasura v2 | שווה-ערך Provisa | הערות |
-|---|---|---|
+| --- | --- | --- |
 | **מקורות** (postgres, mysql, mssql, bigquery, citus) | `sources[]` | סוג ממופה: pg/postgres -> postgresql, mssql -> sqlserver. כתובת URL של החיבור מפוענחת ל-host/port/database/username/password. הגדרות pool נשמרות. |
 | **טבלאות** (טבלאות עוקבות) | `tables[]` | שם סכמה + טבלה נשמר. `source_id` מקשר למקור. |
 | **שמות טבלה מותאמים** (`custom_name`, `custom_root_fields.select`) | `tables[].alias` | הראשון שאינו null מבין `select`, `select_by_pk`, `custom_name`. |

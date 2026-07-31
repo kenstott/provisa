@@ -7,7 +7,7 @@ Provisa unterstützt Echtzeit-Push über Server-Sent Events (SSE). Clients erhal
 Subscriptions zielen auf eine **registrierte Tabelle**:
 
 | Quelle | Verfügbare `strategy`-Werte |
-|--------|-------------------------|
+| -------- | ------------------------- |
 | Tabelle (PostgreSQL) | `native` (LISTEN/NOTIFY), `poll` |
 | Tabelle (Nicht-PG-RDBMS mit einem `cdc`-Block auf Quellenebene) | `debezium`, `kafka`, `poll` |
 | Tabelle (föderierte Sicht / jede andere Quelle) | nur `poll` |
@@ -40,13 +40,15 @@ Wenn das Subscription-Feld Felder aus verknüpften Tabellen auswählt (über reg
 ## Endpunkt
 
 Eine Tabelle abonnieren:
-```
+
+```http
 GET /data/subscribe/{table}
 Accept: text/event-stream
 ```
 
 Die Verbindung bleibt offen und sendet pro Änderung ein JSON-Ereignis: (REQ-258, REQ-568)
-```
+
+```text
 data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":"east"}}
 
 data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region":"west"}}
@@ -57,7 +59,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 Die Übertragung wird über `live.strategy` in der Tabellenkonfiguration festgelegt: (REQ-813, REQ-814)
 
 | `strategy` | Mechanismus | Verfügbar für | Erfordert |
-|------------|-----------|---------------|---------|
+| ------------ | ----------- | --------------- | --------- |
 | `native` | PostgreSQL `LISTEN`/`NOTIFY`, MongoDB Change Streams | PG, MongoDB | Nichts Zusätzliches |
 | `debezium` | Kafka-Topic vom Debezium-Connector | Nicht-PG-RDBMS-Tabellen | `cdc`-Block auf Quellenebene (Debezium + Kafka) |
 | `kafka` | Beliebiges Kafka-Delta-Topic | Jede Kafka-gespeiste Tabelle | `cdc`-Block auf Quellenebene |
@@ -72,6 +74,7 @@ Provisa führt `LISTEN <channel>` auf einer dauerhaften PG-Verbindung aus. (REQ-
 Provisa führt die Quellabfrage periodisch erneut aus und wählt nur Zeilen aus, bei denen `watermark_column > last_watermark` gilt. (REQ-260) Unterschiede werden als SSE-Ereignisse gesendet. Polling kann harte Löschungen (hard deletes) nicht erkennen — eine entfernte Zeile hinterlässt keine fortschreitende Watermark. Damit eine Löschung sichtbar wird, verwenden Sie eine logische Löschung (soft delete) (z. B. das Setzen eines `deleted_at`-Flags), das die Watermark-Spalte erhöht; die Löschung kommt dann als Update-Ereignis mit dem Soft-Delete-Marker an. (REQ-260)
 
 Tabellen-Polling-Konfiguration (in `provisa.yaml`):
+
 ```yaml
 tables:
   - id: federated_orders
@@ -89,6 +92,7 @@ tables:
 Erfordert einen laufenden Debezium-Connector, der nach Kafka schreibt. (REQ-261) Provisa konsumiert das Kafka-Topic und leitet Änderungsereignisse an verbundene SSE-Clients weiter. (REQ-261)
 
 Der CDC-Transport wird einmal pro Quelle in einem `cdc`-Block konfiguriert; Topics werden als `{topic_prefix}.{schema}.{table}` abgeleitet und nie pro Tabelle wiederholt. (REQ-824) Jede Tabelle wählt dann `strategy: debezium`:
+
 ```yaml
 sources:
   - id: sales-mysql
@@ -106,7 +110,7 @@ sources:
 
 Jede GraphQL-Subscription kann statt zum Client gestreamt zu werden an ein Kafka-Topic umgeleitet werden. (REQ-812) Fügen Sie der Subscription-Anfrage den Header `X-Provisa-Sink` hinzu:
 
-```
+```yaml
 POST /data/graphql
 Authorization: Bearer <token>
 Content-Type: application/json
@@ -114,6 +118,7 @@ X-Provisa-Sink: kafka://broker:9092/my-topic
 ```
 
 Der Server antwortet sofort mit `202 Accepted` und startet eine Hintergrundaufgabe, die: (REQ-812)
+
 1. Tabellenänderungen mit derselben Provider-Auflösung wie SSE überwacht (LISTEN/NOTIFY → asyncpg-Polling → föderiertes Polling)
 2. bei jeder Änderung die entsprechende Abfrage erneut ausführt
 3. das Ergebnis als JSON-Nachricht im angegebenen Kafka-Topic veröffentlicht
@@ -126,6 +131,7 @@ Der Sink läuft für die gesamte Lebensdauer des Serverprozesses. (REQ-812) Star
 - `topic` ist erforderlich
 
 **Beispiel (curl):**
+
 ```bash
 curl -X POST http://localhost:8000/data/graphql \
   -H "Authorization: Bearer $TOKEN" \
@@ -177,4 +183,5 @@ source.onmessage = (e) => {
   console.log(event.event, event.row);
 };
 ```
+
 </content>

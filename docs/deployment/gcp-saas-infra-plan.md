@@ -31,7 +31,7 @@ Run directly (its own managed HTTPS), TCP clients hit the NLB → coordinator.
 The warmth you keep hot maps to who needs it, so cold-start cost lands on the right party.
 
 | Layer | Warmth | Who eats cold start | Cost basis |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Site (Cloud Run min=1) | Always warm | Nobody | ~$10/mo (throttled idle) |
 | Control plane (Cloud SQL f1-micro) | Always warm | Nobody | ~$9/mo |
 | Trino workers (Spot MIG min=0) | Cold | Customer, first query | per-resume minimum |
@@ -52,7 +52,7 @@ Yes. Every service in the stack ([docker-compose.core.yml](https://github.com/ke
 with optional managed swaps for the stateful singletons.
 
 | Service | Enterprise home | SaaS placement | Managed swap (optional) |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | postgres (control plane) | coordinator compose | **Cloud SQL** | — (this is the swap) |
 | pgbouncer | coordinator compose | Cloud SQL pooling, or small pooler on coordinator | Cloud SQL built-in |
 | provisa (API 8000, Flight 8815) | primary + secondaries | **coordinator** (+ workers optional) | — |
@@ -77,7 +77,7 @@ New module `terraform/gcp-saas/`. Reuses enterprise networking, firewall, health
 protocol-surface locals, and the NLB verbatim. Changes:
 
 | Enterprise | SaaS |
-|---|---|
+| --- | --- |
 | `google_compute_instance.secondary` (fixed count) | `google_compute_instance_template` + `google_compute_region_instance_group_manager` (workers) + `google_compute_region_autoscaler` |
 | postgres in coordinator compose | `google_sql_database_instance` (private IP) + `google_sql_database` + `google_sql_user` |
 | coordinator = `n2-standard-8` (runs DB) | coordinator = `n2-standard-4` (DB offloaded) |

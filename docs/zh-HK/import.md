@@ -7,11 +7,13 @@ Provisa 可將現有的 Hasura 中繼資料轉換為 Provisa 的 `config.yaml`�
 ### 匯出中繼資料
 
 自您的 Hasura 主控台或 CLI：
+
 ```bash
 hasura metadata export --output metadata.yaml
 ```
 
 或使用 Hasura API：
+
 ```bash
 curl -X POST http://localhost:8080/v1/metadata \
   -H "X-Hasura-Admin-Secret: <secret>" \
@@ -32,7 +34,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 旗標：
 
 | 旗標 | 用途 |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | 輸出 YAML 路徑（預設：stdout） |
 | `--source-overrides` | 含每個數據來源連線覆寫（主機、連接埠、憑證）的 YAML 檔 |
 | `--domain-map` | 以 `SCHEMA=DOMAIN` 配對表示的結構描述至領域對應 |
@@ -42,7 +44,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 ### 轉換內容
 
 | Hasura 概念 | Provisa 對應項目 |
-|---------------|-------------------|
+| --------------- | ------------------- |
 | 已追蹤資料表 | 具 `publish: true` 的 `tables[]` |
 | 物件關係 | 具 `cardinality: many-to-one` 的 `relationships[]` |
 | 陣列關係 | 具 `cardinality: one-to-many` 的 `relationships[]` |
@@ -79,7 +81,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 旗標：
 
 | 旗標 | 用途 |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | 輸出 YAML 路徑（預設：stdout） |
 | `--source-overrides` | 含每個數據來源連線覆寫的 YAML 檔 |
 | `--domain-map` | 以 `SUBGRAPH=DOMAIN` 配對表示的子圖至領域對應 |
@@ -91,7 +93,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 ### 轉換內容
 
 | DDN 概念 | Provisa 對應項目 |
-|------------|-------------------|
+| ------------ | ------------------- |
 | 子圖模型 | 某數據來源下的 `tables[]` |
 | 關係 | `relationships[]` |
 | 權限規則 | RLS 篩選條件 |

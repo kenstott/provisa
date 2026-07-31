@@ -10,7 +10,7 @@ Queries go through the full governance stack: RLS enforcement, masking rules, re
 
 The server starts when `PROVISA_PGWIRE_PORT` is set to a non-zero integer. It is disabled by default. (REQ-527) [tool-verified: `app.py:1739`]
 
-```
+```yaml
 Host: 0.0.0.0  (all interfaces)
 Port: $PROVISA_PGWIRE_PORT
 ```
@@ -26,7 +26,7 @@ Port: $PROVISA_PGWIRE_PORT
 Two modes, controlled by the `provider` key in `auth_config`:
 
 | Mode | `provider` value | Behaviour |
-|------|-----------------|-----------|
+| ------ | ----------------- | ----------- |
 | Trust | `none` (or auth middleware inactive) | Username sent by the client is used directly as the `role_id`. Password is ignored. |
 | Simple | `simple` | Password verified against the `simple` auth provider (bcrypt). Username becomes `role_id` on success. (REQ-124) |
 
@@ -57,7 +57,7 @@ DDL statements are detected by the regex in `server.py` and dispatched to `DdlHa
 
 The recognized DDL forms are:
 
-```
+```sql
 CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
 ALTER TABLE / INDEX / SEQUENCE / VIEW
 DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
@@ -122,6 +122,7 @@ Intercepted tables:
 `pg_index` is populated with one row per primary-key and UNIQUE constraint (`indrelid` = table oid, `indkey` = ordered key attnums, `indisprimary`/`indisunique` set). Clients that resolve key columns via `pg_index.indkey` rather than `pg_constraint` — DataGrip, for example — discover the correct columns through the standard `pg_index` → `pg_attribute` join. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 The following scalar expressions are also intercepted: (REQ-588)
+
 - `current_user`, `session_user` → the authenticated `role_id`
 - `current_database()` → `"provisa"`
 - `current_schema()` → `"public"`
@@ -139,7 +140,7 @@ The following scalar expressions are also intercepted: (REQ-588)
 The extended-query protocol (Bind/Execute) supports binary-encoded parameters. (REQ-589) The following type OIDs are decoded from binary: [tool-verified: `postgres.py:69-97`]
 
 | OID | PG type | Python type |
-|-----|---------|-------------|
+| ----- | --------- | ------------- |
 | 16 | bool | bool |
 | 17 | bytea | bytes |
 | 20 | int8 | int |
@@ -167,7 +168,7 @@ Result columns are also sent in binary when the client requests it, for the same
 
 **JDBC (PostgreSQL JDBC driver).** Use this for Java-ecosystem tools: DBeaver, Tableau, Power BI, Metabase, Airflow JDBC operators. JDBC defaults to the simple-query protocol, which avoids binary encoding complications. Connection string:
 
-```
+```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 

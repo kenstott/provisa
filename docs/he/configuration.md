@@ -22,7 +22,7 @@ sources:
 כל המקורות חולקים קבוצת שדות משותפת. [tool-verified: `provisa/core/models.py:129-212`]
 
 | שדה | ברירת מחדל | הערות |
-|-------|---------|-------|
+| ------- | --------- | ------- |
 | `id` | חובה | אלפאנומרי, מקפים, קווים תחתונים |
 | `type` | חובה | ראו הטבלה למטה |
 | `host` | `""` | שם מארח או IP |
@@ -43,7 +43,7 @@ sources:
 ### סוגי מקורות נתמכים [tool-verified: `provisa/core/models.py:36-101`]
 
 | סוג | סגנון חיבור | הערות |
-|------|-----------------|-------|
+| ------ | ----------------- | ------- |
 | **RDBMS** | | |
 | `postgresql` | host/port | pool של Asyncpg; PgBouncer מרצון דרך `use_pgbouncer` |
 | `mysql` | host/port | |
@@ -128,7 +128,7 @@ sources:
 כל subject ממופה לסכמה אחת או יותר של GovData. הגדרת מקור `govdata` עם subject חושפת אוטומטית את כל הסכמות עבור אותו subject. (REQ-540)
 
 | Subject | סכמות |
-|---------|---------|
+| --------- | --------- |
 | `COMMERCE` | `sec`, `patents` |
 | `ECONOMY` | `econ`, `econ_reference` |
 | `EDUCATION` | `census`, `edu` |
@@ -191,7 +191,7 @@ kafka_sources:
 **מקור סכמה (Schema Source)**
 
 | ערך | התנהגות |
-|-------|----------|
+| ------- | ---------- |
 | `registry` | שליפת סכמה מ-Confluent Schema Registry |
 | `manual` | הגדרת עמודות inline בתצורה (ללא צורך ב-Schema Registry) |
 | `sample` | גילוי אוטומטי מהודעות דוגמה |
@@ -539,7 +539,7 @@ naming:
 מוסכמת ה-GraphQL היא אחת משלושה enum-ים מוגדרים מראש. (REQ-416) מחרוזות free-form ישנות (`none`, `snake_case`, `camelCase`, `PascalCase`) הוצאו משימוש. (REQ-416)
 
 | מוגדר-מראש (Preset) | ברירת מחדל | שמות טיפוס | שמות שדה | שמות מוטציה |
-|--------|---------|------------|-------------|----------------|
+| -------- | --------- | ------------ | ------------- | ---------------- |
 | `apollo_graphql` | כן | PascalCase | camelCase | camelCase |
 | `hasura_graphql` | | PascalCase | camelCase | snake_case |
 | `snake` | | PascalCase | snake_case | snake_case |
@@ -551,6 +551,7 @@ naming:
 `column.alias` מפורש הוא השם הקנוני: SQL משתמש בו כלשונו ללא הפעלת מוסכמה, GraphQL מחיל עליו את המוסכמה שלו, ו-CQL נגזר משם ה-GraphQL. (REQ-194)
 
 דריסה לפי-מקור:
+
 ```yaml
 sources:
   - id: legacy-db
@@ -558,6 +559,7 @@ sources:
 ```
 
 דריסה לפי-טבלה:
+
 ```yaml
 tables:
   - source_id: legacy-db
@@ -570,7 +572,7 @@ tables:
 כאשר `domain_prefix: true`, כל שמות שדה וטיפוס GraphQL מקבלים קידומת מזהה הדומיין באמצעות מפריד קו-תחתון כפול: (REQ-154)
 
 | טבלה | דומיין | שם שדה |
-|-------|--------|-----------|
+| ------- | -------- | ----------- |
 | `orders` | `sales-analytics` | `sales_analytics__orders` |
 | `customer_segments` | `customer-insights` | `customer_insights__customer_segments` |
 
@@ -626,6 +628,7 @@ tables:
 ### כינויים (Aliases)
 
 כינויי טבלה ועמודה דורסים את שם ה-GraphQL ברירת המחדל. (REQ-155) שימושי עבור:
+
 - שינוי שם למסדי נתונים חידתיים (לדוגמה, `tbl_cust_seg` ← `customer_segments`)
 - הימנעות מקיצורים בשכבת ה-API
 - יצירת אוצר מילים נקי, ספציפי-לדומיין
@@ -660,7 +663,7 @@ columns:
 ### סוגי מיסוך
 
 | סוג | שדות | תיאור |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | `regex` | `pattern`, `replace` | REGEXP_REPLACE (עמודות מחרוזת בלבד) |
 | `constant` | `value` | החלפה מילולית (NULL, 0, MAX, MIN, מותאם אישית) |
 | `truncate` | `precision` | DATE_TRUNC (עמודות תאריך/timestamp בלבד) |
@@ -723,7 +726,7 @@ roles:
 ### יכולות (Capabilities)
 
 | יכולת | תיאור |
-|-----------|-------------|
+| ----------- | ------------- |
 | `source_registration` | רישום מקורות נתונים |
 | `table_registration` | רישום טבלאות |
 | `relationship_registration` | הגדרת קשרים |
@@ -789,7 +792,7 @@ views:
 ```
 
 | שדה | חובה | תיאור |
-|-------|----------|-------------|
+| ------- | ---------- | ------------- |
 | `id` | כן | מזהה view ייחודי |
 | `sql` | כן | הצהרת SQL SELECT שמגדירה את ה-view |
 | `domain_id` | כן | דומיין לנראות סכמה |
@@ -870,7 +873,7 @@ auth:
 ### סוגי ספק אימות
 
 | ספק | מקרה שימוש | אימות token |
-|----------|----------|-----------------|
+| ---------- | ---------- | ----------------- |
 | `simple` | פיתוח/בדיקות מקומיים. משתמשים מוגדרים ב-YAML. | JWT חתום עם `PROVISA_JWT_SECRET` |
 | `firebase` | Firebase Authentication (כל השיטות). | `verify_id_token()` של SDK‏ `firebase-admin` |
 | `keycloak` | Keycloak OIDC. תפקידי דייר + לקוח ממופים. | אימות JWT מבוסס JWKS |
@@ -965,7 +968,7 @@ tables:
 ```
 
 | מקור | התנהגות |
-|--------|----------|
+| -------- | ---------- |
 | `header` | מזריק ערך מכותרת בקשת HTTP בשם הנתון |
 | `now` | מזריק `NOW()` (חותמת זמן נוכחית) |
 | `literal` | מזריק ערך קבוע |
@@ -1029,7 +1032,7 @@ OrderBy משתמש בפורמט `{column: direction}` עם enum כיוון בע�
 ```
 
 | כיוון | SQL |
-|-----------|-----|
+| ----------- | ----- |
 | `asc` | `ASC` |
 | `desc` | `DESC` |
 | `asc_nulls_first` | `ASC NULLS FIRST` |
@@ -1073,26 +1076,26 @@ Provisa מריצה שני נתיבי ייצוא OTLP עצמאיים: הקולק�
 **`telemetry_filter`** — שולט במה שמגיע לקולקטור הפנימי שלכם.
 
 | מפתח | טיפוס | ברירת מחדל | תיאור |
-|-----|------|---------|-------------|
+| ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `false` | מחליף מילוליים (literals) מחרוזתיים ומספריים ב-`db.statement` ב-`?` |
 | `redact_attributes` | list[str] | `[]` | מפתחות תכונה (attribute) שנשמטים לגמרי מכל span |
 
 **`support_telemetry_filter`** — שולט במה שמגיע לנקודת הקצה לתמיכה של Provisa. עריכת מילוליים SQL כברירת מחדל `true` בנתיב זה, מכיוון שנתוני שאילתה שייכים לכם. (REQ-547) [tool-verified: `provisa/api/otel_setup.py` line 240]
 
 | מפתח | טיפוס | ברירת מחדל | תיאור |
-|-----|------|---------|-------------|
+| ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `true` | מחליף מילוליים מחרוזתיים ומספריים ב-`db.statement` ב-`?` |
 | `redact_attributes` | list[str] | `[]` | מפתחות תכונה שנשמטים לגמרי מכל span |
 
 דוגמת `db.statement` ערוך — עם `redact_sql_literals: true`, תכונת span זו:
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 ```
 
 הופכת ל:
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
@@ -1113,7 +1116,7 @@ Provisa בוחרת OTLP/HTTP או OTLP/gRPC לפי סכימת ה-URL של נקו
 ### סקירת מנועים [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
 
 | מפתח מנוע | תווית | דיאלקט | MPP | מנגנון קישור חיצוני | אימות |
-|-----------|-------|---------|-----|------------------------|------|
+| ----------- | ------- | --------- | ----- | ------------------------ | ------ |
 | `trino` | Provisa Federation Engine | Trino SQL | כן | קטלוגי Trino (קבוצת מחברים רחבה) | אישורי JDBC |
 | `trino-byo` | Trino (bring-your-own) | Trino SQL | כן | זהה ל-`trino`; מתאם (coordinator) בלתי-מנוהל | אישורי JDBC |
 | `pg` | PostgreSQL | PostgreSQL | לא | FDW / pg_duckdb | אישורי PostgreSQL |
@@ -1284,7 +1287,7 @@ sources:
 ## משתני סביבה
 
 | משתנה | ברירת מחדל | תיאור |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | נתיב קובץ תצורה |
 | `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | URI מאגר מישור-הבקרה (SQLAlchemy async); מקבל `sqlite+aiosqlite://…` / `duckdb://…` עבור מאגר שולחן העבודה המובנה (REQ-828, REQ-850) |
 | `PLATFORM_DATABASE_URL` | — | URI מרשם הפלטפורמה (ספריית דיירים, מרשם מנועים); נדרש בעת ההפעלה, ללא נפילה-חוזרת (REQ-837) |

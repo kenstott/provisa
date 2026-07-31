@@ -16,13 +16,13 @@ Sans authentification configurée, le serveur s'exécute en mode développement.
 
 **Introspection d'identité :**
 
-```
+```http
 GET /auth/me
 ```
 
 Renvoie l'id, l'adresse e-mail, le nom d'affichage, les appartenances aux organisations et les affectations de rôle de l'utilisateur authentifié. En mode développement, renvoie `dev_mode: true` avec la liste de tous les ID de rôle. [tool-verified: `provisa/api/auth_router.py`]
 
-```
+```http
 GET /auth/provider-type
 ```
 
@@ -37,6 +37,7 @@ Renvoie `{"provider": "<name>"}` ou `{"provider": null}` lorsque l'authentificat
 Exécute une requête ou une mutation GraphQL. (REQ-043) [tool-verified: `provisa/api/data/endpoint.py:151`]
 
 **Corps de la requête :**
+
 ```json
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
@@ -49,6 +50,7 @@ Exécute une requête ou une mutation GraphQL. (REQ-043) [tool-verified: `provis
 Le champ `role` n'est utilisé qu'en mode développement (sans authentification). Lorsque l'authentification est active, le rôle de l'utilisateur authentifié est utilisé et le `role` du corps de la requête est ignoré.
 
 Le champ `extensions` prend en charge le protocole Automatic Persisted Query (APQ) : (REQ-288)
+
 ```json
 {
   "extensions": {"persistedQuery": {"sha256Hash": "<sha256-of-query>"}}
@@ -56,6 +58,7 @@ Le champ `extensions` prend en charge le protocole Automatic Persisted Query (AP
 ```
 
 **En-têtes :**
+
 - `X-Provisa-Role` — remplace le rôle (mode développement)
 - `Accept` — format de réponse (voir Négociation de contenu)
 - `Authorization` — `Bearer <token>` lorsque l'authentification est activée
@@ -64,6 +67,7 @@ Le champ `extensions` prend en charge le protocole Automatic Persisted Query (AP
 - `X-Provisa-Redirect` — `true` pour forcer la redirection sans condition (REQ-029)
 
 **Réponse (JSON en ligne) :**
+
 ```json
 {
   "data": {
@@ -75,6 +79,7 @@ Le champ `extensions` prend en charge le protocole Automatic Persisted Query (AP
 ```
 
 **Réponse (redirection) :**
+
 ```json
 {
   "data": {"orders": null},
@@ -88,6 +93,7 @@ Le champ `extensions` prend en charge le protocole Automatic Persisted Query (AP
 ```
 
 **Réponse (racines multiples, mélange en ligne/redirection) :**
+
 ```json
 {
   "data": {
@@ -119,7 +125,7 @@ Les requêtes à racines multiples exécutent chaque champ racine indépendammen
 ### Négociation de contenu
 
 | En-tête Accept | Format |
-|---|---|
+| --- | --- |
 | `application/json` | JSON (par défaut) |
 | `application/x-ndjson` | JSON délimité par saut de ligne |
 | `text/csv` | CSV |
@@ -135,7 +141,7 @@ Les requêtes à racines multiples exécutent chaque champ racine indépendammen
 Les résultats dépassant un seuil de lignes configuré (ou lorsque `X-Provisa-Redirect: true`) sont écrits sur S3 et une URL pré-signée est renvoyée. (REQ-029, REQ-044)
 
 | Format de redirection | Écrit par | Mémoire |
-|---|---|---|
+| --- | --- | --- |
 | `application/vnd.apache.parquet` | CTAS fédéré | Aucune — les données ne transitent jamais par Provisa |
 | `application/x-orc` | CTAS fédéré | Aucune — les données ne transitent jamais par Provisa |
 | `application/json` | Provisa | Limité par la mémoire |
@@ -145,7 +151,7 @@ Les résultats dépassant un seuil de lignes configuré (ou lorsque `X-Provisa-R
 
 Pour les exports analytiques volumineux, utilisez la redirection Parquet ou ORC. Le moteur de fédération écrit directement sur S3 en parallèle — aucune donnée ne transite par Provisa. (REQ-138)
 
-```
+```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
 X-Provisa-Redirect-Threshold: 1000
 ```
@@ -157,6 +163,7 @@ X-Provisa-Redirect-Threshold: 1000
 Exécute du SQL brut à travers le pipeline de gouvernance de l'étape 2. (REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:62`]
 
 **Corps de la requête :**
+
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
@@ -182,6 +189,7 @@ Endpoint de requête unifié. Accepte GraphQL, SQL ou Cypher — la syntaxe est 
 Les requêtes Cypher peuvent également être envoyées à l'endpoint exclusivement Cypher `POST /query/cypher`. (REQ-345)
 
 **Corps de la requête :**
+
 ```json
 {
   "query": "{ orders { id } }",
@@ -200,6 +208,7 @@ Renvoie `{"data": ...}` pour GraphQL, `{"columns": [...], "rows": [...]}` pour S
 Endpoint REST simple généré automatiquement pour chaque table enregistrée. La chaîne de requête est mappée sur des arguments GraphQL et la requête est compilée et exécutée à travers le même pipeline (RLS, masquage, routage) que GraphQL. (REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
 
 **Paramètres de requête :**
+
 - `limit` — nombre maximal de lignes (≥ 1)
 - `offset` — nombre de lignes à ignorer (≥ 0)
 - `fields` — noms de colonnes séparés par des virgules (par défaut, tous les champs scalaires)
@@ -217,6 +226,7 @@ Endpoint conforme à [JSON:API](https://jsonapi.org) généré automatiquement p
 **En-tête `Accept` :** doit inclure `application/vnd.api+json` (le type de média JSON:API), sinon la requête renvoie `406`.
 
 **Paramètres de requête :**
+
 - `fields[<type>]` — ensembles de champs partiels (sparse fieldsets), p. ex. `?fields[orders]=amount`
 - `filter[<col>]` / `filter[<col>][<op>]` — p. ex. `?filter[region]=US`, `?filter[amount][gt]=100`
 - `sort` — séparé par des virgules, préfixe `-` pour un ordre décroissant, p. ex. `?sort=-created_at,amount`
@@ -231,6 +241,7 @@ Les réponses sont des objets ressource avec `type`/`id`/`attributes`. Les erreu
 Soumet une question en langage naturel. Le service démarre une tâche asynchrone et renvoie immédiatement `202 Accepted` avec un `job_id`. Nécessite un fournisseur de LLM configuré dans la section de configuration `ai_models`. (REQ-354) [tool-verified: `provisa/api/rest/nl_router.py:50`]
 
 **Corps de la requête :**
+
 ```json
 {"q": "How many orders were placed last month?", "role": "admin"}
 ```
@@ -267,6 +278,7 @@ Renvoie le SDL GraphQL du schéma d'un rôle. (REQ-008) [tool-verified: `provisa
 **En-têtes :** `X-Role: <role_id>` (obligatoire)
 
 **Paramètres de requête :**
+
 - `domain` — ID de domaine séparés par des virgules. Lorsqu'il est défini, la réponse est filtrée sur le(s) domaine(s) indiqué(s) et les tables accessibles depuis ceux-ci.
 
 **Réponse :** SDL GraphQL en `text/plain`.
@@ -346,6 +358,7 @@ Envoie un YAML de configuration révisé. Le serveur écrit une sauvegarde `.bak
 **Corps de la requête :** Contenu YAML brut.
 
 **Réponse :**
+
 ```json
 {"success": true, "message": "Config uploaded and reloaded"}
 ```
@@ -361,6 +374,7 @@ En cas d'échec du rechargement : `{"success": false, "message": "<error>"}`.
 Renvoie les paramètres actuels de la plateforme au format JSON. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:50`]
 
 **Réponse :**
+
 ```json
 {
   "redirect": {
@@ -398,6 +412,7 @@ Renvoie les paramètres actuels de la plateforme au format JSON. (REQ-165) [tool
 Met à jour les paramètres de la plateforme à l'exécution. Tous les champs sont facultatifs — seules les clés présentes dans le corps sont mises à jour. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:100`]
 
 **Corps de la requête (exemple partiel) :**
+
 ```json
 {
   "otel": {
@@ -419,6 +434,7 @@ Champs modifiables par section :
 - `otel` : `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Réponse :**
+
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
@@ -442,6 +458,7 @@ Recharge à chaud un catalogue nommé dans le coordinateur du moteur de fédéra
 **Paramètres de requête :** `catalog` (par défaut `"otel"`)
 
 **Réponse :**
+
 ```json
 {"success": true, "errors": []}
 ```
@@ -461,6 +478,7 @@ Redémarre le conteneur du moteur de fédération (développement mono-nœud uni
 Déclenche la découverte de relations. Exécute toujours l'introspection des clés étrangères depuis le moteur de fédération. (REQ-018) Exécute une inférence par LLM si `ANTHROPIC_API_KEY` est définie. (REQ-167) [tool-verified: `provisa/api/admin/discovery.py:55`]
 
 **Corps de la requête :**
+
 ```json
 {
   "scope": "domain",
@@ -541,6 +559,7 @@ Chaque invocation — depuis GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_
 Renvoie toutes les fonctions de BD et tous les webhooks suivis. (REQ-242) [tool-verified: `provisa/api/admin/actions_router.py:104`]
 
 **Réponse :**
+
 ```json
 {
   "functions": [
@@ -582,7 +601,7 @@ Enregistre une fonction suivie (commande). (REQ-205) [tool-verified: `provisa/ap
 **Champs clés :**
 
 | Champ | Obligatoire | Description |
-|---|---|---|
+| --- | --- | --- |
 | `name` | Oui | Nom de commande unique |
 | `kind` | Oui | `"query"` → champ Query GraphQL ; `"mutation"` → champ Mutation |
 | `implKind` | Non | Mode d'exécution de la commande — voir tableau ci-dessous (par défaut `source_procedure`) |
@@ -596,7 +615,7 @@ Enregistre une fonction suivie (commande). (REQ-205) [tool-verified: `provisa/ap
 **Valeurs de `implKind` :**
 
 | `implKind` | Ce qui s'exécute | Champs de `binding` |
-|---|---|---|
+| --- | --- | --- |
 | `source_procedure` | Procédure stockée sur une source enregistrée (par défaut) | `sourceId`, `schemaName`, `functionName` |
 | `script` | Script côté serveur | `script` |
 | `http` | Appel HTTP sortant | `url`, `method` |
@@ -636,7 +655,7 @@ Teste une action (fonction ou webhook) par son nom. (REQ-245) [tool-verified: `p
 Tous les endpoints se trouvent sous le préfixe `/admin/roles`. [tool-verified: `provisa/api/admin/roles_router.py:18`]
 
 | Méthode | Chemin | Description |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/roles/` | Liste tous les rôles |
 | `POST` | `/admin/roles/` | Crée un rôle |
 | `PUT` | `/admin/roles/{role_id}` | Met à jour un rôle |
@@ -651,7 +670,7 @@ Tous les endpoints se trouvent sous le préfixe `/admin/roles`. [tool-verified: 
 Tous les endpoints se trouvent sous le préfixe `/admin/users`. [tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
 | Méthode | Chemin | Description |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/users/` | Crée un utilisateur local |
 | `GET` | `/admin/users/` | Liste les utilisateurs locaux |
 | `GET` | `/admin/users/{user_id}` | Récupère un utilisateur |
@@ -669,7 +688,7 @@ Tous les endpoints se trouvent sous le préfixe `/admin/users`. [tool-verified: 
 Tous les endpoints se trouvent sous `/admin/orgs`. [tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
 | Méthode | Chemin | Description |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/orgs/` | Liste les organisations |
 | `POST` | `/admin/orgs/` | Crée une organisation |
 | `PUT` | `/admin/orgs/{org_id}` | Met à jour une organisation |
@@ -685,7 +704,7 @@ Tous les endpoints se trouvent sous `/admin/orgs`. [tool-verified: `provisa/api/
 Tous les endpoints se trouvent sous `/admin/invites`. [tool-verified: `provisa/api/admin/invites_router.py:18`]
 
 | Méthode | Chemin | Description |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/invites/` | Crée une invitation |
 | `GET` | `/admin/invites/` | Liste les invitations en attente |
 | `DELETE` | `/admin/invites/{token}` | Révoque une invitation |
@@ -748,7 +767,7 @@ Renvoie `{"status": "ok"}`. Toujours sans authentification. (REQ-539) [tool-veri
 ## Réponses d'erreur
 
 | Statut | Signification |
-|---|---|
+| --- | --- |
 | 400 | Requête invalide, erreur de validation ou erreur d'analyse SQL |
 | 401 | Jeton d'authentification manquant ou invalide |
 | 403 | Capacités insuffisantes ; violation de gouvernance |
@@ -780,11 +799,13 @@ Port `8815`. Transport columnaire Arrow natif sur gRPC. (REQ-143, REQ-045) [tool
 Les requêtes et la découverte de catalogue sont toutes deux disponibles sur la même connexion. Le pipeline de gouvernance complet (RLS, masquage, échantillonnage) est appliqué à chaque requête. (REQ-130, REQ-143)
 
 **Format de ticket** (JSON) :
+
 ```json
 {"query": "{ customers { name email } }", "role": "analyst", "variables": {}}
 ```
 
 **Utilisation (Python) :**
+
 ```python
 import pyarrow.flight as flight
 

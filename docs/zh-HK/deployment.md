@@ -54,7 +54,7 @@ Provisa 支援六種部署路徑。請依您的受眾及作業情境選擇：
 - 於連接埠 3000 啟動 Vite UI 開發伺服器（REQ-559）
 - 印出 URL 並等待；Ctrl+C 會停止一切並拆除 compose
 
-```
+```yaml
 Backend: http://localhost:8001
 UI:      http://localhost:3000
 ```
@@ -71,13 +71,17 @@ UI:      http://localhost:3000
 
 1. 安裝 [Docker Desktop](https://docs.docker.com/get-docker/)
 2. 啟動核心服務：
+
    ```bash
    docker compose -f docker-compose.core.yml up -d
    ```
+
 3. 啟動 API：
+
    ```bash
    uvicorn main:app --reload --port 8001
    ```
+
 4. 驗證：`curl http://localhost:8001/health`
 
 ### 完整堆疊（Provisa 於容器內）
@@ -123,7 +127,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 遙測擁有自己獨立的儲存區，與控制平面資料庫分離。以 `PROVISA_OPS_DB_URL` 選擇後端：
 
 | `PROVISA_OPS_DB_URL` | 後端 | 備註 |
-|---|---|---|
+| --- | --- | --- |
 | *（未設定）* | 位於 `~/.provisa/telemetry/` 的專屬 DuckDB | 預設；無伺服器，無 Docker |
 | `clickhouse+native://user@host/otel` | ClickHouse | 高速率擷取，具自動背景合併 |
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | 中等流量 |
@@ -149,6 +153,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 2. 開啟該 DMG，並將 **Provisa.app** 拖曳至 `/Applications`
 3. 雙擊 **Provisa.app**——首次啟動設定僅執行一次；精靈會提供上述引擎、可觀測性及示範選項（REQ-1007）
 4. 開啟終端機：
+
    ```bash
    provisa start    # start all services
    provisa status   # confirm all services are running
@@ -175,7 +180,8 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 2. 執行該安裝程式——無須系統管理員權限；會安裝至 `%LOCALAPPDATA%\Programs\Provisa\`
 3. 自開始功能表開啟 **Provisa First Launch**——原生設定僅執行一次，並印出分層附加元件的後續步驟指引（REQ-1005）
 4. 開啟新終端機：
-   ```
+
+   ```text
    provisa status
    provisa open
    ```
@@ -213,13 +219,17 @@ Provisa 映像於封裝時即已預先建置——Python 原始碼絕不包含�
 
 1. 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載 `Provisa.AppImage` 並傳送至目標機器
 2. 使其可執行：
+
    ```bash
    chmod +x Provisa.AppImage
    ```
+
 3. 執行首次啟動設定：
+
    ```bash
    ./Provisa.AppImage
    ```
+
 4. 設定精靈會詢問：
    - **角色** → 選擇 `primary`
    - **RAM 預算** → 要配置的 RAM 數量（0 = 全部可用）；決定 Trino worker 數目
@@ -227,6 +237,7 @@ Provisa 映像於封裝時即已預先建置——Python 原始碼絕不包含�
    - **API 連接埠** → 預設 `8000`（REQ-560）
 5. 設定會載入所有容器映像（約 2–5 分鐘）、寫入設定並啟動服務
 6. 驗證：
+
    ```bash
    provisa status
    curl http://localhost:8000/health
@@ -250,16 +261,19 @@ Provisa 映像於封裝時即已預先建置——Python 原始碼絕不包含�
    | 8000 | Provisa API |
 
 3. 使其可執行並執行：
+
    ```bash
    chmod +x Provisa.AppImage
    ./Provisa.AppImage
    ```
+
 4. 設定精靈會詢問：
    - **角色** → 選擇 `primary`
    - **RAM 預算**、**主機名稱**、**API 連接埠** → 與單節點相同回答
 5. 設定完成後，請記下此機器的**私有 IP**——次要節點需要此資訊
 6. 精靈會印出一個 nginx upstream 區塊——請保留供負載平衡器設定使用
 7. 驗證：
+
    ```bash
    provisa status
    curl http://localhost:8000/health
@@ -273,24 +287,30 @@ Provisa 映像於封裝時即已預先建置——Python 原始碼絕不包含�
 
 1. 下載並傳送 `Provisa.AppImage` 至次要機器
 2. 確認次要節點可連線至主節點：
+
    ```bash
    curl http://<primary-ip>:8000/health
    ```
+
 3. 使其可執行並執行：
+
    ```bash
    chmod +x Provisa.AppImage
    ./Provisa.AppImage
    ```
+
 4. 設定精靈會詢問：
    - **角色** → 選擇 `secondary`
    - **主節點 IP** → 輸入主節點的 IP（會即時驗證連線狀況）
    - **RAM 預算**、**主機名稱**、**API 連接埠** → 如上回答
 5. 設定會載入精簡的映像組合（不含 PostgreSQL、PgBouncer、MinIO、Redis——這些僅於主節點執行）（REQ-561），並啟動 Provisa API 及一個聯邦引擎 worker
 6. 驗證：
+
    ```bash
    provisa status
    curl http://localhost:8000/health
    ```
+
 7. 將此節點加入您的負載平衡器 upstream
 
 ---
@@ -356,6 +376,7 @@ Provisa 映像於封裝時即已預先建置——Python 原始碼絕不包含�
 1. 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載 `Provisa.AppImage`
 
 2. 上傳至您 AWS 帳戶中的 S3 儲存桶：
+
    ```bash
    aws s3 cp Provisa.AppImage s3://<your-bucket>/releases/Provisa.AppImage
    ```
@@ -368,6 +389,7 @@ Provisa 映像於封裝時即已預先建置——Python 原始碼絕不包含�
 4.（選用）若需 SSH 存取節點，請於目標區域建立一組 EC2 金鑰對，並記下該金鑰對名稱
 
 5. 執行部署包裝程式：
+
    ```bash
    bash terraform/deploy.sh
    ```
@@ -377,7 +399,8 @@ Provisa 映像於封裝時即已預先建置——Python 原始碼絕不包含�
 7. 檢視部署摘要並確認
 
 8. Terraform 佈建所有基礎架構（約 5–10 分鐘）。apply 完成後，指令碼會印出：
-   ```
+
+   ```text
    api_endpoint      = "http://<alb-dns>:8000"
    flight_endpoint   = "<nlb-dns>:8815"
    primary_ip        = "10.0.x.x"
@@ -389,6 +412,7 @@ Provisa 映像於封裝時即已預先建置——Python 原始碼絕不包含�
 9.（選用）將 DNS 記錄指向 ALB 及 NLB 的 DNS 名稱
 
 10. 驗證：
+
     ```bash
     curl http://<api_endpoint>/health
     ```
@@ -462,6 +486,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 ### 步驟
 
 1. 確認叢集存取：
+
    ```bash
    kubectl cluster-info
    ```
@@ -489,6 +514,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    - **密鑰**——評估時可經 `--set` 傳入；生產環境請使用 External Secrets 或 Vault Agent
 
 4. 安裝該 chart：
+
    ```bash
    helm install provisa helm/provisa/ \
      --set config.pgPassword=<password> \
@@ -499,6 +525,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    ```
 
    若使用內部登記檔，請加入映像覆寫：
+
    ```bash
    --set image.repository=harbor.internal.example.com/provisa/provisa \
    --set image.tag=1.2.3 \
@@ -507,11 +534,13 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    ```
 
 5. 驗證 pod 是否運行中：
+
    ```bash
    kubectl get pods -n provisa
    ```
 
 6. 檢查 API：
+
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health

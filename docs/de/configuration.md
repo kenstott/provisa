@@ -22,7 +22,7 @@ sources:
 Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/core/models.py:129-212`]
 
 | Feld | Standard | Hinweise |
-|-------|---------|-------|
+| ------- | --------- | ------- |
 | `id` | erforderlich | Alphanumerisch, Bindestriche, Unterstriche |
 | `type` | erforderlich | Siehe Tabelle unten |
 | `host` | `""` | Hostname oder IP |
@@ -43,7 +43,7 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 ### Unterstützte Quellentypen [tool-verified: `provisa/core/models.py:36-101`]
 
 | Typ | Verbindungsstil | Hinweise |
-|------|-----------------|-------|
+| ------ | ----------------- | ------- |
 | **RDBMS** | | |
 | `postgresql` | host/port | Asyncpg-Pool; PgBouncer opt-in über `use_pgbouncer` |
 | `mysql` | host/port | |
@@ -128,7 +128,7 @@ sources:
 Jedes Subject bildet auf ein oder mehrere GovData-Schemas ab. Die Konfiguration einer `govdata`-Quelle mit einem Subject stellt automatisch alle Schemas für dieses Subject bereit. (REQ-540)
 
 | Subject | Schemas |
-|---------|---------|
+| --------- | --------- |
 | `COMMERCE` | `sec`, `patents` |
 | `ECONOMY` | `econ`, `econ_reference` |
 | `EDUCATION` | `census`, `edu` |
@@ -191,7 +191,7 @@ kafka_sources:
 **Schema Source**
 
 | Wert | Verhalten |
-|-------|----------|
+| ------- | ---------- |
 | `registry` | Schema aus der Confluent Schema Registry abrufen |
 | `manual` | Spalten inline in der Konfiguration definieren (keine Schema Registry nötig) |
 | `sample` | Automatische Erkennung aus Beispielnachrichten |
@@ -539,7 +539,7 @@ Die Namensautorität ist die einzige Quelle der Wahrheit für clientseitige Name
 Die GraphQL-Konvention ist eines von drei voreingestellten Enums. (REQ-416) Alte Freiform-Strings (`none`, `snake_case`, `camelCase`, `PascalCase`) sind veraltet. (REQ-416)
 
 | Preset | Standard | Typnamen | Feldnamen | Mutationsnamen |
-|--------|---------|------------|-------------|----------------|
+| -------- | --------- | ------------ | ------------- | ---------------- |
 | `apollo_graphql` | ja | PascalCase | camelCase | camelCase |
 | `hasura_graphql` | | PascalCase | camelCase | snake_case |
 | `snake` | | PascalCase | snake_case | snake_case |
@@ -551,6 +551,7 @@ Die Standard-GraphQL-Konvention ist `apollo_graphql`, was camelCase-Feld- und -M
 Ein explizites `column.alias` ist der kanonische Name: SQL verwendet ihn unverändert ohne angewendete Konvention, GraphQL wendet seine Konvention darauf an, und CQL leitet sich vom GraphQL-Namen ab. (REQ-194)
 
 Pro-Quelle-Override:
+
 ```yaml
 sources:
   - id: legacy-db
@@ -558,6 +559,7 @@ sources:
 ```
 
 Pro-Tabelle-Override:
+
 ```yaml
 tables:
   - source_id: legacy-db
@@ -570,7 +572,7 @@ tables:
 Wenn `domain_prefix: true`, werden alle GraphQL-Feld- und Typnamen mit der Domänen-ID unter Verwendung eines doppelten Unterstrichs als Trenner präfixiert: (REQ-154)
 
 | Tabelle | Domäne | Feldname |
-|-------|--------|-----------|
+| ------- | -------- | ----------- |
 | `orders` | `sales-analytics` | `sales_analytics__orders` |
 | `customer_segments` | `customer-insights` | `customer_insights__customer_segments` |
 
@@ -626,6 +628,7 @@ tables:
 ### Aliase
 
 Tabellen- und Spaltenaliase überschreiben den Standard-GraphQL-Namen. (REQ-155) Nützlich für:
+
 - Umbenennung kryptischer Datenbanknamen (z. B. `tbl_cust_seg` → `customer_segments`)
 - Vermeidung von Abkürzungen in der API-Schicht
 - Erstellung eines sauberen, domänenspezifischen Vokabulars
@@ -660,7 +663,7 @@ Das Pfadformat ist `source_column.key1.key2...`. Der Compiler generiert `json_ex
 ### Maskierungstypen
 
 | Typ | Felder | Beschreibung |
-|------|--------|--------------|
+| ------ | -------- | -------------- |
 | `regex` | `pattern`, `replace` | REGEXP_REPLACE (nur String-Spalten) |
 | `constant` | `value` | Literaler Ersatz (NULL, 0, MAX, MIN, benutzerdefiniert) |
 | `truncate` | `precision` | DATE_TRUNC (nur Datums-/Zeitstempel-Spalten) |
@@ -723,7 +726,7 @@ Rollen mit `parent_role_id` erben Capabilities und Domänenzugriff von der über
 ### Capabilities
 
 | Capability | Beschreibung |
-|-----------|--------------|
+| ----------- | -------------- |
 | `source_registration` | Datenquellen registrieren |
 | `table_registration` | Tabellen registrieren |
 | `relationship_registration` | Beziehungen definieren |
@@ -789,7 +792,7 @@ views:
 ```
 
 | Feld | Erforderlich | Beschreibung |
-|-------|----------|--------------|
+| ------- | ---------- | -------------- |
 | `id` | Ja | Eindeutige Sicht-ID |
 | `sql` | Ja | SQL-SELECT-Anweisung, die die Sicht definiert |
 | `domain_id` | Ja | Domäne für Schema-Sichtbarkeit |
@@ -870,7 +873,7 @@ auth:
 ### Auth-Provider-Typen
 
 | Provider | Anwendungsfall | Token-Validierung |
-|----------|----------|-----------------|
+| ---------- | ---------- | ----------------- |
 | `simple` | Lokale Entwicklung/Tests. Nutzer in YAML definiert. | JWT signiert mit `PROVISA_JWT_SECRET` |
 | `firebase` | Firebase Authentication (alle Methoden). | `firebase-admin`-SDK `verify_id_token()` |
 | `keycloak` | Keycloak-OIDC. Mandant + Client-Rollen zugeordnet. | JWKS-basierte JWT-Validierung |
@@ -965,7 +968,7 @@ tables:
 ```
 
 | Source | Verhalten |
-|--------|----------|
+| -------- | ---------- |
 | `header` | Injiziert den Wert aus dem benannten HTTP-Request-Header |
 | `now` | Injiziert `NOW()` (aktueller Zeitstempel) |
 | `literal` | Injiziert einen konstanten Wert |
@@ -1029,7 +1032,7 @@ OrderBy verwendet das Format `{column: direction}` mit einem 6-wertigen Richtung
 ```
 
 | Richtung | SQL |
-|-----------|-----|
+| ----------- | ----- |
 | `asc` | `ASC` |
 | `desc` | `DESC` |
 | `asc_nulls_first` | `ASC NULLS FIRST` |
@@ -1073,26 +1076,26 @@ Provisa betreibt zwei unabhängige OTLP-Exportpfade: Ihren internen Collector un
 **`telemetry_filter`** — steuert, was Ihren internen Collector erreicht.
 
 | Schlüssel | Typ | Standard | Beschreibung |
-|-----|------|---------|--------------|
+| ----- | ------ | --------- | -------------- |
 | `redact_sql_literals` | bool | `false` | Ersetzt String- und numerische Literale in `db.statement` durch `?` |
 | `redact_attributes` | list[str] | `[]` | Attributschlüssel, die vollständig aus jedem Span entfernt werden |
 
 **`support_telemetry_filter`** — steuert, was den Provisa-Support-Endpunkt erreicht. Die SQL-Literal-Schwärzung ist auf diesem Pfad standardmäßig `true`, da Abfragedaten Ihnen gehören. (REQ-547) [tool-verified: `provisa/api/otel_setup.py` Zeile 240]
 
 | Schlüssel | Typ | Standard | Beschreibung |
-|-----|------|---------|--------------|
+| ----- | ------ | --------- | -------------- |
 | `redact_sql_literals` | bool | `true` | Ersetzt String- und numerische Literale in `db.statement` durch `?` |
 | `redact_attributes` | list[str] | `[]` | Attributschlüssel, die vollständig aus jedem Span entfernt werden |
 
 Beispiel für ein geschwärztes `db.statement` — mit `redact_sql_literals: true` wird dieses Span-Attribut:
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 ```
 
 zu:
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
@@ -1113,7 +1116,7 @@ Vorrang: `PROVISA_ENGINE`-Umgebungsvariable → persistiertes Admin-UI-Konfigura
 ### Engine-Übersicht [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
 
 | Engine-Schlüssel | Bezeichnung | Dialekt | MPP | Externer-Link-Mechanismus | Auth |
-|-----------|-------|---------|-----|------------------------|------|
+| ----------- | ------- | --------- | ----- | ------------------------ | ------ |
 | `trino` | Provisa Federation Engine | Trino SQL | Ja | Trino-Kataloge (breite Connector-Menge) | JDBC-Anmeldedaten |
 | `trino-byo` | Trino (bring-your-own) | Trino SQL | Ja | Wie `trino`; unverwalteter Coordinator | JDBC-Anmeldedaten |
 | `pg` | PostgreSQL | PostgreSQL | Nein | FDW / pg_duckdb | PostgreSQL-Anmeldedaten |
@@ -1284,7 +1287,7 @@ Setzen Sie für Google-Cloud-Quellen `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 ## Umgebungsvariablen
 
 | Variable | Standard | Beschreibung |
-|----------|---------|--------------|
+| ---------- | --------- | -------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Pfad zur Konfigurationsdatei |
 | `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | Control-Plane-Store-URI (SQLAlchemy async); akzeptiert `sqlite+aiosqlite://…` / `duckdb://…` für den eingebetteten Desktop-Store (REQ-828, REQ-850) |
 | `PLATFORM_DATABASE_URL` | — | Plattform-Registry-URI (Mandantenverzeichnis, Engine-Registry); beim Start erforderlich, kein Fallback (REQ-837) |

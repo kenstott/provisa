@@ -3,7 +3,7 @@
 ## Выбор пути подключения
 
 | Тип клиента | Рекомендуемый путь | Почему |
-|-------------|-----------------|-----|
+| ------------- | ----------------- | ----- |
 | BI-инструменты (Tableau, Power BI, Looker) | JDBC | Колоночная потоковая передача Arrow Flight по проводу; BI-инструменты имеют встроенный мастер JDBC и выигрывают от высокопроизводительной колоночной доставки для больших наборов результатов |
 | psql, DBeaver, любой PG-совместимый инструмент | pgwire (нативный драйвер PG) | Подключение без трения по умолчанию — не нужен специальный драйвер; используйте то, что у вас уже есть |
 | Python data stack (pandas, pyarrow) | `provisa-client` или чистый ADBC | Потоковые пакеты Arrow; отсутствие накладных расходов на сериализацию строк |
@@ -76,7 +76,8 @@ pgwire использует аутентификацию по паролю в о
 Скачайте [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) (всегда последний релиз) и добавьте его в путь драйвера вашего инструмента.
 
 URL JDBC:
-```
+
+```yaml
 jdbc:provisa://<host>:8815
 ```
 
@@ -85,12 +86,14 @@ jdbc:provisa://<host>:8815
 ### Настройка BI-инструментов
 
 **Tableau**
+
 1. Manage → Drivers → Install Provisa JDBC
 2. Connect → Other Databases (JDBC)
 3. URL: `jdbc:provisa://localhost:8815`
 4. Введите имя пользователя и пароль при запросе
 
 **DBeaver** (путь JDBC — для пути pgwire см. выше)
+
 1. Database → New Connection → JDBC
 2. Драйвер: добавьте `provisa-jdbc.jar`
 3. URL: `jdbc:provisa://localhost:8815`
@@ -199,7 +202,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 **Команда** — это зарегистрированная отслеживаемая функция или webhook — вызываемый объект, зарегистрированный в семантическом слое Provisa с `kind` (`query` или `mutation`) и `impl_kind`, описывающим способ выполнения. Каждая поверхность направляет вызовы через единый управляемый исполнитель (`invoke_tracked_function`), который единообразно применяет `writable_by` и governance (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | Что выполняется | Поля привязки |
-|------------|-----------|---------------|
+| ------------ | ----------- | --------------- |
 | `source_procedure` | Хранимая процедура на зарегистрированном источнике (по умолчанию) | `sourceId`, `schemaName`, `functionName` |
 | `script` | Серверный скрипт | `script` |
 | `http` | Исходящий вызов HTTP | `url`, `method` |
@@ -211,7 +214,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 ### Матрица протоколов
 
 | Поверхность | Синтаксис | Пример |
-|---------|--------|---------|
+| --------- | -------- | --------- |
 | GraphQL | `kind=query` → поле Query; `kind=mutation` → поле Mutation; с доменным префиксом при `domain_prefix: true` | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
 | pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` или `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
 | Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
@@ -229,6 +232,7 @@ Provisa может выступать в роли подграфа Federation v2
 ### Настройка
 
 Включите федерацию в `config.yaml`:
+
 ```yaml
 federation:
   enabled: true
@@ -240,6 +244,7 @@ Provisa автоматически генерирует директивы `@key
 ### Регистрация с Apollo Router
 
 В вашем `supergraph.yaml`:
+
 ```yaml
 subgraphs:
   provisa-data:
@@ -281,7 +286,7 @@ Semantic Interchange) через адаптер границы. Внутренн
 Канонической поверхностью экспорта является живой HTTP-эндпоинт. Он выводит документ Ossie из живого состояния
 при каждом запросе — без кеширования, без этапа генерации.
 
-```
+```http
 GET /admin/ossie
 ```
 

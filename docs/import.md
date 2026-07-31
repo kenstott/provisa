@@ -7,11 +7,13 @@ Provisa can convert existing Hasura metadata into a Provisa `config.yaml`, prese
 ### Export Metadata
 
 From your Hasura console or CLI:
+
 ```bash
 hasura metadata export --output metadata.yaml
 ```
 
 Or use the Hasura API:
+
 ```bash
 curl -X POST http://localhost:8080/v1/metadata \
   -H "X-Hasura-Admin-Secret: <secret>" \
@@ -32,7 +34,7 @@ Omit `-o` to write the config to stdout.
 Flags:
 
 | Flag | Purpose |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Output YAML path (default: stdout) |
 | `--source-overrides` | YAML file with per-source connection overrides (host, port, credentials) |
 | `--domain-map` | Schema-to-domain mappings as `SCHEMA=DOMAIN` pairs |
@@ -42,7 +44,7 @@ Flags:
 ### What Gets Converted
 
 | Hasura concept | Provisa equivalent |
-|---------------|-------------------|
+| --------------- | ------------------- |
 | Tracked table | `tables[]` with `publish: true` |
 | Object relationship | `relationships[]` with `cardinality: many-to-one` |
 | Array relationship | `relationships[]` with `cardinality: one-to-many` |
@@ -79,7 +81,7 @@ Omit `-o` to write the config to stdout.
 Flags:
 
 | Flag | Purpose |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Output YAML path (default: stdout) |
 | `--source-overrides` | YAML file with per-source connection overrides |
 | `--domain-map` | Subgraph-to-domain mappings as `SUBGRAPH=DOMAIN` pairs |
@@ -91,7 +93,7 @@ Flags:
 ### What Gets Converted
 
 | DDN concept | Provisa equivalent |
-|------------|-------------------|
+| ------------ | ------------------- |
 | Subgraph model | `tables[]` under a source |
 | Relationship | `relationships[]` |
 | Permission rule | RLS filter |

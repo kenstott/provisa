@@ -16,7 +16,7 @@ is none of those things.
 Five `impl_kind` values are supported [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]:
 
 | `impl_kind` | Transport |
-|---|---|
+| --- | --- |
 | `source_procedure` | Native stored procedure on a registered source |
 | `script` | Local subprocess fed JSON on stdin, reads JSON from stdout |
 | `http` | HTTP/S endpoint; JSON request body, JSON response |
@@ -32,7 +32,7 @@ unchanged. [tool-verified: Function model in models.py:710-750]
 Each argument declares an `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]:
 
 | `arg_kind` | Behavior |
-|---|---|
+| --- | --- |
 | `column_value` | Scalar; passed directly in the request payload |
 | `table_ref` | Lazy; Provisa passes the relation reference as-is; the service fetches the data |
 | `result_set` | Eager; Provisa materializes the referenced relation and sends its rows |

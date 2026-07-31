@@ -39,7 +39,7 @@ Options d'authentification : `none`, `bearer` (en-tête Authorization), `basic` 
 **Correspondance des types (REQ-308).** Les champs scalaires sont directement mis en correspondance avec les types Provisa. Les champs OBJECT se répartissent en deux cas selon que le type cible est gouverné ou non (voir « Tables gouvernées » ci-dessous). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`, `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
 | Type GraphQL | Type Provisa |
-|---|---|
+| --- | --- |
 | `String` | `text` |
 | `ID` | `text` |
 | `Int` | `integer` |
@@ -69,6 +69,7 @@ Les types OBJECT qui ne sont PAS accessibles en tant que champs racine de Query 
 **Actualisation.** Envoyer une requête POST à `/admin/sources/graphql-remote/{id}/refresh`. Ré-introspecte le schéma distant et met à jour les enregistrements de tables et de fonctions. Les règles de gouvernance existantes (RLS, masquage) sont préservées. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py:217–257`]
 
 **Limitations.**
+
 - Les champs de requête racine de type scalaire et ENUM (dont le type de retour n'est pas OBJECT) deviennent des fonctions suivies, et non des tables virtuelles. Leur `return_schema` est une colonne unique `value` du type scalaire correspondant. [tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
 - L'imbrication d'objets est résolue au moment de l'enregistrement jusqu'à `graphql_remote.max_object_depth` (par défaut : 5). La sélection de récupération distante et les métadonnées de sous-champs sont toutes deux construites jusqu'à cette profondeur ; les champs au-delà de la limite ne sont pas récupérés et ne sont pas disponibles pour l'extraction SQL. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
 - Les champs OBJECT imbriqués de type LIST (p. ex. `breed.awards: [Award]`) sont inclus dans la sélection de récupération jusqu'à `graphql_remote.max_list_depth` niveaux d'imbrication (par défaut : 2). Dans cette limite, la liste est récupérée sous forme de tableau `jsonb` sur la colonne parente, et la sélection GQL injecte `first: N`, où N correspond à `graphql_remote.max_list_items` (par défaut : 100), afin de plafonner la taille du tableau. Au-delà de `max_list_depth`, le champ LIST est entièrement exclu afin d'éviter une expansion illimitée des données. En SQL, le tableau est accessible via `json_array_elements(column_name)` ou une extraction par index `->>`. Si le type d'élément de la liste possède sa propre requête racine, il est préférable de l'enregistrer comme table distincte et de créer une relation — le chemin de jointure est plus efficace et évite le blob. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
@@ -115,7 +116,7 @@ Les méthodes qui ne correspondent à aucun de ces signaux (RPC unaire renvoyant
 **Correspondance des types (REQ-324).** Les types scalaires proto sont mis en correspondance avec les types SQL comme suit. [tool-verified: `provisa/grpc_remote/mapper.py:31–47`]
 
 | Type Proto | Type SQL |
-|---|---|
+| --- | --- |
 | `string`, `bytes` | `text` |
 | `int32` / `uint32` / `sint32` / `fixed32` / `sfixed32` | `integer` |
 | `int64` / `uint64` / `sint64` / `fixed64` / `sfixed64` | `bigint` |
@@ -141,6 +142,7 @@ Les méthodes en streaming côté serveur regroupent tous les messages diffusés
 **Actualisation.** Envoyer une requête POST à `/admin/grpc-remote/refresh/{source_id}`. Recharge le proto depuis le chemin stocké, recompile les stubs, et réenregistre les tables et les fonctions. Alternativement, envoyer une requête PUT à `/admin/grpc-remote/{source_id}/proto` avec un nouveau `proto_text` pour mettre à jour le proto en ligne. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py:241–268`, `provisa/api/admin/grpc_remote_router.py:300–358`]
 
 **Limitations.**
+
 - L'extraction de sous-champs d'objet se limite à un niveau de profondeur. Les champs de message imbriqués au-delà de la profondeur 1 ne sont pas développés récursivement. (REQ-556) [tool-verified: `provisa/grpc_remote/mapper.py:111–128`]
 
 ---
@@ -172,7 +174,7 @@ Ordre de priorité de la classification : `operation_overrides` (payload) est pr
 **Correspondance des types.** Les types JSON Schema sont mis en correspondance avec les types Provisa comme suit. [tool-verified: `provisa/openapi/register.py:59–70`]
 
 | Type JSON Schema | Type Provisa |
-|---|---|
+| --- | --- |
 | `string` | `string` |
 | `integer` | `integer` |
 | `number` | `number` |
@@ -191,6 +193,7 @@ Ordre de priorité de la classification : `operation_overrides` (payload) est pr
 **Actualisation (REQ-321).** Réanalyser la spécification et rappeler `auto_register_openapi_source`. Les règles de gouvernance existantes sont préservées ; les enregistrements sont mis à jour via un upsert ON CONFLICT. [tool-verified: `provisa/openapi/register.py:249–264`]
 
 **Limitations.**
+
 - L'extraction de sous-champs d'objet se limite à un niveau de profondeur. Les propriétés imbriquées dans `object_fields` ne sont pas développées récursivement. (REQ-556) [tool-verified: `provisa/openapi/register.py:87–96`]
 - Les paramètres d'en-tête et de cookie sont ignorés ; seuls les paramètres `path` et `query` sont enregistrés. (REQ-555) [tool-verified: `provisa/openapi/mapper.py:144–158`]
 - La résolution des `$ref` au niveau de la spécification se limite à un niveau de profondeur pour les schémas de propriétés ; les références de composants profondément imbriquées peuvent ne pas se résoudre. [tool-verified: `provisa/openapi/mapper.py:51–60`]

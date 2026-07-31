@@ -8,7 +8,7 @@ The semantic layer distinction is important. To add to the semantic layer you mu
 
 Provisa is designed to be highly performant for operational needs and highly scalable for enterprise analytical needs. A single platform serves both without sacrificing speed or scalability.
 
-```
+```text
 Config YAML → PG Metadata → Federation Catalogs
                                ↓
          Federation engine metadata → Schema Generator → SDL / SQL catalog / Cypher labels / gRPC proto (per role)
@@ -34,7 +34,7 @@ Config YAML → PG Metadata → Federation Catalogs
 Each interface is a distinct transport. All four apply the same security pipeline (RLS, masking, sampling, role checks). (REQ-002, REQ-038) Clients never talk directly to the federation engine. (REQ-266) "Query language" (SQL / GraphQL / Cypher) is orthogonal to transport — multiple languages can arrive over the same transport.
 
 | Port | Transport | Accepted query languages | Use case |
-|------|-----------|--------------------------|----------|
+| ------ | ----------- | -------------------------- | ---------- |
 | 8001 | HTTP | GraphQL, SQL, Cypher | Web clients, BI tools, curl, REST consumers |
 | 8815 | Arrow Flight (gRPC) | SQL (via Arrow Flight SQL) | Data tools (Pandas, DuckDB, Spark, ADBC) |
 | 50051 | Protobuf gRPC | Per-role generated proto RPCs | Service-to-service with typed contracts |
@@ -47,7 +47,7 @@ Each interface is a distinct transport. All four apply the same security pipelin
 Multiple endpoints under the same port, distinguished by path:
 
 | Path | Language | Notes |
-|------|----------|-------|
+| ------ | ---------- | ------- |
 | `POST /data/graphql` | GraphQL | Reads and mutations; APQ hash accepted via `extensions.persistedQuery` |
 | `POST /data/sql` | SQL | Read-only; no capability gate — governed by object visibility + RLS + masking (REQ-001, REQ-267) |
 | `POST /data/query` | Cypher | Read-only; standard role |
@@ -61,12 +61,14 @@ All paths return JSON by default. `Accept: text/csv`, `application/vnd.apache.pa
 ### Arrow Flight (port 8815)
 
 Native Arrow columnar transport over gRPC. (REQ-045, REQ-143) Clients send a JSON ticket:
+
 ```json
 {"query": "SELECT name, email FROM customers", "role": "analyst"}
 ```
+
 and receive Arrow RecordBatches streamed lazily. When the Zaychik Flight SQL proxy is available, data flows as a stream of Arrow record batches end-to-end: (REQ-144)
 
-```
+```text
 Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
@@ -85,7 +87,7 @@ Implements the PostgreSQL frontend/backend wire protocol using the `buenavista` 
 Three query languages are accepted. All converge at governance after their respective parse/compile steps. (REQ-262, REQ-263) Only GraphQL supports writes. (REQ-037) There is no capability gate on querying itself — any authenticated identity may query in any language, and data is governed solely by object visibility, RLS, and masking. (REQ-001)
 
 | Interface | Reads | Writes | Query gate |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | GraphQL (`/data/graphql`) | Yes | Yes (mutations) | None — data-layer governance only |
 | SQL (`/data/sql`) | Yes | No | None — data-layer governance only (REQ-267) |
 | Cypher (`/data/query`) | Yes | No | None — data-layer governance only |
@@ -126,7 +128,7 @@ flowchart TD
 **Route decisions:**
 
 | Route | When |
-|---|---|
+| --- | --- |
 | **Cache** | Result cache hit — evaluated first, serves the stored result with no execution (REQ-865) |
 | **Cheap-count** | `count(*)`-shaped query over an unmaterialized source that exposes an exact native count — routed to the native count call instead of materializing to count (REQ-875) |
 | **Direct** | Single source + has native driver + has federation connector |
@@ -139,6 +141,7 @@ Routing consumes the output of the post-governance optimization stage, never the
 ### Multi-Root Queries
 
 GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { name } }`) are compiled into separate SQL queries and executed independently. (REQ-534) SQL and Cypher requests are single-root by definition. Results are merged into a single response:
+
 - Fields below the redirect threshold are returned inline in `data`
 - Fields above the threshold are redirected, with per-field entries in `redirects`
 - Binary formats (Parquet, Arrow) are only supported for single-root queries
@@ -146,7 +149,7 @@ GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { na
 ## Federation Execution Paths
 
 | Path | Transport | Via | When used |
-|------|-----------|-----|-----------|
+| ------ | ----------- | ----- | ----------- |
 | REST | federation engine client (HTTP :8080) | Direct query | Default, always available |
 | Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → JDBC | When Zaychik is running |
 | CTAS | federation engine client (HTTP :8080) | Direct write, Iceberg to S3 | Parquet/ORC redirect |
@@ -155,7 +158,7 @@ GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { na
 
 The federation engine does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface, translates requests to JDBC queries, and streams results back as Arrow record batches. (REQ-144)
 
-```
+```text
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
@@ -174,7 +177,7 @@ Every engine is a `FederationEngine` instance defined in `provisa/federation/eng
 ### Driver classes (REQ-840) [tool-verified: `engine.py` `DriverClass`]
 
 | Class | Meaning | Examples |
-|-------|---------|---------|
+| ------- | --------- | --------- |
 | `BROAD` | Reaches many external source types via native connectors | Trino |
 | `PARTIAL` | Reaches a subset (relational, files, cloud object/lake) plus lands everything else | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | Reaches only its own store; every other source lands in | SQLAlchemy |
@@ -182,7 +185,7 @@ Every engine is a `FederationEngine` instance defined in `provisa/federation/eng
 ### Available engines [tool-verified: `engine.py` `_ENGINE_BUILDERS`]
 
 | Engine key | Dialect | MPP | External-link mechanism | Auth |
-|-----------|---------|-----|------------------------|------|
+| ----------- | --------- | ----- | ------------------------ | ------ |
 | `trino` / `trino-byo` | Trino SQL | Yes | Trino catalogs (broad connector set) | JDBC credentials |
 | `pg` | PostgreSQL | No | FDW / pg_duckdb | PostgreSQL credentials |
 | `duckdb` | DuckDB | No | Extension-native ATTACH | None (in-process) |
@@ -211,7 +214,7 @@ Every warehouse engine can scan cloud object/lake data in place without landing 
 Attach auto-provisions all prerequisites at attach time:
 
 | Engine | Object/lake formats | Mechanism | Auto-provisioning [tool-verified] |
-|--------|-------------------|----------|----------------------------------|
+| -------- | ------------------- | ---------- | ---------------------------------- |
 | Databricks | parquet, csv, iceberg, delta_lake | UC external table (`ATTACH_R`) | REST installs Unity Catalog storage credential + external location, then `CREATE TABLE … USING <format> LOCATION …` — live-verified over Cloudflare R2 |
 | BigQuery | parquet, csv, json, iceberg, delta_lake | BigQuery external / BigLake table (`ATTACH_R`) | `CREATE OR REPLACE EXTERNAL TABLE … OPTIONS(format=…, uris=[…])` — live-verified |
 | ClickHouse | csv, parquet, iceberg, delta_lake | S3 / IcebergS3 / DeltaLake table engine (`ATTACH_R`) | Validation probe executed at attach time — live-verified over Cloudflare R2 |
@@ -231,7 +234,7 @@ Results exceeding a row threshold are redirected to S3-compatible storage (MinIO
 ### Redirect Modes
 
 | Mode | How it works | Data touches Provisa? |
-|------|-------------|----------------------|
+| ------ | ------------- | ---------------------- |
 | **CTAS** (Parquet, ORC) | Federation engine writes directly to S3 via `CREATE TABLE AS SELECT` | No |
 | **Provisa upload** (JSON, NDJSON, CSV, Arrow IPC) | Provisa serializes and uploads via boto3 | Yes |
 
@@ -240,7 +243,7 @@ For CTAS-native formats, Provisa never handles the data — the federation engin
 ### Redirect Headers
 
 | Header | Effect |
-|--------|--------|
+| -------- | -------- |
 | `X-Provisa-Redirect-Format: <mime>` | Redirect in this format (implies force unless threshold set) |
 | `X-Provisa-Redirect-Threshold: N` | Only redirect if result exceeds N rows |
 | `X-Provisa-Redirect: true` | Force redirect using default format |
@@ -248,6 +251,7 @@ For CTAS-native formats, Provisa never handles the data — the federation engin
 These headers implement client-controlled redirect. (REQ-137)
 
 **Response:**
+
 ```json
 {
   "data": {"orders": null},
@@ -263,7 +267,7 @@ These headers implement client-controlled redirect. (REQ-137)
 ### Server Configuration
 
 | Env var | Default | Purpose |
-|---------|---------|---------|
+| --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |
 | `PROVISA_REDIRECT_THRESHOLD` | `1000` | Default row count threshold |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Default redirect format |
@@ -273,7 +277,7 @@ These headers implement client-controlled redirect. (REQ-137)
 
 ## Routing Decision Tree
 
-```
+```text
 Multi-source query? → Federation engine
 NoSQL source (MongoDB, Cassandra)? → Federation engine
 Uses path columns on non-PG source? → Federation engine
@@ -337,7 +341,7 @@ The practical consequence: stewards who approve a relationship are implicitly de
 ### Modes
 
 | Mode | Config | Behavior |
-|------|--------|----------|
+| ------ | -------- | ---------- |
 | **Join-pattern** | `join_pattern` in MV config | Rewrites matching JOINs to read from MV table |
 | **Custom SQL** | `sql` in MV config | Arbitrary SELECT, optionally exposed in SDL |
 | **Auto-materialized relationship** | cross-source relationship (automatic) | Auto-generates a join-pattern MV; no config required |
@@ -363,7 +367,7 @@ Only cross-source relationships generate MVs (same-source JOINs are already fast
 
 ### Refresh Lifecycle
 
-```
+```text
 STALE → (refresh loop picks up) → REFRESHING → FRESH
   ↑                                                |
   └──── mutation hits source table ────────────────┘
@@ -374,7 +378,7 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 ## Module Map
 
 | Module | Purpose |
-|--------|---------|
+| -------- | --------- |
 | `api/` | FastAPI app, routers, middleware, lifespan management |
 | `api/flight/` | Arrow Flight server (gRPC, port 8815) |
 | `api/admin/` | Strawberry GraphQL admin API — config, discovery, views |
@@ -443,7 +447,7 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 The admin Strawberry GraphQL API is mounted at `/admin/graphql` (HTTP port 8001). It is separate from the data GraphQL endpoint and requires superuser or admin role.
 
 | Capability | Description |
-|-----------|-------------|
+| ----------- | ------------- |
 | Config download/upload | Export or replace the full Provisa YAML config |
 | Relationship editor | Create, update, delete relationship definitions |
 | AI FK discovery | Trigger Claude-powered FK candidate analysis |
@@ -457,7 +461,7 @@ The admin Strawberry GraphQL API is mounted at `/admin/graphql` (HTTP port 8001)
 Registered tables are exposed as REST and JSON:API endpoints alongside the GraphQL interface. (REQ-256, REQ-257)
 
 | Interface | Mount path | Spec |
-|-----------|-----------|------|
+| ----------- | ----------- | ------ |
 | REST | `/rest/<table-id>` | Simple GET/POST with query parameters |
 | JSON:API | `/jsonapi/<table-id>` | [jsonapi.org](https://jsonapi.org) compliant — pagination, relationships, error objects |
 
@@ -468,7 +472,7 @@ These endpoints apply the same security pipeline (RLS, masking, role checks) as 
 SSE subscriptions are served at `GET /data/subscribe/{table}`. Three delivery modes: (REQ-258)
 
 | Mode | Mechanism | When used |
-|------|-----------|-----------|
+| ------ | ----------- | ----------- |
 | **LISTEN/NOTIFY** | PostgreSQL `LISTEN` on a channel | PG sources with mutation activity |
 | **Polling** | Re-execute query on interval | Non-PG sources, or when CDC unavailable |
 | **Debezium CDC** | Kafka topic from Debezium connector | High-frequency change streams |
@@ -481,7 +485,7 @@ The client receives `text/event-stream` with one JSON event per changed row or d
 
 Database mutations (INSERT/UPDATE/DELETE) can trigger outbound events via the `events/` and `webhooks/` modules. (REQ-172, REQ-173, REQ-220)
 
-```
+```text
 Mutation executed → EventDispatcher → match event trigger rules
                                           ↓
                                WebhookExecutor → HTTP POST to configured URL
@@ -494,7 +498,7 @@ Event triggers are defined in config and matched on table, operation type, and o
 Four background loops start during app lifespan (`api/app.py`):
 
 | Service | Interval | Purpose |
-|---------|----------|---------|
+| --------- | ---------- | --------- |
 | MV refresh loop | 30 s | Polls `get_due_for_refresh()`, executes CTAS or DELETE+INSERT on stale MVs |
 | Warm table manager | Configurable | Promotes frequently-queried tables to Iceberg local SSD cache |
 | Hot table loader | Configurable | Loads small reference tables into in-memory cache for sub-millisecond access |
@@ -505,7 +509,7 @@ Four background loops start during app lifespan (`api/app.py`):
 ### Hot/Warm Table Caching Tiers
 
 | Tier | Storage | Promotion criteria | Access latency |
-|------|---------|-------------------|----------------|
+| ------ | --------- | ------------------- | ---------------- |
 | Hot | In-process memory | Row count < threshold, or is a relationship target | <1 ms |
 | Warm | Iceberg on local SSD | Query frequency threshold exceeded | ~5–20 ms |
 | Cold | Remote source | Default | 50–500 ms |
@@ -517,7 +521,7 @@ Four background loops start during app lifespan (`api/app.py`):
 Existing Hasura deployments can be converted to Provisa config without manual rewriting. (REQ-182, REQ-183)
 
 | Module | Input | Output |
-|--------|-------|--------|
+| -------- | ------- | -------- |
 | `hasura_v2/` | Hasura v2 `metadata.yaml` | Provisa `config.yaml` |
 | `ddn/` | Hasura DDN supergraph JSON | Provisa `config.yaml` |
 
@@ -532,7 +536,7 @@ Both converters map tracked tables, relationships, permissions, and remote schem
 All list queries support Relay-style cursor pagination via `compiler/cursor.py`. (REQ-218) Clients pass `first`/`after` (forward) or `last`/`before` (backward) arguments. The compiler encodes row position as an opaque base64 cursor and injects the appropriate `WHERE`/`LIMIT` clauses. Every list query returns a `pageInfo` object:
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `hasNextPage` | Boolean | True if more results exist after this page |
 | `hasPreviousPage` | Boolean | True if results exist before this page |
 | `startCursor` | String | Cursor of the first node in this page |
@@ -555,7 +559,7 @@ Roles in `core/models.py` can reference a `parent_role_id`. (REQ-215) `flatten_r
 `auth/approval_hook.py` is a pluggable authorization hook invoked before query execution, after RLS and masking. (REQ-203) It integrates with external policy engines (OPA, custom ABAC services).
 
 | Setting | Description |
-|---------|-------------|
+| --------- | ------------- |
 | Transport | `webhook` (HTTP POST), `grpc`, or `unix_socket` |
 | Scope | Per-table, per-source, or global |
 | Fallback policy | `allow` or `deny` when the hook endpoint is unreachable |
@@ -578,17 +582,19 @@ Roles in `core/models.py` can reference a `parent_role_id`. (REQ-215) `flatten_r
 # @provisa route=federated
 { orders { id amount } }
 ```
+
 ```sql
 /* @provisa route=federated */
 SELECT id, amount FROM orders
 ```
+
 ```cypher
 // @provisa route=federated
 MATCH (o:Order) RETURN o.id, o.amount
 ```
 
 | Hint | Effect |
-|------|--------|
+| ------ | -------- |
 | `route=federated` | Force federation through the federation engine, bypassing direct-driver routing |
 | `route=direct` | Force direct-driver execution |
 
@@ -619,7 +625,7 @@ All four query interfaces (HTTP, Flight, gRPC, pgwire) enforce the same Stage 2 
 Provisa is a thin compilation and routing layer — it adds single-digit milliseconds to query latency. However, paths where Provisa serializes result data are bounded by process memory. Two paths are truly unbounded:
 
 | Path | Memory bound? | Suitable for |
-|------|--------------|-------------|
+| ------ | -------------- | ------------- |
 | JSON inline (HTTP) | Yes | Small-medium results |
 | **Arrow Flight streaming (gRPC :8815)** | **No** | **Unbounded — streaming via Zaychik or warehouse Arrow API** |
 | Protobuf gRPC inline (:50051) | Yes | Medium results, service-to-service |
@@ -633,13 +639,14 @@ Provisa is a thin compilation and routing layer — it adds single-digit millise
 For threshold-based redirect, Provisa injects `LIMIT threshold + 1` into the query as a probe. (REQ-140) If the result has fewer rows, it returns inline (complete result, no wasted work). If the result hits the limit, the probe is discarded and the full query is re-executed via CTAS or Provisa upload. This avoids `SELECT COUNT(*)` (which some sources don't optimize) and works on every source.
 
 For large analytical workloads, use either:
+
 - **Arrow Flight** (port 8815) for streaming to data tools — batches flow through Provisa without materializing (REQ-145)
 - **Parquet/ORC redirect** for file-based exports — the federation engine writes directly to S3, Provisa returns a presigned URL (REQ-138, REQ-044)
 
 ## Infrastructure
 
 | Service | Image | Port | Purpose |
-|---------|-------|------|---------|
+| --------- | ------- | ------ | --------- |
 | Provisa API | (host process) | 8001 | HTTP/REST endpoint |
 | Provisa Flight | (host process) | 8815 | Arrow Flight gRPC server |
 | Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |

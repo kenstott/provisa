@@ -3,7 +3,7 @@
 ## בחירת נתיב חיבור
 
 | סוג לקוח | נתיב מומלץ | למה |
-|-------------|-----------------|-----|
+| ------------- | ----------------- | ----- |
 | כלי BI (Tableau, Power BI, Looker) | JDBC | סטרימינג עמודתי Arrow Flight על גבי החוט; לכלי BI יש אשף JDBC מובנה והם נהנים מאספקה עמודתית בעלת תפוקה גבוהה עבור סטים גדולים של תוצאות |
 | psql, DBeaver, כל כלי תואם-PG | pgwire (דרייבר PG ילידי) | ברירת מחדל חסרת-חיכוך — אין צורך בדרייבר מותאם אישית; השתמשו במה שיש לכם כבר |
 | מחסנית נתונים Python (pandas, pyarrow) | `provisa-client` או ADBC גולמי | batches‏ Arrow בסטרימינג; ללא overhead של סריאליזציית שורות |
@@ -76,7 +76,8 @@ pgwire משתמשת באימות סיסמה בטקסט-גלוי המגושר ל�
 הורידו את [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) (תמיד ה-release העדכני ביותר) והוסיפו אותו לנתיב הדרייברים של הכלי שלכם.
 
 URL של JDBC:
-```
+
+```yaml
 jdbc:provisa://<host>:8815
 ```
 
@@ -85,12 +86,14 @@ jdbc:provisa://<host>:8815
 ### הגדרת כלי BI
 
 **Tableau**
+
 1. Manage ← Drivers ← Install Provisa JDBC
 2. Connect ← Other Databases (JDBC)
 3. URL: `jdbc:provisa://localhost:8815`
 4. הזינו שם משתמש וסיסמה כשמתבקש
 
 **DBeaver** (נתיב JDBC — עבור נתיב pgwire ראו למעלה)
+
 1. Database ← New Connection ← JDBC
 2. Driver: הוסיפו `provisa-jdbc.jar`
 3. URL: `jdbc:provisa://localhost:8815`
@@ -199,7 +202,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 **פקודה (command)** היא פונקציה במעקב או webhook רשומים — callable רשום בשכבה הסמנטית של Provisa עם `kind` (‏`query` או `mutation`) ו-`impl_kind` המתאר כיצד היא רצה. כל משטח מנתב הפעלות דרך מבצע ממושל יחיד (`invoke_tracked_function`) האוכף `writable_by` וממשל באופן אחיד (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | מה רץ | שדות קישור |
-|------------|-----------|---------------|
+| ------------ | ----------- | --------------- |
 | `source_procedure` | פרוצדורה מאוחסנת על מקור רשום (ברירת מחדל) | `sourceId`, `schemaName`, `functionName` |
 | `script` | סקריפט צד-שרת | `script` |
 | `http` | קריאת HTTP יוצאת | `url`, `method` |
@@ -211,7 +214,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 ### מטריצת פרוטוקולים
 
 | משטח | תחביר | דוגמה |
-|---------|--------|---------|
+| --------- | -------- | --------- |
 | GraphQL | `kind=query` ← שדה Query; `kind=mutation` ← שדה Mutation; מקודם-דומיין כאשר `domain_prefix: true` | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
 | pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` או `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
 | Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
@@ -229,6 +232,7 @@ Provisa יכולה לפעול כ-subgraph‏ Federation v2, וחושפת את ה
 ### הגדרה
 
 הפעילו federation ב-`config.yaml`:
+
 ```yaml
 federation:
   enabled: true
@@ -240,6 +244,7 @@ Provisa מייצרת דירקטיבות `@key` על עמודות מפתח-ראש
 ### רישום עם Apollo Router
 
 ב-`supergraph.yaml` שלכם:
+
 ```yaml
 subgraphs:
   provisa-data:
@@ -281,7 +286,7 @@ Semantic Interchange) דרך מתאם גבול. אוצר המילים הפנימ
 משטח הייצוא הקנוני הוא נקודת קצה HTTP חיה. היא גוזרת את מסמך Ossie ממצב חי
 בכל בקשה — ללא מטמון, ללא שלב ייצור.
 
-```
+```http
 GET /admin/ossie
 ```
 

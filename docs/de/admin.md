@@ -5,7 +5,8 @@ Die Admin API ist ein Strawberry-GraphQL-Endpunkt unter `POST /admin/graphql` (R
 ## Authentifizierung
 
 Übergeben Sie Ihre Anmeldedaten im `Authorization`-Header über den Standard-Auth-Provider von Provisa (REQ-120):
-```
+
+```yaml
 Authorization: Bearer <token>
 ```
 
@@ -16,12 +17,14 @@ Der Admin-Zugriff wird durch die einer Rolle zugewiesene Capability `admin` gest
 ### Konfigurationsverwaltung
 
 Laden Sie die aktuell laufende Konfiguration herunter (REQ-164):
-```
+
+```http
 GET /admin/config
 ```
 
 Gibt die vollständige `config.yaml` als YAML-Datei zurück. Laden Sie eine neue Konfiguration hoch (REQ-164):
-```
+
+```http
 PUT /admin/config
 ```
 
@@ -30,7 +33,8 @@ Provisa validiert das YAML, lädt die Kataloge neu und generiert die Schemas neu
 ### Laufzeiteinstellungen
 
 Lesen und schreiben Sie Laufzeit-Plattformeinstellungen, ohne die Konfigurationsdatei zu bearbeiten (REQ-165):
-```
+
+```http
 GET  /admin/settings
 PUT  /admin/settings
 ```
@@ -38,13 +42,15 @@ PUT  /admin/settings
 Die Einstellungsoberfläche umfasst die Umleitung großer Ergebnisse, das Standard-Sampling und das Zeilenlimit, die TTL des Antwort-Caches, die Namenskonvention, das automatische Nachverfolgen von Fremdschlüssel-Beziehungen, den DSN des Materialisierungsspeichers, den Arbeitsspeicher der Federation-Engine (`jvm_heap_gb`, `query_max_memory`, `query_max_memory_per_node`, `query_max_total_memory`, `fault_tolerant_execution`, `fault_tolerant_task_memory`, `exchange_spool_dir`) sowie die gesamte Tuning-Oberfläche der OpenTelemetry-Tracing-Pipeline (REQ-1082). Auch die Limits für den entfernten GraphQL-Traversal sowie die Einstellungen für Warm-Tier/Lese-Cache werden bereitgestellt (REQ-1081, REQ-1083).
 
 Sicherheitsstatus — `security.mode` (`standard` | `high`) — wird beim Neustart angewendet (REQ-1079):
-```
+
+```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
 KI-Modellzuweisungen, die Registry der Embedding-/Vektor-Modelle und das NL-Ratenlimit — werden beim Neustart angewendet (REQ-1080):
-```
+
+```http
 GET  /admin/ai-models
 PUT  /admin/ai-models
 ```
@@ -56,6 +62,7 @@ Der Verschlüsselungs-Tab im Admin-Bereich leitet seine Anbieterliste live aus d
 ### Beziehungs-Editor
 
 Beziehungen auflisten (REQ-166):
+
 ```graphql
 query {
   relationships {
@@ -71,6 +78,7 @@ query {
 ```
 
 Eine Beziehung erstellen (REQ-019):
+
 ```graphql
 mutation {
   upsertRelationship(input: {
@@ -107,6 +115,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
 ### Schema-Introspektion
 
 Durchsuchen Sie veröffentlichte Tabellen über alle Quellen hinweg (REQ-008):
+
 ```graphql
 query {
   tables {
@@ -124,6 +133,7 @@ query {
 ### Sichtenverwaltung
 
 Registrieren Sie eine materialisierte Sicht (REQ-133, REQ-135):
+
 ```graphql
 mutation {
   registerTable(input: {
@@ -137,6 +147,7 @@ mutation {
 ```
 
 Eine manuelle Aktualisierung auslösen (REQ-135):
+
 ```graphql
 mutation {
   refreshMv(mvId: "orders-with-customers") {
@@ -150,6 +161,7 @@ mutation {
 Neo4j- und SPARQL-Quellen werden über REST-Endpunkte registriert (nicht über die GraphQL-Admin-API) (REQ-295, REQ-297):
 
 **Neo4j:**
+
 ```bash
 # 1. Register the Neo4j source
 curl -X POST http://localhost:8001/admin/sources/neo4j \
@@ -168,6 +180,7 @@ curl -X POST http://localhost:8001/admin/sources/neo4j/graph/tables \
 ```
 
 **SPARQL:**
+
 ```bash
 # 1. Register the SPARQL source
 curl -X POST http://localhost:8001/admin/sources/sparql \

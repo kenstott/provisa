@@ -66,7 +66,7 @@ Essas camadas compõem. Uma função com acesso a domínio, RLS, e colunas masca
 Capacidades atribuídas independentemente com hierarquia de função opcional via `parent_role_id`. `admin` concede tudo. (REQ-042)
 
 | Capacidade | Descrição |
-|-----------|-------------|
+| ----------- | ------------- |
 | `source_registration` | Registrar fontes de dados |
 | `table_registration` | Registrar tabelas, colunas |
 | `create_relationship` | Definir relacionamentos FK |
@@ -99,7 +99,7 @@ Cada coluna tem um modelo de permissão de quatro campos controlando acesso de l
 ### Visibilidade de Três Níveis
 
 | Nível | Condição | Resultado |
-|------|-----------|--------|
+| ------ | ----------- | -------- |
 | **Oculta** | Função não em `visible_to` | Coluna ausente do SDL GraphQL |
 | **Mascarada** | Função em `visible_to`, tem regra de mascaramento, função não em `unmasked_to` | Coluna visível mas dados mascarados em SQL |
 | **Não mascarada** | Função em `visible_to` E função em `unmasked_to` (ou sem regra de mascaramento) | Acesso de leitura completo |
@@ -107,7 +107,7 @@ Cada coluna tem um modelo de permissão de quatro campos controlando acesso de l
 ### Permissões de Escrita
 
 | Campo | Vazio significa | Propósito |
-|-------|------------|---------|
+| ------- | ------------ | --------- |
 | `visible_to` | Todas as funções podem ler | Controla quem vê a coluna (mascarada ou não) |
 | `unmasked_to` | Nenhuma função vê não mascarado | Controla quem ignora o mascaramento |
 | `writable_by` | Nenhuma função pode escrever | Controla quem pode mutar (INSERT/UPDATE) |
@@ -137,6 +137,7 @@ columns:
 ```
 
 Neste exemplo:
+
 - `email`: admin vê `alice@example.com` e pode editar; analyst/viewer veem `a***@example.com`
 - `salary`: admin e hr veem o valor real; hr pode editar; todas as outras funções não veem a coluna
 - `created_at`: todos podem ler, ninguém pode escrever
@@ -173,7 +174,7 @@ O filtro é unido por AND à cláusula WHERE da consulta. Funciona tanto para co
 O mascaramento é definido uma vez por coluna — é uma propriedade da coluna, não da função. O campo `unmasked_to` controla quais funções o ignoram. (REQ-249)
 
 | Tipo de Máscara | Tipos Suportados | Expressão SQL |
-|-----------|----------------|----------------|
+| ----------- | ---------------- | ---------------- |
 | `regex` | String (varchar, char, text) | `REGEXP_REPLACE(col, pattern, replace)` |
 | `constant` | Qualquer | Valor literal (NULL, 0, personalizado) |
 | `truncate` | Date/Timestamp | `DATE_TRUNC(precision, col)` |
@@ -205,7 +206,7 @@ O estado de limitação de taxa reside no Redis (`cache.redis_url`) como um cont
 Provedores de autenticação plugáveis: (REQ-120)
 
 | Provedor | Tipo de Token | Caso de Uso |
-|----------|-----------|----------|
+| ---------- | ----------- | ---------- |
 | `none` | Cabeçalho X-Provisa-Role | Desenvolvimento |
 | `firebase` | Token de ID Firebase | Produção |
 | `keycloak` | JWT Keycloak | Empresarial |
@@ -225,7 +226,7 @@ Um hook de política externa opcional que dispara antes da execução da consult
 O hook dispara apenas quando a consulta toca uma tabela ou fonte no escopo — zero overhead para todo o resto. (REQ-204)
 
 | Config | Efeito |
-|--------|--------|
+| -------- | -------- |
 | `auth.approval_hook.scope: all` | Toda consulta aciona o hook |
 | `sources[].approval_hook: true` | Todas as tabelas nessa fonte acionam o hook |
 | `tables[].approval_hook: true` | Essa tabela aciona o hook |
@@ -235,7 +236,7 @@ O hook dispara apenas quando a consulta toca uma tabela ou fonte no escopo — z
 Três transportes são suportados: (REQ-246)
 
 | Tipo | Caso de uso | Campo de config |
-|------|----------|-------------|
+| ------ | ---------- | ------------- |
 | `webhook` | Qualquer serviço de política com capacidade HTTP (OPA, personalizado) | `url` |
 | `unix_socket` | OPA ou sidecar de política na mesma máquina | `socket_path` + `url` |
 | `grpc` | Serviço de política colocalizado de alta vazão | `url` (host:porta) |
@@ -268,7 +269,7 @@ O canal gRPC é persistente — um canal por instância Provisa, reutilizado em 
 Os três transportes carregam o mesmo payload: (REQ-246)
 
 | Campo | Tipo | Descrição |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `user` | string | Identidade do usuário autenticado |
 | `roles` | string[] | Funções Provisa do usuário |
 | `tables` | string[] | IDs de tabela referenciados na consulta |

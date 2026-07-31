@@ -5,7 +5,8 @@ The admin API is a Strawberry GraphQL endpoint at `POST /admin/graphql` (REQ-533
 ## Authentication
 
 Pass your credentials in the `Authorization` header using the standard Provisa auth provider (REQ-120):
-```
+
+```yaml
 Authorization: Bearer <token>
 ```
 
@@ -16,12 +17,14 @@ Admin access is governed by the `admin` capability assigned to a role (REQ-060, 
 ### Config Management
 
 Download the current running config (REQ-164):
-```
+
+```http
 GET /admin/config
 ```
 
 Returns the full `config.yaml` as a YAML file. Upload a new config (REQ-164):
-```
+
+```http
 PUT /admin/config
 ```
 
@@ -30,7 +33,8 @@ Provisa validates the YAML, reloads catalogs, and regenerates schemas (REQ-012, 
 ### Runtime Settings
 
 Read and write runtime platform settings without editing the config file (REQ-165):
-```
+
+```http
 GET  /admin/settings
 PUT  /admin/settings
 ```
@@ -38,13 +42,15 @@ PUT  /admin/settings
 The settings surface covers large-result redirect, default sampling and row limit, response-cache TTL, naming convention, relationship FK auto-tracking, materialization-store DSN, federation-engine memory (`jvm_heap_gb`, `query_max_memory`, `query_max_memory_per_node`, `query_max_total_memory`, `fault_tolerant_execution`, `fault_tolerant_task_memory`, `exchange_spool_dir`), and the full OpenTelemetry tracing-pipeline tuning surface (REQ-1082). Remote-GraphQL traversal limits and warm-tier/read-cache settings are also exposed (REQ-1081, REQ-1083).
 
 Security posture — `security.mode` (`standard` | `high`) — applied on restart (REQ-1079):
-```
+
+```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
 AI model assignments, the embedding/vector-model registry, and the NL rate limit — applied on restart (REQ-1080):
-```
+
+```http
 GET  /admin/ai-models
 PUT  /admin/ai-models
 ```
@@ -56,6 +62,7 @@ The admin encryption tab derives its provider list live from the encryption regi
 ### Relationship Editor
 
 List relationships (REQ-166):
+
 ```graphql
 query {
   relationships {
@@ -71,6 +78,7 @@ query {
 ```
 
 Create a relationship (REQ-019):
+
 ```graphql
 mutation {
   upsertRelationship(input: {
@@ -107,6 +115,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
 ### Schema Introspection
 
 Browse published tables across all sources (REQ-008):
+
 ```graphql
 query {
   tables {
@@ -124,6 +133,7 @@ query {
 ### View Management
 
 Register a materialized view (REQ-133, REQ-135):
+
 ```graphql
 mutation {
   registerTable(input: {
@@ -137,6 +147,7 @@ mutation {
 ```
 
 Trigger a manual refresh (REQ-135):
+
 ```graphql
 mutation {
   refreshMv(mvId: "orders-with-customers") {
@@ -150,6 +161,7 @@ mutation {
 Neo4j and SPARQL sources are registered via REST endpoints (not the GraphQL admin API) (REQ-295, REQ-297):
 
 **Neo4j:**
+
 ```bash
 # 1. Register the Neo4j source
 curl -X POST http://localhost:8001/admin/sources/neo4j \
@@ -168,6 +180,7 @@ curl -X POST http://localhost:8001/admin/sources/neo4j/graph/tables \
 ```
 
 **SPARQL:**
+
 ```bash
 # 1. Register the SPARQL source
 curl -X POST http://localhost:8001/admin/sources/sparql \

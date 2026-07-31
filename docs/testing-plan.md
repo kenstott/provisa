@@ -5,6 +5,7 @@
 Requirements live in a single YAML file (`docs/arch/requirements.yaml`). All other artifacts — markdown documentation, Gherkin feature files, feature matrices, traceability matrices, roadmap — are generated from it. No artifact is hand-edited after generation.
 
 This gives three things simultaneously:
+
 - RFC 2119 normative language for structural/constraint requirements
 - Gherkin scenarios for behavioral requirements, driving pytest-bdd
 - Machine-verifiable coverage: CI fails if a `MUST` behavioral requirement has no passing test
@@ -48,7 +49,7 @@ File: `docs/arch/requirements.yaml`
 ### Field rules
 
 | Field | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `id` | always | Assigned on creation, never reused. Sequential. |
 | `status` | always | `proposed` and `rejected` exempt from coverage requirements. |
 | `priority` | always | RFC 2119. `MUST` triggers coverage enforcement. |
@@ -61,7 +62,7 @@ File: `docs/arch/requirements.yaml`
 
 ### Status lifecycle
 
-```
+```text
 proposed → accepted → in-progress → complete
          → rejected
 ```
@@ -75,7 +76,7 @@ IDs are assigned at `proposed`. Requirements are never deleted — `rejected` pr
 All scripts live in `scripts/`. All read `docs/arch/requirements.yaml` via the shared Pydantic model at `provisa/tools/req_schema.py`.
 
 | Script | Output | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `validate_requirements.py` | exit code | Schema enforcement (see CI section) |
 | `gen_requirements_md.py` | `docs/arch/requirements.md` | Human-readable table; never hand-edited |
 | `gen_features.py` | `tests/features/REQ-NNN.feature` | One file per behavioral REQ with scenario |
@@ -93,7 +94,7 @@ All scripts live in `scripts/`. All read `docs/arch/requirements.yaml` via the s
 
 Generated `.feature` files live in `tests/features/` and are committed (IDE-navigable, grep-friendly). Step definitions live in `tests/steps/` organized by domain:
 
-```
+```text
 tests/
   features/
     REQ-001.feature
@@ -136,7 +137,7 @@ Scans new file for `# REQ-NNN` comments. Back-fills `tests:` list in YAML for th
 ### Skills
 
 | Skill | Action |
-|---|---|
+| --- | --- |
 | `/req-audit` | Reports: MUST behavioral with no scenario; complete with no tests; `.feature` files with no step implementation; proposed REQs with no status change in 90+ days |
 | `/req-new` | Classifies description, assigns next ID, appends to YAML |
 | `/req-accept REQ-NNN` | Transitions `proposed` → `accepted`; optionally sets `target:` |
@@ -165,7 +166,7 @@ On release tag (additional):
 ## Downstream Exports
 
 | Artifact | Audience | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | `docs/exports/feature_matrix.csv` | Procurement reviewers, buyers | Release tag |
 | `docs/exports/traceability_matrix.csv` | Auditors (SOC 2, ISO 27001, FedRAMP) | Release tag |
 | `docs/exports/roadmap.md` | Prospects, investors | Release tag |
@@ -179,7 +180,7 @@ The traceability matrix maps every `accepted|in-progress|complete` REQ to its co
 
 ## Phased Delivery
 
-```
+```text
 Phase 1 (Schema)
     └── Phase 2 (Migration)
             ├── Phase 3 (Generators)
@@ -190,7 +191,7 @@ Phase 1 (Schema)
 ```
 
 | Phase | Deliverables | Dependency |
-|---|---|---|
+| --- | --- | --- |
 | 1. Schema & Validator | `req_schema.py`, `validate_requirements.py` | None |
 | 2. Migration | `requirements.yaml` (350 rows migrated) | Phase 1 |
 | 3. Generator Scripts | All `gen_*.py` scripts | Phase 2 |

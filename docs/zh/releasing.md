@@ -5,7 +5,7 @@
 ## 标签命名约定
 
 | 标签格式 | 渠道 | GitHub Release 类型 |
-|-----------|---------|-------------------|
+| ----------- | --------- | ------------------- |
 | `v1.2.3-alpha.1` | alpha | Pre-release |
 | `v1.2.3-beta.1` | beta | Pre-release |
 | `v1.2.3-rc.1` | rc | Pre-release |
@@ -45,7 +45,7 @@ CI 工作流（`build-dmg.yml`，名为"Build Provisa Packages"）会在任何 `
 每次发布都会发布以下资产，全部附加到 GitHub Release（wheel 也会同步发布到 PyPI）：
 
 | 资产 | 平台／用途 |
-|-------|----------------|
+| ------- | ---------------- |
 | `Provisa-<tag>-macOS.dmg` | macOS Core（Apple Silicon，离线环境） |
 | `Provisa-Runtime-<tag>-macOS.dmg` | macOS 原生 Python 运行时（与 Core 一起挂载） |
 | `Provisa-Obs-<tag>-macOS.dmg` | macOS 可观测性扩展 |
@@ -76,7 +76,7 @@ Python 客户端版本会自动转换为 PEP 440 格式：
 请在 **Settings → Secrets → Actions** 中配置以下内容：
 
 | 密钥 | 所需用途 | 说明 |
-|--------|-------------|-------------|
+| -------- | ------------- | ------------- |
 | `PYPI_API_TOKEN` | PyPI 发布 | 来自 `~/.pypirc` 的 API 令牌（以 `pypi-` 开头） |
 | `APPLE_CERT_P12_BASE64` | 签名构建 | Base64 编码的 `.p12` 证书文件（见下文） |
 | `APPLE_CERT_P12_PASSWORD` | 签名构建 | 从 Keychain Access 导出 `.p12` 时设置的密码 |
@@ -93,9 +93,11 @@ Python 客户端版本会自动转换为 PEP 440 格式：
 2. 查找 **Developer ID Application: Your Name (TEAMID)** — 展开以确认私钥嵌套在其下方
 3. 同时选中证书及其私钥 → 右键点击 → **Export 2 Items** → 另存为 `.p12` → 设置一个强密码
 4. 进行 Base64 编码并复制到剪贴板：
+
    ```bash
    base64 -i YourCert.p12 | pbcopy
    ```
+
 5. 将其粘贴为 `APPLE_CERT_P12_BASE64` 的值；将 `APPLE_CERT_P12_PASSWORD` 设置为步骤 3 中的密码
 
 ## 查找你的证书名称

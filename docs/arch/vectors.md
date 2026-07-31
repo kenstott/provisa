@@ -38,6 +38,7 @@ models:
 ```
 
 Supported provider types: (REQ-420)
+
 - `openai` — OpenAI-compatible REST API
 - `ollama` — local Ollama server
 - `huggingface` — HuggingFace sentence-transformers model loaded locally (air-gap friendly)
@@ -63,7 +64,7 @@ columns:
 At source registration time, Provisa auto-detects native vector support: (REQ-422)
 
 | Source | Detection | Native operator |
-|---|---|---|
+| --- | --- | --- |
 | PostgreSQL | Check for pgvector extension | `<=>` (cosine), `<->` (L2), `<#>` (inner product) |
 | MongoDB | Check Atlas tier | `$vectorSearch` |
 | Snowflake | Check Cortex availability | `VECTOR_COSINE_SIMILARITY()` |
@@ -72,6 +73,7 @@ At source registration time, Provisa auto-detects native vector support: (REQ-42
 ### cosine_similarity() UDF
 
 Users always write:
+
 ```sql
 SELECT *, cosine_similarity(description_vec, :query_vector) AS score
 FROM products
@@ -82,7 +84,7 @@ LIMIT 10
 Provisa translates per source capability at query time: (REQ-423)
 
 | Source capability | Generated SQL |
-|---|---|
+| --- | --- |
 | pgvector | `description_vec <=> :query_vector` |
 | Snowflake Cortex | `VECTOR_COSINE_SIMILARITY(description_vec, :query_vector)` |
 | MongoDB Atlas | `$vectorSearch` operator |
@@ -104,7 +106,7 @@ products(near_vector: [0.123, -0.456, ...], limit: 10)
 
 Once an embedding column is generated with a model, that model is locked for that column. Provisa rejects queries using incompatible models or dimensions: (REQ-429)
 
-```
+```yaml
 ERROR: column description_vec was generated with text-embedding-3-small (1536d).
 Query vector uses nomic-embed-text (768d). Dimension mismatch.
 Re-embed the column or declare a separate embedding column.
@@ -118,7 +120,7 @@ For sources with no native vector capability, Provisa transparently materializes
 
 ### Fallback Flow
 
-```
+```text
 cosine_similarity() against non-vector source
         ↓
 Detect: source has no native vector capability
@@ -145,7 +147,7 @@ Return governed result — caller unaware of fallback
 ### Cache Invalidation
 
 | Trigger | Behavior |
-|---|---|
+| --- | --- |
 | TTL expiry | Configurable per table; stale cache not served beyond TTL |
 | Mutation on source | Invalidate affected rows |
 | Manual refresh | Admin API endpoint |
@@ -180,6 +182,7 @@ columns:
 ### generated_from Subquery
 
 The `generated_from` value is a SQL subquery with these constraints: (REQ-427)
+
 - Must return exactly one text value
 - Validated at declaration time against a sample row
 - Template variables available: `{{table}}`, `{{pk}}`
@@ -225,7 +228,7 @@ Generated embeddings are stored in the internal pgvector PostgreSQL instance (sa
 Embedding columns participate in the full Provisa governance stack: (REQ-426)
 
 | Governance feature | Applies to embedding columns |
-|---|---|
+| --- | --- |
 | RLS | ✅ — row filters applied before similarity search |
 | Column masking | ❌ — not applicable (see note below) |
 | Domain boundary | ✅ — embedding columns respect domain traversal rules |
@@ -239,7 +242,7 @@ Column masking does not apply to embedding columns — a vector cannot be partia
 ## Deployment Considerations
 
 | Deployment | Embedding models available |
-|---|---|
+| --- | --- |
 | Cloud / SaaS | OpenAI-compatible APIs (via API key) |
 | Air-gapped | Ollama, local HuggingFace models |
 | Regulated / on-prem | Ollama or local HuggingFace only — no external API calls |

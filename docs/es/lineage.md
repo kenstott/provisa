@@ -27,7 +27,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 Esta sentencia produce tres columnas de salida. El grafo para `geo_u` se ve así:
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -50,7 +50,7 @@ hasta cada salida. [tool-verified: `_splice_commands` y `_input_relation` en gra
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | Tipo de nodo | Color | Significado |
-|---|---|---|
+| --- | --- | --- |
 | `source` | Verde | Una columna de una tabla base |
 | `derived` | Azul | Producida por una expresión SQL (función, operador, CTE) |
 | `command` | Púrpura | Una columna de salida de un comando registrado |
@@ -92,7 +92,7 @@ Los ciclos se describen, no se rechazan. El motor de linaje detecta cada ciclo d
 **clasifica**. [tool-verified: `Cycle.classification` property en merge.py:43-46]
 
 | Clasificación | Color de borde | Significado |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | Amarillo | El ciclo atraviesa un nodo materializado — un bucle de retroalimentación legítimo y desfasado en el tiempo. La instantánea de la MV es el límite de versión que lo hace bien definido. |
 | `error` | Rojo | No hay límite de materialización en el bucle — una definición circular sin un orden de evaluación estable. Probablemente un error de diseño. |
 
@@ -151,7 +151,7 @@ Devuelve HTTP 422 cuando el SQL no se puede analizar (parsear).
 
 Devuelve el grafo de procedencia combinado sobre todas las MV del registro.
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -161,7 +161,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 Parámetros de consulta [tool-verified: function signature at lineage_router.py:73-76]:
 
 | Parámetro | Valores | Predeterminado | Efecto |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | Un id de nodo | — | Acota la respuesta al subgrafo alrededor de este nodo |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | Dirección de recorrido a partir de `focus` |
 | `depth` | entero | sin límite | Distancia máxima de saltos desde `focus` |

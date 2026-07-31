@@ -18,7 +18,7 @@ Se admiten cinco valores de `impl_kind` [tool-verified: `_EXECUTORS` dict in
 function_dispatch.py:420-426]:
 
 | `impl_kind` | Transporte |
-|---|---|
+| --- | --- |
 | `source_procedure` | Procedimiento almacenado nativo en un origen registrado |
 | `script` | Subproceso local alimentado con JSON por stdin, lee JSON desde stdout |
 | `http` | Endpoint HTTP/S; cuerpo de solicitud JSON, respuesta JSON |
@@ -35,7 +35,7 @@ Cada argumento declara un `arg_kind` [tool-verified: FunctionArgument.arg_kind i
 models.py:691-700]:
 
 | `arg_kind` | Comportamiento |
-|---|---|
+| --- | --- |
 | `column_value` | Escalar; se pasa directamente en la carga de la solicitud |
 | `table_ref` | Perezoso; Provisa pasa la referencia de la relación tal cual; el servicio obtiene los datos |
 | `result_set` | Eager; Provisa materializa la relación referenciada y envía sus filas |

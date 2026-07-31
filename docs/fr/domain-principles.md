@@ -33,6 +33,7 @@ Une vue appartient toujours à un seul domaine — il n'existe qu'un seul type d
 - **Dérivation locale** — la source appartient au même domaine. La vue dérive des données nouvelles ou calculées à partir des actifs de domaine existants. Les données nouvelles ou dérivées ne peuvent exister que sous forme de vue.
 
 Une vue peut référencer :
+
 - Des tables revendiquées au sein du même domaine
 - Des champs importés d'un autre domaine dans le cadre d'une concession d'accès aux champs
 - Une autre vue au sein du même domaine, lorsque la variation a un objectif précis : restriction de champs, agrégation ou enrichissement via une jointure supplémentaire
@@ -40,6 +41,7 @@ Une vue peut référencer :
 La profondeur de composition n'est pas appliquée techniquement — le jugement du data steward pendant la revue HITL constitue le mécanisme de contrôle de la qualité.
 
 Chaque vue porte un objectif métier déclaré, énoncé au moment de sa création :
+
 - Fait partie de l'artefact gouverné — les data stewards approuvent en sachant à quoi sert la vue
 - Est référencé par les demandes d'accès en vertu du principe 7, afin que le data steward puisse en évaluer la pertinence
 - Accompagne la vue depuis sa création tout au long du flux de gouvernance complet
@@ -53,6 +55,7 @@ Une requête parcourt des chemins de relation approuvés sur les actifs de domai
 **Aucune approbation requise :** la gouvernance a lieu en amont — aux couches Relation et visibilité des colonnes. Si un utilisateur a accès aux colonnes et que le chemin de parcours est approuvé, la requête constitue un usage valide. Aucun contrôle supplémentaire.
 
 **Différence avec les vues :**
+
 - Vues : intra-domaine, introduisent une nouvelle signification sémantique, sélectionnées par le data steward
 - Requêtes : parcourent des relations approuvées, aucune nouvelle sémantique, aucun contrôle d'approbation
 
@@ -61,7 +64,7 @@ Une requête parcourt des chemins de relation approuvés sur les actifs de domai
 Chaque langage pris en charge exprime le domaine comme un espace de noms structurel natif de ce langage :
 
 | Langage | Expression du domaine | Exemple |
-|---|---|---|
+| --- | --- | --- |
 | GraphQL | Préfixe du nom de type et de champ | `type sales__Order { ... }`, `query { sales__orders { ... } }` |
 | SQL | Nom de schéma | `SELECT * FROM sales.orders` |
 | Cypher | Étiquette de nœud supplémentaire (le domaine n'est requis que lorsque le nom de type est ambigu) | `MATCH (o:Sales:Order)` |
@@ -73,6 +76,7 @@ Le compilateur résout l'appartenance au domaine à partir de ces positions stru
 Une relation est un chemin de parcours approuvé entre deux actifs. Les frontières de domaine n'ont aucune incidence sur ce qu'est une relation — elles déterminent seulement qui l'approuve.
 
 **Approbation :**
+
 - L'approbation est requise de la part de chaque data steward distinct propriétaire d'un actif impliqué dans la relation
 - Si un seul data steward possède les deux actifs, une seule approbation est requise. Si deux data stewards sont impliqués, deux approbations sont requises
 - Il n'existe pas de classification intra-domaine/inter-domaines — la propriété détermine naturellement la charge d'approbation
@@ -87,6 +91,7 @@ Les relations sont créées à la demande, pas de manière spéculative. La prem
 Une concession d'accès aux champs est une autorisation de domaine à domaine — le Domaine A peut utiliser des champs spécifiques du Domaine B dans ses vues.
 
 **Cycle de vie de la concession :**
+
 - Déclenchée par la création d'une vue lorsque des champs externes sont identifiés comme nécessaires
 - Approuvée une fois par le data steward du domaine cible
 - Appartient au domaine demandeur, pas à la vue qui l'a déclenchée
@@ -94,6 +99,7 @@ Une concession d'accès aux champs est une autorisation de domaine à domaine �
 - Les champs supplémentaires non concédés nécessitent une nouvelle demande
 
 **Notification après usage :** lorsqu'une vue est créée en utilisant des champs concédés, le data steward source en est notifié — pas invité à approuver. La notification comprend le nom de la vue, l'objectif métier déclaré, les champs spécifiques utilisés, et quel data steward l'a approuvée. Cela donne au data steward source :
+
 - **Visibilité** — la connaissance de la manière dont ses données sont utilisées
 - **Supervision** — des motifs pour soulever une préoccupation si l'usage semble inapproprié
 - **Recours** — la capacité de révoquer la concession, invalidant les vues dépendantes
@@ -105,6 +111,7 @@ Le compromis : le domaine source approuve l'accès aux champs sans connaître ch
 Trois étapes, dans l'ordre.
 
 **Étape 1 — Mise en forme (découverte SQL, depuis la page Relations) :**
+
 - L'analyste ouvre l'outil de mise en forme depuis la page Relations pour explorer les chemins de jointure potentiels en SQL brut
 - Le SQL est exécuté sur les données accessibles, sous réserve de la RLS et du masquage de colonnes existants
 - Les clauses JOIN du SQL sont analysées et présentées comme des propositions de relations candidates
@@ -112,11 +119,13 @@ Trois étapes, dans l'ordre.
 - L'analyste sélectionne les candidats à promouvoir en demande formelle de relation
 
 **Étape 2 — Approbation de la relation** (conséquente — structurelle et permanente) :
+
 - Soumise à chaque data steward distinct propriétaire d'un actif impliqué dans la relation
 - S'agit-il d'un chemin de parcours légitime ? La jointure est-elle sémantiquement valide ?
 - Tous les data stewards impliqués doivent approuver ; la relation devient une entrée permanente du catalogue
 
 **Étape 3 — Création de la requête :**
+
 - L'analyste construit la requête dans n'importe quel langage pris en charge (SQL, GraphQL, Cypher), en parcourant les chemins de relation approuvés
 - Seules les relations approuvées du catalogue sont parcourables — le compilateur l'applique de manière structurelle
 - Aucune approbation requise — la visibilité des colonnes et l'approbation de la relation sont les seuls contrôles
@@ -126,6 +135,7 @@ Trois étapes, dans l'ordre.
 Les règles techniques gèrent ce qui est objectif — le suivi de la provenance des champs, l'application des frontières de domaine, la validation par le compilateur. Le jugement contextuel reste entre les mains du data steward. Des contraintes telles que la profondeur de composition des vues, les exigences d'objectif par requête et les décisions d'approbation des relations relèvent du HITL, et non de règles appliquées par le compilateur.
 
 **Neutralité du domaine source :** le data steward du domaine source approuve la relation une fois et la concession de champs une fois. Par la suite, les domaines en aval opèrent dans les limites de ces concessions :
+
 - **Examen approfondi** au moment de la décision de franchissement de frontière
 - **Connaissance légère** par la suite, via des notifications et l'historique des requêtes
 
@@ -138,7 +148,7 @@ Les règles techniques gèrent ce qui est objectif — le suivi de la provenance
 La découverte est structurée selon cinq niveaux de gouvernance croissante. Chaque niveau est un prérequis pour le suivant.
 
 | Niveau | Description | État de gouvernance |
-|---|---|---|
+| --- | --- | --- |
 | 1 — Schéma de source enregistrée | Chaque table, colonne et type d'une source enregistrée. Visibilité au niveau administrateur. | Aucun — inventaire brut |
 | 2 — Tables non revendiquées | Tables introspectées à partir de sources enregistrées sans propriétaire de domaine. Visibles pour les data stewards ayant accès à la source. | Disponible mais non gouverné |
 | 3 — Actifs de domaine | Tables revendiquées et vues définies par le data steward. Entièrement gouvernées, possédées, visibles dans le catalogue. | Entièrement gouverné |
@@ -152,6 +162,7 @@ Une table non revendiquée est un signal de lacune — si les données nécessai
 Les contraintes de clé étrangère sont une construction au niveau de la source — elles ne peuvent pas s'étendre sur plusieurs sources de données. Les chemins de jointure entre sources sont dérivés entièrement des relations de catalogue approuvées (niveau 4), qui sont plus solides, ayant été validées par les deux data stewards.
 
 Au sein d'une source :
+
 - Les contraintes de clé étrangère sont présentées automatiquement comme des relations candidates lors de l'enregistrement de la source
 - Elles représentent une intention de modélisation explicite — non appliquée dans la plupart des systèmes SQL analytiques, mais déclarée délibérément
 - La validation du data steward reste requise avant qu'un candidat ne devienne une relation approuvée
@@ -159,7 +170,7 @@ Au sein d'une source :
 ### Hiérarchie de confiance des relations
 
 | Preuve | Confiance |
-|---|---|
+| --- | --- |
 | Relation de catalogue approuvée — entre sources, validée par les deux data stewards | Maximale |
 | Contrainte de clé étrangère intra-source — intention de modélisation explicite, non appliquée mais délibérée | Élevée |
 | Inférence sémantique intra-source — similarité de nom/type de colonne au sein d'un schéma cohérent | Moyenne |
@@ -170,6 +181,7 @@ Les suggestions corroborées par plusieurs types de preuves accumulent de la con
 ### Sondage et corrélation des données
 
 Pour les candidats inférés sémantiquement, le sondage de données offre une étape de validation :
+
 - **Chevauchement de valeurs** — proportion des valeurs de la colonne source qui apparaissent dans la colonne cible
 - **Cardinalité** — si la distribution correspond au type de relation attendu
 - **Taux de valeurs nulles** — proportion de la colonne source qui est nulle, indiquant une optionnalité
@@ -181,6 +193,7 @@ Une corrélation élevée augmente la confiance ; une corrélation faible suppri
 Le LLM opère simultanément sur les cinq niveaux, suggérant des relations, des revendications candidates et des chemins de parcours classés par confiance.
 
 **Ce que le LLM présente :**
+
 - Des relations candidates classées par confiance
 - Des tables non revendiquées susceptibles de répondre à un besoin de données, avec une invite à initier la revendication
 - L'absence de tout candidat — signal pour escalader vers l'administrateur
@@ -190,6 +203,7 @@ Le LLM opère simultanément sur les cinq niveaux, suggérant des relations, des
 L'analyste fournit une description en langage naturel et des contraintes facultatives. Le LLM produit une structure de vue suggérée.
 
 *Entrée :*
+
 - Description métier : entités, métriques, relations, intention
 - Contraintes facultatives : filtres, fenêtres temporelles, agrégations, champs exclus, restrictions de sensibilité
 
@@ -197,6 +211,7 @@ L'analyste fournit une description en langage naturel et des contraintes faculta
 > « Volumes d'opérations quotidiens par contrepartie sur les 30 derniers jours, contreparties actives uniquement, affichant la raison sociale de la contrepartie et la notation de crédit. Aucune donnée personnelle. »
 
 *Processus du LLM :*
+
 1. Analyse — identifier les entités, métriques, dimensions, filtres, exclusions
 2. Recherche — dans tous les niveaux du catalogue, les actifs correspondants
 3. Suggestion — actifs de domaine, relations, champs, structure d'agrégation
@@ -205,6 +220,7 @@ L'analyste fournit une description en langage naturel et des contraintes faculta
 6. Lacunes — entités ou champs sans candidat à aucun niveau, signalés pour escalade vers l'administrateur
 
 *Sortie :*
+
 - Ébauche de requête pour revue et ajustement par l'analyste
 - Scores de confiance par composant
 - Liste ordonnée des prérequis
@@ -243,5 +259,6 @@ Le journal est en ajout seul (DELETE et UPDATE sont bloqués au niveau de la bas
 Le rapport d'historique des requêtes du data steward est une vue agrégée sur ce journal, filtrable par actif, rôle et fenêtre temporelle. Le catalogue est un instrument de gouvernance en direct — les data stewards restent conscients de la manière dont leurs actifs sont utilisés au fur et à mesure, et non après coup.
 
 **Deux mécanismes de visibilité :**
+
 - **Push** — notifications après usage pour les actes structurels (une nouvelle vue a été créée en utilisant vos champs)
 - **Pull** — historique des requêtes pour les modèles d'usage à l'exécution

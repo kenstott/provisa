@@ -4,7 +4,8 @@
 
 1. Um projeto Hasura DDN com arquivos HML (extensão `.hml`).
    Projetos DDN normalmente têm uma estrutura de diretório como:
-   ```
+
+   ```text
    my-ddn-project/
      app/
        subgraph1/
@@ -17,6 +18,7 @@
      globals/
        ...
    ```
+
 2. Python 3.11+ com o pacote `provisa` instalado.
 
 ## Uso da CLI
@@ -28,13 +30,13 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 ### Argumentos
 
 | Argumento | Obrigatório | Descrição |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `hml_dir` | Sim | Caminho para o diretório do projeto DDN HML (escaneado recursivamente por arquivos `.hml`) |
 
 ### Opções
 
 | Opção | Padrão | Descrição |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | Caminho do arquivo YAML de saída |
 | `--source-overrides FILE` | Nenhum | Arquivo YAML com overrides de conexão por fonte |
 | `--domain-map KEY=VAL ...` | Nenhum | Mapeamentos de subgraph-para-domínio (ex.: `app=core analytics=reporting`) |
@@ -57,7 +59,7 @@ my_pg_connector:
 ## Matriz de Paridade de Recursos
 
 | Kind DDN | Equivalente Provisa | Notas |
-|---|---|---|
+| --- | --- | --- |
 | **DataConnectorLink** | `sources[]` | Tipo de fonte inferido da URL do connector (postgres, mysql, mssql, mongo, clickhouse, snowflake, bigquery). Detalhes de conexão assumem placeholders por padrão; use `--source-overrides` para definir valores reais. |
 | **ObjectType** | Definições de coluna em `tables[]` | Campos se tornam colunas. `dataConnectorTypeMapping.fieldMapping` resolve nomes de campo GraphQL para nomes de coluna física. |
 | **Model** | `tables[]` | Cada Model produz uma tabela. `source_id` do connector, `table_name` da collection. `graphql_type_name` se torna `alias`. O Subgraph (e portanto `domain_id`) é derivado do diretório do arquivo: o primeiro componente de diretório sob a raiz do projeto. |

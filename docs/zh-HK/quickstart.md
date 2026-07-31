@@ -35,7 +35,7 @@ cd provisa
 
 啟動完成後，您會看到：
 
-```
+```yaml
 Provisa running:
   Backend: http://localhost:8001  (logs: .logs/server.log)
   UI:      http://localhost:3000
@@ -150,7 +150,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 ## 後續步驟
 
 | 目標 | 文件 |
-|------|-----|
+| ------ | ----- |
 | 完整 YAML 設定參考 | [configuration.md](configuration.md) |
 | 行級安全、欄遮罩、驗證 | [security.md](security.md) |
 | 所有支援的來源類型 | [sources.md](sources.md) |

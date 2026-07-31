@@ -9,7 +9,7 @@
 支持五种 `impl_kind` 取值 [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]：
 
 | `impl_kind` | 传输方式 |
-|---|---|
+| --- | --- |
 | `source_procedure` | 已注册数据源上的原生存储过程 |
 | `script` | 本地子进程，通过 stdin 输入 JSON，从 stdout 读取 JSON |
 | `http` | HTTP/S 端点；JSON 请求体，JSON 响应 |
@@ -23,7 +23,7 @@
 每个参数都声明一个 `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]：
 
 | `arg_kind` | 行为 |
-|---|---|
+| --- | --- |
 | `column_value` | 标量；直接在请求负载中传递 |
 | `table_ref` | 惰性；Provisa 按原样传递关系引用；由服务方获取数据 |
 | `result_set` | 立即求值；Provisa 物化被引用的关系并发送其行数据 |

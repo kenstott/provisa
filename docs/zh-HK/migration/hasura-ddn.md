@@ -4,7 +4,8 @@
 
 1. 一個包含 HML 檔案（副檔名 `.hml`）的 Hasura DDN 專案。
    DDN 專案通常具有以下目錄結構：
-   ```
+
+   ```text
    my-ddn-project/
      app/
        subgraph1/
@@ -17,6 +18,7 @@
      globals/
        ...
    ```
+
 2. Python 3.11 或以上版本，並已安裝 `provisa` 套件。
 
 ## CLI 使用方法
@@ -28,13 +30,13 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 ### 參數
 
 | 參數 | 是否必要 | 說明 |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `hml_dir` | 是 | DDN HML 專案目錄的路徑（會遞迴掃描 `.hml` 檔案） |
 
 ### 選項
 
 | 選項 | 預設值 | 說明 |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | 輸出 YAML 檔案的路徑 |
 | `--source-overrides FILE` | 無 | 包含各數據來源連線覆寫設定的 YAML 檔案 |
 | `--domain-map KEY=VAL ...` | 無 | Subgraph 對應到 domain 的映射（例如 `app=core analytics=reporting`） |
@@ -57,7 +59,7 @@ my_pg_connector:
 ## 功能對應表
 
 | DDN 類型 | Provisa 對應項目 | 備註 |
-|---|---|---|
+| --- | --- | --- |
 | **DataConnectorLink** | `sources[]` | 數據來源類型會根據連接器的 URL 推斷（postgres、mysql、mssql、mongo、clickhouse、snowflake、bigquery）。連線詳情預設為佔位符；使用 `--source-overrides` 設定實際數值。 |
 | **ObjectType** | `tables[]` 上的欄位定義 | 欄位（field）會轉換成資料表欄（column）。`dataConnectorTypeMapping.fieldMapping` 會將 GraphQL 欄位名稱對應至實際的資料表欄名稱。 |
 | **Model** | `tables[]` | 每個 Model 會產生一個資料表。`source_id` 來自連接器，`table_name` 來自 collection。`graphql_type_name` 會變成 `alias`。Subgraph（以及因此的 `domain_id`）是根據檔案所在的目錄推斷：即專案根目錄下的第一層目錄名稱。 |

@@ -27,7 +27,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 Esta declaração produz três colunas de saída. O grafo para `geo_u` se parece com:
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -49,7 +49,7 @@ fechamento de contaminação continuamente das colunas declaradas da relação d
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | Tipo de nó | Cor | Significado |
-|---|---|---|
+| --- | --- | --- |
 | `source` | Verde | Uma coluna de tabela base |
 | `derived` | Azul | Produzida por uma expressão SQL (função, operador, CTE) |
 | `command` | Roxo | Uma coluna de saída de um command registrado |
@@ -90,7 +90,7 @@ Ciclos são descritos, não rejeitados. O motor de lineage detecta todo ciclo di
 **classifica**. [tool-verified: `Cycle.classification` property in merge.py:43-46]
 
 | Classificação | Cor da borda | Significado |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | Amarelo | O ciclo atravessa um nó materializado — um loop de feedback legal e defasado no tempo. O snapshot da MV é a fronteira de versão que o torna bem definido. |
 | `error` | Vermelho | Nenhuma fronteira de materialização no loop — uma definição circular sem ordem de avaliação estável. Provavelmente um erro de design. |
 
@@ -148,7 +148,7 @@ Retorna HTTP 422 quando o SQL não pode ser analisado.
 
 Retorna o grafo de proveniência mesclado sobre todas as MVs no registro.
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -158,7 +158,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 Parâmetros de consulta [tool-verified: function signature at lineage_router.py:73-76]:
 
 | Parâmetro | Valores | Padrão | Efeito |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | Um id de nó | — | Delimita a resposta ao subgrafo ao redor deste nó |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | Qual direção percorrer a partir de `focus` |
 | `depth` | inteiro | ilimitado | Distância máxima de hop a partir de `focus` |

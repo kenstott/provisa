@@ -54,7 +54,7 @@ Cosa fa:
 - Avvia il server dev Vite della UI sulla porta 3000 (REQ-559)
 - Stampa gli URL e attende; Ctrl+C ferma tutto e smonta compose
 
-```
+```yaml
 Backend: http://localhost:8001
 UI:      http://localhost:3000
 ```
@@ -71,13 +71,17 @@ Se ti serve solo l'API:
 
 1. Installa [Docker Desktop](https://docs.docker.com/get-docker/)
 2. Avvia i servizi core:
+
    ```bash
    docker compose -f docker-compose.core.yml up -d
    ```
+
 3. Avvia l'API:
+
    ```bash
    uvicorn main:app --reload --port 8001
    ```
+
 4. Verifica: `curl http://localhost:8001/health`
 
 ### Stack completo (Provisa in container)
@@ -129,7 +133,7 @@ La telemetria ha il proprio store, separato dal database control-plane. Selezion
 il backend con `PROVISA_OPS_DB_URL`:
 
 | `PROVISA_OPS_DB_URL` | Backend | Note |
-|---|---|---|
+| --- | --- | --- |
 | *(non impostato)* | DuckDB dedicato sotto `~/.provisa/telemetry/` | default; nessun server, nessun Docker |
 | `clickhouse+native://user@host/otel` | ClickHouse | ingest ad alto rate con merge in background automatici |
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | volume moderato |
@@ -166,6 +170,7 @@ L'installer base è una **installazione nativa**: motore di federazione DuckDB +
 2. Apri il DMG e trascina **Provisa.app** su `/Applications`
 3. Fai doppio clic su **Provisa.app** — la configurazione al primo avvio viene eseguita una volta; il wizard offre le scelte di motore, osservabilità, e demo di cui sopra (REQ-1007)
 4. Apri Terminal:
+
    ```bash
    provisa start    # start all services
    provisa status   # confirm all services are running
@@ -192,7 +197,8 @@ Come macOS, l'installer Windows base è un **tier nativo**: un runtime Python st
 2. Esegui l'installer — nessun diritto admin richiesto; installa in `%LOCALAPPDATA%\Programs\Provisa\`
 3. Apri **Provisa First Launch** dal menu Start — la configurazione nativa viene eseguita una volta e stampa la guida ai passi successivi per gli add-on a strati (REQ-1005)
 4. Apri un nuovo terminale:
-   ```
+
+   ```text
    provisa status
    provisa open
    ```
@@ -230,13 +236,17 @@ L'immagine Provisa è pre-costruita al momento del packaging — il sorgente Pyt
 
 1. Scarica `Provisa.AppImage` dalla [pagina GitHub releases](https://github.com/provisa/provisa/releases) e trasferiscila sulla macchina target
 2. Rendila eseguibile:
+
    ```bash
    chmod +x Provisa.AppImage
    ```
+
 3. Esegui la configurazione al primo avvio:
+
    ```bash
    ./Provisa.AppImage
    ```
+
 4. Il wizard di setup chiede:
    - **Ruolo** → seleziona `primary`
    - **Budget RAM** → quantità di RAM da allocare (0 = tutta la disponibile); determina il numero di worker Trino
@@ -244,6 +254,7 @@ L'immagine Provisa è pre-costruita al momento del packaging — il sorgente Pyt
    - **Porta API** → default `8000` (REQ-560)
 5. La configurazione carica tutte le immagini container (~2–5 minuti), scrive la config, e avvia i servizi
 6. Verifica:
+
    ```bash
    provisa status
    curl http://localhost:8000/health
@@ -267,16 +278,19 @@ Esegui questi passi prima sul nodo primary. I secondary devono essere configurat
    | 8000 | API Provisa |
 
 3. Rendi eseguibile ed esegui:
+
    ```bash
    chmod +x Provisa.AppImage
    ./Provisa.AppImage
    ```
+
 4. Il wizard di setup chiede:
    - **Ruolo** → seleziona `primary`
    - **Budget RAM**, **hostname**, **porta API** → rispondi come per il nodo singolo
 5. Dopo il completamento della configurazione, annota il **IP privato** di questa macchina — i secondary ne hanno bisogno
 6. Il wizard stampa un blocco upstream nginx — salvalo per la configurazione del tuo load balancer
 7. Verifica:
+
    ```bash
    provisa status
    curl http://localhost:8000/health
@@ -290,24 +304,30 @@ Ripeti questi passi su ogni nodo aggiuntivo dopo che il primary è in esecuzione
 
 1. Scarica e trasferisci `Provisa.AppImage` sulla macchina secondary
 2. Conferma che il secondary possa raggiungere il primary:
+
    ```bash
    curl http://<primary-ip>:8000/health
    ```
+
 3. Rendi eseguibile ed esegui:
+
    ```bash
    chmod +x Provisa.AppImage
    ./Provisa.AppImage
    ```
+
 4. Il wizard di setup chiede:
    - **Ruolo** → seleziona `secondary`
    - **IP primary** → inserisci l'IP del nodo primary (la connettività viene verificata live)
    - **Budget RAM**, **hostname**, **porta API** → rispondi come sopra
 5. La configurazione carica un set ridotto di immagini (nessun PostgreSQL, PgBouncer, MinIO, Redis — quelli girano solo sul primary) (REQ-561), avvia l'API Provisa e un worker del motore di federazione
 6. Verifica:
+
    ```bash
    provisa status
    curl http://localhost:8000/health
    ```
+
 7. Aggiungi questo nodo all'upstream del tuo load balancer
 
 ---
@@ -373,6 +393,7 @@ Provisiona un intero cluster Provisa multi-nodo su AWS — VPC, security group, 
 1. Scarica `Provisa.AppImage` dalla [pagina GitHub releases](https://github.com/provisa/provisa/releases)
 
 2. Caricala su un bucket S3 nel tuo account AWS:
+
    ```bash
    aws s3 cp Provisa.AppImage s3://<your-bucket>/releases/Provisa.AppImage
    ```
@@ -385,6 +406,7 @@ Provisiona un intero cluster Provisa multi-nodo su AWS — VPC, security group, 
 4. (Opzionale) Se vuoi accesso SSH ai nodi, crea una coppia di chiavi EC2 nella tua regione target e annota il nome della coppia di chiavi
 
 5. Esegui il wrapper di deploy:
+
    ```bash
    bash terraform/deploy.sh
    ```
@@ -394,7 +416,8 @@ Provisiona un intero cluster Provisa multi-nodo su AWS — VPC, security group, 
 7. Rivedi il riepilogo del deployment e conferma
 
 8. Terraform provisiona tutta l'infrastruttura (~5–10 minuti). Dopo l'apply, lo script stampa:
-   ```
+
+   ```text
    api_endpoint      = "http://<alb-dns>:8000"
    flight_endpoint   = "<nlb-dns>:8815"
    primary_ip        = "10.0.x.x"
@@ -406,6 +429,7 @@ Provisiona un intero cluster Provisa multi-nodo su AWS — VPC, security group, 
 9. (Opzionale) Punta i record DNS verso i nomi DNS di ALB e NLB
 
 10. Verifica:
+
     ```bash
     curl http://<api_endpoint>/health
     ```
@@ -479,6 +503,7 @@ Nota: l'AppImage Provisa non può essere eseguita dentro un pod Kubernetes — r
 ### Passi
 
 1. Conferma l'accesso al cluster:
+
    ```bash
    kubectl cluster-info
    ```
@@ -506,6 +531,7 @@ Nota: l'AppImage Provisa non può essere eseguita dentro un pod Kubernetes — r
    - **Segreti** — passa via `--set` per la valutazione; usa External Secrets o Vault Agent per la produzione
 
 4. Installa il chart:
+
    ```bash
    helm install provisa helm/provisa/ \
      --set config.pgPassword=<password> \
@@ -516,6 +542,7 @@ Nota: l'AppImage Provisa non può essere eseguita dentro un pod Kubernetes — r
    ```
 
    Se usi un registry interno, aggiungi override immagine:
+
    ```bash
    --set image.repository=harbor.internal.example.com/provisa/provisa \
    --set image.tag=1.2.3 \
@@ -524,11 +551,13 @@ Nota: l'AppImage Provisa non può essere eseguita dentro un pod Kubernetes — r
    ```
 
 5. Verifica che i pod siano in esecuzione:
+
    ```bash
    kubectl get pods -n provisa
    ```
 
 6. Controlla l'API:
+
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health

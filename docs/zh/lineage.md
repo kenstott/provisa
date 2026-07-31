@@ -20,7 +20,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 该语句产生三个输出列。`geo_u`的图如下：
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -37,7 +37,7 @@ orders.region ─╯
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | 节点种类 | 颜色 | 含义 |
-|---|---|---|
+| --- | --- | --- |
 | `source` | 绿色 | 基础表的一列 |
 | `derived` | 蓝色 | 由SQL表达式（函数、运算符、CTE）产生 |
 | `command` | 紫色 | 已注册命令的输出列 |
@@ -68,7 +68,7 @@ orders.region ─╯
 循环会被描述，而非被拒绝。血缘引擎会检测每个有向循环并将其**分类**。[tool-verified: `Cycle.classification` property in merge.py:43-46]
 
 | 分类 | 边框颜色 | 含义 |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | 黄色 | 该循环经过一个物化节点——属合法、具时间延迟的反馈回路。MV快照即是使其成为良定义的版本边界。 |
 | `error` | 红色 | 该回路上没有物化边界——属无稳定求值顺序的循环定义，很可能是设计错误。 |
 
@@ -123,7 +123,7 @@ lineage_router.py:29-31]
 
 返回注册表中所有MV的合并溯源图。
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -133,7 +133,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 查询参数[tool-verified: function signature at lineage_router.py:73-76]：
 
 | 参数 | 取值 | 默认值 | 效果 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | 节点ID | — | 将响应限定于该节点周围的子图 |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | 从`focus`出发的遍历方向 |
 | `depth` | 整数 | 无限制 | 距`focus`的最大跳数 |

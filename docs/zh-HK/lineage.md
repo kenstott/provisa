@@ -20,7 +20,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 此陳述式產生三個輸出欄位。`geo_u`的圖如下：
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -37,7 +37,7 @@ orders.region ─╯
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | 節點種類 | 顏色 | 意義 |
-|---|---|---|
+| --- | --- | --- |
 | `source` | 綠色 | 基礎資料表的欄位 |
 | `derived` | 藍色 | 由SQL運算式（函式、運算子、CTE）產生 |
 | `command` | 紫色 | 已註冊命令的輸出欄位 |
@@ -68,7 +68,7 @@ orders.region ─╯
 循環會被描述，而非被拒絕。血緣引擎會偵測每個有向循環並將其**分類**。[tool-verified: `Cycle.classification` property in merge.py:43-46]
 
 | 分類 | 邊框顏色 | 意義 |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | 黃色 | 該循環經過一個具體化節點——屬合法、具時間延遲的回饋迴路。MV快照即為使其成為明確定義的版本邊界。 |
 | `error` | 紅色 | 該迴路上並無具體化邊界——屬無穩定求值順序的循環定義，很可能是設計錯誤。 |
 
@@ -123,7 +123,7 @@ lineage_router.py:29-31]
 
 傳回登記處中所有MV的合併溯源圖。
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -133,7 +133,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 查詢參數[tool-verified: function signature at lineage_router.py:73-76]：
 
 | 參數 | 值 | 預設值 | 效果 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | 節點ID | — | 將回應限定於此節點周圍的子圖 |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | 由`focus`出發的走訪方向 |
 | `depth` | 整數 | 不限 | 距`focus`的最大跳數 |

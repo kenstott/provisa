@@ -60,7 +60,7 @@ abaixo). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`,
 `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
 | Tipo GraphQL | Tipo Provisa |
-|---|---|
+| --- | --- |
 | `String` | `text` |
 | `ID` | `text` |
 | `Int` | `integer` |
@@ -112,6 +112,7 @@ existentes (RLS, mascaramento) são preservadas. (REQ-311) [tool-verified:
 `provisa/api/admin/graphql_remote_router.py:217–257`]
 
 **Limitações.**
+
 - Campos de consulta raiz escalares e ENUM (tipo de retorno não é OBJECT) se tornam funções
   rastreadas, não tabelas virtuais. Seu `return_schema` é uma única coluna `value` do tipo escalar
   mapeado. [tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
@@ -198,7 +199,7 @@ relacionamentos). O nome auto-gerado é a chave de registro e nunca muda. (REQ-3
 [tool-verified: `provisa/grpc_remote/mapper.py:31–47`]
 
 | Tipo Proto | Tipo SQL |
-|---|---|
+| --- | --- |
 | `string`, `bytes` | `text` |
 | `int32` / `uint32` / `sint32` / `fixed32` / `sfixed32` | `integer` |
 | `int64` / `uint64` / `sint64` / `fixed64` / `sfixed64` | `bigint` |
@@ -244,6 +245,7 @@ inline. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py:241�
 `provisa/api/admin/grpc_remote_router.py:300–358`]
 
 **Limitações.**
+
 - A extração de objeto de sub-campo é de um nível de profundidade. Campos de mensagem aninhados
   além da profundidade 1 não são expandidos recursivamente. (REQ-556) [tool-verified:
   `provisa/grpc_remote/mapper.py:111–128`]
@@ -292,7 +294,7 @@ verbo inicial e singularizando o substantivo (`findPetsByStatus` → `pet_by_sta
 `provisa/openapi/register.py:59–70`]
 
 | Tipo JSON Schema | Tipo Provisa |
-|---|---|
+| --- | --- |
 | `string` | `string` |
 | `integer` | `integer` |
 | `number` | `number` |
@@ -328,6 +330,7 @@ Regras de governança existentes são preservadas; registros são atualizados co
 [tool-verified: `provisa/openapi/register.py:249–264`]
 
 **Limitações.**
+
 - A extração de objeto de sub-campo é de um nível de profundidade. Propriedades aninhadas dentro de
   `object_fields` não são expandidas recursivamente. (REQ-556) [tool-verified:
   `provisa/openapi/register.py:87–96`]

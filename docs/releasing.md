@@ -5,7 +5,7 @@ Releases are triggered by pushing a git tag. The tag name determines the channel
 ## Tag Conventions
 
 | Tag format | Channel | GitHub Release type |
-|-----------|---------|-------------------|
+| ----------- | --------- | ------------------- |
 | `v1.2.3-alpha.1` | alpha | Pre-release |
 | `v1.2.3-beta.1` | beta | Pre-release |
 | `v1.2.3-rc.1` | rc | Pre-release |
@@ -45,7 +45,7 @@ The CI workflow (`build-dmg.yml`, named "Build Provisa Packages") triggers on an
 Each release publishes the following assets, all attached to the GitHub Release (the wheel also goes to PyPI):
 
 | Asset | Platform / Use |
-|-------|----------------|
+| ------- | ---------------- |
 | `Provisa-<tag>-macOS.dmg` | macOS Core (Apple Silicon, airgapped) |
 | `Provisa-Runtime-<tag>-macOS.dmg` | macOS native Python runtime (mount alongside Core) |
 | `Provisa-Obs-<tag>-macOS.dmg` | macOS Observability extension |
@@ -76,7 +76,7 @@ The `publish-pypi` job will then publish automatically on every tag.
 Configure these under **Settings → Secrets → Actions**:
 
 | Secret | Required for | Description |
-|--------|-------------|-------------|
+| -------- | ------------- | ------------- |
 | `PYPI_API_TOKEN` | PyPI publishing | API token from `~/.pypirc` (starts with `pypi-`) |
 | `APPLE_CERT_P12_BASE64` | Signed builds | Base64-encoded `.p12` certificate file (see below) |
 | `APPLE_CERT_P12_PASSWORD` | Signed builds | Password set when exporting the `.p12` from Keychain Access |
@@ -93,9 +93,11 @@ Builds without these secrets succeed but produce an unsigned/unnotarized DMG (us
 2. Find **Developer ID Application: Your Name (TEAMID)** — expand it to confirm the private key is nested underneath
 3. Select both the certificate and its private key → right-click → **Export 2 Items** → save as `.p12` → set a strong password
 4. Base64-encode and copy to clipboard:
+
    ```bash
    base64 -i YourCert.p12 | pbcopy
    ```
+
 5. Paste as the value of `APPLE_CERT_P12_BASE64`; set `APPLE_CERT_P12_PASSWORD` to the password from step 3
 
 ## Finding Your Certificate Name

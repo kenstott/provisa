@@ -18,7 +18,7 @@ Cinq valeurs `impl_kind` sont prises en charge [tool-verified: dictionnaire `_EX
 function_dispatch.py:420-426] :
 
 | `impl_kind` | Transport |
-|---|---|
+| --- | --- |
 | `source_procedure` | Procédure stockée native sur une source enregistrée |
 | `script` | Sous-processus local alimenté en JSON sur stdin, lit du JSON depuis stdout |
 | `http` | Endpoint HTTP/S ; corps de requête JSON, réponse JSON |
@@ -35,7 +35,7 @@ Chaque argument déclare un `arg_kind` [tool-verified: `FunctionArgument.arg_kin
 models.py:691-700] :
 
 | `arg_kind` | Comportement |
-|---|---|
+| --- | --- |
 | `column_value` | Scalaire ; transmis directement dans la charge utile de la requête |
 | `table_ref` | Paresseux ; Provisa transmet la référence de relation telle quelle ; le service récupère les données |
 | `result_set` | Immédiat ; Provisa matérialise la relation référencée et envoie ses lignes |

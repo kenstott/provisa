@@ -66,7 +66,7 @@ Estas capas se componen entre sí. Un rol con acceso por dominio, RLS y columnas
 Capacidades asignadas de forma independiente, con jerarquía de roles opcional mediante `parent_role_id`. `admin` otorga todas. (REQ-042)
 
 | Capacidad | Descripción |
-|-----------|-------------|
+| ----------- | ------------- |
 | `source_registration` | Registrar orígenes de datos |
 | `table_registration` | Registrar tablas, columnas |
 | `create_relationship` | Definir relaciones de clave foránea |
@@ -99,7 +99,7 @@ Cada columna tiene un modelo de permisos de cuatro campos que controla el acceso
 ### Visibilidad de tres niveles
 
 | Nivel | Condición | Resultado |
-|------|-----------|--------|
+| ------ | ----------- | -------- |
 | **Oculta** | El rol no está en `visible_to` | Columna ausente del SDL de GraphQL |
 | **Enmascarada** | El rol está en `visible_to`, tiene regla de enmascaramiento, el rol no está en `unmasked_to` | Columna visible pero datos enmascarados en SQL |
 | **Sin enmascarar** | El rol está en `visible_to` Y el rol está en `unmasked_to` (o no hay regla de enmascaramiento) | Acceso de lectura completo |
@@ -107,7 +107,7 @@ Cada columna tiene un modelo de permisos de cuatro campos que controla el acceso
 ### Permisos de escritura
 
 | Campo | Vacío significa | Propósito |
-|-------|------------|---------|
+| ------- | ------------ | --------- |
 | `visible_to` | Todos los roles pueden leer | Controla quién ve la columna (enmascarada o sin enmascarar) |
 | `unmasked_to` | Ningún rol la ve sin enmascarar | Controla quién omite el enmascaramiento |
 | `writable_by` | Ningún rol puede escribir | Controla quién puede mutar (INSERT/UPDATE) |
@@ -137,6 +137,7 @@ columns:
 ```
 
 En este ejemplo:
+
 - `email`: admin ve `alice@example.com` y puede editar; analyst/viewer ven `a***@example.com`
 - `salary`: admin y hr ven el valor real; hr puede editar; el resto de los roles no ven la columna en absoluto
 - `created_at`: todos pueden leer, nadie puede escribir
@@ -173,7 +174,7 @@ El filtro se combina con AND en la cláusula WHERE de la consulta. Funciona tant
 El enmascaramiento se define una vez por columna — es una propiedad de la columna, no del rol. El campo `unmasked_to` controla qué roles lo omiten. (REQ-249)
 
 | Tipo de enmascaramiento | Tipos admitidos | Expresión SQL |
-|-----------|----------------|----------------|
+| ----------- | ---------------- | ---------------- |
 | `regex` | Cadena (varchar, char, text) | `REGEXP_REPLACE(col, pattern, replace)` |
 | `constant` | Cualquiera | Valor literal (NULL, 0, personalizado) |
 | `truncate` | Fecha/Timestamp | `DATE_TRUNC(precision, col)` |
@@ -205,7 +206,7 @@ El estado del límite de tasa reside en Redis (`cache.redis_url`) como un contad
 Proveedores de autenticación conectables: (REQ-120)
 
 | Proveedor | Tipo de token | Caso de uso |
-|----------|-----------|----------|
+| ---------- | ----------- | ---------- |
 | `none` | Encabezado X-Provisa-Role | Desarrollo |
 | `firebase` | Token de ID de Firebase | Producción |
 | `keycloak` | JWT de Keycloak | Empresarial |
@@ -225,7 +226,7 @@ Un hook de política externo opcional que se activa antes de la ejecución de la
 El hook solo se activa cuando la consulta toca una tabla u origen con alcance definido — sobrecarga cero para todo lo demás. (REQ-204)
 
 | Configuración | Efecto |
-|--------|--------|
+| -------- | -------- |
 | `auth.approval_hook.scope: all` | Cada consulta activa el hook |
 | `sources[].approval_hook: true` | Todas las tablas de ese origen activan el hook |
 | `tables[].approval_hook: true` | Esa tabla activa el hook |
@@ -235,7 +236,7 @@ El hook solo se activa cuando la consulta toca una tabla u origen con alcance de
 Se admiten tres transportes: (REQ-246)
 
 | Tipo | Caso de uso | Campo de configuración |
-|------|----------|-------------|
+| ------ | ---------- | ------------- |
 | `webhook` | Cualquier servicio de políticas compatible con HTTP (OPA, personalizado) | `url` |
 | `unix_socket` | OPA o sidecar de políticas en la misma máquina | `socket_path` + `url` |
 | `grpc` | Servicio de políticas colocalizado de alto rendimiento | `url` (host:puerto) |
@@ -268,7 +269,7 @@ El canal gRPC es persistente — un canal por instancia de Provisa, reutilizado 
 Los tres transportes llevan la misma carga útil: (REQ-246)
 
 | Campo | Tipo | Descripción |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `user` | string | Identidad del usuario autenticado |
 | `roles` | string[] | Roles de Provisa del usuario |
 | `tables` | string[] | IDs de tabla referenciados en la consulta |

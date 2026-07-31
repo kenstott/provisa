@@ -7,7 +7,7 @@ O Provisa suporta push em tempo real via Server-Sent Events (SSE). Clientes rece
 Subscriptions têm como alvo uma **tabela registrada**:
 
 | Fonte | Valores de `strategy` disponíveis |
-|--------|-------------------------|
+| -------- | ------------------------- |
 | Tabela (PostgreSQL) | `native` (LISTEN/NOTIFY), `poll` |
 | Tabela (RDBMS não-PG com um bloco `cdc` na fonte) | `debezium`, `kafka`, `poll` |
 | Tabela (view federada / qualquer outra fonte) | somente `poll` |
@@ -40,13 +40,15 @@ Quando o campo de subscription seleciona campos de tabelas unidas (via relaciona
 ## Endpoint
 
 Inscreva-se em uma tabela:
-```
+
+```http
 GET /data/subscribe/{table}
 Accept: text/event-stream
 ```
 
 A conexão permanece aberta e emite um evento JSON por mudança: (REQ-258, REQ-568)
-```
+
+```text
 data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":"east"}}
 
 data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region":"west"}}
@@ -57,7 +59,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 A entrega é selecionada por `live.strategy` na config da tabela: (REQ-813, REQ-814)
 
 | `strategy` | Mecanismo | Disponível para | Requer |
-|------------|-----------|---------------|---------|
+| ------------ | ----------- | --------------- | --------- |
 | `native` | PostgreSQL `LISTEN`/`NOTIFY`, MongoDB Change Streams | PG, MongoDB | Nada extra |
 | `debezium` | Tópico Kafka do conector Debezium | Tabelas RDBMS não-PG | Bloco `cdc` em nível de fonte (Debezium + Kafka) |
 | `kafka` | Tópico delta Kafka arbitrário | Qualquer tabela alimentada por Kafka | Bloco `cdc` em nível de fonte |
@@ -72,6 +74,7 @@ O Provisa emite `LISTEN <channel>` em uma conexão PG persistente. (REQ-258) Mut
 O Provisa reexecuta a consulta de origem periodicamente, selecionando apenas linhas onde `watermark_column > last_watermark`. (REQ-260) Diffs são emitidos como eventos SSE. O poll não consegue ver hard deletes — uma linha removida não deixa marca d'água avançando. Para tornar uma exclusão visível, use um soft delete (ex.: defina uma flag `deleted_at`) que avance a coluna de marca d'água; a exclusão então chega como um evento de atualização carregando o marcador de soft-delete. (REQ-260)
 
 Config de poll de tabela (em `provisa.yaml`):
+
 ```yaml
 tables:
   - id: federated_orders
@@ -89,6 +92,7 @@ tables:
 Requer um conector Debezium em execução escrevendo no Kafka. (REQ-261) O Provisa consome o tópico Kafka e encaminha eventos de mudança para os clientes SSE conectados. (REQ-261)
 
 O transporte CDC é configurado uma vez por fonte em um bloco `cdc`; tópicos são derivados como `{topic_prefix}.{schema}.{table}` e nunca repetidos por tabela. (REQ-824) Cada tabela então seleciona `strategy: debezium`:
+
 ```yaml
 sources:
   - id: sales-mysql
@@ -106,7 +110,7 @@ sources:
 
 Qualquer subscription GraphQL pode ser redirecionada para um tópico Kafka em vez de fazer streaming de volta ao cliente. (REQ-812) Adicione o cabeçalho `X-Provisa-Sink` à requisição de subscription:
 
-```
+```yaml
 POST /data/graphql
 Authorization: Bearer <token>
 Content-Type: application/json
@@ -114,6 +118,7 @@ X-Provisa-Sink: kafka://broker:9092/my-topic
 ```
 
 O servidor responde `202 Accepted` imediatamente e inicia uma tarefa em segundo plano que: (REQ-812)
+
 1. Observa mudanças na tabela usando a mesma resolução de provedor que o SSE (LISTEN/NOTIFY → poll asyncpg → poll federado)
 2. Reexecuta a consulta equivalente a cada mudança
 3. Publica o resultado como uma mensagem JSON no tópico Kafka nomeado
@@ -126,6 +131,7 @@ O sink roda pela vida útil do processo do servidor. (REQ-812) Reinicie o servid
 - `topic` é obrigatório
 
 **Exemplo (curl):**
+
 ```bash
 curl -X POST http://localhost:8000/data/graphql \
   -H "Authorization: Bearer $TOKEN" \

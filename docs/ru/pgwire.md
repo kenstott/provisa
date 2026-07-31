@@ -10,7 +10,7 @@ Provisa предоставляет эндпоинт по протоколу пр
 
 Сервер запускается, когда `PROVISA_PGWIRE_PORT` установлен в ненулевое целое число. По умолчанию отключён. (REQ-527) [tool-verified: `app.py:1739`]
 
-```
+```yaml
 Host: 0.0.0.0  (all interfaces)
 Port: $PROVISA_PGWIRE_PORT
 ```
@@ -26,7 +26,7 @@ Port: $PROVISA_PGWIRE_PORT
 Два режима, управляемые ключом `provider` в `auth_config`:
 
 | Режим | Значение `provider` | Поведение |
-|------|-----------------|-----------|
+| ------ | ----------------- | ----------- |
 | Trust | `none` (или middleware аутентификации неактивен) | Имя пользователя, отправленное клиентом, используется напрямую как `role_id`. Пароль игнорируется. |
 | Simple | `simple` | Пароль проверяется провайдером аутентификации `simple` (bcrypt). Имя пользователя становится `role_id` при успехе. (REQ-124) |
 
@@ -57,7 +57,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 Распознаваемые формы DDL:
 
-```
+```sql
 CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
 ALTER TABLE / INDEX / SEQUENCE / VIEW
 DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
@@ -122,6 +122,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET и DEALLOCATE �
 `pg_index` заполняется одной строкой на каждое ограничение первичного ключа и UNIQUE (`indrelid` = oid таблицы, `indkey` = упорядоченные attnum ключа, установлены `indisprimary`/`indisunique`). Клиенты, разрешающие столбцы ключа через `pg_index.indkey`, а не через `pg_constraint` — например, DataGrip — обнаруживают правильные столбцы через стандартное соединение `pg_index` → `pg_attribute`. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 Также перехватываются следующие скалярные выражения: (REQ-588)
+
 - `current_user`, `session_user` → аутентифицированный `role_id`
 - `current_database()` → `"provisa"`
 - `current_schema()` → `"public"`
@@ -139,7 +140,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET и DEALLOCATE �
 Протокол расширенного запроса (Bind/Execute) поддерживает параметры в бинарной кодировке. (REQ-589) Следующие OID типов декодируются из бинарного вида: [tool-verified: `postgres.py:69-97`]
 
 | OID | Тип PG | Тип Python |
-|-----|---------|-------------|
+| ----- | --------- | ------------- |
 | 16 | bool | bool |
 | 17 | bytea | bytes |
 | 20 | int8 | int |
@@ -167,7 +168,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET и DEALLOCATE �
 
 **JDBC (драйвер PostgreSQL JDBC).** Используйте его для инструментов Java-экосистемы: DBeaver, Tableau, Power BI, Metabase, операторов Airflow JDBC. JDBC по умолчанию использует протокол простого запроса, что избегает сложностей бинарной кодировки. Строка подключения:
 
-```
+```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 

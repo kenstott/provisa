@@ -4,9 +4,11 @@
 
 1. A running Hasura v2 instance (v2.x) with metadata exported.
 2. Export metadata using the Hasura CLI:
+
    ```bash
    hasura metadata export --endpoint http://localhost:8080
    ```
+
    This creates a `metadata/` directory containing `sources.yaml`, `actions.yaml`,
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, etc.
 3. Python 3.11+ with the `provisa` package installed.
@@ -20,13 +22,13 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ### Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `metadata_dir` | Yes | Path to the exported Hasura v2 metadata directory |
 
 ### Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | Output YAML file path |
 | `--source-overrides FILE` | None | YAML file with per-source connection overrides |
 | `--domain-map KEY=VAL ...` | None | Schema-to-domain mappings (e.g., `public=core hr=people`) |
@@ -59,7 +61,7 @@ maps:
 ## Feature Parity Matrix
 
 | Hasura v2 Feature | Provisa Equivalent | Notes |
-|---|---|---|
+| --- | --- | --- |
 | **Sources** (postgres, mysql, mssql, bigquery, citus) | `sources[]` | Kind mapped: pg/postgres -> postgresql, mssql -> sqlserver. Connection URL parsed into host/port/database/username/password. Pool settings preserved. |
 | **Tables** (tracked tables) | `tables[]` | Schema + table name preserved. `source_id` links to source. |
 | **Custom table names** (`custom_name`, `custom_root_fields.select`) | `tables[].alias` | First non-null of `select`, `select_by_pk`, `custom_name`. |

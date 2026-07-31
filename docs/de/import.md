@@ -7,11 +7,13 @@ Provisa kann vorhandene Hasura-Metadaten in eine Provisa-`config.yaml` umwandeln
 ### Metadaten exportieren
 
 Aus Ihrer Hasura-Konsole oder -CLI:
+
 ```bash
 hasura metadata export --output metadata.yaml
 ```
 
 Oder verwenden Sie die Hasura-API:
+
 ```bash
 curl -X POST http://localhost:8080/v1/metadata \
   -H "X-Hasura-Admin-Secret: <secret>" \
@@ -32,7 +34,7 @@ Lassen Sie `-o` weg, um die Konfiguration nach stdout zu schreiben.
 Flags:
 
 | Flag | Zweck |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Ausgabe-YAML-Pfad (Standard: stdout) |
 | `--source-overrides` | YAML-Datei mit Pro-Quelle-Verbindungsüberschreibungen (Host, Port, Anmeldedaten) |
 | `--domain-map` | Schema-zu-Domäne-Zuordnungen als `SCHEMA=DOMAIN`-Paare |
@@ -42,7 +44,7 @@ Flags:
 ### Was konvertiert wird
 
 | Hasura-Konzept | Provisa-Äquivalent |
-|---------------|-------------------|
+| --------------- | ------------------- |
 | Verfolgte Tabelle | `tables[]` mit `publish: true` |
 | Objektbeziehung | `relationships[]` mit `cardinality: many-to-one` |
 | Array-Beziehung | `relationships[]` mit `cardinality: one-to-many` |
@@ -79,7 +81,7 @@ Lassen Sie `-o` weg, um die Konfiguration nach stdout zu schreiben.
 Flags:
 
 | Flag | Zweck |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Ausgabe-YAML-Pfad (Standard: stdout) |
 | `--source-overrides` | YAML-Datei mit Pro-Quelle-Verbindungsüberschreibungen |
 | `--domain-map` | Subgraph-zu-Domäne-Zuordnungen als `SUBGRAPH=DOMAIN`-Paare |
@@ -91,7 +93,7 @@ Flags:
 ### Was konvertiert wird
 
 | DDN-Konzept | Provisa-Äquivalent |
-|------------|-------------------|
+| ------------ | ------------------- |
 | Subgraph-Modell | `tables[]` unter einer Quelle |
 | Beziehung | `relationships[]` |
 | Berechtigungsregel | RLS-Filter |

@@ -7,7 +7,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### Clauses
 
 | Clause | סטטוס | הערות |
-|--------|--------|-------|
+| -------- | -------- | ------- |
 | `MATCH (n:Label)` | ✓ | דפוסי node עם תוויות, משתנים, מאפיינים inline |
 | `OPTIONAL MATCH` | ✓ | פולט LEFT JOIN |
 | `WHERE` | ✓ | תמיכה מלאה בביטויים; מוחל אחרי MATCH |
@@ -27,7 +27,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### דפוסי Match
 
 | דפוס | סטטוס | הערות |
-|---------|--------|-------|
+| --------- | -------- | ------- |
 | `(n)` — node ללא תווית | ✓ | UNION ALL על פני כל הטיפוסים הידועים |
 | `(n:Label)` | ✓ | ממופה לטבלה הרשומה עבור אותו טיפוס GraphQL |
 | `(n:Label {prop: val})` | ✓ | פילטר מאפיין inline הופך ל-WHERE |
@@ -45,7 +45,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### ביטויים ופרדיקטים
 
 | תכונה | סטטוס | מיפוי SQL |
-|---------|--------|------------|
+| --------- | -------- | ------------ |
 | גישת מאפיין `n.prop` | ✓ | `n."prop"` |
 | פרמטרים `$name` | ✓ | פוזיציוני `$N` |
 | פרמטרים ישנים `{name}` | ✓ | מנורמל ל-`$name` בזמן פענוח |
@@ -72,7 +72,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### הקרנות מפה (Map Projections)
 
 | תחביר | מיפוי SQL |
-|--------|------------|
+| -------- | ------------ |
 | `n { .prop1, .prop2 }` | `MAP(ARRAY['prop1','prop2'], ARRAY[n."prop1",n."prop2"])` |
 | `n { .* }` | `MAP(ARRAY[all props...], ARRAY[n."col",...])` — מורחב מהסכמה |
 | `n { .*, extra: expr }` | כל מאפייני הסכמה בתוספת מפתח בעל-שם; MAP משולב |
@@ -81,7 +81,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### פונקציות אגרגציה
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `count(*)`, `count(x)` | ישיר |
 | `count(DISTINCT x)` | `count(DISTINCT x)` |
 | `collect(x)` | `array_agg(x)` |
@@ -94,7 +94,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### פונקציות מחרוזת
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `toLower(x)` | `lower(x)` |
 | `toUpper(x)` | `upper(x)` |
 | `ltrim(x)`, `rtrim(x)`, `trim(x)` | ישיר |
@@ -110,7 +110,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### פונקציות המרת טיפוס
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `toString(x)` | `CAST(x AS VARCHAR)` |
 | `toInteger(x)` | `TRY_CAST(x AS BIGINT)` |
 | `toFloat(x)` | `TRY_CAST(x AS DOUBLE)` |
@@ -120,7 +120,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### פונקציות מתמטיות
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `log(x)` | `ln(x)` (לוג טבעי) |
 | `log2(x)` | `log2(x)` |
 | `range(start, end)` | `sequence(start, end)` |
@@ -129,7 +129,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### פונקציות רשימה
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `head(list)` | `element_at(list, 1)` |
 | `last(list)` | `element_at(list, -1)` |
 | `tail(list)` | `slice(list, 2, cardinality(list))` |
@@ -138,7 +138,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### List Comprehensions
 
 | תחביר | מיפוי SQL |
-|--------|------------|
+| -------- | ------------ |
 | `[x IN list \| f(x)]` | `transform(list, x -> f(x))` |
 | `[x IN list WHERE p(x)]` | `filter(list, x -> p(x))` |
 | `[x IN list WHERE p(x) \| f(x)]` | `transform(filter(list, x -> p(x)), x -> f(x))` |
@@ -151,13 +151,14 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 ### Pattern Comprehensions
 
 | תחביר | מיפוי SQL |
-|--------|------------|
+| -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
 | `[(a)-[]->(b:Label) \| b.prop]` | טיפוס-מוסק מהשכבה הסמנטית; אותה צורת תת-שאילתת ARRAY |
 
 ### תתי-שאילתות CALL מתואמות (Correlated)
 
 `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` מתורגם ל-`CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) כללים:
+
 - המשתנה מהיקף-חיצוני (`x`) חייב להופיע ב-`WITH`
 - משתנים מיובאים מרובים (`WITH a, b`) נתמכים
 - הקשר הראשון ב-MATCH הפנימי שמקורו הוא משתנה lateral-bound קובע את ה-`FROM` הפנימי ותנאי ה-join
@@ -170,7 +171,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 Cypher תומכת בשלושה דפוסי כתיבה דרך נקודת הקצה `/data/cypher`, המבוצעים על ידי `provisa/cypher/write_translator.py`. (REQ-818) [tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
 
 | Cypher | SQL | Req |
-|--------|-----|-----|
+| -------- | ----- | ----- |
 | `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` | REQ-666 |
 | `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` | REQ-667 |
 | `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` | REQ-668 |

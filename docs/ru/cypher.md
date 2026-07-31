@@ -7,7 +7,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Предложения (Clauses)
 
 | Предложение | Статус | Примечания |
-|--------|--------|-------|
+| -------- | -------- | ------- |
 | `MATCH (n:Label)` | ✓ | Паттерны узлов с метками, переменными, встроенными свойствами |
 | `OPTIONAL MATCH` | ✓ | Выдаёт LEFT JOIN |
 | `WHERE` | ✓ | Полная поддержка выражений; применяется после MATCH |
@@ -27,7 +27,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Паттерны сопоставления (Match Patterns)
 
 | Паттерн | Статус | Примечания |
-|---------|--------|-------|
+| --------- | -------- | ------- |
 | `(n)` — узел без метки | ✓ | UNION ALL по всем известным типам |
 | `(n:Label)` | ✓ | Отображается на зарегистрированную таблицу для этого типа GraphQL |
 | `(n:Label {prop: val})` | ✓ | Встроенный фильтр свойства становится WHERE |
@@ -45,7 +45,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Выражения и предикаты
 
 | Возможность | Статус | Отображение в SQL |
-|---------|--------|------------|
+| --------- | -------- | ------------ |
 | Доступ к свойству `n.prop` | ✓ | `n."prop"` |
 | Параметры `$name` | ✓ | Позиционный `$N` |
 | Устаревшие параметры `{name}` | ✓ | Нормализуются в `$name` на этапе разбора |
@@ -72,7 +72,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Проекции карт (Map Projections)
 
 | Синтаксис | Отображение в SQL |
-|--------|------------|
+| -------- | ------------ |
 | `n { .prop1, .prop2 }` | `MAP(ARRAY['prop1','prop2'], ARRAY[n."prop1",n."prop2"])` |
 | `n { .* }` | `MAP(ARRAY[all props...], ARRAY[n."col",...])` — раскрывается из схемы |
 | `n { .*, extra: expr }` | Все свойства схемы плюс именованный ключ; объединённый MAP |
@@ -81,7 +81,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Функции агрегации
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `count(*)`, `count(x)` | прямое |
 | `count(DISTINCT x)` | `count(DISTINCT x)` |
 | `collect(x)` | `array_agg(x)` |
@@ -94,7 +94,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Строковые функции
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `toLower(x)` | `lower(x)` |
 | `toUpper(x)` | `upper(x)` |
 | `ltrim(x)`, `rtrim(x)`, `trim(x)` | прямое |
@@ -110,7 +110,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Функции преобразования типов
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `toString(x)` | `CAST(x AS VARCHAR)` |
 | `toInteger(x)` | `TRY_CAST(x AS BIGINT)` |
 | `toFloat(x)` | `TRY_CAST(x AS DOUBLE)` |
@@ -120,7 +120,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Математические функции
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `log(x)` | `ln(x)` (натуральный логарифм) |
 | `log2(x)` | `log2(x)` |
 | `range(start, end)` | `sequence(start, end)` |
@@ -129,7 +129,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Функции списков
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `head(list)` | `element_at(list, 1)` |
 | `last(list)` | `element_at(list, -1)` |
 | `tail(list)` | `slice(list, 2, cardinality(list))` |
@@ -138,7 +138,7 @@ Provisa переводит подмножество openCypher в SQL через
 ### Списковые включения (List Comprehensions)
 
 | Синтаксис | Отображение в SQL |
-|--------|------------|
+| -------- | ------------ |
 | `[x IN list \| f(x)]` | `transform(list, x -> f(x))` |
 | `[x IN list WHERE p(x)]` | `filter(list, x -> p(x))` |
 | `[x IN list WHERE p(x) \| f(x)]` | `transform(filter(list, x -> p(x)), x -> f(x))` |
@@ -151,13 +151,14 @@ Provisa переводит подмножество openCypher в SQL через
 ### Включения по паттернам (Pattern Comprehensions)
 
 | Синтаксис | Отображение в SQL |
-|--------|------------|
+| -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
 | `[(a)-[]->(b:Label) \| b.prop]` | тип выводится из семантического слоя; та же форма подзапроса ARRAY |
 
 ### Коррелированные подзапросы CALL
 
 `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` переводится в `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) Правила:
+
 - Переменная внешней области видимости (`x`) должна присутствовать в `WITH`
 - Поддерживается несколько импортированных переменных (`WITH a, b`)
 - Первая связь во внутреннем MATCH, чей источник — переменная, связанная через lateral, определяет внутренний `FROM` и условие соединения
@@ -170,7 +171,7 @@ Provisa переводит подмножество openCypher в SQL через
 Cypher поддерживает три паттерна записи через эндпоинт `/data/cypher`, выполняемые `provisa/cypher/write_translator.py`. (REQ-818) [tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
 
 | Cypher | SQL | Req |
-|--------|-----|-----|
+| -------- | ----- | ----- |
 | `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` | REQ-666 |
 | `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` | REQ-667 |
 | `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` | REQ-668 |

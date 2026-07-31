@@ -20,7 +20,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 Cette instruction produit trois colonnes de sortie. Le graphe pour `geo_u` se présente ainsi :
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -37,7 +37,7 @@ La frontière de la commande n'est **pas opaque**. Comme `enrich_grpc_set` décl
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | Type de nœud | Couleur | Signification |
-|---|---|---|
+| --- | --- | --- |
 | `source` | Vert | Une colonne d'une table de base |
 | `derived` | Bleu | Produite par une expression SQL (fonction, opérateur, CTE) |
 | `command` | Violet | Une colonne de sortie d'une commande enregistrée |
@@ -68,7 +68,7 @@ Utilisez `focus`, `direction` et `depth` pour restreindre la vue à l'échelle d
 Les cycles sont décrits, non rejetés. Le moteur de traçabilité détecte chaque cycle orienté et le **classe**. [tool-verified: `Cycle.classification` property en merge.py:43-46]
 
 | Classification | Couleur de bordure | Signification |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | Jaune | Le cycle traverse un nœud matérialisé — une boucle de rétroaction légitime et décalée dans le temps. L'instantané de la MV constitue la limite de version qui la rend bien définie. |
 | `error` | Rouge | Aucune limite de matérialisation sur la boucle — une définition circulaire sans ordre d'évaluation stable. Probablement une erreur de conception. |
 
@@ -123,7 +123,7 @@ Renvoie HTTP 422 lorsque le SQL ne peut pas être analysé (parsé).
 
 Renvoie le graphe de provenance fusionné sur toutes les MV du registre.
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -133,7 +133,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 Paramètres de requête [tool-verified: function signature at lineage_router.py:73-76] :
 
 | Paramètre | Valeurs | Par défaut | Effet |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | Un id de nœud | — | Restreint la réponse au sous-graphe autour de ce nœud |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | Direction de parcours à partir de `focus` |
 | `depth` | entier | illimité | Distance maximale de sauts depuis `focus` |

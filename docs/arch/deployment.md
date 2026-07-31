@@ -7,7 +7,7 @@ GitHub Actions' 2 GB artifact limit — container image tarballs alone exceed it
 The three packages map directly to the three docker-compose layers: (REQ-630)
 
 | Package | Services | docker-compose file |
-|---------|----------|---------------------|
+| --------- | ---------- | --------------------- |
 | **Core** | postgres, pgbouncer, redis, minio, trino, zaychik + Python backend + UI | `docker-compose.core.yml` |
 | **Observability (Obs)** | otlp2parquet, otel-collector, prometheus, tempo, grafana | `docker-compose.observability.yml` |
 | **Demo** | petstore-mock, graphql-demo | `docker-compose.demo.yml` |
@@ -19,7 +19,7 @@ The three packages map directly to the three docker-compose layers: (REQ-630)
 ## Platform Matrix
 
 | Package | macOS | Windows | Linux |
-|---------|-------|---------|-------|
+| --------- | ------- | --------- | ------- |
 | Core | DMG (native venv, or user's own Docker) | NSIS .exe (native, or WSL2 + containerd) | AppImage (native venv, or bundled rootless Docker) |
 | Obs | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **bundled into Core AppImage** |
 | Demo | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **not included** |
@@ -42,12 +42,13 @@ detects installed extensions at startup and composes the service set dynamically
 ### Extension directory
 
 | Platform | Path |
-|----------|------|
+| ---------- | ------ |
 | macOS | `~/.provisa/extensions/` |
 | Windows | `%USERPROFILE%\.provisa\extensions\` |
 
 Each extension drops:
-```
+
+```bash
 extensions/
   observability/
     docker-compose.observability.yml
@@ -60,7 +61,8 @@ extensions/
 ### Compose file assembly at launch
 
 The launcher builds the compose file list dynamically: (REQ-633)
-```
+
+```yaml
 core:  docker-compose.core.yml + docker-compose.app.yml + docker-compose.airgap.yml
 + obs:  + extensions/observability/docker-compose.observability.yml
 + demo: + extensions/demo/docker-compose.demo.yml
@@ -80,6 +82,7 @@ the expanded file list. (REQ-633) Trino picks up the OTel `JAVA_TOOL_OPTIONS` ov
 no separate Runtime DMG — the interpreter and images ship inside this DMG.
 
 **Contents of DMG**:
+
 - `Provisa.app` — signed + notarized SwiftUI launcher (ProvisaLauncher) (REQ-227)
 - `python-base/` — a bare python-build-standalone CPython (macOS arm64), NOT
   pip-installed; first-launch builds `~/.provisa/venv` from it (native tier)
@@ -97,11 +100,13 @@ no separate Runtime DMG — the interpreter and images ship inside this DMG.
     DMG-build time)
 
 **`Provisa.app/Contents/Resources/` embeds**: (REQ-294)
+
 - `docker-compose.core.yml`, `docker-compose.app.yml`, `docker-compose.airgap.yml`
 - `config/`, `db/`, `trino/`, `observability/` (trino-otel dir + OTel Java agent jar)
 - `provisa-source/` (Dockerfile, main.py, pyproject.toml, provisa/, static UI, wheels)
 
 **`first-launch.sh`** picks the tier from the deployment choices (REQ-976):
+
 - **Native tier** (default, no Trino/Docker triggers): builds `~/.provisa/venv`
   from `python-base`, then `pip install provisa[embedded]` — from PyPI when
   online, or `--no-index --find-links` against the bundled `wheels/` when
@@ -116,6 +121,7 @@ no separate Runtime DMG — the interpreter and images ship inside this DMG.
 ### Obs DMG (`Provisa-Obs-<version>.dmg`)
 
 **Contents**:
+
 - `install-obs.sh` — installer script (no `.app`, just a shell script run via
   a minimal DMG or a signed pkg)
 - `images/` (hidden):
@@ -126,6 +132,7 @@ no separate Runtime DMG — the interpreter and images ship inside this DMG.
   - `grafana-10.4.2.tar.gz`
 
 **`install-obs.sh` steps**:
+
 1. Check core is installed (`~/.provisa/config.yaml` with `runtime: docker`). (REQ-633)
 2. Check the user's Docker is running. (REQ-228)
 3. `docker load` each obs image tarball. (REQ-294)
@@ -133,6 +140,7 @@ no separate Runtime DMG — the interpreter and images ship inside this DMG.
 5. Print: "Observability installed. Restart Provisa to activate."
 
 **Build script**: `packaging/macos/build-dmg-obs.sh`
+
 - Pulls + saves obs images (`--platform linux/arm64`, gzip compressed) (REQ-294)
 - Embeds `install-obs.sh` + images into a minimal DMG
 - Signs + notarizes `install-obs.sh` (REQ-227)
@@ -142,12 +150,14 @@ no separate Runtime DMG — the interpreter and images ship inside this DMG.
 Requires Obs to be installed. (REQ-631)
 
 **Contents**:
+
 - `install-demo.sh`
 - `images/` (hidden):
   - `petstore3-unstable.tar.gz`
   - `graphql-demo-local.tar.gz`
 
 **`install-demo.sh` steps**:
+
 1. Check `~/.provisa/extensions/observability/` exists (obs must be installed). (REQ-631)
 2. Check the user's Docker is running. (REQ-228)
 3. `docker load` the demo image tarballs. (REQ-294)
@@ -215,6 +225,7 @@ The tier is additive and reversible: switch back to the native tier with
 ### Obs Installer (`Provisa-Obs-Setup-<version>.exe`) — container tier
 
 **`install-obs.ps1` steps**:
+
 1. Check the container-tier runtime exists and is running. (REQ-633)
 2. `docker load` each obs image tarball into the runtime. (REQ-633)
 3. Write `%USERPROFILE%\.provisa\extensions\observability\docker-compose.observability.yml`. (REQ-633)
@@ -347,7 +358,7 @@ local processes. (REQ-634)
 ### Compose stacks
 
 | Mode | Compose files used |
-|------|--------------------|
+| ------ | -------------------- |
 | Core only | `core.yml` + `dev-install.yml` |
 | Core + Obs | `core.yml` + `dev-install.yml` + `observability.yml` |
 | Core + Obs + Demo | `core.yml` + `dev-install.yml` + `observability.yml` + `demo.yml` |
@@ -362,7 +373,7 @@ or `observability.yml` (obs services). The local backend connects to everything
 via `localhost`. (REQ-634)
 
 | Port | Service | Who binds it |
-|------|---------|--------------|
+| ------ | --------- | -------------- |
 | 5432 | postgres | `dev-install.yml` |
 | 6432 | pgbouncer | `dev-install.yml` |
 | 6379 | redis | `dev-install.yml` |
@@ -391,6 +402,7 @@ dev environment.
 reach that hostname. (REQ-634)
 
 When obs is active in dev, `start-ui-install.sh` sets: (REQ-330)
+
 ```bash
 OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4319"   # OTLP HTTP to otlp2parquet, host-exposed
 OTEL_SERVICE_NAME="provisa"
@@ -400,7 +412,7 @@ When obs is not active, these vars are unset (spans are dropped). (REQ-330)
 
 ### `start-ui-install.sh` modes
 
-```
+```bash
 ./start-ui-install.sh              # core only
 ./start-ui-install.sh --demo       # core + obs + demo  (--demo always implies obs)
 ```

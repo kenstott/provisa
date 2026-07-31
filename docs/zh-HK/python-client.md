@@ -3,7 +3,7 @@
 Provisa 的 Python 用戶端。提供四種介面：
 
 | 介面 | 使用場景 |
-|-----------|----------|
+| ----------- | ---------- |
 | `ProvisaClient` | GraphQL 查詢、Arrow Flight、DataFrame 輸出 |
 | DB-API 2.0（`connect`） | 標準 Python 資料庫介面（PEP 249）(REQ-268) |
 | SQLAlchemy 方言 | BI 工具、ORM、Pandas `read_sql` (REQ-270) |
@@ -82,7 +82,7 @@ tables_df = client.list_tables()
 ### 連線參考
 
 | 參數 | 預設值 | 描述 |
-|-----------|---------|-------------|
+| ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Provisa 伺服器基礎 URL |
 | `token` | `None` | 持有者權杖；若採密碼驗證則留空 (REQ-606) |
 | `role` | `"admin"` | 隨每個要求傳送的角色 (REQ-273) |
@@ -187,7 +187,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 ### URL 參數
 
 | 參數 | 描述 | 預設值 |
-|-----------|-------------|---------|
+| ----------- | ------------- | --------- |
 | `role` | Provisa 角色 | `admin` |
 
 ```python

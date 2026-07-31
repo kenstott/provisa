@@ -3,7 +3,7 @@
 Provisa 的 Python 客户端。提供四种接口：
 
 | 接口 | 使用场景 |
-|-----------|----------|
+| ----------- | ---------- |
 | `ProvisaClient` | GraphQL 查询、Arrow Flight、DataFrame 输出 |
 | DB-API 2.0（`connect`） | 标准 Python 数据库接口（PEP 249）（REQ-268） |
 | SQLAlchemy 方言 | BI 工具、ORM、Pandas `read_sql`（REQ-270） |
@@ -82,7 +82,7 @@ tables_df = client.list_tables()
 ### 连接参考
 
 | 参数 | 默认值 | 说明 |
-|-----------|---------|-------------|
+| ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Provisa 服务端基础 URL |
 | `token` | `None` | Bearer 令牌；使用密码认证时省略（REQ-606） |
 | `role` | `"admin"` | 随每个请求发送的角色（REQ-273） |
@@ -187,7 +187,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 ### URL 参数
 
 | 参数 | 说明 | 默认值 |
-|-----------|-------------|---------|
+| ----------- | ------------- | --------- |
 | `role` | Provisa 角色 | `admin` |
 
 ```python

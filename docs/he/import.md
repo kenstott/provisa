@@ -7,11 +7,13 @@ Provisa יכולה להמיר מטא-דאטה קיים של Hasura לתוך `con
 ### ייצוא מטא-דאטה
 
 מקונסולת Hasura שלכם או ה-CLI:
+
 ```bash
 hasura metadata export --output metadata.yaml
 ```
 
 או השתמשו ב-API של Hasura:
+
 ```bash
 curl -X POST http://localhost:8080/v1/metadata \
   -H "X-Hasura-Admin-Secret: <secret>" \
@@ -32,7 +34,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 דגלים:
 
 | דגל | מטרה |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | נתיב YAML פלט (ברירת מחדל: stdout) |
 | `--source-overrides` | קובץ YAML עם דריסות חיבור לכל מקור (host, port, אישורים) |
 | `--domain-map` | מיפויי סכמה-לדומיין כזוגות `SCHEMA=DOMAIN` |
@@ -42,7 +44,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 ### מה מומר
 
 | מושג Hasura | שקילות Provisa |
-|---------------|-------------------|
+| --------------- | ------------------- |
 | טבלה מעוקבת | `tables[]` עם `publish: true` |
 | קשר object | `relationships[]` עם `cardinality: many-to-one` |
 | קשר array | `relationships[]` עם `cardinality: one-to-many` |
@@ -79,7 +81,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 דגלים:
 
 | דגל | מטרה |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | נתיב YAML פלט (ברירת מחדל: stdout) |
 | `--source-overrides` | קובץ YAML עם דריסות חיבור לכל מקור |
 | `--domain-map` | מיפויי subgraph-לדומיין כזוגות `SUBGRAPH=DOMAIN` |
@@ -91,7 +93,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 ### מה מומר
 
 | מושג DDN | שקילות Provisa |
-|------------|-------------------|
+| ------------ | ------------------- |
 | מודל subgraph | `tables[]` תחת מקור |
 | קשר | `relationships[]` |
 | כלל הרשאה | פילטר RLS |

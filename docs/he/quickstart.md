@@ -35,7 +35,7 @@ cd provisa
 
 כשההפעלה מסתיימת תראו:
 
-```
+```yaml
 Provisa running:
   Backend: http://localhost:8001  (logs: .logs/server.log)
   UI:      http://localhost:3000
@@ -150,7 +150,7 @@ curl -s -X POST http://localhost:8001/data/sql \
 ## הצעדים הבאים
 
 | מטרה | מסמך |
-|------|-----|
+| ------ | ----- |
 | רפרנס תצורת YAML מלא | [configuration.md](configuration.md) |
 | אבטחה ברמת השורה, מיסוך עמודות, אימות | [security.md](security.md) |
 | כל סוגי המקורות הנתמכים | [sources.md](sources.md) |

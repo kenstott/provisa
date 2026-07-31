@@ -5,7 +5,7 @@ Les publications sont déclenchées par l'envoi (push) d'une étiquette git. Le 
 ## Conventions d'étiquetage
 
 | Format d'étiquette | Canal | Type de GitHub Release |
-|-----------|---------|-------------------|
+| ----------- | --------- | ------------------- |
 | `v1.2.3-alpha.1` | alpha | Pre-release |
 | `v1.2.3-beta.1` | beta | Pre-release |
 | `v1.2.3-rc.1` | rc | Pre-release |
@@ -45,7 +45,7 @@ Le workflow de CI (`build-dmg.yml`, nommé « Build Provisa Packages ») se déc
 Chaque version publie les assets suivants, tous attachés au GitHub Release (le wheel est également publié sur PyPI) :
 
 | Asset | Plateforme / Usage |
-|-------|----------------|
+| ------- | ---------------- |
 | `Provisa-<tag>-macOS.dmg` | macOS Core (Apple Silicon, sans connexion) |
 | `Provisa-Runtime-<tag>-macOS.dmg` | Runtime Python natif macOS (à monter aux côtés de Core) |
 | `Provisa-Obs-<tag>-macOS.dmg` | Extension d'observabilité macOS |
@@ -76,7 +76,7 @@ Le job `publish-pypi` publiera alors automatiquement à chaque étiquette.
 Configurez les éléments suivants sous **Settings → Secrets → Actions** :
 
 | Secret | Requis pour | Description |
-|--------|-------------|-------------|
+| -------- | ------------- | ------------- |
 | `PYPI_API_TOKEN` | Publication PyPI | Jeton d'API depuis `~/.pypirc` (commence par `pypi-`) |
 | `APPLE_CERT_P12_BASE64` | Builds signés | Fichier de certificat `.p12` encodé en Base64 (voir ci-dessous) |
 | `APPLE_CERT_P12_PASSWORD` | Builds signés | Mot de passe défini lors de l'exportation du `.p12` depuis Keychain Access |
@@ -93,9 +93,11 @@ Les builds sans ces secrets réussissent mais produisent un DMG non signé/non n
 2. Recherchez **Developer ID Application: Your Name (TEAMID)** — développez-le pour confirmer que la clé privée est imbriquée en dessous
 3. Sélectionnez à la fois le certificat et sa clé privée → clic droit → **Export 2 Items** → enregistrez sous `.p12` → définissez un mot de passe fort
 4. Encodez en Base64 et copiez dans le presse-papiers :
+
    ```bash
    base64 -i YourCert.p12 | pbcopy
    ```
+
 5. Collez-le comme valeur de `APPLE_CERT_P12_BASE64` ; définissez `APPLE_CERT_P12_PASSWORD` avec le mot de passe de l'étape 3
 
 ## Trouver le nom de votre certificat

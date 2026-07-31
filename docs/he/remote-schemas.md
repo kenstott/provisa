@@ -39,7 +39,7 @@
 **מיפוי טיפוסים (REQ-308).** שדות סקלריים ממופים ישירות לטיפוסי Provisa. שדות OBJECT מתפצלים לשני מקרים תלוי אם הטיפוס היעד ממושל (ראו "טבלאות ממושלות" למטה). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`, `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
 | טיפוס GraphQL | טיפוס Provisa |
-|---|---|
+| --- | --- |
 | `String` | `text` |
 | `ID` | `text` |
 | `Int` | `integer` |
@@ -69,6 +69,7 @@
 **רענון (Refresh).** שלחו POST ל-`/admin/sources/graphql-remote/{id}/refresh`. מבצע אינטרוספקציה מחדש של הסכמה המרוחקת ומעדכן רישומי טבלה ופונקציה. כללי ממשל קיימים (RLS, מיסוך) נשמרים. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py:217–257`]
 
 **מגבלות.**
+
 - שדות שאילתה-שורש סקלריים ו-ENUM (טיפוס ההחזרה אינו OBJECT) הופכים ל-commands עוקבים, לא לטבלאות וירטואליות. ה-`return_schema` שלהם הוא עמודת `value` יחידה מהטיפוס הסקלרי הממופה. [tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
 - קינון אובייקטים נפתר בזמן הרישום עד `graphql_remote.max_object_depth` (ברירת מחדל: 5). הן בחירת האיסוף המרוחק והן מטא-דאטת שדה-המשנה נבנות עד עומק זה; שדות מעבר לגבול אינם נאספים ואינם זמינים לחילוץ SQL. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
 - שדות OBJECT מקוננים מסוג-LIST (למשל `breed.awards: [Award]`) נכללים בבחירת האיסוף עד רמות קינון `graphql_remote.max_list_depth` (ברירת מחדל: 2). בתוך גבול זה, הרשימה נאספת כמערך `jsonb` על העמודה ההורה, ובחירת ה-GQL מזריקה `first: N` כאשר N הוא `graphql_remote.max_list_items` (ברירת מחדל: 100) כדי לגבול את גודל המערך. מעבר ל-`max_list_depth`, שדה ה-LIST מוחרג לחלוטין כדי למנוע הרחבת נתונים בלתי-מוגבלת. ב-SQL, המערך נגיש דרך `json_array_elements(column_name)` או חילוץ אינדקס `->>`. אם לטיפוס פריט הרשימה יש query שורש משלו, רשמו אותו כטבלה נפרדת וצרו קשר במקום זאת — נתיב ה-join יעיל יותר ועוקף את ה-blob. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
@@ -115,7 +116,7 @@ Provisa מביאה את ה-proto, מפענחת אותו עם parser טקסט-ט�
 **מיפוי טיפוסים (REQ-324).** טיפוסים סקלריים של proto ממופים לטיפוסי SQL כך. [tool-verified: `provisa/grpc_remote/mapper.py:31–47`]
 
 | טיפוס Proto | טיפוס SQL |
-|---|---|
+| --- | --- |
 | `string`, `bytes` | `text` |
 | `int32` / `uint32` / `sint32` / `fixed32` / `sfixed32` | `integer` |
 | `int64` / `uint64` / `sint64` / `fixed64` / `sfixed64` | `bigint` |
@@ -141,6 +142,7 @@ Provisa מביאה את ה-proto, מפענחת אותו עם parser טקסט-ט�
 **רענון.** שלחו POST ל-`/admin/grpc-remote/refresh/{source_id}`. טוען מחדש את ה-proto מהנתיב השמור, מקמפל-מחדש stubs, ורושם-מחדש טבלאות ופונקציות. לחלופין, שלחו PUT ל-`/admin/grpc-remote/{source_id}/proto` עם `proto_text` חדש כדי לעדכן את ה-proto inline. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py:241–268`, `provisa/api/admin/grpc_remote_router.py:300–358`]
 
 **מגבלות.**
+
 - חילוץ אובייקט שדה-משנה הוא רמה אחת עמוקה. שדות הודעה מקוננים מעבר לעומק 1 אינם מורחבים באופן רקורסיבי. (REQ-556) [tool-verified: `provisa/grpc_remote/mapper.py:111–128`]
 
 ---
@@ -172,7 +174,7 @@ Provisa מביאה את ה-proto, מפענחת אותו עם parser טקסט-ט�
 **מיפוי טיפוסים.** טיפוסי JSON Schema ממופים לטיפוסי Provisa כך. [tool-verified: `provisa/openapi/register.py:59–70`]
 
 | טיפוס JSON Schema | טיפוס Provisa |
-|---|---|
+| --- | --- |
 | `string` | `string` |
 | `integer` | `integer` |
 | `number` | `number` |
@@ -191,6 +193,7 @@ Provisa מביאה את ה-proto, מפענחת אותו עם parser טקסט-ט�
 **רענון (REQ-321).** פענחו-מחדש את ה-spec וקראו שוב ל-`auto_register_openapi_source`. כללי ממשל קיימים נשמרים; רישומים מתעדכנים עם upsert‏ ON CONFLICT. [tool-verified: `provisa/openapi/register.py:249–264`]
 
 **מגבלות.**
+
 - חילוץ אובייקט שדה-משנה הוא רמה אחת עמוקה. תכונות מקוננות בתוך `object_fields` אינן מורחבות באופן רקורסיבי. (REQ-556) [tool-verified: `provisa/openapi/register.py:87–96`]
 - פרמטרי header ו-cookie מתעלמים; רק פרמטרי `path` ו-`query` נרשמים. (REQ-555) [tool-verified: `provisa/openapi/mapper.py:144–158`]
 - פתירת `$ref` ברמת ה-spec היא רמה אחת עמוקה עבור סכמות תכונה; הפניות רכיב מקוננות-עמוק עשויות לא להיפתר. [tool-verified: `provisa/openapi/mapper.py:51–60`]

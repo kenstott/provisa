@@ -7,7 +7,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Cláusulas
 
 | Cláusula | Estado | Notas |
-|--------|--------|-------|
+| -------- | -------- | ------- |
 | `MATCH (n:Label)` | ✓ | Patrones de nodo con etiquetas, variables, propiedades en línea |
 | `OPTIONAL MATCH` | ✓ | Emite LEFT JOIN |
 | `WHERE` | ✓ | Compatibilidad completa de expresiones; se aplica después de MATCH |
@@ -27,7 +27,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Patrones de coincidencia
 
 | Patrón | Estado | Notas |
-|---------|--------|-------|
+| --------- | -------- | ------- |
 | `(n)` — nodo sin etiqueta | ✓ | UNION ALL sobre todos los tipos conocidos |
 | `(n:Label)` | ✓ | Se asigna a la tabla registrada para ese tipo GraphQL |
 | `(n:Label {prop: val})` | ✓ | El filtro de propiedad en línea se convierte en WHERE |
@@ -45,7 +45,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Expresiones y predicados
 
 | Funcionalidad | Estado | Asignación SQL |
-|---------|--------|------------|
+| --------- | -------- | ------------ |
 | Acceso a propiedad `n.prop` | ✓ | `n."prop"` |
 | Parámetros `$name` | ✓ | Posicional `$N` |
 | Parámetros heredados `{name}` | ✓ | Normalizado a `$name` en el momento del análisis |
@@ -72,7 +72,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Proyecciones de mapa
 
 | Sintaxis | Asignación SQL |
-|--------|------------|
+| -------- | ------------ |
 | `n { .prop1, .prop2 }` | `MAP(ARRAY['prop1','prop2'], ARRAY[n."prop1",n."prop2"])` |
 | `n { .* }` | `MAP(ARRAY[all props...], ARRAY[n."col",...])` — expandido desde el esquema |
 | `n { .*, extra: expr }` | Todas las propiedades del esquema más la clave nombrada; MAP combinado |
@@ -81,7 +81,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Funciones de agregación
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `count(*)`, `count(x)` | directa |
 | `count(DISTINCT x)` | `count(DISTINCT x)` |
 | `collect(x)` | `array_agg(x)` |
@@ -94,7 +94,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Funciones de cadena
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `toLower(x)` | `lower(x)` |
 | `toUpper(x)` | `upper(x)` |
 | `ltrim(x)`, `rtrim(x)`, `trim(x)` | directa |
@@ -110,7 +110,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Funciones de conversión de tipos
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `toString(x)` | `CAST(x AS VARCHAR)` |
 | `toInteger(x)` | `TRY_CAST(x AS BIGINT)` |
 | `toFloat(x)` | `TRY_CAST(x AS DOUBLE)` |
@@ -120,7 +120,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Funciones matemáticas
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `log(x)` | `ln(x)` (logaritmo natural) |
 | `log2(x)` | `log2(x)` |
 | `range(start, end)` | `sequence(start, end)` |
@@ -129,7 +129,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Funciones de lista
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `head(list)` | `element_at(list, 1)` |
 | `last(list)` | `element_at(list, -1)` |
 | `tail(list)` | `slice(list, 2, cardinality(list))` |
@@ -138,7 +138,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Comprensiones de lista
 
 | Sintaxis | Asignación SQL |
-|--------|------------|
+| -------- | ------------ |
 | `[x IN list \| f(x)]` | `transform(list, x -> f(x))` |
 | `[x IN list WHERE p(x)]` | `filter(list, x -> p(x))` |
 | `[x IN list WHERE p(x) \| f(x)]` | `transform(filter(list, x -> p(x)), x -> f(x))` |
@@ -151,13 +151,14 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 ### Comprensiones de patrón
 
 | Sintaxis | Asignación SQL |
-|--------|------------|
+| -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
 | `[(a)-[]->(b:Label) \| b.prop]` | tipo inferido a partir de la capa semántica; misma forma de subconsulta ARRAY |
 
 ### Subconsultas CALL correlacionadas
 
 `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` se traduce a `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) Reglas:
+
 - La variable de ámbito externo (`x`) debe aparecer en `WITH`
 - Se admiten varias variables importadas (`WITH a, b`)
 - La primera relación en el MATCH interno cuyo origen es una variable ligada por lateral determina el `FROM` interno y la condición de unión
@@ -170,7 +171,7 @@ Provisa traduce un subconjunto de openCypher a SQL mediante el módulo `provisa/
 Cypher admite tres patrones de escritura a través del endpoint `/data/cypher`, ejecutados por `provisa/cypher/write_translator.py`. (REQ-818) [tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
 
 | Cypher | SQL | Req |
-|--------|-----|-----|
+| -------- | ----- | ----- |
 | `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` | REQ-666 |
 | `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` | REQ-667 |
 | `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` | REQ-668 |

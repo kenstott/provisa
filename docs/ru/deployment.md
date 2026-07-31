@@ -54,7 +54,7 @@ Provisa поддерживает шесть путей развёртывани�
 - Запускает dev-сервер UI Vite на порту 3000 (REQ-559)
 - Печатает URL и ждёт; Ctrl+C останавливает всё и разбирает compose
 
-```
+```yaml
 Backend: http://localhost:8001
 UI:      http://localhost:3000
 ```
@@ -71,13 +71,17 @@ UI:      http://localhost:3000
 
 1. Установите [Docker Desktop](https://docs.docker.com/get-docker/)
 2. Запустите базовые сервисы:
+
    ```bash
    docker compose -f docker-compose.core.yml up -d
    ```
+
 3. Запустите API:
+
    ```bash
    uvicorn main:app --reload --port 8001
    ```
+
 4. Проверьте: `curl http://localhost:8001/health`
 
 ### Полный стек (Provisa в контейнере)
@@ -129,7 +133,7 @@ OTLP/HTTP, который записывает трассировки, метр�
 бэкенд с помощью `PROVISA_OPS_DB_URL`:
 
 | `PROVISA_OPS_DB_URL` | Бэкенд | Примечания |
-|---|---|---|
+| --- | --- | --- |
 | *(не задан)* | выделенная DuckDB под `~/.provisa/telemetry/` | по умолчанию; без сервера, без Docker |
 | `clickhouse+native://user@host/otel` | ClickHouse | приём с высокой скоростью с автоматическими фоновыми слияниями |
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | умеренный объём |
@@ -166,6 +170,7 @@ Trino перекатывает сырые файлы в живые таблиц�
 2. Откройте DMG и перетащите **Provisa.app** в `/Applications`
 3. Дважды щёлкните **Provisa.app** — настройка при первом запуске выполняется один раз; мастер предлагает выбор движка, наблюдаемости и демо выше (REQ-1007)
 4. Откройте терминал:
+
    ```bash
    provisa start    # start all services
    provisa status   # confirm all services are running
@@ -192,7 +197,8 @@ Trino перекатывает сырые файлы в живые таблиц�
 2. Запустите установщик — права администратора не требуются; устанавливает в `%LOCALAPPDATA%\Programs\Provisa\`
 3. Откройте **Provisa First Launch** из меню Пуск — нативная настройка выполняется один раз и печатает руководство по следующим шагам для слоистых дополнений (REQ-1005)
 4. Откройте новый терминал:
-   ```
+
+   ```text
    provisa status
    provisa open
    ```
@@ -230,13 +236,17 @@ Trino перекатывает сырые файлы в живые таблиц�
 
 1. Скачайте `Provisa.AppImage` со [страницы релизов GitHub](https://github.com/provisa/provisa/releases) и перенесите на целевую машину
 2. Сделайте его исполняемым:
+
    ```bash
    chmod +x Provisa.AppImage
    ```
+
 3. Запустите настройку первого запуска:
+
    ```bash
    ./Provisa.AppImage
    ```
+
 4. Мастер настройки спрашивает:
    - **Роль** → выберите `primary`
    - **Бюджет RAM** → объём RAM для выделения (0 = вся доступная); определяет количество воркеров Trino
@@ -244,6 +254,7 @@ Trino перекатывает сырые файлы в живые таблиц�
    - **Порт API** → по умолчанию `8000` (REQ-560)
 5. Настройка загружает все образы контейнеров (~2–5 минут), записывает конфигурацию и запускает сервисы
 6. Проверьте:
+
    ```bash
    provisa status
    curl http://localhost:8000/health
@@ -267,16 +278,19 @@ Trino перекатывает сырые файлы в живые таблиц�
    | 8000 | Provisa API |
 
 3. Сделайте исполняемым и запустите:
+
    ```bash
    chmod +x Provisa.AppImage
    ./Provisa.AppImage
    ```
+
 4. Мастер настройки спрашивает:
    - **Роль** → выберите `primary`
    - **Бюджет RAM**, **имя хоста**, **порт API** → отвечайте как для одного узла
 5. После завершения настройки запишите **приватный IP** этой машины — он понадобится вторичным узлам
 6. Мастер печатает блок upstream nginx — сохраните его для конфигурации вашего балансировщика нагрузки
 7. Проверьте:
+
    ```bash
    provisa status
    curl http://localhost:8000/health
@@ -290,24 +304,30 @@ Trino перекатывает сырые файлы в живые таблиц�
 
 1. Скачайте и перенесите `Provisa.AppImage` на вторичную машину
 2. Убедитесь, что вторичный узел может достичь первичного:
+
    ```bash
    curl http://<primary-ip>:8000/health
    ```
+
 3. Сделайте исполняемым и запустите:
+
    ```bash
    chmod +x Provisa.AppImage
    ./Provisa.AppImage
    ```
+
 4. Мастер настройки спрашивает:
    - **Роль** → выберите `secondary`
    - **IP первичного узла** → введите IP первичного узла (связность проверяется вживую)
    - **Бюджет RAM**, **имя хоста**, **порт API** → отвечайте как выше
 5. Настройка загружает уменьшенный набор образов (без PostgreSQL, PgBouncer, MinIO, Redis — они работают только на первичном) (REQ-561), запускает Provisa API и воркер движка федерации
 6. Проверьте:
+
    ```bash
    provisa status
    curl http://localhost:8000/health
    ```
+
 7. Добавьте этот узел в upstream вашего балансировщика нагрузки
 
 ---
@@ -373,6 +393,7 @@ Trino перекатывает сырые файлы в живые таблиц�
 1. Скачайте `Provisa.AppImage` со [страницы релизов GitHub](https://github.com/provisa/provisa/releases)
 
 2. Загрузите его в бакет S3 в вашей учётной записи AWS:
+
    ```bash
    aws s3 cp Provisa.AppImage s3://<your-bucket>/releases/Provisa.AppImage
    ```
@@ -385,6 +406,7 @@ Trino перекатывает сырые файлы в живые таблиц�
 4. (Опционально) Если вам нужен доступ по SSH к узлам, создайте пару ключей EC2 в целевом регионе и запомните имя пары ключей
 
 5. Запустите обёртку развёртывания:
+
    ```bash
    bash terraform/deploy.sh
    ```
@@ -394,7 +416,8 @@ Trino перекатывает сырые файлы в живые таблиц�
 7. Просмотрите сводку развёртывания и подтвердите
 
 8. Terraform разворачивает всю инфраструктуру (~5–10 минут). После apply скрипт печатает:
-   ```
+
+   ```text
    api_endpoint      = "http://<alb-dns>:8000"
    flight_endpoint   = "<nlb-dns>:8815"
    primary_ip        = "10.0.x.x"
@@ -406,6 +429,7 @@ Trino перекатывает сырые файлы в живые таблиц�
 9. (Опционально) Направьте записи DNS на имена DNS ALB и NLB
 
 10. Проверьте:
+
     ```bash
     curl http://<api_endpoint>/health
     ```
@@ -479,6 +503,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 ### Шаги
 
 1. Подтвердите доступ к кластеру:
+
    ```bash
    kubectl cluster-info
    ```
@@ -506,6 +531,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    - **Секреты** — передавайте через `--set` для оценки; используйте External Secrets или Vault Agent для продакшена
 
 4. Установите чарт:
+
    ```bash
    helm install provisa helm/provisa/ \
      --set config.pgPassword=<password> \
@@ -516,6 +542,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    ```
 
    При использовании внутреннего реестра добавьте переопределения образов:
+
    ```bash
    --set image.repository=harbor.internal.example.com/provisa/provisa \
    --set image.tag=1.2.3 \
@@ -524,11 +551,13 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    ```
 
 5. Проверьте, что поды запущены:
+
    ```bash
    kubectl get pods -n provisa
    ```
 
 6. Проверьте API:
+
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health

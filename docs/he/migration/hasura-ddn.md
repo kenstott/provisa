@@ -4,7 +4,8 @@
 
 1. פרויקט Hasura DDN עם קבצי HML (סיומת `.hml`).
    לפרויקטי DDN בדרך-כלל יש מבנה ספריות כמו:
-   ```
+
+   ```text
    my-ddn-project/
      app/
        subgraph1/
@@ -17,6 +18,7 @@
      globals/
        ...
    ```
+
 2. Python 3.11+ עם חבילת `provisa` מותקנת.
 
 ## שימוש ב-CLI
@@ -28,13 +30,13 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 ### ארגומנטים
 
 | ארגומנט | נדרש | תיאור |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `hml_dir` | כן | נתיב לספריית פרויקט DDN HML (נסרקת רקורסיבית עבור קבצי `.hml`) |
 
 ### אפשרויות
 
 | אפשרות | ברירת מחדל | תיאור |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | נתיב קובץ YAML של פלט |
 | `--source-overrides FILE` | None | קובץ YAML עם דריסות חיבור לכל-מקור |
 | `--domain-map KEY=VAL ...` | None | מיפויי subgraph-לדומיין (למשל `app=core analytics=reporting`) |
@@ -57,7 +59,7 @@ my_pg_connector:
 ## מטריצת שוויון תכונות
 
 | סוג DDN | שווה-ערך Provisa | הערות |
-|---|---|---|
+| --- | --- | --- |
 | **DataConnectorLink** | `sources[]` | סוג מקור נגזר מ-URL המחבר (postgres, mysql, mssql, mongo, clickhouse, snowflake, bigquery). פרטי חיבור ברירת-מחדל ל-placeholders; השתמשו ב-`--source-overrides` כדי להגדיר ערכים ממשיים. |
 | **ObjectType** | הגדרות עמודה על `tables[]` | שדות הופכים לעמודות. `dataConnectorTypeMapping.fieldMapping` פותר שמות שדה GraphQL לשמות עמודה פיזיים. |
 | **Model** | `tables[]` | כל Model מייצר טבלה אחת. `source_id` מהמחבר, `table_name` מה-collection. `graphql_type_name` הופך ל-`alias`. Subgraph (וכך `domain_id`) נגזר ממבנה הספריה של הקובץ: רכיב הספרייה הראשון תחת שורש הפרויקט. |

@@ -4,9 +4,11 @@
 
 1. Uma instância Hasura v2 em execução (v2.x) com metadados exportados.
 2. Exporte os metadados usando a CLI do Hasura:
+
    ```bash
    hasura metadata export --endpoint http://localhost:8080
    ```
+
    Isso cria um diretório `metadata/` contendo `sources.yaml`, `actions.yaml`,
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, etc.
 3. Python 3.11+ com o pacote `provisa` instalado.
@@ -20,13 +22,13 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ### Argumentos
 
 | Argumento | Obrigatório | Descrição |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `metadata_dir` | Sim | Caminho para o diretório de metadados Hasura v2 exportado |
 
 ### Opções
 
 | Opção | Padrão | Descrição |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | Caminho do arquivo YAML de saída |
 | `--source-overrides FILE` | Nenhum | Arquivo YAML com overrides de conexão por fonte |
 | `--domain-map KEY=VAL ...` | Nenhum | Mapeamentos de esquema-para-domínio (ex.: `public=core hr=people`) |
@@ -58,7 +60,7 @@ Um arquivo estilo `.env` contendo a config de auth do Hasura a converter. O conv
 ## Matriz de Paridade de Recursos
 
 | Recurso Hasura v2 | Equivalente Provisa | Notas |
-|---|---|---|
+| --- | --- | --- |
 | **Sources** (postgres, mysql, mssql, bigquery, citus) | `sources[]` | Kind mapeado: pg/postgres -> postgresql, mssql -> sqlserver. URL de conexão analisada em host/porta/banco de dados/usuário/senha. Configurações de pool preservadas. |
 | **Tables** (tabelas rastreadas) | `tables[]` | Esquema + nome de tabela preservados. `source_id` liga à fonte. |
 | **Nomes de tabela customizados** (`custom_name`, `custom_root_fields.select`) | `tables[].alias` | Primeiro não-nulo de `select`, `select_by_pk`, `custom_name`. |

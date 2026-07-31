@@ -10,7 +10,7 @@ Provisa 公開一個 PostgreSQL 網絡協定（pgwire）端點。任何支援 Po
 
 當 `PROVISA_PGWIRE_PORT` 設定為非零整數時，伺服器便會啟動。預設為停用狀態。（REQ-527）[tool-verified: `app.py:1739`]
 
-```
+```yaml
 Host: 0.0.0.0  (all interfaces)
 Port: $PROVISA_PGWIRE_PORT
 ```
@@ -26,7 +26,7 @@ Port: $PROVISA_PGWIRE_PORT
 兩種模式，由 `auth_config` 中的 `provider` 鍵控制：
 
 | 模式 | `provider` 值 | 行為 |
-|------|-----------------|-----------|
+| ------ | ----------------- | ----------- |
 | Trust | `none`（或驗證中介軟件未啟用） | 客戶端傳送的用戶名會直接用作 `role_id`。密碼會被忽略。 |
 | Simple | `simple` | 密碼會對照 `simple` 驗證提供者（bcrypt）進行驗證。成功後用戶名會成為 `role_id`。（REQ-124） |
 
@@ -57,7 +57,7 @@ DDL 陳述式由 `server.py` 中的正則表達式偵測，並派送至 `DdlHand
 
 可識別的 DDL 形式為：
 
-```
+```sql
 CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
 ALTER TABLE / INDEX / SEQUENCE / VIEW
 DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
@@ -122,6 +122,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEAL
 `pg_index` 會就每個主索引鍵及 UNIQUE 約束填充一行（`indrelid` = 資料表 oid，`indkey` = 已排序的鍵值 attnum，`indisprimary`/`indisunique` 已設定）。透過 `pg_index.indkey` 而非 `pg_constraint` 解析鍵值欄位的客戶端——例如 DataGrip——會透過標準的 `pg_index` → `pg_attribute` 連接找出正確的欄位。（REQ-1095）[tool-verified: `catalog_constraints.py:340-384`]
 
 以下純量表達式亦會被攔截：（REQ-588）
+
 - `current_user`、`session_user` → 已驗證的 `role_id`
 - `current_database()` → `"provisa"`
 - `current_schema()` → `"public"`
@@ -139,7 +140,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEAL
 擴展查詢協定（Bind/Execute）支援以二進制編碼的參數。（REQ-589）以下類型 OID 會從二進制解碼：[tool-verified: `postgres.py:69-97`]
 
 | OID | PG 類型 | Python 類型 |
-|-----|---------|-------------|
+| ----- | --------- | ------------- |
 | 16 | bool | bool |
 | 17 | bytea | bytes |
 | 20 | int8 | int |
@@ -167,7 +168,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEAL
 
 **JDBC（PostgreSQL JDBC 驅動程式）。** 適用於 Java 生態系統工具：DBeaver、Tableau、Power BI、Metabase、Airflow 的 JDBC 運算子。JDBC 預設使用簡單查詢協定，可避免二進制編碼帶來的複雜情況。連接字串：
 
-```
+```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 

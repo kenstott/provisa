@@ -7,11 +7,13 @@ Provisa puede convertir metadatos existentes de Hasura en un `config.yaml` de Pr
 ### Exportar metadatos
 
 Desde su consola o CLI de Hasura:
+
 ```bash
 hasura metadata export --output metadata.yaml
 ```
 
 O use la API de Hasura:
+
 ```bash
 curl -X POST http://localhost:8080/v1/metadata \
   -H "X-Hasura-Admin-Secret: <secret>" \
@@ -32,7 +34,7 @@ Omita `-o` para escribir el config en stdout.
 Flags:
 
 | Flag | Propósito |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Ruta del YAML de salida (por defecto: stdout) |
 | `--source-overrides` | Archivo YAML con overrides de conexión por origen (host, puerto, credenciales) |
 | `--domain-map` | Mapeos de esquema a dominio como pares `SCHEMA=DOMAIN` |
@@ -42,7 +44,7 @@ Flags:
 ### Qué se convierte
 
 | Concepto de Hasura | Equivalente en Provisa |
-|---------------|-------------------|
+| --------------- | ------------------- |
 | Tabla rastreada | `tables[]` con `publish: true` |
 | Relación de objeto | `relationships[]` con `cardinality: many-to-one` |
 | Relación de array | `relationships[]` con `cardinality: one-to-many` |
@@ -79,7 +81,7 @@ Omita `-o` para escribir el config en stdout.
 Flags:
 
 | Flag | Propósito |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Ruta del YAML de salida (por defecto: stdout) |
 | `--source-overrides` | Archivo YAML con overrides de conexión por origen |
 | `--domain-map` | Mapeos de subgraph a dominio como pares `SUBGRAPH=DOMAIN` |
@@ -91,7 +93,7 @@ Los metadatos de `AggregateExpression` se preservan en un archivo complementario
 ### Qué se convierte
 
 | Concepto de DDN | Equivalente en Provisa |
-|------------|-------------------|
+| ------------ | ------------------- |
 | Modelo de subgraph | `tables[]` bajo un origen |
 | Relación | `relationships[]` |
 | Regla de permiso | Filtro RLS |

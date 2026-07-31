@@ -33,6 +33,7 @@ A view always belongs to a single domain — there is only one view type, always
 - **Local derivation** — the source is same-domain. The view derives new or calculated data from existing domain assets. New or derived data may only exist as a view.
 
 A view may reference:
+
 - Claimed tables within the same domain
 - Fields imported from another domain under a field access grant
 - One other view within the same domain, where the variation is purposeful: field restriction, aggregation, or enrichment via an additional join
@@ -40,6 +41,7 @@ A view may reference:
 Composition depth is not technically enforced — steward judgment during HITL review is the quality control mechanism.
 
 Every view carries a declared business purpose, stated at creation time:
+
 - Part of the governed artifact — stewards approve knowing what the view is for
 - Referenced by access requests under Principle 7 so the steward can assess fit
 - Travels from view creation through the full governance workflow
@@ -53,6 +55,7 @@ A Query traverses approved relationship paths over domain assets. Unlike Views, 
 **No approval required:** Governance happens upstream — at the Relationship and column visibility layers. If a user has access to the columns and the traversal path is approved, the Query is valid usage. No additional gate.
 
 **Distinction from Views:**
+
 - Views: intradomain, introduce new semantic meaning, steward-curated
 - Queries: traverse approved relationships, no new semantics, no approval gate
 
@@ -61,7 +64,7 @@ A Query traverses approved relationship paths over domain assets. Unlike Views, 
 Each supported language surfaces the domain as a structural namespace native to that language:
 
 | Language | Domain expression | Example |
-|---|---|---|
+| --- | --- | --- |
 | GraphQL | Type and field name prefix | `type sales__Order { ... }`, `query { sales__orders { ... } }` |
 | SQL | Schema name | `SELECT * FROM sales.orders` |
 | Cypher | Additional node label (domain only required when type name is ambiguous) | `MATCH (o:Sales:Order)` |
@@ -73,6 +76,7 @@ The compiler resolves domain membership from these structural positions — no a
 A relationship is an approved traversal path between two assets. Domain boundaries are irrelevant to what a relationship is — they only determine who approves it.
 
 **Approval:**
+
 - Approval is required from every distinct steward who owns an asset involved in the relationship
 - If one steward owns both assets, one approval is required. If two stewards are involved, two approvals are required
 - There is no intradomain/cross-domain classification — ownership determines the approval burden naturally
@@ -87,6 +91,7 @@ Relationships are created by demand, not speculatively. The first team with the 
 A field access grant is a domain-to-domain permission — Domain A may use specific fields from Domain B in its views.
 
 **Grant lifecycle:**
+
 - Prompted by view creation when foreign fields are identified as needed
 - Approved once by the target domain steward
 - Belongs to the requesting domain, not to the view that prompted it
@@ -94,6 +99,7 @@ A field access grant is a domain-to-domain permission — Domain A may use speci
 - Additional ungranated fields require a new request
 
 **Post-use notification:** When a view is created using granted fields, the source steward is notified — not asked to approve. The notification includes the view name, declared business purpose, specific fields used, and which steward approved it. This gives the source steward:
+
 - **Visibility** — awareness of how their data is being used
 - **Oversight** — grounds to raise a concern if usage looks inappropriate
 - **Recourse** — ability to revoke the grant, invalidating dependent views
@@ -105,6 +111,7 @@ The tradeoff: the source domain approves field access without knowing every futu
 Three stages, in order.
 
 **Stage 1 — Shaping (SQL discovery, from the Relationships page):**
+
 - Analyst opens the Shaping tool from the Relationships page to explore potential join paths in raw SQL
 - SQL is run against accessible data, subject to existing RLS and column masking
 - JOINs in the SQL are parsed and surfaced as candidate Relationship proposals
@@ -112,11 +119,13 @@ Three stages, in order.
 - Analyst selects candidates to promote to a formal Relationship request
 
 **Stage 2 — Relationship approval** (consequential — structural and permanent):
+
 - Raised to every distinct steward who owns an asset involved in the relationship
 - Is this a legitimate traversal path? Is the join semantically valid?
 - All implicated stewards must approve; relationship becomes a permanent catalog entry
 
 **Stage 3 — Query creation:**
+
 - Analyst builds the Query in any supported language (SQL, GraphQL, Cypher), traversing approved relationship paths
 - Only approved catalog relationships are traversable — the compiler enforces this structurally
 - No approval required — column visibility and relationship approval are the only gates
@@ -126,6 +135,7 @@ Three stages, in order.
 Technical rules handle what is objective — field provenance tracking, domain boundary enforcement, compiler validation. Contextual judgment stays with the steward. Constraints such as view composition depth, per-query purpose requirements, and relationship approval decisions are HITL concerns, not compiler-enforced rules.
 
 **Source domain neutrality:** The source domain steward approves the relationship once and the field grant once. After that, downstream domains operate within those granted boundaries:
+
 - **High consideration** at the boundary-crossing decision
 - **Lightweight awareness** thereafter via notifications and query history
 
@@ -138,7 +148,7 @@ Technical rules handle what is objective — field provenance tracking, domain b
 Discovery is structured across five tiers of increasing governance. Each tier is a prerequisite for the next.
 
 | Tier | Description | Governance state |
-|---|---|---|
+| --- | --- | --- |
 | 1 — Registered source schema | Every table, column, and type from a registered source. Admin-level visibility. | None — raw inventory |
 | 2 — Unclaimed tables | Tables introspected from registered sources with no domain owner. Visible to stewards with source access. | Available but ungoverned |
 | 3 — Domain assets | Claimed tables and steward-defined views. Fully governed, owned, catalog-visible. | Fully governed |
@@ -152,6 +162,7 @@ An unclaimed table is a gap signal — if needed data exists only at Tier 2, a s
 FK constraints are a source-level construct — they cannot span data sources. Cross-source join paths are derived entirely from approved catalog relationships (Tier 4), which are stronger, having been validated by both stewards.
 
 Within a source:
+
 - FK constraints are surfaced automatically as candidate relationships on source registration
 - They represent explicit modeling intent — unenforced in most analytical SQL systems but purposefully declared
 - Steward validation is still required before a candidate becomes an approved relationship
@@ -159,7 +170,7 @@ Within a source:
 ### Relationship Confidence Hierarchy
 
 | Evidence | Confidence |
-|---|---|
+| --- | --- |
 | Approved catalog relationship — cross-source, validated by both stewards | Highest |
 | Intra-source FK constraint — explicit modeling intent, unenforced but purposeful | High |
 | Intra-source semantic inference — column name/type similarity within a consistent schema | Medium |
@@ -170,6 +181,7 @@ Suggestions corroborated by multiple evidence types accumulate confidence.
 ### Data Probing and Correlation
 
 For semantically inferred candidates, data probing provides a validation step:
+
 - **Value overlap** — proportion of source column values that appear in the target column
 - **Cardinality** — whether distribution matches the expected relationship type
 - **Null rate** — proportion of source column that is null, indicating optionality
@@ -181,6 +193,7 @@ High correlation raises confidence; low correlation suppresses or demotes the ca
 The LLM operates across all five tiers simultaneously, suggesting relationships, candidate claims, and traversal paths ranked by confidence.
 
 **What the LLM surfaces:**
+
 - Candidate relationships ranked by confidence
 - Unclaimed tables that may satisfy a data need, with a prompt to initiate claiming
 - Absence of any candidate — signal to escalate to admin
@@ -190,6 +203,7 @@ The LLM operates across all five tiers simultaneously, suggesting relationships,
 The analyst provides a natural language description and optional constraints. The LLM produces a suggested view structure.
 
 *Input:*
+
 - Business description: entities, metrics, relationships, intent
 - Optional constraints: filters, time windows, aggregations, excluded fields, sensitivity restrictions
 
@@ -197,6 +211,7 @@ The analyst provides a natural language description and optional constraints. Th
 > "Daily trade volumes by counterparty for the last 30 days, active counterparties only, showing counterparty legal name and credit rating. No PII."
 
 *LLM process:*
+
 1. Parse — identify entities, metrics, dimensions, filters, exclusions
 2. Search — all catalog tiers for matching assets
 3. Suggest — domain assets, relationships, fields, aggregation structure
@@ -205,6 +220,7 @@ The analyst provides a natural language description and optional constraints. Th
 6. Gaps — entities or fields with no candidate in any tier, flagged for admin escalation
 
 *Output:*
+
 - Draft query for analyst review and refinement
 - Per-component confidence scores
 - Ordered prerequisite list
@@ -243,5 +259,6 @@ The log is append-only (DELETE and UPDATE blocked at the database level) and ind
 The steward's query history report is an aggregated view over this log, filterable by asset, role, and time window. The catalog is a live governance instrument — stewards maintain awareness of how their assets are used as it happens, not after the fact.
 
 **Two visibility mechanisms:**
+
 - **Push** — post-use notifications for structural acts (a new view was created using your fields)
 - **Pull** — query history for runtime usage patterns

@@ -5,7 +5,8 @@ Admin API 是一個 Strawberry GraphQL 端點，位於 `POST /admin/graphql`（R
 ## 驗證
 
 使用 Provisa 的標準驗證提供者（REQ-120），在 `Authorization` 標頭中傳遞您的憑證：
-```
+
+```yaml
 Authorization: Bearer <token>
 ```
 
@@ -16,12 +17,14 @@ Authorization: Bearer <token>
 ### 設定管理
 
 下載目前執行中的設定（REQ-164）：
-```
+
+```http
 GET /admin/config
 ```
 
 以 YAML 檔案形式傳回完整的 `config.yaml`。上載新的設定（REQ-164）：
-```
+
+```http
 PUT /admin/config
 ```
 
@@ -30,7 +33,8 @@ Provisa 會驗證 YAML、重新載入目錄，並重新產生結構描述 (Schem
 ### 執行階段設定
 
 在不編輯設定檔的情況下讀取及寫入執行階段平台設定（REQ-165）：
-```
+
+```http
 GET  /admin/settings
 PUT  /admin/settings
 ```
@@ -38,13 +42,15 @@ PUT  /admin/settings
 設定範圍涵蓋大型結果重新導向、預設取樣及行數限制、回應快取的 TTL、命名慣例、關聯外部索引鍵的自動追蹤、具體化儲存區的 DSN、聯邦引擎記憶體（`jvm_heap_gb`、`query_max_memory`、`query_max_memory_per_node`、`query_max_total_memory`、`fault_tolerant_execution`、`fault_tolerant_task_memory`、`exchange_spool_dir`），以及整個 OpenTelemetry 追蹤管線的調校範圍（REQ-1082）。同時亦提供遠端 GraphQL 走訪限制及暖層／讀取快取設定（REQ-1081、REQ-1083）。
 
 安全狀態 — `security.mode`（`standard` | `high`）— 於重新啟動時套用（REQ-1079）：
-```
+
+```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
 AI 模型指派、嵌入／向量模型登錄，以及自然語言速率限制 — 於重新啟動時套用（REQ-1080）：
-```
+
+```http
 GET  /admin/ai-models
 PUT  /admin/ai-models
 ```
@@ -56,6 +62,7 @@ PUT  /admin/ai-models
 ### 關聯編輯器
 
 列出關聯（REQ-166）：
+
 ```graphql
 query {
   relationships {
@@ -71,6 +78,7 @@ query {
 ```
 
 建立關聯（REQ-019）：
+
 ```graphql
 mutation {
   upsertRelationship(input: {
@@ -107,6 +115,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
 ### 結構描述內省
 
 瀏覽所有數據來源中已發佈的資料表（REQ-008）：
+
 ```graphql
 query {
   tables {
@@ -124,6 +133,7 @@ query {
 ### 檢視管理
 
 註冊具體化檢視（REQ-133、REQ-135）：
+
 ```graphql
 mutation {
   registerTable(input: {
@@ -137,6 +147,7 @@ mutation {
 ```
 
 觸發手動重新整理（REQ-135）：
+
 ```graphql
 mutation {
   refreshMv(mvId: "orders-with-customers") {
@@ -150,6 +161,7 @@ mutation {
 Neo4j 及 SPARQL 數據來源透過 REST 端點註冊（並非 GraphQL 管理員 API）（REQ-295、REQ-297）：
 
 **Neo4j：**
+
 ```bash
 # 1. Register the Neo4j source
 curl -X POST http://localhost:8001/admin/sources/neo4j \
@@ -168,6 +180,7 @@ curl -X POST http://localhost:8001/admin/sources/neo4j/graph/tables \
 ```
 
 **SPARQL：**
+
 ```bash
 # 1. Register the SPARQL source
 curl -X POST http://localhost:8001/admin/sources/sparql \

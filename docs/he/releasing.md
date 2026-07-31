@@ -5,7 +5,7 @@
 ## מוסכמות תגיות
 
 | פורמט תגית | ערוץ | סוג GitHub Release |
-|-----------|---------|-------------------|
+| ----------- | --------- | ------------------- |
 | `v1.2.3-alpha.1` | alpha | Pre-release |
 | `v1.2.3-beta.1` | beta | Pre-release |
 | `v1.2.3-rc.1` | rc | Pre-release |
@@ -45,7 +45,7 @@ git tag v1.2.3 && git push origin v1.2.3
 כל שחרור מפרסם את ה-assets הבאים, כולם מצורפים ל-GitHub Release (ה-wheel הולך גם ל-PyPI):
 
 | Asset | פלטפורמה / שימוש |
-|-------|----------------|
+| ------- | ---------------- |
 | `Provisa-<tag>-macOS.dmg` | macOS Core (Apple Silicon, air-gapped) |
 | `Provisa-Runtime-<tag>-macOS.dmg` | runtime‏ Python ילידי ל-macOS (מותקן לצד Core) |
 | `Provisa-Obs-<tag>-macOS.dmg` | תוסף Observability ל-macOS |
@@ -76,7 +76,7 @@ git tag v1.2.3 && git push origin v1.2.3
 הגדירו אלה תחת **Settings → Secrets → Actions**:
 
 | Secret | נדרש עבור | תיאור |
-|--------|-------------|-------------|
+| -------- | ------------- | ------------- |
 | `PYPI_API_TOKEN` | פרסום PyPI | טוקן API מ-`~/.pypirc` (מתחיל ב-`pypi-`) |
 | `APPLE_CERT_P12_BASE64` | build-ים חתומים | קובץ תעודת `.p12` מקודד Base64 (ראו למטה) |
 | `APPLE_CERT_P12_PASSWORD` | build-ים חתומים | סיסמה שהוגדרה בעת ייצוא ה-`.p12` מ-Keychain Access |
@@ -93,9 +93,11 @@ build-ים ללא secrets אלה מצליחים אך מייצרים DMG לא-ח�
 2. מצאו את **Developer ID Application: Your Name (TEAMID)** — הרחיבו אותה כדי לאשר שהמפתח הפרטי מקונן מתחת
 3. בחרו הן את התעודה והן את המפתח הפרטי שלה → קליק ימני → **Export 2 Items** → שמרו כ-`.p12` → הגדירו סיסמה חזקה
 4. קודדו ל-Base64 והעתיקו ללוח:
+
    ```bash
    base64 -i YourCert.p12 | pbcopy
    ```
+
 5. הדביקו כערך של `APPLE_CERT_P12_BASE64`; הגדירו את `APPLE_CERT_P12_PASSWORD` לסיסמה משלב 3
 
 ## מציאת שם התעודה שלכם

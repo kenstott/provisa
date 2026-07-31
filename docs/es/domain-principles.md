@@ -33,6 +33,7 @@ Una vista siempre pertenece a un único dominio; solo existe un tipo de vista, s
 - **Derivación local**: el origen es del mismo dominio. La vista deriva datos nuevos o calculados a partir de activos de dominio existentes. Los datos nuevos o derivados solo pueden existir como una vista.
 
 Una vista puede hacer referencia a:
+
 - Tablas reclamadas dentro del mismo dominio
 - Campos importados de otro dominio bajo una concesión de acceso a campos
 - Otra vista dentro del mismo dominio, cuando la variación tiene un propósito: restricción de campos, agregación o enriquecimiento mediante una unión adicional
@@ -40,6 +41,7 @@ Una vista puede hacer referencia a:
 La profundidad de composición no se aplica técnicamente; el criterio del steward durante la revisión HITL es el mecanismo de control de calidad.
 
 Toda vista lleva un propósito de negocio declarado, indicado en el momento de la creación:
+
 - Forma parte del artefacto gobernado: los stewards aprueban sabiendo para qué sirve la vista
 - Se hace referencia a él en las solicitudes de acceso bajo el Principio 7, para que el steward pueda evaluar la idoneidad
 - Se transmite desde la creación de la vista a lo largo de todo el flujo de trabajo de gobierno
@@ -53,6 +55,7 @@ Una consulta (Query) recorre rutas de relación aprobadas sobre activos de domin
 **No se requiere aprobación:** el gobierno ocurre previamente, en las capas de Relación y visibilidad de columnas. Si un usuario tiene acceso a las columnas y la ruta de recorrido está aprobada, la consulta es un uso válido. No hay control adicional.
 
 **Diferencia con las vistas:**
+
 - Vistas: intradominio, introducen nuevo significado semántico, curadas por el steward
 - Consultas: recorren relaciones aprobadas, sin nueva semántica, sin control de aprobación
 
@@ -61,7 +64,7 @@ Una consulta (Query) recorre rutas de relación aprobadas sobre activos de domin
 Cada lenguaje admitido expresa el dominio como un espacio de nombres estructural nativo de ese lenguaje:
 
 | Lenguaje | Expresión del dominio | Ejemplo |
-|---|---|---|
+| --- | --- | --- |
 | GraphQL | Prefijo del nombre de tipo y campo | `type sales__Order { ... }`, `query { sales__orders { ... } }` |
 | SQL | Nombre de esquema | `SELECT * FROM sales.orders` |
 | Cypher | Etiqueta de nodo adicional (el dominio solo es necesario cuando el nombre de tipo es ambiguo) | `MATCH (o:Sales:Order)` |
@@ -73,6 +76,7 @@ El compilador resuelve la pertenencia al dominio a partir de estas posiciones es
 Una relación es una ruta de recorrido aprobada entre dos activos. Los límites de dominio son irrelevantes para lo que es una relación; solo determinan quién la aprueba.
 
 **Aprobación:**
+
 - Se requiere la aprobación de cada steward distinto que posea un activo involucrado en la relación
 - Si un steward posee ambos activos, se requiere una aprobación. Si están involucrados dos stewards, se requieren dos aprobaciones
 - No existe una clasificación intradominio/entre dominios: la propiedad determina de forma natural la carga de aprobación
@@ -87,6 +91,7 @@ Las relaciones se crean por demanda, no de forma especulativa. El primer equipo 
 Una concesión de acceso a campos es un permiso de dominio a dominio: el Dominio A puede usar campos específicos del Dominio B en sus vistas.
 
 **Ciclo de vida de la concesión:**
+
 - Se origina cuando la creación de una vista identifica campos externos necesarios
 - Se aprueba una vez, por el steward del dominio destino
 - Pertenece al dominio solicitante, no a la vista que la originó
@@ -94,6 +99,7 @@ Una concesión de acceso a campos es un permiso de dominio a dominio: el Dominio
 - Los campos adicionales no concedidos requieren una nueva solicitud
 
 **Notificación posterior al uso:** cuando se crea una vista usando campos concedidos, se notifica al steward de origen, sin pedirle aprobación. La notificación incluye el nombre de la vista, el propósito de negocio declarado, los campos específicos usados y qué steward la aprobó. Esto le da al steward de origen:
+
 - **Visibilidad**: conocimiento de cómo se están usando sus datos
 - **Supervisión**: base para plantear una inquietud si el uso parece inapropiado
 - **Recurso**: capacidad de revocar la concesión, invalidando las vistas dependientes
@@ -105,6 +111,7 @@ La contrapartida: el dominio de origen aprueba el acceso a campos sin conocer ca
 Tres etapas, en orden.
 
 **Etapa 1 — Modelado exploratorio (descubrimiento SQL, desde la página de Relaciones):**
+
 - El analista abre la herramienta de modelado exploratorio desde la página de Relaciones para explorar posibles rutas de unión en SQL sin procesar
 - El SQL se ejecuta contra los datos accesibles, sujeto a la RLS y al enmascaramiento de columnas existentes
 - Las cláusulas JOIN del SQL se analizan y se presentan como propuestas de Relación candidatas
@@ -112,11 +119,13 @@ Tres etapas, en orden.
 - El analista selecciona candidatos para promoverlos a una solicitud formal de Relación
 
 **Etapa 2 — Aprobación de la relación** (consecuente: estructural y permanente):
+
 - Se plantea a cada steward distinto que posea un activo involucrado en la relación
 - ¿Es esta una ruta de recorrido legítima? ¿Es la unión semánticamente válida?
 - Todos los stewards implicados deben aprobar; la relación se convierte en una entrada permanente del catálogo
 
 **Etapa 3 — Creación de la consulta:**
+
 - El analista construye la consulta (Query) en cualquier lenguaje admitido (SQL, GraphQL, Cypher), recorriendo rutas de relación aprobadas
 - Solo son recorribles las relaciones aprobadas del catálogo; el compilador lo aplica de forma estructural
 - No se requiere aprobación: la visibilidad de columnas y la aprobación de relaciones son los únicos controles
@@ -126,6 +135,7 @@ Tres etapas, en orden.
 Las reglas técnicas gestionan lo que es objetivo: el seguimiento de procedencia de campos, la aplicación de límites de dominio, la validación del compilador. El criterio contextual queda en manos del steward. Restricciones como la profundidad de composición de vistas, los requisitos de propósito por consulta y las decisiones de aprobación de relaciones son asuntos de HITL, no reglas aplicadas por el compilador.
 
 **Neutralidad del dominio de origen:** el steward del dominio de origen aprueba la relación una vez y la concesión de campos una vez. Después de eso, los dominios descendentes operan dentro de esos límites concedidos:
+
 - **Alta consideración** en la decisión de cruce de límites
 - **Conocimiento ligero** a partir de entonces, mediante notificaciones e historial de consultas
 
@@ -138,7 +148,7 @@ Las reglas técnicas gestionan lo que es objetivo: el seguimiento de procedencia
 El descubrimiento está estructurado en cinco niveles de gobierno creciente. Cada nivel es un prerrequisito para el siguiente.
 
 | Nivel | Descripción | Estado de gobierno |
-|---|---|---|
+| --- | --- | --- |
 | 1 — Esquema de origen registrado | Toda tabla, columna y tipo de un origen registrado. Visibilidad a nivel de administrador. | Ninguno: inventario sin procesar |
 | 2 — Tablas no reclamadas | Tablas introspeccionadas de orígenes registrados sin propietario de dominio. Visibles para stewards con acceso al origen. | Disponible pero sin gobernar |
 | 3 — Activos de dominio | Tablas reclamadas y vistas definidas por el steward. Totalmente gobernadas, con propietario, visibles en el catálogo. | Totalmente gobernado |
@@ -152,6 +162,7 @@ Una tabla no reclamada es una señal de vacío: si los datos necesarios existen 
 Las restricciones de clave foránea son una construcción a nivel de origen: no pueden abarcar múltiples orígenes de datos. Las rutas de unión entre orígenes se derivan enteramente de relaciones de catálogo aprobadas (Nivel 4), que son más sólidas, al haber sido validadas por ambos stewards.
 
 Dentro de un origen:
+
 - Las restricciones de clave foránea se presentan automáticamente como relaciones candidatas al registrar el origen
 - Representan una intención de modelado explícita, no aplicada en la mayoría de los sistemas SQL analíticos, pero declarada deliberadamente
 - Aun así, se requiere validación del steward antes de que un candidato se convierta en una relación aprobada
@@ -159,7 +170,7 @@ Dentro de un origen:
 ### Jerarquía de confianza de relaciones
 
 | Evidencia | Confianza |
-|---|---|
+| --- | --- |
 | Relación de catálogo aprobada: entre orígenes, validada por ambos stewards | Máxima |
 | Restricción de clave foránea intra-origen: intención de modelado explícita, no aplicada pero deliberada | Alta |
 | Inferencia semántica intra-origen: similitud de nombre/tipo de columna dentro de un esquema consistente | Media |
@@ -170,6 +181,7 @@ Las sugerencias corroboradas por múltiples tipos de evidencia acumulan confianz
 ### Sondeo y correlación de datos
 
 Para los candidatos inferidos semánticamente, el sondeo de datos ofrece un paso de validación:
+
 - **Superposición de valores**: proporción de valores de la columna de origen que aparecen en la columna de destino
 - **Cardinalidad**: si la distribución coincide con el tipo de relación esperado
 - **Tasa de nulos**: proporción de la columna de origen que es nula, lo que indica opcionalidad
@@ -181,6 +193,7 @@ Una correlación alta aumenta la confianza; una correlación baja suprime o degr
 El LLM opera en los cinco niveles simultáneamente, sugiriendo relaciones, reclamos candidatos y rutas de recorrido clasificadas por confianza.
 
 **Lo que presenta el LLM:**
+
 - Relaciones candidatas clasificadas por confianza
 - Tablas no reclamadas que podrían satisfacer una necesidad de datos, con una indicación para iniciar el reclamo
 - Ausencia de cualquier candidato: señal para escalar al administrador
@@ -190,6 +203,7 @@ El LLM opera en los cinco niveles simultáneamente, sugiriendo relaciones, recla
 El analista proporciona una descripción en lenguaje natural y restricciones opcionales. El LLM produce una estructura de vista sugerida.
 
 *Entrada:*
+
 - Descripción de negocio: entidades, métricas, relaciones, intención
 - Restricciones opcionales: filtros, ventanas de tiempo, agregaciones, campos excluidos, restricciones de sensibilidad
 
@@ -197,6 +211,7 @@ El analista proporciona una descripción en lenguaje natural y restricciones opc
 > "Volúmenes de operaciones diarios por contraparte de los últimos 30 días, solo contrapartes activas, mostrando la razón social de la contraparte y la calificación crediticia. Sin PII."
 
 *Proceso del LLM:*
+
 1. Analizar: identificar entidades, métricas, dimensiones, filtros, exclusiones
 2. Buscar: en todos los niveles del catálogo, activos coincidentes
 3. Sugerir: activos de dominio, relaciones, campos, estructura de agregación
@@ -205,6 +220,7 @@ El analista proporciona una descripción en lenguaje natural y restricciones opc
 6. Vacíos: entidades o campos sin candidato en ningún nivel, señalados para escalamiento al administrador
 
 *Salida:*
+
 - Borrador de consulta para revisión y ajuste del analista
 - Puntuaciones de confianza por componente
 - Lista ordenada de prerrequisitos
@@ -243,5 +259,6 @@ El registro es de solo adición (DELETE y UPDATE están bloqueados a nivel de ba
 El informe de historial de consultas del steward es una vista agregada sobre este registro, filtrable por activo, rol y ventana de tiempo. El catálogo es un instrumento de gobierno en vivo: los stewards mantienen conocimiento de cómo se usan sus activos en el momento en que ocurre, no después.
 
 **Dos mecanismos de visibilidad:**
+
 - **Push**: notificaciones posteriores al uso para actos estructurales (se creó una nueva vista usando sus campos)
 - **Pull**: historial de consultas para patrones de uso en tiempo de ejecución

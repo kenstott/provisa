@@ -26,7 +26,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 משפט זה מייצר שלוש עמודות פלט. הגרף עבור `geo_u` נראה כך:
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -48,7 +48,7 @@ orders.region ─╯
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | סוג Node | צבע | משמעות |
-|---|---|---|
+| --- | --- | --- |
 | `source` | ירוק | עמודת טבלת בסיס |
 | `derived` | כחול | מיוצר על ידי ביטוי SQL (פונקציה, אופרטור, CTE) |
 | `command` | סגול | עמודת פלט מ-command רשום |
@@ -89,7 +89,7 @@ and `qualify_outputs` in graph.py:275-299]
 ו**מסווג** אותו. [tool-verified: `Cycle.classification` property in merge.py:43-46]
 
 | סיווג | צבע מסגרת | משמעות |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | צהוב | המעגל חוצה node ממומש (materialized) — לולאת משוב חוקית, מושהית-בזמן. ה-snapshot של ה-MV הוא גבול הגרסה המבהיר אותה. |
 | `error` | אדום | ללא גבול מימוש בלולאה — הגדרה מעגלית ללא סדר הערכה יציב. ככל הנראה שגיאת עיצוב. |
 
@@ -147,7 +147,7 @@ lineage_router.py:29-31]
 
 מחזיר את גרף ה-provenance הממוזג על פני כל ה-MVs ברישום.
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -157,7 +157,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 פרמטרי שאילתה [tool-verified: function signature at lineage_router.py:73-76]:
 
 | פרמטר | ערכים | ברירת מחדל | אפקט |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | מזהה node | — | תיחום התגובה לתת-הגרף סביב node זה |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | לאיזה כיוון לחצות מ-`focus` |
 | `depth` | מספר שלם | ללא-גבול | מרחק hop מקסימלי מ-`focus` |

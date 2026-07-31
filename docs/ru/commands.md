@@ -16,7 +16,7 @@ subprocess — ничего из этого не имеет.
 Поддерживаются пять значений `impl_kind` [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]:
 
 | `impl_kind` | Транспорт |
-|---|---|
+| --- | --- |
 | `source_procedure` | Нативная хранимая процедура на зарегистрированном источнике |
 | `script` | Локальный subprocess, получающий JSON на stdin, читает JSON из stdout |
 | `http` | Эндпоинт HTTP/S; тело запроса JSON, ответ JSON |
@@ -32,7 +32,7 @@ subprocess — ничего из этого не имеет.
 Каждый аргумент объявляет `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]:
 
 | `arg_kind` | Поведение |
-|---|---|
+| --- | --- |
 | `column_value` | Скаляр; передаётся напрямую в полезной нагрузке запроса |
 | `table_ref` | Ленивый; Provisa передаёт ссылку на отношение как есть; сервис сам получает данные |
 | `result_set` | Активный; Provisa материализует ссылаемое отношение и отправляет его строки |

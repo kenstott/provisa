@@ -7,7 +7,7 @@ Provisa admite envío en tiempo real mediante Server-Sent Events (SSE). Los clie
 Las suscripciones apuntan a una **tabla registrada**:
 
 | Origen | Valores de `strategy` disponibles |
-|--------|-------------------------|
+| -------- | ------------------------- |
 | Tabla (PostgreSQL) | `native` (LISTEN/NOTIFY), `poll` |
 | Tabla (RDBMS no PG con un bloque `cdc` de origen) | `debezium`, `kafka`, `poll` |
 | Tabla (vista federada / cualquier otro origen) | solo `poll` |
@@ -40,13 +40,15 @@ Cuando el campo de suscripción selecciona campos de tablas combinadas (mediante
 ## Endpoint
 
 Suscribirse a una tabla:
-```
+
+```http
 GET /data/subscribe/{table}
 Accept: text/event-stream
 ```
 
 La conexión permanece abierta y emite un evento JSON por cada cambio: (REQ-258, REQ-568)
-```
+
+```text
 data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":"east"}}
 
 data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region":"west"}}
@@ -57,7 +59,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 La entrega se selecciona mediante `live.strategy` en la configuración de la tabla: (REQ-813, REQ-814)
 
 | `strategy` | Mecanismo | Disponible para | Requiere |
-|------------|-----------|---------------|---------|
+| ------------ | ----------- | --------------- | --------- |
 | `native` | `LISTEN`/`NOTIFY` de PostgreSQL, Change Streams de MongoDB | PG, MongoDB | Nada adicional |
 | `debezium` | Tema de Kafka desde el conector Debezium | Tablas de RDBMS no PG | Bloque `cdc` a nivel de origen (Debezium + Kafka) |
 | `kafka` | Tema delta de Kafka arbitrario | Cualquier tabla alimentada por Kafka | Bloque `cdc` a nivel de origen |
@@ -72,6 +74,7 @@ Provisa emite `LISTEN <channel>` en una conexión persistente a PG. (REQ-258) La
 Provisa vuelve a ejecutar periódicamente la consulta de origen, seleccionando solo las filas donde `watermark_column > last_watermark`. (REQ-260) Las diferencias se emiten como eventos SSE. El sondeo no puede detectar eliminaciones definitivas (hard deletes) — una fila eliminada no deja ninguna marca de agua que avance. Para que una eliminación sea visible, use una eliminación lógica (soft delete) (por ejemplo, active un indicador `deleted_at`) que incremente la columna de marca de agua; la eliminación llega entonces como un evento de actualización que transporta el indicador de eliminación lógica. (REQ-260)
 
 Configuración de sondeo de tabla (en `provisa.yaml`):
+
 ```yaml
 tables:
   - id: federated_orders
@@ -89,6 +92,7 @@ tables:
 Requiere un conector Debezium en ejecución que escriba en Kafka. (REQ-261) Provisa consume el tema de Kafka y reenvía los eventos de cambio a los clientes SSE conectados. (REQ-261)
 
 El transporte CDC se configura una única vez por origen en un bloque `cdc`; los temas se derivan como `{topic_prefix}.{schema}.{table}` y nunca se repiten por tabla. (REQ-824) Cada tabla selecciona entonces `strategy: debezium`:
+
 ```yaml
 sources:
   - id: sales-mysql
@@ -106,7 +110,7 @@ sources:
 
 Cualquier suscripción de GraphQL puede redirigirse a un tema de Kafka en lugar de transmitirse de vuelta al cliente. (REQ-812) Agregue el encabezado `X-Provisa-Sink` a la solicitud de suscripción:
 
-```
+```yaml
 POST /data/graphql
 Authorization: Bearer <token>
 Content-Type: application/json
@@ -114,6 +118,7 @@ X-Provisa-Sink: kafka://broker:9092/my-topic
 ```
 
 El servidor responde `202 Accepted` de inmediato e inicia una tarea en segundo plano que: (REQ-812)
+
 1. Observa los cambios de tabla usando la misma resolución de proveedor que SSE (LISTEN/NOTIFY → sondeo asyncpg → sondeo federado)
 2. Vuelve a ejecutar la consulta equivalente ante cada cambio
 3. Publica el resultado como un mensaje JSON en el tema de Kafka indicado
@@ -126,6 +131,7 @@ El sink se ejecuta durante toda la vida del proceso del servidor. (REQ-812) Rein
 - `topic` es obligatorio
 
 **Ejemplo (curl):**
+
 ```bash
 curl -X POST http://localhost:8000/data/graphql \
   -H "Authorization: Bearer $TOKEN" \
@@ -177,4 +183,5 @@ source.onmessage = (e) => {
   console.log(event.event, event.row);
 };
 ```
+
 </content>

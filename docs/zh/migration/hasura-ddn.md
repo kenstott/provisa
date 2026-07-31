@@ -4,7 +4,8 @@
 
 1. 一个包含 HML 文件（扩展名为 `.hml`）的 Hasura DDN 项目。
    DDN 项目通常具有如下目录结构：
-   ```
+
+   ```text
    my-ddn-project/
      app/
        subgraph1/
@@ -17,6 +18,7 @@
      globals/
        ...
    ```
+
 2. Python 3.11+ 并已安装 `provisa` 软件包。
 
 ## CLI 用法
@@ -28,13 +30,13 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 ### 参数
 
 | 参数 | 是否必需 | 说明 |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `hml_dir` | 是 | DDN HML 项目目录的路径（会递归扫描其中的 `.hml` 文件） |
 
 ### 选项
 
 | 选项 | 默认值 | 说明 |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | 输出 YAML 文件的路径 |
 | `--source-overrides FILE` | 无 | 包含各数据源连接覆盖设置的 YAML 文件 |
 | `--domain-map KEY=VAL ...` | 无 | Subgraph 到 domain 的映射关系（例如 `app=core analytics=reporting`） |
@@ -57,7 +59,7 @@ my_pg_connector:
 ## 功能对照表
 
 | DDN 类型 | Provisa 对应项 | 备注 |
-|---|---|---|
+| --- | --- | --- |
 | **DataConnectorLink** | `sources[]` | 数据源类型根据连接器 URL 推断（postgres、mysql、mssql、mongo、clickhouse、snowflake、bigquery）。连接详情默认使用占位符；使用 `--source-overrides` 设置实际值。 |
 | **ObjectType** | `tables[]` 上的列定义 | 字段（field）转换为列（column）。`dataConnectorTypeMapping.fieldMapping` 将 GraphQL 字段名解析为物理列名。 |
 | **Model** | `tables[]` | 每个 Model 生成一张表。`source_id` 来自连接器，`table_name` 来自 collection。`graphql_type_name` 转换为 `alias`。Subgraph（以及由此得出的 `domain_id`）根据文件所在目录推断：即项目根目录下的第一层目录名。 |

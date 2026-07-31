@@ -5,7 +5,8 @@ Admin API — это эндпоинт Strawberry GraphQL по адресу `POST
 ## Аутентификация
 
 Передавайте свои учётные данные в заголовке `Authorization`, используя стандартный провайдер аутентификации Provisa (REQ-120):
-```
+
+```yaml
 Authorization: Bearer <token>
 ```
 
@@ -16,12 +17,14 @@ Authorization: Bearer <token>
 ### Управление конфигурацией
 
 Скачать текущую работающую конфигурацию (REQ-164):
-```
+
+```http
 GET /admin/config
 ```
 
 Возвращает полный `config.yaml` как YAML-файл. Загрузить новую конфигурацию (REQ-164):
-```
+
+```http
 PUT /admin/config
 ```
 
@@ -30,7 +33,8 @@ Provisa проверяет YAML, перезагружает каталоги и 
 ### Настройки времени выполнения
 
 Читать и записывать настройки платформы времени выполнения без редактирования файла конфигурации (REQ-165):
-```
+
+```http
 GET  /admin/settings
 PUT  /admin/settings
 ```
@@ -38,13 +42,15 @@ PUT  /admin/settings
 Поверхность настроек охватывает перенаправление больших результатов, выборку и лимит строк по умолчанию, TTL кеша ответов, соглашение об именовании, автоотслеживание FK связей, DSN хранилища материализации, память движка федерации (`jvm_heap_gb`, `query_max_memory`, `query_max_memory_per_node`, `query_max_total_memory`, `fault_tolerant_execution`, `fault_tolerant_task_memory`, `exchange_spool_dir`) и полную поверхность настройки конвейера трассировки OpenTelemetry (REQ-1082). Лимиты обхода удалённого GraphQL и настройки тёплого уровня/кеша чтения также раскрыты (REQ-1081, REQ-1083).
 
 Режим безопасности — `security.mode` (`standard` | `high`) — применяется при перезапуске (REQ-1079):
-```
+
+```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
 Назначения AI-моделей, реестр моделей эмбеддингов/векторов и лимит скорости NL — применяются при перезапуске (REQ-1080):
-```
+
+```http
 GET  /admin/ai-models
 PUT  /admin/ai-models
 ```
@@ -56,6 +62,7 @@ PUT  /admin/ai-models
 ### Редактор связей
 
 Список связей (REQ-166):
+
 ```graphql
 query {
   relationships {
@@ -71,6 +78,7 @@ query {
 ```
 
 Создать связь (REQ-019):
+
 ```graphql
 mutation {
   upsertRelationship(input: {
@@ -107,6 +115,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
 ### Интроспекция схемы
 
 Просмотр опубликованных таблиц по всем источникам (REQ-008):
+
 ```graphql
 query {
   tables {
@@ -124,6 +133,7 @@ query {
 ### Управление представлениями
 
 Зарегистрировать материализованное представление (REQ-133, REQ-135):
+
 ```graphql
 mutation {
   registerTable(input: {
@@ -137,6 +147,7 @@ mutation {
 ```
 
 Запустить обновление вручную (REQ-135):
+
 ```graphql
 mutation {
   refreshMv(mvId: "orders-with-customers") {
@@ -150,6 +161,7 @@ mutation {
 Источники Neo4j и SPARQL регистрируются через эндпоинты REST (а не через GraphQL admin API) (REQ-295, REQ-297):
 
 **Neo4j:**
+
 ```bash
 # 1. Register the Neo4j source
 curl -X POST http://localhost:8001/admin/sources/neo4j \
@@ -168,6 +180,7 @@ curl -X POST http://localhost:8001/admin/sources/neo4j/graph/tables \
 ```
 
 **SPARQL:**
+
 ```bash
 # 1. Register the SPARQL source
 curl -X POST http://localhost:8001/admin/sources/sparql \

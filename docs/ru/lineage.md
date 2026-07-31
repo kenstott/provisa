@@ -26,7 +26,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 Этот оператор производит три выходных столбца. Граф для `geo_u` выглядит так:
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -48,7 +48,7 @@ orders.region ─╯
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | Вид узла | Цвет | Значение |
-|---|---|---|
+| --- | --- | --- |
 | `source` | Зелёный | Столбец базовой таблицы |
 | `derived` | Синий | Произведён SQL-выражением (функция, оператор, CTE) |
 | `command` | Фиолетовый | Выходной столбец из зарегистрированной команды |
@@ -89,7 +89,7 @@ and `qualify_outputs` in graph.py:275-299]
 **классифицирует** его. [tool-verified: `Cycle.classification` property in merge.py:43-46]
 
 | Классификация | Цвет рамки | Значение |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | Жёлтый | Цикл пересекает материализованный узел — легальная, отложенная во времени обратная связь. Снимок MV — это граница версии, делающая её корректно определённой. |
 | `error` | Красный | На петле нет границы материализации — циклическое определение без стабильного порядка вычисления. Вероятно, ошибка проектирования. |
 
@@ -147,7 +147,7 @@ lineage_router.py:29-31]
 
 Возвращает объединённый граф происхождения по всем MV в реестре.
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -157,7 +157,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 Параметры запроса [tool-verified: function signature at lineage_router.py:73-76]:
 
 | Параметр | Значения | По умолчанию | Эффект |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | id узла | — | Ограничить ответ подграфом вокруг этого узла |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | Направление обхода от `focus` |
 | `depth` | целое число | без ограничения | Максимальное расстояние переходов от `focus` |

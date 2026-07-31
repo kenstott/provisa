@@ -7,11 +7,13 @@ Provisa может преобразовать существующие мета�
 ### Экспорт метаданных
 
 Из консоли или CLI Hasura:
+
 ```bash
 hasura metadata export --output metadata.yaml
 ```
 
 Или используйте API Hasura:
+
 ```bash
 curl -X POST http://localhost:8080/v1/metadata \
   -H "X-Hasura-Admin-Secret: <secret>" \
@@ -32,7 +34,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 Флаги:
 
 | Флаг | Назначение |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Путь вывода YAML (по умолчанию: stdout) |
 | `--source-overrides` | Файл YAML с переопределениями подключения для каждого источника (хост, порт, учётные данные) |
 | `--domain-map` | Сопоставления схема-домен как пары `SCHEMA=DOMAIN` |
@@ -42,7 +44,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 ### Что преобразуется
 
 | Концепция Hasura | Эквивалент Provisa |
-|---------------|-------------------|
+| --------------- | ------------------- |
 | Отслеживаемая таблица | `tables[]` с `publish: true` |
 | Object relationship | `relationships[]` с `cardinality: many-to-one` |
 | Array relationship | `relationships[]` с `cardinality: one-to-many` |
@@ -79,7 +81,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 Флаги:
 
 | Флаг | Назначение |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Путь вывода YAML (по умолчанию: stdout) |
 | `--source-overrides` | Файл YAML с переопределениями подключения для каждого источника |
 | `--domain-map` | Сопоставления подграф-домен как пары `SUBGRAPH=DOMAIN` |
@@ -91,7 +93,7 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 ### Что преобразуется
 
 | Концепция DDN | Эквивалент Provisa |
-|------------|-------------------|
+| ------------ | ------------------- |
 | Subgraph model | `tables[]` под источником |
 | Relationship | `relationships[]` |
 | Permission rule | Фильтр RLS |

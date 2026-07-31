@@ -8,7 +8,7 @@ decrypts locally, so a compromised backend cannot read result data.
 
 A column is flagged encrypted through Arrow field metadata on the Flight/IPC schema:
 
-```
+```text
 field.metadata["provisa_encrypted"] = "true"
 ```
 
@@ -16,7 +16,7 @@ field.metadata["provisa_encrypted"] = "true"
 `getString` / `getObject`. Column values are base64-encoded envelope blobs using the
 same wire format as the Python client and `provisa.encryption.envelope`:
 
-```
+```text
 magic(1) | version(1) | len(wrapped_dek):u32-be | wrapped_dek | iv(12) | ciphertext+tag
 ```
 
@@ -30,7 +30,7 @@ Set via the JDBC URL query string or `Properties`:
 
 Example:
 
-```
+```yaml
 jdbc:provisa://host:8001?kms_provider=aws&kms_key_arn=arn:aws:kms:us-east-1:...:key/abc
 ```
 

@@ -4,9 +4,11 @@
 
 1. Работающий экземпляр Hasura v2 (v2.x) с экспортированными метаданными.
 2. Экспортируйте метаданные с помощью Hasura CLI:
+
    ```bash
    hasura metadata export --endpoint http://localhost:8080
    ```
+
    Это создаёт каталог `metadata/`, содержащий `sources.yaml`, `actions.yaml`,
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml` и т. д.
 3. Python 3.11+ с установленным пакетом `provisa`.
@@ -20,13 +22,13 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ### Аргументы
 
 | Аргумент | Обязателен | Описание |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `metadata_dir` | Да | Путь к экспортированному каталогу метаданных Hasura v2 |
 
 ### Опции
 
 | Опция | По умолчанию | Описание |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | Путь к выходному файлу YAML |
 | `--source-overrides FILE` | None | Файл YAML с переопределениями подключения по источникам |
 | `--domain-map KEY=VAL ...` | None | Отображения схема-в-домен (например, `public=core hr=people`) |
@@ -59,7 +61,7 @@ default:
 ## Матрица паритета функций
 
 | Функция Hasura v2 | Эквивалент Provisa | Примечания |
-|---|---|---|
+| --- | --- | --- |
 | **Sources** (postgres, mysql, mssql, bigquery, citus) | `sources[]` | Тип (Kind) отображается: pg/postgres -> postgresql, mssql -> sqlserver. URL подключения разбирается на host/port/database/username/password. Настройки пула сохраняются. |
 | **Tables** (отслеживаемые таблицы) | `tables[]` | Имя схемы + таблицы сохраняется. `source_id` связывает с источником. |
 | **Пользовательские имена таблиц** (`custom_name`, `custom_root_fields.select`) | `tables[].alias` | Первое ненулевое значение из `select`, `select_by_pk`, `custom_name`. |

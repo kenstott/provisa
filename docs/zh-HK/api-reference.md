@@ -16,13 +16,13 @@ Provisa 於兩個前綴下公開 REST 端點：`/data` 供查詢執行及結構�
 
 **身分內省：**
 
-```
+```http
 GET /auth/me
 ```
 
 回傳已驗證使用者的 id、電郵、顯示名稱、組織成員資格及角色指派。於開發模式下會回傳 `dev_mode: true` 及所有角色 ID 的列表。[tool-verified: `provisa/api/auth_router.py`]
 
-```
+```http
 GET /auth/provider-type
 ```
 
@@ -37,6 +37,7 @@ GET /auth/provider-type
 執行一則 GraphQL 查詢或變異。(REQ-043) [tool-verified: `provisa/api/data/endpoint.py:151`]
 
 **要求本文：**
+
 ```json
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
@@ -49,6 +50,7 @@ GET /auth/provider-type
 `role` 欄位僅於開發模式（無驗證）下使用。當驗證已啟用時，會使用已驗證使用者的角色，本文中的 `role` 會被忽略。
 
 `extensions` 欄位支援自動保存查詢（Automatic Persisted Query，APQ）通訊協定：(REQ-288)
+
 ```json
 {
   "extensions": {"persistedQuery": {"sha256Hash": "<sha256-of-query>"}}
@@ -56,6 +58,7 @@ GET /auth/provider-type
 ```
 
 **標頭：**
+
 - `X-Provisa-Role`——覆寫角色（開發模式）
 - `Accept`——回應格式（見內容協商）
 - `Authorization`——當驗證已啟用時為 `Bearer <token>`
@@ -64,6 +67,7 @@ GET /auth/provider-type
 - `X-Provisa-Redirect`——設為 `true` 以無條件強制重新導向 (REQ-029)
 
 **回應（JSON 內嵌）：**
+
 ```json
 {
   "data": {
@@ -75,6 +79,7 @@ GET /auth/provider-type
 ```
 
 **回應（重新導向）：**
+
 ```json
 {
   "data": {"orders": null},
@@ -88,6 +93,7 @@ GET /auth/provider-type
 ```
 
 **回應（多根欄位、內嵌與重新導向混合）：**
+
 ```json
 {
   "data": {
@@ -119,7 +125,7 @@ GET /auth/provider-type
 ### 內容協商
 
 | Accept 標頭 | 格式 |
-|---|---|
+| --- | --- |
 | `application/json` | JSON（預設） |
 | `application/x-ndjson` | 以換行分隔的 JSON |
 | `text/csv` | CSV |
@@ -135,7 +141,7 @@ GET /auth/provider-type
 超過所設定列數門檻的結果（或當 `X-Provisa-Redirect: true` 時）會寫入 S3，並回傳一個預先簽署的 URL。(REQ-029、REQ-044)
 
 | 重新導向格式 | 寫入者 | 記憶體 |
-|---|---|---|
+| --- | --- | --- |
 | `application/vnd.apache.parquet` | 聯邦 CTAS | 無——數據永不經過 Provisa |
 | `application/x-orc` | 聯邦 CTAS | 無——數據永不經過 Provisa |
 | `application/json` | Provisa | 受記憶體限制 |
@@ -145,7 +151,7 @@ GET /auth/provider-type
 
 對於大型分析匯出，請使用 Parquet 或 ORC 重新導向。聯邦引擎會平行直接寫入 S3——不會有任何數據經過 Provisa。(REQ-138)
 
-```
+```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
 X-Provisa-Redirect-Threshold: 1000
 ```
@@ -157,6 +163,7 @@ X-Provisa-Redirect-Threshold: 1000
 透過第二階段治理管線執行原始 SQL。(REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:62`]
 
 **要求本文：**
+
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
@@ -182,6 +189,7 @@ X-Provisa-Redirect-Threshold: 1000
 Cypher 查詢亦可提交至僅供 Cypher 使用的 `POST /query/cypher` 端點。(REQ-345)
 
 **要求本文：**
+
 ```json
 {
   "query": "{ orders { id } }",
@@ -200,6 +208,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 為每個已註冊資料表自動產生的純 REST 端點。查詢字串會對應至 GraphQL 引數，該要求會經由與 GraphQL 相同的管線（行級安全、遮罩、路由）編譯及執行。(REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
 
 **查詢參數：**
+
 - `limit`——列數上限（≥ 1）
 - `offset`——略過列數（≥ 0）
 - `fields`——以逗號分隔的欄位名稱（預設為所有純量欄位）
@@ -217,6 +226,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 **`Accept` 標頭：**必須包含 `application/vnd.api+json`（JSON:API 媒體型別），否則要求會回傳 `406`。
 
 **查詢參數：**
+
 - `fields[<type>]`——稀疏欄位集，例如 `?fields[orders]=amount`
 - `filter[<col>]` / `filter[<col>][<op>]`——例如 `?filter[region]=US`、`?filter[amount][gt]=100`
 - `sort`——以逗號分隔，`-` 前綴表示遞減，例如 `?sort=-created_at,amount`
@@ -231,6 +241,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 提交一則自然語言問題。此服務會啟動一項非同步工作，並立即回傳附帶 `job_id` 的 `202 Accepted`。需要在 `ai_models` 設定區段下設定 LLM 提供者。(REQ-354) [tool-verified: `provisa/api/rest/nl_router.py:50`]
 
 **要求本文：**
+
 ```json
 {"q": "How many orders were placed last month?", "role": "admin"}
 ```
@@ -267,6 +278,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 **標頭：**`X-Role: <role_id>`（必填）
 
 **查詢參數：**
+
 - `domain`——以逗號分隔的領域 ID。設定後，回應會篩選為該等領域及由其可達的資料表。
 
 **回應：**`text/plain` 格式的 GraphQL SDL。
@@ -346,6 +358,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 **要求本文：**原始 YAML 內容。
 
 **回應：**
+
 ```json
 {"success": true, "message": "Config uploaded and reloaded"}
 ```
@@ -361,6 +374,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 以 JSON 格式回傳目前的平台設定值。(REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:50`]
 
 **回應：**
+
 ```json
 {
   "redirect": {
@@ -398,6 +412,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 於執行階段更新平台設定值。所有欄位均為選填——僅更新本文中出現的鍵。(REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:100`]
 
 **要求本文（部分範例）：**
+
 ```json
 {
   "otel": {
@@ -419,6 +434,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 - `otel`：`endpoint`、`service_name`、`sample_rate`、`support_endpoint`、`support_redact_sql_literals`、`support_redact_attributes`
 
 **回應：**
+
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
@@ -442,6 +458,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 **查詢參數：**`catalog`（預設為 `"otel"`）
 
 **回應：**
+
 ```json
 {"success": true, "errors": []}
 ```
@@ -461,6 +478,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 觸發關係探索。恆會由聯邦引擎執行外部索引鍵內省。(REQ-018) 若已設定 `ANTHROPIC_API_KEY`，則會執行 LLM 推論。(REQ-167) [tool-verified: `provisa/api/admin/discovery.py:55`]
 
 **要求本文：**
+
 ```json
 {
   "scope": "domain",
@@ -541,6 +559,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 回傳所有已追蹤的資料庫函式及 webhook。(REQ-242) [tool-verified: `provisa/api/admin/actions_router.py:104`]
 
 **回應：**
+
 ```json
 {
   "functions": [
@@ -582,7 +601,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 **關鍵欄位：**
 
 | 欄位 | 必填 | 描述 |
-|---|---|---|
+| --- | --- | --- |
 | `name` | 是 | 唯一的 Command 名稱 |
 | `kind` | 是 | `"query"` → GraphQL Query 欄位；`"mutation"` → Mutation 欄位 |
 | `implKind` | 否 | Command 的執行方式——見下表（預設為 `source_procedure`） |
@@ -596,7 +615,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 **`implKind` 值：**
 
 | `implKind` | 執行內容 | `binding` 欄位 |
-|---|---|---|
+| --- | --- | --- |
 | `source_procedure` | 已註冊數據來源上的預存程序（預設） | `sourceId`、`schemaName`、`functionName` |
 | `script` | 伺服端指令碼 | `script` |
 | `http` | 外送 HTTP 呼叫 | `url`、`method` |
@@ -636,7 +655,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 所有端點均位於 `/admin/roles` 前綴下。[tool-verified: `provisa/api/admin/roles_router.py:18`]
 
 | 方法 | 路徑 | 描述 |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/roles/` | 列出所有角色 |
 | `POST` | `/admin/roles/` | 建立一個角色 |
 | `PUT` | `/admin/roles/{role_id}` | 更新一個角色 |
@@ -651,7 +670,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 所有端點均位於 `/admin/users` 前綴下。[tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
 | 方法 | 路徑 | 描述 |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/users/` | 建立一個本機使用者 |
 | `GET` | `/admin/users/` | 列出本機使用者 |
 | `GET` | `/admin/users/{user_id}` | 取得一個使用者 |
@@ -669,7 +688,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 所有端點均位於 `/admin/orgs` 之下。[tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
 | 方法 | 路徑 | 描述 |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/orgs/` | 列出組織 |
 | `POST` | `/admin/orgs/` | 建立一個組織 |
 | `PUT` | `/admin/orgs/{org_id}` | 更新一個組織 |
@@ -685,7 +704,7 @@ GraphQL 回傳 `{"data": ...}`；SQL 及 Cypher 回傳 `{"columns": [...], "rows
 所有端點均位於 `/admin/invites` 之下。[tool-verified: `provisa/api/admin/invites_router.py:18`]
 
 | 方法 | 路徑 | 描述 |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/invites/` | 建立一則邀請 |
 | `GET` | `/admin/invites/` | 列出待處理的邀請 |
 | `DELETE` | `/admin/invites/{token}` | 撤銷一則邀請 |
@@ -748,7 +767,7 @@ mutation {
 ## 錯誤回應
 
 | 狀態 | 意義 |
-|---|---|
+| --- | --- |
 | 400 | 無效查詢、驗證錯誤，或 SQL 剖析錯誤 |
 | 401 | 缺少或無效的驗證權杖 |
 | 403 | 功能不足；治理違規 |
@@ -780,11 +799,13 @@ mutation {
 查詢與目錄探索均可於同一連線上使用。完整的治理管線（行級安全、遮罩、取樣）會套用於每一則查詢。(REQ-130、REQ-143)
 
 **票證格式**（JSON）：
+
 ```json
 {"query": "{ customers { name email } }", "role": "analyst", "variables": {}}
 ```
 
 **用法（Python）：**
+
 ```python
 import pyarrow.flight as flight
 

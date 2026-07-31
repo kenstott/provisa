@@ -3,7 +3,7 @@
 ## Elegir una vía de conexión
 
 | Tipo de cliente | Vía recomendada | Por qué |
-|-------------|-----------------|-----|
+| ------------- | ----------------- | ----- |
 | Herramientas de BI (Tableau, Power BI, Looker) | JDBC | Streaming columnar de Arrow Flight sobre el cable; las herramientas de BI tienen un asistente JDBC integrado y se benefician de la entrega columnar de alto rendimiento para conjuntos de resultados grandes |
 | psql, DBeaver, cualquier herramienta compatible con PG | pgwire (driver PG nativo) | Opción predeterminada sin fricción — no se necesita un driver personalizado; use lo que ya tiene |
 | Stack de datos de Python (pandas, pyarrow) | `provisa-client` o ADBC directo | Lotes de Arrow en streaming; sin sobrecarga de serialización por fila |
@@ -76,7 +76,8 @@ El driver JDBC de Provisa usa Arrow Flight como transporte subyacente. Es la ví
 Descargue [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) (siempre la última versión) y agréguelo a la ruta de drivers de su herramienta.
 
 URL JDBC:
-```
+
+```yaml
 jdbc:provisa://<host>:8815
 ```
 
@@ -85,12 +86,14 @@ La autenticación usa las propiedades JDBC estándar `user` / `password`. Provis
 ### Configuración de herramientas de BI
 
 **Tableau**
+
 1. Administrar → Drivers → Instalar Provisa JDBC
 2. Conectar → Otras bases de datos (JDBC)
 3. URL: `jdbc:provisa://localhost:8815`
 4. Ingrese su nombre de usuario y contraseña cuando se le solicite
 
 **DBeaver** (vía JDBC — para la vía pgwire, ver arriba)
+
 1. Base de datos → Nueva conexión → JDBC
 2. Driver: agregue `provisa-jdbc.jar`
 3. URL: `jdbc:provisa://localhost:8815`
@@ -199,7 +202,7 @@ El rol se pasa a través de la clave de metadatos `x-provisa-role` en cada RPC. 
 Un **comando** es una función registrada rastreada o un webhook — un elemento invocable registrado en la capa semántica de Provisa con un `kind` (`query` o `mutation`) y un `impl_kind` que describe cómo se ejecuta. Toda superficie enruta las invocaciones a través de un único ejecutor gobernado (`invoke_tracked_function`) que aplica `writable_by` y el gobierno de manera uniforme (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | Qué se ejecuta | Campos de enlace |
-|------------|-----------|---------------|
+| ------------ | ----------- | --------------- |
 | `source_procedure` | Procedimiento almacenado en un origen registrado (predeterminado) | `sourceId`, `schemaName`, `functionName` |
 | `script` | Script del lado del servidor | `script` |
 | `http` | Llamada HTTP saliente | `url`, `method` |
@@ -211,7 +214,7 @@ Cuando un comando declara un `return_schema` (JSON Schema con `type: array, item
 ### Matriz de protocolos
 
 | Superficie | Sintaxis | Ejemplo |
-|---------|--------|---------|
+| --------- | -------- | --------- |
 | GraphQL | `kind=query` → campo Query; `kind=mutation` → campo Mutation; con prefijo de dominio cuando `domain_prefix: true` | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
 | pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` o `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
 | Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
@@ -229,6 +232,7 @@ Provisa puede actuar como un subgrafo de Federation v2, exponiendo su esquema pu
 ### Configuración
 
 Active la federación en `config.yaml`:
+
 ```yaml
 federation:
   enabled: true
@@ -240,6 +244,7 @@ Provisa genera directivas `@key` en las columnas de clave primaria y `@external`
 ### Registro con Apollo Router
 
 En su `supergraph.yaml`:
+
 ```yaml
 subgraphs:
   provisa-data:
@@ -282,7 +287,7 @@ por lo que el acoplamiento se confina al adaptador.
 La superficie de exportación canónica es un endpoint HTTP en vivo. Deriva el documento Ossie del
 estado en vivo en cada solicitud — sin caché, sin paso de generación.
 
-```
+```http
 GET /admin/ossie
 ```
 

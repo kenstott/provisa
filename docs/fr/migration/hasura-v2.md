@@ -4,9 +4,11 @@
 
 1. Une instance Hasura v2 (v2.x) en cours d'exécution, avec les métadonnées exportées.
 2. Exporter les métadonnées avec la CLI Hasura :
+
    ```bash
    hasura metadata export --endpoint http://localhost:8080
    ```
+
    Cela crée un répertoire `metadata/` contenant `sources.yaml`, `actions.yaml`,
    `cron_triggers.yaml`, `inherited_roles.yaml`, `remote_schemas.yaml`, etc.
 3. Python 3.11+ avec le paquet `provisa` installé.
@@ -20,13 +22,13 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ### Arguments
 
 | Argument | Obligatoire | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `metadata_dir` | Oui | Chemin vers le répertoire de métadonnées Hasura v2 exporté |
 
 ### Options
 
 | Option | Valeur par défaut | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | Chemin du fichier YAML de sortie |
 | `--source-overrides FILE` | Aucune | Fichier YAML avec des surcharges de connexion par source |
 | `--domain-map KEY=VAL ...` | Aucune | Correspondances schéma → domaine (par exemple, `public=core hr=people`) |
@@ -59,7 +61,7 @@ convertir. Le convertisseur effectue les correspondances suivantes :
 ## Matrice de parité des fonctionnalités
 
 | Fonctionnalité Hasura v2 | Équivalent Provisa | Remarques |
-|---|---|---|
+| --- | --- | --- |
 | **Sources** (postgres, mysql, mssql, bigquery, citus) | `sources[]` | Type mappé : pg/postgres -> postgresql, mssql -> sqlserver. L'URL de connexion est analysée en host/port/database/username/password. Les paramètres de pool sont conservés. |
 | **Tables** (tables suivies) | `tables[]` | Le schéma et le nom de la table sont conservés. `source_id` établit le lien avec la source. |
 | **Noms de table personnalisés** (`custom_name`, `custom_root_fields.select`) | `tables[].alias` | Première valeur non nulle parmi `select`, `select_by_pk`, `custom_name`. |

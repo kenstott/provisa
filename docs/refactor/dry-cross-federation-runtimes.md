@@ -25,7 +25,7 @@ Four standalone classes conform to the same runtime protocol but share **no base
 `SqlAlchemyFederationRuntime`. Confirmed duplication (grep-verified):
 
 | # | Duplicated logic | Sites | Concretes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | A | async `run` = `run_in_executor(None, lambda: self.run_sync(...))` | sqlalchemy_runtime.py:66-68, pg_runtime.py:104-106, clickhouse_runtime.py:275-277 | 3 (duckdb diverges) |
 | B | `run_sync` builds `QueryResult` from a DBAPI result object (`cols=[d[0] for d in X.description] if X.description else []`, `rows=X.fetchall()`) | pg_runtime.py:96-102 (`cur`), sqlalchemy_runtime.py:57-64 (`cur`), duckdb_runtime.py:185-189 (`res`) | 3 (clickhouse excluded — no cursor) |
 | C | `introspect_columns` tail `{row[0]: str(row[1]).lower() for row in ...}` | duckdb_runtime.py:156-165, clickhouse_runtime.py:251-260 | 2 |
@@ -50,6 +50,7 @@ Four standalone classes conform to the same runtime protocol but share **no base
 New module: `provisa/federation/runtime_support.py` (pure helpers, no state).
 
 **Step 1 — `result_from_dbapi(obj) -> QueryResult`** (finding B)
+
 - What: extract the `cols`/`rows`-from-`.description` + `QueryResult(...)` build. Keyed
   on the DBAPI-result protocol (`.description`, `.fetchall()`) — so it takes the
   cursor *or* result object, covering all three drivers, not just the `cur`-named two.
@@ -73,6 +74,7 @@ New module: `provisa/federation/runtime_support.py` (pure helpers, no state).
   `.description`-guard equivalence with its e2e (non-SELECT DDL path).
 
 **Step 2 — `columns_from_describe(rows) -> dict[str,str]`** (finding C)
+
 - What: the `{row[0]: str(row[1]).lower() for row in rows}` tail.
 - From: duckdb_runtime.py:165 (`res.fetchall()`), clickhouse_runtime.py:260 (`rows`).
 - Keep in concretes: `attach_source` + phys-name + the DESCRIBE call (they differ).
@@ -82,6 +84,7 @@ New module: `provisa/federation/runtime_support.py` (pure helpers, no state).
 
 **Step 3 — `run_async(run_sync, sql, params)` helper OR `AsyncRunFromSync` mixin**
 (finding A)
+
 - What: the 3 identical async `run` bodies.
 - Option 3a (helper): each `run` becomes
   `return await run_async(self.run_sync, sql, params)`.
@@ -96,6 +99,7 @@ New module: `provisa/federation/runtime_support.py` (pure helpers, no state).
 - Risk: none for 3a; 3b touches class bases (low).
 
 **Step 4 (optional) — parameterize `execute` transpile wrapper** (finding D)
+
 - Two 1-line methods differing only by dialect literal. Low value; fold only if
   Step 3 introduces a mixin (add `_DIALECT` class attr + shared `execute`). Otherwise
   leave — extracting a 1-liner is not worth the indirection.

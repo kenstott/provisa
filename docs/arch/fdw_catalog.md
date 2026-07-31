@@ -16,7 +16,7 @@ below except `postgres_fdw`, `file_fdw`, and `dblink` (compiled into the standar
 must be built from source and dropped into the bundled tree.
 
 | Package | Repo | Bundled PG major | Extra bundled | Status |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `pgserver` | orm011/pgserver | 16 (16.2) | pgvector | Unmaintained since mid-2024 |
 | `pixeltable-pgserver` | pixeltable/pixeltable-pgserver | 16 (16.10) | pgvector 0.8.1, pgvectorscale | Active 2026 |
 | `pgembed` | Ladybug-Memory/pgembed | 17 | via separate wheels | Most current; separate-wheel extension model |
@@ -34,7 +34,7 @@ pg_config = pathlib.Path(pgserver.POSTGRES_BIN_PATH) / "pg_config"
 Derive everything else from `pg_config`, never a hardcoded path:
 
 | Query | Purpose |
-|---|---|
+| --- | --- |
 | `pg_config --pkglibdir` | where the compiled `.so`/`.dylib` module lands (`$libdir`) |
 | `pg_config --sharedir` | `.control` + `--version.sql` go under `sharedir/extension/` |
 | `pg_config --includedir-server` | server headers for PGXS (shipped in the wheel — confirmed) |
@@ -146,7 +146,7 @@ the artifact — the base wheel does not provide them.
 ## Catalog: remote RDBMS sources
 
 | FDW | Source types | Repo | Latest | PG | Native dep | Read/Write | Pushdown |
-|---|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- | --- |
 | mysql_fdw | mysql, mariadb, singlestore | EnterpriseDB/mysql_fdw | 2.9.3 (2025-09) | 14–18 | libmysqlclient / mariadb-connector-c | R/W | WHERE, JOIN, agg, ORDER BY, LIMIT |
 | tds_fdw | sqlserver | tds-fdw/tds_fdw | 2.0.5 (2025-09) | 13–18 | freetds-dev | Read-only | WHERE + column only |
 | oracle_fdw | oracle | laurenz/oracle_fdw | 2.9.0 (2026-06) | 9.3+ (15–18) | Oracle Instant Client + SDK | R/W | WHERE, ORDER BY, same-server JOIN |
@@ -177,7 +177,7 @@ a DuckDB sidecar speaking the PG wire protocol. All require a heavy C++/DuckDB (
 Rust) build.
 
 | Extension | Repo | License | Arch | Iceberg | Feasible on embedded pgserver? |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | **pg_duckdb** | duckdb/pg_duckdb | MIT | Embedded DuckDB in-process | read + time travel | **Best drop-in** — single `.so`, no sidecar; still a large C++/DuckDB build |
 | pg_lake | Snowflake-Labs/pg_lake | Apache-2.0 | `pgduck_server` sidecar (PG wire) | read + write + ACID | Needs a running sidecar daemon + very heavy vcpkg/DuckDB/Avro/GDAL build; Docker-only in practice |
 | pg_mooncake | Mooncake-Labs/pg_mooncake | MIT | pg_duckdb read + Rust bgworker write | read + write | Needs a background worker; heavier than pg_duckdb; early (0.1.x) |
@@ -230,7 +230,7 @@ Five extensions, built per `(pg_major, platform, libc)` as separate wheels layer
 pinned base:
 
 | Source | Extension | Build cost | Bundleable? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | csv | file_fdw (core) | none — ships with PG | n/a (already present) |
 | sqlite | pgspider/sqlite_fdw | libsqlite3 | yes |
 | parquet / iceberg / delta | duckdb/pg_duckdb | vendored DuckDB (C++) | yes (heavy) |

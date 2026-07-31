@@ -8,7 +8,7 @@ The inbound question "how do we learn a source changed" is encoded in three plac
 with overlapping value sets:
 
 | Signal | Values | Runtime role |
-|---|---|---|
+| --- | --- | --- |
 | `change_signal` (Table/Source) | `ttl` `probe` `ttl_probe` `native` `debezium` `kafka` | none (captured, inert) |
 | MV `freshness_mode` | `ttl` `probe` `ttl_probe` | refresh gate |
 | `live.strategy` | `poll` `native` `debezium` `kafka` | subscription provider |
@@ -23,7 +23,7 @@ to be authoritative — is read nowhere.
 Three orthogonal axes:
 
 | Axis | Field | Decides |
-|---|---|---|
+| --- | --- | --- |
 | Inbound detection | `change_signal` (resolve `table.change_signal or source.change_signal`) | how we learn the source changed |
 | Append vs replace + subscribable | `Table.watermark_column` | set → incremental append + subscribable; unset → full replace |
 | Is it landed | `materialize` / reachability / `cache_ttl` | whether a local copy exists |
@@ -33,7 +33,7 @@ configured independently.
 
 ## Derivation (`provisa/core/change_signal.py`)
 
-```
+```text
 resolve(table, source) -> str          # table.change_signal or source.change_signal
 is_poll(sig) = sig in {ttl, probe, ttl_probe}
 is_push(sig) = sig in {native, debezium, kafka}

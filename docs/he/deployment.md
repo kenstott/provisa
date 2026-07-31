@@ -54,7 +54,7 @@ Provisa תומכת בשישה נתיבי פריסה. בחרו בהתבסס על 
 - מתחיל את שרת פיתוח ה-UI של Vite על פורט 3000 (REQ-559)
 - מדפיס URL-ים וממתין; Ctrl+C עוצר הכל ומפרק (tears down) את compose
 
-```
+```yaml
 Backend: http://localhost:8001
 UI:      http://localhost:3000
 ```
@@ -71,13 +71,17 @@ UI:      http://localhost:3000
 
 1. התקינו את [Docker Desktop](https://docs.docker.com/get-docker/)
 2. התחילו את שירותי הליבה:
+
    ```bash
    docker compose -f docker-compose.core.yml up -d
    ```
+
 3. התחילו את ה-API:
+
    ```bash
    uvicorn main:app --reload --port 8001
    ```
+
 4. אמתו: `curl http://localhost:8001/health`
 
 ### מחסנית מלאה (Provisa בקונטיינר)
@@ -129,7 +133,7 @@ OTLP/HTTP הכותב traces, מטריקות, ולוגים למסד נתונים 
 את ה-backend עם `PROVISA_OPS_DB_URL`:
 
 | `PROVISA_OPS_DB_URL` | Backend | הערות |
-|---|---|---|
+| --- | --- | --- |
 | *(לא מוגדר)* | DuckDB ייעודי תחת `~/.provisa/telemetry/` | ברירת מחדל; ללא שרת, ללא Docker |
 | `clickhouse+native://user@host/otel` | ClickHouse | קליטה בקצב-גבוה עם מיזוגי רקע אוטומטיים |
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | נפח בינוני |
@@ -166,6 +170,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 2. פתחו את ה-DMG וגררו את **Provisa.app** ל-`/Applications`
 3. לחצו פעמיים על **Provisa.app** — הגדרת הפעלה-ראשונה רצה פעם אחת; האשף מציע את בחירות המנוע, observability, וההדגמה שלעיל (REQ-1007)
 4. פתחו Terminal:
+
    ```bash
    provisa start    # start all services
    provisa status   # confirm all services are running
@@ -192,7 +197,8 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 2. הריצו את המתקין — אין צורך בהרשאות admin; מתקין ל-`%LOCALAPPDATA%\Programs\Provisa\`
 3. פתחו את **Provisa First Launch** מתפריט ה-Start — הגדרה ילידית רצה פעם אחת ומדפיסה את הנחיית הצעדים-הבאים עבור התוספים השכבתיים (REQ-1005)
 4. פתחו terminal חדש:
-   ```
+
+   ```text
    provisa status
    provisa open
    ```
@@ -230,13 +236,17 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 1. הורידו את `Provisa.AppImage` מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases) והעבירו למכונה היעד
 2. הפכו אותו להרצה:
+
    ```bash
    chmod +x Provisa.AppImage
    ```
+
 3. הריצו הגדרת הפעלה-ראשונה:
+
    ```bash
    ./Provisa.AppImage
    ```
+
 4. אשף ההגדרה שואל:
    - **תפקיד (Role)** ← בחרו `primary`
    - **תקציב RAM** ← כמות RAM להקצות (0 = כל הזמין); קובע את מספר עובדי Trino
@@ -244,6 +254,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
    - **פורט API** ← ברירת מחדל `8000` (REQ-560)
 5. ההגדרה טוענת את כל image-י הקונטיינר (~2–5 דקות), כותבת תצורה, ומתחילה שירותים
 6. אמתו:
+
    ```bash
    provisa status
    curl http://localhost:8000/health
@@ -267,16 +278,19 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
    | 8000 | API של Provisa |
 
 3. הפכו להרצה והריצו:
+
    ```bash
    chmod +x Provisa.AppImage
    ./Provisa.AppImage
    ```
+
 4. אשף ההגדרה שואל:
    - **תפקיד** ← בחרו `primary`
    - **תקציב RAM**, **hostname**, **פורט API** ← ענו כמו עבור node יחיד
 5. לאחר השלמת ההגדרה, רשמו את ה-**IP הפרטי** של מכונה זו — secondaries צריכים אותו
 6. האשף מדפיס בלוק upstream‏ nginx — שמרו אותו עבור תצורת ה-load balancer שלכם
 7. אמתו:
+
    ```bash
    provisa status
    curl http://localhost:8000/health
@@ -290,24 +304,30 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 1. הורידו והעבירו את `Provisa.AppImage` למכונת ה-secondary
 2. אשרו שה-secondary יכול להגיע ל-primary:
+
    ```bash
    curl http://<primary-ip>:8000/health
    ```
+
 3. הפכו להרצה והריצו:
+
    ```bash
    chmod +x Provisa.AppImage
    ./Provisa.AppImage
    ```
+
 4. אשף ההגדרה שואל:
    - **תפקיד** ← בחרו `secondary`
    - **IP‏ Primary** ← הזינו את ה-IP של ה-node‏ primary (הקישוריות מאומתת בזמן אמת)
    - **תקציב RAM**, **hostname**, **פורט API** ← ענו כמו לעיל
 5. ההגדרה טוענת קבוצת image מצומצמת (ללא PostgreSQL, PgBouncer, MinIO, Redis — אלה רצים רק על primary) (REQ-561), מתחילה את ה-API של Provisa ועובד מנוע פדרציה
 6. אמתו:
+
    ```bash
    provisa status
    curl http://localhost:8000/health
    ```
+
 7. הוסיפו node זה ל-upstream‏ ה-load balancer שלכם
 
 ---
@@ -373,6 +393,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 1. הורידו את `Provisa.AppImage` מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases)
 
 2. העלו אותו ל-bucket‏ S3 בחשבון ה-AWS שלכם:
+
    ```bash
    aws s3 cp Provisa.AppImage s3://<your-bucket>/releases/Provisa.AppImage
    ```
@@ -385,6 +406,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 4. (אופציונלי) אם אתם רוצים גישת SSH ל-nodes, צרו זוג מפתחות EC2 באזור היעד שלכם ורשמו את שם זוג המפתחות
 
 5. הריצו את ה-wrapper של הפריסה:
+
    ```bash
    bash terraform/deploy.sh
    ```
@@ -394,7 +416,8 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 7. סקרו את סיכום הפריסה ואשרו
 
 8. Terraform מספק את כל התשתית (~5–10 דקות). לאחר apply, הסקריפט מדפיס:
-   ```
+
+   ```text
    api_endpoint      = "http://<alb-dns>:8000"
    flight_endpoint   = "<nlb-dns>:8815"
    primary_ip        = "10.0.x.x"
@@ -406,6 +429,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 9. (אופציונלי) הצביעו רשומות DNS על שמות ה-DNS של ה-ALB וה-NLB
 
 10. אמתו:
+
     ```bash
     curl http://<api_endpoint>/health
     ```
@@ -479,6 +503,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 ### שלבים
 
 1. אשרו גישת אשכול:
+
    ```bash
    kubectl cluster-info
    ```
@@ -506,6 +531,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    - **סודות** — העבירו דרך `--set` להערכה; השתמשו ב-External Secrets או Vault Agent לייצור
 
 4. התקינו את ה-chart:
+
    ```bash
    helm install provisa helm/provisa/ \
      --set config.pgPassword=<password> \
@@ -516,6 +542,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    ```
 
    אם משתמשים ברישום פנימי, הוסיפו דריסות image:
+
    ```bash
    --set image.repository=harbor.internal.example.com/provisa/provisa \
    --set image.tag=1.2.3 \
@@ -524,11 +551,13 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    ```
 
 5. אמתו ש-pods רצים:
+
    ```bash
    kubectl get pods -n provisa
    ```
 
 6. בדקו את ה-API:
+
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health
@@ -802,4 +831,5 @@ git push
 git pull
 provisa import config.yaml
 ```
+
 </content>

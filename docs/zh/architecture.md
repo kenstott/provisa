@@ -8,7 +8,7 @@ Provisa 是一个由配置驱动的数据虚拟化平台，专为驱动语义层
 
 Provisa 的设计目标是：在满足运营需求时具备高性能，在满足企业级分析需求时具备高可扩展性。单一平台同时服务这两类需求，不牺牲速度或可扩展性。
 
-```
+```text
 Config YAML → PG Metadata → Federation Catalogs
                                ↓
          Federation engine metadata → Schema Generator → SDL / SQL catalog / Cypher labels / gRPC proto (per role)
@@ -34,7 +34,7 @@ Config YAML → PG Metadata → Federation Catalogs
 每个接口都是独立的传输方式。四者都应用相同的安全管道（行级安全、数据脱敏、抽样、角色检查）。(REQ-002, REQ-038) 客户端从不直接与联邦引擎通信。(REQ-266)「查询语言」（SQL / GraphQL / Cypher）与传输方式相互独立——多种语言可以通过同一种传输方式到达。
 
 | Port | Transport | Accepted query languages | Use case |
-|------|-----------|--------------------------|----------|
+| ------ | ----------- | -------------------------- | ---------- |
 | 8001 | HTTP | GraphQL, SQL, Cypher | Web clients, BI tools, curl, REST consumers |
 | 8815 | Arrow Flight (gRPC) | SQL (via Arrow Flight SQL) | Data tools (Pandas, DuckDB, Spark, ADBC) |
 | 50051 | Protobuf gRPC | Per-role generated proto RPCs | Service-to-service with typed contracts |
@@ -47,7 +47,7 @@ Config YAML → PG Metadata → Federation Catalogs
 同一端口下有多个端点，以路径区分：
 
 | Path | Language | Notes |
-|------|----------|-------|
+| ------ | ---------- | ------- |
 | `POST /data/graphql` | GraphQL | Reads and mutations; APQ hash accepted via `extensions.persistedQuery` |
 | `POST /data/sql` | SQL | Read-only; no capability gate — governed by object visibility + RLS + masking (REQ-001, REQ-267) |
 | `POST /data/query` | Cypher | Read-only; standard role |
@@ -61,12 +61,14 @@ Config YAML → PG Metadata → Federation Catalogs
 ### Arrow Flight（Port 8815）
 
 通过 gRPC 提供原生列式 Arrow 传输。(REQ-045, REQ-143) 客户端发送 JSON ticket：
+
 ```json
 {"query": "SELECT name, email FROM customers", "role": "analyst"}
 ```
+
 并以惰性流式方式接收 Arrow RecordBatch。当 Zaychik Arrow Flight SQL 代理可用时，数据会以端到端连续的 Arrow record batch 流方式流动：(REQ-144)
 
-```
+```text
 Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
@@ -85,7 +87,7 @@ Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik
 系统接受三种查询语言。所有语言在各自的解析/编译步骤之后都汇聚到治理阶段。(REQ-262, REQ-263) 只有 GraphQL 支持写入。(REQ-037) 查询本身没有能力门（capability gate）——任何已认证身份都可以用任何语言查询，数据完全由对象可见性、行级安全和数据脱敏来治理。(REQ-001)
 
 | Interface | Reads | Writes | Query gate |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | GraphQL (`/data/graphql`) | Yes | Yes (mutations) | None — data-layer governance only |
 | SQL (`/data/sql`) | Yes | No | None — data-layer governance only (REQ-267) |
 | Cypher (`/data/query`) | Yes | No | None — data-layer governance only |
@@ -126,7 +128,7 @@ flowchart TD
 **路由决策：**
 
 | Route | When |
-|---|---|
+| --- | --- |
 | **Cache** | Result cache hit — evaluated first, serves the stored result with no execution (REQ-865) |
 | **Cheap-count** | `count(*)`-shaped query over an unmaterialized source that exposes an exact native count — routed to the native count call instead of materializing to count (REQ-875) |
 | **Direct** | Single source + has native driver + has federation connector |
@@ -139,6 +141,7 @@ flowchart TD
 ### 多根查询
 
 具有多个根字段的 GraphQL 查询（例如 `{ orders { id } customers { name } }`）会被编译为独立的 SQL 查询，并分别执行。(REQ-534) SQL 和 Cypher 请求按定义都是单根查询。结果会合并到单个响应中：
+
 - 低于重定向阈值的字段会内联返回在 `data` 中
 - 高于阈值的字段会被重定向，并在 `redirects` 中按字段列出条目
 - 二进制格式（Parquet、Arrow）仅支持单根查询
@@ -146,7 +149,7 @@ flowchart TD
 ## 联邦执行路径
 
 | Path | Transport | Via | When used |
-|------|-----------|-----|-----------|
+| ------ | ----------- | ----- | ----------- |
 | REST | federation engine client (HTTP :8080) | Direct query | Default, always available |
 | Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → JDBC | When Zaychik is running |
 | CTAS | federation engine client (HTTP :8080) | Direct write, Iceberg to S3 | Parquet/ORC redirect |
@@ -155,7 +158,7 @@ flowchart TD
 
 联邦引擎并非原生支持 Arrow Flight SQL 协议。[Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) 是一个 Java 代理，实现了 Arrow Flight SQL 的 gRPC 接口，将请求转换为 JDBC 查询，并以 Arrow record batch 流式方式返回结果。(REQ-144)
 
-```
+```text
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
@@ -174,7 +177,7 @@ Provisa 在启动时通过环境变量 `PROVISA_ENGINE`、已持久化的 Admin 
 ### 驱动程序类别（REQ-840）[tool-verified: `engine.py` `DriverClass`]
 
 | Class | Meaning | Examples |
-|-------|---------|---------|
+| ------- | --------- | --------- |
 | `BROAD` | Reaches many external source types via native connectors | Trino |
 | `PARTIAL` | Reaches a subset (relational, files, cloud object/lake) plus lands everything else | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | Reaches only its own store; every other source lands in | SQLAlchemy |
@@ -182,7 +185,7 @@ Provisa 在启动时通过环境变量 `PROVISA_ENGINE`、已持久化的 Admin 
 ### 可用引擎 [tool-verified: `engine.py` `_ENGINE_BUILDERS`]
 
 | Engine key | Dialect | MPP | External-link mechanism | Auth |
-|-----------|---------|-----|------------------------|------|
+| ----------- | --------- | ----- | ------------------------ | ------ |
 | `trino` / `trino-byo` | Trino SQL | Yes | Trino catalogs (broad connector set) | JDBC credentials |
 | `pg` | PostgreSQL | No | FDW / pg_duckdb | PostgreSQL credentials |
 | `duckdb` | DuckDB | No | Extension-native ATTACH | None (in-process) |
@@ -211,7 +214,7 @@ ClickHouse、DuckDB、Snowflake、Databricks、BigQuery、Fabric 和 Synapse 都
 Attach 会在挂接时自动配置所有前置条件：
 
 | Engine | Object/lake formats | Mechanism | Auto-provisioning [tool-verified] |
-|--------|-------------------|----------|----------------------------------|
+| -------- | ------------------- | ---------- | ---------------------------------- |
 | Databricks | parquet, csv, iceberg, delta_lake | UC external table (`ATTACH_R`) | REST installs Unity Catalog storage credential + external location, then `CREATE TABLE … USING <format> LOCATION …` — live-verified over Cloudflare R2 |
 | BigQuery | parquet, csv, json, iceberg, delta_lake | BigQuery external / BigLake table (`ATTACH_R`) | `CREATE OR REPLACE EXTERNAL TABLE … OPTIONS(format=…, uris=[…])` — live-verified |
 | ClickHouse | csv, parquet, iceberg, delta_lake | S3 / IcebergS3 / DeltaLake table engine (`ATTACH_R`) | Validation probe executed at attach time — live-verified over Cloudflare R2 |
@@ -231,7 +234,7 @@ Attach 会在挂接时自动配置所有前置条件：
 ### 重定向模式
 
 | Mode | How it works | Data touches Provisa? |
-|------|-------------|----------------------|
+| ------ | ------------- | ---------------------- |
 | **CTAS** (Parquet, ORC) | Federation engine writes directly to S3 via `CREATE TABLE AS SELECT` | No |
 | **Provisa upload** (JSON, NDJSON, CSV, Arrow IPC) | Provisa serializes and uploads via boto3 | Yes |
 
@@ -240,7 +243,7 @@ Attach 会在挂接时自动配置所有前置条件：
 ### 重定向头
 
 | Header | Effect |
-|--------|--------|
+| -------- | -------- |
 | `X-Provisa-Redirect-Format: <mime>` | Redirect in this format (implies force unless threshold set) |
 | `X-Provisa-Redirect-Threshold: N` | Only redirect if result exceeds N rows |
 | `X-Provisa-Redirect: true` | Force redirect using default format |
@@ -248,6 +251,7 @@ Attach 会在挂接时自动配置所有前置条件：
 这些请求头实现了由客户端主导的重定向。(REQ-137)
 
 **响应：**
+
 ```json
 {
   "data": {"orders": null},
@@ -263,7 +267,7 @@ Attach 会在挂接时自动配置所有前置条件：
 ### 服务器端配置
 
 | Env var | Default | Purpose |
-|---------|---------|---------|
+| --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |
 | `PROVISA_REDIRECT_THRESHOLD` | `1000` | Default row count threshold |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Default redirect format |
@@ -273,7 +277,7 @@ Attach 会在挂接时自动配置所有前置条件：
 
 ## 路由决策树
 
-```
+```text
 Multi-source query? → Federation engine
 NoSQL source (MongoDB, Cassandra)? → Federation engine
 Uses path columns on non-PG source? → Federation engine
@@ -337,7 +341,7 @@ mutation {
 ### 模式
 
 | Mode | Config | Behavior |
-|------|--------|----------|
+| ------ | -------- | ---------- |
 | **Join-pattern** | `join_pattern` in MV config | Rewrites matching JOINs to read from MV table |
 | **Custom SQL** | `sql` in MV config | Arbitrary SELECT, optionally exposed in SDL |
 | **Auto-materialized relationship** | cross-source relationship (automatic) | Auto-generates a join-pattern MV; no config required |
@@ -363,7 +367,7 @@ relationships:
 
 ### 刷新生命周期
 
-```
+```text
 STALE → (refresh loop picks up) → REFRESHING → FRESH
   ↑                                                |
   └──── mutation hits source table ────────────────┘
@@ -374,7 +378,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 ## 模块地图
 
 | Module | Purpose |
-|--------|---------|
+| -------- | --------- |
 | `api/` | FastAPI app, routers, middleware, lifespan management |
 | `api/flight/` | Arrow Flight server (gRPC, port 8815) |
 | `api/admin/` | Strawberry GraphQL admin API — config, discovery, views |
@@ -443,7 +447,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 Strawberry GraphQL Admin API 挂载于 `/admin/graphql`（HTTP 端口 8001）。它与数据 GraphQL 端点分离，需要超级用户或管理员角色。
 
 | Capability | Description |
-|-----------|-------------|
+| ----------- | ------------- |
 | Config download/upload | Export or replace the full Provisa YAML config |
 | Relationship editor | Create, update, delete relationship definitions |
 | AI FK discovery | Trigger Claude-powered FK candidate analysis |
@@ -457,7 +461,7 @@ Strawberry GraphQL Admin API 挂载于 `/admin/graphql`（HTTP 端口 8001）。
 已注册的表除 GraphQL 接口外，还会以 REST 和 JSON:API 端点的形式公开。(REQ-256, REQ-257)
 
 | Interface | Mount path | Spec |
-|-----------|-----------|------|
+| ----------- | ----------- | ------ |
 | REST | `/rest/<table-id>` | Simple GET/POST with query parameters |
 | JSON:API | `/jsonapi/<table-id>` | [jsonapi.org](https://jsonapi.org) compliant — pagination, relationships, error objects |
 
@@ -468,7 +472,7 @@ Strawberry GraphQL Admin API 挂载于 `/admin/graphql`（HTTP 端口 8001）。
 SSE 订阅通过 `GET /data/subscribe/{table}` 公开。有三种投递模式：(REQ-258)
 
 | Mode | Mechanism | When used |
-|------|-----------|-----------|
+| ------ | ----------- | ----------- |
 | **LISTEN/NOTIFY** | PostgreSQL `LISTEN` on a channel | PG sources with mutation activity |
 | **Polling** | Re-execute query on interval | Non-PG sources, or when CDC unavailable |
 | **Debezium CDC** | Kafka topic from Debezium connector | High-frequency change streams |
@@ -481,7 +485,7 @@ SSE 订阅通过 `GET /data/subscribe/{table}` 公开。有三种投递模式：
 
 数据库变更（INSERT/UPDATE/DELETE）可以通过 `events/` 和 `webhooks/` 模块触发出站事件。(REQ-172, REQ-173, REQ-220)
 
-```
+```text
 Mutation executed → EventDispatcher → match event trigger rules
                                           ↓
                                WebhookExecutor → HTTP POST to configured URL
@@ -494,7 +498,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 四个后台循环会在应用程序的生命周期（lifespan）阶段启动（`api/app.py`）：
 
 | Service | Interval | Purpose |
-|---------|----------|---------|
+| --------- | ---------- | --------- |
 | MV refresh loop | 30 s | Polls `get_due_for_refresh()`, executes CTAS or DELETE+INSERT on stale MVs |
 | Warm table manager | Configurable | Promotes frequently-queried tables to Iceberg local SSD cache |
 | Hot table loader | Configurable | Loads small reference tables into in-memory cache for sub-millisecond access |
@@ -505,7 +509,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 ### 热/暖表缓存层级
 
 | Tier | Storage | Promotion criteria | Access latency |
-|------|---------|-------------------|----------------|
+| ------ | --------- | ------------------- | ---------------- |
 | Hot | In-process memory | Row count < threshold, or is a relationship target | <1 ms |
 | Warm | Iceberg on local SSD | Query frequency threshold exceeded | ~5–20 ms |
 | Cold | Remote source | Default | 50–500 ms |
@@ -517,7 +521,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 现有的 Hasura 部署可以转换为 Provisa 配置，而无需手动重写。(REQ-182, REQ-183)
 
 | Module | Input | Output |
-|--------|-------|--------|
+| -------- | ------- | -------- |
 | `hasura_v2/` | Hasura v2 `metadata.yaml` | Provisa `config.yaml` |
 | `ddn/` | Hasura DDN supergraph JSON | Provisa `config.yaml` |
 
@@ -532,7 +536,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 所有列表查询都通过 `compiler/cursor.py` 支持 Relay 风格的游标分页。(REQ-218) 客户端传递 `first`/`after`（向前）或 `last`/`before`（向后）参数。编译器会将行位置编码为不透明的 Base64 游标，并插入相应的 `WHERE`/`LIMIT` 子句。每个列表查询都会返回一个 `pageInfo` 对象：
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `hasNextPage` | Boolean | True if more results exist after this page |
 | `hasPreviousPage` | Boolean | True if results exist before this page |
 | `startCursor` | String | Cursor of the first node in this page |
@@ -555,7 +559,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 `auth/approval_hook.py` 是一个可插拔的授权钩子，在查询执行之前、行级安全和数据脱敏之后被调用。(REQ-203) 它可以与外部策略引擎（OPA、自定义 ABAC 服务）集成。
 
 | Setting | Description |
-|---------|-------------|
+| --------- | ------------- |
 | Transport | `webhook` (HTTP POST), `grpc`, or `unix_socket` |
 | Scope | Per-table, per-source, or global |
 | Fallback policy | `allow` or `deny` when the hook endpoint is unreachable |
@@ -578,17 +582,19 @@ Mutation executed → EventDispatcher → match event trigger rules
 # @provisa route=federated
 { orders { id amount } }
 ```
+
 ```sql
 /* @provisa route=federated */
 SELECT id, amount FROM orders
 ```
+
 ```cypher
 // @provisa route=federated
 MATCH (o:Order) RETURN o.id, o.amount
 ```
 
 | Hint | Effect |
-|------|--------|
+| ------ | -------- |
 | `route=federated` | Force federation through the federation engine, bypassing direct-driver routing |
 | `route=direct` | Force direct-driver execution |
 
@@ -619,7 +625,7 @@ Admin UI（`provisa-ui/src/pages/SchemaExplorer.tsx`）内嵌了 GraphQL Voyager
 Provisa 是一个轻薄的编译与路由层——只为查询延迟增加个位数毫秒。但是，Provisa 序列化结果数据的路径，都受制于进程内存。有两条路径是真正无边界的：
 
 | Path | Memory bound? | Suitable for |
-|------|--------------|-------------|
+| ------ | -------------- | ------------- |
 | JSON inline (HTTP) | Yes | Small-medium results |
 | **Arrow Flight streaming (gRPC :8815)** | **No** | **Unbounded — streaming via Zaychik or warehouse Arrow API** |
 | Protobuf gRPC inline (:50051) | Yes | Medium results, service-to-service |
@@ -633,13 +639,14 @@ Provisa 是一个轻薄的编译与路由层——只为查询延迟增加个位
 对于基于阈值的重定向，Provisa 会在查询中插入 `LIMIT threshold + 1` 作为探测。(REQ-140) 如果结果行数较少，就会内联返回（完整结果，不浪费任何计算）。如果结果达到上限，探测会被丢弃，并通过 CTAS 或 Provisa 上传重新执行完整查询。这样可以避免使用 `SELECT COUNT(*)`（部分数据源没有对其进行优化），并且适用于任何数据源。
 
 对于大型分析工作负载，可使用以下选项之一：
+
 - **Arrow Flight**（端口 8815）用于流式传输到数据工具——批次流经 Provisa 而不会被物化 (REQ-145)
 - **Parquet/ORC 重定向**用于基于文件的导出——联邦引擎直接写入 S3，Provisa 返回一个预签名 URL (REQ-138, REQ-044)
 
 ## 基础设施
 
 | Service | Image | Port | Purpose |
-|---------|-------|------|---------|
+| --------- | ------- | ------ | --------- |
 | Provisa API | (host process) | 8001 | HTTP/REST endpoint |
 | Provisa Flight | (host process) | 8815 | Arrow Flight gRPC server |
 | Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |

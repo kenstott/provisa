@@ -22,7 +22,7 @@ sources:
 All sources share a common field set. [tool-verified: `provisa/core/models.py:129-212`]
 
 | Field | Default | Notes |
-|-------|---------|-------|
+| ------- | --------- | ------- |
 | `id` | required | Alphanumeric, hyphens, underscores |
 | `type` | required | See table below |
 | `host` | `""` | Hostname or IP |
@@ -43,7 +43,7 @@ All sources share a common field set. [tool-verified: `provisa/core/models.py:12
 ### Supported source types [tool-verified: `provisa/core/models.py:36-101`]
 
 | Type | Connection style | Notes |
-|------|-----------------|-------|
+| ------ | ----------------- | ------- |
 | **RDBMS** | | |
 | `postgresql` | host/port | Asyncpg pool; PgBouncer opt-in via `use_pgbouncer` |
 | `mysql` | host/port | |
@@ -128,7 +128,7 @@ sources:
 Each subject maps to one or more GovData schemas. Configuring a `govdata` source with a subject exposes all schemas for that subject automatically. (REQ-540)
 
 | Subject | Schemas |
-|---------|---------|
+| --------- | --------- |
 | `COMMERCE` | `sec`, `patents` |
 | `ECONOMY` | `econ`, `econ_reference` |
 | `EDUCATION` | `census`, `edu` |
@@ -191,7 +191,7 @@ kafka_sources:
 **Schema Source**
 
 | Value | Behavior |
-|-------|----------|
+| ------- | ---------- |
 | `registry` | Fetch schema from Confluent Schema Registry |
 | `manual` | Define columns inline in config (no Schema Registry needed) |
 | `sample` | Auto-discover from sample messages |
@@ -539,7 +539,7 @@ The naming authority is the single source of truth for client-facing names; phys
 The GraphQL convention is one of three preset enums. (REQ-416) Old free-form strings (`none`, `snake_case`, `camelCase`, `PascalCase`) are deprecated. (REQ-416)
 
 | Preset | Default | Type names | Field names | Mutation names |
-|--------|---------|------------|-------------|----------------|
+| -------- | --------- | ------------ | ------------- | ---------------- |
 | `apollo_graphql` | yes | PascalCase | camelCase | camelCase |
 | `hasura_graphql` | | PascalCase | camelCase | snake_case |
 | `snake` | | PascalCase | snake_case | snake_case |
@@ -551,6 +551,7 @@ The default GraphQL convention is `apollo_graphql`, which produces camelCase fie
 Explicit `column.alias` is the canonical name: SQL uses it verbatim with no convention applied, GraphQL applies its convention to it, and CQL derives from the GraphQL name. (REQ-194)
 
 Per-source override:
+
 ```yaml
 sources:
   - id: legacy-db
@@ -558,6 +559,7 @@ sources:
 ```
 
 Per-table override:
+
 ```yaml
 tables:
   - source_id: legacy-db
@@ -570,7 +572,7 @@ tables:
 When `domain_prefix: true`, all GraphQL field and type names are prefixed with the domain ID using a double underscore separator: (REQ-154)
 
 | Table | Domain | Field Name |
-|-------|--------|-----------|
+| ------- | -------- | ----------- |
 | `orders` | `sales-analytics` | `sales_analytics__orders` |
 | `customer_segments` | `customer-insights` | `customer_insights__customer_segments` |
 
@@ -626,6 +628,7 @@ tables:
 ### Aliases
 
 Table and column aliases override the default GraphQL name. (REQ-155) Useful for:
+
 - Renaming cryptic database names (e.g., `tbl_cust_seg` → `customer_segments`)
 - Avoiding abbreviations in the API layer
 - Creating a clean, domain-specific vocabulary
@@ -660,7 +663,7 @@ The path format is `source_column.key1.key2...`. The compiler generates `json_ex
 ### Masking Types
 
 | Type | Fields | Description |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | `regex` | `pattern`, `replace` | REGEXP_REPLACE (string columns only) |
 | `constant` | `value` | Literal replacement (NULL, 0, MAX, MIN, custom) |
 | `truncate` | `precision` | DATE_TRUNC (date/timestamp columns only) |
@@ -723,7 +726,7 @@ Roles with `parent_role_id` inherit capabilities and domain access from the pare
 ### Capabilities
 
 | Capability | Description |
-|-----------|-------------|
+| ----------- | ------------- |
 | `source_registration` | Register data sources |
 | `table_registration` | Register tables |
 | `relationship_registration` | Define relationships |
@@ -789,7 +792,7 @@ views:
 ```
 
 | Field | Required | Description |
-|-------|----------|-------------|
+| ------- | ---------- | ------------- |
 | `id` | Yes | Unique view identifier |
 | `sql` | Yes | SQL SELECT statement defining the view |
 | `domain_id` | Yes | Domain for schema visibility |
@@ -870,7 +873,7 @@ auth:
 ### Auth Provider Types
 
 | Provider | Use Case | Token Validation |
-|----------|----------|-----------------|
+| ---------- | ---------- | ----------------- |
 | `simple` | Local dev/testing. Users defined in YAML. | JWT signed with `PROVISA_JWT_SECRET` |
 | `firebase` | Firebase Authentication (all methods). | `firebase-admin` SDK `verify_id_token()` |
 | `keycloak` | Keycloak OIDC. Tenant + client roles mapped. | JWKS-based JWT validation |
@@ -965,7 +968,7 @@ tables:
 ```
 
 | Source | Behavior |
-|--------|----------|
+| -------- | ---------- |
 | `header` | Injects value from the named HTTP request header |
 | `now` | Injects `NOW()` (current timestamp) |
 | `literal` | Injects a constant value |
@@ -1029,7 +1032,7 @@ OrderBy uses the `{column: direction}` format with a 6-value direction enum: (RE
 ```
 
 | Direction | SQL |
-|-----------|-----|
+| ----------- | ----- |
 | `asc` | `ASC` |
 | `desc` | `DESC` |
 | `asc_nulls_first` | `ASC NULLS FIRST` |
@@ -1073,26 +1076,26 @@ Provisa runs two independent OTLP export paths: your internal collector and the 
 **`telemetry_filter`** — controls what reaches your internal collector.
 
 | Key | Type | Default | Description |
-|-----|------|---------|-------------|
+| ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `false` | Replaces string and numeric literals in `db.statement` with `?` |
 | `redact_attributes` | list[str] | `[]` | Attribute keys dropped entirely from every span |
 
 **`support_telemetry_filter`** — controls what reaches the Provisa support endpoint. SQL literal redaction defaults to `true` on this path, since query data belongs to you. (REQ-547) [tool-verified: `provisa/api/otel_setup.py` line 240]
 
 | Key | Type | Default | Description |
-|-----|------|---------|-------------|
+| ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `true` | Replaces string and numeric literals in `db.statement` with `?` |
 | `redact_attributes` | list[str] | `[]` | Attribute keys dropped entirely from every span |
 
 Redacted `db.statement` example — with `redact_sql_literals: true`, this span attribute:
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 ```
 
 becomes:
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
@@ -1113,7 +1116,7 @@ Precedence: `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` 
 ### Engine overview [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
 
 | Engine key | Label | Dialect | MPP | External-link mechanism | Auth |
-|-----------|-------|---------|-----|------------------------|------|
+| ----------- | ------- | --------- | ----- | ------------------------ | ------ |
 | `trino` | Provisa Federation Engine | Trino SQL | Yes | Trino catalogs (broad connector set) | JDBC credentials |
 | `trino-byo` | Trino (bring-your-own) | Trino SQL | Yes | Same as `trino`; unmanaged coordinator | JDBC credentials |
 | `pg` | PostgreSQL | PostgreSQL | No | FDW / pg_duckdb | PostgreSQL credentials |
@@ -1284,7 +1287,7 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 ## Environment Variables
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Config file path |
 | `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | Control-plane store URI (SQLAlchemy async); accepts `sqlite+aiosqlite://…` / `duckdb://…` for the embedded desktop store (REQ-828, REQ-850) |
 | `PLATFORM_DATABASE_URL` | — | Platform registry URI (tenant directory, engine registry); required at startup, no fallback (REQ-837) |

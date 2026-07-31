@@ -16,13 +16,13 @@ Provisa 在两个前缀下暴露 REST 端点：`/data` 用于查询执行和架�
 
 **身份自省：**
 
-```
+```http
 GET /auth/me
 ```
 
 返回已认证用户的 id、邮箱、显示名称、组织成员关系和角色分配。在开发模式下返回 `dev_mode: true` 并列出所有角色 ID。[tool-verified: `provisa/api/auth_router.py`]
 
-```
+```http
 GET /auth/provider-type
 ```
 
@@ -37,6 +37,7 @@ GET /auth/provider-type
 执行一条 GraphQL 查询或变更操作。(REQ-043) [tool-verified: `provisa/api/data/endpoint.py:151`]
 
 **请求体：**
+
 ```json
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
@@ -49,6 +50,7 @@ GET /auth/provider-type
 `role` 字段仅在开发模式（无身份验证）下使用。启用身份验证后，使用已认证用户的角色，请求体中的 `role` 会被忽略。
 
 `extensions` 字段支持自动持久化查询（APQ）协议：(REQ-288)
+
 ```json
 {
   "extensions": {"persistedQuery": {"sha256Hash": "<sha256-of-query>"}}
@@ -56,6 +58,7 @@ GET /auth/provider-type
 ```
 
 **请求头：**
+
 - `X-Provisa-Role` — 覆盖角色（开发模式）
 - `Accept` — 响应格式（参见内容协商）
 - `Authorization` — 启用身份验证时使用 `Bearer <token>`
@@ -64,6 +67,7 @@ GET /auth/provider-type
 - `X-Provisa-Redirect` — `true` 表示无条件强制重定向（REQ-029）
 
 **响应（JSON 内联）：**
+
 ```json
 {
   "data": {
@@ -75,6 +79,7 @@ GET /auth/provider-type
 ```
 
 **响应（重定向）：**
+
 ```json
 {
   "data": {"orders": null},
@@ -88,6 +93,7 @@ GET /auth/provider-type
 ```
 
 **响应（多根字段，内联/重定向混合）：**
+
 ```json
 {
   "data": {
@@ -119,7 +125,7 @@ GET /auth/provider-type
 ### 内容协商
 
 | Accept 请求头 | 格式 |
-|---|---|
+| --- | --- |
 | `application/json` | JSON（默认） |
 | `application/x-ndjson` | 换行分隔 JSON |
 | `text/csv` | CSV |
@@ -135,7 +141,7 @@ GET /auth/provider-type
 超过配置行数阈值的结果（或当 `X-Provisa-Redirect: true` 时）会写入 S3，并返回一个预签名 URL。(REQ-029, REQ-044)
 
 | 重定向格式 | 写入方 | 内存占用 |
-|---|---|---|
+| --- | --- | --- |
 | `application/vnd.apache.parquet` | 联邦 CTAS | 无——数据从不经过 Provisa |
 | `application/x-orc` | 联邦 CTAS | 无——数据从不经过 Provisa |
 | `application/json` | Provisa | 受内存限制 |
@@ -145,7 +151,7 @@ GET /auth/provider-type
 
 对于大型分析导出，请使用 Parquet 或 ORC 重定向。联邦查询引擎会并行直接写入 S3——数据不经过 Provisa。(REQ-138)
 
-```
+```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
 X-Provisa-Redirect-Threshold: 1000
 ```
@@ -157,6 +163,7 @@ X-Provisa-Redirect-Threshold: 1000
 通过 Stage 2 治理流水线执行原始 SQL。(REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:62`]
 
 **请求体：**
+
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
@@ -182,6 +189,7 @@ X-Provisa-Redirect-Threshold: 1000
 Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点。(REQ-345)
 
 **请求体：**
+
 ```json
 {
   "query": "{ orders { id } }",
@@ -200,6 +208,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 为每个已注册表自动生成的纯 REST 端点。查询字符串会映射为 GraphQL 参数，请求通过与 GraphQL 相同的流水线（RLS、脱敏、路由）编译和执行。(REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
 
 **查询参数：**
+
 - `limit` — 最大行数（≥ 1）
 - `offset` — 跳过的行数（≥ 0）
 - `fields` — 逗号分隔的列名（默认为所有标量字段）
@@ -217,6 +226,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 **`Accept` 请求头：** 必须包含 `application/vnd.api+json`（JSON:API 媒体类型），否则请求返回 `406`。
 
 **查询参数：**
+
 - `fields[<type>]` — 稀疏字段集，例如 `?fields[orders]=amount`
 - `filter[<col>]` / `filter[<col>][<op>]` — 例如 `?filter[region]=US`、`?filter[amount][gt]=100`
 - `sort` — 逗号分隔，`-` 前缀表示降序，例如 `?sort=-created_at,amount`
@@ -231,6 +241,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 提交一个自然语言问题。服务会启动一个异步作业，并立即返回带有 `job_id` 的 `202 Accepted`。需要在 `ai_models` 配置节下配置一个 LLM 提供方。(REQ-354) [tool-verified: `provisa/api/rest/nl_router.py:50`]
 
 **请求体：**
+
 ```json
 {"q": "How many orders were placed last month?", "role": "admin"}
 ```
@@ -267,6 +278,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 **请求头：** `X-Role: <role_id>`（必填）
 
 **查询参数：**
+
 - `domain` — 逗号分隔的域 ID。设置后，响应会被过滤为仅包含指定域及从中可达的表。
 
 **响应：** `text/plain` 格式的 GraphQL SDL。
@@ -346,6 +358,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 **请求体：** 原始 YAML 内容。
 
 **响应：**
+
 ```json
 {"success": true, "message": "Config uploaded and reloaded"}
 ```
@@ -361,6 +374,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 以 JSON 形式返回当前平台设置。(REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:50`]
 
 **响应：**
+
 ```json
 {
   "redirect": {
@@ -398,6 +412,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 在运行时更新平台设置。所有字段均为可选——仅更新请求体中出现的键。(REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:100`]
 
 **请求体（部分示例）：**
+
 ```json
 {
   "otel": {
@@ -419,6 +434,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 - `otel`：`endpoint`、`service_name`、`sample_rate`、`support_endpoint`、`support_redact_sql_literals`、`support_redact_attributes`
 
 **响应：**
+
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
@@ -442,6 +458,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 **查询参数：** `catalog`（默认 `"otel"`）
 
 **响应：**
+
 ```json
 {"success": true, "errors": []}
 ```
@@ -461,6 +478,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 触发关系发现。始终从联邦查询引擎运行外键自省。(REQ-018) 若设置了 `ANTHROPIC_API_KEY`，则运行 LLM 推断。(REQ-167) [tool-verified: `provisa/api/admin/discovery.py:55`]
 
 **请求体：**
+
 ```json
 {
   "scope": "domain",
@@ -541,6 +559,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 返回所有被跟踪的数据库函数和 Webhook。(REQ-242) [tool-verified: `provisa/api/admin/actions_router.py:104`]
 
 **响应：**
+
 ```json
 {
   "functions": [
@@ -582,7 +601,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 **关键字段：**
 
 | 字段 | 是否必填 | 说明 |
-|---|---|---|
+| --- | --- | --- |
 | `name` | 是 | 唯一的命令名称 |
 | `kind` | 是 | `"query"` → GraphQL Query 字段；`"mutation"` → Mutation 字段 |
 | `implKind` | 否 | 命令的运行方式——见下表（默认为 `source_procedure`） |
@@ -596,7 +615,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 **`implKind` 取值：**
 
 | `implKind` | 运行内容 | `binding` 字段 |
-|---|---|---|
+| --- | --- | --- |
 | `source_procedure` | 已注册数据源上的存储过程（默认） | `sourceId`、`schemaName`、`functionName` |
 | `script` | 服务端脚本 | `script` |
 | `http` | 出站 HTTP 调用 | `url`、`method` |
@@ -636,7 +655,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 所有端点都在 `/admin/roles` 前缀下。[tool-verified: `provisa/api/admin/roles_router.py:18`]
 
 | 方法 | 路径 | 说明 |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/roles/` | 列出所有角色 |
 | `POST` | `/admin/roles/` | 创建一个角色 |
 | `PUT` | `/admin/roles/{role_id}` | 更新一个角色 |
@@ -651,7 +670,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 所有端点都在 `/admin/users` 前缀下。[tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
 | 方法 | 路径 | 说明 |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/users/` | 创建一个本地用户 |
 | `GET` | `/admin/users/` | 列出本地用户 |
 | `GET` | `/admin/users/{user_id}` | 获取一个用户 |
@@ -669,7 +688,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 所有端点都在 `/admin/orgs` 下。[tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
 | 方法 | 路径 | 说明 |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/orgs/` | 列出组织 |
 | `POST` | `/admin/orgs/` | 创建一个组织 |
 | `PUT` | `/admin/orgs/{org_id}` | 更新一个组织 |
@@ -685,7 +704,7 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 所有端点都在 `/admin/invites` 下。[tool-verified: `provisa/api/admin/invites_router.py:18`]
 
 | 方法 | 路径 | 说明 |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/invites/` | 创建一个邀请 |
 | `GET` | `/admin/invites/` | 列出待处理的邀请 |
 | `DELETE` | `/admin/invites/{token}` | 撤销一个邀请 |
@@ -748,7 +767,7 @@ mutation {
 ## 错误响应
 
 | 状态码 | 含义 |
-|---|---|
+| --- | --- |
 | 400 | 无效查询、校验错误或 SQL 解析错误 |
 | 401 | 缺失或无效的身份验证令牌 |
 | 403 | 能力不足；治理违规 |
@@ -780,11 +799,13 @@ mutation {
 查询和目录发现在同一个连接上都可用。完整的治理流水线（RLS、脱敏、采样）会应用到每一次查询。(REQ-130, REQ-143)
 
 **Ticket 格式**（JSON）：
+
 ```json
 {"query": "{ customers { name email } }", "role": "analyst", "variables": {}}
 ```
 
 **用法（Python）：**
+
 ```python
 import pyarrow.flight as flight
 

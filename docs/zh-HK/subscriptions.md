@@ -7,7 +7,7 @@ Provisa 透過 Server-Sent Events（SSE）支援即時推送。客戶端可接�
 訂閱以**已註冊的資料表**為目標：
 
 | 數據來源 | 可用的 `strategy` 值 |
-|--------|-------------------------|
+| -------- | ------------------------- |
 | 資料表（PostgreSQL） | `native`（LISTEN/NOTIFY）、`poll` |
 | 資料表（非 PG RDBMS，附有數據來源層級的 `cdc` 區塊） | `debezium`、`kafka`、`poll` |
 | 資料表（聯邦檢視 / 任何其他數據來源） | 僅限 `poll` |
@@ -40,13 +40,15 @@ JOIN mysql.crm.customer_segments s ON o.customer_id = s.customer_id;
 ## 端點
 
 訂閱某資料表：
-```
+
+```http
 GET /data/subscribe/{table}
 Accept: text/event-stream
 ```
 
 連線會保持開啟，並針對每次變更發送一個 JSON 事件：（REQ-258、REQ-568）
-```
+
+```text
 data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":"east"}}
 
 data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region":"west"}}
@@ -57,7 +59,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 傳送方式由資料表設定中的 `live.strategy` 選定：（REQ-813、REQ-814）
 
 | `strategy` | 機制 | 適用於 | 需要 |
-|------------|-----------|---------------|---------|
+| ------------ | ----------- | --------------- | --------- |
 | `native` | PostgreSQL `LISTEN`/`NOTIFY`、MongoDB Change Streams | PG、MongoDB | 毋須額外項目 |
 | `debezium` | 來自 Debezium 連接器的 Kafka 主題 | 非 PG RDBMS 資料表 | 數據來源層級的 `cdc` 區塊（Debezium + Kafka） |
 | `kafka` | 任意的 Kafka delta 主題 | 任何以 Kafka 供應數據的資料表 | 數據來源層級的 `cdc` 區塊 |
@@ -72,6 +74,7 @@ Provisa 會在一條持久的 PG 連線上發出 `LISTEN <channel>`。（REQ-258
 Provisa 會定期重新執行數據來源查詢，只選取 `watermark_column > last_watermark` 的資料列。（REQ-260）差異會以 SSE 事件形式發出。輪詢無法偵測到硬刪除——被移除的資料列不會令水位標記推進。若要令刪除操作可見，請使用軟刪除（例如設定 `deleted_at` 旗標）以推進水位標記欄位；該刪除操作其後會以更新事件形式送達，並附帶軟刪除標記。（REQ-260）
 
 資料表輪詢設定（於 `provisa.yaml` 中）：
+
 ```yaml
 tables:
   - id: federated_orders
@@ -89,6 +92,7 @@ tables:
 需要一個正在運行、並將資料寫入 Kafka 的 Debezium 連接器。（REQ-261）Provisa 會消費該 Kafka 主題，並將變更事件轉發至已連線的 SSE 客戶端。（REQ-261）
 
 CDC 傳輸每個數據來源只須在 `cdc` 區塊中設定一次；主題會依 `{topic_prefix}.{schema}.{table}` 的格式衍生，而不會逐資料表重複設定。（REQ-824）之後每個資料表只須選取 `strategy: debezium`：
+
 ```yaml
 sources:
   - id: sales-mysql
@@ -106,7 +110,7 @@ sources:
 
 任何 GraphQL 訂閱都可以重新導向至 Kafka 主題，而非以串流形式傳回客戶端。（REQ-812）請在訂閱請求中加入 `X-Provisa-Sink` 標頭：
 
-```
+```yaml
 POST /data/graphql
 Authorization: Bearer <token>
 Content-Type: application/json
@@ -114,6 +118,7 @@ X-Provisa-Sink: kafka://broker:9092/my-topic
 ```
 
 伺服器會立即回應 `202 Accepted`，並啟動一項背景工作，該工作會：（REQ-812）
+
 1. 使用與 SSE 相同的供應者解析方式（LISTEN/NOTIFY → asyncpg 輪詢 → 聯邦輪詢）監察資料表變更
 2. 於每次變更時重新執行對應的查詢
 3. 將結果以 JSON 訊息形式發佈至指定的 Kafka 主題
@@ -126,6 +131,7 @@ X-Provisa-Sink: kafka://broker:9092/my-topic
 - `topic` 為必要項目
 
 **範例（curl）：**
+
 ```bash
 curl -X POST http://localhost:8000/data/graphql \
   -H "Authorization: Bearer $TOKEN" \
@@ -177,4 +183,5 @@ source.onmessage = (e) => {
   console.log(event.event, event.row);
 };
 ```
+
 </content>

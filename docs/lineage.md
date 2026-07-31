@@ -26,7 +26,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 This statement produces three output columns. The graph for `geo_u` looks like:
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -48,7 +48,7 @@ taint closure continuously from the source relation's declared columns to each o
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | Node kind | Color | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `source` | Green | A base table column |
 | `derived` | Blue | Produced by a SQL expression (function, operator, CTE) |
 | `command` | Purple | An output column from a registered command |
@@ -89,7 +89,7 @@ Cycles are described, not rejected. The lineage engine detects every directed cy
 **classifies** it. [tool-verified: `Cycle.classification` property in merge.py:43-46]
 
 | Classification | Border color | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | Yellow | The cycle crosses a materialized node — a legal, time-lagged feedback loop. The MV snapshot is the version boundary that makes it well-defined. |
 | `error` | Red | No materialization boundary on the loop — a circular definition with no stable evaluation order. Likely a design error. |
 
@@ -147,7 +147,7 @@ Returns HTTP 422 when the SQL cannot be parsed.
 
 Returns the merged provenance graph over all MVs in the registry.
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -157,7 +157,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 Query parameters [tool-verified: function signature at lineage_router.py:73-76]:
 
 | Parameter | Values | Default | Effect |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | A node id | — | Scope the response to the sub-graph around this node |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | Which direction to traverse from `focus` |
 | `depth` | integer | unbounded | Maximum hop distance from `focus` |

@@ -22,7 +22,7 @@ sources:
 所有数据源共享一组通用字段。[tool-verified: `provisa/core/models.py:129-212`]
 
 | 字段 | 默认值 | 说明 |
-|-------|---------|-------|
+| ------- | --------- | ------- |
 | `id` | 必填 | 字母数字、连字符、下划线 |
 | `type` | 必填 | 参见下表 |
 | `host` | `""` | 主机名或 IP |
@@ -43,7 +43,7 @@ sources:
 ### 支持的数据源类型 [tool-verified: `provisa/core/models.py:36-101`]
 
 | 类型 | 连接方式 | 说明 |
-|------|-----------------|-------|
+| ------ | ----------------- | ------- |
 | **关系型数据库（RDBMS）** | | |
 | `postgresql` | host/port | Asyncpg 连接池；通过 `use_pgbouncer` 可选启用 PgBouncer |
 | `mysql` | host/port | |
@@ -128,7 +128,7 @@ sources:
 每个主题映射到一个或多个 GovData 架构。配置一个带有某主题的 `govdata` 数据源，会自动暴露该主题下的所有架构。(REQ-540)
 
 | 主题 | 架构 |
-|---------|---------|
+| --------- | --------- |
 | `COMMERCE` | `sec`、`patents` |
 | `ECONOMY` | `econ`、`econ_reference` |
 | `EDUCATION` | `census`、`edu` |
@@ -191,7 +191,7 @@ kafka_sources:
 **架构来源（Schema Source）**
 
 | 值 | 行为 |
-|-------|----------|
+| ------- | ---------- |
 | `registry` | 从 Confluent Schema Registry 获取架构 |
 | `manual` | 在配置中内联定义列（无需 Schema Registry） |
 | `sample` | 从样本消息中自动发现 |
@@ -539,7 +539,7 @@ naming:
 GraphQL 约定是三个预设枚举值之一。(REQ-416) 旧的自由格式字符串（`none`、`snake_case`、`camelCase`、`PascalCase`）已被弃用。(REQ-416)
 
 | 预设 | 默认 | 类型名 | 字段名 | 变更操作名 |
-|--------|---------|------------|-------------|----------------|
+| -------- | --------- | ------------ | ------------- | ---------------- |
 | `apollo_graphql` | 是 | PascalCase | camelCase | camelCase |
 | `hasura_graphql` | | PascalCase | camelCase | snake_case |
 | `snake` | | PascalCase | snake_case | snake_case |
@@ -551,6 +551,7 @@ GraphQL 约定是三个预设枚举值之一。(REQ-416) 旧的自由格式字�
 显式的 `column.alias` 是规范名称：SQL 会原样使用它，不应用任何约定；GraphQL 会对其应用其约定；CQL 则从 GraphQL 名称派生。(REQ-194)
 
 按数据源覆盖：
+
 ```yaml
 sources:
   - id: legacy-db
@@ -558,6 +559,7 @@ sources:
 ```
 
 按表覆盖：
+
 ```yaml
 tables:
   - source_id: legacy-db
@@ -570,7 +572,7 @@ tables:
 当 `domain_prefix: true` 时，所有 GraphQL 字段名和类型名都会用双下划线分隔符加上域 ID 作为前缀：(REQ-154)
 
 | 表 | 域 | 字段名 |
-|-------|--------|-----------|
+| ------- | -------- | ----------- |
 | `orders` | `sales-analytics` | `sales_analytics__orders` |
 | `customer_segments` | `customer-insights` | `customer_insights__customer_segments` |
 
@@ -626,6 +628,7 @@ tables:
 ### 别名
 
 表别名和列别名会覆盖默认的 GraphQL 名称。(REQ-155) 适用于：
+
 - 重命名晦涩的数据库名称（例如 `tbl_cust_seg` → `customer_segments`）
 - 避免在 API 层出现缩写
 - 创建清晰、面向领域的词汇表
@@ -660,7 +663,7 @@ columns:
 ### 脱敏类型
 
 | 类型 | 字段 | 说明 |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | `regex` | `pattern`、`replace` | REGEXP_REPLACE（仅字符串列） |
 | `constant` | `value` | 字面值替换（NULL、0、MAX、MIN、自定义） |
 | `truncate` | `precision` | DATE_TRUNC（仅日期/时间戳列） |
@@ -723,7 +726,7 @@ roles:
 ### 能力
 
 | 能力 | 说明 |
-|-----------|-------------|
+| ----------- | ------------- |
 | `source_registration` | 注册数据源 |
 | `table_registration` | 注册表 |
 | `relationship_registration` | 定义关系 |
@@ -789,7 +792,7 @@ views:
 ```
 
 | 字段 | 是否必填 | 说明 |
-|-------|----------|-------------|
+| ------- | ---------- | ------------- |
 | `id` | 是 | 唯一的视图标识符 |
 | `sql` | 是 | 定义该视图的 SQL SELECT 语句 |
 | `domain_id` | 是 | 用于架构可见性的域 |
@@ -870,7 +873,7 @@ auth:
 ### 身份验证提供方类型
 
 | 提供方 | 使用场景 | 令牌验证方式 |
-|----------|----------|-----------------|
+| ---------- | ---------- | ----------------- |
 | `simple` | 本地开发/测试。用户在 YAML 中定义。 | 用 `PROVISA_JWT_SECRET` 签名的 JWT |
 | `firebase` | Firebase Authentication（所有方式）。 | `firebase-admin` SDK 的 `verify_id_token()` |
 | `keycloak` | Keycloak OIDC。租户和客户端角色已映射。 | 基于 JWKS 的 JWT 验证 |
@@ -965,7 +968,7 @@ tables:
 ```
 
 | 来源 | 行为 |
-|--------|----------|
+| -------- | ---------- |
 | `header` | 从指定名称的 HTTP 请求头注入值 |
 | `now` | 注入 `NOW()`（当前时间戳） |
 | `literal` | 注入一个常量值 |
@@ -1029,7 +1032,7 @@ OrderBy 使用 `{column: direction}` 格式，direction 是一个 6 值枚举：
 ```
 
 | 方向 | SQL |
-|-----------|-----|
+| ----------- | ----- |
 | `asc` | `ASC` |
 | `desc` | `DESC` |
 | `asc_nulls_first` | `ASC NULLS FIRST` |
@@ -1073,26 +1076,26 @@ Provisa 运行两条独立的 OTLP 导出路径：您的内部收集器和可选
 **`telemetry_filter`** —— 控制到达您内部收集器的内容。
 
 | 键 | 类型 | 默认值 | 说明 |
-|-----|------|---------|-------------|
+| ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `false` | 将 `db.statement` 中的字符串和数字字面值替换为 `?` |
 | `redact_attributes` | list[str] | `[]` | 从每个 span 中完全丢弃的属性键 |
 
 **`support_telemetry_filter`** —— 控制到达 Provisa 支持端点的内容。此路径上的 SQL 字面值脱敏默认开启为 `true`，因为查询数据归您所有。(REQ-547) [tool-verified: `provisa/api/otel_setup.py` line 240]
 
 | 键 | 类型 | 默认值 | 说明 |
-|-----|------|---------|-------------|
+| ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `true` | 将 `db.statement` 中的字符串和数字字面值替换为 `?` |
 | `redact_attributes` | list[str] | `[]` | 从每个 span 中完全丢弃的属性键 |
 
 脱敏后的 `db.statement` 示例——当 `redact_sql_literals: true` 时，这个 span 属性：
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 ```
 
 会变为：
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
@@ -1113,7 +1116,7 @@ Provisa 根据端点 URL 的方案（scheme）选择 OTLP/HTTP 或 OTLP/gRPC。(
 ### 引擎概览 [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
 
 | 引擎键 | 标签 | 方言 | MPP | 外部链接机制 | 认证方式 |
-|-----------|-------|---------|-----|------------------------|------|
+| ----------- | ------- | --------- | ----- | ------------------------ | ------ |
 | `trino` | Provisa Federation Engine | Trino SQL | 是 | Trino 目录（广泛的连接器集合） | JDBC 凭据 |
 | `trino-byo` | Trino（自带） | Trino SQL | 是 | 与 `trino` 相同；非托管协调节点 | JDBC 凭据 |
 | `pg` | PostgreSQL | PostgreSQL | 否 | FDW / pg_duckdb | PostgreSQL 凭据 |
@@ -1284,7 +1287,7 @@ sources:
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | 配置文件路径 |
 | `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | 控制面存储 URI（SQLAlchemy 异步）；接受 `sqlite+aiosqlite://…` / `duckdb://…` 用于嵌入式桌面存储（REQ-828, REQ-850） |
 | `PLATFORM_DATABASE_URL` | — | 平台注册表 URI（租户目录、引擎注册表）；启动时必填，无回退值（REQ-837） |

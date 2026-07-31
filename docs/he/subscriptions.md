@@ -7,7 +7,7 @@ Provisa תומכת בדחיפה בזמן אמת מעל Server-Sent Events (SSE).
 מנויים מכוונים ל**טבלה רשומה**:
 
 | מקור | ערכי `strategy` זמינים |
-|--------|-------------------------|
+| -------- | ------------------------- |
 | טבלה (PostgreSQL) | `native` (LISTEN/NOTIFY), `poll` |
 | טבלה (RDBMS שאינו PG עם בלוק `cdc` במקור) | `debezium`, `kafka`, `poll` |
 | טבלה (תצוגה פדרטיבית / כל מקור אחר) | `poll` בלבד |
@@ -40,13 +40,15 @@ JOIN mysql.crm.customer_segments s ON o.customer_id = s.customer_id;
 ## נקודת קצה
 
 הרשמה למנוי על טבלה:
-```
+
+```http
 GET /data/subscribe/{table}
 Accept: text/event-stream
 ```
 
 החיבור נשאר פתוח ופולט אירוע JSON אחד לכל שינוי: (REQ-258, REQ-568)
-```
+
+```text
 data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":"east"}}
 
 data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region":"west"}}
@@ -57,7 +59,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 האספקה נבחרת על ידי `live.strategy` בתצורת הטבלה: (REQ-813, REQ-814)
 
 | `strategy` | מנגנון | זמין עבור | דורש |
-|------------|-----------|---------------|---------|
+| ------------ | ----------- | --------------- | --------- |
 | `native` | PostgreSQL `LISTEN`/`NOTIFY`, MongoDB Change Streams | PG, MongoDB | ללא דבר נוסף |
 | `debezium` | טופיק Kafka ממחבר Debezium | טבלאות RDBMS שאינן PG | בלוק `cdc` ברמת המקור (Debezium + Kafka) |
 | `kafka` | טופיק delta Kafka שרירותי | כל טבלה מוזנת מ-Kafka | בלוק `cdc` ברמת המקור |
@@ -72,6 +74,7 @@ Provisa מנפיקה `LISTEN <channel>` על חיבור PG מתמשך. (REQ-258)
 Provisa מבצעת מחדש את שאילתת המקור מעת לעת, בוחרת רק שורות שבהן `watermark_column > last_watermark`. (REQ-260) הבדלים נפלטים כאירועי SSE. Polling אינו יכול לראות מחיקות קשות — שורה שהוסרה אינה משאירה watermark מתקדם. כדי להפוך מחיקה לגלויה, השתמשו במחיקה רכה (לדוגמה הגדרת דגל `deleted_at`) המקדמת את עמודת ה-watermark; המחיקה אז מגיעה כאירוע עדכון הנושא את סמן המחיקה-הרכה. (REQ-260)
 
 תצורת polling של טבלה (ב-`provisa.yaml`):
+
 ```yaml
 tables:
   - id: federated_orders
@@ -89,6 +92,7 @@ tables:
 דורש מחבר Debezium פעיל הכותב ל-Kafka. (REQ-261) Provisa צורכת את טופיק ה-Kafka ומעבירה אירועי שינוי ללקוחות SSE מחוברים. (REQ-261)
 
 תעבורת CDC מוגדרת פעם אחת לכל מקור בבלוק `cdc`; טופיקים נגזרים כ-`{topic_prefix}.{schema}.{table}` ואינם חוזרים לכל טבלה. (REQ-824) כל טבלה אז בוחרת `strategy: debezium`:
+
 ```yaml
 sources:
   - id: sales-mysql
@@ -106,7 +110,7 @@ sources:
 
 כל מנוי GraphQL ניתן להפניה לטופיק Kafka במקום זרימה חזרה ללקוח. (REQ-812) הוסיפו את הכותרת `X-Provisa-Sink` לבקשת המנוי:
 
-```
+```yaml
 POST /data/graphql
 Authorization: Bearer <token>
 Content-Type: application/json
@@ -114,6 +118,7 @@ X-Provisa-Sink: kafka://broker:9092/my-topic
 ```
 
 השרת משיב `202 Accepted` מיידית ומתחיל משימת רקע ש: (REQ-812)
+
 1. עוקבת אחר שינויי טבלה באמצעות אותה שרשרת פתרון-ספק כמו SSE (LISTEN/NOTIFY ← polling asyncpg ← polling פדרטיבי)
 2. מבצעת מחדש את השאילתה השקולה בכל שינוי
 3. מפרסמת את התוצאה כהודעת JSON לטופיק ה-Kafka הנקוב
@@ -126,6 +131,7 @@ X-Provisa-Sink: kafka://broker:9092/my-topic
 - `topic` נדרש
 
 **דוגמה (curl):**
+
 ```bash
 curl -X POST http://localhost:8000/data/graphql \
   -H "Authorization: Bearer $TOKEN" \
@@ -177,4 +183,5 @@ source.onmessage = (e) => {
   console.log(event.event, event.row);
 };
 ```
+
 </content>

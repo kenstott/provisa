@@ -4,9 +4,11 @@
 
 1. 一個正在執行的 Hasura v2 執行個體（v2.x），並已匯出中繼資料。
 2. 使用 Hasura CLI 匯出中繼資料：
+
    ```bash
    hasura metadata export --endpoint http://localhost:8080
    ```
+
    這會建立一個 `metadata/` 目錄，當中包含 `sources.yaml`、`actions.yaml`、
    `cron_triggers.yaml`、`inherited_roles.yaml`、`remote_schemas.yaml` 等。
 3. Python 3.11+，並已安裝 `provisa` 套件。
@@ -20,13 +22,13 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ### 引數
 
 | 引數 | 必要 | 說明 |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `metadata_dir` | 是 | 已匯出的 Hasura v2 中繼資料目錄路徑 |
 
 ### 選項
 
 | 選項 | 預設值 | 說明 |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | 輸出 YAML 檔案的路徑 |
 | `--source-overrides FILE` | 無 | 包含每個數據來源連線覆寫的 YAML 檔案 |
 | `--domain-map KEY=VAL ...` | 無 | 結構描述 (Schema) 到網域的對應（例如 `public=core hr=people`） |
@@ -58,7 +60,7 @@ default:
 ## 功能對等表
 
 | Hasura v2 功能 | Provisa 對等項目 | 備註 |
-|---|---|---|
+| --- | --- | --- |
 | **數據來源**（postgres、mysql、mssql、bigquery、citus） | `sources[]` | 類型對應：pg/postgres -> postgresql，mssql -> sqlserver。連線 URL 會被解析為 host/port/database/username/password。連線池設定會被保留。 |
 | **資料表**（已追蹤的資料表） | `tables[]` | 結構描述及資料表名稱會被保留。`source_id` 會連結至對應的數據來源。 |
 | **自訂資料表名稱**（`custom_name`、`custom_root_fields.select`） | `tables[].alias` | 取 `select`、`select_by_pk`、`custom_name` 中第一個非空值。 |

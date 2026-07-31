@@ -4,9 +4,11 @@
 
 1. 一个正在运行的 Hasura v2 实例（v2.x），并已导出元数据。
 2. 使用 Hasura CLI 导出元数据：
+
    ```bash
    hasura metadata export --endpoint http://localhost:8080
    ```
+
    这将创建一个 `metadata/` 目录，其中包含 `sources.yaml`、`actions.yaml`、
    `cron_triggers.yaml`、`inherited_roles.yaml`、`remote_schemas.yaml` 等文件。
 3. Python 3.11+，并已安装 `provisa` 包。
@@ -20,13 +22,13 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 ### 参数
 
 | 参数 | 是否必需 | 说明 |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `metadata_dir` | 是 | 已导出的 Hasura v2 元数据目录的路径 |
 
 ### 选项
 
 | 选项 | 默认值 | 说明 |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | 输出 YAML 文件的路径 |
 | `--source-overrides FILE` | 无 | 包含按数据源覆盖连接配置的 YAML 文件 |
 | `--domain-map KEY=VAL ...` | 无 | 架构到域的映射（例如 `public=core hr=people`） |
@@ -58,7 +60,7 @@ default:
 ## 功能对等表
 
 | Hasura v2 功能 | Provisa 对应项 | 说明 |
-|---|---|---|
+| --- | --- | --- |
 | **数据源**（postgres、mysql、mssql、bigquery、citus） | `sources[]` | 类型映射：pg/postgres -> postgresql，mssql -> sqlserver。连接 URL 会被解析为 host/port/database/username/password。连接池设置会被保留。 |
 | **表**（已跟踪的表） | `tables[]` | 架构和表名会被保留。`source_id` 链接到对应的数据源。 |
 | **自定义表名**（`custom_name`、`custom_root_fields.select`） | `tables[].alias` | 取 `select`、`select_by_pk`、`custom_name` 中第一个非空值。 |

@@ -10,7 +10,7 @@ Provisa 提供一个 PostgreSQL 线协议（pgwire）端点。任何支持 Postg
 
 当 `PROVISA_PGWIRE_PORT` 设置为非零整数时，服务器即启动。默认处于禁用状态。（REQ-527）[tool-verified: `app.py:1739`]
 
-```
+```yaml
 Host: 0.0.0.0  (all interfaces)
 Port: $PROVISA_PGWIRE_PORT
 ```
@@ -26,7 +26,7 @@ Port: $PROVISA_PGWIRE_PORT
 两种模式，由 `auth_config` 中的 `provider` 键控制：
 
 | 模式 | `provider` 值 | 行为 |
-|------|-----------------|-----------|
+| ------ | ----------------- | ----------- |
 | Trust | `none`（或身份验证中间件未启用） | 客户端发送的用户名会直接用作 `role_id`。密码会被忽略。 |
 | Simple | `simple` | 密码会对照 `simple` 身份验证提供程序（bcrypt）进行验证。成功后用户名会成为 `role_id`。（REQ-124） |
 
@@ -57,7 +57,7 @@ DDL 语句由 `server.py` 中的正则表达式检测，并派发至 `DdlHandler
 
 可识别的 DDL 形式为：
 
-```
+```sql
 CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
 ALTER TABLE / INDEX / SEQUENCE / VIEW
 DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
@@ -122,6 +122,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 和 DEAL
 `pg_index` 会就每个主键及 UNIQUE 约束填充一行（`indrelid` = 表 oid，`indkey` = 已排序的键值 attnum，`indisprimary`/`indisunique` 已设置）。通过 `pg_index.indkey` 而非 `pg_constraint` 解析键列的客户端——例如 DataGrip——会通过标准的 `pg_index` → `pg_attribute` 连接找出正确的列。（REQ-1095）[tool-verified: `catalog_constraints.py:340-384`]
 
 以下标量表达式也会被拦截：（REQ-588）
+
 - `current_user`、`session_user` → 已验证的 `role_id`
 - `current_database()` → `"provisa"`
 - `current_schema()` → `"public"`
@@ -139,7 +140,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 和 DEAL
 扩展查询协议（Bind/Execute）支持以二进制编码的参数。（REQ-589）以下类型 OID 会从二进制解码：[tool-verified: `postgres.py:69-97`]
 
 | OID | PG 类型 | Python 类型 |
-|-----|---------|-------------|
+| ----- | --------- | ------------- |
 | 16 | bool | bool |
 | 17 | bytea | bytes |
 | 20 | int8 | int |
@@ -167,7 +168,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 和 DEAL
 
 **JDBC（PostgreSQL JDBC 驱动程序）。** 适用于 Java 生态系统工具：DBeaver、Tableau、Power BI、Metabase、Airflow 的 JDBC 算子。JDBC 默认使用简单查询协议，可避免二进制编码带来的复杂情况。连接字符串：
 
-```
+```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 

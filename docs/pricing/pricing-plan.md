@@ -21,7 +21,7 @@ active-hour framing underprices analytical compute ~8x; worker-hour framing can'
 express a warm always-on endpoint. Splitting the SKU captures both markets.
 
 | | Serving lane | Analytical lane |
-|---|---|---|
+| --- | --- | --- |
 | Workload | warm low-latency API, persistent connections | large distributed cross-source joins |
 | Anchor | Hasura v2 ($3.00/active-hr advanced source) | Starburst Galaxy Pro ($3.00/worker-hr) |
 | Unit | active-hour ($3.25) | worker-hour ($2.50) |
@@ -75,7 +75,7 @@ surface — on top of a warm hour that already costs more to hold than Hasura's.
 ### Hasura v2 parity (the serving-lane anchor)
 
 | | Hasura v2 Professional | Provisa (parity + small premium) |
-|---|---|---|
+| --- | --- | --- |
 | Warm, generic Postgres source | $1.50/active-hr | — (Provisa's floor case is multi-source) |
 | Warm, advanced source (Snowflake/BigQuery/Mongo/MSSQL…) | $3.00/active-hr | **$3.25/active-hr** |
 | Persistent-connection protocol surface (pgwire/bolt/Flight) | none | **included in the warm hour** |
@@ -98,7 +98,7 @@ small discount, so it wins the analytical buyer on price while still clearing
 warehouse-standard margin:
 
 | Line | Cost | Price | Margin |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Worker-hour (Spot n2-highmem-8, scale-to-zero) | $0.080/hr | **$2.50/worker-hr** | 97% |
 | Worker-hour (on-demand, guaranteed-warm SLA) | $0.268/hr | $2.50/worker-hr | 89% |
 
@@ -148,7 +148,7 @@ thin. Two ways to widen it, both compatible with holding parity:
 is rented by a meter, so cost and revenue are welded to the same clock.
 
 | Cost line | Shape | Matching revenue | Exposed? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Warm coordinator | fixed while on | active-hour meter (warm ⇒ active ⇒ billed) | No — welded |
 | Worker (Spot, scale-to-zero) | variable | worker-hour meter | No — both variable |
 | Egress (result set) | variable | $/GB meter | No — both variable |
@@ -193,7 +193,7 @@ A free tier is acquisition spend, capped at ~$3/user/mo of marginal cost. Card r
 up front; at max, **throttle/suspend the data plane** — never silent billing.
 
 | Band | Free max | Cost to us |
-|---|---|---|
+| --- | --- | --- |
 | Compute | 200 vCPU-hr/mo (= 25 node-hr on 8-vCPU) | $2.00 |
 | Egress | 8 GB/mo | $1.00 |
 
@@ -204,7 +204,7 @@ Free tier is the only hard cap.
 ## Platform tiers
 
 | Tier | Fee/mo | Notes |
-|---|---|---|
+| --- | --- | --- |
 | Free | $0 | Hard-capped free bands, card on file, always-warm site, cold query/connect |
 | Starter | ~$180 | Allowance baked in, cold query/connect, metered overage |
 | Team | ~$900 | Larger allowance, metered overage |

@@ -13,7 +13,7 @@ SQL‏ pgwire, REST, Arrow Flight, gRPC, Bolt/Cypher — יכול להפעיל �
 חמישה ערכי `impl_kind` נתמכים [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]:
 
 | `impl_kind` | תעבורה |
-|---|---|
+| --- | --- |
 | `source_procedure` | פרוצדורה מאוחסנת ילידית על מקור רשום |
 | `script` | subprocess מקומי המוזן JSON על stdin, קורא JSON מ-stdout |
 | `http` | נקודת קצה HTTP/S; גוף בקשה JSON, תגובת JSON |
@@ -28,7 +28,7 @@ SQL‏ pgwire, REST, Arrow Flight, gRPC, Bolt/Cypher — יכול להפעיל �
 כל ארגומנט מצהיר `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]:
 
 | `arg_kind` | התנהגות |
-|---|---|
+| --- | --- |
 | `column_value` | סקלרי; מועבר ישירות ב-payload הבקשה |
 | `table_ref` | עצל (lazy); Provisa מעבירה את הפניית ה-relation כפי-שהיא; השירות שולף את הנתונים |
 | `result_set` | חמדני (eager); Provisa ממשת את ה-relation המופנה ושולחת את שורותיו |

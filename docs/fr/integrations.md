@@ -3,7 +3,7 @@
 ## Choisir une voie de connexion
 
 | Type de client | Voie recommandée | Pourquoi |
-|-------------|-----------------|-----|
+| ------------- | ----------------- | ----- |
 | Outils de BI (Tableau, Power BI, Looker) | JDBC | Streaming en colonnes Arrow Flight sur le réseau ; les outils de BI disposent d'un assistant JDBC intégré et profitent de la livraison en colonnes à haut débit pour les grands ensembles de résultats |
 | psql, DBeaver, tout outil compatible PG | pgwire (driver PG natif) | Option par défaut sans friction — aucun driver personnalisé requis ; utilisez ce que vous avez déjà |
 | Pile de données Python (pandas, pyarrow) | `provisa-client` ou ADBC brut | Lots Arrow en streaming ; aucune surcharge de sérialisation ligne par ligne |
@@ -76,7 +76,8 @@ Le driver JDBC de Provisa utilise Arrow Flight comme transport sous-jacent. C'es
 Téléchargez [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) (toujours la dernière version) et ajoutez-le au chemin de drivers de votre outil.
 
 URL JDBC :
-```
+
+```yaml
 jdbc:provisa://<host>:8815
 ```
 
@@ -85,12 +86,14 @@ L'authentification utilise les propriétés JDBC standard `user` / `password`. P
 ### Configuration des outils de BI
 
 **Tableau**
+
 1. Gérer → Drivers → Installer Provisa JDBC
 2. Connexion → Autres bases de données (JDBC)
 3. URL : `jdbc:provisa://localhost:8815`
 4. Saisissez votre nom d'utilisateur et votre mot de passe lorsque vous y êtes invité
 
 **DBeaver** (voie JDBC — pour la voie pgwire, voir ci-dessus)
+
 1. Base de données → Nouvelle connexion → JDBC
 2. Driver : ajoutez `provisa-jdbc.jar`
 3. URL : `jdbc:provisa://localhost:8815`
@@ -199,7 +202,7 @@ Le rôle est transmis via la clé de métadonnées `x-provisa-role` sur chaque R
 Une **commande** est une fonction suivie enregistrée ou un webhook — un élément invocable enregistré dans la couche sémantique de Provisa avec un `kind` (`query` ou `mutation`) et un `impl_kind` qui décrit son mode d'exécution. Chaque surface achemine les invocations via un unique exécuteur gouverné (`invoke_tracked_function`) qui applique `writable_by` et la gouvernance de manière uniforme (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | Ce qui s'exécute | Champs de liaison |
-|------------|-----------|---------------|
+| ------------ | ----------- | --------------- |
 | `source_procedure` | Procédure stockée sur une source enregistrée (par défaut) | `sourceId`, `schemaName`, `functionName` |
 | `script` | Script côté serveur | `script` |
 | `http` | Appel HTTP sortant | `url`, `method` |
@@ -211,7 +214,7 @@ Lorsqu'une commande déclare un `return_schema` (JSON Schema avec `type: array, 
 ### Matrice des protocoles
 
 | Surface | Syntaxe | Exemple |
-|---------|--------|---------|
+| --------- | -------- | --------- |
 | GraphQL | `kind=query` → champ Query ; `kind=mutation` → champ Mutation ; préfixé par domaine lorsque `domain_prefix: true` | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
 | pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` ou `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
 | Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
@@ -229,6 +232,7 @@ Provisa peut agir comme un sous-graphe Federation v2, exposant son schéma publi
 ### Configuration
 
 Activez la fédération dans `config.yaml` :
+
 ```yaml
 federation:
   enabled: true
@@ -240,6 +244,7 @@ Provisa génère automatiquement des directives `@key` sur les colonnes de clé 
 ### Enregistrement auprès d'Apollo Router
 
 Dans votre `supergraph.yaml` :
+
 ```yaml
 subgraphs:
   provisa-data:
@@ -282,7 +287,7 @@ incompatibles sont probables, le couplage est donc confiné à l'adaptateur.
 La surface d'export canonique est un endpoint HTTP en direct. Elle dérive le document Ossie de
 l'état en direct à chaque requête — sans cache, sans étape de génération.
 
-```
+```http
 GET /admin/ossie
 ```
 

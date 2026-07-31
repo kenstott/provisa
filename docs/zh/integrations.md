@@ -3,7 +3,7 @@
 ## 选择连接方式
 
 | 客户端类型 | 推荐方式 | 原因 |
-|-------------|-----------------|-----|
+| ------------- | ----------------- | ----- |
 | BI 工具（Tableau、Power BI、Looker） | JDBC | 通过线路进行 Arrow Flight 列式流式传输；BI 工具内置 JDBC 向导，并可受益于列式高吞吐量传输大型结果集 |
 | psql、DBeaver，任何兼容 PG 的工具 | pgwire（原生 PG 驱动） | 零摩擦默认选项 —— 无需自定义驱动；直接使用已有工具 |
 | Python 数据栈（pandas、pyarrow） | `provisa-client` 或原生 ADBC | 流式 Arrow 批次；无逐行序列化开销 |
@@ -76,7 +76,8 @@ Provisa 的 JDBC 驱动以 Arrow Flight 作为底层传输方式。对于具备 
 下载 [provisa-jdbc.jar](https://provisa.dev/dl/jdbc)（始终为最新版本），并将其添加到你工具的驱动路径中。
 
 JDBC URL：
-```
+
+```yaml
 jdbc:provisa://<host>:8815
 ```
 
@@ -85,12 +86,14 @@ jdbc:provisa://<host>:8815
 ### BI 工具设置
 
 **Tableau**
+
 1. 管理 → 驱动程序 → 安装 Provisa JDBC
 2. 连接 → 其他数据库（JDBC）
 3. URL：`jdbc:provisa://localhost:8815`
 4. 在系统提示时输入用户名及密码
 
 **DBeaver**（JDBC 方式 —— pgwire 方式见上文）
+
 1. 数据库 → 新建连接 → JDBC
 2. 驱动：添加 `provisa-jdbc.jar`
 3. URL：`jdbc:provisa://localhost:8815`
@@ -199,7 +202,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 **命令**是在 Provisa 语义层注册的已跟踪函数或 webhook —— 一个可调用元素，具有 `kind`（`query` 或 `mutation`）及描述其运行方式的 `impl_kind`。所有接口都通过单一受治理的执行器（`invoke_tracked_function`）路由调用，统一强制执行 `writable_by` 及治理（REQ-1156）。[tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | 执行内容 | 绑定字段 |
-|------------|-----------|---------------|
+| ------------ | ----------- | --------------- |
 | `source_procedure` | 已注册数据源上的存储过程（默认） | `sourceId`、`schemaName`、`functionName` |
 | `script` | 服务器端脚本 | `script` |
 | `http` | 出站 HTTP 调用 | `url`、`method` |
@@ -211,7 +214,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 ### 协议对照表
 
 | 接口 | 语法 | 示例 |
-|---------|--------|---------|
+| --------- | -------- | --------- |
 | GraphQL | `kind=query` → Query 字段；`kind=mutation` → Mutation 字段；`domain_prefix: true` 时加上域前缀 | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
 | pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` 或 `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
 | Cypher HTTP（`POST /data/cypher`） | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
@@ -229,6 +232,7 @@ Provisa 可作为 Federation v2 子图，将其已发布的架构暴露给 Apoll
 ### 设置
 
 在 `config.yaml` 中启用联邦：
+
 ```yaml
 federation:
   enabled: true
@@ -240,6 +244,7 @@ Provisa 会自动在主键列上生成 `@key` 指令，并在跨子图关系上�
 ### 向 Apollo Router 注册
 
 在你的 `supergraph.yaml` 中：
+
 ```yaml
 subgraphs:
   provisa-data:
@@ -281,7 +286,7 @@ Interchange）交换语义模型。Provisa 的内部词汇永远不会重命名�
 规范的导出接口是一个实时 HTTP 端点。它会在每次请求时，从实时状态派生 Ossie 文档 —— 没有
 缓存，也没有生成步骤。
 
-```
+```http
 GET /admin/ossie
 ```
 

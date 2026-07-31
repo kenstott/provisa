@@ -54,6 +54,7 @@ view existe para um de dois propósitos:
   partir de ativos de domínio existentes. Dados novos ou derivados só podem existir como uma view.
 
 Uma view pode referenciar:
+
 - Tabelas reivindicadas dentro do mesmo domínio
 - Campos importados de outro domínio sob uma concessão de acesso de campo
 - Uma outra view dentro do mesmo domínio, onde a variação é proposital: restrição de campo,
@@ -63,6 +64,7 @@ A profundidade de composição não é tecnicamente aplicada — o julgamento do
 revisão HITL é o mecanismo de controle de qualidade.
 
 Toda view carrega um propósito de negócio declarado, estabelecido no momento da criação:
+
 - Parte do artefato governado — stewards aprovam sabendo para que a view serve
 - Referenciado por solicitações de acesso sob o Princípio 7 para que o steward possa avaliar a
   adequação
@@ -84,6 +86,7 @@ visibilidade de coluna. Se um usuário tem acesso às colunas e o caminho de tra
 Query é um uso válido. Nenhum portão adicional.
 
 **Distinção de Views:**
+
 - Views: intradomínio, introduzem novo significado semântico, curadas por steward
 - Queries: percorrem relacionamentos aprovados, sem nova semântica, sem portão de aprovação
 
@@ -92,7 +95,7 @@ Query é um uso válido. Nenhum portão adicional.
 Cada linguagem suportada expõe o domínio como um namespace estrutural nativo àquela linguagem:
 
 | Linguagem | Expressão de domínio | Exemplo |
-|---|---|---|
+| --- | --- | --- |
 | GraphQL | Prefixo de nome de tipo e campo | `type sales__Order { ... }`, `query { sales__orders { ... } }` |
 | SQL | Nome de esquema | `SELECT * FROM sales.orders` |
 | Cypher | Rótulo de nó adicional (domínio só necessário quando o nome do tipo é ambíguo) | `MATCH (o:Sales:Order)` |
@@ -106,6 +109,7 @@ Um relacionamento é um caminho de travessia aprovado entre dois ativos. Frontei
 irrelevantes para o que um relacionamento é — elas só determinam quem o aprova.
 
 **Aprovação:**
+
 - A aprovação é necessária de todo steward distinto que possui um ativo envolvido no
   relacionamento
 - Se um steward possui ambos os ativos, uma aprovação é necessária. Se dois stewards estão
@@ -133,6 +137,7 @@ Uma concessão de acesso de campo é uma permissão domínio-para-domínio — o
 campos específicos do Domínio B em suas views.
 
 **Ciclo de vida da concessão:**
+
 - Provocada pela criação de view quando campos externos são identificados como necessários
 - Aprovada uma vez pelo steward do domínio alvo
 - Pertence ao domínio solicitante, não à view que a provocou
@@ -143,6 +148,7 @@ campos específicos do Domínio B em suas views.
 **Notificação pós-uso:** Quando uma view é criada usando campos concedidos, o steward de origem é
 notificado — não solicitado a aprovar. A notificação inclui o nome da view, o propósito de negócio
 declarado, os campos específicos usados, e qual steward a aprovou. Isso dá ao steward de origem:
+
 - **Visibilidade** — consciência de como seus dados estão sendo usados
 - **Supervisão** — fundamento para levantar uma preocupação se o uso parecer inapropriado
 - **Recurso** — capacidade de revogar a concessão, invalidando views dependentes
@@ -155,6 +161,7 @@ por-view é correta em teoria e inviável na prática.
 Três estágios, em ordem.
 
 **Estágio 1 — Modelagem (shaping) (descoberta SQL, a partir da página Relationships):**
+
 - O analista abre a ferramenta de Shaping a partir da página Relationships para explorar caminhos
   de join potenciais em SQL bruto
 - SQL é executado contra dados acessíveis, sujeito a RLS e mascaramento de coluna existentes
@@ -164,12 +171,14 @@ Três estágios, em ordem.
 - O analista seleciona candidatos para promover a uma solicitação de Relationship formal
 
 **Estágio 2 — Aprovação de relacionamento** (consequencial — estrutural e permanente):
+
 - Levantada a todo steward distinto que possui um ativo envolvido no relacionamento
 - Este é um caminho de travessia legítimo? O join é semanticamente válido?
 - Todos os stewards implicados devem aprovar; o relacionamento se torna uma entrada permanente do
   catálogo
 
 **Estágio 3 — Criação de consulta:**
+
 - O analista constrói a Query em qualquer linguagem suportada (SQL, GraphQL, Cypher), percorrendo
   caminhos de relacionamento aprovados
 - Somente relacionamentos de catálogo aprovados são percorríveis — o compilador aplica isso
@@ -187,6 +196,7 @@ decisões de aprovação de relacionamento são preocupações HITL, não regras
 **Neutralidade de domínio de origem:** O steward do domínio de origem aprova o relacionamento uma
 vez e a concessão de campo uma vez. Depois disso, domínios a jusante operam dentro dessas
 fronteiras concedidas:
+
 - **Alta consideração** na decisão de cruzamento de fronteira
 - **Consciência leve** depois via notificações e histórico de consulta
 
@@ -200,7 +210,7 @@ A descoberta é estruturada através de cinco camadas de governança crescente. 
 pré-requisito para a próxima.
 
 | Camada | Descrição | Estado de governança |
-|---|---|---|
+| --- | --- | --- |
 | 1 — Esquema de fonte registrado | Toda tabela, coluna, e tipo de uma fonte registrada. Visibilidade em nível de admin. | Nenhum — inventário bruto |
 | 2 — Tabelas não reivindicadas | Tabelas introspectadas de fontes registradas sem proprietário de domínio. Visíveis para stewards com acesso à fonte. | Disponível mas não governado |
 | 3 — Ativos de domínio | Tabelas reivindicadas e views definidas por steward. Totalmente governado, possuído, visível no catálogo. | Totalmente governado |
@@ -218,6 +228,7 @@ Caminhos de join entre fontes são derivados inteiramente de relacionamentos de 
 (Camada 4), que são mais fortes, tendo sido validados por ambos os stewards.
 
 Dentro de uma fonte:
+
 - Restrições FK são expostas automaticamente como relacionamentos candidatos no registro da fonte
 - Elas representam intenção explícita de modelagem — não aplicada na maioria dos sistemas SQL
   analíticos mas declarada propositalmente
@@ -227,7 +238,7 @@ Dentro de uma fonte:
 ### Hierarquia de Confiança de Relacionamento
 
 | Evidência | Confiança |
-|---|---|
+| --- | --- |
 | Relacionamento de catálogo aprovado — entre fontes, validado por ambos os stewards | Mais alta |
 | Restrição FK intra-fonte — intenção de modelagem explícita, não aplicada mas proposital | Alta |
 | Inferência semântica intra-fonte — similaridade de nome/tipo de coluna dentro de um esquema consistente | Média |
@@ -238,6 +249,7 @@ Sugestões corroboradas por múltiplos tipos de evidência acumulam confiança.
 ### Sondagem e Correlação de Dados
 
 Para candidatos inferidos semanticamente, a sondagem de dados fornece uma etapa de validação:
+
 - **Sobreposição de valor** — proporção de valores da coluna de origem que aparecem na coluna alvo
 - **Cardinalidade** — se a distribuição corresponde ao tipo de relacionamento esperado
 - **Taxa de nulo** — proporção da coluna de origem que é nula, indicando opcionalidade
@@ -253,6 +265,7 @@ O LLM opera em todas as cinco camadas simultaneamente, sugerindo relacionamentos
 candidatas, e caminhos de travessia classificados por confiança.
 
 **O que o LLM expõe:**
+
 - Relacionamentos candidatos classificados por confiança
 - Tabelas não reivindicadas que podem satisfazer uma necessidade de dados, com um prompt para
   iniciar a reivindicação
@@ -264,6 +277,7 @@ O analista fornece uma descrição em linguagem natural e restrições opcionais
 estrutura de view sugerida.
 
 *Entrada:*
+
 - Descrição de negócio: entidades, métricas, relacionamentos, intenção
 - Restrições opcionais: filtros, janelas de tempo, agregações, campos excluídos, restrições de
   sensibilidade
@@ -273,6 +287,7 @@ estrutura de view sugerida.
 > mostrando nome legal da contraparte e classificação de crédito. Sem PII."
 
 *Processo do LLM:*
+
 1. Analisar — identificar entidades, métricas, dimensões, filtros, exclusões
 2. Buscar — todas as camadas de catálogo por ativos correspondentes
 3. Sugerir — ativos de domínio, relacionamentos, campos, estrutura de agregação
@@ -283,6 +298,7 @@ estrutura de view sugerida.
    ao admin
 
 *Saída:*
+
 - Consulta rascunho para revisão e refinamento do analista
 - Pontuações de confiança por componente
 - Lista de pré-requisitos ordenada
@@ -331,6 +347,7 @@ ativo, função, e janela de tempo. O catálogo é um instrumento de governança
 mantêm consciência de como seus ativos são usados conforme acontece, não depois do fato.
 
 **Dois mecanismos de visibilidade:**
+
 - **Push** — notificações pós-uso para atos estruturais (uma nova view foi criada usando seus
   campos)
 - **Pull** — histórico de consulta para padrões de uso em tempo de execução

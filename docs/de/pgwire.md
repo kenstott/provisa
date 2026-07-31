@@ -10,7 +10,7 @@ Abfragen durchlaufen den vollständigen Governance-Stack: Durchsetzung der Siche
 
 Der Server startet, wenn `PROVISA_PGWIRE_PORT` auf eine Ganzzahl ungleich null gesetzt ist. Standardmäßig ist er deaktiviert. (REQ-527) [tool-verified: `app.py:1739`]
 
-```
+```yaml
 Host: 0.0.0.0  (all interfaces)
 Port: $PROVISA_PGWIRE_PORT
 ```
@@ -26,7 +26,7 @@ Port: $PROVISA_PGWIRE_PORT
 Zwei Modi, gesteuert über den Schlüssel `provider` in `auth_config`:
 
 | Modus | Wert von `provider` | Verhalten |
-|------|-----------------|-----------|
+| ------ | ----------------- | ----------- |
 | Trust | `none` (oder Auth-Middleware inaktiv) | Der vom Client gesendete Benutzername wird direkt als `role_id` verwendet. Das Passwort wird ignoriert. |
 | Simple | `simple` | Das Passwort wird gegen den Auth-Provider `simple` geprüft (bcrypt). Der Benutzername wird bei Erfolg zur `role_id`. (REQ-124) |
 
@@ -57,7 +57,7 @@ DDL-Anweisungen werden über den regulären Ausdruck in `server.py` erkannt und 
 
 Die erkannten DDL-Formen sind:
 
-```
+```sql
 CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
 ALTER TABLE / INDEX / SEQUENCE / VIEW
 DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
@@ -122,6 +122,7 @@ Abgefangene Tabellen:
 `pg_index` wird mit einer Zeile pro Primärschlüssel- und UNIQUE-Constraint befüllt (`indrelid` = OID der Tabelle, `indkey` = geordnete Schlüssel-Attnums, `indisprimary`/`indisunique` gesetzt). Clients, die Schlüsselspalten über `pg_index.indkey` statt über `pg_constraint` auflösen — zum Beispiel DataGrip —, ermitteln die korrekten Spalten über den Standard-Join `pg_index` → `pg_attribute`. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 Zusätzlich werden folgende skalare Ausdrücke abgefangen: (REQ-588)
+
 - `current_user`, `session_user` → die authentifizierte `role_id`
 - `current_database()` → `"provisa"`
 - `current_schema()` → `"public"`
@@ -139,7 +140,7 @@ Zusätzlich werden folgende skalare Ausdrücke abgefangen: (REQ-588)
 Das Extended-Query-Protokoll (Bind/Execute) unterstützt binär kodierte Parameter. (REQ-589) Die folgenden Typ-OIDs werden aus dem Binärformat dekodiert: [tool-verified: `postgres.py:69-97`]
 
 | OID | PG-Typ | Python-Typ |
-|-----|---------|-------------|
+| ----- | --------- | ------------- |
 | 16 | bool | bool |
 | 17 | bytea | bytes |
 | 20 | int8 | int |
@@ -167,7 +168,7 @@ Ergebnisspalten werden ebenfalls binär gesendet, wenn der Client dies anfordert
 
 **JDBC (PostgreSQL-JDBC-Treiber).** Verwenden Sie diesen für Java-Ökosystem-Tools: DBeaver, Tableau, Power BI, Metabase, JDBC-Operatoren von Airflow. JDBC verwendet standardmäßig das Simple-Query-Protokoll, was Komplikationen durch Binärkodierung vermeidet. Verbindungszeichenfolge:
 
-```
+```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 

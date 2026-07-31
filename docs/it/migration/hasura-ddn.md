@@ -4,7 +4,8 @@
 
 1. Un progetto Hasura DDN con file HML (estensione `.hml`).
    I progetti DDN hanno tipicamente una struttura di directory come:
-   ```
+
+   ```text
    my-ddn-project/
      app/
        subgraph1/
@@ -17,6 +18,7 @@
      globals/
        ...
    ```
+
 2. Python 3.11+ con il pacchetto `provisa` installato.
 
 ## Utilizzo della CLI
@@ -28,13 +30,13 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 ### Argomenti
 
 | Argomento | Obbligatorio | Descrizione |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `hml_dir` | Sì | Percorso della directory del progetto DDN HML (analizzata ricorsivamente alla ricerca di file `.hml`) |
 
 ### Opzioni
 
 | Opzione | Predefinito | Descrizione |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | Percorso del file YAML di output |
 | `--source-overrides FILE` | Nessuno | File YAML con override di connessione per singola origine |
 | `--domain-map KEY=VAL ...` | Nessuno | Mappature da subgraph a domain (ad es. `app=core analytics=reporting`) |
@@ -57,7 +59,7 @@ my_pg_connector:
 ## Matrice di equivalenza delle funzionalità
 
 | Tipo DDN | Equivalente Provisa | Note |
-|---|---|---|
+| --- | --- | --- |
 | **DataConnectorLink** | `sources[]` | Il tipo di origine viene dedotto dall'URL del connettore (postgres, mysql, mssql, mongo, clickhouse, snowflake, bigquery). I dettagli di connessione utilizzano segnaposto per impostazione predefinita; usare `--source-overrides` per impostare i valori effettivi. |
 | **ObjectType** | Definizioni di colonna su `tables[]` | I campi diventano colonne. `dataConnectorTypeMapping.fieldMapping` risolve i nomi dei campi GraphQL nei nomi delle colonne fisiche. |
 | **Model** | `tables[]` | Ogni Model produce una tabella. `source_id` deriva dal connettore, `table_name` dalla collection. `graphql_type_name` diventa `alias`. Il subgraph (e quindi `domain_id`) viene derivato dalla directory del file: il primo componente di directory sotto la root del progetto. |

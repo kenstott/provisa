@@ -10,7 +10,7 @@ Las consultas pasan por el stack de gobierno completo: aplicación de RLS, regla
 
 El servidor se inicia cuando `PROVISA_PGWIRE_PORT` está configurado con un entero distinto de cero. Está deshabilitado de forma predeterminada. (REQ-527) [tool-verified: `app.py:1739`]
 
-```
+```yaml
 Host: 0.0.0.0  (all interfaces)
 Port: $PROVISA_PGWIRE_PORT
 ```
@@ -26,7 +26,7 @@ Port: $PROVISA_PGWIRE_PORT
 Dos modos, controlados por la clave `provider` en `auth_config`:
 
 | Modo | Valor de `provider` | Comportamiento |
-|------|-----------------|-----------|
+| ------ | ----------------- | ----------- |
 | Trust | `none` (o middleware de autenticación inactivo) | El nombre de usuario enviado por el cliente se usa directamente como `role_id`. La contraseña se ignora. |
 | Simple | `simple` | La contraseña se verifica contra el proveedor de autenticación `simple` (bcrypt). El nombre de usuario se convierte en `role_id` si tiene éxito. (REQ-124) |
 
@@ -57,7 +57,7 @@ Las sentencias DDL se detectan mediante la expresión regular en `server.py` y s
 
 Las formas de DDL reconocidas son:
 
-```
+```sql
 CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
 ALTER TABLE / INDEX / SEQUENCE / VIEW
 DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
@@ -122,6 +122,7 @@ Tablas interceptadas:
 `pg_index` se puebla con una fila por cada restricción de clave primaria y UNIQUE (`indrelid` = oid de la tabla, `indkey` = attnums de clave ordenados, `indisprimary`/`indisunique` establecidos). Los clientes que resuelven columnas clave mediante `pg_index.indkey` en lugar de `pg_constraint` — DataGrip, por ejemplo — descubren las columnas correctas a través del join estándar `pg_index` → `pg_attribute`. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 También se interceptan las siguientes expresiones escalares: (REQ-588)
+
 - `current_user`, `session_user` → el `role_id` autenticado
 - `current_database()` → `"provisa"`
 - `current_schema()` → `"public"`
@@ -139,7 +140,7 @@ También se interceptan las siguientes expresiones escalares: (REQ-588)
 El protocolo de consulta extendida (Bind/Execute) admite parámetros codificados en binario. (REQ-589) Los siguientes OID de tipo se decodifican desde binario: [tool-verified: `postgres.py:69-97`]
 
 | OID | Tipo PG | Tipo Python |
-|-----|---------|-------------|
+| ----- | --------- | ------------- |
 | 16 | bool | bool |
 | 17 | bytea | bytes |
 | 20 | int8 | int |
@@ -167,7 +168,7 @@ Las columnas de resultado también se envían en binario cuando el cliente lo so
 
 **JDBC (driver JDBC de PostgreSQL).** Úselo para herramientas del ecosistema Java: DBeaver, Tableau, Power BI, Metabase, operadores JDBC de Airflow. JDBC usa por defecto el protocolo de consulta simple, lo que evita complicaciones de codificación binaria. Cadena de conexión:
 
-```
+```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 

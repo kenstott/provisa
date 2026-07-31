@@ -7,7 +7,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 子句
 
 | 子句 | 状态 | 说明 |
-|--------|--------|-------|
+| -------- | -------- | ------- |
 | `MATCH (n:Label)` | ✓ | 带标签、变量、内联属性的节点模式 |
 | `OPTIONAL MATCH` | ✓ | 生成 LEFT JOIN |
 | `WHERE` | ✓ | 完整的表达式支持；在 MATCH 之后应用 |
@@ -27,7 +27,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 匹配模式
 
 | 模式 | 状态 | 说明 |
-|---------|--------|-------|
+| --------- | -------- | ------- |
 | `(n)` — 无标签节点 | ✓ | 对所有已知类型的 UNION ALL |
 | `(n:Label)` | ✓ | 映射到该 GraphQL 类型对应的已注册表 |
 | `(n:Label {prop: val})` | ✓ | 内联属性过滤转为 WHERE |
@@ -45,7 +45,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 表达式与谓词
 
 | 特性 | 状态 | SQL 映射 |
-|---------|--------|------------|
+| --------- | -------- | ------------ |
 | 属性访问 `n.prop` | ✓ | `n."prop"` |
 | 参数 `$name` | ✓ | 位置化的 `$N` |
 | 旧式参数 `{name}` | ✓ | 解析时规范化为 `$name` |
@@ -72,7 +72,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 映射投影
 
 | 语法 | SQL 映射 |
-|--------|------------|
+| -------- | ------------ |
 | `n { .prop1, .prop2 }` | `MAP(ARRAY['prop1','prop2'], ARRAY[n."prop1",n."prop2"])` |
 | `n { .* }` | `MAP(ARRAY[all props...], ARRAY[n."col",...])` —— 从架构展开 |
 | `n { .*, extra: expr }` | 全部架构属性加上命名键；合并后的 MAP |
@@ -81,7 +81,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 聚合函数
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `count(*)`、`count(x)` | 直接映射 |
 | `count(DISTINCT x)` | `count(DISTINCT x)` |
 | `collect(x)` | `array_agg(x)` |
@@ -94,7 +94,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 字符串函数
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `toLower(x)` | `lower(x)` |
 | `toUpper(x)` | `upper(x)` |
 | `ltrim(x)`、`rtrim(x)`、`trim(x)` | 直接映射 |
@@ -110,7 +110,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 类型转换函数
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `toString(x)` | `CAST(x AS VARCHAR)` |
 | `toInteger(x)` | `TRY_CAST(x AS BIGINT)` |
 | `toFloat(x)` | `TRY_CAST(x AS DOUBLE)` |
@@ -120,7 +120,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 数学函数
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `log(x)` | `ln(x)`（自然对数） |
 | `log2(x)` | `log2(x)` |
 | `range(start, end)` | `sequence(start, end)` |
@@ -129,7 +129,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 列表函数
 
 | Cypher | SQL |
-|--------|-----|
+| -------- | ----- |
 | `head(list)` | `element_at(list, 1)` |
 | `last(list)` | `element_at(list, -1)` |
 | `tail(list)` | `slice(list, 2, cardinality(list))` |
@@ -138,7 +138,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 列表推导式
 
 | 语法 | SQL 映射 |
-|--------|------------|
+| -------- | ------------ |
 | `[x IN list \| f(x)]` | `transform(list, x -> f(x))` |
 | `[x IN list WHERE p(x)]` | `filter(list, x -> p(x))` |
 | `[x IN list WHERE p(x) \| f(x)]` | `transform(filter(list, x -> p(x)), x -> f(x))` |
@@ -151,13 +151,14 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 ### 模式推导式
 
 | 语法 | SQL 映射 |
-|--------|------------|
+| -------- | ------------ |
 | `[(a)-[:R]->(b) \| b.prop]` | `ARRAY(SELECT b."prop" FROM ... WHERE a.fk = b.pk)` |
 | `[(a)-[]->(b:Label) \| b.prop]` | 从语义层推断类型；相同的 ARRAY 子查询形式 |
 
 ### 相关 CALL 子查询
 
 `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` 转换为 `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`。（REQ-573）规则：
+
 - 外层作用域变量（`x`）必须出现在 `WITH` 中
 - 支持多个导入变量（`WITH a, b`）
 - 内层 MATCH 中第一个源为横向绑定变量的关系，决定了内层的 `FROM` 和联结条件
@@ -170,7 +171,7 @@ Provisa 通过 `provisa/cypher/` 模块将 openCypher 的一个子集转换为 S
 Cypher 通过 `/data/cypher` 端点支持三种写入模式，由 `provisa/cypher/write_translator.py` 执行。（REQ-818）[tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
 
 | Cypher | SQL | 需求 |
-|--------|-----|-----|
+| -------- | ----- | ----- |
 | `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` | REQ-666 |
 | `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` | REQ-667 |
 | `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` | REQ-668 |

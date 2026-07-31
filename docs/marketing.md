@@ -7,7 +7,7 @@ Provisa follows the Hasura V2 PLG model: **connect a source, register tables, su
 ## SKUs
 
 | SKU | Delivery | Price | Target |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Community Edition (CE)** | Self-hosted | Free | Developers, small teams |
 | **SaaS** (in development) | Managed cloud | Subscription | SMB |
 | **Enterprise** | Self-hosted or private cloud | Contract | Regulated enterprise |
@@ -30,6 +30,7 @@ BSL 1.1 license: source-available, converts to Apache 2 after time window, preve
 **Message:** *"Everything you loved about Hasura V2. Connect your database, track your tables, get GraphQL. Plus governance when your team needs it."*
 
 **Tactics:**
+
 - Hasura V2 metadata migration tool as the top-of-funnel hook — zero-risk trial for teams already burned by migration work
 - SEO: "Hasura V2 alternative", "Hasura DDN migration", "self-hosted GraphQL" — low competition, high intent
 - Show up in Hasura GitHub Discussions, /r/graphql, Hacker News — genuine participation, not ads
@@ -65,7 +66,7 @@ Vertical packages are pre-built configuration artifacts — source configs, regi
 ### Priority verticals
 
 | Vertical | Pre-built content | Compliance hook | Graph angle |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Cybersecurity** | CVE/NVD feeds, MITRE ATT&CK, CISA KEV, asset inventory | SOC 2, FedRAMP | CVE → CWE → affected product → asset traversal |
 | **Financial services** | SEC/EDGAR filings, market data, regulatory feeds | SOC 2, PCI-DSS | Entity → filing → risk traversal |
 | **Healthcare** | Claims, formulary, provider directories | HIPAA | Provider → patient → claims traversal |

@@ -8,11 +8,13 @@ préservant les tables suivies, les relations, les autorisations et les schémas
 ### Exporter les métadonnées
 
 Depuis votre console ou votre CLI Hasura :
+
 ```bash
 hasura metadata export --output metadata.yaml
 ```
 
 Ou utilisez l'API Hasura :
+
 ```bash
 curl -X POST http://localhost:8080/v1/metadata \
   -H "X-Hasura-Admin-Secret: <secret>" \
@@ -35,7 +37,7 @@ Omettez `-o` pour écrire la configuration sur stdout.
 Options :
 
 | Option | Objet |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Chemin YAML de sortie (par défaut : stdout) |
 | `--source-overrides` | Fichier YAML avec des surcharges de connexion par source (hôte, port, identifiants) |
 | `--domain-map` | Correspondances schéma-vers-domaine sous forme de paires `SCHEMA=DOMAIN` |
@@ -45,7 +47,7 @@ Options :
 ### Ce qui est converti
 
 | Concept Hasura | Équivalent Provisa |
-|---------------|-------------------|
+| --------------- | ------------------- |
 | Table suivie | `tables[]` avec `publish: true` |
 | Relation d'objet | `relationships[]` avec `cardinality: many-to-one` |
 | Relation de tableau | `relationships[]` avec `cardinality: one-to-many` |
@@ -92,7 +94,7 @@ Omettez `-o` pour écrire la configuration sur stdout.
 Options :
 
 | Option | Objet |
-|------|---------|
+| ------ | --------- |
 | `-o`, `--output` | Chemin YAML de sortie (par défaut : stdout) |
 | `--source-overrides` | Fichier YAML avec des surcharges de connexion par source |
 | `--domain-map` | Correspondances sous-graphe-vers-domaine sous forme de paires `SUBGRAPH=DOMAIN` |
@@ -104,7 +106,7 @@ Les métadonnées `AggregateExpression` sont préservées dans un fichier annexe
 ### Ce qui est converti
 
 | Concept DDN | Équivalent Provisa |
-|------------|-------------------|
+| ------------ | ------------------- |
 | Modèle de sous-graphe | `tables[]` sous une source |
 | Relation | `relationships[]` |
 | Règle d'autorisation | Filtre RLS |

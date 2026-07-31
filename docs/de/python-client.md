@@ -3,7 +3,7 @@
 Python-Client für Provisa. Stellt vier Schnittstellen bereit:
 
 | Schnittstelle | Anwendungsfall |
-|-----------|----------|
+| ----------- | ---------- |
 | `ProvisaClient` | GraphQL-Abfragen, Arrow Flight, DataFrame-Ausgabe |
 | DB-API 2.0 (`connect`) | Standard-Python-Datenbankschnittstelle (PEP 249) (REQ-268) |
 | SQLAlchemy-Dialekt | BI-Tools, ORM, Pandas `read_sql` (REQ-270) |
@@ -82,7 +82,7 @@ tables_df = client.list_tables()
 ### Verbindungsreferenz
 
 | Parameter | Standard | Beschreibung |
-|-----------|---------|-------------|
+| ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Basis-URL des Provisa-Servers |
 | `token` | `None` | Bearer-Token; bei Passwort-Auth weglassen (REQ-606) |
 | `role` | `"admin"` | Mit jeder Anfrage gesendete Rolle (REQ-273) |
@@ -187,7 +187,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 ### URL-Parameter
 
 | Parameter | Beschreibung | Standard |
-|-----------|-------------|---------|
+| ----------- | ------------- | --------- |
 | `role` | Provisa-Rolle | `admin` |
 
 ```python

@@ -8,7 +8,7 @@ Graph analytics runs as a server-side Python pipeline. REQ-642 The browser submi
 
 ## Endpoint
 
-```
+```text
 POST /data/graph-analytics
 Content-Type: application/json
 
@@ -20,6 +20,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
   "nodes": [
@@ -38,7 +39,7 @@ The `_analytics` object is merged into each node/edge. REQ-643 Keys vary by algo
 ## Algorithms
 
 | Name | `algorithm` key | Output keys | Library |
-|------|----------------|-------------|---------|
+| ------ | ---------------- | ------------- | --------- |
 | PageRank | `pagerank` | `score` | NetworkX |
 | Betweenness centrality | `betweenness` | `score` | NetworkX |
 | Closeness centrality | `closeness` | `score` | NetworkX |
@@ -61,7 +62,7 @@ The `_analytics` object is merged into each node/edge. REQ-643 Keys vary by algo
 
 ### Pipeline
 
-```
+```text
 POST /data/graph-analytics
   │
   ├─ 1. Execute Cypher query → rows via existing cypher_router pipeline
@@ -81,6 +82,7 @@ POST /data/graph-analytics
 
 ### Dependencies
 Add to `pyproject.toml` optional group `[graph]`:
+
 - `networkx>=3.0`
 - `python-louvain>=0.16` (for Louvain)
 - `leidenalg>=0.10` (for Leiden, requires `igraph`)
@@ -105,6 +107,7 @@ ALGORITHMS = {
 ## UI Integration
 
 ### GraphFrame changes
+
 - "Analyze" button (⬡▸) in frame header, visible when graph data is present
 - Opens an `AnalyticsPanel` overlay (dropdown of algorithms + param inputs + Run button)
 - On submit: POST to `/data/graph-analytics` with current frame's query + chosen algorithm
@@ -114,7 +117,7 @@ ALGORITHMS = {
 Node size and color driven by analytics output:
 
 | Output key | Visual mapping |
-|------------|---------------|
+| ------------ | --------------- |
 | `score` (centrality) | Node radius scales linearly with score |
 | `cluster` (community) | Node color overridden by cluster ID → PALETTE index |
 | `core_number` | Node opacity by k-core tier |
@@ -123,6 +126,7 @@ Cytoscape style functions read `ele.data("_analytics")` at render time.
 
 ### State
 `colorOverrides` in `GraphFrame` is extended to support cluster-based coloring:
+
 ```ts
 analyticsOverrides: Record<string, { color?: string; size?: number }>
 // keyed by node id, merged into cytoscape style functions
@@ -190,7 +194,7 @@ Hulls render in an SVG layer overlaid on the Cytoscape canvas. REQ-647 Node posi
 Each layer in `GroupingState.layers` uses a distinct visual channel:
 
 | Encoding | Implementation |
-|----------|---------------|
+| ---------- | --------------- |
 | `color` | Overrides node `background-color` in Cytoscape style function |
 | `hull` | SVG ellipse per group value, drawn on overlay layer |
 | `ring` | Outer `border-color` + thicker `border-width` on node circle |
@@ -214,7 +218,7 @@ Supernode ids use a reserved prefix to avoid collision with real node ids. REQ-6
 
 Grouping controls belong in the **frame header actions bar** inside `gf-header`. The Inspector (right panel) is for selected-item details only — grouping is a frame-level concern.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │  [header actions] … ⬡ group [domain ▾]                  │  ← gf-header-actions
 ├─────────────────────────────────────────────────────────┤
@@ -235,7 +239,7 @@ Grouping controls belong in the **frame header actions bar** inside `gf-header`.
 
 ### Component Structure
 
-```
+```text
 GraphFrame
   ├── gf-header (query, view buttons, gf-attr-select grouping dropdown)
   └── gf-graph-area

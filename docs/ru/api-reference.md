@@ -16,13 +16,13 @@ Provisa предоставляет REST-эндпоинты под двумя п�
 
 **Интроспекция identity:**
 
-```
+```http
 GET /auth/me
 ```
 
 Возвращает id, email, отображаемое имя, членства в организациях и назначения ролей аутентифицированного пользователя. В dev-режиме возвращает `dev_mode: true` со списком всех идентификаторов ролей. [tool-verified: `provisa/api/auth_router.py`]
 
-```
+```http
 GET /auth/provider-type
 ```
 
@@ -37,6 +37,7 @@ GET /auth/provider-type
 Выполнить запрос или мутацию GraphQL. (REQ-043) [tool-verified: `provisa/api/data/endpoint.py:151`]
 
 **Тело запроса:**
+
 ```json
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
@@ -49,6 +50,7 @@ GET /auth/provider-type
 Поле `role` используется только в dev-режиме (без аутентификации). Когда аутентификация активна, используется роль аутентифицированного пользователя, а `role` в теле игнорируется.
 
 Поле `extensions` поддерживает протокол Automatic Persisted Query (APQ): (REQ-288)
+
 ```json
 {
   "extensions": {"persistedQuery": {"sha256Hash": "<sha256-of-query>"}}
@@ -56,6 +58,7 @@ GET /auth/provider-type
 ```
 
 **Заголовки:**
+
 - `X-Provisa-Role` — переопределение роли (dev-режим)
 - `Accept` — формат ответа (см. «Согласование содержимого»)
 - `Authorization` — `Bearer <token>`, когда включена аутентификация
@@ -64,6 +67,7 @@ GET /auth/provider-type
 - `X-Provisa-Redirect` — `true` для безусловного принудительного перенаправления (REQ-029)
 
 **Ответ (JSON инлайн):**
+
 ```json
 {
   "data": {
@@ -75,6 +79,7 @@ GET /auth/provider-type
 ```
 
 **Ответ (перенаправление):**
+
 ```json
 {
   "data": {"orders": null},
@@ -88,6 +93,7 @@ GET /auth/provider-type
 ```
 
 **Ответ (несколько корней со смешанным инлайн/перенаправлением):**
+
 ```json
 {
   "data": {
@@ -119,7 +125,7 @@ GET /auth/provider-type
 ### Согласование содержимого
 
 | Заголовок Accept | Формат |
-|---|---|
+| --- | --- |
 | `application/json` | JSON (по умолчанию) |
 | `application/x-ndjson` | JSON с разделением строк |
 | `text/csv` | CSV |
@@ -135,7 +141,7 @@ GET /auth/provider-type
 Результаты выше настроенного порога строк (или когда `X-Provisa-Redirect: true`) записываются в S3, и возвращается подписанный URL. (REQ-029, REQ-044)
 
 | Формат перенаправления | Записывается | Память |
-|---|---|---|
+| --- | --- | --- |
 | `application/vnd.apache.parquet` | федеративный CTAS | Нет — данные никогда не проходят через Provisa |
 | `application/x-orc` | федеративный CTAS | Нет — данные никогда не проходят через Provisa |
 | `application/json` | Provisa | Ограничено памятью |
@@ -145,7 +151,7 @@ GET /auth/provider-type
 
 Для крупных аналитических экспортов используйте перенаправление Parquet или ORC. Движок федерации пишет напрямую в S3 параллельно — данные не проходят через Provisa. (REQ-138)
 
-```
+```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
 X-Provisa-Redirect-Threshold: 1000
 ```
@@ -157,6 +163,7 @@ X-Provisa-Redirect-Threshold: 1000
 Выполнить сырой SQL через конвейер governance этапа 2. (REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:62`]
 
 **Тело запроса:**
+
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
@@ -182,6 +189,7 @@ X-Provisa-Redirect-Threshold: 1000
 Запросы Cypher также можно отправлять на эндпоинт, предназначенный только для Cypher, `POST /query/cypher`. (REQ-345)
 
 **Тело запроса:**
+
 ```json
 {
   "query": "{ orders { id } }",
@@ -200,6 +208,7 @@ X-Provisa-Redirect-Threshold: 1000
 Автоматически сгенерированный обычный REST-эндпоинт для каждой зарегистрированной таблицы. Строка запроса сопоставляется с аргументами GraphQL, и запрос компилируется и выполняется через тот же конвейер (RLS, маскирование, маршрутизация), что и GraphQL. (REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
 
 **Параметры запроса:**
+
 - `limit` — максимум строк (≥ 1)
 - `offset` — пропуск строк (≥ 0)
 - `fields` — имена столбцов через запятую (по умолчанию все скалярные поля)
@@ -217,6 +226,7 @@ X-Provisa-Redirect-Threshold: 1000
 **Заголовок `Accept`:** должен включать `application/vnd.api+json` (медиа-тип JSON:API), иначе запрос возвращает `406`.
 
 **Параметры запроса:**
+
 - `fields[<type>]` — разреженные наборы полей, например `?fields[orders]=amount`
 - `filter[<col>]` / `filter[<col>][<op>]` — например `?filter[region]=US`, `?filter[amount][gt]=100`
 - `sort` — через запятую, префикс `-` для убывания, например `?sort=-created_at,amount`
@@ -231,6 +241,7 @@ X-Provisa-Redirect-Threshold: 1000
 Отправить вопрос на естественном языке. Сервис запускает асинхронную задачу и немедленно возвращает `202 Accepted` с `job_id`. Требует настроенного провайдера LLM в секции конфигурации `ai_models`. (REQ-354) [tool-verified: `provisa/api/rest/nl_router.py:50`]
 
 **Тело запроса:**
+
 ```json
 {"q": "How many orders were placed last month?", "role": "admin"}
 ```
@@ -267,6 +278,7 @@ X-Provisa-Redirect-Threshold: 1000
 **Заголовки:** `X-Role: <role_id>` (обязателен)
 
 **Параметры запроса:**
+
 - `domain` — идентификаторы доменов через запятую. Если задано, ответ фильтруется по указанному домену(ам) и таблицам, достижимым из них.
 
 **Ответ:** GraphQL SDL в `text/plain`.
@@ -346,6 +358,7 @@ X-Provisa-Redirect-Threshold: 1000
 **Тело запроса:** Сырое содержимое YAML.
 
 **Ответ:**
+
 ```json
 {"success": true, "message": "Config uploaded and reloaded"}
 ```
@@ -361,6 +374,7 @@ X-Provisa-Redirect-Threshold: 1000
 Вернуть текущие настройки платформы в формате JSON. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:50`]
 
 **Ответ:**
+
 ```json
 {
   "redirect": {
@@ -398,6 +412,7 @@ X-Provisa-Redirect-Threshold: 1000
 Обновить настройки платформы во время выполнения. Все поля опциональны — обновляются только ключи, присутствующие в теле. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:100`]
 
 **Тело запроса (частичный пример):**
+
 ```json
 {
   "otel": {
@@ -419,6 +434,7 @@ X-Provisa-Redirect-Threshold: 1000
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Ответ:**
+
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
@@ -442,6 +458,7 @@ X-Provisa-Redirect-Threshold: 1000
 **Параметры запроса:** `catalog` (по умолчанию `"otel"`)
 
 **Ответ:**
+
 ```json
 {"success": true, "errors": []}
 ```
@@ -461,6 +478,7 @@ X-Provisa-Redirect-Threshold: 1000
 Запустить обнаружение связей. Всегда выполняет интроспекцию FK из движка федерации. (REQ-018) Выполняет вывод LLM, если установлен `ANTHROPIC_API_KEY`. (REQ-167) [tool-verified: `provisa/api/admin/discovery.py:55`]
 
 **Тело запроса:**
+
 ```json
 {
   "scope": "domain",
@@ -541,6 +559,7 @@ X-Provisa-Redirect-Threshold: 1000
 Вернуть все отслеживаемые функции БД и вебхуки. (REQ-242) [tool-verified: `provisa/api/admin/actions_router.py:104`]
 
 **Ответ:**
+
 ```json
 {
   "functions": [
@@ -582,7 +601,7 @@ X-Provisa-Redirect-Threshold: 1000
 **Ключевые поля:**
 
 | Поле | Обязательно | Описание |
-|---|---|---|
+| --- | --- | --- |
 | `name` | Да | Уникальное имя команды |
 | `kind` | Да | `"query"` → поле GraphQL Query; `"mutation"` → поле Mutation |
 | `implKind` | Нет | Как выполняется команда — см. таблицу ниже (по умолчанию `source_procedure`) |
@@ -596,7 +615,7 @@ X-Provisa-Redirect-Threshold: 1000
 **Значения `implKind`:**
 
 | `implKind` | Что выполняется | Поля `binding` |
-|---|---|---|
+| --- | --- | --- |
 | `source_procedure` | Хранимая процедура на зарегистрированном источнике (по умолчанию) | `sourceId`, `schemaName`, `functionName` |
 | `script` | Серверный скрипт | `script` |
 | `http` | Исходящий вызов HTTP | `url`, `method` |
@@ -636,7 +655,7 @@ X-Provisa-Redirect-Threshold: 1000
 Все эндпоинты находятся под префиксом `/admin/roles`. [tool-verified: `provisa/api/admin/roles_router.py:18`]
 
 | Метод | Путь | Описание |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/roles/` | Список всех ролей |
 | `POST` | `/admin/roles/` | Создать роль |
 | `PUT` | `/admin/roles/{role_id}` | Обновить роль |
@@ -651,7 +670,7 @@ X-Provisa-Redirect-Threshold: 1000
 Все эндпоинты находятся под префиксом `/admin/users`. [tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
 | Метод | Путь | Описание |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/users/` | Создать локального пользователя |
 | `GET` | `/admin/users/` | Список локальных пользователей |
 | `GET` | `/admin/users/{user_id}` | Получить пользователя |
@@ -669,7 +688,7 @@ X-Provisa-Redirect-Threshold: 1000
 Все эндпоинты находятся под `/admin/orgs`. [tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
 | Метод | Путь | Описание |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/orgs/` | Список организаций |
 | `POST` | `/admin/orgs/` | Создать организацию |
 | `PUT` | `/admin/orgs/{org_id}` | Обновить организацию |
@@ -685,7 +704,7 @@ X-Provisa-Redirect-Threshold: 1000
 Все эндпоинты находятся под `/admin/invites`. [tool-verified: `provisa/api/admin/invites_router.py:18`]
 
 | Метод | Путь | Описание |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/invites/` | Создать приглашение |
 | `GET` | `/admin/invites/` | Список ожидающих приглашений |
 | `DELETE` | `/admin/invites/{token}` | Отозвать приглашение |
@@ -748,7 +767,7 @@ mutation {
 ## Ответы с ошибками
 
 | Статус | Значение |
-|---|---|
+| --- | --- |
 | 400 | Неверный запрос, ошибка валидации или ошибка разбора SQL |
 | 401 | Отсутствующий или недействительный токен аутентификации |
 | 403 | Недостаточно возможностей; нарушение governance |
@@ -780,11 +799,13 @@ mutation {
 Запросы и обнаружение каталога доступны на одном и том же соединении. Полный конвейер governance (RLS, маскирование, выборка) применяется к каждому запросу. (REQ-130, REQ-143)
 
 **Формат тикета** (JSON):
+
 ```json
 {"query": "{ customers { name email } }", "role": "analyst", "variables": {}}
 ```
 
 **Использование (Python):**
+
 ```python
 import pyarrow.flight as flight
 

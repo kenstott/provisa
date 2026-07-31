@@ -5,7 +5,7 @@ I rilasci vengono attivati eseguendo il push di un tag git. Il nome del tag dete
 ## Convenzioni sui tag
 
 | Formato tag | Canale | Tipo di GitHub Release |
-|-----------|---------|-------------------|
+| ----------- | --------- | ------------------- |
 | `v1.2.3-alpha.1` | alpha | Pre-release |
 | `v1.2.3-beta.1` | beta | Pre-release |
 | `v1.2.3-rc.1` | rc | Pre-release |
@@ -45,7 +45,7 @@ Il workflow di CI (`build-dmg.yml`, denominato "Build Provisa Packages") si atti
 Ogni rilascio pubblica i seguenti asset, tutti allegati al GitHub Release (il wheel viene pubblicato anche su PyPI):
 
 | Asset | Piattaforma / Uso |
-|-------|----------------|
+| ------- | ---------------- |
 | `Provisa-<tag>-macOS.dmg` | macOS Core (Apple Silicon, airgapped) |
 | `Provisa-Runtime-<tag>-macOS.dmg` | Runtime Python nativo macOS (da montare insieme a Core) |
 | `Provisa-Obs-<tag>-macOS.dmg` | Estensione Observability per macOS |
@@ -76,7 +76,7 @@ Il job `publish-pypi` pubblicherà quindi automaticamente a ogni tag.
 Configurare quanto segue in **Settings → Secrets → Actions**:
 
 | Secret | Richiesto per | Descrizione |
-|--------|-------------|-------------|
+| -------- | ------------- | ------------- |
 | `PYPI_API_TOKEN` | Pubblicazione su PyPI | Token API da `~/.pypirc` (inizia con `pypi-`) |
 | `APPLE_CERT_P12_BASE64` | Build firmate | File certificato `.p12` codificato in Base64 (vedi sotto) |
 | `APPLE_CERT_P12_PASSWORD` | Build firmate | Password impostata durante l'esportazione del `.p12` da Keychain Access |
@@ -93,9 +93,11 @@ Le build senza questi secret vengono completate correttamente ma producono un DM
 2. Cercare **Developer ID Application: Your Name (TEAMID)** — espandere per confermare che la chiave privata sia annidata sotto di esso
 3. Selezionare sia il certificato che la relativa chiave privata → clic destro → **Export 2 Items** → salvare come `.p12` → impostare una password sicura
 4. Codificare in Base64 e copiare negli appunti:
+
    ```bash
    base64 -i YourCert.p12 | pbcopy
    ```
+
 5. Incollarlo come valore di `APPLE_CERT_P12_BASE64`; impostare `APPLE_CERT_P12_PASSWORD` con la password del passaggio 3
 
 ## Trovare il nome del proprio certificato

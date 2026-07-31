@@ -4,7 +4,8 @@
 
 1. Un projet Hasura DDN avec des fichiers HML (extension `.hml`).
    Les projets DDN ont généralement une structure de répertoires du type :
-   ```
+
+   ```text
    my-ddn-project/
      app/
        subgraph1/
@@ -17,6 +18,7 @@
      globals/
        ...
    ```
+
 2. Python 3.11+ avec le paquet `provisa` installé.
 
 ## Utilisation de la CLI
@@ -28,13 +30,13 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 ### Arguments
 
 | Argument | Obligatoire | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `hml_dir` | Oui | Chemin vers le répertoire du projet DDN HML (analysé récursivement pour les fichiers `.hml`) |
 
 ### Options
 
 | Option | Valeur par défaut | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | Chemin du fichier YAML de sortie |
 | `--source-overrides FILE` | Aucune | Fichier YAML avec des surcharges de connexion par source |
 | `--domain-map KEY=VAL ...` | Aucune | Correspondances sous-graphe → domaine (par exemple, `app=core analytics=reporting`) |
@@ -57,7 +59,7 @@ my_pg_connector:
 ## Matrice de parité des fonctionnalités
 
 | Type DDN | Équivalent Provisa | Remarques |
-|---|---|---|
+| --- | --- | --- |
 | **DataConnectorLink** | `sources[]` | Le type de source est déduit de l'URL du connecteur (postgres, mysql, mssql, mongo, clickhouse, snowflake, bigquery). Les détails de connexion utilisent des valeurs d'espace réservé par défaut ; utilisez `--source-overrides` pour définir les valeurs réelles. |
 | **ObjectType** | Définitions de colonnes sur `tables[]` | Les champs deviennent des colonnes. `dataConnectorTypeMapping.fieldMapping` résout les noms de champs GraphQL vers les noms de colonnes physiques. |
 | **Model** | `tables[]` | Chaque Model produit une table. `source_id` provient du connecteur, `table_name` de la collection. `graphql_type_name` devient `alias`. Le sous-graphe (et donc `domain_id`) est dérivé du répertoire du fichier : le premier composant de répertoire sous la racine du projet. |

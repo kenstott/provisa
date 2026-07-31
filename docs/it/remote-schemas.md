@@ -39,7 +39,7 @@ Opzioni di autenticazione: `none`, `bearer` (header Authorization), `basic` (nom
 **Mappatura dei tipi (REQ-308).** I campi scalari vengono mappati direttamente sui tipi Provisa. I campi OBJECT si suddividono in due casi a seconda che il tipo di destinazione sia governato o meno (vedere "Tabelle governate" più avanti). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`, `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
 | Tipo GraphQL | Tipo Provisa |
-|---|---|
+| --- | --- |
 | `String` | `text` |
 | `ID` | `text` |
 | `Int` | `integer` |
@@ -69,6 +69,7 @@ I tipi OBJECT NON raggiungibili come campi radice di Query (tipi inline come `Co
 **Aggiornamento.** Inviare una richiesta POST a `/admin/sources/graphql-remote/{id}/refresh`. Esegue nuovamente l'introspezione dello schema remoto e aggiorna le registrazioni di tabelle e funzioni. Le regole di governance esistenti (RLS, mascheramento) vengono preservate. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py:217–257`]
 
 **Limitazioni.**
+
 - I campi di query radice di tipo scalare ed ENUM (il cui tipo di ritorno non è OBJECT) diventano funzioni tracciate, non tabelle virtuali. Il loro `return_schema` è costituito da un'unica colonna `value` del tipo scalare mappato. [tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
 - L'annidamento degli oggetti viene risolto al momento della registrazione fino a `graphql_remote.max_object_depth` (predefinito: 5). Sia la selezione per il recupero remoto sia i metadati dei sottocampi vengono costruiti fino a tale profondità; i campi oltre il limite non vengono recuperati e non sono disponibili per l'estrazione SQL. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
 - I campi OBJECT annidati di tipo LIST (ad es. `breed.awards: [Award]`) sono inclusi nella selezione di recupero fino a `graphql_remote.max_list_depth` livelli di annidamento (predefinito: 2). Entro tale limite, la lista viene recuperata come array `jsonb` nella colonna padre, e la selezione GQL inietta `first: N`, dove N corrisponde a `graphql_remote.max_list_items` (predefinito: 100), per limitare la dimensione dell'array. Oltre `max_list_depth`, il campo LIST viene escluso interamente per evitare un'espansione illimitata dei dati. In SQL, l'array è accessibile tramite `json_array_elements(column_name)` o estrazione per indice con `->>`. Se il tipo di elemento della lista dispone di una propria query radice, è preferibile registrarlo come tabella separata e creare una relazione — il percorso di join è più efficiente e bypassa il blob. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
@@ -115,7 +116,7 @@ I metodi che non corrispondono a nessuno di questi segnali (RPC unario che resti
 **Mappatura dei tipi (REQ-324).** I tipi scalari proto vengono mappati sui tipi SQL come segue. [tool-verified: `provisa/grpc_remote/mapper.py:31–47`]
 
 | Tipo Proto | Tipo SQL |
-|---|---|
+| --- | --- |
 | `string`, `bytes` | `text` |
 | `int32` / `uint32` / `sint32` / `fixed32` / `sfixed32` | `integer` |
 | `int64` / `uint64` / `sint64` / `fixed64` / `sfixed64` | `bigint` |
@@ -141,6 +142,7 @@ I metodi server-streaming raccolgono tutti i messaggi trasmessi in un elenco pri
 **Aggiornamento.** Inviare una richiesta POST a `/admin/grpc-remote/refresh/{source_id}`. Ricarica il proto dal percorso memorizzato, ricompila gli stub e riregistra tabelle e funzioni. In alternativa, inviare una richiesta PUT a `/admin/grpc-remote/{source_id}/proto` con un nuovo `proto_text` per aggiornare il proto in linea. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py:241–268`, `provisa/api/admin/grpc_remote_router.py:300–358`]
 
 **Limitazioni.**
+
 - L'estrazione dei sottocampi degli oggetti è limitata a un livello di profondità. I campi messaggio annidati oltre la profondità 1 non vengono espansi ricorsivamente. (REQ-556) [tool-verified: `provisa/grpc_remote/mapper.py:111–128`]
 
 ---
@@ -172,7 +174,7 @@ Priorità di classificazione: `operation_overrides` (payload) ha priorità su `x
 **Mappatura dei tipi.** I tipi JSON Schema vengono mappati sui tipi Provisa come segue. [tool-verified: `provisa/openapi/register.py:59–70`]
 
 | Tipo JSON Schema | Tipo Provisa |
-|---|---|
+| --- | --- |
 | `string` | `string` |
 | `integer` | `integer` |
 | `number` | `number` |
@@ -191,6 +193,7 @@ Priorità di classificazione: `operation_overrides` (payload) ha priorità su `x
 **Aggiornamento (REQ-321).** Analizzare nuovamente la specifica e richiamare `auto_register_openapi_source`. Le regole di governance esistenti vengono preservate; le registrazioni vengono aggiornate tramite upsert ON CONFLICT. [tool-verified: `provisa/openapi/register.py:249–264`]
 
 **Limitazioni.**
+
 - L'estrazione dei sottocampi degli oggetti è limitata a un livello di profondità. Le proprietà annidate all'interno di `object_fields` non vengono espanse ricorsivamente. (REQ-556) [tool-verified: `provisa/openapi/register.py:87–96`]
 - I parametri header e cookie vengono ignorati; vengono registrati solo i parametri `path` e `query`. (REQ-555) [tool-verified: `provisa/openapi/mapper.py:144–158`]
 - La risoluzione dei `$ref` a livello di specifica è limitata a un livello di profondità per gli schemi di proprietà; i riferimenti a componenti annidati in profondità potrebbero non risolversi. [tool-verified: `provisa/openapi/mapper.py:51–60`]

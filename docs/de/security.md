@@ -66,7 +66,7 @@ Diese Schichten kombinieren sich. Eine Rolle mit Domänenzugriff, RLS und maskie
 Unabhängig zugewiesene Fähigkeiten mit optionaler Rollenhierarchie über `parent_role_id`. `admin` gewährt alle. (REQ-042)
 
 | Fähigkeit | Beschreibung |
-|-----------|-------------|
+| ----------- | ------------- |
 | `source_registration` | Datenquellen registrieren |
 | `table_registration` | Tabellen, Spalten registrieren |
 | `create_relationship` | Fremdschlüsselbeziehungen definieren |
@@ -99,7 +99,7 @@ Jede Spalte verfügt über ein Berechtigungsmodell mit vier Feldern, das Lese-, 
 ### Drei Sichtbarkeitsstufen
 
 | Stufe | Bedingung | Ergebnis |
-|------|-----------|--------|
+| ------ | ----------- | -------- |
 | **Verborgen** | Rolle nicht in `visible_to` | Spalte fehlt im GraphQL-SDL |
 | **Maskiert** | Rolle in `visible_to`, hat Maskierungsregel, Rolle nicht in `unmasked_to` | Spalte sichtbar, aber Daten in SQL maskiert |
 | **Unmaskiert** | Rolle in `visible_to` UND Rolle in `unmasked_to` (oder keine Maskierungsregel) | Vollständiger Lesezugriff |
@@ -107,7 +107,7 @@ Jede Spalte verfügt über ein Berechtigungsmodell mit vier Feldern, das Lese-, 
 ### Schreibberechtigungen
 
 | Feld | Leer bedeutet | Zweck |
-|-------|------------|---------|
+| ------- | ------------ | --------- |
 | `visible_to` | Alle Rollen können lesen | Steuert, wer die Spalte sieht (maskiert oder unmaskiert) |
 | `unmasked_to` | Keine Rolle sieht unmaskierte Werte | Steuert, wer die Maskierung umgeht |
 | `writable_by` | Keine Rolle kann schreiben | Steuert, wer ändern darf (INSERT/UPDATE) |
@@ -137,6 +137,7 @@ columns:
 ```
 
 In diesem Beispiel:
+
 - `email`: admin sieht `alice@example.com` und kann bearbeiten; analyst/viewer sehen `a***@example.com`
 - `salary`: admin und hr sehen den echten Wert; hr kann bearbeiten; alle anderen Rollen sehen die Spalte überhaupt nicht
 - `created_at`: alle können lesen, niemand kann schreiben
@@ -173,7 +174,7 @@ Der Filter wird per UND-Verknüpfung in die WHERE-Klausel der Abfrage eingefügt
 Die Maskierung wird einmal pro Spalte definiert — sie ist eine Eigenschaft der Spalte, nicht der Rolle. Das Feld `unmasked_to` steuert, welche Rollen sie umgehen. (REQ-249)
 
 | Maskierungstyp | Unterstützte Typen | SQL-Ausdruck |
-|-----------|----------------|----------------|
+| ----------- | ---------------- | ---------------- |
 | `regex` | Zeichenkette (varchar, char, text) | `REGEXP_REPLACE(col, pattern, replace)` |
 | `constant` | Beliebig | Literalwert (NULL, 0, benutzerdefiniert) |
 | `truncate` | Datum/Timestamp | `DATE_TRUNC(precision, col)` |
@@ -205,7 +206,7 @@ Der Zustand der Ratenbegrenzung liegt in Redis (`cache.redis_url`) als gleitende
 Austauschbare Authentifizierungsanbieter: (REQ-120)
 
 | Anbieter | Token-Typ | Anwendungsfall |
-|----------|-----------|----------|
+| ---------- | ----------- | ---------- |
 | `none` | X-Provisa-Role-Header | Entwicklung |
 | `firebase` | Firebase-ID-Token | Produktion |
 | `keycloak` | Keycloak-JWT | Unternehmen |
@@ -225,7 +226,7 @@ Ein optionaler externer Richtlinien-Hook, der vor der Ausführung der Abfrage au
 Der Hook wird nur ausgelöst, wenn die Abfrage eine Tabelle oder Quelle im festgelegten Geltungsbereich berührt — kein Overhead für alles andere. (REQ-204)
 
 | Konfiguration | Effekt |
-|--------|--------|
+| -------- | -------- |
 | `auth.approval_hook.scope: all` | Jede Abfrage löst den Hook aus |
 | `sources[].approval_hook: true` | Alle Tabellen dieser Quelle lösen den Hook aus |
 | `tables[].approval_hook: true` | Diese Tabelle löst den Hook aus |
@@ -235,7 +236,7 @@ Der Hook wird nur ausgelöst, wenn die Abfrage eine Tabelle oder Quelle im festg
 Drei Transporte werden unterstützt: (REQ-246)
 
 | Typ | Anwendungsfall | Konfigurationsfeld |
-|------|----------|-------------|
+| ------ | ---------- | ------------- |
 | `webhook` | Jeder HTTP-fähige Policy-Dienst (OPA, benutzerdefiniert) | `url` |
 | `unix_socket` | OPA oder Policy-Sidecar auf derselben Maschine | `socket_path` + `url` |
 | `grpc` | Hochdurchsatz-Policy-Dienst am selben Standort | `url` (Host:Port) |
@@ -268,7 +269,7 @@ Der gRPC-Kanal ist dauerhaft — ein Kanal pro Provisa-Instanz, der für alle Au
 Alle drei Transporte übertragen dieselbe Nutzlast: (REQ-246)
 
 | Feld | Typ | Beschreibung |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `user` | string | Identität des authentifizierten Benutzers |
 | `roles` | string[] | Provisa-Rollen des Benutzers |
 | `tables` | string[] | In der Abfrage referenzierte Tabellen-IDs |

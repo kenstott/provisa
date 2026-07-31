@@ -39,7 +39,7 @@
 **類型對應（REQ-308）。** 純量欄位會直接對應至 Provisa 類型。OBJECT 欄位則按目標類型是否受治理而分為兩種情況（見下方「受治理資料表」）。[tool-verified: `provisa/graphql_remote/mapper.py:14–36`、`provisa/api/data/endpoint.py:655–671`、`provisa/compiler/schema_gen.py:481–485`]
 
 | GraphQL 類型 | Provisa 類型 |
-|---|---|
+| --- | --- |
 | `String` | `text` |
 | `ID` | `text` |
 | `Int` | `integer` |
@@ -69,6 +69,7 @@
 **刷新。** 向 `/admin/sources/graphql-remote/{id}/refresh` 發送 POST 請求。此操作會重新對遠端結構描述進行內省，並更新資料表及函式的註冊資訊。既有的治理規則（RLS、遮罩）將予以保留。（REQ-311）[tool-verified: `provisa/api/admin/graphql_remote_router.py:217–257`]
 
 **限制。**
+
 - 純量及 ENUM 類型的根查詢欄位（回傳類型非 OBJECT）會成為受追蹤的函式，而非虛擬資料表。其 `return_schema` 為單一欄位 `value`，類型為對應的純量類型。[tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
 - 物件巢狀結構於註冊時會解析至 `graphql_remote.max_object_depth`（預設值：5）的深度。遠端擷取的欄位選擇及子欄位中繼資料均會建構至此深度；超出限制的欄位不會被擷取，亦無法用於 SQL 擷取。（REQ-556）[tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
 - LIST 類型的巢狀 OBJECT 欄位（例如 `breed.awards: [Award]`）會於擷取選擇中納入，直至 `graphql_remote.max_list_depth` 個巢狀層級（預設值：2）。於此限制內，清單會以 `jsonb` 陣列的形式擷取至父欄位，而 GQL 選擇會注入 `first: N`（N 為 `graphql_remote.max_list_items`，預設值：100），以限制陣列大小。超出 `max_list_depth` 時，該 LIST 欄位會完全被排除，以防止資料無限膨脹。在 SQL 中，可透過 `json_array_elements(column_name)` 或以 `->>` 進行索引擷取來存取該陣列。若清單的元素類型本身具有根查詢，建議將其另行註冊為獨立資料表並建立關聯——聯結路徑效率更高，亦可繞過 blob。（REQ-556）[tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
@@ -115,7 +116,7 @@ Proto 檔案亦可為本機路徑。常見類型（`google/protobuf/timestamp.pr
 **類型對應（REQ-324）。** Proto 純量類型與 SQL 類型的對應如下。[tool-verified: `provisa/grpc_remote/mapper.py:31–47`]
 
 | Proto 類型 | SQL 類型 |
-|---|---|
+| --- | --- |
 | `string`、`bytes` | `text` |
 | `int32` / `uint32` / `sint32` / `fixed32` / `sfixed32` | `integer` |
 | `int64` / `uint64` / `sint64` / `fixed64` / `sfixed64` | `bigint` |
@@ -141,6 +142,7 @@ Proto 檔案亦可為本機路徑。常見類型（`google/protobuf/timestamp.pr
 **刷新。** 向 `/admin/grpc-remote/refresh/{source_id}` 發送 POST 請求。此操作會從已儲存的路徑重新載入 proto、重新編譯 stub，並重新註冊資料表及函式。另外，亦可向 `/admin/grpc-remote/{source_id}/proto` 發送 PUT 請求，並附上新的 `proto_text` 以內嵌方式更新 proto。（REQ-329）[tool-verified: `provisa/api/admin/grpc_remote_router.py:241–268`、`provisa/api/admin/grpc_remote_router.py:300–358`]
 
 **限制。**
+
 - 物件子欄位擷取僅支援一層深度。超出深度 1 的巢狀訊息欄位不會遞迴展開。（REQ-556）[tool-verified: `provisa/grpc_remote/mapper.py:111–128`]
 
 ---
@@ -172,7 +174,7 @@ Proto 檔案亦可為本機路徑。常見類型（`google/protobuf/timestamp.pr
 **類型對應。** JSON Schema 類型與 Provisa 類型的對應如下。[tool-verified: `provisa/openapi/register.py:59–70`]
 
 | JSON Schema 類型 | Provisa 類型 |
-|---|---|
+| --- | --- |
 | `string` | `string` |
 | `integer` | `integer` |
 | `number` | `number` |
@@ -191,6 +193,7 @@ Proto 檔案亦可為本機路徑。常見類型（`google/protobuf/timestamp.pr
 **刷新（REQ-321）。** 重新解析規格並再次呼叫 `auto_register_openapi_source`。既有的治理規則會予以保留；註冊資訊會以 ON CONFLICT upsert 方式更新。[tool-verified: `provisa/openapi/register.py:249–264`]
 
 **限制。**
+
 - 物件子欄位擷取僅支援一層深度。`object_fields` 中巢狀的屬性不會遞迴展開。（REQ-556）[tool-verified: `provisa/openapi/register.py:87–96`]
 - 標頭及 Cookie 參數會被忽略；只有 `path` 及 `query` 參數會被註冊。（REQ-555）[tool-verified: `provisa/openapi/mapper.py:144–158`]
 - 規格層級的 `$ref` 解析對於屬性結構描述僅支援一層深度；深層巢狀的元件參照可能無法解析。[tool-verified: `provisa/openapi/mapper.py:51–60`]

@@ -22,7 +22,7 @@ sources:
 所有數據來源均共用一組共通欄位。[tool-verified: `provisa/core/models.py:129-212`]
 
 | 欄位 | 預設值 | 備註 |
-|-------|---------|-------|
+| ------- | --------- | ------- |
 | `id` | 必填 | 英數字元、連字號、底線 |
 | `type` | 必填 | 見下表 |
 | `host` | `""` | 主機名稱或 IP |
@@ -43,7 +43,7 @@ sources:
 ### 支援的數據來源型別 [tool-verified: `provisa/core/models.py:36-101`]
 
 | 型別 | 連線方式 | 備註 |
-|------|-----------------|-------|
+| ------ | ----------------- | ------- |
 | **RDBMS** | | |
 | `postgresql` | host/port | Asyncpg 連線池；透過 `use_pgbouncer` 選用啟用 PgBouncer |
 | `mysql` | host/port | |
@@ -128,7 +128,7 @@ sources:
 每個主題均對應一或多個 GovData 結構描述。設定帶有某主題的 `govdata` 數據來源，會自動公開該主題的所有結構描述。(REQ-540)
 
 | 主題 | 結構描述 |
-|---------|---------|
+| --------- | --------- |
 | `COMMERCE` | `sec`、`patents` |
 | `ECONOMY` | `econ`、`econ_reference` |
 | `EDUCATION` | `census`、`edu` |
@@ -191,7 +191,7 @@ kafka_sources:
 **結構描述來源**
 
 | 值 | 行為 |
-|-------|----------|
+| ------- | ---------- |
 | `registry` | 由 Confluent Schema Registry 擷取結構描述 |
 | `manual` | 於設定中內嵌定義欄位（無須 Schema Registry） |
 | `sample` | 由樣本訊息自動探索 |
@@ -539,7 +539,7 @@ naming:
 GraphQL 慣例為三種預設列舉值之一。(REQ-416) 舊有的自由格式字串（`none`、`snake_case`、`camelCase`、`PascalCase`）已棄用。(REQ-416)
 
 | 預設值 | 是否為預設 | 型別名稱 | 欄位名稱 | 變異名稱 |
-|--------|---------|------------|-------------|----------------|
+| -------- | --------- | ------------ | ------------- | ---------------- |
 | `apollo_graphql` | 是 | PascalCase | camelCase | camelCase |
 | `hasura_graphql` | | PascalCase | camelCase | snake_case |
 | `snake` | | PascalCase | snake_case | snake_case |
@@ -551,6 +551,7 @@ GraphQL 慣例為三種預設列舉值之一。(REQ-416) 舊有的自由格式�
 明確設定的 `column.alias` 即為標準名稱：SQL 會逐字使用，不套用任何慣例；GraphQL 會對其套用慣例；而 CQL 則由 GraphQL 名稱衍生而來。(REQ-194)
 
 依數據來源覆寫：
+
 ```yaml
 sources:
   - id: legacy-db
@@ -558,6 +559,7 @@ sources:
 ```
 
 依資料表覆寫：
+
 ```yaml
 tables:
   - source_id: legacy-db
@@ -570,7 +572,7 @@ tables:
 當 `domain_prefix: true` 時，所有 GraphQL 欄位及型別名稱均會以雙底線作為分隔符，加上領域 ID 前綴：(REQ-154)
 
 | 資料表 | 領域 | 欄位名稱 |
-|-------|--------|-----------|
+| ------- | -------- | ----------- |
 | `orders` | `sales-analytics` | `sales_analytics__orders` |
 | `customer_segments` | `customer-insights` | `customer_insights__customer_segments` |
 
@@ -626,6 +628,7 @@ tables:
 ### 別名
 
 資料表及欄位別名會覆寫預設的 GraphQL 名稱。(REQ-155) 適用於：
+
 - 重新命名意義不明的資料庫名稱（例如：`tbl_cust_seg` → `customer_segments`）
 - 於 API 層避免使用縮寫
 - 建立一套簡潔、專屬於該領域的詞彙
@@ -660,7 +663,7 @@ columns:
 ### 遮罩型別
 
 | 型別 | 欄位 | 描述 |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | `regex` | `pattern`、`replace` | REGEXP_REPLACE（僅限字串欄位） |
 | `constant` | `value` | 常值取代（NULL、0、MAX、MIN、自訂值） |
 | `truncate` | `precision` | DATE_TRUNC（僅限日期/時間戳記欄位） |
@@ -723,7 +726,7 @@ roles:
 ### 功能
 
 | 功能 | 描述 |
-|-----------|-------------|
+| ----------- | ------------- |
 | `source_registration` | 註冊數據來源 |
 | `table_registration` | 註冊資料表 |
 | `relationship_registration` | 定義關係 |
@@ -789,7 +792,7 @@ views:
 ```
 
 | 欄位 | 必填 | 描述 |
-|-------|----------|-------------|
+| ------- | ---------- | ------------- |
 | `id` | 是 | 唯一的檢視識別碼 |
 | `sql` | 是 | 定義該檢視的 SQL SELECT 陳述式 |
 | `domain_id` | 是 | 供結構描述可見性使用的領域 |
@@ -870,7 +873,7 @@ auth:
 ### 驗證提供者型別
 
 | 提供者 | 使用情境 | 權杖驗證方式 |
-|----------|----------|-----------------|
+| ---------- | ---------- | ----------------- |
 | `simple` | 本機開發/測試。使用者於 YAML 中定義。 | 以 `PROVISA_JWT_SECRET` 簽署的 JWT |
 | `firebase` | Firebase Authentication（所有方式）。 | `firebase-admin` SDK 的 `verify_id_token()` |
 | `keycloak` | Keycloak OIDC。租用戶及客戶端角色皆有對應。 | 以 JWKS 為基礎的 JWT 驗證 |
@@ -965,7 +968,7 @@ tables:
 ```
 
 | 來源 | 行為 |
-|--------|----------|
+| -------- | ---------- |
 | `header` | 由指定名稱的 HTTP 請求標頭注入值 |
 | `now` | 注入 `NOW()`（目前時間戳記） |
 | `literal` | 注入一個常值 |
@@ -1029,7 +1032,7 @@ OrderBy 採用 `{column: direction}` 格式，具備 6 種方向列舉值：(REQ
 ```
 
 | 方向 | SQL |
-|-----------|-----|
+| ----------- | ----- |
 | `asc` | `ASC` |
 | `desc` | `DESC` |
 | `asc_nulls_first` | `ASC NULLS FIRST` |
@@ -1073,26 +1076,26 @@ Provisa 執行兩條獨立的 OTLP 匯出路徑：您的內部收集器，以及
 **`telemetry_filter`**——控制傳送至您內部收集器的內容。
 
 | 金鑰 | 型別 | 預設值 | 描述 |
-|-----|------|---------|-------------|
+| ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `false` | 將 `db.statement` 中的字串及數值常值取代為 `?` |
 | `redact_attributes` | list[str] | `[]` | 於每個 span 中完全捨棄的屬性金鑰 |
 
 **`support_telemetry_filter`**——控制傳送至 Provisa 支援端點的內容。此路徑上的 SQL 常值遮蔽預設為 `true`，因為查詢數據屬於您所有。(REQ-547) [tool-verified: `provisa/api/otel_setup.py` line 240]
 
 | 金鑰 | 型別 | 預設值 | 描述 |
-|-----|------|---------|-------------|
+| ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `true` | 將 `db.statement` 中的字串及數值常值取代為 `?` |
 | `redact_attributes` | list[str] | `[]` | 於每個 span 中完全捨棄的屬性金鑰 |
 
 已遮蔽的 `db.statement` 範例——在 `redact_sql_literals: true` 之下，此 span 屬性：
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 ```
 
 會變為：
 
-```
+```yaml
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
@@ -1113,7 +1116,7 @@ Provisa 會根據端點 URL 的通訊協定綱要，選擇 OTLP/HTTP 或 OTLP/gR
 ### 引擎概覽 [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
 
 | 引擎鍵值 | 標籤 | 方言 | MPP | 外部連結機制 | 驗證方式 |
-|-----------|-------|---------|-----|------------------------|------|
+| ----------- | ------- | --------- | ----- | ------------------------ | ------ |
 | `trino` | Provisa Federation Engine | Trino SQL | 是 | Trino catalog（連接器涵蓋範圍廣泛） | JDBC 憑證 |
 | `trino-byo` | Trino（自備） | Trino SQL | 是 | 與 `trino` 相同；非受管理協調器 | JDBC 憑證 |
 | `pg` | PostgreSQL | PostgreSQL | 否 | FDW / pg_duckdb | PostgreSQL 憑證 |
@@ -1284,7 +1287,7 @@ sources:
 ## 環境變數
 
 | 變數 | 預設值 | 描述 |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | 設定檔路徑 |
 | `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | 控制平面儲存區 URI（SQLAlchemy 非同步）；接受 `sqlite+aiosqlite://…` / `duckdb://…`，供內嵌桌面儲存區使用（REQ-828、REQ-850） |
 | `PLATFORM_DATABASE_URL` | — | 平台註冊表 URI（租用戶目錄、引擎註冊表）；啟動時必須提供，無備援機制（REQ-837） |

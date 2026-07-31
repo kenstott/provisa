@@ -28,7 +28,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 Dieses Statement erzeugt drei Ausgabespalten. Der Graph für `geo_u` sieht so aus:
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -50,7 +50,7 @@ Taint-Closure durchgängig von den deklarierten Spalten der Quellrelation bis zu
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | Knotenart | Farbe | Bedeutung |
-|---|---|---|
+| --- | --- | --- |
 | `source` | Grün | Eine Spalte einer Basistabelle |
 | `derived` | Blau | Erzeugt durch einen SQL-Ausdruck (Funktion, Operator, CTE) |
 | `command` | Violett | Eine Ausgabespalte eines registrierten Commands |
@@ -92,7 +92,7 @@ Zyklen werden beschrieben, nicht abgelehnt. Die Lineage-Engine erkennt jeden ger
 **klassifiziert** ihn. [tool-verified: `Cycle.classification` property in merge.py:43-46]
 
 | Klassifikation | Randfarbe | Bedeutung |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | Gelb | Der Zyklus durchläuft einen materialisierten Knoten — ein legitimer, zeitlich verzögerter Feedback-Loop. Der MV-Snapshot bildet die Versionsgrenze, die ihn wohldefiniert macht. |
 | `error` | Rot | Keine Materialisierungsgrenze im Loop — eine zirkuläre Definition ohne stabile Auswertungsreihenfolge. Vermutlich ein Designfehler. |
 
@@ -151,7 +151,7 @@ Liefert HTTP 422, wenn das SQL nicht geparst werden kann.
 
 Liefert den zusammengeführten Provenance-Graph über alle MVs im Registry.
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -161,7 +161,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 Abfrageparameter [tool-verified: function signature at lineage_router.py:73-76]:
 
 | Parameter | Werte | Standard | Wirkung |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | Eine Knoten-ID | — | Grenzt die Antwort auf den Subgraphen um diesen Knoten ein |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | Richtung, in der von `focus` aus traversiert wird |
 | `depth` | Ganzzahl | unbegrenzt | Maximale Hop-Distanz von `focus` |

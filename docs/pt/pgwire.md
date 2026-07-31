@@ -16,7 +16,7 @@ pgwire não é um desvio (bypass). (REQ-002, REQ-266)
 O servidor inicia quando `PROVISA_PGWIRE_PORT` é definido como um inteiro diferente de zero. É
 desabilitado por padrão. (REQ-527) [tool-verified: `app.py:1739`]
 
-```
+```yaml
 Host: 0.0.0.0  (all interfaces)
 Port: $PROVISA_PGWIRE_PORT
 ```
@@ -37,7 +37,7 @@ recursos ao número de versão podem se comportar como se estivessem conectadas 
 Dois modos, controlados pela chave `provider` em `auth_config`:
 
 | Modo | Valor de `provider` | Comportamento |
-|------|-----------------|-----------|
+| ------ | ----------------- | ----------- |
 | Trust | `none` (ou middleware de auth inativo) | O nome de usuário enviado pelo cliente é usado diretamente como o `role_id`. A senha é ignorada. |
 | Simple | `simple` | A senha é verificada contra o provedor de auth `simple` (bcrypt). O nome de usuário se torna `role_id` em caso de sucesso. (REQ-124) |
 
@@ -80,7 +80,7 @@ deve ter a capacidade `"ddl"`. (REQ-042) Sem ela, a declaração é rejeitada co
 
 As formas de DDL reconhecidas são:
 
-```
+```sql
 CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
 ALTER TABLE / INDEX / SEQUENCE / VIEW
 DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
@@ -183,6 +183,7 @@ descobrem as colunas corretas através do join padrão `pg_index` → `pg_attrib
 [tool-verified: `catalog_constraints.py:340-384`]
 
 As seguintes expressões escalares também são interceptadas: (REQ-588)
+
 - `current_user`, `session_user` → o `role_id` autenticado
 - `current_database()` → `"provisa"`
 - `current_schema()` → `"public"`
@@ -202,7 +203,7 @@ O protocolo de consulta estendida (Bind/Execute) suporta parâmetros codificados
 `postgres.py:69-97`]
 
 | OID | Tipo PG | Tipo Python |
-|-----|---------|-------------|
+| ----- | --------- | ------------- |
 | 16 | bool | bool |
 | 17 | bytea | bytes |
 | 20 | int8 | int |
@@ -238,7 +239,7 @@ Use estes para ETL baseado em Python, scripts, ou integração direta.
 Power BI, Metabase, operadores JDBC do Airflow. JDBC assume por padrão o protocolo de consulta
 simples, o que evita complicações de codificação binária. String de conexão:
 
-```
+```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 

@@ -16,13 +16,13 @@ Provisa חושפת נקודות קצה REST תחת שתי קידומות: `/data
 
 **ביקורת זהות (Identity introspection):**
 
-```
+```http
 GET /auth/me
 ```
 
 מחזיר את מזהה המשתמש המאומת, הדוא"ל, שם התצוגה, חברויות בארגונים, והקצאות תפקידים. במצב פיתוח מחזיר `dev_mode: true` עם כל מזהי התפקידים רשומים. [tool-verified: `provisa/api/auth_router.py`]
 
-```
+```http
 GET /auth/provider-type
 ```
 
@@ -37,6 +37,7 @@ GET /auth/provider-type
 הרצת שאילתת GraphQL או מוטציה. (REQ-043) [tool-verified: `provisa/api/data/endpoint.py:151`]
 
 **גוף הבקשה:**
+
 ```json
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
@@ -49,6 +50,7 @@ GET /auth/provider-type
 השדה `role` משמש רק במצב פיתוח (ללא אימות). כאשר האימות פעיל, נעשה שימוש בתפקיד המשתמש המאומת ו-`role` בגוף הבקשה מתעלם.
 
 השדה `extensions` תומך בפרוטוקול Automatic Persisted Query (APQ): (REQ-288)
+
 ```json
 {
   "extensions": {"persistedQuery": {"sha256Hash": "<sha256-of-query>"}}
@@ -56,6 +58,7 @@ GET /auth/provider-type
 ```
 
 **כותרות:**
+
 - `X-Provisa-Role` — דריסת תפקיד (מצב פיתוח)
 - `Accept` — פורמט תגובה (ראו משא ומתן תוכן)
 - `Authorization` — `Bearer <token>` כאשר האימות מופעל
@@ -64,6 +67,7 @@ GET /auth/provider-type
 - `X-Provisa-Redirect` — `true` לכפיית הפניה ללא תנאי (REQ-029)
 
 **תגובה (JSON inline):**
+
 ```json
 {
   "data": {
@@ -75,6 +79,7 @@ GET /auth/provider-type
 ```
 
 **תגובה (הפניה):**
+
 ```json
 {
   "data": {"orders": null},
@@ -88,6 +93,7 @@ GET /auth/provider-type
 ```
 
 **תגובה (multi-root עם inline/הפניה מעורבים):**
+
 ```json
 {
   "data": {
@@ -119,7 +125,7 @@ GET /auth/provider-type
 ### משא ומתן תוכן (Content Negotiation)
 
 | כותרת Accept | פורמט |
-|---|---|
+| --- | --- |
 | `application/json` | JSON (ברירת מחדל) |
 | `application/x-ndjson` | JSON מופרד בשורות (Newline-delimited) |
 | `text/csv` | CSV |
@@ -135,7 +141,7 @@ GET /auth/provider-type
 תוצאות מעל סף שורות מוגדר (או כאשר `X-Provisa-Redirect: true`) נכתבות ל-S3 ומוחזר URL חתום מראש (presigned). (REQ-029, REQ-044)
 
 | פורמט הפניה | נכתב על ידי | זיכרון |
-|---|---|---|
+| --- | --- | --- |
 | `application/vnd.apache.parquet` | CTAS פדרטיבי | ללא — הנתונים לעולם אינם עוברים דרך Provisa |
 | `application/x-orc` | CTAS פדרטיבי | ללא — הנתונים לעולם אינם עוברים דרך Provisa |
 | `application/json` | Provisa | תלוי-זיכרון |
@@ -145,7 +151,7 @@ GET /auth/provider-type
 
 עבור ייצוא אנליטי גדול, השתמשו בהפניית Parquet או ORC. מנוע הפדרציה כותב ישירות ל-S3 במקביל — אין נתונים העוברים דרך Provisa. (REQ-138)
 
-```
+```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
 X-Provisa-Redirect-Threshold: 1000
 ```
@@ -157,6 +163,7 @@ X-Provisa-Redirect-Threshold: 1000
 הרצת SQL גולמי דרך צינור הממשל של שלב 2 (Stage 2 governance). (REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:62`]
 
 **גוף הבקשה:**
+
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
@@ -182,6 +189,7 @@ X-Provisa-Redirect-Threshold: 1000
 שאילתות Cypher יכולות גם להישלח לנקודת הקצה הייעודית ל-Cypher בלבד, `POST /query/cypher`. (REQ-345)
 
 **גוף הבקשה:**
+
 ```json
 {
   "query": "{ orders { id } }",
@@ -200,6 +208,7 @@ X-Provisa-Redirect-Threshold: 1000
 נקודת קצה REST רגילה שמחוללת אוטומטית עבור כל טבלה רשומה. מחרוזת השאילתה ממופה לארגומנטים של GraphQL והבקשה מתקמפלת ומתבצעת דרך אותו צינור (RLS, מיסוך, ניתוב) כמו GraphQL. (REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
 
 **פרמטרי שאילתה:**
+
 - `limit` — מספר שורות מקסימלי (≥ 1)
 - `offset` — דילוג על שורות (≥ 0)
 - `fields` — שמות עמודות מופרדים בפסיקים (ברירת מחדל לכל השדות הסקלריים)
@@ -217,6 +226,7 @@ X-Provisa-Redirect-Threshold: 1000
 **כותרת `Accept`:** חייבת לכלול `application/vnd.api+json` (סוג המדיה של JSON:API) אחרת הבקשה מחזירה `406`.
 
 **פרמטרי שאילתה:**
+
 - `fields[<type>]` — שדות דלילים (sparse fieldsets), לדוגמה `?fields[orders]=amount`
 - `filter[<col>]` / `filter[<col>][<op>]` — לדוגמה `?filter[region]=US`, `?filter[amount][gt]=100`
 - `sort` — מופרד בפסיקים, קידומת `-` לסדר יורד, לדוגמה `?sort=-created_at,amount`
@@ -231,6 +241,7 @@ X-Provisa-Redirect-Threshold: 1000
 שליחת שאלה בשפה טבעית. השירות מתחיל job אסינכרוני ומחזיר `202 Accepted` עם `job_id` באופן מיידי. דורש ספק LLM מוגדר תחת סעיף התצורה `ai_models`. (REQ-354) [tool-verified: `provisa/api/rest/nl_router.py:50`]
 
 **גוף הבקשה:**
+
 ```json
 {"q": "How many orders were placed last month?", "role": "admin"}
 ```
@@ -267,6 +278,7 @@ X-Provisa-Redirect-Threshold: 1000
 **כותרות:** `X-Role: <role_id>` (חובה)
 
 **פרמטרי שאילתה:**
+
 - `domain` — מזהי דומיין מופרדים בפסיקים. כאשר מוגדר, התגובה מסוננת לדומיין(ים) הנקוב(ים) ולטבלאות הנגישות מהם.
 
 **תגובה:** `text/plain` SDL של GraphQL.
@@ -346,6 +358,7 @@ X-Provisa-Redirect-Threshold: 1000
 **גוף הבקשה:** תוכן YAML גולמי.
 
 **תגובה:**
+
 ```json
 {"success": true, "message": "Config uploaded and reloaded"}
 ```
@@ -361,6 +374,7 @@ X-Provisa-Redirect-Threshold: 1000
 מחזיר את הגדרות הפלטפורמה הנוכחיות כ-JSON. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:50`]
 
 **תגובה:**
+
 ```json
 {
   "redirect": {
@@ -398,6 +412,7 @@ X-Provisa-Redirect-Threshold: 1000
 עדכון הגדרות פלטפורמה בזמן ריצה. כל השדות אופציונליים — רק מפתחות שנוכחים בגוף מעודכנים. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:100`]
 
 **גוף הבקשה (דוגמה חלקית):**
+
 ```json
 {
   "otel": {
@@ -419,6 +434,7 @@ X-Provisa-Redirect-Threshold: 1000
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **תגובה:**
+
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
@@ -442,6 +458,7 @@ X-Provisa-Redirect-Threshold: 1000
 **פרמטרי שאילתה:** `catalog` (ברירת מחדל `"otel"`)
 
 **תגובה:**
+
 ```json
 {"success": true, "errors": []}
 ```
@@ -461,6 +478,7 @@ X-Provisa-Redirect-Threshold: 1000
 הפעלת גילוי קשרים. תמיד מריץ introspection של FK ממנוע הפדרציה. (REQ-018) מריץ הסקת LLM אם `ANTHROPIC_API_KEY` מוגדר. (REQ-167) [tool-verified: `provisa/api/admin/discovery.py:55`]
 
 **גוף הבקשה:**
+
 ```json
 {
   "scope": "domain",
@@ -541,6 +559,7 @@ X-Provisa-Redirect-Threshold: 1000
 מחזיר את כל הפונקציות ו-webhooks של DB במעקב. (REQ-242) [tool-verified: `provisa/api/admin/actions_router.py:104`]
 
 **תגובה:**
+
 ```json
 {
   "functions": [
@@ -582,7 +601,7 @@ X-Provisa-Redirect-Threshold: 1000
 **שדות מפתח:**
 
 | שדה | חובה | תיאור |
-|---|---|---|
+| --- | --- | --- |
 | `name` | כן | שם command ייחודי |
 | `kind` | כן | `"query"` ← שדה GraphQL Query; `"mutation"` ← שדה Mutation |
 | `implKind` | לא | כיצד ה-command רץ — ראו הטבלה למטה (ברירת מחדל `source_procedure`) |
@@ -596,7 +615,7 @@ X-Provisa-Redirect-Threshold: 1000
 **ערכי `implKind`:**
 
 | `implKind` | מה רץ | שדות `binding` |
-|---|---|---|
+| --- | --- | --- |
 | `source_procedure` | פרוצדורה מאוחסנת במקור רשום (ברירת מחדל) | `sourceId`, `schemaName`, `functionName` |
 | `script` | סקריפט בצד השרת | `script` |
 | `http` | קריאת HTTP יוצאת | `url`, `method` |
@@ -636,7 +655,7 @@ X-Provisa-Redirect-Threshold: 1000
 כל נקודות הקצה תחת קידומת `/admin/roles`. [tool-verified: `provisa/api/admin/roles_router.py:18`]
 
 | שיטה | נתיב | תיאור |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/roles/` | רשימת כל התפקידים |
 | `POST` | `/admin/roles/` | יצירת תפקיד |
 | `PUT` | `/admin/roles/{role_id}` | עדכון תפקיד |
@@ -651,7 +670,7 @@ X-Provisa-Redirect-Threshold: 1000
 כל נקודות הקצה תחת קידומת `/admin/users`. [tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
 | שיטה | נתיב | תיאור |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/users/` | יצירת משתמש מקומי |
 | `GET` | `/admin/users/` | רשימת משתמשים מקומיים |
 | `GET` | `/admin/users/{user_id}` | קבלת משתמש |
@@ -669,7 +688,7 @@ X-Provisa-Redirect-Threshold: 1000
 כל נקודות הקצה תחת `/admin/orgs`. [tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
 | שיטה | נתיב | תיאור |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/orgs/` | רשימת ארגונים |
 | `POST` | `/admin/orgs/` | יצירת ארגון |
 | `PUT` | `/admin/orgs/{org_id}` | עדכון ארגון |
@@ -685,7 +704,7 @@ X-Provisa-Redirect-Threshold: 1000
 כל נקודות הקצה תחת `/admin/invites`. [tool-verified: `provisa/api/admin/invites_router.py:18`]
 
 | שיטה | נתיב | תיאור |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/invites/` | יצירת הזמנה |
 | `GET` | `/admin/invites/` | רשימת הזמנות ממתינות |
 | `DELETE` | `/admin/invites/{token}` | ביטול הזמנה |
@@ -748,7 +767,7 @@ mutation {
 ## תגובות שגיאה
 
 | סטטוס | משמעות |
-|---|---|
+| --- | --- |
 | 400 | שאילתה לא תקינה, שגיאת אימות, או שגיאת ניתוח SQL |
 | 401 | טוקן אימות חסר או לא תקין |
 | 403 | יכולות לא מספיקות; הפרת ממשל |
@@ -780,11 +799,13 @@ mutation {
 שאילתות וגילוי קטלוג זמינים שניהם על אותו חיבור. צינור הממשל המלא (RLS, מיסוך, דגימה) מיושם על כל שאילתה. (REQ-130, REQ-143)
 
 **פורמט Ticket** (JSON):
+
 ```json
 {"query": "{ customers { name email } }", "role": "analyst", "variables": {}}
 ```
 
 **שימוש (Python):**
+
 ```python
 import pyarrow.flight as flight
 

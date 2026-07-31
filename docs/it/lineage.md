@@ -28,7 +28,7 @@ JOIN   enrich_grpc_set('main.public.orders') e ON o.id = e.id
 
 Questa istruzione produce tre colonne di output. Il grafo per `geo_u` è il seguente:
 
-```
+```text
 orders.geo  ──[enrich_grpc_set(...)]──►  e.geo  ──[UPPER]──►  geo_u
 orders.id   ─╮                                              (taint closure)
 orders.region ─╯
@@ -50,7 +50,7 @@ output. [tool-verified: `_splice_commands` e `_input_relation` in graph.py:245-2
 [tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | Tipo di nodo | Colore | Significato |
-|---|---|---|
+| --- | --- | --- |
 | `source` | Verde | Una colonna di una tabella di base |
 | `derived` | Blu | Prodotta da un'espressione SQL (funzione, operatore, CTE) |
 | `command` | Viola | Una colonna di output di un comando registrato |
@@ -92,7 +92,7 @@ I cicli vengono descritti, non rifiutati. Il motore di derivazione rileva ogni c
 **classifica**. [tool-verified: `Cycle.classification` property in merge.py:43-46]
 
 | Classificazione | Colore del bordo | Significato |
-|---|---|---|
+| --- | --- | --- |
 | `feedback` | Giallo | Il ciclo attraversa un nodo materializzato — un ciclo di retroazione legittimo e sfasato nel tempo. Lo snapshot della MV costituisce il confine di versione che lo rende ben definito. |
 | `error` | Rosso | Nessun confine di materializzazione sul ciclo — una definizione circolare senza un ordine di valutazione stabile. Probabilmente un errore di progettazione. |
 
@@ -151,7 +151,7 @@ Restituisce HTTP 422 quando l'SQL non può essere analizzato.
 
 Restituisce il grafo di provenienza unificato su tutte le MV nel registro.
 
-```
+```http
 GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
@@ -161,7 +161,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 Parametri di query [tool-verified: function signature at lineage_router.py:73-76]:
 
 | Parametro | Valori | Predefinito | Effetto |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `focus` | Un id di nodo | — | Delimita la risposta al sottografo attorno a questo nodo |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | Direzione di attraversamento a partire da `focus` |
 | `depth` | intero | illimitato | Distanza massima in hop da `focus` |

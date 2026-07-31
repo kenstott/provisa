@@ -66,7 +66,7 @@ These layers compose. A role with domain access, RLS, and masked columns has all
 Independently assigned capabilities with optional role hierarchy via `parent_role_id`. `admin` grants all. (REQ-042)
 
 | Capability | Description |
-|-----------|-------------|
+| ----------- | ------------- |
 | `source_registration` | Register data sources |
 | `table_registration` | Register tables, columns |
 | `create_relationship` | Define FK relationships |
@@ -99,7 +99,7 @@ Each column has a four-field permission model controlling read, write, and maski
 ### Three-Tier Visibility
 
 | Tier | Condition | Result |
-|------|-----------|--------|
+| ------ | ----------- | -------- |
 | **Hidden** | Role not in `visible_to` | Column absent from GraphQL SDL |
 | **Masked** | Role in `visible_to`, has masking rule, role not in `unmasked_to` | Column visible but data masked in SQL |
 | **Unmasked** | Role in `visible_to` AND role in `unmasked_to` (or no masking rule) | Full read access |
@@ -107,7 +107,7 @@ Each column has a four-field permission model controlling read, write, and maski
 ### Write Permissions
 
 | Field | Empty means | Purpose |
-|-------|------------|---------|
+| ------- | ------------ | --------- |
 | `visible_to` | All roles can read | Controls who sees the column (masked or unmasked) |
 | `unmasked_to` | No role sees unmasked | Controls who bypasses masking |
 | `writable_by` | No role can write | Controls who can mutate (INSERT/UPDATE) |
@@ -137,6 +137,7 @@ columns:
 ```
 
 In this example:
+
 - `email`: admin sees `alice@example.com` and can edit; analyst/viewer see `a***@example.com`
 - `salary`: admin and hr see the real value; hr can edit; all other roles don't see the column at all
 - `created_at`: everyone can read, nobody can write
@@ -173,7 +174,7 @@ The filter is ANDed into the query's WHERE clause. Works for both queries and mu
 Masking is defined once per column — it is a property of the column, not the role. The `unmasked_to` field controls which roles bypass it. (REQ-249)
 
 | Mask Type | Supported Types | SQL Expression |
-|-----------|----------------|----------------|
+| ----------- | ---------------- | ---------------- |
 | `regex` | String (varchar, char, text) | `REGEXP_REPLACE(col, pattern, replace)` |
 | `constant` | Any | Literal value (NULL, 0, custom) |
 | `truncate` | Date/Timestamp | `DATE_TRUNC(precision, col)` |
@@ -205,7 +206,7 @@ Rate limit state lives in Redis (`cache.redis_url`) as a sliding-window counter 
 Pluggable auth providers: (REQ-120)
 
 | Provider | Token Type | Use Case |
-|----------|-----------|----------|
+| ---------- | ----------- | ---------- |
 | `none` | X-Provisa-Role header | Development |
 | `firebase` | Firebase ID token | Production |
 | `keycloak` | Keycloak JWT | Enterprise |
@@ -225,7 +226,7 @@ An optional external policy hook that fires before query execution. (REQ-203) Wh
 The hook only fires when the query touches a scoped table or source — zero overhead for everything else. (REQ-204)
 
 | Config | Effect |
-|--------|--------|
+| -------- | -------- |
 | `auth.approval_hook.scope: all` | Every query triggers the hook |
 | `sources[].approval_hook: true` | All tables on that source trigger the hook |
 | `tables[].approval_hook: true` | That table triggers the hook |
@@ -235,7 +236,7 @@ The hook only fires when the query touches a scoped table or source — zero ove
 Three transports are supported: (REQ-246)
 
 | Type | Use case | Config field |
-|------|----------|-------------|
+| ------ | ---------- | ------------- |
 | `webhook` | Any HTTP-capable policy service (OPA, custom) | `url` |
 | `unix_socket` | OPA or policy sidecar on same machine | `socket_path` + `url` |
 | `grpc` | High-throughput co-located policy service | `url` (host:port) |
@@ -268,7 +269,7 @@ The gRPC channel is persistent — one channel per Provisa instance, reused acro
 All three transports carry the same payload: (REQ-246)
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `user` | string | Authenticated user identity |
 | `roles` | string[] | User's Provisa roles |
 | `tables` | string[] | Table IDs referenced in the query |

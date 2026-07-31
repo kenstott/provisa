@@ -4,7 +4,8 @@
 
 1. Un proyecto de Hasura DDN con archivos HML (extensión `.hml`).
    Los proyectos DDN normalmente tienen una estructura de directorios como:
-   ```
+
+   ```text
    my-ddn-project/
      app/
        subgraph1/
@@ -17,6 +18,7 @@
      globals/
        ...
    ```
+
 2. Python 3.11+ con el paquete `provisa` instalado.
 
 ## Uso de la CLI
@@ -28,13 +30,13 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 ### Argumentos
 
 | Argumento | Requerido | Descripción |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `hml_dir` | Sí | Ruta al directorio del proyecto DDN HML (se explora recursivamente en busca de archivos `.hml`) |
 
 ### Opciones
 
 | Opción | Predeterminado | Descripción |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output FILE` | stdout | Ruta del archivo YAML de salida |
 | `--source-overrides FILE` | Ninguno | Archivo YAML con anulaciones de conexión por origen |
 | `--domain-map KEY=VAL ...` | Ninguno | Mapeos de subgraph a dominio (por ejemplo, `app=core analytics=reporting`) |
@@ -57,7 +59,7 @@ my_pg_connector:
 ## Matriz de paridad de funciones
 
 | Tipo DDN | Equivalente en Provisa | Notas |
-|---|---|---|
+| --- | --- | --- |
 | **DataConnectorLink** | `sources[]` | El tipo de origen se infiere de la URL del conector (postgres, mysql, mssql, mongo, clickhouse, snowflake, bigquery). Los detalles de conexión usan marcadores de posición por defecto; use `--source-overrides` para establecer los valores reales. |
 | **ObjectType** | Definiciones de columnas en `tables[]` | Los campos se convierten en columnas. `dataConnectorTypeMapping.fieldMapping` resuelve los nombres de campo de GraphQL a nombres de columna físicos. |
 | **Model** | `tables[]` | Cada Model produce una tabla. `source_id` proviene del conector, `table_name` de la colección. `graphql_type_name` se convierte en `alias`. El subgraph (y por tanto `domain_id`) se deriva del directorio del archivo: el primer componente de directorio bajo la raíz del proyecto. |

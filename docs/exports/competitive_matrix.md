@@ -9,7 +9,7 @@ Source of truth: `docs/arch/requirements.yaml`. All claims tagged `[tool-verifie
 Capability areas as rows. Competitors as columns. Cell values: **A** = ahead, **P** = parity, **G** = gap, **—** = not applicable to competitor.
 
 | Capability Area | Trino/Presto | Hasura | Denodo | Dremio | Snowflake/BigQuery |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | Compile-time governance enforcement | **A** | **A** | **A** | **A** | **A** |
 | Two-stage compiler (standalone Stage 2) | **A** | **A** | **A** | **A** | **A** |
 | Default-invisible table registration | **A** | **A** | **A** | **A** | **A** |

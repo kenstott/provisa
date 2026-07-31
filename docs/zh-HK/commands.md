@@ -9,7 +9,7 @@
 支援五種 `impl_kind` 值 [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]：
 
 | `impl_kind` | 傳輸方式 |
-|---|---|
+| --- | --- |
 | `source_procedure` | 已註冊數據來源上的原生預存程序 |
 | `script` | 本機子行程，以 JSON 餵入 stdin，自 stdout 讀取 JSON |
 | `http` | HTTP/S 端點；JSON 要求本文，JSON 回應 |
@@ -23,7 +23,7 @@
 每個引數均宣告一個 `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]：
 
 | `arg_kind` | 行為 |
-|---|---|
+| --- | --- |
 | `column_value` | 純量；直接於要求承載中傳遞 |
 | `table_ref` | 惰性；Provisa 原樣傳遞該關係參照；由服務端擷取數據 |
 | `result_set` | 積極；Provisa 具體化所參照的關係，並傳送其資料列 |

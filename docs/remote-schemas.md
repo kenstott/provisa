@@ -39,7 +39,7 @@ Auth options: `none`, `bearer` (Authorization header), `basic` (Base64 username:
 **Type mapping (REQ-308).** Scalar fields map to Provisa types directly. OBJECT fields split into two cases depending on whether the target type is governed (see "Governed tables" below). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`, `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
 | GraphQL type | Provisa type |
-|---|---|
+| --- | --- |
 | `String` | `text` |
 | `ID` | `text` |
 | `Int` | `integer` |
@@ -69,6 +69,7 @@ OBJECT types that are NOT reachable as root Query fields (inline types such as `
 **Refresh.** POST to `/admin/sources/graphql-remote/{id}/refresh`. Re-introspects the remote schema and updates table and function registrations. Existing governance rules (RLS, masking) are preserved. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py:217–257`]
 
 **Limitations.**
+
 - Scalar and ENUM root query fields (return type is not OBJECT) become tracked functions, not virtual tables. Their `return_schema` is a single `value` column of the mapped scalar type. [tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
 - Object nesting is resolved at registration time up to `graphql_remote.max_object_depth` (default: 5). Both the remote fetch selection and the sub-field metadata are built to that depth; fields beyond the limit are not fetched and are not available for SQL extraction. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
 - LIST-typed nested OBJECT fields (e.g. `breed.awards: [Award]`) are included in the fetch selection up to `graphql_remote.max_list_depth` nesting levels (default: 2). Within that limit, the list is fetched as a `jsonb` array on the parent column, and the GQL selection injects `first: N` where N is `graphql_remote.max_list_items` (default: 100) to cap array size. Beyond `max_list_depth`, the LIST field is excluded entirely to prevent unbounded data expansion. In SQL, the array is accessed via `json_array_elements(column_name)` or `->>` index extraction. If the list's item type has its own root query, register it as a separate table and create a relationship instead — the join path is more efficient and bypasses the blob. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
@@ -115,7 +116,7 @@ Methods that match none of these signals (unary RPC returning a single entity me
 **Type mapping (REQ-324).** Proto scalar types map to SQL types as follows. [tool-verified: `provisa/grpc_remote/mapper.py:31–47`]
 
 | Proto type | SQL type |
-|---|---|
+| --- | --- |
 | `string`, `bytes` | `text` |
 | `int32` / `uint32` / `sint32` / `fixed32` / `sfixed32` | `integer` |
 | `int64` / `uint64` / `sint64` / `fixed64` / `sfixed64` | `bigint` |
@@ -141,6 +142,7 @@ Server-streaming methods collect all streamed messages into a list before return
 **Refresh.** POST to `/admin/grpc-remote/refresh/{source_id}`. Re-loads the proto from the stored path, recompiles stubs, and re-registers tables and functions. Alternatively, PUT to `/admin/grpc-remote/{source_id}/proto` with new `proto_text` to update the proto inline. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py:241–268`, `provisa/api/admin/grpc_remote_router.py:300–358`]
 
 **Limitations.**
+
 - Sub-field object extraction is one level deep. Nested message fields beyond depth 1 are not recursively expanded. (REQ-556) [tool-verified: `provisa/grpc_remote/mapper.py:111–128`]
 
 ---
@@ -172,7 +174,7 @@ Classification priority: `operation_overrides` (payload) overrides `x-provisa-ki
 **Type mapping.** JSON Schema types map to Provisa types as follows. [tool-verified: `provisa/openapi/register.py:59–70`]
 
 | JSON Schema type | Provisa type |
-|---|---|
+| --- | --- |
 | `string` | `string` |
 | `integer` | `integer` |
 | `number` | `number` |
@@ -191,6 +193,7 @@ Classification priority: `operation_overrides` (payload) overrides `x-provisa-ki
 **Refresh (REQ-321).** Re-parse the spec and call `auto_register_openapi_source` again. Existing governance rules are preserved; registrations are updated with ON CONFLICT upsert. [tool-verified: `provisa/openapi/register.py:249–264`]
 
 **Limitations.**
+
 - Sub-field object extraction is one level deep. Properties nested inside `object_fields` are not recursively expanded. (REQ-556) [tool-verified: `provisa/openapi/register.py:87–96`]
 - Header and cookie parameters are ignored; only `path` and `query` parameters are registered. (REQ-555) [tool-verified: `provisa/openapi/mapper.py:144–158`]
 - Spec-level `$ref` resolution is one level deep for property schemas; deeply nested component references may not resolve. [tool-verified: `provisa/openapi/mapper.py:51–60`]

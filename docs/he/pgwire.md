@@ -10,7 +10,7 @@ Provisa חושפת נקודת קצה של פרוטוקול חיווט PostgreSQL
 
 השרת מופעל כאשר `PROVISA_PGWIRE_PORT` מוגדר למספר שלם שאינו אפס. הוא מושבת כברירת מחדל. (REQ-527) [tool-verified: `app.py:1739`]
 
-```
+```yaml
 Host: 0.0.0.0  (all interfaces)
 Port: $PROVISA_PGWIRE_PORT
 ```
@@ -26,7 +26,7 @@ Port: $PROVISA_PGWIRE_PORT
 שני מצבים, נשלטים על ידי המפתח `provider` ב-`auth_config`:
 
 | מצב | ערך `provider` | התנהגות |
-|------|-----------------|-----------|
+| ------ | ----------------- | ----------- |
 | Trust | `none` (או middleware אימות לא-פעיל) | שם המשתמש שנשלח על ידי הלקוח משמש ישירות כ-`role_id`. הסיסמה מתעלמת. |
 | Simple | `simple` | הסיסמה מאומתת מול ספק האימות `simple` (bcrypt). שם המשתמש הופך ל-`role_id` בהצלחה. (REQ-124) |
 
@@ -57,7 +57,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 צורות ה-DDL המזוהות הן:
 
-```
+```sql
 CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
 ALTER TABLE / INDEX / SEQUENCE / VIEW
 DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
@@ -122,6 +122,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE 
 `pg_index` מאוכלס בשורה אחת לכל אילוץ primary-key ו-UNIQUE (`indrelid` = oid הטבלה, `indkey` = attnums מפתח מסודרים, `indisprimary`/`indisunique` מוגדרים). לקוחות הפותרים עמודות מפתח דרך `pg_index.indkey` ולא `pg_constraint` — DataGrip, לדוגמה — מגלים את העמודות הנכונות דרך ה-join הסטנדרטי `pg_index` → `pg_attribute`. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 הביטויים הסקלריים הבאים גם הם מיורטים: (REQ-588)
+
 - `current_user`, `session_user` → ה-`role_id` המאומת
 - `current_database()` → `"provisa"`
 - `current_schema()` → `"public"`
@@ -139,7 +140,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE 
 פרוטוקול השאילתה-המורחבת (Bind/Execute) תומך בפרמטרים מקודדים-בינארית. (REQ-589) OID-ים של הטיפוסים הבאים מפוענחים מבינארי: [tool-verified: `postgres.py:69-97`]
 
 | OID | טיפוס PG | טיפוס Python |
-|-----|---------|-------------|
+| ----- | --------- | ------------- |
 | 16 | bool | bool |
 | 17 | bytea | bytes |
 | 20 | int8 | int |
@@ -167,7 +168,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE 
 
 **JDBC (דרייבר JDBC של PostgreSQL).** השתמשו בו עבור כלי אקוסיסטם-Java: DBeaver, Tableau, Power BI, Metabase, מפעילי JDBC של Airflow. JDBC ברירת מחדל לפרוטוקול השאילתה-הפשוטה, המונע סיבוכי קידוד בינארי. מחרוזת חיבור:
 
-```
+```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 

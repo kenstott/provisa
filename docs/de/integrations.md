@@ -3,7 +3,7 @@
 ## Die richtige Verbindungsart wählen
 
 | Client-Typ | Empfohlene Methode | Warum |
-|-------------|-----------------|-----|
+| ------------- | ----------------- | ----- |
 | BI-Tools (Tableau, Power BI, Looker) | JDBC | Spaltenbasiertes Arrow-Flight-Streaming über die Leitung; BI-Tools haben einen integrierten JDBC-Assistenten und profitieren von der spaltenbasierten Zustellung mit hohem Durchsatz für große Ergebnismengen |
 | psql, DBeaver, jedes PG-kompatible Tool | pgwire (nativer PG-Treiber) | Reibungslose Standardoption — kein spezieller Treiber erforderlich; nutzen Sie, was Sie bereits haben |
 | Python-Datenstack (pandas, pyarrow) | `provisa-client` oder rohes ADBC | Arrow-Batches im Streaming; kein Overhead durch Zeilenserialisierung |
@@ -76,7 +76,8 @@ Der JDBC-Treiber von Provisa verwendet Arrow Flight als zugrunde liegenden Trans
 Laden Sie [provisa-jdbc.jar](https://provisa.dev/dl/jdbc) herunter (immer die neueste Version) und fügen Sie sie dem Treiberpfad Ihres Tools hinzu.
 
 JDBC-URL:
-```
+
+```yaml
 jdbc:provisa://<host>:8815
 ```
 
@@ -85,12 +86,14 @@ Die Authentifizierung verwendet die standardmäßigen JDBC-Eigenschaften `user` 
 ### Einrichtung von BI-Tools
 
 **Tableau**
+
 1. Verwalten → Treiber → Provisa JDBC installieren
 2. Verbinden → Andere Datenbanken (JDBC)
 3. URL: `jdbc:provisa://localhost:8815`
 4. Geben Sie bei Aufforderung Ihren Benutzernamen und Ihr Passwort ein
 
 **DBeaver** (JDBC-Weg — für den pgwire-Weg siehe oben)
+
 1. Datenbank → Neue Verbindung → JDBC
 2. Treiber: `provisa-jdbc.jar` hinzufügen
 3. URL: `jdbc:provisa://localhost:8815`
@@ -199,7 +202,7 @@ Die Rolle wird über den Metadatenschlüssel `x-provisa-role` bei jedem RPC übe
 Ein **Befehl** ist eine registrierte nachverfolgte Funktion oder ein Webhook — ein aufrufbares Element, das in der semantischen Schicht von Provisa mit einem `kind` (`query` oder `mutation`) und einem `impl_kind` registriert ist, der beschreibt, wie er ausgeführt wird. Jede Oberfläche leitet Aufrufe über einen einzigen gesteuerten Executor (`invoke_tracked_function`), der `writable_by` und die Governance einheitlich durchsetzt (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
 | `impl_kind` | Was ausgeführt wird | Bindungsfelder |
-|------------|-----------|---------------|
+| ------------ | ----------- | --------------- |
 | `source_procedure` | Gespeicherte Prozedur auf einer registrierten Quelle (Standard) | `sourceId`, `schemaName`, `functionName` |
 | `script` | Serverseitiges Skript | `script` |
 | `http` | Ausgehender HTTP-Aufruf | `url`, `method` |
@@ -211,7 +214,7 @@ Wenn ein Befehl ein `return_schema` deklariert (JSON Schema mit `type: array, it
 ### Protokollmatrix
 
 | Oberfläche | Syntax | Beispiel |
-|---------|--------|---------|
+| --------- | -------- | --------- |
 | GraphQL | `kind=query` → Query-Feld; `kind=mutation` → Mutation-Feld; mit Domänenpräfix, wenn `domain_prefix: true` | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
 | pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` oder `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
 | Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
@@ -229,6 +232,7 @@ Provisa kann als Federation-v2-Subgraph fungieren und sein veröffentlichtes Sch
 ### Einrichtung
 
 Aktivieren Sie Federation in `config.yaml`:
+
 ```yaml
 federation:
   enabled: true
@@ -240,6 +244,7 @@ Provisa generiert automatisch `@key`-Direktiven auf Primärschlüsselspalten sow
 ### Registrierung bei Apollo Router
 
 In Ihrer `supergraph.yaml`:
+
 ```yaml
 subgraphs:
   provisa-data:
@@ -282,7 +287,7 @@ daher ist die Kopplung auf den Adapter beschränkt.
 Die kanonische Export-Oberfläche ist ein Live-HTTP-Endpunkt. Er leitet das Ossie-Dokument bei jeder
 Anfrage aus dem Live-Zustand ab — kein Caching, kein Generierungsschritt.
 
-```
+```http
 GET /admin/ossie
 ```
 

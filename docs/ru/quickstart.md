@@ -35,7 +35,7 @@ cd provisa
 
 Когда запуск завершится, вы увидите:
 
-```
+```yaml
 Provisa running:
   Backend: http://localhost:8001  (logs: .logs/server.log)
   UI:      http://localhost:3000
@@ -150,7 +150,7 @@ Admin GraphQL API находится по адресу `http://localhost:8001/ad
 ## Следующие шаги
 
 | Цель | Документ |
-|------|-----|
+| ------ | ----- |
 | Полный справочник конфигурации YAML | [configuration.md](configuration.md) |
 | Безопасность на уровне строк, маскирование столбцов, аутентификация | [security.md](security.md) |
 | Все поддерживаемые типы источников | [sources.md](sources.md) |

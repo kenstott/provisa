@@ -7,7 +7,7 @@ Provisa supporta il push in tempo reale tramite Server-Sent Events (SSE). I clie
 Le subscription hanno come target una **tabella registrata**:
 
 | Origine | Valori di `strategy` disponibili |
-|--------|-------------------------|
+| -------- | ------------------------- |
 | Tabella (PostgreSQL) | `native` (LISTEN/NOTIFY), `poll` |
 | Tabella (RDBMS non PG con un blocco `cdc` a livello di origine) | `debezium`, `kafka`, `poll` |
 | Tabella (vista federata / qualsiasi altra origine) | solo `poll` |
@@ -40,13 +40,15 @@ Quando il campo della subscription seleziona campi da tabelle unite tramite join
 ## Endpoint
 
 Iscriversi a una tabella:
-```
+
+```http
 GET /data/subscribe/{table}
 Accept: text/event-stream
 ```
 
 La connessione resta aperta ed emette un evento JSON per ogni modifica: (REQ-258, REQ-568)
-```
+
+```text
 data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":"east"}}
 
 data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region":"west"}}
@@ -57,7 +59,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 La consegna viene selezionata tramite `live.strategy` nella configurazione della tabella: (REQ-813, REQ-814)
 
 | `strategy` | Meccanismo | Disponibile per | Richiede |
-|------------|-----------|---------------|---------|
+| ------------ | ----------- | --------------- | --------- |
 | `native` | `LISTEN`/`NOTIFY` di PostgreSQL, Change Streams di MongoDB | PG, MongoDB | Nient'altro |
 | `debezium` | Topic Kafka dal connettore Debezium | Tabelle RDBMS non PG | Blocco `cdc` a livello di origine (Debezium + Kafka) |
 | `kafka` | Topic delta Kafka arbitrario | Qualsiasi tabella alimentata da Kafka | Blocco `cdc` a livello di origine |
@@ -72,6 +74,7 @@ Provisa emette `LISTEN <channel>` su una connessione PG persistente. (REQ-258) L
 Provisa riesegue periodicamente la query di origine, selezionando solo le righe in cui `watermark_column > last_watermark`. (REQ-260) Le differenze vengono emesse come eventi SSE. Il polling non è in grado di rilevare le eliminazioni definitive (hard delete) — una riga rimossa non lascia alcun watermark che avanzi. Per rendere visibile un'eliminazione, utilizzare un'eliminazione logica (soft delete) (ad esempio impostando un flag `deleted_at`) che incrementi la colonna watermark; l'eliminazione arriva quindi come evento di aggiornamento che porta con sé il marcatore di eliminazione logica. (REQ-260)
 
 Configurazione del polling della tabella (in `provisa.yaml`):
+
 ```yaml
 tables:
   - id: federated_orders
@@ -89,6 +92,7 @@ tables:
 Richiede un connettore Debezium in esecuzione che scriva su Kafka. (REQ-261) Provisa consuma il topic Kafka e inoltra gli eventi di modifica ai client SSE connessi. (REQ-261)
 
 Il trasporto CDC viene configurato una sola volta per origine in un blocco `cdc`; i topic vengono derivati come `{topic_prefix}.{schema}.{table}` e non vengono mai ripetuti per tabella. (REQ-824) Ogni tabella seleziona quindi `strategy: debezium`:
+
 ```yaml
 sources:
   - id: sales-mysql
@@ -106,7 +110,7 @@ sources:
 
 Qualsiasi subscription GraphQL può essere reindirizzata a un topic Kafka anziché essere trasmessa in streaming al client. (REQ-812) Aggiungere l'header `X-Provisa-Sink` alla richiesta di subscription:
 
-```
+```yaml
 POST /data/graphql
 Authorization: Bearer <token>
 Content-Type: application/json
@@ -114,6 +118,7 @@ X-Provisa-Sink: kafka://broker:9092/my-topic
 ```
 
 Il server risponde immediatamente con `202 Accepted` e avvia un'attività in background che: (REQ-812)
+
 1. Monitora le modifiche alle tabelle usando la stessa risoluzione del provider di SSE (LISTEN/NOTIFY → polling asyncpg → polling federato)
 2. Riesegue la query equivalente a ogni modifica
 3. Pubblica il risultato come messaggio JSON nel topic Kafka indicato
@@ -126,6 +131,7 @@ Il sink resta attivo per l'intera durata del processo del server. (REQ-812) Riav
 - `topic` è obbligatorio
 
 **Esempio (curl):**
+
 ```bash
 curl -X POST http://localhost:8000/data/graphql \
   -H "Authorization: Bearer $TOKEN" \
@@ -177,4 +183,5 @@ source.onmessage = (e) => {
   console.log(event.event, event.row);
 };
 ```
+
 </content>

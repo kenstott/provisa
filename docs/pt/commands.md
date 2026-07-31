@@ -16,7 +16,7 @@ não governada não é nenhuma dessas coisas.
 Cinco valores de `impl_kind` são suportados [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]:
 
 | `impl_kind` | Transporte |
-|---|---|
+| --- | --- |
 | `source_procedure` | Stored procedure nativo em uma fonte registrada |
 | `script` | Subprocesso local alimentado com JSON no stdin, lê JSON do stdout |
 | `http` | Endpoint HTTP/S; corpo de requisição JSON, resposta JSON |
@@ -32,7 +32,7 @@ permanecem inalterados. [tool-verified: Function model in models.py:710-750]
 Cada argumento declara um `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]:
 
 | `arg_kind` | Comportamento |
-|---|---|
+| --- | --- |
 | `column_value` | Escalar; passado diretamente no payload da requisição |
 | `table_ref` | Preguiçoso (lazy); o Provisa passa a referência de relação como está; o serviço busca os dados |
 | `result_set` | Ansioso (eager); o Provisa materializa a relação referenciada e envia suas linhas |

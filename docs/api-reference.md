@@ -16,13 +16,13 @@ Without auth configured, the server runs in dev mode. Any request is treated as 
 
 **Identity introspection:**
 
-```
+```http
 GET /auth/me
 ```
 
 Returns the authenticated user's id, email, display name, org memberships, and role assignments. In dev mode returns `dev_mode: true` with all role IDs listed. [tool-verified: `provisa/api/auth_router.py`]
 
-```
+```http
 GET /auth/provider-type
 ```
 
@@ -37,6 +37,7 @@ Returns `{"provider": "<name>"}` or `{"provider": null}` when auth is unconfigur
 Execute a GraphQL query or mutation. (REQ-043) [tool-verified: `provisa/api/data/endpoint.py:151`]
 
 **Request body:**
+
 ```json
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
@@ -49,6 +50,7 @@ Execute a GraphQL query or mutation. (REQ-043) [tool-verified: `provisa/api/data
 The `role` field is used only in dev mode (no auth). When auth is active, the authenticated user's role is used and `role` in the body is ignored.
 
 The `extensions` field supports the Automatic Persisted Query (APQ) protocol: (REQ-288)
+
 ```json
 {
   "extensions": {"persistedQuery": {"sha256Hash": "<sha256-of-query>"}}
@@ -56,6 +58,7 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol: (R
 ```
 
 **Headers:**
+
 - `X-Provisa-Role` — override role (dev mode)
 - `Accept` — response format (see Content Negotiation)
 - `Authorization` — `Bearer <token>` when auth is enabled
@@ -64,6 +67,7 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol: (R
 - `X-Provisa-Redirect` — `true` to force redirect unconditionally (REQ-029)
 
 **Response (JSON inline):**
+
 ```json
 {
   "data": {
@@ -75,6 +79,7 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol: (R
 ```
 
 **Response (redirect):**
+
 ```json
 {
   "data": {"orders": null},
@@ -88,6 +93,7 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol: (R
 ```
 
 **Response (multi-root with mixed inline/redirect):**
+
 ```json
 {
   "data": {
@@ -119,7 +125,7 @@ Multi-root queries run each root field independently. Fields below the redirect 
 ### Content Negotiation
 
 | Accept Header | Format |
-|---|---|
+| --- | --- |
 | `application/json` | JSON (default) |
 | `application/x-ndjson` | Newline-delimited JSON |
 | `text/csv` | CSV |
@@ -135,7 +141,7 @@ Multi-root queries run each root field independently. Fields below the redirect 
 Results above a configured row threshold (or when `X-Provisa-Redirect: true`) are written to S3 and a presigned URL is returned. (REQ-029, REQ-044)
 
 | Redirect Format | Written by | Memory |
-|---|---|---|
+| --- | --- | --- |
 | `application/vnd.apache.parquet` | federated CTAS | None — data never passes through Provisa |
 | `application/x-orc` | federated CTAS | None — data never passes through Provisa |
 | `application/json` | Provisa | Memory-bound |
@@ -145,7 +151,7 @@ Results above a configured row threshold (or when `X-Provisa-Redirect: true`) ar
 
 For large analytical exports, use Parquet or ORC redirect. The federation engine writes directly to S3 in parallel — no data passes through Provisa. (REQ-138)
 
-```
+```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
 X-Provisa-Redirect-Threshold: 1000
 ```
@@ -157,6 +163,7 @@ X-Provisa-Redirect-Threshold: 1000
 Execute raw SQL through the Stage 2 governance pipeline. (REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:62`]
 
 **Request body:**
+
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
@@ -182,6 +189,7 @@ Unified query endpoint. Accepts GraphQL, SQL, or Cypher — syntax is auto-detec
 Cypher queries can also be submitted to the Cypher-only `POST /query/cypher` endpoint. (REQ-345)
 
 **Request body:**
+
 ```json
 {
   "query": "{ orders { id } }",
@@ -200,6 +208,7 @@ Returns `{"data": ...}` for GraphQL, `{"columns": [...], "rows": [...]}` for SQL
 Auto-generated plain REST endpoint for every registered table. The query string maps to GraphQL arguments and the request compiles and executes through the same pipeline (RLS, masking, routing) as GraphQL. (REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
 
 **Query parameters:**
+
 - `limit` — max rows (≥ 1)
 - `offset` — skip rows (≥ 0)
 - `fields` — comma-separated column names (defaults to all scalar fields)
@@ -217,6 +226,7 @@ Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every regi
 **`Accept` header:** must include `application/vnd.api+json` (the JSON:API media type) or the request returns `406`.
 
 **Query parameters:**
+
 - `fields[<type>]` — sparse fieldsets, e.g. `?fields[orders]=amount`
 - `filter[<col>]` / `filter[<col>][<op>]` — e.g. `?filter[region]=US`, `?filter[amount][gt]=100`
 - `sort` — comma-separated, `-` prefix for descending, e.g. `?sort=-created_at,amount`
@@ -231,6 +241,7 @@ Responses are resource objects with `type`/`id`/`attributes`. Errors follow the 
 Submit a natural-language question. The service starts an async job and returns `202 Accepted` with a `job_id` immediately. Requires an LLM provider configured under the `ai_models` config section. (REQ-354) [tool-verified: `provisa/api/rest/nl_router.py:50`]
 
 **Request body:**
+
 ```json
 {"q": "How many orders were placed last month?", "role": "admin"}
 ```
@@ -267,6 +278,7 @@ Return the GraphQL SDL for a role's schema. (REQ-008) [tool-verified: `provisa/a
 **Headers:** `X-Role: <role_id>` (required)
 
 **Query parameters:**
+
 - `domain` — comma-separated domain IDs. When set, the response is filtered to the named domain(s) and tables reachable from them.
 
 **Response:** `text/plain` GraphQL SDL.
@@ -346,6 +358,7 @@ Upload a revised config YAML. The server writes a `.bak` backup, saves the new f
 **Request body:** Raw YAML content.
 
 **Response:**
+
 ```json
 {"success": true, "message": "Config uploaded and reloaded"}
 ```
@@ -361,6 +374,7 @@ On reload failure: `{"success": false, "message": "<error>"}`.
 Return current platform settings as JSON. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:50`]
 
 **Response:**
+
 ```json
 {
   "redirect": {
@@ -398,6 +412,7 @@ Return current platform settings as JSON. (REQ-165) [tool-verified: `provisa/api
 Update platform settings at runtime. All fields are optional — only keys present in the body are updated. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:100`]
 
 **Request body (partial example):**
+
 ```json
 {
   "otel": {
@@ -419,6 +434,7 @@ Updatable fields per section:
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Response:**
+
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
@@ -442,6 +458,7 @@ Hot-reload a named catalog in the federation engine coordinator via its REST API
 **Query parameters:** `catalog` (default `"otel"`)
 
 **Response:**
+
 ```json
 {"success": true, "errors": []}
 ```
@@ -461,6 +478,7 @@ Restart the federation engine container (single-node dev only). [tool-verified: 
 Trigger relationship discovery. Always runs FK introspection from the federation engine. (REQ-018) Runs LLM inference if `ANTHROPIC_API_KEY` is set. (REQ-167) [tool-verified: `provisa/api/admin/discovery.py:55`]
 
 **Request body:**
+
 ```json
 {
   "scope": "domain",
@@ -541,6 +559,7 @@ Every invocation — from GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql
 Return all tracked DB functions and webhooks. (REQ-242) [tool-verified: `provisa/api/admin/actions_router.py:104`]
 
 **Response:**
+
 ```json
 {
   "functions": [
@@ -582,7 +601,7 @@ Register a tracked function (command). (REQ-205) [tool-verified: `provisa/api/ad
 **Key fields:**
 
 | Field | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `name` | Yes | Unique command name |
 | `kind` | Yes | `"query"` → GraphQL Query field; `"mutation"` → Mutation field |
 | `implKind` | No | How the command runs — see table below (default `source_procedure`) |
@@ -596,7 +615,7 @@ Register a tracked function (command). (REQ-205) [tool-verified: `provisa/api/ad
 **`implKind` values:**
 
 | `implKind` | What runs | `binding` fields |
-|---|---|---|
+| --- | --- | --- |
 | `source_procedure` | Stored procedure on a registered source (default) | `sourceId`, `schemaName`, `functionName` |
 | `script` | Server-side script | `script` |
 | `http` | Outbound HTTP call | `url`, `method` |
@@ -636,7 +655,7 @@ Test an action (function or webhook) by name. (REQ-245) [tool-verified: `provisa
 All endpoints are under the `/admin/roles` prefix. [tool-verified: `provisa/api/admin/roles_router.py:18`]
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/roles/` | List all roles |
 | `POST` | `/admin/roles/` | Create a role |
 | `PUT` | `/admin/roles/{role_id}` | Update a role |
@@ -651,7 +670,7 @@ All endpoints are under the `/admin/roles` prefix. [tool-verified: `provisa/api/
 All endpoints are under the `/admin/users` prefix. [tool-verified: `provisa/api/admin/local_users_router.py:21`]
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/users/` | Create a local user |
 | `GET` | `/admin/users/` | List local users |
 | `GET` | `/admin/users/{user_id}` | Get a user |
@@ -669,7 +688,7 @@ All endpoints are under the `/admin/users` prefix. [tool-verified: `provisa/api/
 All endpoints are under `/admin/orgs`. [tool-verified: `provisa/api/admin/orgs_router.py:18`]
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/admin/orgs/` | List orgs |
 | `POST` | `/admin/orgs/` | Create an org |
 | `PUT` | `/admin/orgs/{org_id}` | Update an org |
@@ -685,7 +704,7 @@ All endpoints are under `/admin/orgs`. [tool-verified: `provisa/api/admin/orgs_r
 All endpoints are under `/admin/invites`. [tool-verified: `provisa/api/admin/invites_router.py:18`]
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/admin/invites/` | Create an invite |
 | `GET` | `/admin/invites/` | List pending invites |
 | `DELETE` | `/admin/invites/{token}` | Revoke an invite |
@@ -748,7 +767,7 @@ Returns `{"status": "ok"}`. Always unauthenticated. (REQ-539) [tool-verified: `p
 ## Error Responses
 
 | Status | Meaning |
-|---|---|
+| --- | --- |
 | 400 | Invalid query, validation error, or SQL parse error |
 | 401 | Missing or invalid auth token |
 | 403 | Insufficient capabilities; governance violation |
@@ -780,11 +799,13 @@ Port `8815`. Native Arrow columnar transport over gRPC. (REQ-143, REQ-045) [tool
 Queries and catalog discovery are both available on the same connection. The full governance pipeline (RLS, masking, sampling) is applied to every query. (REQ-130, REQ-143)
 
 **Ticket format** (JSON):
+
 ```json
 {"query": "{ customers { name email } }", "role": "analyst", "variables": {}}
 ```
 
 **Usage (Python):**
+
 ```python
 import pyarrow.flight as flight
 

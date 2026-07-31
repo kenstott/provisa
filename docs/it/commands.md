@@ -16,7 +16,7 @@ o un subprocess non sono niente di tutto questo.
 Sono supportati cinque valori `impl_kind` [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]:
 
 | `impl_kind` | Trasporto |
-|---|---|
+| --- | --- |
 | `source_procedure` | Stored procedure nativa su un'origine registrata |
 | `script` | Subprocess locale alimentato con JSON su stdin, legge JSON da stdout |
 | `http` | Endpoint HTTP/S; corpo richiesta JSON, risposta JSON |
@@ -32,7 +32,7 @@ rimangono invariati. [tool-verified: Function model in models.py:710-750]
 Ogni argomento dichiara un `arg_kind` [tool-verified: FunctionArgument.arg_kind in models.py:691-700]:
 
 | `arg_kind` | Comportamento |
-|---|---|
+| --- | --- |
 | `column_value` | Scalare; passato direttamente nel payload della richiesta |
 | `table_ref` | Lazy; Provisa passa il riferimento di relazione così com'è; il servizio recupera i dati |
 | `result_set` | Eager; Provisa materializza la relazione referenziata e invia le sue righe |

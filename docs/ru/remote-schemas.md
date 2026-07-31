@@ -39,7 +39,7 @@
 **Отображение типов (REQ-308).** Скалярные поля отображаются на типы Provisa напрямую. Поля OBJECT разделяются на два случая в зависимости от того, управляется ли целевой тип (см. «Управляемые таблицы» ниже). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`, `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
 | Тип GraphQL | Тип Provisa |
-|---|---|
+| --- | --- |
 | `String` | `text` |
 | `ID` | `text` |
 | `Int` | `integer` |
@@ -69,6 +69,7 @@
 **Обновление.** Отправьте POST на `/admin/sources/graphql-remote/{id}/refresh`. Повторно интроспектирует удалённую схему и обновляет регистрации таблиц и функций. Существующие правила governance (RLS, маскирование) сохраняются. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py:217–257`]
 
 **Ограничения.**
+
 - Скалярные и ENUM корневые поля запроса (тип возврата не OBJECT) становятся отслеживаемыми функциями, а не виртуальными таблицами. Их `return_schema` — это единственный столбец `value` отображённого скалярного типа. [tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
 - Вложенность объектов разрешается на момент регистрации до `graphql_remote.max_object_depth` (по умолчанию: 5). И выборка удалённого запроса, и метаданные подполей строятся до этой глубины; поля за пределами лимита не выбираются и недоступны для извлечения в SQL. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
 - Вложенные поля OBJECT типа LIST (например, `breed.awards: [Award]`) включаются в выборку запроса до уровней вложенности `graphql_remote.max_list_depth` (по умолчанию: 2). В пределах этого лимита список выбирается как массив `jsonb` в родительском столбце, и выборка GQL внедряет `first: N`, где N — это `graphql_remote.max_list_items` (по умолчанию: 100), чтобы ограничить размер массива. За пределами `max_list_depth` поле LIST полностью исключается для предотвращения неограниченного расширения данных. В SQL доступ к массиву осуществляется через `json_array_elements(column_name)` или извлечение по индексу `->>`. Если тип элемента списка имеет свой собственный корневой запрос, зарегистрируйте его как отдельную таблицу и создайте связь вместо этого — путь соединения эффективнее и обходит блоб. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
@@ -115,7 +116,7 @@ Provisa получает proto, разбирает его чисто текст�
 **Отображение типов (REQ-324).** Скалярные типы proto отображаются на типы SQL следующим образом. [tool-verified: `provisa/grpc_remote/mapper.py:31–47`]
 
 | Тип Proto | Тип SQL |
-|---|---|
+| --- | --- |
 | `string`, `bytes` | `text` |
 | `int32` / `uint32` / `sint32` / `fixed32` / `sfixed32` | `integer` |
 | `int64` / `uint64` / `sint64` / `fixed64` / `sfixed64` | `bigint` |
@@ -141,6 +142,7 @@ Provisa получает proto, разбирает его чисто текст�
 **Обновление.** Отправьте POST на `/admin/grpc-remote/refresh/{source_id}`. Заново загружает proto из сохранённого пути, перекомпилирует заглушки и заново регистрирует таблицы и функции. Также можно отправить PUT на `/admin/grpc-remote/{source_id}/proto` с новым `proto_text`, чтобы обновить proto инлайн. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py:241–268`, `provisa/api/admin/grpc_remote_router.py:300–358`]
 
 **Ограничения.**
+
 - Извлечение подполей объекта — на один уровень вглубь. Поля вложенного message глубже уровня 1 не раскрываются рекурсивно. (REQ-556) [tool-verified: `provisa/grpc_remote/mapper.py:111–128`]
 
 ---
@@ -172,7 +174,7 @@ Provisa получает proto, разбирает его чисто текст�
 **Отображение типов.** Типы JSON Schema отображаются на типы Provisa следующим образом. [tool-verified: `provisa/openapi/register.py:59–70`]
 
 | Тип JSON Schema | Тип Provisa |
-|---|---|
+| --- | --- |
 | `string` | `string` |
 | `integer` | `integer` |
 | `number` | `number` |
@@ -191,6 +193,7 @@ Provisa получает proto, разбирает его чисто текст�
 **Обновление (REQ-321).** Заново разберите спецификацию и снова вызовите `auto_register_openapi_source`. Существующие правила governance сохраняются; регистрации обновляются через upsert ON CONFLICT. [tool-verified: `provisa/openapi/register.py:249–264`]
 
 **Ограничения.**
+
 - Извлечение подполей объекта — на один уровень вглубь. Свойства, вложенные внутри `object_fields`, не раскрываются рекурсивно. (REQ-556) [tool-verified: `provisa/openapi/register.py:87–96`]
 - Параметры заголовков и cookie игнорируются; регистрируются только параметры `path` и `query`. (REQ-555) [tool-verified: `provisa/openapi/mapper.py:144–158`]
 - Разрешение `$ref` на уровне спецификации — на один уровень вглубь для схем свойств; глубоко вложенные ссылки на компоненты могут не разрешиться. [tool-verified: `provisa/openapi/mapper.py:51–60`]

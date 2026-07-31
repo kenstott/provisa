@@ -39,7 +39,7 @@
 **类型映射（REQ-308）。** 标量字段会直接映射至 Provisa 类型。OBJECT 字段则按目标类型是否受治理而分为两种情况（见下方"受治理数据表"）。[tool-verified: `provisa/graphql_remote/mapper.py:14–36`、`provisa/api/data/endpoint.py:655–671`、`provisa/compiler/schema_gen.py:481–485`]
 
 | GraphQL 类型 | Provisa 类型 |
-|---|---|
+| --- | --- |
 | `String` | `text` |
 | `ID` | `text` |
 | `Int` | `integer` |
@@ -69,6 +69,7 @@
 **刷新。** 向 `/admin/sources/graphql-remote/{id}/refresh` 发送 POST 请求。此操作会重新对远程模式进行内省，并更新数据表及函数的注册信息。已有的治理规则（RLS、脱敏）将予以保留。（REQ-311）[tool-verified: `provisa/api/admin/graphql_remote_router.py:217–257`]
 
 **限制。**
+
 - 标量及 ENUM 类型的根查询字段（返回类型非 OBJECT）会成为受跟踪的函数，而非虚拟数据表。其 `return_schema` 为单一字段 `value`，类型为对应的标量类型。[tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
 - 对象嵌套结构于注册时会解析至 `graphql_remote.max_object_depth`（默认值：5）的深度。远程提取的字段选择及子字段元数据均会构建至此深度；超出限制的字段不会被提取，也无法用于 SQL 提取。（REQ-556）[tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
 - LIST 类型的嵌套 OBJECT 字段（例如 `breed.awards: [Award]`）会于提取选择中纳入，直至 `graphql_remote.max_list_depth` 个嵌套层级（默认值：2）。于此限制内，列表会以 `jsonb` 数组的形式提取至父字段，而 GQL 选择会注入 `first: N`（N 为 `graphql_remote.max_list_items`，默认值：100），以限制数组大小。超出 `max_list_depth` 时，该 LIST 字段会完全被排除，以防止数据无限膨胀。在 SQL 中，可通过 `json_array_elements(column_name)` 或以 `->>` 进行索引提取来访问该数组。若列表的元素类型本身具有根查询，建议将其另行注册为独立数据表并建立关系——联接路径效率更高，也可绕过 blob。（REQ-556）[tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
@@ -115,7 +116,7 @@ Proto 文件也可为本地路径。常见类型（`google/protobuf/timestamp.pr
 **类型映射（REQ-324）。** Proto 标量类型与 SQL 类型的映射如下。[tool-verified: `provisa/grpc_remote/mapper.py:31–47`]
 
 | Proto 类型 | SQL 类型 |
-|---|---|
+| --- | --- |
 | `string`、`bytes` | `text` |
 | `int32` / `uint32` / `sint32` / `fixed32` / `sfixed32` | `integer` |
 | `int64` / `uint64` / `sint64` / `fixed64` / `sfixed64` | `bigint` |
@@ -141,6 +142,7 @@ Proto 文件也可为本地路径。常见类型（`google/protobuf/timestamp.pr
 **刷新。** 向 `/admin/grpc-remote/refresh/{source_id}` 发送 POST 请求。此操作会从已存储的路径重新加载 proto、重新编译 stub，并重新注册数据表及函数。另外，也可向 `/admin/grpc-remote/{source_id}/proto` 发送 PUT 请求，并附上新的 `proto_text` 以内联方式更新 proto。（REQ-329）[tool-verified: `provisa/api/admin/grpc_remote_router.py:241–268`、`provisa/api/admin/grpc_remote_router.py:300–358`]
 
 **限制。**
+
 - 对象子字段提取仅支持一层深度。超出深度 1 的嵌套消息字段不会递归展开。（REQ-556）[tool-verified: `provisa/grpc_remote/mapper.py:111–128`]
 
 ---
@@ -172,7 +174,7 @@ Proto 文件也可为本地路径。常见类型（`google/protobuf/timestamp.pr
 **类型映射。** JSON Schema 类型与 Provisa 类型的映射如下。[tool-verified: `provisa/openapi/register.py:59–70`]
 
 | JSON Schema 类型 | Provisa 类型 |
-|---|---|
+| --- | --- |
 | `string` | `string` |
 | `integer` | `integer` |
 | `number` | `number` |
@@ -191,6 +193,7 @@ Proto 文件也可为本地路径。常见类型（`google/protobuf/timestamp.pr
 **刷新（REQ-321）。** 重新解析规范并再次调用 `auto_register_openapi_source`。已有的治理规则会予以保留；注册信息会以 ON CONFLICT upsert 方式更新。[tool-verified: `provisa/openapi/register.py:249–264`]
 
 **限制。**
+
 - 对象子字段提取仅支持一层深度。`object_fields` 中嵌套的属性不会递归展开。（REQ-556）[tool-verified: `provisa/openapi/register.py:87–96`]
 - 请求头及 Cookie 参数会被忽略；只有 `path` 及 `query` 参数会被注册。（REQ-555）[tool-verified: `provisa/openapi/mapper.py:144–158`]
 - 规范层级的 `$ref` 解析对于属性模式仅支持一层深度；深层嵌套的组件引用可能无法解析。[tool-verified: `provisa/openapi/mapper.py:51–60`]

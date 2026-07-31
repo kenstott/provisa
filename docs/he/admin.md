@@ -5,7 +5,8 @@
 ## אימות
 
 העבירו את האישורים שלכם בכותרת ה-`Authorization` באמצעות ספק האימות הסטנדרטי של Provisa (REQ-120):
-```
+
+```yaml
 Authorization: Bearer <token>
 ```
 
@@ -16,12 +17,14 @@ Authorization: Bearer <token>
 ### ניהול תצורה
 
 הורדת התצורה הרצה הנוכחית (REQ-164):
-```
+
+```http
 GET /admin/config
 ```
 
 מחזיר את מלוא `config.yaml` כקובץ YAML. העלאת תצורה חדשה (REQ-164):
-```
+
+```http
 PUT /admin/config
 ```
 
@@ -30,7 +33,8 @@ Provisa מאמתת את ה-YAML, טוענת מחדש קטלוגים, ומייצ�
 ### הגדרות זמן ריצה
 
 קריאה וכתיבה של הגדרות פלטפורמה בזמן-ריצה ללא עריכת קובץ התצורה (REQ-165):
-```
+
+```http
 GET  /admin/settings
 PUT  /admin/settings
 ```
@@ -38,13 +42,15 @@ PUT  /admin/settings
 משטח ההגדרות מכסה הפניית תוצאות-גדולות, דגימה וגבול שורות ברירת-מחדל, TTL‏ של מטמון תגובה, מוסכמת שם, מעקב-אוטומטי אחר FK בקשרים, DSN‏ של מאגר מימוש, זיכרון מנוע הפדרציה (`jvm_heap_gb`, `query_max_memory`, `query_max_memory_per_node`, `query_max_total_memory`, `fault_tolerant_execution`, `fault_tolerant_task_memory`, `exchange_spool_dir`), ומשטח כיוונון צינור מעקב ה-OpenTelemetry המלא (REQ-1082). מגבלות traversal של GraphQL מרוחק והגדרות שכבת-חמימה/מטמון-קריאה חשופות אף הן (REQ-1081, REQ-1083).
 
 תנוחת אבטחה — `security.mode` (`standard` | `high`) — מוחלת בעת אתחול מחדש (REQ-1079):
-```
+
+```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
 הקצאות מודל AI, רישום מודל embedding/וקטור, ומגבלת קצב NL — מוחלים בעת אתחול מחדש (REQ-1080):
-```
+
+```http
 GET  /admin/ai-models
 PUT  /admin/ai-models
 ```
@@ -56,6 +62,7 @@ PUT  /admin/ai-models
 ### עורך קשרים
 
 רשימת קשרים (REQ-166):
+
 ```graphql
 query {
   relationships {
@@ -71,6 +78,7 @@ query {
 ```
 
 יצירת קשר (REQ-019):
+
 ```graphql
 mutation {
   upsertRelationship(input: {
@@ -107,6 +115,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
 ### Introspection סכמה
 
 עיון בטבלאות מפורסמות על פני כל המקורות (REQ-008):
+
 ```graphql
 query {
   tables {
@@ -124,6 +133,7 @@ query {
 ### ניהול תצוגות
 
 רישום materialized view (REQ-133, REQ-135):
+
 ```graphql
 mutation {
   registerTable(input: {
@@ -137,6 +147,7 @@ mutation {
 ```
 
 הפעלת רענון ידני (REQ-135):
+
 ```graphql
 mutation {
   refreshMv(mvId: "orders-with-customers") {
@@ -150,6 +161,7 @@ mutation {
 מקורות Neo4j ו-SPARQL נרשמים דרך נקודות קצה REST (לא ה-admin API של GraphQL) (REQ-295, REQ-297):
 
 **Neo4j:**
+
 ```bash
 # 1. Register the Neo4j source
 curl -X POST http://localhost:8001/admin/sources/neo4j \
@@ -168,6 +180,7 @@ curl -X POST http://localhost:8001/admin/sources/neo4j/graph/tables \
 ```
 
 **SPARQL:**
+
 ```bash
 # 1. Register the SPARQL source
 curl -X POST http://localhost:8001/admin/sources/sparql \
