@@ -1,0 +1,6 @@
+{
+  "graphPage": {
+    "emptyStateHint": "ग्राफ़ का अन्वेषण करने के लिए कोई Cypher क्वेरी चलाएँ",
+    "emptyStateShortcut": "चलाने के लिए ⌘↵"
+  }
+}

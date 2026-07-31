@@ -1,0 +1,23 @@
+{
+  "sqlViewModal": {
+    "titleCreate": "+ व्यू",
+    "titleRequest": "व्यू का अनुरोध करें",
+    "create": "बनाएँ",
+    "submitRequest": "अनुरोध सबमिट करें",
+    "saving": "सहेजा जा रहा है…",
+    "close": "बंद करें",
+    "noPermissionNotice": "आपके पास create_view नहीं है। इसे अनुमोदन-लंबित सुझाए गए व्यू के रूप में सबमिट किया जाएगा।",
+    "alias": "उपनाम",
+    "aliasPlaceholder": "जैसे my_view",
+    "domain": "डोमेन",
+    "domainSelectPlaceholder": "— डोमेन चुनें —",
+    "description": "विवरण",
+    "descriptionPlaceholder": "वैकल्पिक",
+    "saveAsMetricView": "मेट्रिक व्यू के रूप में सहेजें ({{metric}})",
+    "hasParamsWarning": "SQL में अनसुलझे पैरामीटर प्लेसहोल्डर ($1, $2, …) हैं। उन्हें शाब्दिक मानों से बदलने के लिए SQL संपादित करें।",
+    "savedTitle": "व्यू सहेजा गया",
+    "savedMessageCreated": "व्यू \"{{viewId}}\" बनाया और पंजीकृत किया गया है।",
+    "savedMessageSubmitted": "व्यू \"{{viewId}}\" अनुमोदन के लिए सबमिट किया गया है।",
+    "editInModelViews": "Model/Views में संपादित करें"
+  }
+}

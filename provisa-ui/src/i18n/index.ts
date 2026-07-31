@@ -23,6 +23,7 @@ import ru from "./locales/ru.json";
 import it from "./locales/it.json";
 import pt from "./locales/pt.json";
 import zhHK from "./locales/zh-HK.json";
+import hi from "./locales/hi.json";
 
 // Frontend internationalization runtime (REQ-1012). English is the base
 // catalog and the source of truth for keys. Core keys live in en.json; each
@@ -137,6 +138,15 @@ const componentCatalogZhHK = Object.values(perComponentZhHK).reduce(
   {} as Record<string, unknown>,
 );
 
+const perComponentHi = import.meta.glob<Record<string, unknown>>(
+  "./locales/hi/*.json",
+  { eager: true, import: "default" },
+);
+const componentCatalogHi = Object.values(perComponentHi).reduce(
+  (acc, mod) => ({ ...acc, ...mod }),
+  {} as Record<string, unknown>,
+);
+
 export const defaultNS = "translation";
 export const resources = {
   en: { translation: { ...en, ...componentCatalog } },
@@ -151,6 +161,7 @@ export const resources = {
   it: { translation: { ...it, ...componentCatalogIt } },
   pt: { translation: { ...pt, ...componentCatalogPt } },
   "zh-HK": { translation: { ...zhHK, ...componentCatalogZhHK } },
+  hi: { translation: { ...hi, ...componentCatalogHi } },
 } as const;
 
 void i18n
@@ -162,7 +173,7 @@ void i18n
     // Regional variants (es-MX, es-419, fr-CA) resolve to the base catalog.
     // "zh-HK" (Traditional, HK) must precede plain "zh" resolution: exact tag
     // wins; other zh-* variants fall back to the base Simplified catalog.
-    supportedLngs: ["en", "es", "fr", "de", "nl", "he", "ja", "zh", "zh-HK", "ru", "it", "pt"],
+    supportedLngs: ["en", "es", "fr", "de", "nl", "he", "ja", "zh", "zh-HK", "ru", "it", "pt", "hi"],
     nonExplicitSupportedLngs: true,
     defaultNS,
     interpolation: {

@@ -1,0 +1,27 @@
+{
+  "openApiFormSection": {
+    "specModeLegend": "OpenAPI स्पेक स्रोत",
+    "specModePath": "स्पेक पथ / URL",
+    "specModeInline": "स्पेक इनलाइन लिखें",
+    "specPathLabel": "स्पेक पथ या URL",
+    "specPathPlaceholder": "https://api.example.com/openapi.json या ./spec.yaml",
+    "specInlineLabel": "OpenAPI स्पेक (YAML या JSON)",
+    "baseUrlLabel": "बेस URL",
+    "baseUrlHint": "(स्पेक से servers[0].url उपयोग करने के लिए खाली छोड़ें)",
+    "baseUrlPlaceholder": "https://api.example.com (वैकल्पिक ओवरराइड)",
+    "cacheTtlLabel": "कैश TTL (सेकंड)",
+    "cacheTtlPlaceholder": "300",
+    "authenticationLabel": "प्रमाणीकरण",
+    "tokenLabel": "टोकन",
+    "tokenPlaceholder": "${env:API_TOKEN}",
+    "headerNameLabel": "हेडर नाम",
+    "headerNamePlaceholder": "X-API-Key",
+    "apiKeyLabel": "API कुंजी",
+    "apiKeyPlaceholder": "${env:API_KEY}",
+    "previewButton": "पूर्वावलोकन",
+    "previewLoading": "लोड हो रहा है...",
+    "queriesCount": "{{count}} क्वेरी",
+    "mutationsCount": "{{count}} म्यूटेशन",
+    "none": "कोई नहीं"
+  }
+}

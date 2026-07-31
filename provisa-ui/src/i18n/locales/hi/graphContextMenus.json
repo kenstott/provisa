@@ -1,0 +1,20 @@
+{
+  "graphContextMenus": {
+    "color": "रंग",
+    "colorSwatchLabel": "रंग {{color}} सेट करें",
+    "size": "आकार",
+    "labelBy": "लेबल आधार",
+    "labelByDefault": "डिफ़ॉल्ट",
+    "sizeBy": "आकार आधार",
+    "sizeByFixed": "नियत आकार",
+    "sizeMultiplier": "आकार गुणक",
+    "lineStyle": "रेखा शैली",
+    "lineStyleSolid": "ठोस",
+    "lineStyleDashed": "डैश वाली",
+    "lineStyleDotted": "बिंदुदार",
+    "lineWidth": "रेखा चौड़ाई",
+    "filterParametersTitle": "{{label}} के पैरामीटर",
+    "cancel": "रद्द करें",
+    "run": "चलाएँ"
+  }
+}

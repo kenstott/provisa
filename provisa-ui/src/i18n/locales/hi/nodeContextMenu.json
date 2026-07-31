@@ -1,0 +1,30 @@
+{
+  "nodeContextMenu": {
+    "excludeTooltip": "इस नोड को क्वेरी से बाहर रखें",
+    "excludeDisabledTooltip": "कोई प्राथमिक कुंजी कॉन्फ़िगर नहीं — बाहर नहीं रखा जा सकता",
+    "excludeFromQuery": "क्वेरी से बाहर रखें",
+    "excludeCount": "{{count}} नोड बाहर रखें",
+    "unfixPosition": "स्थिति अनफ़िक्स करें",
+    "showChildren": "चाइल्ड दिखाएँ",
+    "hideChildren": "चाइल्ड छिपाएँ",
+    "showChildrenCircularTooltip": "चाइल्ड नोड को इस नोड के चारों ओर वृत्त में व्यवस्थित करें",
+    "noOutgoingTooltip": "इस नोड प्रकार के लिए कोई आउटगोइंग रिलेशनशिप नहीं",
+    "showChildrenCircular": "चाइल्ड दिखाएँ (वृत्ताकार)",
+    "hideChildrenCircular": "चाइल्ड छिपाएँ (वृत्ताकार)",
+    "showParents": "पैरेंट दिखाएँ",
+    "hideParents": "पैरेंट छिपाएँ",
+    "showParentsCircularTooltip": "पैरेंट नोड को इस नोड के चारों ओर वृत्त में व्यवस्थित करें",
+    "noIncomingTooltip": "इस नोड प्रकार के लिए कोई इनकमिंग रिलेशनशिप नहीं",
+    "showParentsCircular": "पैरेंट दिखाएँ (वृत्ताकार)",
+    "hideParentsCircular": "पैरेंट छिपाएँ (वृत्ताकार)",
+    "invertSelection": "चयन उलटें",
+    "select": "चुनें",
+    "selectAll": "सभी",
+    "selectAllOfType": "इस प्रकार के सभी",
+    "selectConnected": "जुड़े हुए",
+    "selectChildren": "चाइल्ड",
+    "selectParents": "पैरेंट",
+    "removeNode": "नोड हटाएँ",
+    "removeCount": "{{count}} नोड हटाएँ"
+  }
+}

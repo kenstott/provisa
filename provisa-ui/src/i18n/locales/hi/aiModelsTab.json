@@ -1,0 +1,29 @@
+{
+  "aiModelsTab": {
+    "modelsHeading": "AI मॉडल असाइनमेंट",
+    "modelsIntro": "प्रत्येक AI-सहायता प्राप्त ऑपरेशन के लिए उपयोग किया जाने वाला मॉडल। मॉडल नाम दर्ज करें (जैसे claude-haiku-4-5-20251001)। डिफ़ॉल्ट पर रीसेट करने के लिए खाली छोड़ें।",
+    "role_table_description": "टेबल विवरण",
+    "role_column_description": "कॉलम विवरण",
+    "role_relationship_inference": "संबंध अनुमान",
+    "role_sql_generation": "SQL जनरेशन",
+    "role_table_selection": "टेबल चयन",
+    "dictNotEditable": "(पूर्ण vendor/model रूप में कॉन्फ़िगर किया गया — कॉन्फ़िग YAML में संपादित करें)",
+    "nlHeading": "प्राकृतिक-भाषा क्वेरी",
+    "nlIntro": "NL-से-SQL के लिए प्रति भूमिका प्रति मिनट अनुरोध। असीमित के लिए खाली छोड़ें।",
+    "rateLimitLabel": "दर सीमा (अनुरोध/मिनट प्रति भूमिका)",
+    "vectorHeading": "वेक्टर (एम्बेडिंग) मॉडल",
+    "vectorIntro": "सिमैंटिक खोज के लिए उपलब्ध पंजीकृत एम्बेडिंग मॉडल। रजिस्ट्री एक अनुमति-सूची है।",
+    "vectorId": "मॉडल ID",
+    "vectorProvider": "प्रदाता",
+    "vectorDimensions": "डाइमेंशन",
+    "vectorApiKeyEnv": "API कुंजी env वेरिएबल",
+    "vectorBaseUrl": "बेस URL",
+    "vectorEnabled": "सक्षम",
+    "addVectorModel": "वेक्टर मॉडल जोड़ें",
+    "removeVectorModel": "हटाएँ",
+    "saveButtonLabel": "AI मॉडल सेटिंग्स सहेजें",
+    "loading": "लोड हो रहा है…",
+    "saved": "सहेजा गया।",
+    "savedRestartRequired": "सहेजा गया। लागू करने के लिए सेवा को पुनः प्रारंभ करें।"
+  }
+}

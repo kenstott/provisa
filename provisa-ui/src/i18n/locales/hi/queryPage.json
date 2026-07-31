@@ -1,0 +1,20 @@
+{
+  "queryPage": {
+    "selectRole": "एक भूमिका चुनें।",
+    "redirectLabel": "रीडायरेक्ट",
+    "thresholdLabel": "थ्रेशोल्ड",
+    "thresholdPlaceholder": "सभी",
+    "redirectHint": "सभी परिणाम S3 पर रीडायरेक्ट होते हैं",
+    "queryStats": "क्वेरी आँकड़े",
+    "schemaError": "स्कीमा त्रुटि: {{message}}",
+    "redirectReady": "रीडायरेक्ट तैयार — {{rowCount}} पंक्तियाँ ({{contentType}})",
+    "download": "डाउनलोड करें",
+    "dismissRedirect": "रीडायरेक्ट सूचना खारिज करें",
+    "formatNone": "कोई नहीं",
+    "formatParquet": "Parquet",
+    "formatArrow": "Arrow",
+    "formatCsv": "CSV",
+    "formatNdjson": "NDJSON",
+    "formatJson": "JSON"
+  }
+}

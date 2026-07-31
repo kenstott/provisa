@@ -1,0 +1,21 @@
+{
+  "sqlModelingResultsPanel": {
+    "downloadCsv": "CSV डाउनलोड करें",
+    "rowCount_one": "{{count}} पंक्ति",
+    "rowCount_other": "{{count}} पंक्तियाँ",
+    "filteredFrom": "({{count}} में से फ़िल्टर किया गया)",
+    "firstPage": "पहला पृष्ठ",
+    "previousPage": "पिछला पृष्ठ",
+    "nextPage": "अगला पृष्ठ",
+    "lastPage": "अंतिम पृष्ठ",
+    "pageOf": "पृष्ठ {{page}} / {{total}}",
+    "filterPlaceholder": "फ़िल्टर…",
+    "filterColumn": "{{column}} फ़िल्टर करें",
+    "resizeColumn": "{{column}} स्तंभ का आकार बदलें",
+    "noResults": "कोई परिणाम नहीं।",
+    "writeSqlPrompt": "SQL लिखें और निष्पादित करने के लिए नमूना पर क्लिक करें।",
+    "nullValue": "null",
+    "sortAscending": "आरोही क्रम में क्रमबद्ध",
+    "sortDescending": "अवरोही क्रम में क्रमबद्ध"
+  }
+}

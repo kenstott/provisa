@@ -1,0 +1,22 @@
+{
+  "neo4jExportModal": {
+    "title": "Neo4j निर्यात",
+    "nodeCount_one": "{{count}} नोड",
+    "nodeCount_other": "{{count}} नोड",
+    "edgeCount_one": "{{count}} संबंध",
+    "edgeCount_other": "{{count}} संबंध",
+    "downloadScript": "Cypher स्क्रिप्ट डाउनलोड करें (.cypher)",
+    "divider": "— या सीधे किसी सर्वर पर निर्यात करें —",
+    "httpUrl": "HTTP URL",
+    "database": "डेटाबेस",
+    "username": "उपयोगकर्ता नाम",
+    "password": "पासवर्ड",
+    "close": "बंद करें",
+    "exportToServer": "सर्वर पर निर्यात करें",
+    "exporting": "निर्यात हो रहा है…",
+    "statementsImported_one": "{{count}} स्टेटमेंट आयात किया गया।",
+    "statementsImported_other": "{{count}} स्टेटमेंट आयात किए गए।",
+    "errorsSuffix_one": " ({{count}} त्रुटि: {{first}})",
+    "errorsSuffix_other": " ({{count}} त्रुटियाँ: {{first}})"
+  }
+}

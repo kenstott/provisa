@@ -1,0 +1,17 @@
+{
+  "sqlPage": {
+    "title": "SQL एक्सप्लोरर",
+    "tabSql": "sql",
+    "tabCanvas": "कैनवास",
+    "execMs": "{{ms}} ms",
+    "queryStats": "क्वेरी आँकड़े",
+    "showExpansion": "विस्तार दिखाएँ",
+    "detachToPhysical": "भौतिक SQL में डिटैच करें",
+    "expansionTitle": "मेट्रिक विस्तार",
+    "expansionLoading": "विस्तार प्राप्त किया जा रहा है...",
+    "detachConfirmTitle": "भौतिक SQL में डिटैच करें?",
+    "detachConfirmBody": "यह एकतरफ़ा है: मेट्रिक लिंक टूट जाएगा और क्वेरी फ़्री-हैंड SQL बन जाएगी। इसे मेट्रिक से दोबारा जोड़ने का कोई तरीका नहीं है।",
+    "detachCancel": "रद्द करें",
+    "detachConfirm": "डिटैच करें"
+  }
+}

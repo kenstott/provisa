@@ -1,0 +1,31 @@
+{
+  "systemHealth": {
+    "loading": "सिस्टम स्वास्थ्य लोड हो रहा है...",
+    "colComponent": "घटक",
+    "colStatus": "स्थिति",
+    "colDetails": "विवरण",
+    "federationEngine": "फ़ेडरेशन इंजन",
+    "connected": "कनेक्टेड",
+    "disconnected": "डिस्कनेक्टेड",
+    "workerCount": "{{count}} वर्कर ({{active}} सक्रिय)",
+    "workerCount_other": "{{count}} वर्कर ({{active}} सक्रिय)",
+    "metadataDb": "मेटाडेटा DB",
+    "unpooled": "अनपूल्ड",
+    "active": "सक्रिय",
+    "noPool": "कोई पूल नहीं",
+    "poolNotTracked": "पूल कनेक्शनों को ट्रैक नहीं करता",
+    "poolConnections": "{{count}} कनेक्शन ({{idle}} निष्क्रिय)",
+    "cache": "कैश",
+    "disabled": "अक्षम",
+    "embeddedMemory": "एम्बेडेड (इन-मेमोरी)",
+    "serverConnected": "सर्वर कनेक्टेड",
+    "serverUnreachable": "सर्वर पहुँच से बाहर",
+    "redisServer": "Redis सर्वर",
+    "fakeredis": "fakeredis (इन-प्रोसेस)",
+    "running": "चल रहा है",
+    "unreachable": "पहुँच से बाहर",
+    "port": "पोर्ट {{port}}",
+    "mvRefreshLoop": "MV रिफ़्रेश लूप",
+    "stopped": "रुका हुआ"
+  }
+}

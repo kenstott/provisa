@@ -1,0 +1,11 @@
+{
+  "docsPage": {
+    "title": "दस्तावेज़ीकरण",
+    "loading": "लोड हो रहा है…",
+    "sourceOnline": "ऑनलाइन",
+    "sourceOffline": "ऑफ़लाइन प्रति",
+    "viewOnline": "ऑनलाइन डॉक्स उपयोग करें",
+    "viewOffline": "ऑफ़लाइन प्रति उपयोग करें",
+    "openInNewTab": "नए टैब में खोलें"
+  }
+}

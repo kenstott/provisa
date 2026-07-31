@@ -1,0 +1,31 @@
+{
+  "graphSidebar": {
+    "tabDatabase": "डेटाबेस",
+    "tabHistory": "इतिहास",
+    "tabFavorites": "पसंदीदा",
+    "tabExport": "Neo4j में निर्यात करें",
+    "domainLabels": "डोमेन लेबल",
+    "nodeLabels": "नोड लेबल",
+    "relationshipTypes": "संबंध प्रकार",
+    "propertyKeys": "गुण कुंजियाँ",
+    "loading": "लोड हो रहा है…",
+    "noLabelsFound": "कोई लेबल नहीं मिला",
+    "noRelTypesFound": "कोई संबंध प्रकार नहीं मिला",
+    "history": "इतिहास",
+    "noHistory": "अभी कोई इतिहास नहीं",
+    "favorites": "पसंदीदा",
+    "noFavorites": "अभी कोई पसंदीदा नहीं — परिणाम फ़्रेम में ★ पर क्लिक करें",
+    "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
+    "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
+    "firstPage": "पहला पेज",
+    "previousPage": "पिछला पेज",
+    "nextPage": "अगला पेज",
+    "lastPage": "अंतिम पेज",
+    "pageIndicator": "{{page}}/{{total}}",
+    "run": "चलाएँ",
+    "rename": "नाम बदलें",
+    "remove": "हटाएँ",
+    "renameFavoriteInput": "पसंदीदा का नाम",
+    "resizeSidebar": "साइडबार का आकार बदलें"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "sqlCanvasTableCard": {
+    "removeTable": "{{tableName}} को कैनवास से हटाएँ",
+    "toggleColumn": "कॉलम {{columnName}} का चयन टॉगल करें",
+    "connectColumn": "{{columnName}} से संबंध शुरू करें"
+  }
+}

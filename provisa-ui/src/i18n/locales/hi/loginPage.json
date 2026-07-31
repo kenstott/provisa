@@ -1,0 +1,33 @@
+{
+  "loginPage": {
+    "loginTitle": "लॉगिन",
+    "authNotConfigured": "प्रमाणीकरण कॉन्फ़िगर नहीं है",
+    "loading": "लोड हो रहा है...",
+    "signInTitle": "साइन इन करें",
+    "firstLoginHeading": "इस डिप्लॉयमेंट को सेट अप करें",
+    "firstLoginTitle": "यह पहला लॉगिन है",
+    "firstLoginBody": "इस डिप्लॉयमेंट का अभी कोई व्यवस्थापक नहीं है। जो सबसे पहले साइन इन करेगा वह प्लेटफ़ॉर्म व्यवस्थापक बन जाएगा — संगठनों, उपयोगकर्ताओं और डेटा स्रोतों पर पूर्ण नियंत्रण के साथ। इसे प्राप्त करने के लिए नीचे कोई साइन-इन विधि चुनें।",
+    "signInWithGoogle": "Google से साइन इन करें",
+    "signInWithGithub": "GitHub से साइन इन करें",
+    "signInWithMicrosoft": "Microsoft से साइन इन करें",
+    "signInWithEmail": "ईमेल से साइन इन करें",
+    "orDivider": "या",
+    "haveAccountSignIn": "खाता है? साइन इन करें",
+    "needAccountRegister": "खाता चाहिए? पंजीकरण करें",
+    "signingIn": "साइन इन हो रहा है...",
+    "createAccountTitle": "खाता बनाएँ",
+    "username": "उपयोगकर्ता नाम",
+    "email": "ईमेल",
+    "displayName": "प्रदर्शित नाम",
+    "organization": "संगठन",
+    "password": "पासवर्ड",
+    "confirmPassword": "पासवर्ड की पुष्टि करें",
+    "creating": "बनाया जा रहा है...",
+    "createAccount": "खाता बनाएँ",
+    "backToLogin": "लॉगिन पर वापस जाएँ",
+    "loggingIn": "लॉगिन हो रहा है...",
+    "passwordsDoNotMatch": "पासवर्ड मेल नहीं खाते",
+    "registrationFailed": "पंजीकरण विफल",
+    "firebaseSignInFailed": "Firebase साइन-इन विफल"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schemaBrowser": {
+    "collapsePanel": "स्कीमा पैनल संक्षिप्त करें",
+    "expandPanel": "स्कीमा पैनल विस्तृत करें",
+    "heading": "स्कीमा",
+    "groupMetrics": "मेट्रिक्स",
+    "groupFacts": "फ़ैक्ट्स",
+    "groupDimensions": "डाइमेंशन",
+    "groupEmpty": "(कोई नहीं)",
+    "dragMetricToCanvas": "मेट्रिक को कैनवास पर खींचें",
+    "insertMetricQuery": "सिमेंटिक मेट्रिक क्वेरी सम्मिलित करने के लिए क्लिक करें",
+    "dragToCanvas": "कैनवास पर खींचें",
+    "insertQualifiedName": "क्वालिफ़ाइड नाम सम्मिलित करने के लिए डबल-क्लिक करें",
+    "insertTableReference": "SQL एडिटर में टेबल संदर्भ सम्मिलित करें",
+    "tableAliasName": "टेबल उपनाम/नाम",
+    "domainId": "डोमेन ID",
+    "insertQuotedColumn": "उद्धृत कॉलम सम्मिलित करने के लिए क्लिक करें",
+    "previousPage": "पिछला पृष्ठ",
+    "nextPage": "अगला पृष्ठ"
+  }
+}

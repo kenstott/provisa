@@ -1,0 +1,17 @@
+{
+  "rolesTab": {
+    "heading": "भूमिकाएँ — {{orgId}}",
+    "colId": "ID",
+    "colCapabilities": "क्षमताएँ",
+    "colDomainAccess": "डोमेन पहुँच",
+    "colActions": "क्रियाएँ",
+    "empty": "कोई भूमिका नहीं मिली।",
+    "deleteRole": "भूमिका {{roleId}} हटाएँ",
+    "deleted": "\"{{roleId}}\" हटाई गई",
+    "pageInfo": "पृष्ठ {{current}} / {{total}}",
+    "firstPage": "पहला पृष्ठ",
+    "previousPage": "पिछला पृष्ठ",
+    "nextPage": "अगला पृष्ठ",
+    "lastPage": "अंतिम पृष्ठ"
+  }
+}

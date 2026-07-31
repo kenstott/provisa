@@ -1,0 +1,11 @@
+{
+  "schemaSidebar": {
+    "title": "स्कीमा",
+    "collapse": "स्कीमा पैनल संक्षिप्त करें",
+    "expand": "स्कीमा पैनल विस्तृत करें",
+    "dragToCanvas": "कैनवास पर खींचें",
+    "doubleClickToInsert": "योग्य नाम डालने के लिए डबल-क्लिक करें",
+    "insertTableReference": "SQL संपादक में तालिका संदर्भ डालें",
+    "clickToInsertColumn": "उद्धृत कॉलम डालने के लिए क्लिक करें"
+  }
+}

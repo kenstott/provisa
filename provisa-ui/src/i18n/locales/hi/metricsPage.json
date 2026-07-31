@@ -1,0 +1,57 @@
+{
+  "metricsPage": {
+    "title": "मेट्रिक्स",
+    "newMetric": "नया मेट्रिक",
+    "loading": "लोड हो रहा है...",
+    "empty": "अभी तक कोई मेट्रिक पंजीकृत नहीं है।",
+    "colName": "नाम",
+    "colExpression": "एक्सप्रेशन",
+    "colDatatype": "डेटाटाइप",
+    "colDescription": "विवरण",
+    "colAiContext": "AI संदर्भ",
+    "fromFact": "फ़ैक्ट से",
+    "builderFact": "स्रोत फ़ैक्ट",
+    "builderMeasure": "मेज़र",
+    "builderAgg": "एग्रीगेट",
+    "builderNoFacts": "अभी तक कोई फ़ैक्ट तालिका पंजीकृत नहीं है",
+    "detail": {
+      "handAuthored": "हस्त-लिखित",
+      "noDependents": "कोई नहीं",
+      "field": {
+        "expression": "एक्सप्रेशन",
+        "datatype": "डेटाटाइप",
+        "description": "विवरण",
+        "aiContext": "AI संदर्भ",
+        "sourceFact": "स्रोत फ़ैक्ट",
+        "visibleTo": "किन्हें दिखेगा",
+        "dependentViews": "आश्रित मेट्रिक व्यू"
+      }
+    },
+    "createTitle": "नया मेट्रिक",
+    "editTitle": "मेट्रिक संपादित करें",
+    "fieldName": "नाम",
+    "fieldNamePlaceholder": "जैसे total_revenue",
+    "fieldExpression": "एक्सप्रेशन",
+    "fieldExpressionPlaceholder": "जैसे SUM(orders.amount)",
+    "fieldDatatype": "डेटाटाइप",
+    "fieldDatatypePlaceholder": "जैसे numeric",
+    "fieldDatatypeDerived": "फ़ैक्ट मेज़र से बनाए जाने पर एग्रीगेट से व्युत्पन्न",
+    "fieldDescription": "विवरण",
+    "fieldAiContext": "AI संदर्भ",
+    "fieldAiContextPlaceholder": "AI-सहायित क्वेरी जनरेशन के लिए संकेत",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "saveFailed": "सहेजना विफल रहा।",
+    "editMetric": "मेट्रिक {{name}} संपादित करें",
+    "deleteMetric": "मेट्रिक {{name}} हटाएँ",
+    "deleteTitle": "मेट्रिक हटाएँ",
+    "deleteConfirm": "मेट्रिक \"{{name}}\" हटाएँ? इसे पूर्ववत नहीं किया जा सकता।",
+    "delete": "हटाएँ",
+    "deleteFailed": "हटाना विफल रहा।"
+  },
+  "sqlJoinCanvas": {
+    "removeMetric": "मेट्रिक {{metricName}} हटाएँ",
+    "dimensionsHeading": "डाइमेंशन",
+    "noDimensions": "कोई संबंधित डाइमेंशन कॉलम नहीं मिला"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "relationshipModals": {
+    "conflictTitle": "रिलेशनशिप पहले से मौजूद है",
+    "conflictClose": "बंद करें",
+    "conflictIntro": "इस स्रोत और लक्ष्य के साथ एक रिलेशनशिप पहले से मौजूद है:",
+    "conflictId": "ID",
+    "conflictSource": "स्रोत",
+    "conflictTarget": "लक्ष्य",
+    "conflictCardinality": "कार्डिनैलिटी",
+    "conflictAlias": "उपनाम",
+    "reverseTitle": "विपरीत रिलेशनशिप जनरेट करें",
+    "idLabel": "ID",
+    "aliasLabel": "CQL उपनाम (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL उपनाम (camelCase)",
+    "materializeLabel": "मटीरियलाइज़ करें",
+    "refreshIntervalLabel": "रिफ़्रेश अंतराल (सेकंड)",
+    "cancel": "रद्द करें",
+    "save": "सहेजें"
+  }
+}

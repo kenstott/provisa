@@ -1,0 +1,18 @@
+{
+  "mcpServerTab": {
+    "intro": "Model Context Protocol (MCP) सर्वर बाहरी AI एजेंटों को गवर्न की गई कैटलॉग खोज और SQL निष्पादन उपलब्ध कराता है। हर कॉल कॉलर की भूमिका द्वारा गवर्न होती है — सर्वर कभी भी डिफ़ॉल्ट रूप से admin नहीं बनता।",
+    "loading": "लोड हो रहा है…",
+    "statusLabel": "स्थिति",
+    "statusEnabled": "सक्षम",
+    "statusDisabled": "अक्षम",
+    "endpointLabel": "एंडपॉइंट",
+    "transportLabel": "ट्रांसपोर्ट",
+    "stdioRoleLabel": "बाउंड stdio भूमिका",
+    "stdioRoleNone": "कोई सेट नहीं — stdio कॉल के लिए <code>{{envVar}}</code> आवश्यक है",
+    "maxRowsLabel": "पंक्ति सीमा (run_sql)",
+    "enableHint": "MCP सर्वर ऑप्ट-इन है। इसे सक्षम करने के लिए <code>{{enableEnvVar}}</code> पर्यावरण वेरिएबल में एक पोर्ट सेट करें और सेवा को पुनः प्रारंभ करें। स्थानीय stdio ट्रांसपोर्ट के लिए, <code>{{roleEnvVar}}</code> को भी एक provisa भूमिका पर सेट करें।",
+    "toolsHeading": "उपलब्ध टूल",
+    "colTool": "टूल",
+    "colDescription": "विवरण"
+  }
+}

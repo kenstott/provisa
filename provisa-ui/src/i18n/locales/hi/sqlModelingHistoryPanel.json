@@ -1,0 +1,14 @@
+{
+  "sqlModelingHistoryPanel": {
+    "empty": "अभी कोई क्वेरी नहीं चलाई गई। इतिहास सत्रों के बीच बना रहता है।",
+    "colTime": "समय",
+    "colRole": "भूमिका",
+    "colDuration": "अवधि",
+    "colRows": "पंक्तियाँ",
+    "colSql": "SQL",
+    "colActions": "कार्रवाइयाँ",
+    "error": "त्रुटि",
+    "restore": "पुनर्स्थापित करें",
+    "restoreLabel": "{{time}} की क्वेरी पुनर्स्थापित करें"
+  }
+}

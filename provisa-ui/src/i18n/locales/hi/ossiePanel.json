@@ -1,0 +1,20 @@
+{
+  "ossiePanel": {
+    "title": "सिमेंटिक इंटरचेंज (Ossie)",
+    "endpointLabel": "एंडपॉइंट:",
+    "copyEndpoint": "एंडपॉइंट URL कॉपी करें",
+    "download": "डाउनलोड करें",
+    "import": "आयात करें",
+    "reviewTitle": "Ossie आयात की समीक्षा करें: {{model}}",
+    "reviewHint": "अभी कुछ भी पंजीकृत नहीं हुआ है। जिसे हटाना चाहते हैं उसे अनचेक करें, फिर लागू करें — चेक किए गए आइटम मानक पंजीकरण म्यूटेशन के ज़रिए पंजीकृत होते हैं।",
+    "tablesSection": "तालिकाएँ ({{count}})",
+    "relationshipsSection": "संबंध ({{count}})",
+    "metricsSection": "मेट्रिक्स ({{count}})",
+    "columnCount": "{{count}} कॉलम",
+    "apply": "लागू करें ({{count}})",
+    "applied": "लागू हो गया",
+    "failed": "विफल",
+    "cancel": "रद्द करें",
+    "close": "बंद करें"
+  }
+}

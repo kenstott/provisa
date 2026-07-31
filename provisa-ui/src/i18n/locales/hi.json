@@ -1,0 +1,63 @@
+{
+  "common": {
+    "loading": "लोड हो रहा है...",
+    "cancel": "रद्द करें",
+    "save": "सहेजें",
+    "delete": "हटाएँ",
+    "confirm": "पुष्टि करें",
+    "processing": "प्रोसेस हो रहा है..."
+  },
+  "app": {
+    "apiUnreachable": "Provisa API तक नहीं पहुँच सके।",
+    "notAuthorized": "आपको यह पेज देखने की अनुमति नहीं है।"
+  },
+  "theme": {
+    "toggle": "रंग योजना बदलें",
+    "light": "लाइट",
+    "dark": "डार्क"
+  },
+  "multiSelect": {
+    "defaultLabel": "विकल्प चुनें",
+    "all": "सभी"
+  },
+  "roleSelector": {
+    "none": "कोई भूमिका कॉन्फ़िगर नहीं है",
+    "all": "सभी",
+    "role": "भूमिका: {{role}}",
+    "dev": "DEV"
+  },
+  "localUsers": {
+    "colUsername": "उपयोगकर्ता नाम",
+    "colEmail": "ईमेल",
+    "colDisplayName": "प्रदर्शित नाम",
+    "colActive": "सक्रिय",
+    "actions": "कार्रवाइयाँ",
+    "empty": "कोई स्थानीय उपयोगकर्ता नहीं",
+    "yes": "हाँ",
+    "no": "नहीं",
+    "none": "—",
+    "expandUser": "{{username}} के असाइनमेंट दिखाएँ",
+    "deleteUser": "उपयोगकर्ता {{username}} हटाएँ",
+    "assignmentsHeading": "भूमिका:डोमेन असाइनमेंट",
+    "noAssignments": "कोई असाइनमेंट नहीं",
+    "removeAssignment": "असाइनमेंट {{role}}:{{domain}} हटाएँ",
+    "roleLabel": "भूमिका",
+    "domainLabel": "डोमेन",
+    "allDomains": "* (सभी डोमेन)",
+    "add": "जोड़ें",
+    "createHeading": "उपयोगकर्ता बनाएँ",
+    "username": "उपयोगकर्ता नाम",
+    "usernameRequired": "उपयोगकर्ता नाम *",
+    "password": "पासवर्ड",
+    "passwordRequired": "पासवर्ड *",
+    "email": "ईमेल",
+    "emailOptional": "ईमेल (वैकल्पिक)",
+    "displayName": "प्रदर्शित नाम",
+    "displayNameOptional": "प्रदर्शित नाम (वैकल्पिक)",
+    "createButton": "उपयोगकर्ता बनाएँ",
+    "created": "\"{{username}}\" बनाया गया",
+    "deleted": "\"{{username}}\" हटाया गया",
+    "createFailed": "बनाना विफल रहा",
+    "assignmentFailed": "असाइनमेंट विफल रहा"
+  }
+}

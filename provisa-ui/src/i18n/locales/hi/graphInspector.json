@@ -1,0 +1,26 @@
+{
+  "graphInspector": {
+    "overview": "अवलोकन",
+    "hidePanel": "पैनल छिपाएँ",
+    "nodeLabels": "नोड लेबल",
+    "relationshipTypes": "संबंध प्रकार",
+    "summary": "{{nodeCount}} नोड, {{edgeCount}} संबंध दिखाए जा रहे हैं।",
+    "hint": "प्रॉपर्टी देखने के लिए किसी नोड या एज पर क्लिक करें।",
+    "nodeProperties": "नोड प्रॉपर्टी",
+    "relationshipProperties": "संबंध प्रॉपर्टी",
+    "copyAll": "सभी प्रॉपर्टी JSON के रूप में कॉपी करें",
+    "showDetails": "विवरण दिखाएँ",
+    "showJson": "JSON दिखाएँ",
+    "close": "बंद करें",
+    "domain": "डोमेन",
+    "changeColor": "रंग बदलें",
+    "colorSwatch": "रंग {{color}} सेट करें",
+    "cqlAliasLabel": "CQL उपनाम (UPPER_SNAKE)",
+    "gqlAliasLabel": "GQL उपनाम (camelCase)",
+    "saveAlias": "सहेजें",
+    "graphStats": "ग्राफ़ आँकड़े",
+    "properties": "प्रॉपर्टी",
+    "copyValue": "मान कॉपी करें",
+    "resizePanel": "इंस्पेक्टर पैनल का आकार बदलें"
+  }
+}

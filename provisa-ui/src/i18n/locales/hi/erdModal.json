@@ -1,0 +1,30 @@
+{
+  "erdModal": {
+    "title": "एंटिटी रिलेशनशिप डायग्राम",
+    "domains": "डोमेन",
+    "domainsTooltip": "डोमेन दिखाएँ / छिपाएँ",
+    "columnDetailLabel": "कॉलम विवरण",
+    "columnDetailAll": "सभी कॉलम",
+    "columnDetailKey": "केवल कुंजियाँ",
+    "columnDetailNone": "कोई कॉलम नहीं",
+    "edgeRoutingLabel": "एज रूटिंग",
+    "edgeRoutingBezier": "वक्र रेखाएँ",
+    "edgeRoutingTaxi": "समकोण रेखाएँ",
+    "gridSnapLabel": "ग्रिड पर स्नैप करें",
+    "gridSnapNone": "कोई स्नैप नहीं",
+    "gridSnap5": "स्नैप 5px",
+    "gridSnap10": "स्नैप 10px",
+    "gridSnap15": "स्नैप 15px",
+    "gridSnap20": "स्नैप 20px",
+    "orphans": "अनाथ (Orphans)",
+    "collapseAll": "सभी संक्षिप्त करें",
+    "expandAll": "सभी विस्तृत करें",
+    "fitAll": "सभी फ़िट करें",
+    "downloadSvg": "SVG डाउनलोड करें",
+    "downloadPng": "PNG डाउनलोड करें",
+    "downloadJpeg": "JPEG डाउनलोड करें",
+    "close": "बंद करें",
+    "hint": "संक्षिप्त / विस्तृत करने के लिए डोमेन समूह पर क्लिक करें · बिंदीदार रेखाएँ संक्षिप्त डोमेन को जोड़ती हैं",
+    "resizeHandle": "डोमेन बॉक्स का आकार बदलें ({{corner}})"
+  }
+}

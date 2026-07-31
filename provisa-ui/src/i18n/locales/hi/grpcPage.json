@@ -1,0 +1,20 @@
+{
+  "grpcPage": {
+    "serverBadge": "gRPC • :50051",
+    "operationType": "ऑपरेशन प्रकार",
+    "query": "क्वेरी",
+    "mutation": "म्यूटेशन",
+    "command": "कमांड",
+    "method": "मेथड",
+    "noMethods": "कोई मेथड नहीं",
+    "cancel": "◼ रद्द करें",
+    "send": "▶ भेजें",
+    "body": "बॉडी",
+    "proto": ".proto",
+    "response": "प्रतिक्रिया",
+    "selectMethodPlaceholder": "अनुरोध बॉडी संपादित करने के लिए एक मेथड चुनें।",
+    "loading": "लोड हो रहा है…",
+    "waiting": "प्रतिक्रिया की प्रतीक्षा हो रही है…",
+    "sendPrompt": "प्रतिक्रिया देखने के लिए एक अनुरोध भेजें।"
+  }
+}

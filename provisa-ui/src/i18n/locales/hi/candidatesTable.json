@@ -1,0 +1,15 @@
+{
+  "candidatesTable": {
+    "heading": "AI-सुझाए गए संबंध",
+    "colName": "नाम",
+    "colSource": "स्रोत",
+    "colTarget": "लक्ष्य",
+    "colCardinality": "कार्डिनैलिटी",
+    "colConfidence": "विश्वास स्तर",
+    "colActions": "क्रियाएँ",
+    "accept": "स्वीकारें",
+    "reject": "अस्वीकारें",
+    "acceptAria": "सुझाया गया संबंध {{name}} स्वीकारें",
+    "rejectAria": "सुझाया गया संबंध {{name}} अस्वीकारें"
+  }
+}

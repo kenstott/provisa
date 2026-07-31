@@ -1,0 +1,10 @@
+{
+  "securityManager": {
+    "tabs": {
+      "posture": "सुरक्षा स्थिति",
+      "encryption": "एन्क्रिप्शन",
+      "authentication": "प्रमाणीकरण",
+      "localUsers": "स्थानीय उपयोगकर्ता"
+    }
+  }
+}

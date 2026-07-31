@@ -1,0 +1,29 @@
+{
+  "addRelationshipForm": {
+    "idLabel": "ID",
+    "idPlaceholder": "orders-to-customers",
+    "aliasLabel": "CQL उपनाम (UPPER_SNAKE)",
+    "aliasPlaceholder": "PLACED_BY",
+    "graphqlAliasLabel": "GQL उपनाम (camelCase)",
+    "graphqlAliasPlaceholder": "जैसे orders",
+    "sourceTableLabel": "स्रोत टेबल",
+    "sourceColumnLabel": "स्रोत कॉलम",
+    "selectPlaceholder": "चुनें...",
+    "targetTypeLabel": "लक्ष्य प्रकार",
+    "targetTypeTable": "टेबल",
+    "targetTypeFunction": "फ़ंक्शन (परिकलित)",
+    "targetTableLabel": "लक्ष्य टेबल",
+    "targetColumnLabel": "लक्ष्य कॉलम",
+    "functionLabel": "फ़ंक्शन",
+    "functionArgLabel": "फ़ंक्शन आर्ग (स्रोत कॉलम प्राप्त करता है)",
+    "functionArgPlaceholder": "आर्ग नाम",
+    "cardinalityLabel": "कार्डिनैलिटी",
+    "cardinalityManyToOne": "many-to-one",
+    "cardinalityOneToMany": "one-to-many",
+    "cardinalityWarning": "चेतावनी: यदि यह जॉइन प्रति पैरेंट एक से अधिक पंक्तियाँ लौटाता है, तो केवल पहला मान उपयोग किया जाएगा।",
+    "materializeLabel": "मटीरियलाइज़ करें (क्रॉस-स्रोत जॉइन के लिए MV स्वतः बनाएँ)",
+    "disableCypherLabel": "Cypher ग्राफ़ से बाहर रखें",
+    "refreshIntervalLabel": "रिफ़्रेश अंतराल (से.)",
+    "save": "सहेजें"
+  }
+}

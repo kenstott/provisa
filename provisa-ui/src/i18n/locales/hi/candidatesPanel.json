@@ -1,0 +1,16 @@
+{
+  "candidatesPanel": {
+    "empty": "नए संबंध खोजने के लिए \"Extract Joins\" पर क्लिक करें। जिन JOIN शर्तों का संबंध पहले से पंजीकृत है, वे शामिल नहीं की जातीं।",
+    "colId": "ID",
+    "colSource": "स्रोत",
+    "colTarget": "लक्ष्य",
+    "colCardinality": "कार्डिनैलिटी",
+    "colActions": "कार्रवाइयाँ",
+    "idLabel": "उम्मीदवार ID",
+    "cardinalityLabel": "कार्डिनैलिटी",
+    "manyToOne": "मैनी-टू-वन",
+    "oneToMany": "वन-टू-मैनी",
+    "promoted": "प्रमोट हुआ",
+    "promote": "प्रमोट करें"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "viewDefinitionForm": {
+    "modeSql": "SQL",
+    "modeMetrics": "मेट्रिक्स",
+    "sqlCreateHint": "फ़्री-हैंड व्यू SQL संपादक में लिखे जाते हैं: SELECT लिखें, उसे चलाएँ, फिर उसे व्यू के रूप में सहेजें।",
+    "sqlEditHint": "इस व्यू का SQL, SQL संपादक में संपादित होता है।",
+    "openSqlEditor": "SQL संपादक खोलें",
+    "editInSqlEditor": "SQL संपादक में संपादित करें",
+    "fieldName": "व्यू नाम",
+    "fieldNamePlaceholder": "जैसे revenue_by_region",
+    "fieldDomain": "डोमेन",
+    "fieldDescription": "विवरण",
+    "fieldMetrics": "मेट्रिक्स",
+    "fieldMetricsPlaceholder": "एक या अधिक पंजीकृत मेट्रिक्स चुनें",
+    "fieldDimensions": "डाइमेंशन",
+    "fieldDimensionsPlaceholder": "मेट्रिक्स की टेबलों के कॉलम (एक संबंध हॉप दूर तक शामिल)",
+    "fieldFilters": "फ़िल्टर",
+    "fieldFiltersHelp": "प्रति पंक्ति एक SQL शर्त; शर्तें AND से जुड़ती हैं।",
+    "save": "व्यू सहेजें",
+    "saveFailed": "सहेजना विफल",
+    "cancel": "रद्द करें"
+  }
+}

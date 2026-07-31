@@ -1,0 +1,30 @@
+{
+  "sqlEditorPanel": {
+    "renameHint": "नाम बदलने के लिए डबल-क्लिक करें",
+    "closeTab": "{{title}} बंद करें",
+    "newTab": "नया क्वेरी टैब",
+    "detachedBadge": "अलग किया गया",
+    "nlPlaceholder": "सादी भाषा में पूछें — SQL जनरेट होता है…",
+    "clear": "साफ़ करें",
+    "generate": "SQL जनरेट करें",
+    "generating": "जनरेट हो रहा है…",
+    "generatingSql": "SQL जनरेट हो रहा है…",
+    "prettify": "SQL सुव्यवस्थित करें",
+    "copySql": "SQL कॉपी करें",
+    "copied": "कॉपी हो गया",
+    "copy": "कॉपी करें",
+    "run": "नमूना >",
+    "running": "चल रहा है…",
+    "saveViewTitle": "वर्तमान SQL को व्यू \"{{tableName}}\" की परिभाषा के रूप में सहेजें",
+    "saving": "सहेजा जा रहा है…",
+    "updateView": "\"{{tableName}}\" अपडेट करें",
+    "sampleModeFirst": "पहले",
+    "sampleModeLast": "अंतिम",
+    "sampleModeRandom": "यादृच्छिक",
+    "sampleModeLabel": "नमूना मोड",
+    "rowCountLabel": "पंक्ति संख्या",
+    "roleLabel": "भूमिका",
+    "createView": "+ व्यू",
+    "requestView": "व्यू का अनुरोध करें"
+  }
+}

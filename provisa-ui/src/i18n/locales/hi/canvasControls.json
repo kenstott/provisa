@@ -1,0 +1,13 @@
+{
+  "canvasControls": {
+    "toolbarLabel": "कैनवास नियंत्रण",
+    "zoomIn": "ज़ूम इन",
+    "zoomOut": "ज़ूम आउट",
+    "fitToScreen": "स्क्रीन में फ़िट करें",
+    "switchToHierarchy": "पदानुक्रमित लेआउट पर स्विच करें",
+    "switchToForce": "फ़ोर्स लेआउट पर स्विच करें",
+    "nudgeLayout": "लेआउट सरकाएँ — चयनित नोड को सरकाता है (या कोई चयनित न हो तो सभी को); दोहराते रहने के लिए दबाए रखें",
+    "edgeLength": "एज लंबाई",
+    "edgeLengthValue": "{{value}}px"
+  }
+}

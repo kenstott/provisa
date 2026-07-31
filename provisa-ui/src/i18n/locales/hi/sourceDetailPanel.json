@@ -1,0 +1,27 @@
+{
+  "sourceDetailPanel": {
+    "field": {
+      "description": "विवरण",
+      "type": "प्रकार",
+      "host": "होस्ट",
+      "port": "पोर्ट",
+      "database": "डेटाबेस",
+      "username": "उपयोगकर्ता नाम",
+      "naming": "नामकरण",
+      "cache": "कैश",
+      "cacheTtl": "कैश TTL",
+      "effectiveTtl": "प्रभावी TTL",
+      "allowedDomains": "अनुमत डोमेन"
+    },
+    "namingInherit": "इनहेरिट (ग्लोबल)",
+    "cacheEnabled": "सक्षम",
+    "cacheDisabled": "अक्षम",
+    "ttlInherit": "इनहेरिट",
+    "domainsUnrestricted": "अप्रतिबंधित",
+    "editTitle": "संपादित करें",
+    "navigateTitle": "पंजीकृत टेबलें देखें",
+    "deleteTitle": "स्रोत \"{{id}}\" हटाएँ?",
+    "deleteTitleShort": "हटाएँ",
+    "deleteConsequence": "इससे डेटा स्रोत \"{{id}}\" हट जाएगा और इसे संदर्भित करने वाली टेबलें टूट सकती हैं।"
+  }
+}

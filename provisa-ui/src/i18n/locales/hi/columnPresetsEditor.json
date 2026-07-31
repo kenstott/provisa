@@ -1,0 +1,21 @@
+{
+  "columnPresetsEditor": {
+    "label": "कॉलम प्रीसेट",
+    "infoTooltip": "इस टेबल के लिए लौटाई गई हर पंक्ति में परिकलित या स्थिर मान डालें। स्रोत स्कीमा में बदलाव किए बिना डोमेन पहचानकर्ता, भूमिका-आधारित फ़्लैग या व्युत्पन्न फ़ील्ड जोड़ने के लिए उपयोगी। 'source' हो सकता है: constant, sql_expression या role_claim.",
+    "columnHeader": "कॉलम",
+    "sourceHeader": "स्रोत",
+    "valueHeader": "हेडर / मान",
+    "removeAction": "हटाएँ",
+    "columnPlaceholder": "— कॉलम —",
+    "selectPlaceholder": "— चुनें —",
+    "trueLabel": "true",
+    "falseLabel": "false",
+    "headerNamePlaceholder": "हेडर नाम (जैसे X-User-Id)",
+    "literalValuePlaceholder": "शाब्दिक मान",
+    "numericValuePlaceholder": "संख्यात्मक मान",
+    "addAction": "जोड़ें",
+    "sourceNow": "now (UTC टाइमस्टैम्प)",
+    "sourceHeaderOption": "header (HTTP अनुरोध हेडर)",
+    "sourceLiteral": "literal (नियत मान)"
+  }
+}

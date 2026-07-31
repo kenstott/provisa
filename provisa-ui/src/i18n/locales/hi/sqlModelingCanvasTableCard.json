@@ -1,0 +1,6 @@
+{
+  "sqlModelingCanvasTableCard": {
+    "removeTable": "{{tableName}} को कैनवास से हटाएँ",
+    "connectColumn": "{{columnName}} से रिलेशनशिप शुरू करें"
+  }
+}

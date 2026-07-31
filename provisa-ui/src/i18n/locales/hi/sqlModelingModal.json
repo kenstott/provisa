@@ -1,0 +1,31 @@
+{
+  "sqlModelingModal": {
+    "title": "SQL मॉडलिंग",
+    "description": "JOIN शर्तों को नए रिलेशनशिप उम्मीदवारों के रूप में निकालें — मौजूदा रिलेशनशिप बाहर रखी जाती हैं",
+    "close": "बंद करें",
+    "tabSql": "SQL",
+    "tabCanvas": "कैनवास",
+    "nlPlaceholder": "सादी भाषा में पूछें — SQL जनरेट होता है…",
+    "nlLoading": "लोड हो रहा है",
+    "generateSql": "SQL जनरेट करें",
+    "generating": "जनरेट हो रहा है…",
+    "copySql": "SQL कॉपी करें",
+    "copied": "कॉपी किया गया",
+    "copy": "कॉपी करें",
+    "run": "नमूना >",
+    "runningLabel": "चल रहा है…",
+    "sampleModeLabel": "नमूना मोड",
+    "sampleModeFirst": "पहली",
+    "sampleModeLast": "अंतिम",
+    "sampleModeRandom": "यादृच्छिक",
+    "sampleSizeLabel": "पंक्ति संख्या",
+    "roleLabel": "भूमिका",
+    "extractJoins": "जॉइन निकालें",
+    "tabResults": "परिणाम",
+    "tabProfile": "प्रोफ़ाइल",
+    "tabCandidates": "उम्मीदवार",
+    "tabErrors": "त्रुटियाँ",
+    "tabHistory": "इतिहास",
+    "execMs": "{{ms}}ms"
+  }
+}
