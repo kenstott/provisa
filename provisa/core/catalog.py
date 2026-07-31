@@ -96,18 +96,20 @@ def create_catalog(
     resolved_password: str,
     catalog_name: str | None = None,
 ) -> None:  # REQ-012, REQ-250, REQ-251, REQ-1266
-    """Create a Trino dynamic catalog for a registered source.
-
-    Skips creation if the catalog already exists (e.g., from static catalog properties).
+    """Drop and recreate the Trino dynamic catalog for a registered source.
 
     ``catalog_name`` (REQ-1266) is the org-prefixed physical catalog name; when omitted
     the bare per-source name is used (default-org / single-org behavior).
+
+    REQ-1352: this used to skip when the catalog already existed, which pinned a catalog to
+    whatever credentials and connection properties it was first created with. Trino exposes no
+    way to read a live catalog's properties back and ``CREATE CATALOG IF NOT EXISTS`` no-ops
+    against an existing one, so refreshing means dropping first — the same reasoning as
+    ``trino_system_catalogs.register_catalog``. Rotating the source password left every source
+    catalog authenticating with the dead credential until the catalog was dropped by hand.
+    Registration runs at config load and on admin source registration, never per query.
     """
     catalog_name = catalog_name or _to_catalog_name(source.id)
-
-    # Skip if catalog already exists
-    if catalog_exists(conn, catalog_name):
-        return
 
     # REQ-842: the Trino Connector class is the source of truth for reach + catalog. A type with no
     # Trino connector is not reachable by Trino — no catalog (never a parallel type→name map).
@@ -133,11 +135,20 @@ def create_catalog(
         write_table_definitions(source, resolved_password)
 
     props_sql = ", ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in props.items())
-    sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING {connector} WITH ({props_sql})"
 
     # Failed source registration must not continue silently — propagate.
     cur = conn.cursor()
-    cur.execute(sql)
+    try:
+        cur.execute(f"DROP CATALOG IF EXISTS {catalog_name}")
+        cur.fetchall()
+    except trino.exceptions.TrinoQueryError as exc:
+        raise RuntimeError(
+            f"Trino catalog {catalog_name!r} cannot be dropped ({exc}) — it is loaded from a "
+            f"static /etc/trino/catalog/{catalog_name}.properties file, which shadows the runtime "
+            "definition. Remove that file from the mounted catalog directory."
+        ) from exc
+
+    cur.execute(f"CREATE CATALOG {catalog_name} USING {connector} WITH ({props_sql})")
     cur.fetchall()
 
 

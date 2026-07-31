@@ -15,12 +15,14 @@ CREATE CATALOG under catalog.management=dynamic. Their connection-url is derived
 deployment's own env (TrinoPgBackedConnector.details reads PG_HOST), so a copy captured on one
 machine is wrong on every other one.
 
-catalog.create_catalog returns early when the catalog already exists (provisa/core/catalog.py),
-which makes such a file WIN over the correct registration rather than be corrected by it. That is
-how cloud.provisa.dev ended up with inquiries_sqlite / petstore_api / pet_store_sqlite pointing at
-the dev compose network's `postgres:5432` while the landed SQLite and OpenAPI demo data lived in
-the deployment's Cloud SQL instance: the catalogs resolved, held no `default` schema, and every
-demo query died with FederationError SCHEMA_NOT_FOUND "Schema 'default' does not exist".
+catalog.create_catalog used to return early when the catalog already existed, which made such a
+file WIN over the correct registration rather than be corrected by it. That is how
+cloud.provisa.dev ended up with inquiries_sqlite / petstore_api / pet_store_sqlite pointing at the
+dev compose network's `postgres:5432` while the landed SQLite and OpenAPI demo data lived in the
+deployment's Cloud SQL instance: the catalogs resolved, held no `default` schema, and every demo
+query died with FederationError SCHEMA_NOT_FOUND "Schema 'default' does not exist". REQ-1352 made
+registration drop-and-recreate, so a dynamic file no longer wins — but a file Trino loads
+statically still cannot be dropped, and now fails registration loudly instead of shadowing it.
 
 Guards the repo, not a runtime path — the artifacts were swept in by blanket "commit pending
 changes" chores twice before, so only a check on what is TRACKED keeps them out.
