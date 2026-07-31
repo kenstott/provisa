@@ -1,0 +1,33 @@
+# Canonical requirement groups — the closed high-level design enumeration.
+# Every requirement in requirements.yaml must carry a `group` exactly matching
+# a `name` below (enforced by provisa/tools/req_schema.py). Add a group here
+# first if a requirement genuinely fits nowhere.
+groups:
+- name: "0. Architecture & Design Principles"
+  scope: Cross-cutting design invariants and settled architectural decisions that constrain every other group.
+- name: "1. Access Governance & Security"
+  scope: Data-layer governance (visibility, RLS, masking, relationship enforcement), capabilities and rights, encryption, audit, lineage/provenance, and observability of governed behavior.
+- name: "2. Authentication & Identity"
+  scope: Identity providers, credentials, API keys, sessions, and login flows.
+- name: "3. Source Registration & Data Modeling"
+  scope: Registering sources, schema and relationship modeling, domains, metrics, and model lifecycle.
+- name: "4. Source Connectors"
+  scope: Per-source-type connectors, FDW/extension bindings, connector probing and reachability.
+- name: "5. Query Languages, Compilation & Operations"
+  scope: GraphQL/SQL/Cypher language surfaces, transpilation, IR, compiler, and schema introspection.
+- name: "6. Execution, Routing, Caching & Performance"
+  scope: Federation-engine execution and routing, materialized views, caching, cross-source data movement, cost-based decisions, HA/recovery.
+- name: "7. Result Delivery"
+  scope: Result formats and payload delivery — streaming, bulk results, and exports (including graph export).
+- name: "8. Client Access & Protocols"
+  scope: Wire protocols and client surfaces — pgwire, Bolt, Arrow Flight, gRPC, MCP, JDBC/ODBC, REST/JSON:API — and their protocol-level semantics.
+- name: "9. Live Data & Events"
+  scope: Live delivery, subscriptions, CDC, event processing, and replica lifecycle.
+- name: "10. UI & Admin Surfaces"
+  scope: Frontend app, admin console, explorer pages, navigation, i18n, accessibility, theming.
+- name: "11. Platform, Infrastructure & Delivery"
+  scope: Packaging, installers, deployment (VM/Kubernetes/cloud), release integrity, clustering, TLS, and test infrastructure.
+- name: "12. Migration & Compatibility (Hasura)"
+  scope: Hasura/DDN migration converters and compatibility surfaces.
+- name: "13. Multi-Tenancy & Organizations"
+  scope: Org identity and scoping, membership and invites, multi-org routing (subdomains/SNI), per-org runtimes, and tenant isolation lanes.

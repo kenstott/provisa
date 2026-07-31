@@ -6016,7 +6016,7 @@ Subgraph assignment for DDN HML documents is derived from the directory structur
 
 **Tests:** `tests/unit/test_ddn.py`, `tests/unit/test_ddn_converter.py`, `tests/unit/test_hasura_converter.py`
 
-## 15. Proposed Features
+## 1. Access Governance & Security
 
 ### REQ-684 · Encryption {#REQ-684}
 
@@ -6248,7 +6248,7 @@ Demo init code and static demo assets are org-scoped. _seed_built_in_sources() p
 
 **Tests:** `tests/unit/test_org_isolation.py`
 
-## 10. Execution & Query Planning
+## 6. Execution, Routing, Caching & Performance
 
 ### REQ-703 · High Availability {#REQ-703}
 
@@ -6290,7 +6290,7 @@ check_cache and store_result in provisa/cache/middleware.py pass tenant_id (org_
 
 **Tests:** `tests/integration/test_cache_store.py`, `tests/unit/test_apq_cache.py`, `tests/unit/test_cache_key.py`, `tests/unit/test_cache_store.py`, `tests/unit/test_mv_tenant_isolation.py`
 
-## 10. Graph Export
+## 7. Result Delivery
 
 ### REQ-713 · Neo4j Export {#REQ-713}
 
@@ -7182,7 +7182,7 @@ Registered file-based tables are queryable via the data GraphQL endpoint. Tables
 
 **Tests:** `provisa-ui/e2e/file-connector.spec.ts`, `tests/unit/test_file_lake_sources.py`
 
-## 10. Graph Export
+## 7. Result Delivery
 
 ### REQ-792 · Neo4j Export {#REQ-792}
 
@@ -7270,7 +7270,7 @@ Cypher mutations (CREATE/DELETE/UPDATE) must be transpiled through the full sema
 
 **Tests:** `tests/unit/test_cypher_mutations.py`, `tests/integration/test_mutations.py`, `tests/steps/steps_cypher_mutations.py`
 
-## 6. Query Interfaces & Explorers
+## 10. UI & Admin Surfaces
 
 ### REQ-799 · UI Explorer Pages {#REQ-799}
 
@@ -7308,7 +7308,7 @@ Browser-based OpenAPI Explorer UI page at /openapi embeds Swagger UI iframe serv
 
 **Tests:** `provisa-ui/e2e/openapi-explorer.spec.ts`
 
-## 4. Query Languages, Compilation & Operations
+## 8. Client Access & Protocols
 
 ### REQ-802 · Protocol Support {#REQ-802}
 
@@ -7346,7 +7346,7 @@ Dynamic OpenAPI 3.1 spec generator for /data/rest endpoints. Generates per-table
 
 **Tests:** `tests/unit/test_openapi_spec.py`, `tests/integration/test_openapi_spec.py`
 
-## 6. Query Interfaces & Explorers
+## 10. UI & Admin Surfaces
 
 ### REQ-805 · UI Explorer Pages {#REQ-805}
 
@@ -7360,7 +7360,7 @@ Dynamic JSON:API OpenAPI 3.1 spec generator accessible at /data/jsonapi/openapi.
 
 **Tests:** `tests/unit/test_jsonapi_spec.py`, `tests/integration/test_jsonapi_spec.py`
 
-## 3. Data Storage & Indexing
+## 8. Client Access & Protocols
 
 ### REQ-806 · Bolt Protocol {#REQ-806}
 
@@ -7480,7 +7480,7 @@ Provider selection (_resolve_provider_type in provisa/api/data/subscribe.py + ge
 
 **Tests:** `tests/unit/test_source_cdc_config.py`, `tests/unit/test_live_delivery_config.py`, `tests/steps/steps_subscriptions.py`
 
-## 8. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-815 · Docker Compose Organization {#REQ-815}
 
@@ -7532,7 +7532,7 @@ Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET st
 
 **Tests:** `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`
 
-## 6. Real-Time & Live Data
+## 9. Live Data & Events
 
 ### REQ-819 · Live Delivery Configuration {#REQ-819}
 
@@ -8048,7 +8048,7 @@ File-based sources (CSV, Parquet, etc.) may carry an optional producer command (
 
 **Tests:** `tests/unit/test_file_producer_command.py`
 
-## 5. Data Lineage & Provenance
+## 1. Access Governance & Security
 
 ### REQ-862 · Column-Level Trace Instrumentation {#REQ-862}
 
@@ -8240,7 +8240,7 @@ Compose host-port parameterization for stack coexistence. Every published host p
 
 **Tests:** `tests/unit/test_infra_requirements.py`
 
-## 5. Data Lineage & Provenance
+## 1. Access Governance & Security
 
 ### REQ-877 · Row-Level Delta Capture {#REQ-877}
 
@@ -8328,7 +8328,7 @@ Provisa's pgwire server must satisfy the capability set that DuckDB's `postgres`
 
 **Tests:** `tests/unit/pgwire/test_copy_binary.py`, `tests/integration/test_duckdb_attach_pgwire.py`
 
-## 3. Governance & Observability
+## 1. Access Governance & Security
 
 ### REQ-884 · Observability {#REQ-884}
 
@@ -8356,7 +8356,7 @@ Generalize tracked functions ([REQ-205](#REQ-205)–208: source-resident stored 
 
 **Tests:** `tests/unit/test_extensible_functions.py`
 
-## 3. Governance & Observability
+## 1. Access Governance & Security
 
 ### REQ-886 · Observability {#REQ-886}
 
@@ -8398,7 +8398,7 @@ Federation engine contract is wired into the live query path via EngineRuntime, 
 
 **Tests:** `tests/integration/test_engine_runtime_binding.py`, `tests/unit/test_engine_capabilities.py`
 
-## 8. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-889 · Deployment Tier Architecture {#REQ-889}
 
@@ -8462,7 +8462,7 @@ PostgreSQL can act as a pluggable FederationEngine (DriverClass.PARTIAL) via pos
 
 **Tests:** `tests/unit/test_postgres_federation_engine.py`, `tests/integration/test_postgres_federation_engine_e2e.py`, `tests/integration/test_duckdb_federation_engine_e2e.py`
 
-## 8. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-894 · Deployment Tier Architecture {#REQ-894}
 
@@ -8516,7 +8516,7 @@ Federation engines are declared-capability objects; capabilities are planner inp
 
 **Tests:** `tests/unit/test_engine_capability_traits.py`
 
-## 3. Federation Engines & Data Sources
+## 4. Source Connectors
 
 ### REQ-898 · PostgreSQL Deployment {#REQ-898}
 
@@ -8530,8 +8530,6 @@ Curated, prebuilt catalog of PostgreSQL extensions (sqlite_fdw, parquet_fdw/parq
 
 **Tests:** `tests/unit/test_pg_extension_catalog.py`
 
-## 4. Source Connectors
-
 ### REQ-899 · Federation Engine Abstraction {#REQ-899}
 
 **Status:** ✅ complete · **Priority:** MAY · **Type:** structural
@@ -8543,8 +8541,6 @@ Catalog of DuckDB extensions eligible to back a federation-source connector, eac
 **Code:** `provisa/federation/connector.py`, `provisa/federation/engine.py`
 
 **Tests:** `tests/unit/test_duckdb_community_connectors.py`
-
-## 3. Federation Engines & Data Sources
 
 ### REQ-900 · PostgreSQL Deployment {#REQ-900}
 
@@ -8570,6 +8566,8 @@ pg_duckdb v1.0.0 (bundles DuckDB v1.3.2) is the compatible build for embedded Po
 
 **Tests:** `tests/integration/test_embedded_pg_duckdb_engine_e2e.py`
 
+## 5. Query Languages, Compilation & Operations
+
 ### REQ-902 · Query Compilation {#REQ-902}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
@@ -8581,6 +8579,8 @@ pg_duckdb's transparent execution path cannot emit PostgreSQL 16 nested-JSON syn
 **Code:** `provisa/transpiler/transpile.py`, `provisa/federation/pg_backend.py`
 
 **Tests:** `tests/unit/test_transpile.py`
+
+## 4. Source Connectors
 
 ### REQ-903 · PostgreSQL Deployment {#REQ-903}
 
@@ -8606,6 +8606,8 @@ Federation connectors are self-describing prebuilt definitions; each has an asyn
 
 **Tests:** `tests/unit/test_federation_engine.py`, `tests/integration/test_embedded_pg_duckdb_engine_e2e.py`
 
+## 6. Execution, Routing, Caching & Performance
+
 ### REQ-905 · Query Execution {#REQ-905}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
@@ -8617,6 +8619,8 @@ Cost-based promotion of VIRTUAL/SCAN sources to MATERIALIZED when the source con
 **Code:** `provisa/federation/promote.py`, `provisa/federation/strategy.py`, `provisa/federation/plan.py`
 
 **Tests:** `tests/unit/test_promote.py`
+
+## 4. Source Connectors
 
 ### REQ-906 · Source Connectors {#REQ-906}
 
@@ -8653,8 +8657,6 @@ PgDuckdbIcebergConnector reads Apache Iceberg tables in-place via pg_duckdb's ic
 **Code:** `provisa/federation/connector.py`, `provisa/federation/engine.py`, `scripts/build_pg_duckdb.sh`
 
 **Tests:** `tests/integration/test_embedded_pg_duckdb_iceberg_e2e.py`, `tests/unit/test_pg_duckdb_iceberg_connector.py`
-
-## 4. Source Connectors
 
 ### REQ-909 · Direct-Route Dialect Expansion {#REQ-909}
 
@@ -8718,7 +8720,7 @@ Every query transform — governance (RLS, masking, visibility, row-cap), correl
 
 **Tests:** `tests/unit/test_ast_transform_invariants.py`, `tests/unit/test_ast_transforms.py`, `tests/integration/test_ast_transform_e2e.py`
 
-## 3. Governance & Observability
+## 1. Access Governance & Security
 
 ### REQ-914 · Pipeline Stage Tracing {#REQ-914}
 
@@ -8732,7 +8734,7 @@ Each query-pipeline boundary (govern.in, govern.rls, govern.mask, govern.out, an
 
 **Tests:** `tests/unit/test_stage_trace.py`
 
-## 1. Configuration & Deployment
+## 12. Migration & Compatibility (Hasura)
 
 ### REQ-920 · Config Generation {#REQ-920}
 
@@ -8746,7 +8748,7 @@ The DDN-to-Provisa connector schema converter (ddn/mapper.py, _map_connectors) e
 
 **Tests:** `tests/unit/test_ddn.py`
 
-## 6. Materialized Views & Caching
+## 6. Execution, Routing, Caching & Performance
 
 ### REQ-921 · Promotion Coercion {#REQ-921}
 
@@ -8760,7 +8762,7 @@ An unmapped promotion target_type in API JSONB promotions (provisa/api_source/pr
 
 **Tests:** `tests/unit/test_api_promotions.py`
 
-## 7. Connectors & Source Adapters
+## 9. Live Data & Events
 
 ### REQ-922 · Change Data Capture {#REQ-922}
 
@@ -8774,7 +8776,7 @@ Debezium CDC provider (provisa/subscriptions/debezium_provider.py) uses a stable
 
 **Tests:** `tests/unit/test_debezium_provider.py`, `tests/integration/test_debezium_cdc.py`
 
-## 2. Query Execution & Planning
+## 5. Query Languages, Compilation & Operations
 
 ### REQ-923 · Trino Introspection {#REQ-923}
 
@@ -8864,7 +8866,7 @@ The notification/inbound change signal is independent from the watermark column.
 
 **Tests:** `tests/unit/test_change_signal.py`
 
-## 6. Materialized Views & Caching
+## 6. Execution, Routing, Caching & Performance
 
 ### REQ-930 · Materialization {#REQ-930}
 
@@ -9150,7 +9152,7 @@ The source-creation type dropdown displays the UNION of all possible source type
 
 **Tests:** `tests/unit/test_engine_reach_faces.py`
 
-## 9. Event Processing
+## 9. Live Data & Events
 
 ### REQ-953 · Replica Lifecycle {#REQ-953}
 
@@ -9492,7 +9494,7 @@ The native tier builds a Python VENV at first launch from PyPI (pinned to releas
 
 **Tests:** `tests/unit/test_desktop_install.py`, `tests/unit/test_infra_requirements.py`
 
-## 3. Federation Engines & Data Sources
+## 5. Query Languages, Compilation & Operations
 
 ### REQ-980 · Query Compilation {#REQ-980}
 
@@ -9544,7 +9546,7 @@ A preserved snapshot is a point-in-time dataset that is MATERIALIZED-AND-SEALED 
 
 **Tests:** `tests/unit/test_live_regen_snapshots.py`
 
-## 6. Materialized Views & Caching
+## 6. Execution, Routing, Caching & Performance
 
 ### REQ-984 · Materialized View Lifecycle {#REQ-984}
 
@@ -9558,8 +9560,6 @@ The legacy periodic CTAS materialized-view refresh loop is retired in favor of t
 
 **Tests:** `tests/unit/test_mv_reclamation_loop.py`
 
-## 6. Execution, Routing, Caching & Performance
-
 ### REQ-985 · Cache {#REQ-985}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
@@ -9571,8 +9571,6 @@ When `cache.enabled` is omitted from config, caching defaults to ENABLED. A Cach
 **Code:** `provisa/api/app.py`, `provisa/cache/hot_tables.py`
 
 **Tests:** `tests/unit/test_cache_default_enabled.py`
-
-## 3. Federation Engines & Data Sources
 
 ### REQ-986 · Arrow Flight Transport {#REQ-986}
 
@@ -9610,6 +9608,8 @@ Snowflake federation engine must be promoted from a source-only connector (feder
 
 **Tests:** `tests/unit/test_engine_capabilities.py`, `tests/unit/test_transpiler.py`, `tests/integration/test_snowflake_federation_engine_e2e.py`
 
+## 11. Platform, Infrastructure & Delivery
+
 ### REQ-989 · Platform Defaults {#REQ-989}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
@@ -9621,6 +9621,8 @@ Zero-config default stack must be fully embedded and in-process with no external
 **Code:** `provisa/federation/engine.py`, `provisa/core/desktop_profile.py`, `provisa/core/capabilities.yaml`
 
 **Tests:** `tests/unit/test_duckdb_store_native.py`, `tests/unit/test_federation_engine.py`
+
+## 6. Execution, Routing, Caching & Performance
 
 ### REQ-990 · Materialization Writes {#REQ-990}
 
@@ -9672,7 +9674,7 @@ The content hash used for full-replace ripple suppression is order-independent (
 
 **Tests:** `tests/unit/test_content_hash.py`
 
-## 3. Federation Engines & Data Sources
+## 4. Source Connectors
 
 ### REQ-994 · Data Sources {#REQ-994}
 
@@ -9698,7 +9700,7 @@ Microsoft Fabric federation engine attaches Apache Iceberg data LIVE via OneLake
 
 **Tests:** `tests/unit/test_mssql_warehouse_connectors.py`
 
-## 6. Cross-Source Data Movement
+## 6. Execution, Routing, Caching & Performance
 
 ### REQ-996 · Physical Data Transfer {#REQ-996}
 
@@ -9860,7 +9862,7 @@ Provisa exposes a Model Context Protocol (MCP) server so external AI agents (Cla
 
 **Tests:** `tests/unit/test_mcp_server.py`, `tests/unit/test_mcp_search.py`, `tests/unit/test_mcp_status.py`
 
-## 11. Frontend UI & UX
+## 10. UI & Admin Surfaces
 
 ### REQ-1009 · Component Library Standardization {#REQ-1009}
 
@@ -10604,7 +10606,7 @@ Premium-gated metadata egress: the metadata egress connector is an enterprise/pr
 
 **Tests:** —
 
-## 10. Admin Console & Governance
+## 10. UI & Admin Surfaces
 
 ### REQ-1079 · Admin Configuration {#REQ-1079}
 
@@ -10690,7 +10692,7 @@ Admin navigation consolidates security posture, encryption, authentication, and 
 
 **Tests:** `provisa-ui/src/__tests__/SecurityTab.test.tsx`, `provisa-ui/src/__tests__/EncryptionTab.test.tsx`, `provisa-ui/src/__tests__/LocalUsersTab.test.tsx`
 
-## 15. Proposed Features
+## 1. Access Governance & Security
 
 ### REQ-1086 · Encryption {#REQ-1086}
 
@@ -10752,7 +10754,7 @@ Enterprises can register custom encryption providers (e.g., in-house KMS/HSM end
 
 **Tests:** `tests/unit/test_encryption_providers.py`
 
-## 10. Admin Console & Governance
+## 10. UI & Admin Surfaces
 
 ### REQ-1091 · Admin Configuration {#REQ-1091}
 
@@ -10765,8 +10767,6 @@ Admin encryption tab derives its provider list live from the encryption registry
 **Code:** —
 
 **Tests:** `tests/unit/test_admin_config_tabs.py`, `provisa-ui/src/__tests__/EncryptionTab.test.tsx`
-
-## 11. Frontend UI & UX
 
 ### REQ-1092 · Catalog Explore {#REQ-1092}
 
@@ -10834,7 +10834,7 @@ Live config export/diff/patch — an OPT-IN admin capability, distinct from the 
 
 **Tests:** `tests/unit/test_config_export.py`, `tests/integration/test_settings_router_api.py`
 
-## 7. Connectors & Source Adapters
+## 4. Source Connectors
 
 ### REQ-1097 · Test Coverage {#REQ-1097}
 
@@ -11032,7 +11032,7 @@ Operations refused with a correct Flight protocol error (never a silent no-op). 
 
 **Tests:** `tests/integration/test_airport_service_e2e.py`
 
-## 9. Deployment & Distribution
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1126 · PyPI Distribution {#REQ-1126}
 
@@ -11206,7 +11206,7 @@ A license file is applied via `provisa license apply <file>`, a UI upload in Set
 
 **Tests:** `tests/unit/test_licensing.py`
 
-## 6. Materialized Views & Caching
+## 6. Execution, Routing, Caching & Performance
 
 ### REQ-1140 · Materialized View Governance {#REQ-1140}
 
@@ -11219,8 +11219,6 @@ A materialized view may only be published if all relationships it depends on are
 **Code:** `provisa/api/admin/mv_relationship_gate.py`, `provisa/api/admin/schema_mutation_ops.py`
 
 **Tests:** `tests/unit/test_mv_relationship_gate.py`
-
-## 6. Execution, Routing, Caching & Performance
 
 ### REQ-1141 · Caching {#REQ-1141}
 
@@ -11366,7 +11364,7 @@ A registered relation backed by `view_sql` (a Provisa-managed view or, with mate
 
 **Tests:** `tests/unit/test_view_readonly_writes.py`, `tests/unit/test_visibility.py`
 
-## 9. Installation & Deployment
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1158 · Package Distribution {#REQ-1158}
 
@@ -11379,8 +11377,6 @@ A universal py3-none-any wheel package `provisa-pg-ext` carrying the pinned per-
 **Code:** `packaging/pg-ext/`, `packaging/pg-ext/collect.py`, `scripts/ci/build_pg_extensions.sh`, `scripts/ci/smoke_pg_extensions.py`, `.github/workflows/build-pg-extensions.yml`, `provisa/pg_extensions/staging.py`, `provisa/pg_extensions/catalog.py`, `provisa/federation/fdw_artifact_catalog.py`, `provisa/core/control_plane_pg.py`, `provisa/federation/pg_runtime.py`
 
 **Tests:** `tests/unit/test_pg_ext_staging.py`, `tests/unit/test_pg_extension_catalog.py`, `tests/unit/test_control_plane_pg_staging.py`, `tests/integration/test_embedded_pg_fdw_engine_e2e.py`, `tests/integration/test_embedded_pg_sqlite_fdw_e2e.py`, `tests/integration/test_embedded_pg_duckdb_engine_e2e.py`, `tests/integration/test_pg_runtime_e2e.py`
-
-## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1150 · Embedded CLI Startup {#REQ-1150}
 
@@ -11408,7 +11404,7 @@ Registered commands (tracked functions) MUST be composable INLINE within a large
 
 **Tests:** `tests/integration/test_command_compose_surfaces.py`, `tests/integration/test_command_compose_e2e.py`, `tests/unit/test_command_localize.py`, `tests/unit/test_mcp_server.py`, `tests/unit/test_governed_chokepoint.py`, `tests/e2e/test_transport_contract.py`
 
-## 6. Data Lineage & Provenance
+## 1. Access Governance & Security
 
 ### REQ-1160 · Column-Level Lineage Graph {#REQ-1160}
 
@@ -11604,7 +11600,7 @@ Per-role query complexity limits (max_query_depth, max_query_nodes, max_query_ti
 
 **Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `provisa-ui/e2e/security-query-limits.spec.ts`
 
-## 9. Deployment & Release
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1175 · Release Integrity {#REQ-1175}
 
@@ -11682,7 +11678,7 @@ GenericPgFdwConnector (provisa/federation/custom_connectors.py) emits a bare `CR
 
 **Tests:** `tests/unit/test_custom_connectors.py`
 
-## 9. Deployment & Release
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1181 · Terraform Cloud Deployment {#REQ-1181}
 
@@ -11892,7 +11888,7 @@ JSON:API total_count (meta.total field for pagination) is computed by pushing a 
 
 **Tests:** `tests/integration/test_jsonapi_integration.py`, `tests/unit/test_jsonapi.py`
 
-## 8. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1198 · VM Cloud Deployment {#REQ-1198}
 
@@ -11980,7 +11976,7 @@ Buffered transports (GraphQL, JSON:API, Bolt) surface materialize/CTAS handles v
 
 **Tests:** —
 
-## 8. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1205 · Multi-Protocol Exposure (GCP) {#REQ-1205}
 
@@ -12104,7 +12100,7 @@ Every transport (gRPC, Arrow Flight, airport, GraphQL, JSON:API, Bolt, pgwire) r
 
 **Tests:** `tests/unit/test_governed_chokepoint.py`, `tests/integration/test_grpc_execution.py`
 
-## 8. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1215 · Multi-Protocol Exposure (gRPC) {#REQ-1215}
 
@@ -12156,7 +12152,7 @@ Airport Flight transport drains the single streaming terminal identically to Fli
 
 **Tests:** `tests/integration/test_airport_source_e2e.py`, `tests/integration/test_airport_service_e2e.py`
 
-## 1. Cluster Configuration & Startup
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1219 · First-Run Setup Wizard {#REQ-1219}
 
@@ -12169,8 +12165,6 @@ The first-run setup wizard layers an auth section onto a base config. When no co
 **Code:** `provisa/api/admin/_config_io.py`, `provisa/cli.py`, `scripts/build-wheel.sh`
 
 **Tests:** `tests/unit/test_setup_base_config.py`
-
-## 8. Deployment & Infrastructure
 
 ### REQ-1220 · Demo Deployment Parity {#REQ-1220}
 
@@ -12246,7 +12240,7 @@ Warehouse federation runtimes (Snowflake, Databricks, BigQuery, MSSQL, ClickHous
 
 **Tests:** `tests/integration/test_streaming_memory_bounded_e2e.py`
 
-## 8. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1226 · HTTPS/TLS Configuration {#REQ-1226}
 
@@ -12322,7 +12316,7 @@ Airport Flight do_get routes through the governed_table_scan_stream() terminal, 
 
 **Tests:** `tests/integration/test_airport_service_e2e.py`, `tests/integration/test_streaming_memory_bounded_e2e.py`
 
-## 3. Multi-tenancy & Organization
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1232 · Authentication {#REQ-1232}
 
@@ -12335,8 +12329,6 @@ Every credential (API key / token / session) is scoped to exactly one organizati
 **Code:** `provisa/auth/middleware.py`
 
 **Tests:** `tests/integration/test_auth_org_scoping.py`, `tests/unit/test_auth_middleware.py`
-
-## 9. Multi-Org SaaS Routing
 
 ### REQ-1233 · Org Identity & Subdomain Addressing {#REQ-1233}
 
@@ -12508,7 +12500,7 @@ First verified Firebase login provisions a user_profile record, decoupled from t
 
 **Tests:** `tests/integration/test_firebase_signup.py`, `tests/unit/test_firebase_user_provisioning.py`
 
-## 11. Frontend UI & UX
+## 10. UI & Admin Surfaces
 
 ### REQ-1247 · Authentication {#REQ-1247}
 
@@ -12522,7 +12514,7 @@ Self-service signup landing on cloud.provisa.dev presents two options to a not-l
 
 **Tests:** `provisa-ui/e2e/auth-landing.spec.ts`
 
-## 3. Multi-tenancy & Organization
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1248 · Org Membership {#REQ-1248}
 
@@ -12572,7 +12564,7 @@ Admin approval/denial of org_join_requests. When an admin approves a request, th
 
 **Tests:** `tests/integration/test_org_join_request_approval.py`
 
-## 10. Admin Console & Governance
+## 10. UI & Admin Surfaces
 
 ### REQ-1252 · Org Administration {#REQ-1252}
 
@@ -12586,7 +12578,7 @@ Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pendin
 
 **Tests:** `provisa-ui/e2e/admin-join-requests.spec.ts`
 
-## 8. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1253 · Cloud Load Balancing {#REQ-1253}
 
@@ -12612,7 +12604,7 @@ Web UI must be published on host port 443 across all cloud Terraform deployments
 
 **Tests:** —
 
-## 3. Multi-tenancy & Organization
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1255 · Org Membership {#REQ-1255}
 
@@ -12626,7 +12618,7 @@ During self-service org creation ([REQ-1249](#REQ-1249)), a Firebase user is off
 
 **Tests:** —
 
-## 8. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1256 · Kubernetes Deployment {#REQ-1256}
 
@@ -12675,8 +12667,6 @@ Helm chart cert provisioning must be a values.yaml toggle: supply an existing TL
 **Code:** `charts/provisa/templates/tls-secret.yaml`, `charts/provisa/templates/certificate.yaml`, `charts/provisa/values.yaml`
 
 **Tests:** —
-
-## 9. Testing & QA
 
 ### REQ-1260 · Test Infrastructure {#REQ-1260}
 
@@ -12776,7 +12766,7 @@ A single built image/wheel serves unsecured (demo/none), basic, or firebase/IdP 
 
 **Tests:** —
 
-## 3. Multi-tenancy & Organization
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1268 · Per-Request Multi-Org Data Plane {#REQ-1268}
 
@@ -12900,7 +12890,7 @@ A newly authenticated user belonging to zero orgs is offered three onboarding pa
 
 **Tests:** —
 
-## 4. Deployment & Infrastructure
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1278 · Enterprise Deployment Tenancy Enforcement {#REQ-1278}
 
@@ -12926,8 +12916,6 @@ New terraform/gcp-saas module enables fully-automated multi-tenant SaaS deployme
 
 **Tests:** —
 
-## 11. Platform, Infrastructure & Delivery
-
 ### REQ-1280 · Commercial Positioning {#REQ-1280}
 
 **Status:** ✓ accepted · **Priority:** MAY · **Type:** infrastructure
@@ -12952,7 +12940,7 @@ Gap: today provisa/api/billing/ ([REQ-1075](#REQ-1075), Lemon Squeezy) bills fla
 
 **Tests:** —
 
-## 3. Multi-tenancy & Organization
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1282 · Post-provisioning Welcome Screen {#REQ-1282}
 
@@ -13016,7 +13004,7 @@ The default org ID has a single source of truth from the control plane's resolve
 
 **Tests:** `tests/unit/test_default_org_id_resolution.py`, `provisa-ui/src/__tests__/OnboardGate.test.tsx`
 
-## 3. Multi-tenancy & Organization
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1287 · Org Invitations {#REQ-1287}
 
@@ -13044,7 +13032,7 @@ Before any superadmin exists (bootstrap_superadmin enabled and no superadmin_boo
 
 **Tests:** `tests/integration/test_bootstrap_status.py`, `tests/unit/test_auth_middleware.py`, `provisa-ui/src/__tests__/LoginPage.test.tsx`
 
-## 3. Multi-tenancy & Organization
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1289 · Onboarding {#REQ-1289}
 
@@ -13462,7 +13450,7 @@ The Explore/SQL page generates SQL from semantic objects, not just table structu
 
 **Tests:** `provisa-ui/src/pages/__tests__/metric-explore.test.tsx`, `provisa-ui/src/pages/__tests__/metric-detach.test.tsx`
 
-## 11. Frontend UI & UX
+## 10. UI & Admin Surfaces
 
 ### REQ-1323 · Metrics Management {#REQ-1323}
 
@@ -13668,7 +13656,7 @@ Every authorization or visibility gate — server and UI — must test a CAPABIL
 
 **Tests:** `tests/unit/test_rights.py`, `tests/unit/test_governance.py`, `tests/unit/test_auth_middleware.py`, `tests/integration/test_auth_integration.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/auth-providers.spec.ts`
 
-## 3. Multi-tenancy & Organization
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1338 · Schema Caching {#REQ-1338}
 
@@ -13681,8 +13669,6 @@ Schema build cache (domains, tables, column_types rows) is per-org state on OrgR
 **Code:** `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/api/data/sdl.py`
 
 **Tests:** `tests/unit/test_org_runtime.py`
-
-## 2. Data Loading & Federation
 
 ### REQ-1339 · Data Source Management {#REQ-1339}
 
@@ -13710,7 +13696,7 @@ Control-plane role resolution (the set of roles holding cross_org) must not depe
 
 **Tests:** `tests/integration/test_governance_integration.py`, `tests/integration/test_org_demo_seed_visible.py`
 
-## 11. Frontend UI & UX
+## 10. UI & Admin Surfaces
 
 ### REQ-1341 · Internationalization {#REQ-1341}
 
@@ -13736,7 +13722,7 @@ UI language is selected solely from the browser's navigator.language setting (re
 
 **Tests:** `provisa-ui/e2e/i18n.spec.ts`
 
-## 5. Multi-Tenancy & Org Isolation
+## 13. Multi-Tenancy & Organizations
 
 ### REQ-1343 · Isolated Federation Engine {#REQ-1343}
 
@@ -13786,7 +13772,7 @@ The dedicated federation-engine cluster idles/sleeps between sessions like the s
 
 **Tests:** `tests/unit/test_isolated_engine_routing.py`
 
-## 6. Testing & Validation
+## 11. Platform, Infrastructure & Delivery
 
 ### REQ-1347 · Test Infrastructure {#REQ-1347}
 
@@ -13826,7 +13812,7 @@ Org-scoped admin rights define two new capabilities: `org_settings` (surfaces wh
 
 **Tests:** `tests/unit/test_org_scoped_admin_rights.py`, `tests/integration/test_tenancy_role_grants.py`, `tests/integration/test_org_settings_overrides.py`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`
 
-## 11. Frontend UI & UX
+## 10. UI & Admin Surfaces
 
 ### REQ-1350 · Internationalization {#REQ-1350}
 
@@ -13865,3 +13851,17 @@ The definitions of the two system admin roles—platform_admin and org_admin—b
 **Code:** `provisa/core/schema.sql`, `provisa/core/repositories/role.py`
 
 **Tests:** `tests/unit/test_platform_admin_no_data_rights.py`
+
+## 0. Architecture & Design Principles
+
+### REQ-1353 · Requirements Taxonomy {#REQ-1353}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+Requirement groups are a closed canonical enumeration defined in docs/arch/groups.yaml. Every requirement's `group` field must exactly match a name in that file. New groups must be added to groups.yaml (with a scope line) before use. Non-canonical group strings are rejected by provisa/tools/req_schema.py (Pydantic field validator) and caught by scripts/validate_requirements.py in CI.
+
+**Use case:** Prevents free-text group drift that caused 45 variant strings to accumulate across the requirements corpus. A closed canonical enumeration with schema enforcement ensures all requirements are consistently categorized and discoverable under a stable set of high-level design areas.
+
+**Code:** `docs/arch/groups.yaml`, `provisa/tools/req_schema.py`, `scripts/validate_requirements.py`
+
+**Tests:** —

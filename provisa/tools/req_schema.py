@@ -7,11 +7,20 @@
 from __future__ import annotations
 
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
 import yaml
 from pydantic import BaseModel, field_validator, model_validator
+
+_GROUPS_YAML = Path(__file__).resolve().parents[2] / "docs" / "arch" / "groups.yaml"
+
+
+@lru_cache(maxsize=1)
+def canonical_groups() -> frozenset[str]:
+    raw = yaml.safe_load(_GROUPS_YAML.read_text())
+    return frozenset(g["name"] for g in raw["groups"])
 
 
 class Status(str, Enum):
@@ -96,6 +105,15 @@ class Requirement(BaseModel):
     def id_format(cls, v: str) -> str:
         if not v.startswith("REQ-") or not v[4:].isdigit():
             raise ValueError(f"id must be REQ-NNN, got {v!r}")
+        return v
+
+    @field_validator("group")
+    @classmethod
+    def group_canonical(cls, v: str) -> str:
+        if v not in canonical_groups():
+            raise ValueError(
+                f"group {v!r} is not in docs/arch/groups.yaml — use a canonical group"
+            )
         return v
 
     @field_validator("since")

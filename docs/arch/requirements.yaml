@@ -18373,7 +18373,7 @@
 - id: REQ-684
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -18401,7 +18401,7 @@
 - id: REQ-685
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -18429,7 +18429,7 @@
 - id: REQ-686
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -18481,7 +18481,7 @@
 - id: REQ-687
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -18531,7 +18531,7 @@
 - id: REQ-688
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -18558,7 +18558,7 @@
 - id: REQ-689
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -18585,7 +18585,7 @@
 - id: REQ-690
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: MAY
   type: structural
@@ -18649,7 +18649,7 @@
 - id: REQ-691
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: MAY
   type: structural
@@ -18683,7 +18683,7 @@
 - id: REQ-692
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: MAY
   type: structural
@@ -18718,7 +18718,7 @@
 - id: REQ-693
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: MAY
   type: constraint
@@ -18754,7 +18754,7 @@
 - id: REQ-694
   status: complete
   since: 2026-07
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -19011,7 +19011,7 @@
   - REQ-828
 - id: REQ-703
   status: complete
-  group: 10. Execution & Query Planning
+  group: 6. Execution, Routing, Caching & Performance
   category: High Availability
   priority: MUST
   type: infrastructure
@@ -19139,7 +19139,7 @@
   - tests/unit/test_mv_tenant_isolation.py
 - id: REQ-713
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -19168,7 +19168,7 @@
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
 - id: REQ-714
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -19193,7 +19193,7 @@
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
 - id: REQ-715
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -19218,7 +19218,7 @@
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
 - id: REQ-716
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -19244,7 +19244,7 @@
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
 - id: REQ-717
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -19268,7 +19268,7 @@
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
 - id: REQ-718
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: MUST
   type: constraint
@@ -19291,7 +19291,7 @@
     '
 - id: REQ-719
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -19316,7 +19316,7 @@
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
 - id: REQ-720
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -21501,7 +21501,7 @@
   - data-engineer
 - id: REQ-792
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -21535,7 +21535,7 @@
   - data-engineer
 - id: REQ-793
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -21568,7 +21568,7 @@
   - data-engineer
 - id: REQ-794
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -21604,7 +21604,7 @@
   - data-engineer
 - id: REQ-795
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -21637,7 +21637,7 @@
   - data-engineer
 - id: REQ-796
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -21671,7 +21671,7 @@
   - data-engineer
 - id: REQ-797
   status: complete
-  group: 10. Graph Export
+  group: 7. Result Delivery
   category: Neo4j Export
   priority: SHOULD
   type: behavioral
@@ -21749,7 +21749,7 @@
   - data-engineer
 - id: REQ-799
   status: complete
-  group: 6. Query Interfaces & Explorers
+  group: 10. UI & Admin Surfaces
   category: UI Explorer Pages
   priority: SHOULD
   type: ui
@@ -21789,7 +21789,7 @@
   - app-developer
 - id: REQ-800
   status: complete
-  group: 6. Query Interfaces & Explorers
+  group: 10. UI & Admin Surfaces
   category: UI Explorer Pages
   priority: SHOULD
   type: ui
@@ -21831,7 +21831,7 @@
   - app-developer
 - id: REQ-801
   status: complete
-  group: 6. Query Interfaces & Explorers
+  group: 10. UI & Admin Surfaces
   category: UI Explorer Pages
   priority: SHOULD
   type: ui
@@ -21873,7 +21873,7 @@
   - app-developer
 - id: REQ-802
   status: complete
-  group: 4. Query Languages, Compilation & Operations
+  group: 8. Client Access & Protocols
   category: Protocol Support
   priority: MUST
   type: behavioral
@@ -21921,7 +21921,7 @@
   - data-engineer
 - id: REQ-803
   status: complete
-  group: 4. Query Languages, Compilation & Operations
+  group: 8. Client Access & Protocols
   category: Protocol Support
   priority: MUST
   type: structural
@@ -21965,7 +21965,7 @@
   - app-developer
 - id: REQ-804
   status: complete
-  group: 4. Query Languages, Compilation & Operations
+  group: 8. Client Access & Protocols
   category: Protocol Support
   priority: MUST
   type: structural
@@ -21995,7 +21995,7 @@
   - app-developer
 - id: REQ-805
   status: complete
-  group: 6. Query Interfaces & Explorers
+  group: 10. UI & Admin Surfaces
   category: UI Explorer Pages
   priority: SHOULD
   type: ui
@@ -22025,7 +22025,7 @@
   - app-developer
 - id: REQ-806
   status: complete
-  group: 3. Data Storage & Indexing
+  group: 8. Client Access & Protocols
   category: Bolt Protocol
   priority: MUST
   type: structural
@@ -22324,7 +22324,7 @@
 - id: REQ-815
   status: complete
   since: 2026-07
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Docker Compose Organization
   priority: MUST
   type: infrastructure
@@ -22350,7 +22350,7 @@
 - id: REQ-816
   status: complete
   since: 2026-07
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Docker Compose Organization
   priority: SHOULD
   type: infrastructure
@@ -22377,7 +22377,7 @@
   - data-engineer
 - id: REQ-817
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Trino Memory Management
   priority: MUST
   type: infrastructure
@@ -22448,7 +22448,7 @@
   - compliance
 - id: REQ-819
   status: complete
-  group: 6. Real-Time & Live Data
+  group: 9. Live Data & Events
   category: Live Delivery Configuration
   priority: MUST
   type: behavioral
@@ -22488,7 +22488,7 @@
   - data-engineer
 - id: REQ-820
   status: complete
-  group: 6. Real-Time & Live Data
+  group: 9. Live Data & Events
   category: Live Query Routing
   priority: MUST
   type: behavioral
@@ -22517,7 +22517,7 @@
   - data-engineer
 - id: REQ-821
   status: complete
-  group: 6. Real-Time & Live Data
+  group: 9. Live Data & Events
   category: Live Delivery Mechanisms
   priority: MUST
   type: constraint
@@ -22547,7 +22547,7 @@
   - ops
 - id: REQ-822
   status: complete
-  group: 6. Real-Time & Live Data
+  group: 9. Live Data & Events
   category: Live Delivery Mechanisms
   priority: MUST
   type: constraint
@@ -22582,7 +22582,7 @@
   - ops
 - id: REQ-823
   status: complete
-  group: 6. Real-Time & Live Data
+  group: 9. Live Data & Events
   category: Live Delivery Configuration
   priority: MUST
   type: behavioral
@@ -22619,7 +22619,7 @@
   - data-engineer
 - id: REQ-824
   status: complete
-  group: 6. Real-Time & Live Data
+  group: 9. Live Data & Events
   category: Live Delivery Mechanisms
   priority: MUST
   type: behavioral
@@ -24025,7 +24025,7 @@
 - id: REQ-862
   status: complete
   since: 2026-07
-  group: 5. Data Lineage & Provenance
+  group: 1. Access Governance & Security
   category: Column-Level Trace Instrumentation
   priority: MUST
   type: structural
@@ -24723,7 +24723,7 @@
   scenario: Given an MV with row-level delta capture enabled When the MV refreshes with rows inserted/updated/deleted
     since the prior refresh Then the delta ledger records the insert/update/delete rows under that refresh
     version, and an opt-out MV writes no ledger entries
-  group: 5. Data Lineage & Provenance
+  group: 1. Access Governance & Security
   category: Row-Level Delta Capture
   priority: MAY
   type: behavioral
@@ -24783,7 +24783,7 @@
     1..N When a caller reconstructs the MV as of version K (K<N) via forward-fold from base or reverse
     from the live table Then the reconstructed rows equal the MV state as of version K, and reconstructing
     an unknown version fails loud
-  group: 5. Data Lineage & Provenance
+  group: 1. Access Governance & Security
   category: Point-In-Time Reconstruction
   priority: MAY
   type: behavioral
@@ -25113,7 +25113,7 @@
   - provisa/audit/query_log.py
   tests:
   - tests/unit/test_ops_domain.py
-  group: 3. Governance & Observability
+  group: 1. Access Governance & Security
   category: Observability
   priority: MUST
   type: behavioral
@@ -25231,7 +25231,7 @@
 - id: REQ-886
   status: complete
   since: 2026-07
-  group: 3. Governance & Observability
+  group: 1. Access Governance & Security
   category: Observability
   priority: MUST
   type: behavioral
@@ -25352,7 +25352,7 @@
   tests:
   - tests/unit/test_arch_invariants.py
   target: 2026-Q4
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Deployment Tier Architecture
   priority: MUST
   type: constraint
@@ -25605,7 +25605,7 @@
   tests:
   - tests/unit/test_arch_invariants.py
   target: 2026-Q4
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Deployment Tier Architecture
   priority: SHOULD
   type: constraint
@@ -25756,7 +25756,7 @@
   tests:
   - tests/unit/test_pg_extension_catalog.py
   target: 2026-Q4
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: PostgreSQL Deployment
   priority: SHOULD
   type: infrastructure
@@ -25890,7 +25890,7 @@
   status: complete
   since: 2026-07
   target: 2026-Q4
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: PostgreSQL Deployment
   priority: MUST
   type: infrastructure
@@ -25929,7 +25929,7 @@
 - id: REQ-901
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: PostgreSQL Deployment
   priority: MUST
   type: infrastructure
@@ -25953,7 +25953,7 @@
 - id: REQ-902
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 5. Query Languages, Compilation & Operations
   category: Query Compilation
   priority: MUST
   type: constraint
@@ -25987,7 +25987,7 @@
 - id: REQ-903
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: PostgreSQL Deployment
   priority: MUST
   type: behavioral
@@ -26015,7 +26015,7 @@
 - id: REQ-904
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: PostgreSQL Deployment
   priority: MUST
   type: behavioral
@@ -26054,7 +26054,7 @@
 - id: REQ-905
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 6. Execution, Routing, Caching & Performance
   category: Query Execution
   priority: SHOULD
   type: behavioral
@@ -26090,7 +26090,7 @@
 - id: REQ-906
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: structural
@@ -26129,7 +26129,7 @@
 - id: REQ-907
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: Source Connectors
   priority: MUST
   type: behavioral
@@ -26176,7 +26176,7 @@
 - id: REQ-908
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: Source Connectors
   priority: MUST
   type: behavioral
@@ -26409,7 +26409,7 @@
 - id: REQ-914
   status: complete
   since: 2026-07
-  group: 3. Governance & Observability
+  group: 1. Access Governance & Security
   category: Pipeline Stage Tracing
   priority: SHOULD
   type: behavioral
@@ -26455,7 +26455,7 @@
 - id: REQ-920
   status: complete
   since: 2026-07
-  group: 1. Configuration & Deployment
+  group: 12. Migration & Compatibility (Hasura)
   category: Config Generation
   priority: MUST
   type: structural
@@ -26473,7 +26473,7 @@
 - id: REQ-921
   status: complete
   since: 2026-07
-  group: 6. Materialized Views & Caching
+  group: 6. Execution, Routing, Caching & Performance
   category: Promotion Coercion
   priority: MUST
   type: behavioral
@@ -26502,7 +26502,7 @@
 - id: REQ-922
   status: complete
   since: 2026-07
-  group: 7. Connectors & Source Adapters
+  group: 9. Live Data & Events
   category: Change Data Capture
   priority: MUST
   type: behavioral
@@ -26531,7 +26531,7 @@
 - id: REQ-923
   status: complete
   since: 2026-07
-  group: 2. Query Execution & Planning
+  group: 5. Query Languages, Compilation & Operations
   category: Trino Introspection
   priority: MUST
   type: behavioral
@@ -26691,7 +26691,7 @@
 - id: REQ-930
   status: complete
   since: 2026-07
-  group: 6. Materialized Views & Caching
+  group: 6. Execution, Routing, Caching & Performance
   category: Materialization
   priority: MUST
   type: behavioral
@@ -27365,7 +27365,7 @@
 - id: REQ-953
   status: complete
   since: 2026-07
-  group: 9. Event Processing
+  group: 9. Live Data & Events
   category: Replica Lifecycle
   priority: MUST
   type: behavioral
@@ -28492,7 +28492,7 @@
 - id: REQ-980
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 5. Query Languages, Compilation & Operations
   category: Query Compilation
   priority: SHOULD
   type: structural
@@ -28706,7 +28706,7 @@
 - id: REQ-984
   status: complete
   since: 2026-07
-  group: 6. Materialized Views & Caching
+  group: 6. Execution, Routing, Caching & Performance
   category: Materialized View Lifecycle
   priority: SHOULD
   type: structural
@@ -28768,7 +28768,7 @@
   - tests/unit/test_native_arrow_transport.py
   - tests/integration/test_clickhouse_runtime_e2e.py
   - tests/integration/test_arrow_flight_integration.py
-  group: 3. Federation Engines & Data Sources
+  group: 6. Execution, Routing, Caching & Performance
   category: Arrow Flight Transport
   priority: MUST
   type: behavioral
@@ -28812,7 +28812,7 @@
   - tests/unit/test_engine_capabilities.py
   - tests/integration/test_databricks_federation_engine_e2e.py
   - tests/integration/test_databricks_external_link_e2e.py
-  group: 3. Federation Engines & Data Sources
+  group: 6. Execution, Routing, Caching & Performance
   category: Arrow Flight Transport
   priority: MUST
   type: behavioral
@@ -28873,7 +28873,7 @@
   - tests/unit/test_transpiler.py
   - tests/integration/test_snowflake_federation_engine_e2e.py
   target: 2026-Q4
-  group: 3. Federation Engines & Data Sources
+  group: 6. Execution, Routing, Caching & Performance
   category: Arrow Flight Transport
   priority: MUST
   type: behavioral
@@ -28912,7 +28912,7 @@
   - tests/unit/test_federation_engine.py
   since: 2026-07
   target: 2026-Q3
-  group: 3. Federation Engines & Data Sources
+  group: 11. Platform, Infrastructure & Delivery
   category: Platform Defaults
   priority: SHOULD
   type: structural
@@ -28957,7 +28957,7 @@
   tests:
   - tests/unit/test_store_writer.py
   - tests/unit/test_databricks_store.py
-  group: 3. Federation Engines & Data Sources
+  group: 6. Execution, Routing, Caching & Performance
   category: Materialization Writes
   priority: MUST
   type: behavioral
@@ -29064,7 +29064,7 @@
 - id: REQ-994
   status: complete
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: Data Sources
   priority: SHOULD
   type: structural
@@ -29086,7 +29086,7 @@
   tests:
   - tests/unit/test_mssql_warehouse_connectors.py
   since: 2026-07
-  group: 3. Federation Engines & Data Sources
+  group: 4. Source Connectors
   category: Federation Engine Capabilities
   priority: SHOULD
   type: behavioral
@@ -29118,7 +29118,7 @@
   status: complete
   since: 2026-07
   target: 2026-Q3
-  group: 6. Cross-Source Data Movement
+  group: 6. Execution, Routing, Caching & Performance
   category: Physical Data Transfer
   priority: MUST
   type: behavioral
@@ -29161,7 +29161,7 @@
   status: complete
   since: 2026-07
   target: 2026-Q3
-  group: 6. Cross-Source Data Movement
+  group: 6. Execution, Routing, Caching & Performance
   category: Execution Routing
   priority: MUST
   type: behavioral
@@ -29203,7 +29203,7 @@
   status: complete
   since: 2026-07
   target: 2026-Q3
-  group: 6. Cross-Source Data Movement
+  group: 6. Execution, Routing, Caching & Performance
   category: Name Resolution
   priority: MUST
   type: constraint
@@ -29235,7 +29235,7 @@
   status: complete
   since: 2026-07
   target: 2026-Q3
-  group: 6. Cross-Source Data Movement
+  group: 6. Execution, Routing, Caching & Performance
   category: Name Resolution
   priority: MUST
   type: constraint
@@ -29278,7 +29278,7 @@
   status: complete
   since: 2026-07
   target: 2026-Q3
-  group: 6. Cross-Source Data Movement
+  group: 6. Execution, Routing, Caching & Performance
   category: Name Resolution
   priority: MUST
   type: behavioral
@@ -29316,7 +29316,7 @@
   status: complete
   since: 2026-07
   target: 2026-Q3
-  group: 6. Cross-Source Data Movement
+  group: 6. Execution, Routing, Caching & Performance
   category: Transaction Safety
   priority: SHOULD
   type: constraint
@@ -29343,7 +29343,7 @@
   status: complete
   since: 2026-07
   target: 2026-Q3
-  group: 6. Cross-Source Data Movement
+  group: 6. Execution, Routing, Caching & Performance
   category: Type Coercion
   priority: SHOULD
   type: behavioral
@@ -29382,7 +29382,7 @@
   - provisa/core/models.py
   tests:
   - tests/unit/test_scheduled_sql.py
-  group: 6. Cross-Source Data Movement
+  group: 6. Execution, Routing, Caching & Performance
   category: Scheduled Execution
   priority: SHOULD
   type: behavioral
@@ -29410,7 +29410,7 @@
   - provisa/scheduler/templating.py
   tests:
   - tests/unit/test_scheduled_sql.py
-  group: 6. Cross-Source Data Movement
+  group: 6. Execution, Routing, Caching & Performance
   category: Template Substitution
   priority: SHOULD
   type: behavioral
@@ -29635,7 +29635,7 @@
 - id: REQ-1009
   status: complete
   since: 2026-07
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Component Library Standardization
   priority: MUST
   type: structural
@@ -29652,7 +29652,7 @@
 - id: REQ-1010
   status: complete
   since: 2026-07
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Design System
   priority: SHOULD
   type: structural
@@ -29668,7 +29668,7 @@
 - id: REQ-1011
   status: complete
   since: 2026-07
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Theming
   priority: SHOULD
   type: behavioral
@@ -29695,7 +29695,7 @@
 - id: REQ-1012
   status: complete
   since: 2026-07
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Internationalization
   priority: SHOULD
   type: behavioral
@@ -29724,7 +29724,7 @@
 - id: REQ-1013
   status: complete
   since: 2026-07
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Accessibility
   priority: MUST
   type: constraint
@@ -29744,7 +29744,7 @@
 - id: REQ-1014
   status: complete
   since: 2026-07
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Accessibility
   priority: MUST
   type: behavioral
@@ -29770,7 +29770,7 @@
 - id: REQ-1016
   status: complete
   since: 2026-07
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Testing
   priority: MUST
   type: constraint
@@ -30935,7 +30935,7 @@
   tests:
   - tests/unit/test_admin_config_tabs.py
   - provisa-ui/src/__tests__/SecurityTab.test.tsx
-  group: 10. Admin Console & Governance
+  group: 10. UI & Admin Surfaces
   category: Admin Configuration
   priority: SHOULD
   type: ui
@@ -30950,7 +30950,7 @@
   tests:
   - tests/unit/test_admin_config_tabs.py
   - provisa-ui/src/__tests__/AiModelsTab.test.tsx
-  group: 10. Admin Console & Governance
+  group: 10. UI & Admin Surfaces
   category: Admin Configuration
   priority: SHOULD
   type: ui
@@ -30968,7 +30968,7 @@
   status: complete
   tests:
   - tests/unit/test_admin_config_tabs.py
-  group: 10. Admin Console & Governance
+  group: 10. UI & Admin Surfaces
   category: Admin Configuration
   priority: SHOULD
   type: ui
@@ -30983,7 +30983,7 @@
   status: complete
   tests:
   - tests/unit/test_admin_config_tabs.py
-  group: 10. Admin Console & Governance
+  group: 10. UI & Admin Surfaces
   category: Admin Configuration
   priority: SHOULD
   type: ui
@@ -30998,7 +30998,7 @@
   status: complete
   tests:
   - tests/unit/test_admin_config_tabs.py
-  group: 10. Admin Console & Governance
+  group: 10. UI & Admin Surfaces
   category: Admin Configuration
   priority: SHOULD
   type: ui
@@ -31012,7 +31012,7 @@
   status: complete
   tests:
   - tests/unit/test_admin_config_tabs.py
-  group: 10. Admin Console & Governance
+  group: 10. UI & Admin Surfaces
   category: Admin Configuration
   priority: SHOULD
   type: ui
@@ -31028,7 +31028,7 @@
   - provisa-ui/src/__tests__/SecurityTab.test.tsx
   - provisa-ui/src/__tests__/EncryptionTab.test.tsx
   - provisa-ui/src/__tests__/LocalUsersTab.test.tsx
-  group: 10. Admin Console & Governance
+  group: 10. UI & Admin Surfaces
   category: Admin Navigation
   priority: SHOULD
   type: ui
@@ -31040,7 +31040,7 @@
   status: complete
   tests:
   - tests/unit/test_encryption_providers.py
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -31060,7 +31060,7 @@
   status: complete
   tests:
   - tests/unit/test_encryption_providers.py
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -31077,7 +31077,7 @@
   status: complete
   tests:
   - tests/unit/test_encryption_providers.py
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -31094,7 +31094,7 @@
   status: complete
   tests:
   - tests/unit/test_encryption_providers.py
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: structural
@@ -31109,7 +31109,7 @@
   - REQ-684
 - id: REQ-1090
   status: complete
-  group: 15. Proposed Features
+  group: 1. Access Governance & Security
   category: Encryption
   priority: SHOULD
   type: behavioral
@@ -31137,7 +31137,7 @@
   tests:
   - tests/unit/test_admin_config_tabs.py
   - provisa-ui/src/__tests__/EncryptionTab.test.tsx
-  group: 10. Admin Console & Governance
+  group: 10. UI & Admin Surfaces
   category: Admin Configuration
   priority: SHOULD
   type: ui
@@ -31153,7 +31153,7 @@
   status: complete
   tests:
   - tests/unit/test_mcp_chat.py
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Catalog Explore
   priority: SHOULD
   type: ui
@@ -31389,7 +31389,7 @@
 - id: REQ-1097
   status: complete
   since: 2026-07
-  group: 7. Connectors & Source Adapters
+  group: 4. Source Connectors
   category: Test Coverage
   priority: MUST
   type: constraint
@@ -31817,7 +31817,7 @@
 - id: REQ-1126
   status: complete
   since: 2026-07
-  group: 9. Deployment & Distribution
+  group: 11. Platform, Infrastructure & Delivery
   category: PyPI Distribution
   priority: MUST
   type: infrastructure
@@ -31841,7 +31841,7 @@
 - id: REQ-1127
   status: complete
   since: 2026-07
-  group: 9. Deployment & Distribution
+  group: 11. Platform, Infrastructure & Delivery
   category: UI Packaging
   priority: MUST
   type: structural
@@ -31867,7 +31867,7 @@
 - id: REQ-1128
   status: complete
   since: 2026-07
-  group: 9. Deployment & Distribution
+  group: 11. Platform, Infrastructure & Delivery
   category: Console Entry Point
   priority: SHOULD
   type: structural
@@ -31888,7 +31888,7 @@
 - id: REQ-1129
   status: complete
   since: 2026-07
-  group: 9. Deployment & Distribution
+  group: 11. Platform, Infrastructure & Delivery
   category: Embedded Profile Dependencies
   priority: MUST
   type: constraint
@@ -31913,7 +31913,7 @@
 - id: REQ-1130
   status: complete
   since: 2026-07
-  group: 9. Deployment & Distribution
+  group: 11. Platform, Infrastructure & Delivery
   category: Mirror Preparation
   priority: SHOULD
   type: constraint
@@ -32217,7 +32217,7 @@
   status: complete
   since: 2026-07
   target: 2026-Q3
-  group: 6. Materialized Views & Caching
+  group: 6. Execution, Routing, Caching & Performance
   category: Materialized View Governance
   priority: MUST
   type: constraint
@@ -32885,7 +32885,7 @@
   - REQ-032
 - id: REQ-1158
   status: complete
-  group: 9. Installation & Deployment
+  group: 11. Platform, Infrastructure & Delivery
   category: Package Distribution
   priority: MUST
   type: infrastructure
@@ -33081,7 +33081,7 @@
   - REQ-940
 - id: REQ-1160
   status: complete
-  group: 6. Data Lineage & Provenance
+  group: 1. Access Governance & Security
   category: Column-Level Lineage Graph
   priority: MUST
   type: behavioral
@@ -33147,7 +33147,7 @@
   - REQ-862
 - id: REQ-1161
   status: complete
-  group: 6. Data Lineage & Provenance
+  group: 1. Access Governance & Security
   category: Federation-Wide Provenance Graph
   priority: MUST
   type: behavioral
@@ -33715,7 +33715,7 @@
     then executing queries through the data endpoint to confirm 413 rejection when limits are exceeded.'
 - id: REQ-1175
   status: complete
-  group: 9. Deployment & Release
+  group: 11. Platform, Infrastructure & Delivery
   category: Release Integrity
   priority: MUST
   type: constraint
@@ -34002,7 +34002,7 @@
 - id: REQ-1181
   status: complete
   since: 2026-07
-  group: 9. Deployment & Release
+  group: 11. Platform, Infrastructure & Delivery
   category: Terraform Cloud Deployment
   priority: SHOULD
   type: infrastructure
@@ -34020,7 +34020,7 @@
 - id: REQ-1182
   status: complete
   since: 2026-07
-  group: 9. Deployment & Release
+  group: 11. Platform, Infrastructure & Delivery
   category: Identity Provider Configuration
   priority: SHOULD
   type: behavioral
@@ -34048,7 +34048,7 @@
 - id: REQ-1183
   status: complete
   since: 2026-07
-  group: 9. Deployment & Release
+  group: 11. Platform, Infrastructure & Delivery
   category: Linux Installation & Systemd Integration
   priority: MUST
   type: infrastructure
@@ -34077,7 +34077,7 @@
 - id: REQ-1184
   status: complete
   since: 2026-07
-  group: 9. Deployment & Release
+  group: 11. Platform, Infrastructure & Delivery
   category: Linux Installation & Systemd Integration
   priority: SHOULD
   type: infrastructure
@@ -34507,7 +34507,7 @@
     actual governance rules applied and result materialization monitored.
 - id: REQ-1198
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: VM Cloud Deployment
   priority: MUST
   type: infrastructure
@@ -34521,7 +34521,7 @@
   since: 2026-07
 - id: REQ-1199
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: VM Cloud Deployment
   priority: MUST
   type: infrastructure
@@ -34535,7 +34535,7 @@
   since: 2026-07
 - id: REQ-1200
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: VM Cloud Deployment
   priority: MUST
   type: structural
@@ -34549,7 +34549,7 @@
   since: 2026-07
 - id: REQ-1201
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: VM Cloud Deployment
   priority: MUST
   type: infrastructure
@@ -34562,7 +34562,7 @@
   since: 2026-07
 - id: REQ-1202
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: VM Cloud Deployment
   priority: MUST
   type: infrastructure
@@ -34643,7 +34643,7 @@
     '
 - id: REQ-1205
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (GCP)
   priority: MUST
   type: infrastructure
@@ -34667,7 +34667,7 @@
     '
 - id: REQ-1206
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (GCP)
   priority: MUST
   type: structural
@@ -34700,7 +34700,7 @@
     '
 - id: REQ-1207
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (GCP)
   priority: MUST
   type: infrastructure
@@ -34723,7 +34723,7 @@
     '
 - id: REQ-1208
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (GCP)
   priority: MUST
   type: infrastructure
@@ -34752,7 +34752,7 @@
     '
 - id: REQ-1209
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (GCP)
   priority: MUST
   type: infrastructure
@@ -34776,7 +34776,7 @@
     '
 - id: REQ-1210
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (GCP)
   priority: SHOULD
   type: constraint
@@ -34805,7 +34805,7 @@
     '
 - id: REQ-1211
   status: accepted
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Linux AppImage Deployment
   priority: MUST
   type: constraint
@@ -34831,7 +34831,7 @@
     '
 - id: REQ-1212
   status: accepted
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Docker Image Build
   priority: MUST
   type: constraint
@@ -34857,7 +34857,7 @@
     '
 - id: REQ-1213
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: VM Cloud Deployment
   priority: MUST
   type: infrastructure
@@ -34917,7 +34917,7 @@
     '
 - id: REQ-1215
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (gRPC)
   priority: MUST
   type: behavioral
@@ -34949,7 +34949,7 @@
     '
 - id: REQ-1216
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Multi-Protocol Exposure (Arrow Flight)
   priority: MUST
   type: behavioral
@@ -35049,7 +35049,7 @@
     '
 - id: REQ-1219
   status: complete
-  group: 1. Cluster Configuration & Startup
+  group: 11. Platform, Infrastructure & Delivery
   category: First-Run Setup Wizard
   priority: MUST
   type: constraint
@@ -35085,7 +35085,7 @@
     '
 - id: REQ-1220
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Demo Deployment Parity
   priority: MUST
   type: infrastructure
@@ -35332,7 +35332,7 @@
     '
 - id: REQ-1226
   status: proposed
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: HTTPS/TLS Configuration
   priority: MUST
   type: infrastructure
@@ -35362,7 +35362,7 @@
     '
 - id: REQ-1227
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Clustered Deployment Configuration
   priority: MUST
   type: infrastructure
@@ -35399,7 +35399,7 @@
     '
 - id: REQ-1228
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: HTTPS/TLS Configuration
   priority: MUST
   type: infrastructure
@@ -35454,7 +35454,7 @@
     '
 - id: REQ-1229
   status: proposed
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Clustered Deployment Configuration
   priority: MUST
   type: constraint
@@ -35496,7 +35496,7 @@
     '
 - id: REQ-1230
   status: proposed
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Clustered Deployment Configuration
   priority: MUST
   type: infrastructure
@@ -35597,7 +35597,7 @@
     '
 - id: REQ-1232
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Authentication
   priority: MUST
   type: constraint
@@ -35631,7 +35631,7 @@
     '
 - id: REQ-1233
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Org Identity & Subdomain Addressing
   priority: MUST
   type: infrastructure
@@ -35667,7 +35667,7 @@
     '
 - id: REQ-1234
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Org Identity & Subdomain Addressing
   priority: MUST
   type: behavioral
@@ -35702,7 +35702,7 @@
     '
 - id: REQ-1235
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Org Identity & Subdomain Addressing
   priority: MUST
   type: constraint
@@ -35753,7 +35753,7 @@
     '
 - id: REQ-1236
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Org Identity & Subdomain Addressing
   priority: MUST
   type: constraint
@@ -35784,7 +35784,7 @@
     '
 - id: REQ-1237
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Org Identity & Subdomain Addressing
   priority: MUST
   type: behavioral
@@ -35833,7 +35833,7 @@
     '
 - id: REQ-1238
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Org Identity & Subdomain Addressing
   priority: MUST
   type: constraint
@@ -35875,7 +35875,7 @@
     '
 - id: REQ-1239
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Deployment & Infrastructure
   priority: MUST
   type: infrastructure
@@ -35920,7 +35920,7 @@
     '
 - id: REQ-1240
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Deployment & Infrastructure
   priority: MUST
   type: infrastructure
@@ -35955,7 +35955,7 @@
     '
 - id: REQ-1241
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Deployment & Infrastructure
   priority: MUST
   type: constraint
@@ -35996,7 +35996,7 @@
     '
 - id: REQ-1242
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Deployment & Infrastructure
   priority: SHOULD
   type: behavioral
@@ -36042,7 +36042,7 @@
     '
 - id: REQ-1243
   status: accepted
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Deployment & Infrastructure
   priority: MUST
   type: structural
@@ -36086,7 +36086,7 @@
     '
 - id: REQ-1244
   status: proposed
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Deployment & Infrastructure
   priority: SHOULD
   type: constraint
@@ -36129,7 +36129,7 @@
     '
 - id: REQ-1245
   status: proposed
-  group: 9. Multi-Org SaaS Routing
+  group: 13. Multi-Tenancy & Organizations
   category: Deployment & Infrastructure
   priority: MUST
   type: infrastructure
@@ -36207,7 +36207,7 @@
     '
 - id: REQ-1247
   status: proposed
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Authentication
   priority: MUST
   type: ui
@@ -36240,7 +36240,7 @@
     '
 - id: REQ-1248
   status: proposed
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   priority: MUST
   type: behavioral
@@ -36271,7 +36271,7 @@
     '
 - id: REQ-1249
   status: proposed
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   priority: SHOULD
   type: behavioral
@@ -36306,7 +36306,7 @@
     '
 - id: REQ-1250
   status: proposed
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   priority: SHOULD
   type: structural
@@ -36343,7 +36343,7 @@
     '
 - id: REQ-1251
   status: proposed
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   priority: SHOULD
   type: behavioral
@@ -36377,7 +36377,7 @@
     '
 - id: REQ-1252
   status: proposed
-  group: 10. Admin Console & Governance
+  group: 10. UI & Admin Surfaces
   category: Org Administration
   priority: SHOULD
   type: ui
@@ -36408,7 +36408,7 @@
     '
 - id: REQ-1253
   status: proposed
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Cloud Load Balancing
   priority: MUST
   type: infrastructure
@@ -36426,7 +36426,7 @@
     /health probe. Refs: REQ-1233, REQ-1239, REQ-1240, REQ-1227.'
 - id: REQ-1254
   status: complete
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Cloud Load Balancing
   priority: MUST
   type: infrastructure
@@ -36462,7 +36462,7 @@
   - REQ-1227
 - id: REQ-1255
   status: proposed
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   priority: SHOULD
   type: behavioral
@@ -36496,7 +36496,7 @@
     '
 - id: REQ-1256
   status: proposed
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Kubernetes Deployment
   priority: MUST
   type: infrastructure
@@ -36527,7 +36527,7 @@
     '
 - id: REQ-1257
   status: proposed
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Kubernetes Deployment
   priority: MUST
   type: infrastructure
@@ -36558,7 +36558,7 @@
     '
 - id: REQ-1258
   status: proposed
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Kubernetes Deployment
   priority: MUST
   type: infrastructure
@@ -36583,7 +36583,7 @@
     '
 - id: REQ-1259
   status: proposed
-  group: 8. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Kubernetes Deployment
   priority: MUST
   type: infrastructure
@@ -36615,7 +36615,7 @@
     '
 - id: REQ-1260
   status: complete
-  group: 9. Testing & QA
+  group: 11. Platform, Infrastructure & Delivery
   category: Test Infrastructure
   priority: SHOULD
   type: infrastructure
@@ -37000,7 +37000,7 @@
   - REQ-1266
 - id: REQ-1268
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Per-Request Multi-Org Data Plane
   priority: MUST
   type: structural
@@ -37018,7 +37018,7 @@
   since: 2026-07
 - id: REQ-1269
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org-Prefixed Catalog Naming
   priority: MUST
   type: constraint
@@ -37035,7 +37035,7 @@
   since: 2026-07
 - id: REQ-1270
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: HTTP Org-Routing Middleware
   priority: MUST
   type: behavioral
@@ -37068,7 +37068,7 @@
   since: 2026-07
 - id: REQ-1271
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Self-Service Org Creation
   priority: SHOULD
   type: behavioral
@@ -37099,7 +37099,7 @@
   since: 2026-07
 - id: REQ-1272
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Async Org Provisioning
   priority: MUST
   type: behavioral
@@ -37136,7 +37136,7 @@
   since: 2026-07
 - id: REQ-1273
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org Readiness Notification Seam
   priority: MAY
   type: behavioral
@@ -37163,7 +37163,7 @@
   since: 2026-07
 - id: REQ-1274
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org Admin Authorization Fix
   priority: MUST
   type: constraint
@@ -37180,7 +37180,7 @@
   since: 2026-07
 - id: REQ-1275
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: UI Onboarding Flow
   priority: SHOULD
   type: ui
@@ -37219,7 +37219,7 @@
     provisioning, identity refresh, and SPA routing integration.'
 - id: REQ-1276
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Subdomain-based Org Resolution
   priority: MUST
   type: behavioral
@@ -37304,7 +37304,7 @@
     across authentication, org lookup, and UI navigation.
 - id: REQ-1278
   status: complete
-  group: 4. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: Enterprise Deployment Tenancy Enforcement
   priority: MUST
   type: infrastructure
@@ -37321,7 +37321,7 @@
   since: 2026-07
 - id: REQ-1279
   status: complete
-  group: 4. Deployment & Infrastructure
+  group: 11. Platform, Infrastructure & Delivery
   category: SaaS Multi-tenant Deployment Module
   priority: MUST
   type: infrastructure
@@ -37385,7 +37385,7 @@
   target: 2026-Q4
 - id: REQ-1282
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Post-provisioning Welcome Screen
   priority: SHOULD
   type: ui
@@ -37427,7 +37427,7 @@
     identity refresh, and capability resolution before SPA navigation occurs.
 - id: REQ-1283
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org-admin Team Management
   priority: SHOULD
   type: ui
@@ -37698,7 +37698,7 @@
       into generic "unauthorized" without differentiating network/server errors from auth denials.
 - id: REQ-1287
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Org Invitations
   priority: SHOULD
   type: behavioral
@@ -37806,7 +37806,7 @@
       principles for self-hosted deployments.
 - id: REQ-1289
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Onboarding
   priority: MUST
   type: behavioral
@@ -39836,7 +39836,7 @@
   - REQ-1321
 - id: REQ-1323
   status: complete
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Metrics Management
   priority: SHOULD
   type: ui
@@ -39863,7 +39863,7 @@
   - REQ-1320
 - id: REQ-1324
   status: complete
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Metrics Management
   priority: SHOULD
   type: ui
@@ -40393,7 +40393,7 @@
   - REQ-1266
 - id: REQ-1338
   status: complete
-  group: 3. Multi-tenancy & Organization
+  group: 13. Multi-Tenancy & Organizations
   category: Schema Caching
   priority: MUST
   type: structural
@@ -40420,7 +40420,7 @@
     And /data/domains returns only organization B's domains when queried as organization B
 - id: REQ-1339
   status: complete
-  group: 2. Data Loading & Federation
+  group: 13. Multi-Tenancy & Organizations
   category: Data Source Management
   priority: MUST
   type: constraint
@@ -40478,7 +40478,7 @@
   - REQ-1327
 - id: REQ-1341
   status: complete
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Internationalization
   priority: SHOULD
   type: structural
@@ -40507,7 +40507,7 @@
   - REQ-1012
 - id: REQ-1342
   status: complete
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Internationalization
   priority: SHOULD
   type: behavioral
@@ -40542,7 +40542,7 @@
 - id: REQ-1343
   status: complete
   since: 2026-07
-  group: 5. Multi-Tenancy & Org Isolation
+  group: 13. Multi-Tenancy & Organizations
   category: Isolated Federation Engine
   priority: MUST
   type: ui
@@ -40567,7 +40567,7 @@
 - id: REQ-1344
   status: complete
   since: 2026-07
-  group: 5. Multi-Tenancy & Org Isolation
+  group: 13. Multi-Tenancy & Organizations
   category: Isolated Federation Engine
   priority: MUST
   type: behavioral
@@ -40605,7 +40605,7 @@
 - id: REQ-1345
   status: complete
   since: 2026-07
-  group: 5. Multi-Tenancy & Org Isolation
+  group: 13. Multi-Tenancy & Organizations
   category: Isolated Federation Engine
   priority: MUST
   type: behavioral
@@ -40633,7 +40633,7 @@
 - id: REQ-1346
   status: complete
   since: 2026-07
-  group: 5. Multi-Tenancy & Org Isolation
+  group: 13. Multi-Tenancy & Organizations
   category: Isolated Federation Engine
   priority: MUST
   type: infrastructure
@@ -40656,7 +40656,7 @@
 - id: REQ-1347
   status: complete
   since: 2026-07
-  group: 6. Testing & Validation
+  group: 11. Platform, Infrastructure & Delivery
   category: Test Infrastructure
   priority: MUST
   type: infrastructure
@@ -40761,7 +40761,7 @@
     And traces are scoped to the acting org only (observability capability)
 - id: REQ-1350
   status: complete
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Internationalization
   priority: SHOULD
   type: behavioral
@@ -40799,7 +40799,7 @@
   - REQ-1342
 - id: REQ-1351
   status: complete
-  group: 11. Frontend UI & UX
+  group: 10. UI & Admin Surfaces
   category: Navigation & Admin Menu
   priority: MUST
   type: behavioral
@@ -40862,3 +40862,30 @@
   related_reqs:
   - REQ-1349
   - REQ-1297
+- id: REQ-1353
+  status: complete
+  group: "0. Architecture & Design Principles"
+  category: Requirements Taxonomy
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: >-
+    Requirement groups are a closed canonical enumeration defined in docs/arch/groups.yaml.
+    Every requirement's `group` field must exactly match a name in that file. New groups
+    must be added to groups.yaml (with a scope line) before use. Non-canonical group strings
+    are rejected by provisa/tools/req_schema.py (Pydantic field validator) and caught by
+    scripts/validate_requirements.py in CI.
+  use_case: >-
+    Prevents free-text group drift that caused 45 variant strings to accumulate across
+    the requirements corpus. A closed canonical enumeration with schema enforcement ensures
+    all requirements are consistently categorized and discoverable under a stable set of
+    high-level design areas.
+  code:
+  - docs/arch/groups.yaml
+  - provisa/tools/req_schema.py
+  - scripts/validate_requirements.py
+  unit_test: false
+  unit_test_reason: >-
+    Enforcement of canonical requirement groups is validated by req_schema.py's Pydantic
+    field validator and scripts/validate_requirements.py in CI on every requirements.yaml
+    change; no separate unit test is needed since the constraint is self-verifying.
