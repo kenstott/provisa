@@ -74,7 +74,7 @@ const RELS_ADD = '[data-tour="rels-add"]';
 // never runs), so deep-linking it avoids any click-timing race.
 const LINEAGE_DEMO_SQL =
   'SELECT users.name, UPPER(users.name) AS name_upper, COUNT(inquiries.id) AS inquiry_count ' +
-  'FROM "default"."users" JOIN "default"."inquiries" ON users.id = inquiries.user_id ' +
+  'FROM "pet_store"."inquiries" JOIN "pet_store"."users" ON inquiries.user_id = users.id ' +
   "GROUP BY users.name";
 
 export const TOUR_STEPS: TourStep[] = [

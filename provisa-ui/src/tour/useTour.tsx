@@ -45,20 +45,21 @@ const NL_DEMO_QUESTION = "show inquiry count by user";
 const NL_DEMO_BRANCHES = {
   sql: {
     query:
-      'SELECT users.name, COUNT(inquiries.id) AS inquiry_count FROM "default"."users" ' +
-      'JOIN "default"."inquiries" ON users.id = inquiries.user_id GROUP BY users.name ' +
+      'SELECT users.name, COUNT(inquiries.id) AS inquiry_count FROM "pet_store"."inquiries" ' +
+      'JOIN "pet_store"."users" ON inquiries.user_id = users.id GROUP BY users.name ' +
       "ORDER BY inquiry_count DESC LIMIT 100",
     result: {
       columns: ["name", "inquiry_count"],
       rows: [
-        { name: "Hank Patel", inquiry_count: 3 },
-        { name: "Alice Nguyen", inquiry_count: 3 },
-        { name: "Grace Chen", inquiry_count: 3 },
         { name: "Frank Lee", inquiry_count: 3 },
-        { name: "David Kim", inquiry_count: 3 },
-        { name: "Eva Brown", inquiry_count: 3 },
         { name: "Carol White", inquiry_count: 3 },
+        { name: "Alice Nguyen", inquiry_count: 3 },
+        { name: "Hank Patel", inquiry_count: 3 },
+        { name: "Grace Chen", inquiry_count: 3 },
+        { name: "David Kim", inquiry_count: 3 },
         { name: "Bob Martinez", inquiry_count: 3 },
+        { name: "Eva Brown", inquiry_count: 3 },
+        { name: "Iris Jordan", inquiry_count: 2 },
         { name: "Jay Singh", inquiry_count: 2 },
       ],
     },
@@ -78,9 +79,16 @@ const NL_DEMO_BRANCHES = {
     result: {
       data: {
         ps__inquiriesGroupBy: [
+          { groupKey: { userId: 1 }, aggregate: { count: 3 } },
           { groupKey: { userId: 2 }, aggregate: { count: 3 } },
+          { groupKey: { userId: 3 }, aggregate: { count: 3 } },
           { groupKey: { userId: 4 }, aggregate: { count: 3 } },
+          { groupKey: { userId: 5 }, aggregate: { count: 3 } },
           { groupKey: { userId: 6 }, aggregate: { count: 3 } },
+          { groupKey: { userId: 7 }, aggregate: { count: 3 } },
+          { groupKey: { userId: 9 }, aggregate: { count: 2 } },
+          { groupKey: { userId: 10 }, aggregate: { count: 2 } },
+          { groupKey: { userId: 8 }, aggregate: { count: 3 } },
         ],
       },
     },
@@ -90,26 +98,28 @@ const NL_DEMO_BRANCHES = {
   cypher: {
     query:
       "MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)\n" +
-      "WITH u.id AS userId, u.name AS userName, COUNT(i) AS inquiryCount\n" +
+      "WITH u.id AS userId, u.name AS userName, count(i) AS inquiryCount\n" +
       "RETURN userId, userName, inquiryCount\n" +
       "ORDER BY inquiryCount DESC",
     result: {
       columns: ["userId", "userName", "inquiryCount"],
       rows: [
-        { userId: 4, userName: "David Kim", inquiryCount: 3 },
-        { userId: 2, userName: "Bob Martinez", inquiryCount: 3 },
         { userId: 6, userName: "Frank Lee", inquiryCount: 3 },
-        { userId: 5, userName: "Eva Brown", inquiryCount: 3 },
-        { userId: 3, userName: "Carol White", inquiryCount: 3 },
-        { userId: 8, userName: "Hank Patel", inquiryCount: 3 },
         { userId: 7, userName: "Grace Chen", inquiryCount: 3 },
         { userId: 1, userName: "Alice Nguyen", inquiryCount: 3 },
+        { userId: 4, userName: "David Kim", inquiryCount: 3 },
+        { userId: 2, userName: "Bob Martinez", inquiryCount: 3 },
+        { userId: 3, userName: "Carol White", inquiryCount: 3 },
+        { userId: 5, userName: "Eva Brown", inquiryCount: 3 },
+        { userId: 8, userName: "Hank Patel", inquiryCount: 3 },
+        { userId: 9, userName: "Iris Jordan", inquiryCount: 2 },
+        { userId: 10, userName: "Jay Singh", inquiryCount: 2 },
       ],
     },
     error: null,
     loading: false,
   },
-  grpc: { query: "QueryInquiries", result: null, error: null, loading: false },
+  grpc: { query: "QueryPsInquiries", result: null, error: null, loading: false },
   jsonapi: {
     query: "/data/jsonapi/pet-store/inquiries?page[size]=20",
     result: null,
