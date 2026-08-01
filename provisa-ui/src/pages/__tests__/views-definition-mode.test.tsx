@@ -73,6 +73,8 @@ function makeCol(overrides: Partial<TableColumn> = {}): TableColumn {
     isForeignKey: false,
     isAlternateKey: false,
     scope: "public",
+    isImplicitMeasure: false,
+    isImplicitDimension: false,
     ...overrides,
   };
 }
@@ -99,6 +101,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     probeType: null,
     columns: [],
     columnPresets: [],
+    implicitMeasures: [],
+    implicitDimensions: [],
     apiEndpoint: null,
     viewSql: null,
     materialize: false,

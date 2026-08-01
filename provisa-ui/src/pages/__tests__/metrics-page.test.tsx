@@ -41,6 +41,8 @@ function makeCol(columnName: string, id: number): TableColumn {
     isForeignKey: false,
     isAlternateKey: false,
     scope: "public",
+    isImplicitMeasure: false,
+    isImplicitDimension: false,
   } as TableColumn;
 }
 
@@ -66,6 +68,8 @@ function makeTable(overrides: Partial<RegisteredTable>): RegisteredTable {
     probeType: null,
     columns: [],
     columnPresets: [],
+    implicitMeasures: [],
+    implicitDimensions: [],
     apiEndpoint: null,
     viewSql: null,
     materialize: false,

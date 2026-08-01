@@ -50,6 +50,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     probeType: null,
     columns: [],
     columnPresets: [],
+    implicitMeasures: [],
+    implicitDimensions: [],
     apiEndpoint: null,
     viewSql: null,
     materialize: false,
