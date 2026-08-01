@@ -29,6 +29,8 @@ from dataclasses import dataclass
 import pyarrow as pa
 import pyarrow.flight as flight
 
+from provisa.core.modeling_tags import append_modeling_tag
+
 log = logging.getLogger(__name__)
 
 # the engine type -> Arrow type mapping
@@ -107,7 +109,7 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
     """Async implementation of build_catalog_tables."""
     async with state.tenant_db.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, domain_id, table_name, description "
+            "SELECT id, domain_id, table_name, description, modeling_role, modeling_history "
             "FROM registered_tables ORDER BY domain_id, table_name"
         )
         col_rows = await conn.fetch(
@@ -141,7 +143,11 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
         table_id = row["id"]
         domain_id = row["domain_id"]
         table_name = row["table_name"]
-        description = row["description"] or ""
+        # REQ-1320: same "[fact]"/"[dimension, scd2]" suffix as GraphQL docs and
+        # pg_description, so MCP/Flight callers see the star shape too.
+        description = append_modeling_tag(
+            row["description"], row["modeling_role"], row["modeling_history"]
+        )
 
         columns: list[CatalogColumn] = []
         # Get columns from table_columns (registered metadata)
@@ -195,7 +201,13 @@ def build_catalog_tables_from_context(state) -> list[CatalogTable]:  # REQ-127, 
     tables: list[CatalogTable] = []
     for gql_name, tinfo in table_map.items():
         domain_id = getattr(tinfo, "domain_id", "default")
-        description = getattr(tinfo, "description", "") or ""
+        # REQ-1320: same "[fact]"/"[dimension, scd2]" suffix as GraphQL docs and
+        # pg_description, so MCP/Flight callers see the star shape too.
+        description = append_modeling_tag(
+            getattr(tinfo, "description", None),
+            getattr(tinfo, "modeling_role", None),
+            getattr(tinfo, "modeling_history", None),
+        )
         columns: list[CatalogColumn] = []
         col_metas = getattr(tinfo, "columns", [])
         for cm in col_metas:

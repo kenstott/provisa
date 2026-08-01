@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import time
 
+from provisa.core.modeling_tags import append_modeling_tag
 from provisa.pgwire.function_catalog import populate_functions
 from provisa.pgwire.catalog_columns_data import _SYSTEM_TABLE_COLUMNS
 from provisa.pgwire.catalog_data import (
@@ -506,8 +507,7 @@ def _populate_pg_description(
             else getattr(rt, "modeling_history", None)
         )
         if _role:
-            _tag = f"[{_role}, {_hist}]" if _hist else f"[{_role}]"
-            _tdesc = f"{_tdesc} {_tag}" if _tdesc else _tag
+            _tdesc = append_modeling_tag(_tdesc, _role, _hist)
         if _tdesc:
             tid_desc[_tid] = _tdesc
         cdesc: dict[str, str] = {}
