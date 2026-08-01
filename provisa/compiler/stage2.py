@@ -75,7 +75,7 @@ def resolve_row_cap(
     return _get_default_row_limit()
 
 
-def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
+def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, REQ-971
     role_id: str,
     rls_context,
     masking_rules,
@@ -83,6 +83,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
     tables: list[dict],
     role: dict | None = None,
     relationships: list[dict] | None = None,
+    source_types: dict[str, str] | None = None,
+    engine=None,
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
 
@@ -92,13 +94,19 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
         masking_rules: MaskingRules = dict[(table_id, role_id), dict[col, (rule, dtype)]].
         ctx: CompilationContext with .tables: dict[str, TableMeta].
         tables: Raw table dicts from state, each with
-                {id, columns: [{column_name, visible_to: [role_ids], data_type}],
+                {id, source_id, columns: [{column_name, visible_to: [role_ids], data_type}],
                  max_rows: int | None}.
         role: The requesting role's config dict (carries ``max_rows``, REQ-005).
               When None, no role-level ceiling is applied.
         relationships: The user-defined relationship registry dicts (int source/target table ids),
               used for REQ-1132 row-level meta scoping. When None, meta rows are confined to the
               role's directly-accessible tables with NO 1-hop neighbour expansion (fail-closed).
+        source_types: {source_id: source_type}, e.g. {"sales-pg": "postgresql"}. Together with
+              ``engine``, enables the REQ-971 mask pushdown/streaming decision below. When either
+              is None, no capability check runs — the mask expression is inlined unconditionally
+              (matches every connector registered today, all of which declare predicate_pushdown).
+        engine: The bound FederationEngine, used to read each masked table's connector
+              ``Capability`` (REQ-897) via ``connector_pushdown``.
     """
     gov = GovernanceContext()
 
@@ -223,6 +231,24 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
             gov.rls_rules[tm.table_id] = (
                 f"({existing}) AND ({predicate})" if existing else predicate
             )
+
+    # REQ-971: mask pushdown/streaming decision. When a masked table's connector cannot push
+    # the predicate down and cannot stream, fail loud here rather than silently inlining an
+    # unsupported expression that a downstream connector cannot evaluate.
+    if source_types is not None and engine is not None:
+        from provisa.federation.promote import plan_mask_evaluation
+
+        source_id_by_table_id = {tbl["id"]: tbl.get("source_id") for tbl in tables}
+        masked_table_ids = {tid for (tid, _) in gov.masking_rules}
+        for tid in masked_table_ids:
+            source_id = source_id_by_table_id.get(tid)
+            if not source_id:
+                continue
+            source_type = source_types.get(source_id)
+            if not source_type:
+                continue
+            cap = engine.connector_pushdown(source_type)
+            plan_mask_evaluation(cap, can_stream=False)
 
     return gov
 

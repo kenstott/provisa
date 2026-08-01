@@ -352,6 +352,8 @@ async def _govern_and_route(
         getattr(state, "tables", []),
         role=role,
         relationships=getattr(state, "relationships", None),
+        source_types=state.source_types,
+        engine=getattr(state, "federation_engine", None),
     )
 
     # Discovery mode (SQL Explorer): the caller may reference any registered table across all
@@ -825,6 +827,8 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         getattr(state, "tables", []),
         role=state.roles.get(role_id),
         relationships=getattr(state, "relationships", None),
+        source_types=state.source_types,
+        engine=getattr(state, "federation_engine", None),
     )
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.

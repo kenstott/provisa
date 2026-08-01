@@ -334,6 +334,16 @@ def _sync_view_mv(
         if bitemporal_mode
         else None
     )
+    # REQ-1162: a bitemporal MV manages its own append-only persistence (refresh.py routes it to
+    # _refresh_bitemporal ahead of the persist dispatch, ignoring `persist` entirely) — reject a
+    # non-default `persist` here instead of silently dropping it, so a declaration never implies
+    # replace/upsert semantics the MV will not actually get.
+    if bitemporal is not None and persist != "replace":
+        raise ValueError(
+            f"MV {table_name!r}: persist={persist!r} is incompatible with bitemporal_mode "
+            f"={bitemporal_mode!r} — bitemporal MVs are append-only by construction; omit "
+            "persist (or leave it at its default) instead of declaring append/upsert"
+        )
 
     # REQ-957/964: a preprocess hook must be deterministic + safe — purity-checked here so a bad hook
     # is rejected at registration, never wired into the loop where it would ripple non-determinism.
