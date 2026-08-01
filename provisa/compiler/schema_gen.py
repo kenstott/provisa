@@ -48,6 +48,7 @@ from provisa.compiler.naming import (
     to_type_name,
 )
 from provisa.compiler.metric_expand import metric_reference_tables
+from provisa.core.modeling_tags import append_modeling_tag
 from provisa.compiler.type_map import JSONScalar, column_type_to_graphql
 from provisa.compiler.schema_types import SchemaInput, _TableInfo
 from provisa.security.rights import (
@@ -263,11 +264,7 @@ def _type_description(t: _TableInfo) -> str | None:
     """
     if not t.modeling_role:
         return t.description
-    tags = [t.modeling_role]
-    if t.modeling_history:
-        tags.append(t.modeling_history)
-    suffix = f"[{', '.join(tags)}]"
-    return f"{t.description} {suffix}" if t.description else suffix
+    return append_modeling_tag(t.description, t.modeling_role, t.modeling_history)
 
 
 def _can_see_relationship(rel: dict, table_lookup: dict[int, _TableInfo]) -> bool:
