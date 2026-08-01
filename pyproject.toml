@@ -118,7 +118,7 @@ telemetry-pg = ["pgserver"]
 # native installers (build-sfx.ps1 / build-dmg.sh) so the connector needs no Node and no user pip.
 desktop = ["mcp-proxy"]
 # Documentation site (MkDocs Material). Build: `mkdocs build`; serve: `mkdocs serve`; deploy: CI (.github/workflows/docs.yml).
-docs = ["mkdocs-material", "pymdown-extensions"]
+docs = ["mkdocs-material", "pymdown-extensions", "mkdocs-static-i18n"]
 mysql = ["aiomysql"]
 sqlserver = ["aioodbc"]
 oracle = ["oracledb"]

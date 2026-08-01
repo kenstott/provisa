@@ -152,7 +152,7 @@ jobs:
           cache-dependency-path: provisa-ui/package-lock.json
 
       - name: Install docs-site build deps (mkdocs)
-        run: pip install mkdocs-material pymdown-extensions
+        run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
 
       - name: Build UI SPA into static/
         run: |
@@ -231,7 +231,7 @@ jobs:
           cache-dependency-path: provisa-ui/package-lock.json
 
       - name: Install docs-site build deps (mkdocs)
-        run: pip install mkdocs-material pymdown-extensions
+        run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
 
       - name: Build UI SPA into static/
         run: |
@@ -386,7 +386,7 @@ jobs:
       # build-wheel.sh runs `npm run build`, whose prebuild hook renders the offline
       # MkDocs site into provisa/_ui; without mkdocs on PATH it fails with ENOENT.
       - name: Install docs-site build deps (mkdocs)
-        run: pip install mkdocs-material pymdown-extensions
+        run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
 
       - name: Stamp version and build wheel (bundles UI + config + buenavista)
         run: |
@@ -757,7 +757,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install MkDocs (offline docs site)
-        run: pip install mkdocs-material pymdown-extensions
+        run: pip install mkdocs-material pymdown-extensions mkdocs-static-i18n
 
       - name: Build provisa-ui
         run: |
