@@ -41210,3 +41210,35 @@
     And non-aggregated ID/foreign-key columns appear tagged as "Dimensions"
     And explicit metrics (visible_to-governed) remain separately discoverable
     And no new physical tables or materialized views are created
+- id: REQ-1361
+  status: complete
+  since: "2026-08"
+  group: "10. UI & Admin Surfaces"
+  category: Table Discovery
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    On the Tables list page (provisa-ui/src/pages/TablesPage.tsx), when a table has no explicit modeling_role
+    (not registered via the Entity/Fact DSL), render an "implied" fact/dimension badge derived from that table's
+    enableAggregates flag (implied fact) and/or enableGroupBy flag (implied dimension). Badges are colored grape/teal
+    with variant="outline" to visually distinguish implied role from explicit role (REQ-1320).
+  use_case: >-
+    A user who explicitly enables Enable Aggregates or Enable Group By on a table is asserting that the table plays
+    a fact or dimension role. Surfacing this intent as a badge on the Tables list provides immediate visibility into
+    modeling decisions without requiring per-column inspection (REQ-1360 handles column-level tagging).
+  code:
+    - provisa-ui/src/pages/TablesPage.tsx
+  tests:
+    - provisa-ui/e2e/tables-enable-aggregates.spec.ts
+  scenario: |
+    Given a table with enableAggregates: true and no explicit modeling_role
+    When a user views the Tables list page
+    Then an "implied fact" badge appears with variant="outline" and testid="tables-implied-fact-<table>"
+    And the badge title derives from i18n key "tablesPage.modelingRole.impliedFactTitle"
+    Given a table with enableGroupBy: true and no explicit modeling_role
+    When a user views the Tables list page
+    Then an "implied dimension" badge appears with variant="outline" and testid="tables-implied-dimension-<table>"
+    And the badge title derives from i18n key "tablesPage.modelingRole.impliedDimensionTitle"
+  related_reqs:
+    - REQ-1320
+    - REQ-1360

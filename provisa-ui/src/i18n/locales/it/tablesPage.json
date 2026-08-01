@@ -39,7 +39,9 @@
     "editViewDefinitionTitle": "Modifica definizione della vista",
     "modelingRole": {
       "fact": "fatto",
-      "dimension": "dimensione"
+      "dimension": "dimensione",
+      "impliedFactTitle": "Fatto implicito — \"Abilita aggregati\" è attivo per questa tabella",
+      "impliedDimensionTitle": "Dimensione implicita — \"Abilita Group By\" è attivo per questa tabella"
     },
     "derived": "derivata"
   }

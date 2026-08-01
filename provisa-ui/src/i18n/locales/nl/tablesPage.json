@@ -39,7 +39,9 @@
     "editViewDefinitionTitle": "Viewdefinitie bewerken",
     "modelingRole": {
       "fact": "feit",
-      "dimension": "dimensie"
+      "dimension": "dimensie",
+      "impliedFactTitle": "Impliciet feit — 'Aggregaten inschakelen' staat aan voor deze tabel",
+      "impliedDimensionTitle": "Impliciete dimensie — 'Group by inschakelen' staat aan voor deze tabel"
     },
     "derived": "afgeleid"
   }

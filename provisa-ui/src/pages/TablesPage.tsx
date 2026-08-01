@@ -772,7 +772,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                         {t.alias || t.tableName}
                         {/* REQ-1320: star-schema role is metadata on the registration itself —
                             the badge derives live from it, so it can never drift from the def. */}
-                        {t.modelingRole && (
+                        {t.modelingRole ? (
                           <Badge
                             size="xs"
                             variant="light"
@@ -781,6 +781,33 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                           >
                             {translate(`tablesPage.modelingRole.${t.modelingRole}`)}
                           </Badge>
+                        ) : (
+                          <>
+                            {/* REQ-1361: no explicit star-schema role — Enable Aggregates / Enable
+                                Group By directly imply fact/dimension usage, so badge from those. */}
+                            {t.enableAggregates && (
+                              <Badge
+                                size="xs"
+                                variant="outline"
+                                color="grape"
+                                title={translate("tablesPage.modelingRole.impliedFactTitle")}
+                                data-testid={`tables-implied-fact-${t.tableName}`}
+                              >
+                                {translate("tablesPage.modelingRole.fact")}
+                              </Badge>
+                            )}
+                            {t.enableGroupBy && (
+                              <Badge
+                                size="xs"
+                                variant="outline"
+                                color="teal"
+                                title={translate("tablesPage.modelingRole.impliedDimensionTitle")}
+                                data-testid={`tables-implied-dimension-${t.tableName}`}
+                              >
+                                {translate("tablesPage.modelingRole.dimension")}
+                              </Badge>
+                            )}
+                          </>
                         )}
                       </Group>
                     </Table.Td>

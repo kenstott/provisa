@@ -39,7 +39,9 @@
     "editViewDefinitionTitle": "ビュー定義を編集",
     "modelingRole": {
       "fact": "ファクト",
-      "dimension": "ディメンション"
+      "dimension": "ディメンション",
+      "impliedFactTitle": "暗黙のファクト — このテーブルで「集計を有効化」がオンになっています",
+      "impliedDimensionTitle": "暗黙のディメンション — このテーブルで「Group Byを有効化」がオンになっています"
     },
     "derived": "派生"
   }

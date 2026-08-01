@@ -39,7 +39,9 @@
     "editViewDefinitionTitle": "Modifier la définition de la vue",
     "modelingRole": {
       "fact": "fait",
-      "dimension": "dimension"
+      "dimension": "dimension",
+      "impliedFactTitle": "Fait implicite : « Activer les agrégats » est actif pour cette table",
+      "impliedDimensionTitle": "Dimension implicite : « Activer le Group By » est actif pour cette table"
     },
     "derived": "dérivée"
   }

@@ -39,7 +39,9 @@
     "editViewDefinitionTitle": "Editar definição da exibição",
     "modelingRole": {
       "fact": "fato",
-      "dimension": "dimensão"
+      "dimension": "dimensão",
+      "impliedFactTitle": "Fato implícito — \"Habilitar agregações\" está ativado para esta tabela",
+      "impliedDimensionTitle": "Dimensão implícita — \"Habilitar Group By\" está ativado para esta tabela"
     },
     "derived": "derivada"
   }

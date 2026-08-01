@@ -39,7 +39,9 @@
     "editViewDefinitionTitle": "Sichtdefinition bearbeiten",
     "modelingRole": {
       "fact": "Fakt",
-      "dimension": "Dimension"
+      "dimension": "Dimension",
+      "impliedFactTitle": "Impliziter Fakt – „Aggregate aktivieren“ ist für diese Tabelle aktiviert",
+      "impliedDimensionTitle": "Implizierte Dimension – „Group By aktivieren“ ist für diese Tabelle aktiviert"
     },
     "derived": "abgeleitet"
   }

@@ -39,7 +39,9 @@
     "editViewDefinitionTitle": "编辑视图定义",
     "modelingRole": {
       "fact": "事实",
-      "dimension": "维度"
+      "dimension": "维度",
+      "impliedFactTitle": "隐含事实 — 此表已启用“启用聚合”",
+      "impliedDimensionTitle": "隐含维度 — 此表已启用“启用分组”"
     },
     "derived": "派生"
   }

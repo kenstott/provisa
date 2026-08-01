@@ -13947,3 +13947,17 @@ When a table has `enable_aggregates` and/or `enable_group_by` flags, the catalog
 **Code:** `provisa/core/catalog.py`, `provisa/compiler/aggregates.py`
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-1361 · Table Discovery {#REQ-1361}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+On the Tables list page (provisa-ui/src/pages/TablesPage.tsx), when a table has no explicit modeling_role (not registered via the Entity/Fact DSL), render an "implied" fact/dimension badge derived from that table's enableAggregates flag (implied fact) and/or enableGroupBy flag (implied dimension). Badges are colored grape/teal with variant="outline" to visually distinguish implied role from explicit role ([REQ-1320](#REQ-1320)).
+
+**Use case:** A user who explicitly enables Enable Aggregates or Enable Group By on a table is asserting that the table plays a fact or dimension role. Surfacing this intent as a badge on the Tables list provides immediate visibility into modeling decisions without requiring per-column inspection ([REQ-1360](#REQ-1360) handles column-level tagging).
+
+**Code:** `provisa-ui/src/pages/TablesPage.tsx`
+
+**Tests:** `provisa-ui/e2e/tables-enable-aggregates.spec.ts`

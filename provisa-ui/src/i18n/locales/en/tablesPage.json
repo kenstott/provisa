@@ -39,7 +39,9 @@
     "editViewDefinitionTitle": "Edit view definition",
     "modelingRole": {
       "fact": "fact",
-      "dimension": "dimension"
+      "dimension": "dimension",
+      "impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
+      "impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table"
     },
     "derived": "derived"
   }

@@ -39,7 +39,9 @@
     "editViewDefinitionTitle": "עריכת הגדרת ה-view",
     "modelingRole": {
       "fact": "עובדה",
-      "dimension": "ממד"
+      "dimension": "ממד",
+      "impliedFactTitle": "עובדה משתמעת — האפשרות \"הפעלת צבירות\" מופעלת עבור טבלה זו",
+      "impliedDimensionTitle": "ממד משתמע — האפשרות \"הפעלת Group By\" מופעלת עבור טבלה זו"
     },
     "derived": "נגזר"
   }
