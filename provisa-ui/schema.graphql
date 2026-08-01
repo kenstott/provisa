@@ -419,6 +419,13 @@ type RegisteredTableType {
   canDeployToDb: Boolean!
   live: LiveDeliveryConfigType
   refreshPolicySummary: RefreshPolicySummaryType
+  implicitMeasures: [ImplicitMeasureType!]!
+  implicitDimensions: [String!]!
+}
+
+type ImplicitMeasureType {
+  column: String!
+  aggFuncs: [String!]!
 }
 
 input RelationshipInput {
@@ -572,6 +579,8 @@ type TableColumnType {
   isForeignKey: Boolean!
   isAlternateKey: Boolean!
   scope: String!
+  isImplicitMeasure: Boolean!
+  isImplicitDimension: Boolean!
 }
 
 input TableInput {

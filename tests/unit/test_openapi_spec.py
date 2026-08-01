@@ -219,6 +219,100 @@ class TestComponentSchemas:
         assert "OrderOrderBy" in self._components()
 
 
+class TestAggregateGroupByParams:
+    """REQ-1359: aggregate/groupBy query params + component schemas are gated on schema
+    presence of {field}_aggregate / {field}_group_by root fields."""
+
+    def _make_agg_state(self, enable_aggregates: bool = True, enable_group_by: bool = True):
+        from provisa.compiler import naming as _naming
+        from provisa.compiler.context import build_context
+        from provisa.compiler.introspect import ColumnMetadata
+        from provisa.compiler.schema_gen import SchemaInput, generate_schema
+
+        def _col(name, data_type="varchar(100)", nullable=False):
+            return ColumnMetadata(column_name=name, data_type=data_type, is_nullable=nullable)
+
+        _naming.configure(gql="snake")
+        tables = [
+            {
+                "id": 1,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "enable_aggregates": enable_aggregates,
+                "enable_group_by": enable_group_by,
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
+                    {"column_name": "region", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        column_types = {
+            1: [
+                _col("id", "integer"),
+                _col("amount", "decimal(10,2)"),
+                _col("region", "varchar(20)"),
+            ],
+        }
+        role = {"id": "admin", "capabilities": [], "domain_access": ["*"]}
+        domains = [{"id": "sales", "description": "Sales"}]
+        si = SchemaInput(
+            tables=tables,
+            relationships=[],
+            column_types=column_types,
+            naming_rules=[],
+            role=role,
+            domains=domains,
+        )
+        schema = generate_schema(si)
+        ctx = build_context(si)
+        path_map = {"orders": {"domain_id": "sales", "table_name": "orders"}}
+        state = SimpleNamespace(
+            schemas={"admin": schema}, contexts={"admin": ctx}, table_path_maps={"admin": path_map}
+        )
+        return state
+
+    def test_aggregate_param_present_when_enabled(self):
+        state = self._make_agg_state(enable_aggregates=True, enable_group_by=False)
+        spec = generate_rest_openapi_spec(state, "admin")
+        names = {p["name"] for p in spec["paths"]["/sales/orders"]["get"]["parameters"]}
+        assert "aggregate" in names
+
+    def test_group_by_param_present_when_enabled(self):
+        state = self._make_agg_state(enable_aggregates=False, enable_group_by=True)
+        spec = generate_rest_openapi_spec(state, "admin")
+        names = {p["name"] for p in spec["paths"]["/sales/orders"]["get"]["parameters"]}
+        assert "groupBy" in names
+        # groupBy implies aggregate results too
+        assert "aggregate" in names
+
+    def test_params_absent_when_flags_off(self):
+        state = self._make_agg_state(enable_aggregates=False, enable_group_by=False)
+        spec = generate_rest_openapi_spec(state, "admin")
+        names = {p["name"] for p in spec["paths"]["/sales/orders"]["get"]["parameters"]}
+        assert "aggregate" not in names
+        assert "groupBy" not in names
+
+    def test_aggregate_result_component_registered_when_enabled(self):
+        state = self._make_agg_state(enable_aggregates=True, enable_group_by=False)
+        spec = generate_rest_openapi_spec(state, "admin")
+        assert "OrdersAggregateResult" in spec["components"]["schemas"]
+
+    def test_group_by_row_component_registered_when_enabled(self):
+        state = self._make_agg_state(enable_aggregates=False, enable_group_by=True)
+        spec = generate_rest_openapi_spec(state, "admin")
+        assert "OrdersGroupByRow" in spec["components"]["schemas"]
+
+    def test_components_absent_when_flags_off(self):
+        state = self._make_agg_state(enable_aggregates=False, enable_group_by=False)
+        spec = generate_rest_openapi_spec(state, "admin")
+        schemas = spec["components"]["schemas"]
+        assert "OrdersAggregateResult" not in schemas
+        assert "OrdersGroupByRow" not in schemas
+
+
 class TestDomainFilter:
     def test_domain_filter_restricts_paths(self):
         order_type = GraphQLObjectType("Order", lambda: {"id": GraphQLField(GraphQLInt)})  # type: ignore[arg-type]

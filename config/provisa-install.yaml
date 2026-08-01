@@ -1,8 +1,6 @@
 auth:
   assignments_source: provisa
   default_assignments:
-  # REQ-1297: org_admin only. platform_admin is control-plane and confers no data rights, so a
-  # default assignment naming it grants nothing and would only surface it as a selectable role.
   - domain_id: '*'
     role_id: org_admin
   provider: none
@@ -126,6 +124,11 @@ graphql_remote:
   max_list_depth: 2
   max_list_items: 100
   max_object_depth: 5
+mail:
+  api_key: ${env:PROVISA_EMAIL_API_KEY:-}
+  base_url: ${env:PROVISA_MAIL_BASE_URL:-http://localhost:5173}
+  from_address: ${env:PROVISA_MAIL_FROM:-provisa@localhost}
+  provider: ${env:PROVISA_MAIL_PROVIDER:-smtp}
 metrics:
 - datatype: bigint
   description: Number of customer inquiries, re-grainable by any dim_pet attribute
@@ -248,11 +251,6 @@ roles:
   - pet-store
   - shelter
   id: analyst
-# REQ-1297/REQ-1349: platform_admin and org_admin are deliberately absent — both are seeded by
-# schema.sql (platform_admin with only the control-plane bypass capabilities, org_admin with the
-# org-scoped rights including org_settings/observability), and role_repo.upsert refuses any
-# redefinition of either. This file's org_admin block omitted those two rights and, loading after
-# apply_tenancy_role_grants, silently stripped them.
 server:
   limits:
     default_row_limit: 100
@@ -981,13 +979,3 @@ webhooks:
   url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
   visible_to:
   - org_admin
-# REQ-1330: outbound mail behind the EmailSender port. Values interpolate from the
-# node environment (systemd env_file -> compose overlay) so the provider selection
-# and the Resend key stay out of the baked image; the defaults are the self-hosted
-# quiet state (SMTP adapter, nothing configured), where the multitenancy gate stops
-# sending before any transport is consulted.
-mail:
-  provider: ${env:PROVISA_MAIL_PROVIDER:-smtp}
-  api_key: ${env:PROVISA_EMAIL_API_KEY:-}
-  from_address: ${env:PROVISA_MAIL_FROM:-provisa@localhost}
-  base_url: ${env:PROVISA_MAIL_BASE_URL:-http://localhost:5173}

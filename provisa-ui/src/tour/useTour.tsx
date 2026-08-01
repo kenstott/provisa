@@ -37,30 +37,22 @@ const NL_BRANCHES_KEY = "nl-branches";
 const NL_BACKUP_KEY = "provisa_tour_nl_backup";
 
 /**
- * Canned "show inquiry count by user" result — the six compiled query forms the
+ * Canned "how many pets per species" result — the six compiled query forms the
  * NL page renders. Matches the demo dataset so the panels look live without an
  * LLM call. `null` result = query-only branch (no inline table).
  */
-const NL_DEMO_QUESTION = "show inquiry count by user";
+const NL_DEMO_QUESTION = "how many pets per species";
 const NL_DEMO_BRANCHES = {
   sql: {
     query:
-      'SELECT users.name, COUNT(inquiries.id) AS inquiry_count FROM "pet_store"."inquiries" ' +
-      'JOIN "pet_store"."users" ON inquiries.user_id = users.id GROUP BY users.name ' +
-      "ORDER BY inquiry_count DESC LIMIT 100",
+      'SELECT species, COUNT(*) AS pet_count FROM "pet_store"."pets" GROUP BY species LIMIT 100',
     result: {
-      columns: ["name", "inquiry_count"],
+      columns: ["species", "pet_count"],
       rows: [
-        { name: "Frank Lee", inquiry_count: 3 },
-        { name: "Carol White", inquiry_count: 3 },
-        { name: "Alice Nguyen", inquiry_count: 3 },
-        { name: "Hank Patel", inquiry_count: 3 },
-        { name: "Grace Chen", inquiry_count: 3 },
-        { name: "David Kim", inquiry_count: 3 },
-        { name: "Bob Martinez", inquiry_count: 3 },
-        { name: "Eva Brown", inquiry_count: 3 },
-        { name: "Iris Jordan", inquiry_count: 2 },
-        { name: "Jay Singh", inquiry_count: 2 },
+        { species: "rabbit", pet_count: 1 },
+        { species: "cat", pet_count: 2 },
+        { species: "dog", pet_count: 1 },
+        { species: "lion", pet_count: 3 },
       ],
     },
     error: null,
@@ -68,8 +60,8 @@ const NL_DEMO_BRANCHES = {
   },
   graphql: {
     query:
-      "query InquiryCountByUser {\n" +
-      "  ps__inquiriesGroupBy(by: [userId]) {\n" +
+      "query PetsCountPerSpecies {\n" +
+      "  ps__petsGroupBy(by: [species]) {\n" +
       "    groupKey\n" +
       "    aggregate {\n" +
       "      count\n" +
@@ -78,17 +70,11 @@ const NL_DEMO_BRANCHES = {
       "}",
     result: {
       data: {
-        ps__inquiriesGroupBy: [
-          { groupKey: { userId: 1 }, aggregate: { count: 3 } },
-          { groupKey: { userId: 2 }, aggregate: { count: 3 } },
-          { groupKey: { userId: 3 }, aggregate: { count: 3 } },
-          { groupKey: { userId: 4 }, aggregate: { count: 3 } },
-          { groupKey: { userId: 5 }, aggregate: { count: 3 } },
-          { groupKey: { userId: 6 }, aggregate: { count: 3 } },
-          { groupKey: { userId: 7 }, aggregate: { count: 3 } },
-          { groupKey: { userId: 9 }, aggregate: { count: 2 } },
-          { groupKey: { userId: 10 }, aggregate: { count: 2 } },
-          { groupKey: { userId: 8 }, aggregate: { count: 3 } },
+        ps__petsGroupBy: [
+          { groupKey: { species: "rabbit" }, aggregate: { count: 1 } },
+          { groupKey: { species: "cat" }, aggregate: { count: 2 } },
+          { groupKey: { species: "dog" }, aggregate: { count: 1 } },
+          { groupKey: { species: "lion" }, aggregate: { count: 3 } },
         ],
       },
     },
@@ -97,37 +83,36 @@ const NL_DEMO_BRANCHES = {
   },
   cypher: {
     query:
-      "MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)\n" +
-      "WITH u.id AS userId, u.name AS userName, count(i) AS inquiryCount\n" +
-      "RETURN userId, userName, inquiryCount\n" +
-      "ORDER BY inquiryCount DESC",
+      "MATCH (p:Pets)\n" +
+      "WITH p.species AS species, count(p) AS petCount\n" +
+      "RETURN species, petCount\n" +
+      "ORDER BY petCount DESC",
     result: {
-      columns: ["userId", "userName", "inquiryCount"],
+      columns: ["species", "petCount"],
       rows: [
-        { userId: 6, userName: "Frank Lee", inquiryCount: 3 },
-        { userId: 7, userName: "Grace Chen", inquiryCount: 3 },
-        { userId: 1, userName: "Alice Nguyen", inquiryCount: 3 },
-        { userId: 4, userName: "David Kim", inquiryCount: 3 },
-        { userId: 2, userName: "Bob Martinez", inquiryCount: 3 },
-        { userId: 3, userName: "Carol White", inquiryCount: 3 },
-        { userId: 5, userName: "Eva Brown", inquiryCount: 3 },
-        { userId: 8, userName: "Hank Patel", inquiryCount: 3 },
-        { userId: 9, userName: "Iris Jordan", inquiryCount: 2 },
-        { userId: 10, userName: "Jay Singh", inquiryCount: 2 },
+        { species: "lion", petCount: 3 },
+        { species: "cat", petCount: 2 },
+        { species: "dog", petCount: 1 },
+        { species: "rabbit", petCount: 1 },
       ],
     },
     error: null,
     loading: false,
   },
-  grpc: { query: "QueryPsInquiries", result: null, error: null, loading: false },
+  grpc: {
+    query: "QueryPsPetsGroupBy(by=[species], funcs=[count])",
+    result: null,
+    error: null,
+    loading: false,
+  },
   jsonapi: {
-    query: "/data/jsonapi/pet-store/inquiries?page[size]=20",
+    query: "/data/jsonapi/pet-store/pets?groupBy=species&aggregate=count",
     result: null,
     error: null,
     loading: false,
   },
   openapi: {
-    query: "GET /data/rest/pet-store/inquiries",
+    query: "GET /data/rest/pet-store/pets?groupBy=species&aggregate=count",
     result: null,
     error: null,
     loading: false,

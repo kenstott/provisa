@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from provisa.grpc.proto_gen import _to_proto_type_name
 from provisa.nl.job import BranchResult, InMemoryJobStore, NlTarget, RedisJobStore
@@ -47,9 +47,127 @@ log = logging.getLogger(__name__)
 _TARGETS: list[NlTarget] = ["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
 
 
+_AGG_EXPR_TYPES: dict[Any, str] = {}
+
+
+def _agg_expr_types() -> dict[Any, str]:
+    """Lazily built map of sqlglot AST node type -> AGG_FUNCS name (REQ-1361), so the funcs a
+    Query{Type}Aggregate/GroupBy request restricts to can be derived from whichever functions
+    the SQL branch's LLM-generated SQL actually called, instead of always requesting every
+    function the schema exposes for the table."""
+    if not _AGG_EXPR_TYPES:
+        from sqlglot import exp
+
+        _AGG_EXPR_TYPES.update(
+            {
+                exp.Count: "count",
+                exp.Sum: "sum",
+                exp.Avg: "avg",
+                exp.Max: "max",
+                exp.Min: "min",
+                exp.Stddev: "stddev",
+                exp.Variance: "variance",
+            }
+        )
+    return _AGG_EXPR_TYPES
+
+
+def _resolve_aggregation_plan(
+    ctx: Any, app_state: Any, semantic_sql: str
+) -> tuple[Any, list[str], bool, list[str]] | None:
+    """Parse the SQL branch's compiled semantic SQL to find the table and any GROUP BY the
+    model settled on (REQ-1359), so gRPC/JSON:API/OpenAPI target the identical table and
+    aggregation SQL/GraphQL/Cypher already resolved instead of independently guessing from the
+    raw table-selection set, which can include unrelated star-schema tables (e.g. a `dim_pet`
+    dimension view sorting alphabetically ahead of the `pets` table the question was about).
+
+    Returns (TableMeta, group_by_columns, is_aggregate_only, funcs), or None when the SQL can't
+    be parsed, its table isn't found, the GROUP BY isn't plain columns, or the table doesn't
+    have the corresponding enable_aggregates/enable_group_by flag on. ``funcs`` (REQ-1361) is
+    the AGG_FUNCS-ordered subset of aggregate functions the SQL actually calls, so
+    gRPC/JSON:API/OpenAPI can restrict their synthesized requests the same way the SQL branch
+    already restricted itself — empty when no known aggregate function was found (e.g. a plain
+    GROUP BY with no aggregate column), meaning "every function".
+    """
+    import sqlglot
+    from sqlglot import exp
+
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.grpc.query_ir import AGG_FUNCS
+
+    try:
+        tree = sqlglot.parse_one(semantic_sql, dialect="postgres")
+    except Exception:
+        return None
+    table_expr = tree.find(exp.Table)
+    if table_expr is None:
+        return None
+    table_name = table_expr.name
+    schema_name = table_expr.db or ""
+
+    meta = next(
+        (
+            m
+            for m in ctx.tables.values()
+            if m.table_name == table_name
+            and (not schema_name or domain_to_sql_name(m.domain_id) == schema_name)
+        ),
+        None,
+    )
+    if meta is None:
+        return None
+
+    raw = next(
+        (
+            t
+            for t in getattr(app_state, "tables", [])
+            if t.get("table_name") == meta.table_name and t.get("domain_id") == meta.domain_id
+        ),
+        None,
+    )
+    if raw is None:
+        return None
+
+    group_exprs = tree.args.get("group")
+    group_cols: list[str] = []
+    if group_exprs is not None:
+        for e in group_exprs.expressions:
+            col = e if isinstance(e, exp.Column) else e.find(exp.Column)
+            if col is None:
+                return None  # non-column GROUP BY (expression/ordinal) — fall back to plain fetch
+            group_cols.append(col.name)
+
+    is_aggregate_only = not group_cols and (
+        tree.find(exp.Count, exp.Sum, exp.Avg, exp.Max, exp.Min, exp.Stddev, exp.Variance)
+        is not None
+    )
+
+    if not group_cols and not is_aggregate_only:
+        return None  # plain SELECT — no aggregation intent, use existing raw-row behavior
+    if group_cols and not raw.get("enable_group_by"):
+        return None
+    if is_aggregate_only and not raw.get("enable_aggregates"):
+        return None
+
+    found = {_agg_expr_types()[type(n)] for n in tree.find_all(*_agg_expr_types()) if type(n) in _agg_expr_types()}
+    funcs = [fn for fn in AGG_FUNCS if fn in found]
+
+    return meta, group_cols, is_aggregate_only, funcs
+
+
 def _generate_grpc_query(
-    selected_type_names: set[str], user_nodes: dict
+    plan: tuple[Any, list[str], bool, list[str]] | None,
+    selected_type_names: set[str],
+    user_nodes: dict,
 ) -> tuple[str | None, str | None]:
+    if plan is not None:
+        meta, group_cols, is_aggregate_only, funcs = plan
+        proto_type = _to_proto_type_name(meta.type_name)
+        funcs_suffix = f"(funcs=[{', '.join(funcs)}])" if funcs else ""
+        if is_aggregate_only:
+            return f"Query{proto_type}Aggregate{funcs_suffix}", None
+        by_and_funcs = f"by=[{', '.join(group_cols)}]" + (f", funcs=[{', '.join(funcs)}]" if funcs else "")
+        return f"Query{proto_type}GroupBy({by_and_funcs})", None
     if not selected_type_names:
         return None, "NOT_APPLICABLE"
     type_name = next(iter(sorted(selected_type_names)))
@@ -60,8 +178,17 @@ def _generate_grpc_query(
 
 
 def _generate_jsonapi_query(
-    selected_type_names: set[str], user_nodes: dict
+    plan: tuple[Any, list[str], bool, list[str]] | None,
+    selected_type_names: set[str],
+    user_nodes: dict,
 ) -> tuple[str | None, str | None]:
+    if plan is not None:
+        meta, group_cols, is_aggregate_only, funcs = plan
+        base = f"/data/jsonapi/{meta.domain_id}/{meta.table_name}"
+        aggregate_param = ",".join(funcs) if funcs else "true"
+        if is_aggregate_only:
+            return f"{base}?aggregate={aggregate_param}", None
+        return f"{base}?groupBy={','.join(group_cols)}&aggregate={aggregate_param}", None
     if not selected_type_names:
         return None, "NOT_APPLICABLE"
     type_name = next(iter(sorted(selected_type_names)))
@@ -72,8 +199,17 @@ def _generate_jsonapi_query(
 
 
 def _generate_openapi_query(
-    selected_type_names: set[str], user_nodes: dict
+    plan: tuple[Any, list[str], bool, list[str]] | None,
+    selected_type_names: set[str],
+    user_nodes: dict,
 ) -> tuple[str | None, str | None]:
+    if plan is not None:
+        meta, group_cols, is_aggregate_only, funcs = plan
+        base = f"GET /data/rest/{meta.domain_id}/{meta.table_name}"
+        aggregate_param = ",".join(funcs) if funcs else "true"
+        if is_aggregate_only:
+            return f"{base}?aggregate={aggregate_param}", None
+        return f"{base}?groupBy={','.join(group_cols)}&aggregate={aggregate_param}", None
     if not selected_type_names:
         return None, "NOT_APPLICABLE"
     type_name = next(iter(sorted(selected_type_names)))
@@ -252,14 +388,20 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                     nl_query, role, app_state, pre_selected_types=shared_selected_types
                 )
                 return target, valid_query, error
-            if target == "grpc":
-                q, e = _generate_grpc_query(shared_selected_types, shared_user_nodes)
-                return target, q, e
-            if target == "jsonapi":
-                q, e = _generate_jsonapi_query(shared_selected_types, shared_user_nodes)
-                return target, q, e
-            if target == "openapi":
-                q, e = _generate_openapi_query(shared_selected_types, shared_user_nodes)
+            if target in ("grpc", "jsonapi", "openapi"):
+                # REQ-1359: wait for the SQL branch's compiled semantic SQL so these three
+                # protocol surfaces target the identical table/GROUP BY it resolved to,
+                # instead of independently guessing from the raw table-selection set.
+                _, sql_query, sql_error = await sql_task
+                plan = None
+                if sql_query is not None and sql_error is None and ctx is not None:
+                    plan = _resolve_aggregation_plan(ctx, app_state, sql_query)
+                gen_fn = {
+                    "grpc": _generate_grpc_query,
+                    "jsonapi": _generate_jsonapi_query,
+                    "openapi": _generate_openapi_query,
+                }[target]
+                q, e = gen_fn(plan, shared_selected_types, shared_user_nodes)
                 return target, q, e
             compiler = compilers.get(target)  # type: ignore[arg-type]
             if compiler is None:
@@ -279,7 +421,12 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             log.warning("NL branch %s failed: %s", target, exc)
             return target, None, str(exc)
 
-    branch_tasks = [asyncio.create_task(_run_branch(t)) for t in _TARGETS]
+    # The sql branch must be scheduled before grpc/jsonapi/openapi so those three can
+    # await its compiled semantic SQL (see _run_branch) without a forward reference.
+    sql_task = asyncio.create_task(_run_branch("sql"))
+    branch_tasks = [sql_task] + [
+        asyncio.create_task(_run_branch(t)) for t in _TARGETS if t != "sql"
+    ]
 
     from provisa.nl.executor import execute as _execute
 

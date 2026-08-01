@@ -54,9 +54,12 @@ export function UniquesPanel({ uniques, columns, onChange }: Props) {
             )}
             <Tooltip label={t("uniquesPanel.infoTooltip")} multiline w={320}>
               <ActionIcon
+                component="span"
                 variant="subtle"
                 color="gray"
                 size="xs"
+                role="button"
+                tabIndex={0}
                 aria-label={t("uniquesPanel.infoTooltip")}
                 onClick={(e) => e.stopPropagation()}
               >

@@ -190,6 +190,8 @@
     "queryBadge": "クエリ",
     "fkBadge": "FK",
     "akBadge": "AK",
+    "measureBadge": "メジャー",
+    "dimBadge": "次元",
     "maskingTemplateLabel": "↳ マスキングテンプレート",
     "regexPatternPlaceholder": "正規表現パターン",
     "regexReplacementPlaceholder": "置換文字列",

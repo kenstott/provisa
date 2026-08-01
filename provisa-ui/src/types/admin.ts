@@ -86,6 +86,16 @@ export interface TableColumn {
   isForeignKey: boolean;
   isAlternateKey: boolean;
   scope: string;
+  // REQ-1360: metadata-only discoverability flags — set when the owning table has
+  // enableAggregates/enableGroupBy AND this column is classification-eligible.
+  isImplicitMeasure: boolean;
+  isImplicitDimension: boolean;
+}
+
+// REQ-1360: metadata-only Kimball measure annotation for a table's implicit_measures.
+export interface ImplicitMeasure {
+  column: string;
+  aggFuncs: string[];
 }
 
 export interface ColumnPreset {
@@ -172,6 +182,8 @@ export interface RegisteredTable {
   modelingRole?: "fact" | "dimension" | null; // REQ-1322: star-schema role for the Explore browser
   modelingHistory?: unknown; // REQ-1322: server-owned modeling audit trail (shape not consumed by UI)
   viewMetrics?: ViewMetricsSpec | null; // REQ-1318: declarative metric-composed view (null = free-hand SQL)
+  implicitMeasures: ImplicitMeasure[]; // REQ-1360: metadata-only, populated only when enableAggregates
+  implicitDimensions: string[]; // REQ-1360: metadata-only, populated only when enableGroupBy
 }
 
 // REQ-1318: declarative metric-composed view definition. Mutually exclusive with

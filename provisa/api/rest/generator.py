@@ -27,7 +27,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from graphql import GraphQLSchema
+from graphql import GraphQLObjectType, GraphQLSchema
 
 from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
@@ -35,6 +35,7 @@ from provisa.api._query_helpers import (
 )
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.sql_gen import compile_query
+from provisa.executor.serialize import serialize_aggregate, serialize_group_by
 
 log = logging.getLogger(__name__)
 
@@ -112,6 +113,199 @@ def _build_graphql_query(
 def _get_scalar_fields(schema: GraphQLSchema, table: str) -> list[str]:
     """Get only scalar (non-object) field names for a table."""
     return _get_scalar_fields_shared(schema, table)
+
+
+# --- Aggregate / group-by param parsing and GraphQL-text synthesis (REQ-1359) ---
+#
+# Mirrors JSON:API's aggregate/groupBy handling: schema exposure of {field}_aggregate /
+# {field}_group_by is already flag-gated at generation time (schema_gen.py), so REST needs
+# zero new gating code here — an unknown field (table without the flag) fails GraphQL
+# validation in parse_query() below and is already mapped to a 400.
+
+_AGG_FUNCS = ("count", "sum", "avg", "stddev", "variance", "min", "max")
+
+
+def _parse_aggregate_param(params: dict[str, str]) -> list[str] | None:
+    """Parse ?aggregate=count,sum,avg (or bare ?aggregate / ?aggregate=true).
+
+    Returns None when absent (not an aggregate request); [] means "all standard
+    functions"; otherwise the explicit function list, filtered to known functions.
+    """
+    if "aggregate" not in params:
+        return None
+    raw = (params.get("aggregate") or "").strip()
+    if not raw or raw.lower() == "true":
+        return []
+    return [f.strip() for f in raw.split(",") if f.strip() in _AGG_FUNCS]
+
+
+def _parse_group_by_param(params: dict[str, str]) -> list[str]:
+    """Parse ?groupBy=col1,col2 into a list of column names."""
+    raw = params.get("groupBy", "").strip()
+    if not raw:
+        return []
+    return [c.strip() for c in raw.split(",") if c.strip()]
+
+
+def _unwrap_type(gql_type: Any) -> Any:
+    while hasattr(gql_type, "of_type"):
+        gql_type = gql_type.of_type
+    return gql_type
+
+
+def _resolve_agg_field_name(
+    schema: GraphQLSchema, table: str, group_by: bool
+) -> str | None:
+    """Resolve {table}_aggregate / {table}_group_by against the live schema under either
+    naming convention (snake or apollo camelCase — process-local, see naming.py), mirroring
+    JSON:API's ``_resolve_query_field`` so REST doesn't hardcode one convention (REQ-1359)."""
+    query_type = schema.query_type
+    if query_type is None:
+        return None
+    snake_suffix, camel_suffix = ("_group_by", "GroupBy") if group_by else ("_aggregate", "Aggregate")
+    for candidate in (f"{table}{snake_suffix}", f"{table}{camel_suffix}"):
+        if candidate in query_type.fields:
+            return candidate
+    return None
+
+
+def _agg_fields_map(
+    schema: GraphQLSchema, table: str, group_by: bool
+) -> dict[str, list[str]] | None:
+    """Introspect {table}_aggregate / {table}_group_by's AggregateFields sub-type.
+
+    Returns {func_name: [eligible column names]} ("count" always present, mapped to []),
+    or None when the table doesn't expose the root field (flag disabled).
+    """
+    query_type = schema.query_type
+    if query_type is None:
+        return None
+    field_name = _resolve_agg_field_name(schema, table, group_by)
+    if field_name is None:
+        return None
+    field = query_type.fields.get(field_name)
+    if field is None:
+        return None
+
+    result_type = _unwrap_type(field.type)
+    if not isinstance(result_type, GraphQLObjectType):
+        return None
+
+    agg_field = result_type.fields.get("aggregate")
+    if agg_field is None:
+        return None
+
+    agg_fields_type = _unwrap_type(agg_field.type)
+    if not isinstance(agg_fields_type, GraphQLObjectType):
+        return None
+
+    result: dict[str, list[str]] = {"count": []}
+    for func_name in _AGG_FUNCS[1:]:
+        sub_field = agg_fields_type.fields.get(func_name)
+        if sub_field is None:
+            continue
+        sub_type = _unwrap_type(sub_field.type)
+        if isinstance(sub_type, GraphQLObjectType):
+            result[func_name] = list(sub_type.fields.keys())
+    return result
+
+
+def _build_aggregate_selection(
+    agg_map: dict[str, list[str]] | None,
+    funcs: list[str],
+    requested_cols: list[str] | None,
+) -> str:
+    """Build the sub-selection text for an `aggregate { ... }` GraphQL block."""
+    if agg_map is None:
+        # Unknown root field — parse_query() 400s on the outer field regardless of body.
+        return "count"
+    want_all = not funcs
+    parts: list[str] = []
+    for func_name in _AGG_FUNCS:
+        if func_name == "count":
+            if want_all or "count" in funcs:
+                parts.append("count")
+            continue
+        if func_name not in agg_map or not (want_all or func_name in funcs):
+            continue
+        cols = agg_map[func_name]
+        if requested_cols:
+            cols = [c for c in cols if c in requested_cols]
+        if not cols:
+            continue
+        parts.append(f"{func_name} {{ {' '.join(cols)} }}")
+    return " ".join(parts) or "count"
+
+
+def _format_where_arg(where: dict[str, dict[str, Any]]) -> str | None:
+    """Format a parsed where dict into a `where: {...}` GraphQL argument fragment."""
+    if not where:
+        return None
+    where_parts = []
+    for col, ops in where.items():
+        for op, val in ops.items():
+            if isinstance(val, list):
+                formatted = "[" + ", ".join(f'"{v}"' for v in val) + "]"
+                where_parts.append(f"{col}: {{{op}: {formatted}}}")
+            elif isinstance(val, str):
+                try:
+                    numeric: int | float = int(val)
+                except ValueError:
+                    try:
+                        numeric = float(val)
+                    except ValueError:
+                        where_parts.append(f'{col}: {{{op}: "{val}"}}')
+                        continue
+                where_parts.append(f"{col}: {{{op}: {numeric}}}")
+            else:
+                where_parts.append(f"{col}: {{{op}: {val}}}")
+    return "where: {" + ", ".join(where_parts) + "}"
+
+
+def _build_aggregate_graphql_query(
+    schema: GraphQLSchema,
+    table: str,
+    funcs: list[str],
+    where: dict[str, dict[str, Any]],
+    fields: list[str] | None,
+) -> str:
+    """Build `{ {table}_aggregate(where: ...) { aggregate { <selection> } } }` GraphQL text."""
+    agg_map = _agg_fields_map(schema, table, group_by=False)
+    selection = _build_aggregate_selection(agg_map, funcs, fields)
+    where_arg = _format_where_arg(where)
+    args_str = f"({where_arg})" if where_arg else ""
+    field_name = _resolve_agg_field_name(schema, table, group_by=False) or f"{table}_aggregate"
+    return f"{{ {field_name}{args_str} {{ aggregate {{ {selection} }} }} }}"
+
+
+def _build_group_by_graphql_query(
+    schema: GraphQLSchema,
+    table: str,
+    by_cols: list[str],
+    funcs: list[str],
+    where: dict[str, dict[str, Any]],
+    order_by: list[dict[str, str]],
+    limit: int | None,
+    offset: int | None,
+    fields: list[str] | None,
+) -> str:
+    """Build `{ {table}_group_by(by: [...]) { groupKey aggregate { <selection> } } }`."""
+    agg_map = _agg_fields_map(schema, table, group_by=True)
+    selection = _build_aggregate_selection(agg_map, funcs, fields)
+    args_parts = [f"by: [{', '.join(by_cols)}]"]
+    where_arg = _format_where_arg(where)
+    if where_arg:
+        args_parts.append(where_arg)
+    if order_by:
+        ob_parts = [f"{o['field']}: {o['dir']}" for o in order_by]
+        args_parts.append("order_by: {" + ", ".join(ob_parts) + "}")
+    if limit is not None:
+        args_parts.append(f"limit: {limit}")
+    if offset:
+        args_parts.append(f"offset: {offset}")
+    args_str = f"({', '.join(args_parts)})"
+    field_name = _resolve_agg_field_name(schema, table, group_by=True) or f"{table}_group_by"
+    return f"{{ {field_name}{args_str} {{ groupKey aggregate {{ {selection} }} }} }}"
 
 
 def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, REQ-267
@@ -192,30 +386,55 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         # Parse all query params
         raw_params = dict(request.query_params)
 
-        # Determine fields
-        if fields:
-            selected_fields = [f.strip() for f in fields.split(",")]
-        else:
-            selected_fields = _get_scalar_fields(schema, table)
-
-        if not selected_fields:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No selectable fields for table {table!r}",
-            )
-
         where = _parse_where_params(raw_params)
         order_by = _parse_order_by_params(raw_params)
 
-        # Build and execute GraphQL query
-        gql_query = _build_graphql_query(
-            table,
-            selected_fields,
-            where,
-            order_by,
-            limit,
-            offset,
-        )
+        # REQ-1359: aggregate/groupBy target {table}_aggregate / {table}_group_by instead of
+        # the base table field. Schema exposure is already flag-gated (schema_gen.py); a
+        # disabled table simply fails GraphQL validation below (400), no extra checks needed.
+        agg_funcs = _parse_aggregate_param(raw_params)
+        group_by_cols = _parse_group_by_param(raw_params)
+        requested_fields = [f.strip() for f in fields.split(",")] if fields else None
+        is_group_by = bool(group_by_cols)
+        is_aggregate = agg_funcs is not None and not is_group_by
+
+        if is_group_by:
+            gql_query = _build_group_by_graphql_query(
+                schema,
+                table,
+                group_by_cols,
+                agg_funcs or [],
+                where,
+                order_by,
+                limit,
+                offset,
+                requested_fields,
+            )
+        elif is_aggregate:
+            gql_query = _build_aggregate_graphql_query(
+                schema, table, agg_funcs or [], where, requested_fields
+            )
+        else:
+            # Determine fields
+            if fields:
+                selected_fields = requested_fields or []
+            else:
+                selected_fields = _get_scalar_fields(schema, table)
+
+            if not selected_fields:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No selectable fields for table {table!r}",
+                )
+
+            gql_query = _build_graphql_query(
+                table,
+                selected_fields,
+                where,
+                order_by,
+                limit,
+                offset,
+            )
         log.debug("REST → GraphQL: %s", gql_query)
 
         try:
@@ -237,7 +456,11 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 role_id,
                 exec_params=compiled.params or None,
                 state=state,
-                buffered=True,  # REQ-1224: buffered transport — terminal auto-thresholds inline vs CTAS
+                # REQ-1224: buffered transport (terminal auto-thresholds inline vs CTAS) only applies
+                # to raw row queries, which can be large; aggregate/group-by results are always small,
+                # so route them the same unbuffered way JSON:API's aggregate branch does (REQ-1359) —
+                # buffering was forcing them onto the CTAS/engine path unnecessarily.
+                buffered=not (is_group_by or is_aggregate),
             )
             result = await _execute_plan(plan, state)
         except PermissionError as exc:
@@ -252,6 +475,26 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             # REQ-1224: the result exceeded the row threshold and was landed as an engine-native CTAS
             # off Provisa's heap — surface the delivery handle instead of buffering the body here.
             return JSONResponse(content={"data": None, "meta": {"redirect": result.redirect}})
+
+        # REQ-1359: aggregate/group-by results aren't resource rows — reuse the same
+        # serializers the GraphQL/data pipeline uses for _aggregate/_group_by fields, but
+        # flatten to REST's existing flat {"data": ...} shape (no nodes requested).
+        if is_group_by:
+            gb_response = serialize_group_by(
+                result.rows, compiled.columns, None, None, compiled.root_field
+            )
+            return JSONResponse(content={"data": gb_response["data"][compiled.root_field]})
+        if is_aggregate:
+            agg_response = serialize_aggregate(
+                result.rows,
+                compiled.columns,
+                None,
+                None,
+                compiled.root_field,
+                agg_alias=compiled.agg_alias,
+            )
+            agg_obj = agg_response["data"][compiled.root_field][compiled.agg_alias]
+            return JSONResponse(content={"data": agg_obj})
 
         # Serialize
         from provisa.executor.serialize import serialize_rows

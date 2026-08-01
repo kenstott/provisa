@@ -190,6 +190,8 @@
     "queryBadge": "запрос",
     "fkBadge": "FK",
     "akBadge": "AK",
+    "measureBadge": "Мера",
+    "dimBadge": "Измерение",
     "maskingTemplateLabel": "↳ шаблон маскирования",
     "regexPatternPlaceholder": "шаблон regex",
     "regexReplacementPlaceholder": "замена",

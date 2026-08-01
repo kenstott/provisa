@@ -62,7 +62,7 @@
       },
       "step13": {
         "title": "פשוט שואלים — הממשק שכותב את כל השבעה",
-        "description": "💬 <em>\"show inquiry count by user\"</em><p>🎁 והנה השיא: <strong>אין צורך ללמוד אף אחד מהשבעה האלה.</strong> שואלים בשפה טבעית ו-Provisa מהדר את השאלה שלכם לכל שפת שאילתות בבת אחת — כל פאנל למטה הוא אותו משפט כ-SQL, GraphQL, Cypher, gRPC, JSON:API, ו-REST.</p><p>משתמשים בממשק שהכלים שלכם כבר דוברים — או מדלגים על כולם ופשוט שואלים.</p><p>🔑 שאילתות שפה טבעית חיות משתמשות במפתח ה-LLM שלכם עצמכם; זו דוגמה מוכנה מראש.</p><p>✅ מודל אחד, <strong>שמונה ממשקים</strong> — שבעה לשאילתה, ואחד שכותב אותם.</p><div class='tour-tags'><span>שפה טבעית</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "description": "💬 <em>\"how many pets per species\"</em><p>🎁 והנה השיא: <strong>אין צורך ללמוד אף אחד מהשבעה האלה.</strong> שואלים בשפה טבעית ו-Provisa מהדר את השאלה שלכם לכל שפת שאילתות בבת אחת — כל פאנל למטה הוא אותו משפט כ-SQL, GraphQL, Cypher, gRPC, JSON:API, ו-REST.</p><p>משתמשים בממשק שהכלים שלכם כבר דוברים — או מדלגים על כולם ופשוט שואלים.</p><p>🔑 שאילתות שפה טבעית חיות משתמשות במפתח ה-LLM שלכם עצמכם; זו דוגמה מוכנה מראש.</p><p>✅ מודל אחד, <strong>שמונה ממשקים</strong> — שבעה לשאילתה, ואחד שכותב אותם.</p><div class='tour-tags'><span>שפה טבעית</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
       },
       "step14": {
         "title": "זו ליבת חמש הדקות",

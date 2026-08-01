@@ -104,6 +104,7 @@ def _register_table_in_ctx(
         "_domain_": t.domain_id,
     }
     ctx.tables[f"{t.field_name}_aggregate"] = meta
+    ctx.tables[f"{t.field_name}Aggregate"] = meta
     ctx.tables[f"{t.field_name}_connection"] = meta
     ctx.tables[f"{t.field_name}_group_by"] = meta
     ctx.tables[f"{t.field_name}GroupBy"] = meta

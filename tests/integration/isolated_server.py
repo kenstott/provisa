@@ -232,6 +232,13 @@ class IsolatedServer:
         self.stop_process()
         raise RuntimeError(f"isolated server {label} port never bound")
 
+    def dump_stderr_debug(self) -> str:
+        if self._stderr_file is None:
+            return ""
+        self._stderr_file.flush()
+        from pathlib import Path
+        return Path(self._stderr_file.name).read_text(errors="replace")
+
     def stop_process(self) -> None:
         if self._proc is not None:
             self._proc.terminate()

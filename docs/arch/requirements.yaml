@@ -1189,15 +1189,15 @@
   category: Security
   priority: MUST
   type: behavioral
-  description: AuthMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health,
-    /live, /ready, /data/openapi/*, /auth/login, /auth/provider-type, /auth/bootstrap-status, /setup/status}`.
-    Requests to these paths bypass the bearer-token gate entirely and do not require a JWT. The set
-    is exact — every entry is an unauthenticated hole, so an addition is a deliberate edit. REQ-1355
-    moved this set out of TenantMiddleware, which was registered behind a flag that was always False
-    at app-factory time and therefore never ran, leaving the billing webhook to 401 on the auth gate.
-  use_case: Skip-path exemptions allow Lemon Squeezy billing webhooks (which authenticate by HMAC
-    signature, not a bearer token), health/liveness probes, the pre-login provider probes, and OpenAPI
-    docs to function without a JWT while all other paths enforce authentication.
+  description: AuthMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health, /live,
+    /ready, /data/openapi/*, /auth/login, /auth/provider-type, /auth/bootstrap-status, /setup/status}`.
+    Requests to these paths bypass the bearer-token gate entirely and do not require a JWT. The set is
+    exact — every entry is an unauthenticated hole, so an addition is a deliberate edit. REQ-1355 moved
+    this set out of TenantMiddleware, which was registered behind a flag that was always False at app-factory
+    time and therefore never ran, leaving the billing webhook to 401 on the auth gate.
+  use_case: Skip-path exemptions allow Lemon Squeezy billing webhooks (which authenticate by HMAC signature,
+    not a bearer token), health/liveness probes, the pre-login provider probes, and OpenAPI docs to function
+    without a JWT while all other paths enforce authentication.
   code:
   - provisa/auth/middleware.py
   tests:
@@ -2837,9 +2837,9 @@
   type: structural
   description: 'Schema endpoint returns node_labels with a `pk: string | null` field (first PK column)
     and a `pk_columns: string[]` field per label, designating the primary key column name(s) (absorbs
-    REQ-398). Allows graph UI to construct reliable `WHERE NOT n.<pk> IN [<value>]`
-    exclusion clauses (instead of heuristic-based `id(n)` fallback), enabling "Exclude from query", deep-linking
-    to nodes, "show related to this entity", and inspector PK highlighting.'
+    REQ-398). Allows graph UI to construct reliable `WHERE NOT n.<pk> IN [<value>]` exclusion clauses
+    (instead of heuristic-based `id(n)` fallback), enabling "Exclude from query", deep-linking to nodes,
+    "show related to this entity", and inspector PK highlighting.'
   use_case: Explicit PK designation in schema enables semantic graph operations and node-centric navigation
     without node ID heuristics.
   code:
@@ -17185,10 +17185,10 @@
   type: constraint
   description: The dev environment runs the Python backend (uvicorn, port 8000) and UI (vite dev server,
     port 3000) on the host, never in containers. Port 8000 applies to the start-ui-install.sh flow; the
-    start-ui.sh flow listens on 8001 (REQ-618) — the two dev scripts use different ports by design. `docker-compose.app.yml` and `docker-compose.airgap.yml`
-    are packaged-product only and must never be included in dev compose stacks. `start-ui-install.sh --demo`
-    is the only dev mode flag; `--demo` always implies obs. Ports 8000 and 3000 must never appear in any
-    dev compose file.
+    start-ui.sh flow listens on 8001 (REQ-618) — the two dev scripts use different ports by design. `docker-compose.app.yml`
+    and `docker-compose.airgap.yml` are packaged-product only and must never be included in dev compose
+    stacks. `start-ui-install.sh --demo` is the only dev mode flag; `--demo` always implies obs. Ports
+    8000 and 3000 must never appear in any dev compose file.
   use_case: Host-based uvicorn + vite in dev avoids port conflicts with containerised services and enables
     hot-reload without rebuilding images.
   code:
@@ -19760,10 +19760,10 @@
   type: behavioral
   description: Masking SELECT expressions only; predicates that remain in the query (JOIN ON, RLS-injected
     filters) use physical unmasked columns unchanged — user-written WHERE/HAVING references to masked
-    columns never reach this stage, rejected at validation time by V005 (REQ-531). ORDER BY, LIMIT, GROUP BY, and all other clauses likewise remain unchanged, and
-    masking returns a new immutable CompiledQuery, never mutating the input (absorbs REQ-744). Masking
-    injection operates on the SELECT projection list exclusively, preserving
-    query filtering and join semantics.
+    columns never reach this stage, rejected at validation time by V005 (REQ-531). ORDER BY, LIMIT, GROUP
+    BY, and all other clauses likewise remain unchanged, and masking returns a new immutable CompiledQuery,
+    never mutating the input (absorbs REQ-744). Masking injection operates on the SELECT projection list
+    exclusively, preserving query filtering and join semantics.
   use_case: Separating masked SELECT projections from unmasked predicates ensures query filters remain
     executable while users see masked values.
   code:
@@ -28664,7 +28664,7 @@
   - tests/unit/test_injector.py
   - tests/unit/test_probe_type_config_validation.py
   - tests/unit/test_live_change_gates.py
-  - tests/mvmvp/test_mv_triggers_e2e.py
+  - tests/mvmvp/test_mv_triggers_integration.py
   related_reqs:
   - REQ-941
   - REQ-855
@@ -41022,223 +41022,246 @@
     unit test is needed since the constraint is self-verifying.
 - id: REQ-1354
   status: complete
-  group: "3. Source Registration & Data Modeling"
+  group: 3. Source Registration & Data Modeling
   category: Catalog Registration
   priority: MUST
   type: behavioral
-  since: "2026-07"
-  description: >-
-    Trino source-catalog registration drops and recreates the catalog rather than skipping when it already exists, ensuring connection properties and credentials refresh on every registration. A catalog that refuses to drop is statically file-loaded and must raise an error, never be silently worked around.
-  use_case: >-
-    Trino exposes no way to read a live catalog's properties back, and CREATE CATALOG IF NOT EXISTS no-ops against an existing catalog. Without dropping and recreating, each source is pinned to the credentials it first booted with, preventing credential rotation or connection property updates.
+  since: 2026-07
+  description: Trino source-catalog registration drops and recreates the catalog rather than skipping
+    when it already exists, ensuring connection properties and credentials refresh on every registration.
+    A catalog that refuses to drop is statically file-loaded and must raise an error, never be silently
+    worked around.
+  use_case: Trino exposes no way to read a live catalog's properties back, and CREATE CATALOG IF NOT EXISTS
+    no-ops against an existing catalog. Without dropping and recreating, each source is pinned to the
+    credentials it first booted with, preventing credential rotation or connection property updates.
   code:
-    - provisa/core/catalog.py
-    - provisa/core/trino_system_catalogs.py
+  - provisa/core/catalog.py
+  - provisa/core/trino_system_catalogs.py
   tests:
-    - tests/unit/test_source_catalog_refresh.py
-    - tests/unit/test_trino_system_catalogs.py
-  scenario: |
-    Given a Trino catalog is already registered with old credentials
+  - tests/unit/test_source_catalog_refresh.py
+  - tests/unit/test_trino_system_catalogs.py
+  scenario: 'Given a Trino catalog is already registered with old credentials
+
     When source registration runs at config load or admin source registration
+
     Then the catalog is dropped and recreated
+
     And new connection properties and credentials take effect
+
+    '
 - id: REQ-1355
   status: accepted
-  group: "13. Multi-Tenancy & Organizations"
+  group: 13. Multi-Tenancy & Organizations
   category: Tenancy Architecture
   priority: MUST
   type: constraint
-  target: "2026-Q3"
-  description: >-
-    Org is the canonical tenancy subject in Provisa; "tenant" terminology is retired.
-    The legacy tenants/tenant_config tables are not a separate subject but attributes of orgs.
-    Billing fields (plan, ls_customer_id, ls_subscription_id, kms_key_arn) and tenant_config
-    migrate to orgs; org resolution has one path (OrgRoutingMiddleware only).
-    Naming: tenant_db → org_db, tenant_id → org_id, TenantMiddleware → retired.
-  use_case: >-
-    The two nominal org resolution paths were not merely ambiguous — neither ran. Both
-    TenantMiddleware and _OrgRoutingMiddleware were registered inside create_app behind
-    `if state.multitenancy:`, and that flag is assigned in _load_and_build, which lifespan
-    invokes only after create_app returns; both entrypoints use uvicorn factory mode, so the
-    guard always read the False default. With no request-lifetime binder for current_org,
-    AppState._active_runtime fell through to the DEFAULT org's runtime on every authenticated
-    HTTP request, so a member of one org read another org's data plane. The same dead guard
-    hid the control-plane router (404 on every endpoint) and TenantMiddleware's skip-path set
-    (the Lemon Squeezy webhook 401'd before its signature was checked). One canonical subject,
-    one resolution path, and no create_app branch on a flag that is unset at factory time.
+  target: 2026-Q3
+  description: 'Org is the canonical tenancy subject in Provisa; "tenant" terminology is retired. The
+    legacy tenants/tenant_config tables are not a separate subject but attributes of orgs. Billing fields
+    (plan, ls_customer_id, ls_subscription_id, kms_key_arn) and tenant_config migrate to orgs; org resolution
+    has one path (OrgRoutingMiddleware only). Naming: tenant_db → org_db, tenant_id → org_id, TenantMiddleware
+    → retired.'
+  use_case: The two nominal org resolution paths were not merely ambiguous — neither ran. Both TenantMiddleware
+    and _OrgRoutingMiddleware were registered inside create_app behind `if state.multitenancy:`, and that
+    flag is assigned in _load_and_build, which lifespan invokes only after create_app returns; both entrypoints
+    use uvicorn factory mode, so the guard always read the False default. With no request-lifetime binder
+    for current_org, AppState._active_runtime fell through to the DEFAULT org's runtime on every authenticated
+    HTTP request, so a member of one org read another org's data plane. The same dead guard hid the control-plane
+    router (404 on every endpoint) and TenantMiddleware's skip-path set (the Lemon Squeezy webhook 401'd
+    before its signature was checked). One canonical subject, one resolution path, and no create_app branch
+    on a flag that is unset at factory time.
   code:
-    - provisa/core/schema_admin.py
-    - provisa/auth/middleware.py
-    - provisa/api/app.py
-    - provisa/core/repositories/org.py
+  - provisa/core/schema_admin.py
+  - provisa/auth/middleware.py
+  - provisa/api/app.py
+  - provisa/core/repositories/org.py
   related_reqs:
-    - REQ-1075
-    - REQ-456
-    - REQ-462
-    - REQ-594
-    - REQ-1266
-    - REQ-1044
-    - REQ-1053
+  - REQ-1075
+  - REQ-456
+  - REQ-462
+  - REQ-594
+  - REQ-1266
+  - REQ-1044
+  - REQ-1053
 - id: REQ-1356
   status: complete
-  since: "2026-07"
-  group: "10. UI & Admin Surfaces"
+  since: 2026-07
+  group: 10. UI & Admin Surfaces
   category: Internationalization
   priority: SHOULD
   type: structural
-  description: >-
-    The Provisa UI ships 13 locale catalogs: en (source of truth), es, fr, de, nl, he, ja, zh (Simplified),
-    zh-HK (Traditional/HK with exact-tag matching before base zh fallback), ru, it, pt, hi.
-    Each non-English locale mirrors en's structure (core catalog + 94 per-component namespace files, 2,825 keys)
-    and maintains a .tm.json translation-memory sidecar for incremental retranslation.
-    Key/placeholder parity with en is enforced by the locale-diff validator.
-    Translation uses per-locale domain glossaries via the i18n-translate skill.
-    Hebrew is catalog-complete with full RTL support (see REQ-1357).
-  use_case: >-
-    Multiple-locale support enables Provisa to serve global enterprises in their native languages,
+  description: 'The Provisa UI ships 13 locale catalogs: en (source of truth), es, fr, de, nl, he, ja,
+    zh (Simplified), zh-HK (Traditional/HK with exact-tag matching before base zh fallback), ru, it, pt,
+    hi. Each non-English locale mirrors en''s structure (core catalog + 94 per-component namespace files,
+    2,825 keys) and maintains a .tm.json translation-memory sidecar for incremental retranslation. Key/placeholder
+    parity with en is enforced by the locale-diff validator. Translation uses per-locale domain glossaries
+    via the i18n-translate skill. Hebrew is catalog-complete with full RTL support (see REQ-1357).'
+  use_case: Multiple-locale support enables Provisa to serve global enterprises in their native languages,
     with translation memory and glossaries enabling incremental, efficient localization.
   code:
-    - provisa-ui/src/i18n/
+  - provisa-ui/src/i18n/
   related_reqs:
-    - REQ-1012
+  - REQ-1012
 - id: REQ-1357
   status: complete
-  since: "2026-07"
-  group: "10. UI & Admin Surfaces"
+  since: 2026-07
+  group: 10. UI & Admin Surfaces
   category: Internationalization
   priority: SHOULD
   type: ui
-  description: >-
-    The Provisa UI supports right-to-left (RTL) layout for locales with RTL scripts.
-    RTL direction is determined by i18next locale (base subtags he/ar/fa/ur/yi → rtl, all others ltr).
-    Layout is implemented via Mantine DirectionProvider wrapping the app and a DirectionSync component
-    (provisa-ui/src/i18n/direction.tsx) that keeps <html dir>, <html lang>, and Mantine's direction context
-    in sync on init and runtime languageChanged events.
-  use_case: >-
-    RTL language users require properly-mirrored layouts to read and interact with the UI naturally,
-    ensuring accessibility and usability for enterprise users in RTL-script regions (Hebrew, Arabic, Farsi, Urdu, Yiddish).
+  description: The Provisa UI supports right-to-left (RTL) layout for locales with RTL scripts. RTL direction
+    is determined by i18next locale (base subtags he/ar/fa/ur/yi → rtl, all others ltr). Layout is implemented
+    via Mantine DirectionProvider wrapping the app and a DirectionSync component (provisa-ui/src/i18n/direction.tsx)
+    that keeps <html dir>, <html lang>, and Mantine's direction context in sync on init and runtime languageChanged
+    events.
+  use_case: RTL language users require properly-mirrored layouts to read and interact with the UI naturally,
+    ensuring accessibility and usability for enterprise users in RTL-script regions (Hebrew, Arabic, Farsi,
+    Urdu, Yiddish).
   code:
-    - provisa-ui/src/i18n/direction.tsx
-    - provisa-ui/src/main.tsx
+  - provisa-ui/src/i18n/direction.tsx
+  - provisa-ui/src/main.tsx
   related_reqs:
-    - REQ-1356
-    - REQ-1012
+  - REQ-1356
+  - REQ-1012
 - id: REQ-1358
   status: complete
-  since: "2026-07"
-  group: "10. UI & Admin Surfaces"
+  since: 2026-07
+  group: 10. UI & Admin Surfaces
   category: Internationalization
   priority: SHOULD
   type: ui
-  description: >-
-    The in-app guided product tour (provisa-ui/src/tour/) is now integrated into the app-level i18n system.
-    All 25 tour step titles and descriptions are extracted into per-locale i18n namespace files (provisa-ui/src/i18n/locales/<lng>/tour.json)
-    keyed as tour.steps.step0..step24 with title and description fields.
-    The TourStep interface carries a `key` field instead of inline copy.
-    useTour.tsx calls t(`tour.steps.${step.key}.title`) and .description via useTranslation(),
-    and translations are complete for all 13 supported locales (en, es, fr, de, nl, he, ja, zh, zh-HK, ru, it, pt, hi),
-    preserving embedded HTML/SVG/code/emoji verbatim and leaving product/technology proper nouns untranslated.
-  use_case: >-
-    Enables the product tour to surface in users' native languages alongside the rest of the UI,
+  description: The in-app guided product tour (provisa-ui/src/tour/) is now integrated into the app-level
+    i18n system. All 25 tour step titles and descriptions are extracted into per-locale i18n namespace
+    files (provisa-ui/src/i18n/locales/<lng>/tour.json) keyed as tour.steps.step0..step24 with title and
+    description fields. The TourStep interface carries a `key` field instead of inline copy. useTour.tsx
+    calls t(`tour.steps.${step.key}.title`) and .description via useTranslation(), and translations are
+    complete for all 13 supported locales (en, es, fr, de, nl, he, ja, zh, zh-HK, ru, it, pt, hi), preserving
+    embedded HTML/SVG/code/emoji verbatim and leaving product/technology proper nouns untranslated.
+  use_case: Enables the product tour to surface in users' native languages alongside the rest of the UI,
     ensuring onboarding is accessible and consistent across all supported locales.
   code:
-    - provisa-ui/src/tour/tourSteps.ts
-    - provisa-ui/src/tour/useTour.tsx
-    - provisa-ui/src/i18n/locales/
-  scenario: |
-    Given a user with navigator.language set to es
+  - provisa-ui/src/tour/tourSteps.ts
+  - provisa-ui/src/tour/useTour.tsx
+  - provisa-ui/src/i18n/locales/
+  scenario: 'Given a user with navigator.language set to es
+
     When the user loads the Provisa UI and opens the product tour
+
     Then tour step titles and descriptions render in Spanish
+
     And all 25 steps are fully translated
+
     And proper nouns and embedded code remain untranslated by design
+
+    '
   related_reqs:
-    - REQ-1356
-    - REQ-1012
-    - REQ-1342
+  - REQ-1356
+  - REQ-1012
+  - REQ-1342
 - id: REQ-1359
   status: complete
-  group: "5. Query Languages, Compilation & Operations"
+  group: 5. Query Languages, Compilation & Operations
   category: Aggregate & Group-by Queries
   priority: SHOULD
   type: behavioral
-  since: "2026-08"
-  description: >-
-    gRPC, JSON:API, and OpenAPI query surfaces expose aggregate and group-by capability for tables with
-    `enable_aggregates` and `enable_group_by` flags set, routed through the existing compiler aggregate
-    machinery (provisa/compiler/aggregates.py) rather than per-protocol implementations. JSON:API carries
-    `?aggregate=` and `?groupBy=` query parameters; gRPC and OpenAPI define equivalent request shapes.
-  use_case: >-
-    Currently, GraphQL/SQL/Cypher surfaces synthesize `{table}_aggregate` and `{table}_group_by` queries via
-    compiler aggregates, while gRPC/JSON:API/OpenAPI only issue raw `SELECT <cols> FROM <table> LIMIT n`,
-    leaving three protocols without aggregate capability. Protocol parity ensures all surfaces can answer the
-    same analytical questions (e.g., "inquiry count by user") without reimplementing aggregation logic per-protocol.
+  since: 2026-08
+  description: gRPC, JSON:API, and OpenAPI query surfaces expose aggregate and group-by capability for
+    tables with `enable_aggregates` and `enable_group_by` flags set, routed through the existing compiler
+    aggregate machinery (provisa/compiler/aggregates.py) rather than per-protocol implementations. JSON:API
+    carries `?aggregate=` and `?groupBy=` query parameters; gRPC and OpenAPI define equivalent request
+    shapes.
+  use_case: Currently, GraphQL/SQL/Cypher surfaces synthesize `{table}_aggregate` and `{table}_group_by`
+    queries via compiler aggregates, while gRPC/JSON:API/OpenAPI only issue raw `SELECT <cols> FROM <table>
+    LIMIT n`, leaving three protocols without aggregate capability. Protocol parity ensures all surfaces
+    can answer the same analytical questions (e.g., "inquiry count by user") without reimplementing aggregation
+    logic per-protocol.
   code:
-    - provisa/grpc/query_ir.py
-    - provisa/nl/executor.py
-    - provisa/compiler/aggregates.py
-  scenario: |
-    Given a table with enable_aggregates: true
+  - provisa/grpc/query_ir.py
+  - provisa/nl/executor.py
+  - provisa/compiler/aggregates.py
+  scenario: 'Given a table with enable_aggregates: true
+
     When a gRPC/JSON:API/OpenAPI client requests an aggregate (sum, count, avg, etc.) on a grouping column
+
     Then the request is routed through provisa/compiler/aggregates.py
+
     And results are returned with proper aggregate naming parity (e.g., inquiry_count)
+
     And gRPC/JSON:API/OpenAPI surfaces feature the same aggregate capabilities as GraphQL/SQL/Cypher
+
+    '
 - id: REQ-1360
   status: complete
-  group: "3. Source Registration & Data Modeling"
+  group: 3. Source Registration & Data Modeling
   category: Catalog & Schema Discovery
   priority: SHOULD
   type: structural
-  since: "2026-08"
-  description: >-
-    When a table has `enable_aggregates` and/or `enable_group_by` flags, the catalog and semantic metadata
-    layer synthesize virtual (metadata-only, non-materialized) dimension-role and measure-role annotations for
-    discovery in the Tables/Model tab, docs, and schema introspection. Group-by-eligible columns are labeled
-    as implicit dimension keys; aggregatable numeric and count columns are labeled as implicit measures. This
-    does not replace governed, reusable metrics (config/provisa-install.yaml `metrics:` block with `visible_to`
-    governance) — only adds metadata for Kimball-style naming and discoverability in UI.
-  use_case: >-
-    Ad-hoc analytics queries need to surface which columns can be grouped and which can be aggregated to help
-    users explore data without reading schema documentation. Implicit metadata from enable_* flags provides
-    this discovery signal in the UI, complementing explicit metrics governance for formal, reusable, access-controlled measures.
+  since: 2026-08
+  description: When a table has `enable_aggregates` and/or `enable_group_by` flags, the catalog and semantic
+    metadata layer synthesize virtual (metadata-only, non-materialized) dimension-role and measure-role
+    annotations for discovery in the Tables/Model tab, docs, and schema introspection. Group-by-eligible
+    columns are labeled as implicit dimension keys; aggregatable numeric and count columns are labeled
+    as implicit measures. This does not replace governed, reusable metrics (config/provisa-install.yaml
+    `metrics:` block with `visible_to` governance) — only adds metadata for Kimball-style naming and discoverability
+    in UI.
+  use_case: Ad-hoc analytics queries need to surface which columns can be grouped and which can be aggregated
+    to help users explore data without reading schema documentation. Implicit metadata from enable_* flags
+    provides this discovery signal in the UI, complementing explicit metrics governance for formal, reusable,
+    access-controlled measures.
   code:
-    - provisa/core/catalog.py
-    - provisa/compiler/aggregates.py
-  scenario: |
-    Given a fact_table with enable_aggregates: true and enable_group_by: true
+  - provisa/core/catalog.py
+  - provisa/compiler/aggregates.py
+  scenario: 'Given a fact_table with enable_aggregates: true and enable_group_by: true
+
     When a user views the table in the Explore UI
+
     Then numeric columns and count-eligible fields appear tagged as "Measures"
+
     And non-aggregated ID/foreign-key columns appear tagged as "Dimensions"
+
     And explicit metrics (visible_to-governed) remain separately discoverable
+
     And no new physical tables or materialized views are created
+
+    '
 - id: REQ-1361
   status: complete
-  since: "2026-08"
-  group: "10. UI & Admin Surfaces"
+  since: 2026-08
+  group: 10. UI & Admin Surfaces
   category: Table Discovery
   priority: SHOULD
   type: behavioral
-  description: >-
-    On the Tables list page (provisa-ui/src/pages/TablesPage.tsx), when a table has no explicit modeling_role
-    (not registered via the Entity/Fact DSL), render an "implied" fact/dimension badge derived from that table's
-    enableAggregates flag (implied fact) and/or enableGroupBy flag (implied dimension). Badges are colored grape/teal
-    with variant="outline" to visually distinguish implied role from explicit role (REQ-1320).
-  use_case: >-
-    A user who explicitly enables Enable Aggregates or Enable Group By on a table is asserting that the table plays
-    a fact or dimension role. Surfacing this intent as a badge on the Tables list provides immediate visibility into
-    modeling decisions without requiring per-column inspection (REQ-1360 handles column-level tagging).
+  description: On the Tables list page (provisa-ui/src/pages/TablesPage.tsx), when a table has no explicit
+    modeling_role (not registered via the Entity/Fact DSL), render an "implied" fact/dimension badge derived
+    from that table's enableAggregates flag (implied fact) and/or enableGroupBy flag (implied dimension).
+    Badges are colored grape/teal with variant="outline" to visually distinguish implied role from explicit
+    role (REQ-1320).
+  use_case: A user who explicitly enables Enable Aggregates or Enable Group By on a table is asserting
+    that the table plays a fact or dimension role. Surfacing this intent as a badge on the Tables list
+    provides immediate visibility into modeling decisions without requiring per-column inspection (REQ-1360
+    handles column-level tagging).
   code:
-    - provisa-ui/src/pages/TablesPage.tsx
+  - provisa-ui/src/pages/TablesPage.tsx
   tests:
-    - provisa-ui/e2e/tables-enable-aggregates.spec.ts
-  scenario: |
-    Given a table with enableAggregates: true and no explicit modeling_role
+  - provisa-ui/e2e/tables-enable-aggregates.spec.ts
+  - tests/unit/test_nl_aggregation_routing.py
+  scenario: 'Given a table with enableAggregates: true and no explicit modeling_role
+
     When a user views the Tables list page
+
     Then an "implied fact" badge appears with variant="outline" and testid="tables-implied-fact-<table>"
+
     And the badge title derives from i18n key "tablesPage.modelingRole.impliedFactTitle"
+
     Given a table with enableGroupBy: true and no explicit modeling_role
+
     When a user views the Tables list page
+
     Then an "implied dimension" badge appears with variant="outline" and testid="tables-implied-dimension-<table>"
+
     And the badge title derives from i18n key "tablesPage.modelingRole.impliedDimensionTitle"
+
+    '
   related_reqs:
-    - REQ-1320
-    - REQ-1360
+  - REQ-1320
+  - REQ-1360

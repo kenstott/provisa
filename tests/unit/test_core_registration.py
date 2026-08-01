@@ -1106,3 +1106,92 @@ class TestReq653AggregateGroupByFlags:
             domains=[],
         )
         assert si.tables[0]["enable_aggregates"] is True
+
+
+# ---------------------------------------------------------------------------
+# REQ-1360 — implicit dim/measure metadata (metadata-only, gated by
+# enable_aggregates/enable_group_by), fixture modeled on the pet_store
+# `inquiries` table (config/provisa-install.yaml: enable_aggregates=true,
+# enable_group_by=true, columns id/inquiry_type/message/pet_id/status/
+# submitted_at/user_id).
+# ---------------------------------------------------------------------------
+
+
+def _inquiries_col_rows() -> list[dict]:
+    return [
+        {"column_name": "id", "data_type": "integer"},
+        {"column_name": "inquiry_type", "data_type": "varchar"},
+        {"column_name": "message", "data_type": "varchar"},
+        {"column_name": "pet_id", "data_type": "integer"},
+        {"column_name": "status", "data_type": "varchar"},
+        {"column_name": "submitted_at", "data_type": "timestamp"},
+        {"column_name": "user_id", "data_type": "integer"},
+    ]
+
+
+class TestReq1360ImplicitDimMeasures:
+    def test_both_flags_off_yields_nothing(self):
+        from provisa.api.admin.schema_helpers import _compute_implicit_dim_measures
+
+        measures, dims, measure_names, dim_names = _compute_implicit_dim_measures(
+            _inquiries_col_rows(), enable_aggregates=False, enable_group_by=False
+        )
+        assert measures == []
+        assert dims == []
+        assert measure_names == set()
+        assert dim_names == set()
+
+    def test_enable_aggregates_produces_implicit_measures_reusing_req196_classification(self):
+        from provisa.api.admin.schema_helpers import _compute_implicit_dim_measures
+
+        measures, dims, measure_names, dim_names = _compute_implicit_dim_measures(
+            _inquiries_col_rows(), enable_aggregates=True, enable_group_by=False
+        )
+        by_col = {m.column: set(m.agg_funcs) for m in measures}
+
+        # numeric columns (REQ-196): sum/avg/stddev/variance + min/max (also comparable) + count
+        assert by_col["id"] == {"count", "sum", "avg", "stddev", "variance", "min", "max"}
+        assert by_col["pet_id"] == {"count", "sum", "avg", "stddev", "variance", "min", "max"}
+        assert by_col["user_id"] == {"count", "sum", "avg", "stddev", "variance", "min", "max"}
+
+        # comparable (varchar/timestamp) but not numeric: min/max + count only
+        assert by_col["inquiry_type"] == {"count", "min", "max"}
+        assert by_col["status"] == {"count", "min", "max"}
+        assert by_col["submitted_at"] == {"count", "min", "max"}
+        assert by_col["message"] == {"count", "min", "max"}
+
+        assert measure_names == set(by_col)
+        # group_by disabled -> no implicit_dimensions
+        assert dims == []
+        assert dim_names == set()
+
+    def test_enable_group_by_produces_implicit_dimensions_for_all_columns(self):
+        from provisa.api.admin.schema_helpers import _compute_implicit_dim_measures
+
+        measures, dims, measure_names, dim_names = _compute_implicit_dim_measures(
+            _inquiries_col_rows(), enable_aggregates=False, enable_group_by=True
+        )
+        assert measures == []
+        assert measure_names == set()
+        assert set(dims) == {
+            "id",
+            "inquiry_type",
+            "message",
+            "pet_id",
+            "status",
+            "submitted_at",
+            "user_id",
+        }
+        assert dim_names == set(dims)
+
+    def test_columns_without_data_type_are_excluded(self):
+        from provisa.api.admin.schema_helpers import _compute_implicit_dim_measures
+
+        col_rows = [{"column_name": "mystery", "data_type": None}]
+        measures, dims, measure_names, dim_names = _compute_implicit_dim_measures(
+            col_rows, enable_aggregates=True, enable_group_by=True
+        )
+        assert measures == []
+        assert dims == []
+        assert measure_names == set()
+        assert dim_names == set()

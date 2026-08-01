@@ -13,6 +13,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
+import { format as formatSql } from "sql-formatter";
 import { EditorView } from "@codemirror/view";
 import { Button, Drawer, Group, Modal, SegmentedControl, Checkbox, Text, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
@@ -138,6 +139,7 @@ export function SqlPage() {
   const pendingAutoRunRef = useRef(
     (location.state as { autoRun?: boolean } | null)?.autoRun === true,
   );
+  const pendingRunAfterFormatRef = useRef(false);
   const [nlText, setNlText] = useState(active0.nlText);
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
@@ -723,6 +725,21 @@ export function SqlPage() {
   useEffect(() => {
     if (pendingAutoRunRef.current && sqlText.trim()) {
       pendingAutoRunRef.current = false;
+      // REQ-1359: "Open in SQL" must copy the SQL in, prettify it, then execute.
+      const pretty = formatSql(sqlText, { language: "postgresql" });
+      if (pretty !== sqlText) {
+        pendingRunAfterFormatRef.current = true;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time nav-forwarded format, guarded by pendingAutoRunRef
+        setSqlText(pretty);
+      } else {
+        handleRun();
+      }
+    }
+  }, [sqlText, handleRun]);
+
+  useEffect(() => {
+    if (pendingRunAfterFormatRef.current && sqlText.trim()) {
+      pendingRunAfterFormatRef.current = false;
       handleRun();
     }
   }, [sqlText, handleRun]);

@@ -105,6 +105,29 @@ def _parse_sort(sort_param: str | None) -> list[dict[str, str]]:  # REQ-257
     return ordering
 
 
+def _parse_aggregate_param(value: str | None) -> list[str] | None:  # REQ-1359
+    """Parse the JSON:API ``aggregate`` query param.
+
+    Supports:
+      (absent)               -> None (aggregate not requested)
+      aggregate=true|1|""    -> [] (requested, all available functions)
+      aggregate=count,sum    -> ["count", "sum"] (requested, specific functions)
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if stripped.lower() in ("", "true", "1"):
+        return []
+    return [f.strip() for f in stripped.split(",") if f.strip()]
+
+
+def _parse_group_by_param(value: str | None) -> list[str]:  # REQ-1359
+    """Parse the JSON:API ``groupBy`` query param: comma-separated column names."""
+    if not value:
+        return []
+    return [c.strip() for c in value.split(",") if c.strip()]
+
+
 def _parse_sparse_fieldsets(  # REQ-257
     params: dict[str, str],
 ) -> dict[str, list[str]]:
@@ -240,6 +263,104 @@ def _build_graphql_query(
     )
 
 
+def _unwrap_type(t: Any) -> Any:
+    """Strip GraphQLNonNull/GraphQLList wrappers down to the underlying named type."""
+    while hasattr(t, "of_type"):
+        t = t.of_type
+    return t
+
+
+def _resolve_query_field(
+    query_type: GraphQLObjectType, gql_table: str, snake_suffix: str, camel_suffix: str
+) -> str | None:  # REQ-1359
+    """Resolve a table's aggregate/group-by root field name under either naming convention."""
+    for candidate in (f"{gql_table}{snake_suffix}", f"{gql_table}{camel_suffix}"):
+        if candidate in query_type.fields:
+            return candidate
+    return None
+
+
+def _get_agg_fields_type(root_field: Any) -> GraphQLObjectType | None:  # REQ-1359
+    """Extract the ``{Type}AggregateFields`` object type nested under a root field's ``aggregate``.
+
+    Works for both the ``{field}_aggregate`` root field (returns ``{Type}Aggregate``) and the
+    ``{field}_group_by`` root field (returns a list of ``{Type}GroupByRow``) since both nest an
+    ``aggregate`` field of the same shared type (schema_gen.py builds it once for both).
+    """
+    rt = _unwrap_type(root_field.type)
+    if not isinstance(rt, GraphQLObjectType) or "aggregate" not in rt.fields:
+        return None
+    return _unwrap_type(rt.fields["aggregate"].type)
+
+
+def _build_agg_selection(
+    agg_fields_type: GraphQLObjectType, funcs_filter: list[str] | None
+) -> str:  # REQ-1359
+    """Build the GraphQL sub-selection for an ``aggregate { ... }`` block.
+
+    ``funcs_filter`` of None selects every function the schema exposes for this table;
+    otherwise only the named functions (already validated against the schema by the caller).
+    """
+    parts = []
+    for name, f in agg_fields_type.fields.items():
+        if funcs_filter is not None and name not in funcs_filter:
+            continue
+        ftype = _unwrap_type(f.type)
+        if isinstance(ftype, GraphQLObjectType):
+            parts.append(f"{name} {{ {' '.join(ftype.fields.keys())} }}")
+        else:
+            parts.append(name)
+    return " ".join(parts) if parts else "count"
+
+
+def _build_group_by_graphql_query(  # REQ-1359
+    field_name: str,
+    by_columns: list[str],
+    agg_selection: str,
+    filters: dict[str, dict[str, Any]],
+    sort: list[dict[str, str]],
+    limit: int | None,
+    offset: int | None,
+) -> str:
+    """Build GraphQL query text for a ``{field}_group_by(by: [...])`` root field.
+
+    Mirrors the where/order_by/limit/offset argument formatting ``_build_graphql_query_shared``
+    already does for the base table field; adds the ``by`` argument that shared builder has no
+    concept of since it's specific to group-by root fields.
+    """
+    args_parts = [f"by: [{', '.join(by_columns)}]"]
+    if limit is not None:
+        args_parts.append(f"limit: {limit}")
+    if offset:
+        args_parts.append(f"offset: {offset}")
+    if filters:
+        where_parts = []
+        for col, ops in filters.items():
+            for op, val in ops.items():
+                if isinstance(val, list):
+                    formatted = "[" + ", ".join(f'"{v}"' for v in val) + "]"
+                    where_parts.append(f"{col}: {{{op}: {formatted}}}")
+                elif isinstance(val, str):
+                    try:
+                        numeric: float | int = int(val)
+                    except ValueError:
+                        try:
+                            numeric = float(val)
+                        except ValueError:
+                            where_parts.append(f'{col}: {{{op}: "{val}"}}')
+                            continue
+                    where_parts.append(f"{col}: {{{op}: {numeric}}}")
+                else:
+                    where_parts.append(f"{col}: {{{op}: {val}}}")
+        if where_parts:
+            args_parts.append("where: {" + ", ".join(where_parts) + "}")
+    if sort:
+        ob_parts = [f"{o['field']}: {o['dir']}" for o in sort]
+        args_parts.append("order_by: {" + ", ".join(ob_parts) + "}")
+    args_str = f"({', '.join(args_parts)})"
+    return f"{{ {field_name}{args_str} {{ groupKey aggregate {{ {agg_selection} }} }} }}"
+
+
 def _jsonapi_error_response(status: int, title: str, detail: str | None = None, **kwargs):
     """Return a JSONResponse with JSON:API error format."""
     body = error_response([jsonapi_error(status, title, detail, **kwargs)])
@@ -371,6 +492,127 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     f"Unknown sort field {s['field']!r}",
                     source_parameter="sort",
                 )
+
+        # REQ-1359: ?aggregate/?groupBy synthesize {field}_aggregate / {field}_group_by GraphQL
+        # query text instead of the base table field — same synthesize-then-compile pipeline
+        # GraphQL/REST already run, so governance/RLS/masking apply identically. A table without
+        # the corresponding enable_aggregates/enable_group_by flag has no such root field, so
+        # resolution below fails and maps to a 400 rather than the parser's 500 on unknown field.
+        agg_funcs = _parse_aggregate_param(raw_params.get("aggregate"))
+        group_cols = _parse_group_by_param(raw_params.get("groupBy"))
+        is_group_by = bool(group_cols)
+        is_aggregate_only = agg_funcs is not None and not is_group_by
+
+        if is_aggregate_only or is_group_by:
+            for col in group_cols:
+                if col not in all_scalars:
+                    return _jsonapi_error_response(
+                        400,
+                        "Invalid Group By",
+                        f"Unknown group-by field {col!r}",
+                        source_parameter="groupBy",
+                    )
+
+            if is_group_by:
+                target_field = _resolve_query_field(query_type, gql_table, "_group_by", "GroupBy")
+                kind = "group-by"
+            else:
+                target_field = _resolve_query_field(query_type, gql_table, "_aggregate", "Aggregate")
+                kind = "aggregate"
+            if target_field is None:
+                return _jsonapi_error_response(
+                    400,
+                    "Bad Request",
+                    f"Resource type {domain_id!r}/{table_name!r} does not support {kind}",
+                )
+
+            agg_fields_type = _get_agg_fields_type(query_type.fields[target_field])
+            if agg_fields_type is None:
+                return _jsonapi_error_response(
+                    400, "Bad Request", f"Malformed aggregate result type for {gql_table!r}"
+                )
+
+            funcs_filter = agg_funcs if agg_funcs else None
+            if funcs_filter is not None:
+                valid_funcs = set(agg_fields_type.fields.keys())
+                for fn in funcs_filter:
+                    if fn not in valid_funcs:
+                        return _jsonapi_error_response(
+                            400,
+                            "Invalid Aggregate Function",
+                            f"Unknown aggregate function {fn!r}",
+                            source_parameter="aggregate",
+                        )
+            agg_selection = _build_agg_selection(agg_fields_type, funcs_filter)
+
+            if is_group_by:
+                gql_query = _build_group_by_graphql_query(
+                    target_field, group_cols, agg_selection, filters, sort, limit, pg_offset
+                )
+            else:
+                gql_query = _build_graphql_query_shared(
+                    target_field, [f"aggregate {{ {agg_selection} }}"], filters, [], None, None
+                )
+            log.debug("JSON:API aggregate -> GraphQL: %s", gql_query)
+
+            try:
+                agg_document = parse_query(schema, gql_query)
+            except (GraphQLValidationError, Exception) as e:
+                return _jsonapi_error_response(400, "Bad Request", str(e))
+
+            agg_compiled_queries = compile_query(agg_document, ctx)
+            if not agg_compiled_queries:
+                return _jsonapi_error_response(400, "Bad Request", "Compilation failed")
+            agg_compiled = agg_compiled_queries[0]
+
+            from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+
+            try:
+                agg_plan = await _govern_and_route_compiled(
+                    agg_compiled.sql,
+                    role_id,
+                    exec_params=agg_compiled.params or None,
+                    state=state,
+                )
+                agg_result = await _execute_plan(agg_plan, state)
+            except PermissionError as e:
+                return _jsonapi_error_response(403, "Forbidden", str(e))
+            except HTTPException as e:
+                if e.status_code == 503:
+                    return _jsonapi_error_response(503, "Service Unavailable", e.detail)
+                raise
+            except Exception as e:
+                log.exception("JSON:API aggregate query execution failed for %s", gql_table)
+                return _jsonapi_error_response(500, "Internal Server Error", str(e))
+
+            from provisa.executor.serialize import serialize_aggregate, serialize_group_by
+
+            if is_group_by:
+                shaped = serialize_group_by(
+                    agg_result.rows, agg_compiled.columns, None, None, agg_compiled.root_field
+                )
+                group_rows = shaped.get("data", {}).get(agg_compiled.root_field, [])
+                data = [
+                    {"type": f"{table_name}GroupBy", "id": str(idx), "attributes": row}
+                    for idx, row in enumerate(group_rows)
+                ]
+                return JSONResponse(content={"data": data}, media_type=JSONAPI_CONTENT_TYPE)
+
+            shaped = serialize_aggregate(
+                agg_result.rows,
+                agg_compiled.columns,
+                None,
+                None,
+                agg_compiled.root_field,
+                agg_alias=agg_compiled.agg_alias,
+            )
+            agg_payload = (
+                shaped.get("data", {}).get(agg_compiled.root_field, {}).get(agg_compiled.agg_alias, {})
+            )
+            return JSONResponse(
+                content={"data": None, "meta": {"aggregate": agg_payload}},
+                media_type=JSONAPI_CONTENT_TYPE,
+            )
 
         # REQ-257: ?include=rel1,rel2 — sideload related resources as a compound document.
         rel_fields = _get_relationship_fields(schema, gql_table)

@@ -190,6 +190,8 @@
     "queryBadge": "查询",
     "fkBadge": "外键",
     "akBadge": "AK",
+    "measureBadge": "度量",
+    "dimBadge": "维度",
     "maskingTemplateLabel": "↳ 脱敏模板",
     "regexPatternPlaceholder": "正则表达式模式",
     "regexReplacementPlaceholder": "替换内容",

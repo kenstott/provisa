@@ -13,7 +13,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { GrpcCodeView } from "./grpc/GrpcCodeView";
-import { Badge, Button, Group, Select, Tabs, Text } from "@mantine/core";
+import { Badge, Button, Checkbox, Group, MultiSelect, Select, Tabs, Text } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./GrpcPage.css";
@@ -58,7 +58,7 @@ function parseProto(text: string): ParsedProto {
   const serviceMatch = text.match(/service\s+\w+\s*\{([\s\S]*?)\n\}/);
   if (serviceMatch) {
     for (const m of serviceMatch[1].matchAll(
-      /rpc\s+(\w+)\s*\((\w+)\)\s*returns\s*\((?:stream\s+)?(\w+)\)/g,
+      /rpc\s+(\w+)\s*\(([\w.]+)\)\s*returns\s*\((?:stream\s+)?([\w.]+)\)/g,
     )) {
       const [, name, requestMsg] = m;
       if (name.startsWith("Query")) {
@@ -81,6 +81,10 @@ function parseProto(text: string): ParsedProto {
 
   return { methods, messages };
 }
+
+// Mirrors provisa/grpc/query_ir.py::AGG_FUNCS — the funcs a Query{Type}Aggregate/GroupBy
+// request may restrict its computation to (REQ-1361).
+const AGG_FUNCS = ["count", "sum", "avg", "stddev", "variance", "min", "max"];
 
 function defaultForType(protoType: string): unknown {
   if (protoType === "bool") return false;
@@ -106,8 +110,27 @@ function buildCommandTemplate(cmd: CommandDef | undefined): string {
   return JSON.stringify({ name: cmd.name, args }, null, 2);
 }
 
-function buildMessageTemplate(method: ProtoMethod, messages: Record<string, ProtoField[]>): string {
+function buildMessageTemplate(
+  method: ProtoMethod,
+  messages: Record<string, ProtoField[]>,
+  byColumns?: string[] | null,
+  funcs?: string[] | null,
+): string {
   if (method.operation === "query") {
+    // REQ-1359: Query{Type}Aggregate takes google.protobuf.Empty; Query{Type}GroupBy takes
+    // a { by: [...] } request — neither is the generic {Type}Filter shape below. `funcs` must
+    // be embedded here (not left to the picker-sync effect) so the auto-run race can't fire
+    // with a body that's missing it (REQ-1361 bug: "Open in gRPC" executed the wrong body).
+    if (method.typeName.endsWith("Aggregate")) {
+      const body: Record<string, unknown> = {};
+      if (funcs && funcs.length > 0) body.funcs = funcs;
+      return JSON.stringify(body, null, 2);
+    }
+    if (method.typeName.endsWith("GroupBy")) {
+      const body: Record<string, unknown> = { by: byColumns ?? [] };
+      if (funcs && funcs.length > 0) body.funcs = funcs;
+      return JSON.stringify(body, null, 2);
+    }
     const filterFields = messages[`${method.typeName}Filter`] ?? [];
     const filter: Record<string, unknown> = {};
     for (const f of filterFields) filter[f.name] = null;
@@ -130,6 +153,18 @@ export function GrpcPage() {
   const [navMethod] = useState(
     () => (location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "",
   );
+  const [navByColumns] = useState<string[] | null>(() => {
+    const m = ((location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "").match(
+      /\(by=\[([^\]]*)\]/,
+    );
+    return m ? m[1].split(",").map((s) => s.trim()).filter(Boolean) : null;
+  });
+  const [navFuncs] = useState<string[] | null>(() => {
+    const m = ((location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "").match(
+      /funcs=\[([^\]]*)\]/,
+    );
+    return m ? m[1].split(",").map((s) => s.trim()).filter(Boolean) : null;
+  });
   const [navAutoRun] = useState(
     () => (location.state as { autoRun?: boolean } | null)?.autoRun === true,
   );
@@ -145,6 +180,10 @@ export function GrpcPage() {
   const [response, setResponse] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  // REQ-1361 picker: group-by columns + restricted agg funcs for Query{Type}Aggregate/GroupBy.
+  const [groupByCols, setGroupByCols] = useState<string[]>([]);
+  const [selectedFuncs, setSelectedFuncs] = useState<string[]>([]);
+  const [groupByColumnOptions, setGroupByColumnOptions] = useState<string[]>([]);
 
   // Synthetic methods for registered commands (one generic CallCommand RPC, one entry per command).
   const commandsMapRef = useRef<Record<string, CommandDef>>({});
@@ -156,16 +195,21 @@ export function GrpcPage() {
   }));
   const allMethods = [...parsed.methods, ...commandMethods];
 
-  const selectMethod = useCallback((method: ProtoMethod, proto: ParsedProto) => {
-    setSelectedMethod(method);
-    setMessageText(
-      method.operation === "command"
-        ? buildCommandTemplate(commandsMapRef.current[method.name])
-        : buildMessageTemplate(method, proto.messages),
-    );
-    setResponse("");
-    setError("");
-  }, []);
+  const selectMethod = useCallback(
+    (method: ProtoMethod, proto: ParsedProto, byColumns?: string[] | null, funcs?: string[] | null) => {
+      setSelectedMethod(method);
+      setGroupByCols(byColumns ?? []);
+      setSelectedFuncs(funcs ?? []);
+      setMessageText(
+        method.operation === "command"
+          ? buildCommandTemplate(commandsMapRef.current[method.name])
+          : buildMessageTemplate(method, proto.messages, byColumns, funcs),
+      );
+      setResponse("");
+      setError("");
+    },
+    [],
+  );
 
   // Auto-select first method whenever op type or parsed proto changes
   const prevOpTypeRef = useRef<OperationType | null>(null);
@@ -183,6 +227,20 @@ export function GrpcPage() {
 
   const navSelectDoneRef = useRef(false);
 
+  // REQ-1361: keep the group-by/agg-funcs picker in sync with messageText for Aggregate/GroupBy
+  // query methods — picker selections are the source of truth for those two fields.
+  useEffect(() => {
+    if (!selectedMethod || selectedMethod.operation !== "query") return;
+    const isAggregate = selectedMethod.typeName.endsWith("Aggregate");
+    const isGroupBy = selectedMethod.typeName.endsWith("GroupBy");
+    if (!isAggregate && !isGroupBy) return;
+    const body: Record<string, unknown> = isGroupBy ? { by: groupByCols } : {};
+    if (selectedFuncs.length > 0) body.funcs = selectedFuncs;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs picker state (source of truth) into the JSON editor; selectedMethod change is the trigger, not something read back
+    setMessageText(JSON.stringify(body, null, 2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedMethod's operation/typeName gate is derived, not a separate dep
+  }, [groupByCols, selectedFuncs, selectedMethod]);
+
   const fetchProto = useCallback(async (rid: string, domains: string) => {
     setProtoError("");
     try {
@@ -197,12 +255,14 @@ export function GrpcPage() {
       const text = await res.text();
       setProtoText(text);
       const p = parseProto(text);
-      const preferred = navMethod ? navMethod.replace(/^Query/, "") : "";
+      // Strip the "(by=[...])" call-syntax suffix the NL page's query text carries (REQ-1359)
+      // before matching against the bare typeName the proto actually exposes.
+      const preferred = navMethod ? navMethod.replace(/^Query/, "").replace(/\(.*$/, "") : "";
       const navM = preferred ? p.methods.find((m) => m.typeName === preferred && m.operation === "query") : null;
       const initial = navM ?? p.methods.find((m) => m.operation === "query") ?? p.methods[0] ?? null;
       if (initial) {
         setOpType(initial.operation);
-        selectMethod(initial, p);
+        selectMethod(initial, p, navM ? navByColumns : null, navM ? navFuncs : null);
         // eslint-disable-next-line react-hooks/immutability -- one-shot guard written after async fetch resolves; read occurs in a separate effect that guards against re-auto-selection
         if (navM) navSelectDoneRef.current = true;
       }
@@ -210,7 +270,7 @@ export function GrpcPage() {
     } catch {
       setProtoError("Failed to fetch proto.");
     }
-  }, [navMethod, selectMethod]);
+  }, [navMethod, navByColumns, navFuncs, selectMethod]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async proto fetch; all setState calls occur inside the async callback, not synchronously in the effect body
@@ -236,6 +296,32 @@ export function GrpcPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async command fetch; setState occurs inside the async callback
     if (roleId) void fetchCommands(roleId);
   }, [roleId, fetchCommands]);
+
+  // REQ-1361: the group-by picker must offer only columns the server's {Type}DistinctOnColumn
+  // enum actually accepts — the {Type}Filter message's fields (a different, broader set) yield
+  // runtime 400s when selected.
+  useEffect(() => {
+    if (!selectedMethod || !roleId || !selectedMethod.typeName.endsWith("GroupBy")) {
+      setGroupByColumnOptions([]);
+      return;
+    }
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async column-list fetch; setState occurs inside the async callback below
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/data/grpc-group-by-columns/${encodeURIComponent(roleId)}/${encodeURIComponent(selectedMethod.typeName)}`,
+        );
+        const cols = res.ok ? ((await res.json()) as string[]) : [];
+        if (!cancelled) setGroupByColumnOptions(cols);
+      } catch {
+        if (!cancelled) setGroupByColumnOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMethod, roleId]);
 
   const handleRun = useCallback(async () => {
     if (!selectedMethod || !roleId) return;
@@ -301,6 +387,13 @@ export function GrpcPage() {
 
   const visibleMethods = allMethods.filter((m) => m.operation === opType);
 
+  // REQ-1361: an Aggregate/GroupBy request with zero funcs selected would silently compute
+  // every function in AGG_FUNCS — require an explicit choice instead.
+  const isAggOrGroupBy =
+    selectedMethod?.operation === "query" &&
+    (selectedMethod.typeName.endsWith("Aggregate") || selectedMethod.typeName.endsWith("GroupBy"));
+  const funcsRequired = isAggOrGroupBy && selectedFuncs.length === 0;
+
   const handleMethodChange = (name: string) => {
     const m = allMethods.find((x) => x.name === name);
     if (m) selectMethod(m, parsed);
@@ -352,11 +445,16 @@ export function GrpcPage() {
               {protoError}
             </Text>
           )}
+          {!protoError && funcsRequired && (
+            <Text size="xs" c="red" data-testid="grpc-funcs-required-hint">
+              {t("grpcPage.selectAtLeastOneFunc")}
+            </Text>
+          )}
           <Button
             size="xs"
             data-testid="grpc-send-btn"
             onClick={handleRun}
-            disabled={running || !selectedMethod || !roleId || !!protoError}
+            disabled={running || !selectedMethod || !roleId || !!protoError || funcsRequired}
           >
             {running ? t("grpcPage.cancel") : t("grpcPage.send")}
           </Button>
@@ -381,6 +479,38 @@ export function GrpcPage() {
               </Tabs.Tab>
             </Tabs.List>
           </Tabs>
+          {leftTab === "body" && selectedMethod?.operation === "query" &&
+            (selectedMethod.typeName.endsWith("Aggregate") || selectedMethod.typeName.endsWith("GroupBy")) && (
+              <div className="grpc-agg-picker" data-testid="grpc-agg-picker">
+                {selectedMethod.typeName.endsWith("GroupBy") && (
+                  <MultiSelect
+                    aria-label={t("grpcPage.groupByColumns")}
+                    data-testid="grpc-groupby-picker"
+                    size="xs"
+                    placeholder={t("grpcPage.groupByColumns")}
+                    data={groupByColumnOptions}
+                    value={groupByCols}
+                    onChange={setGroupByCols}
+                    searchable
+                    clearable
+                  />
+                )}
+                <Checkbox.Group
+                  data-testid="grpc-funcs-picker"
+                  value={selectedFuncs}
+                  onChange={setSelectedFuncs}
+                  label={t("grpcPage.aggregateFunctions")}
+                  mt="sm"
+                  mb="sm"
+                >
+                  <Group gap="xs" mt={8} mb={4}>
+                    {AGG_FUNCS.map((fn) => (
+                      <Checkbox key={fn} value={fn} label={fn} size="xs" data-testid={`grpc-func-${fn}`} />
+                    ))}
+                  </Group>
+                </Checkbox.Group>
+              </div>
+            )}
           {leftTab === "body" ? (
             <GrpcCodeView
               language="json"

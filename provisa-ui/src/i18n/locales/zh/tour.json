@@ -62,7 +62,7 @@
       },
       "step13": {
         "title": "直接提问——能写出全部七种的界面",
-        "description": "💬 <em>“按用户统计咨询数量”</em><p>🎁 这就是压轴的一步：<strong>你不必学会前面那七种。</strong>用大白话提问，Provisa 会把你的问题同时编译成每一种查询语言——下面每个面板都是这同一句话对应的 SQL、GraphQL、Cypher、gRPC、JSON:API 和 REST。</p><p>使用你的工具已经支持的界面——或者干脆全部跳过，直接提问。</p><p>🔑 实时自然语言查询使用你自己的 LLM 密钥；此处为预设示例。</p><p>✅ 一个模型，<strong>八种界面</strong>——七种用于查询，还有一种负责把它们全部写出来。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "description": "💬 <em>“按物种统计宠物数量”</em><p>🎁 这就是压轴的一步：<strong>你不必学会前面那七种。</strong>用大白话提问，Provisa 会把你的问题同时编译成每一种查询语言——下面每个面板都是这同一句话对应的 SQL、GraphQL、Cypher、gRPC、JSON:API 和 REST。</p><p>使用你的工具已经支持的界面——或者干脆全部跳过，直接提问。</p><p>🔑 实时自然语言查询使用你自己的 LLM 密钥；此处为预设示例。</p><p>✅ 一个模型，<strong>八种界面</strong>——七种用于查询，还有一种负责把它们全部写出来。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
       },
       "step14": {
         "title": "这就是五分钟核心内容",

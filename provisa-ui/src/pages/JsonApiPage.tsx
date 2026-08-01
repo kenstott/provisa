@@ -22,6 +22,7 @@ import {
   Checkbox,
   Collapse,
   Group,
+  MultiSelect,
   NumberInput,
   Select,
   Table,
@@ -175,6 +176,30 @@ function SummaryView({
       : [];
   const included: JsonApiResource[] = Array.isArray(doc.included) ? doc.included : [];
   const includedSet = new Set<string>(included.map((r) => `${r.type}::${r.id}`));
+  // REQ-1359: aggregate (non-group-by) responses have data: null, meta.aggregate: {...}.
+  const aggregateMeta = doc.data === null ? (doc.meta?.aggregate as Record<string, unknown> | undefined) : undefined;
+  if (aggregateMeta) {
+    return (
+      <div className="jsonapi-summary">
+        <Table className="jsonapi-attr-table" data-testid="jsonapi-aggregate-table">
+          <Table.Tbody>
+            {Object.entries(aggregateMeta).map(([k, v]) => (
+              <Table.Tr key={k}>
+                <Table.Td className="jsonapi-attr-key">{k}</Table.Td>
+                <Table.Td className="jsonapi-attr-val">
+                  {v === null || v === undefined
+                    ? <span className="jsonapi-attr-null">null</span>
+                    : typeof v === "object"
+                      ? JSON.stringify(v)
+                      : String(v)}
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </div>
+    );
+  }
   if (items.length === 0) {
     return <div className="jsonapi-summary-empty">{noResultsLabel}</div>;
   }
@@ -208,6 +233,9 @@ function SummaryView({
 
 const JSONAPI_SETTINGS_KEY = "provisa.jsonapi.settings";
 const FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "like"];
+// Mirrors provisa/grpc/query_ir.py::AGG_FUNCS — the funcs a {field}_aggregate/{field}_group_by
+// GraphQL root field accepts (REQ-1359).
+const AGG_FUNCS = ["count", "sum", "avg", "stddev", "variance", "min", "max"];
 
 export function JsonApiPage() {
   const { t } = useTranslation();
@@ -234,7 +262,18 @@ export function JsonApiPage() {
     if (!match) return null;
     const qs = navUrl.includes("?") ? navUrl.split("?")[1] : "";
     const params = new URLSearchParams(qs);
-    return { domainId: match[1], tableName: match[2], pageSize: params.get("page[size]") ?? "20" };
+    const aggregateParam = params.get("aggregate");
+    return {
+      domainId: match[1],
+      tableName: match[2],
+      pageSize: params.get("page[size]") ?? "20",
+      // REQ-1359/REQ-1361: NL "Open in JSON:API" carries ?groupBy=...&aggregate=... for
+      // aggregate/group-by queries. `aggregate` is either "true" (every function — the SQL
+      // branch matched no specific agg call) or a comma-separated func list (REQ-1361).
+      aggregate: aggregateParam !== null,
+      funcs: aggregateParam && aggregateParam !== "true" ? aggregateParam.split(",").filter(Boolean) : [],
+      groupBy: params.get("groupBy") ?? "",
+    };
   }, [navUrl]);
 
   // Persisted explorer settings (survive across sessions). Table selection is restored after the
@@ -255,6 +294,9 @@ export function JsonApiPage() {
   const [filterValue, setFilterValue] = useState<string>("");
   const [sortField, setSortField] = useState<string>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [groupByCols, setGroupByCols] = useState<string[]>([]);
+  const [selectedFuncs, setSelectedFuncs] = useState<string[]>([]);
+  const [groupByColumnOptions, setGroupByColumnOptions] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<string>(savedSettings.pageSize ?? "20");
   const [parsedDoc, setParsedDoc] = useState<JsonApiDocument | null>(null);
   const [activeUrl, setActiveUrl] = useState<string>("");
@@ -364,13 +406,22 @@ export function JsonApiPage() {
     return { total, count, rangeStart, rangeEnd };
   }, [parsedDoc, activeUrl]);
 
-  // When table changes, reset all dependent state
+  // When table changes, reset all dependent state. Skipped once for the nav-driven table
+  // selection (REQ-1361) so it doesn't wipe the aggregate picker the nav-init effect just seeded
+  // — that effect's setSelectedTable is what triggers this effect to re-run in the first place.
+  const skipNextResetRef = useRef(false);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- cascade reset of per-table interactive state (checked fields, filters, sort, results) when selected table changes; these are user-controlled inputs that cannot be derived from render
     setCheckedFields(new Set());
     setCheckedIncludes(new Set());
     setFilterField("");
     setSortField("");
+    if (skipNextResetRef.current) {
+      skipNextResetRef.current = false;
+    } else {
+      setGroupByCols([]);
+      setSelectedFuncs([]);
+    }
     setParsedDoc(null);
     setActiveUrl("");
     setError("");
@@ -378,6 +429,28 @@ export function JsonApiPage() {
     setFieldsOpen(false);
     setIncludeOpen(false);
   }, [selectedTable]);
+
+  // REQ-1361: group-by column choices must come from the schema's {Type}DistinctOnColumn enum
+  // (the server's actual source of truth for valid `by` columns), not the table's full column
+  // set — offering every column yields runtime 400s for columns the enum excludes (e.g. RLS-hidden).
+  useEffect(() => {
+    if (!roleId || !selectedDomainId || !selectedTableName) {
+      setGroupByColumnOptions([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/data/jsonapi-group-by-columns/${roleId}/${selectedDomainId}/${selectedTableName}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((cols) => {
+        if (!cancelled) setGroupByColumnOptions(cols);
+      })
+      .catch(() => {
+        if (!cancelled) setGroupByColumnOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roleId, selectedDomainId, selectedTableName]);
 
   const navInitDoneRef = useRef(false);
   useEffect(() => {
@@ -390,6 +463,14 @@ export function JsonApiPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initializes table selection from navigation URL state after async tables list load; cannot synchronize before tables are available
     setSelectedTable(`${match.domainId}/${match.tableName}`);
     setPageSize(parsedNav.pageSize);
+    // REQ-1361: seed the aggregate picker from the nav URL so it's the single source of truth
+    // for the fetch URL (avoids the gRPC-page race where a second effect corrected the body too
+    // late for the auto-run to see it) and so the sidebar reflects the incoming query.
+    if (parsedNav.aggregate) {
+      skipNextResetRef.current = true;
+      setGroupByCols(parsedNav.groupBy ? parsedNav.groupBy.split(",").filter(Boolean) : []);
+      setSelectedFuncs(parsedNav.funcs.length > 0 ? parsedNav.funcs : [...AGG_FUNCS]);
+    }
   }, [tables, parsedNav]);
 
   // Restore the persisted table selection once the table list has loaded (nav-from-NL wins). Gating
@@ -445,6 +526,17 @@ export function JsonApiPage() {
 
   const url = useMemo(() => {
     if (!effectiveSelectedTable || !selectedDomainId || !selectedTableName) return "";
+    // REQ-1359/REQ-1361: aggregate/group-by picker (seeded from the nav URL when navigated from
+    // an NL "Open in JSON:API" aggregate query, see the navInitDoneRef effect above) is the
+    // single source of truth for the fetch URL — no separate nav-only branch, so there's no
+    // stale-vs-corrected race between two sources.
+    if (selectedFuncs.length > 0) {
+      const aggParams = new URLSearchParams();
+      if (roleId) aggParams.set("role", roleId);
+      aggParams.set("aggregate", selectedFuncs.join(","));
+      if (groupByCols.length > 0) aggParams.set("groupBy", groupByCols.join(","));
+      return `/data/jsonapi/${selectedDomainId}/${selectedTableName}?${aggParams.toString()}`;
+    }
     const params = new URLSearchParams();
     if (roleId) params.set("role", roleId);
     if (filterField && filterValue) {
@@ -462,7 +554,7 @@ export function JsonApiPage() {
     if (includeParam) params.set("include", includeParam);
     const qs = params.toString();
     return `/data/jsonapi/${selectedDomainId}/${selectedTableName}${qs ? "?" + qs : ""}`;
-  }, [effectiveSelectedTable, selectedDomainId, selectedTableName, roleId, filterField, filterOp, filterValue, sortField, sortDir, pageSize, sparseFieldsParam, includeParam]);
+  }, [effectiveSelectedTable, selectedDomainId, selectedTableName, roleId, filterField, filterOp, filterValue, sortField, sortDir, pageSize, sparseFieldsParam, includeParam, selectedFuncs, groupByCols]);
 
   const specUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -731,6 +823,36 @@ export function JsonApiPage() {
                   data-testid="jsonapi-sort-dir-select"
                 />
               </div>
+
+              <div className="jsonapi-section-divider">
+                {t("jsonApiPage.aggregateSectionTitle")}{" "}
+                <span className="jsonapi-section-hint">{t("jsonApiPage.optionalHint")}</span>
+              </div>
+              <MultiSelect
+                aria-label={t("jsonApiPage.groupByColumns")}
+                size="xs"
+                placeholder={t("jsonApiPage.groupByColumns")}
+                data={groupByColumnOptions}
+                value={groupByCols}
+                onChange={setGroupByCols}
+                searchable
+                clearable
+                data-testid="jsonapi-groupby-picker"
+              />
+              <Checkbox.Group
+                data-testid="jsonapi-funcs-picker"
+                value={selectedFuncs}
+                onChange={setSelectedFuncs}
+                label={t("jsonApiPage.aggregateFunctions")}
+                mt="sm"
+                mb="sm"
+              >
+                <Group gap="xs" mt={8} mb={4}>
+                  {AGG_FUNCS.map((fn) => (
+                    <Checkbox key={fn} value={fn} label={fn} size="xs" data-testid={`jsonapi-func-${fn}`} />
+                  ))}
+                </Group>
+              </Checkbox.Group>
             </>
           )}
 
@@ -747,10 +869,15 @@ export function JsonApiPage() {
             data-testid="jsonapi-page-size-input"
           />
 
+          {groupByCols.length > 0 && selectedFuncs.length === 0 && (
+            <Text size="xs" c="red" data-testid="jsonapi-funcs-required-hint">
+              {t("jsonApiPage.selectAtLeastOneFunc")}
+            </Text>
+          )}
           <Button
             className="jsonapi-run-btn"
             onClick={handleRun}
-            disabled={!effectiveSelectedTable}
+            disabled={!effectiveSelectedTable || (groupByCols.length > 0 && selectedFuncs.length === 0)}
             loading={running}
             fullWidth
             mt="sm"

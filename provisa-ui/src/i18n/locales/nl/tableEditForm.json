@@ -190,6 +190,8 @@
     "queryBadge": "query",
     "fkBadge": "FK",
     "akBadge": "AK",
+    "measureBadge": "Maatstaf",
+    "dimBadge": "Dimensie",
     "maskingTemplateLabel": "↳ maskeringssjabloon",
     "regexPatternPlaceholder": "regexpatroon",
     "regexReplacementPlaceholder": "vervanging",

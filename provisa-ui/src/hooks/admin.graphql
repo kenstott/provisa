@@ -25,6 +25,8 @@ fragment ColumnFields on TableColumnType {
   isForeignKey
   isAlternateKey
   scope
+  isImplicitMeasure
+  isImplicitDimension
 }
 
 fragment ColumnPresetFields on ColumnPresetType {
@@ -140,6 +142,11 @@ query TablesQuery {
     enableGroupBy
     canDeployToDb
     modelingRole
+    implicitMeasures {
+      column
+      aggFuncs
+    }
+    implicitDimensions
     live {
       queryId
       watermarkColumn

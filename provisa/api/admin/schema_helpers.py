@@ -39,10 +39,13 @@ from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.api.admin.types import (
     AvailableColumnType,
     ColumnPresetType,
+    ImplicitMeasureType,
     RegisteredTableType,
     UniqueConstraintType,
     TableColumnType,
 )
+from provisa.compiler.aggregate_gen import _classify_columns  # REQ-1360: reuse REQ-196 classification
+from provisa.compiler.introspect import ColumnMetadata
 
 from provisa.api.admin._row_mappers import _live_type_from_row, _view_metrics_type_from_row
 
@@ -226,6 +229,57 @@ def _compute_can_deploy_to_db(
     return state.source_pools.has(target_source_id)
 
 
+def _compute_implicit_dim_measures(  # REQ-1360
+    col_rows: list[dict], enable_aggregates: bool, enable_group_by: bool
+) -> tuple[list[ImplicitMeasureType], list[str], set[str], set[str]]:
+    """Derive metadata-only implicit measure/dimension annotations.
+
+    Reuses the exact numeric/comparable classification `build_agg_fields_type`
+    (provisa/compiler/aggregate_gen.py, REQ-196) already applies to build the GraphQL
+    aggregate result type — never reimplements it. Returns
+    (implicit_measures, implicit_dimensions, measure_col_names, dimension_col_names)
+    where the trailing two sets let column-level is_implicit_measure/is_implicit_dimension
+    flags be computed without re-deriving classification per column.
+    """
+    if not (enable_aggregates or enable_group_by):
+        return [], [], set(), set()
+
+    typed_cols = [r for r in col_rows if r.get("data_type")]
+    visible_columns = [{"column_name": r["column_name"]} for r in typed_cols]
+    column_metadata = {
+        r["column_name"].lower(): ColumnMetadata(
+            column_name=r["column_name"], data_type=r["data_type"], is_nullable=True
+        )
+        for r in typed_cols
+    }
+    numeric_cols, comparable_cols = _classify_columns(visible_columns, column_metadata)
+    numeric_names = {name for name, _ in numeric_cols}
+    comparable_names = {name for name, _ in comparable_cols}
+
+    implicit_measures: list[ImplicitMeasureType] = []
+    measure_names: set[str] = set()
+    if enable_aggregates:
+        for col in visible_columns:
+            name = col["column_name"]
+            if name not in numeric_names and name not in comparable_names:
+                continue
+            agg_funcs = ["count"]
+            if name in numeric_names:
+                agg_funcs.extend(["sum", "avg", "stddev", "variance"])
+            if name in comparable_names:
+                agg_funcs.extend(["min", "max"])
+            implicit_measures.append(ImplicitMeasureType(column=name, agg_funcs=agg_funcs))
+            measure_names.add(name)
+
+    implicit_dimensions: list[str] = []
+    dimension_names: set[str] = set()
+    if enable_group_by:
+        implicit_dimensions = [col["column_name"] for col in visible_columns]
+        dimension_names = set(implicit_dimensions)
+
+    return implicit_measures, implicit_dimensions, measure_names, dimension_names
+
+
 async def _fetch_table_with_columns(
     conn, row, all_tables: list | None = None, user_can_deploy: bool = True
 ) -> RegisteredTableType:
@@ -236,6 +290,16 @@ async def _fetch_table_with_columns(
     )
     col_rows = [dict(r._mapping) for r in _col_res.fetchall()]
     from provisa.compiler.naming import apply_sql_name
+
+    # REQ-1360: metadata-only implicit measure/dimension annotations, gated by the
+    # table's own enable_aggregates/enable_group_by flags.
+    implicit_measures, implicit_dimensions, _measure_names, _dimension_names = (
+        _compute_implicit_dim_measures(
+            col_rows,
+            bool(row.get("enable_aggregates", False)),
+            bool(row.get("enable_group_by", False)),
+        )
+    )
 
     columns = [
         TableColumnType(
@@ -258,6 +322,8 @@ async def _fetch_table_with_columns(
             is_foreign_key=bool(r.get("is_foreign_key") or False),
             is_alternate_key=bool(r.get("is_alternate_key") or False),
             scope=r.get("scope") or "domain",
+            is_implicit_measure=r["column_name"] in _measure_names,
+            is_implicit_dimension=r["column_name"] in _dimension_names,
         )
         for r in col_rows
     ]
@@ -353,6 +419,8 @@ async def _fetch_table_with_columns(
         enable_group_by=bool(row.get("enable_group_by", False)),
         can_deploy_to_db=can_deploy,
         live=_live_type_from_row(row.get("live")),
+        implicit_measures=implicit_measures,  # REQ-1360
+        implicit_dimensions=implicit_dimensions,  # REQ-1360
     )
 
 

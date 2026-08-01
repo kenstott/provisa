@@ -7,6 +7,12 @@
 
 import { test, expect } from "./coverage";
 
+// Demo mode auto-starts the guided tour in a fresh browser profile (App.tsx), which
+// navigates away from /tables — mark it seen before the app boots.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("provisa_tour_seen", "true"));
+});
+
 test("pets table edit shows enableAggregates and enableGroupBy checked", async ({ page }) => {
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
@@ -17,13 +23,13 @@ test("pets table edit shows enableAggregates and enableGroupBy checked", async (
     { timeout: 15000 },
   );
 
-  // Click the pets row to expand it (first row with pet-store-pg source)
-  const petsRow = page.locator("tr").filter({ hasText: "pet-store-pg" }).filter({ hasText: "pets" }).first();
+  // Click the pets row to expand it (first row with pet-store-sqlite source)
+  const petsRow = page.locator("tr").filter({ hasText: "pet-store-sqlite" }).filter({ hasText: "pets" }).first();
   await petsRow.waitFor({ timeout: 10000 });
   await petsRow.click();
 
   // Click the Edit button that appears after expansion
-  const editBtn = page.getByTitle("Edit").first();
+  const editBtn = page.getByTestId("table-read-view-edit").first();
   await editBtn.waitFor({ timeout: 5000 });
   await editBtn.click();
 
@@ -31,12 +37,15 @@ test("pets table edit shows enableAggregates and enableGroupBy checked", async (
   await page.waitForSelector("input[type='checkbox']", { timeout: 5000 });
 
   // Enable Aggregates checkbox must be checked
-  const enableAggregatesLabel = page.locator("label").filter({ hasText: /Enable Aggregates/i });
-  const enableAggregatesCheckbox = enableAggregatesLabel.locator("input[type='checkbox']");
-  await expect(enableAggregatesCheckbox).toBeChecked();
+  await expect(page.getByLabel(/Enable Aggregates/i)).toBeChecked();
 
   // Enable Group By checkbox must be checked
-  const enableGroupByLabel = page.locator("label").filter({ hasText: /Enable Group By/i });
-  const enableGroupByCheckbox = enableGroupByLabel.locator("input[type='checkbox']");
-  await expect(enableGroupByCheckbox).toBeChecked();
+  await expect(page.getByLabel(/Enable Group By/i)).toBeChecked();
+
+  // REQ-1360: metadata-only implicit measure/dimension badges. `price` (double) is numeric
+  // so it qualifies as an implicit measure; with enableAggregates/enableGroupBy both on,
+  // every typed column also carries the implicit dimension badge.
+  const priceRow = page.getByTestId("column-row-price");
+  await expect(priceRow.getByText("Measure", { exact: true })).toBeVisible();
+  await expect(priceRow.getByText("Dim", { exact: true })).toBeVisible();
 });

@@ -777,7 +777,7 @@ export function TableEditForm({
         <Table.Tbody>
           {editingTable.columns.map((c, i) => (
             <Fragment key={c.id}>
-              <Table.Tr>
+              <Table.Tr data-testid={`column-row-${c.columnName}`}>
                 <Table.Td>
                   <code>{c.columnName}</code>
                   {c.nativeFilterType && (
@@ -813,6 +813,31 @@ export function TableEditForm({
                       style={{ fontFamily: "monospace" }}
                     >
                       {t("tableEditForm.akBadge")}
+                    </Badge>
+                  )}
+                  {/* REQ-1360: metadata-only discoverability badges, gated by the table's own
+                      enableAggregates/enableGroupBy — never governed/reusable, that stays the
+                      named metrics: path. */}
+                  {editingTable.enableAggregates && c.isImplicitMeasure && (
+                    <Badge
+                      ml={6}
+                      size="xs"
+                      variant="light"
+                      color="grape"
+                      style={{ fontFamily: "monospace" }}
+                    >
+                      {t("tableEditForm.measureBadge")}
+                    </Badge>
+                  )}
+                  {editingTable.enableGroupBy && c.isImplicitDimension && (
+                    <Badge
+                      ml={6}
+                      size="xs"
+                      variant="light"
+                      color="cyan"
+                      style={{ fontFamily: "monospace" }}
+                    >
+                      {t("tableEditForm.dimBadge")}
                     </Badge>
                   )}
                 </Table.Td>

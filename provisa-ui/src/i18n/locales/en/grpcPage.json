@@ -15,6 +15,9 @@
     "selectMethodPlaceholder": "Select a method to edit the request body.",
     "loading": "Loading…",
     "waiting": "Waiting for response…",
-    "sendPrompt": "Send a request to see the response."
+    "sendPrompt": "Send a request to see the response.",
+    "groupByColumns": "Group by columns",
+    "aggregateFunctions": "Aggregate functions",
+    "selectAtLeastOneFunc": "Select at least one aggregate function"
   }
 }

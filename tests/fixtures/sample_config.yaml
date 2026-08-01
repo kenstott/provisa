@@ -27,19 +27,26 @@ tables:
     domain_id: sales-analytics
     schema: public
     table: orders
+    enable_aggregates: true
+    enable_group_by: true
     columns:
       - name: id
         data_type: integer
         visible_to: [org_admin, analyst]
       - name: customer_id
+        data_type: integer
         visible_to: [org_admin, analyst]
       - name: amount
+        data_type: numeric
         visible_to: [org_admin]
       - name: region
+        data_type: varchar
         visible_to: [org_admin, analyst]
       - name: status
+        data_type: varchar
         visible_to: [org_admin, analyst]
       - name: created_at
+        data_type: varchar
         visible_to: [org_admin, analyst]
   - source_id: sales-pg
     domain_id: sales-analytics

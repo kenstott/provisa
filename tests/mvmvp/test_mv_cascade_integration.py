@@ -34,7 +34,7 @@ from provisa.events.processor import MVTableProcessor, SourceTableProcessor
 from provisa.federation import store_writer
 from tests.helpers import DsnEngine
 
-pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _COLS = [("id", "bigint"), ("status", "text")]
 # node name -> its store table (schemaless "public"); node "mv.a" lands into "mv_a".

@@ -16,6 +16,7 @@ Mirrors schema_gen visibility logic: only visible tables/columns per role.
 # Requirements: REQ-039, REQ-045, REQ-051
 from __future__ import annotations
 
+from provisa.compiler.aggregate_gen import _classify_columns
 from provisa.compiler.schema_gen import (
     SchemaInput,
     _IMPLICIT_TRAVERSAL_DOMAINS,
@@ -108,6 +109,67 @@ def command_rpc_name(fn_name: str) -> str:
     return "".join(part.capitalize() for part in fn_name.replace("__", "_").split("_") if part)
 
 
+def _emit_aggregate_messages(lines: list[str], t) -> None:
+    """Emit ``{Type}AggregateResult`` (+ its per-function sub-messages) for a table with
+    ``enable_aggregates`` and/or ``enable_group_by`` set (REQ-1359).
+
+    Mirrors the nested shape GraphQL's ``build_agg_fields_type`` builds (count/sum/avg/stddev/
+    variance/min/max), reusing the same numeric/comparable column classification rather than
+    reimplementing REQ-196's rules."""
+    numeric_cols, comparable_cols = _classify_columns(t.visible_columns, t.column_metadata)
+
+    if numeric_cols:
+        for suffix in ("SumFields", "AvgFields", "StddevFields", "VarianceFields"):
+            lines.append(f"message {t.type_name}{suffix} {{")
+            for i, (col_name, _col_type) in enumerate(numeric_cols, start=1):
+                lines.append(f"  double {col_name} = {i};")
+            lines.append("}")
+            lines.append("")
+
+    if comparable_cols:
+        for suffix in ("MinFields", "MaxFields"):
+            lines.append(f"message {t.type_name}{suffix} {{")
+            for i, (col_name, col_type) in enumerate(comparable_cols, start=1):
+                lines.append(f"  {_physical_to_proto(col_type)} {col_name} = {i};")
+            lines.append("}")
+            lines.append("")
+
+    lines.append(f"message {t.type_name}AggregateResult {{")
+    agg_num = 1
+    lines.append(f"  int32 count = {agg_num};")
+    agg_num += 1
+    if numeric_cols:
+        for suffix, field_name in (
+            ("SumFields", "sum"),
+            ("AvgFields", "avg"),
+            ("StddevFields", "stddev"),
+            ("VarianceFields", "variance"),
+        ):
+            lines.append(f"  {t.type_name}{suffix} {field_name} = {agg_num};")
+            agg_num += 1
+    if comparable_cols:
+        for suffix, field_name in (("MinFields", "min"), ("MaxFields", "max")):
+            lines.append(f"  {t.type_name}{suffix} {field_name} = {agg_num};")
+            agg_num += 1
+    lines.append("}")
+    lines.append("")
+
+    if t.enable_group_by:
+        lines.append(f"message {t.type_name}GroupByRequest {{")
+        lines.append("  repeated string by = 1;")
+        lines.append(f"  {t.type_name}Filter filter = 2;")
+        lines.append("  int32 limit = 3;")
+        lines.append("  int32 offset = 4;")
+        lines.append("}")
+        lines.append("")
+
+        lines.append(f"message {t.type_name}GroupByRow {{")
+        lines.append("  string group_key = 1;")
+        lines.append(f"  {t.type_name}AggregateResult aggregate = 2;")
+        lines.append("}")
+        lines.append("")
+
+
 def _visible_commands(si: SchemaInput) -> list[dict]:
     """Commands (tracked functions) visible to this role, deduped by name (REQ-1156).
 
@@ -166,6 +228,8 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     if _needs_timestamp_import(all_columns):
         lines.append('import "google/protobuf/timestamp.proto";')
     lines.append('import "google/protobuf/field_mask.proto";')
+    if any(t.enable_aggregates for t in tables):  # REQ-1359: Query{Type}Aggregate takes Empty
+        lines.append('import "google/protobuf/empty.proto";')
     lines.append("")
 
     # --- Query message (mirrors GraphQL type Query) ---
@@ -242,6 +306,10 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
         lines.append("}")
         lines.append("")
 
+        # REQ-1359: aggregate/group-by protocol parity with GraphQL/JSON:API/REST.
+        if t.enable_aggregates or t.enable_group_by:
+            _emit_aggregate_messages(lines, t)
+
     # --- Mutation input messages ---
     for t in sorted(tables, key=lambda t: t.type_name):
         if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
@@ -307,6 +375,18 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
         lines.append(
             f"  rpc Query{t.type_name}({t.type_name}Request) returns (stream {t.type_name});"
         )
+        # REQ-1359: aggregate/group-by RPCs, gated the same way as GraphQL's
+        # enable_aggregates/enable_group_by root fields.
+        if t.enable_aggregates:
+            lines.append(
+                f"  rpc Query{t.type_name}Aggregate(google.protobuf.Empty) "
+                f"returns ({t.type_name}AggregateResult);"
+            )
+        if t.enable_group_by:
+            lines.append(
+                f"  rpc Query{t.type_name}GroupBy({t.type_name}GroupByRequest) "
+                f"returns (stream {t.type_name}GroupByRow);"
+            )
     for t in sorted(tables, key=lambda t: t.type_name):
         if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
             continue

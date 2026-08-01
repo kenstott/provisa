@@ -138,6 +138,12 @@ class RefreshPolicySummaryType:  # REQ-1143
 
 
 @strawberry.type
+class ImplicitMeasureType:  # REQ-1360: metadata-only Kimball measure annotation
+    column: str
+    agg_funcs: list[str]
+
+
+@strawberry.type
 class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     id: int
     source_id: str
@@ -189,6 +195,11 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     enable_group_by: bool = False
     can_deploy_to_db: bool = False
     live: LiveDeliveryConfigType | None = None
+    # REQ-1360: metadata-only, discoverability annotations derived from the same
+    # numeric/comparable classification build_agg_fields_type uses (REQ-196). Never
+    # governed/reusable — that stays exclusively the named `metrics:` path (REQ-1319).
+    implicit_measures: list[ImplicitMeasureType] = strawberry.field(default_factory=list)
+    implicit_dimensions: list[str] = strawberry.field(default_factory=list)
 
     @strawberry.field
     async def refresh_policy_summary(self) -> RefreshPolicySummaryType | None:  # REQ-1143
@@ -222,6 +233,11 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     is_foreign_key: bool = False
     is_alternate_key: bool = False
     scope: str = "domain"
+    # REQ-1360: metadata-only discoverability flags — set when the owning table has
+    # enable_aggregates/enable_group_by AND this column is eligible per the same
+    # classification build_agg_fields_type (REQ-196) already applies.
+    is_implicit_measure: bool = False
+    is_implicit_dimension: bool = False
 
 
 @strawberry.type

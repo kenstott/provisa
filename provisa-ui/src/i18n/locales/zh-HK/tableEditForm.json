@@ -190,6 +190,8 @@
     "queryBadge": "query",
     "fkBadge": "FK",
     "akBadge": "AK",
+    "measureBadge": "度量",
+    "dimBadge": "維度",
     "maskingTemplateLabel": "↳ 遮罩範本",
     "regexPatternPlaceholder": "正規表達式模式",
     "regexReplacementPlaceholder": "取代文字",

@@ -9532,7 +9532,7 @@ probe_type is the event loop's input-side change-detection axis, orthogonal to t
 
 **Code:** `provisa/core/change_signal.py`, `provisa/core/models.py`, `provisa/events/injector.py`, `provisa/events/boot.py`, `provisa/events/app_wiring.py`, `provisa/events/probes.py`, `provisa/events/handlers.py`, `provisa/federation/residency.py`, `provisa/federation/store_writer.py`, `provisa/federation/freshness_gate.py`
 
-**Tests:** `tests/unit/test_probes.py`, `tests/unit/test_injector.py`, `tests/unit/test_probe_type_config_validation.py`, `tests/unit/test_live_change_gates.py`, `tests/mvmvp/test_mv_triggers_e2e.py`
+**Tests:** `tests/unit/test_probes.py`, `tests/unit/test_injector.py`, `tests/unit/test_probe_type_config_validation.py`, `tests/unit/test_live_change_gates.py`, `tests/mvmvp/test_mv_triggers_integration.py`
 
 ### REQ-983 · Derived / MV Processor {#REQ-983}
 

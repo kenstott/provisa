@@ -190,6 +190,8 @@
     "queryBadge": "consulta",
     "fkBadge": "FK",
     "akBadge": "AK",
+    "measureBadge": "Medida",
+    "dimBadge": "Dimensión",
     "maskingTemplateLabel": "↳ plantilla de enmascaramiento",
     "regexPatternPlaceholder": "patrón regex",
     "regexReplacementPlaceholder": "reemplazo",

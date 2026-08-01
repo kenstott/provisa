@@ -39,27 +39,54 @@ export function OpenApiPage() {
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  // Swagger UI mounts/expands/re-renders each step asynchronously (React tree inside the
+  // iframe); polling for the actual DOM state avoids racing fixed setTimeout delays that fire
+  // before the previous step's render has landed (execute clicked before param inputs exist).
+  const waitFor = useCallback(
+    (predicate: () => boolean, timeoutMs = 2000, intervalMs = 50): Promise<boolean> =>
+      new Promise((resolve) => {
+        const start = Date.now();
+        const tick = () => {
+          if (predicate()) {
+            resolve(true);
+            return;
+          }
+          if (Date.now() - start >= timeoutMs) {
+            resolve(false);
+            return;
+          }
+          setTimeout(tick, intervalMs);
+        };
+        tick();
+      }),
+    [],
+  );
+
   const handleIframeLoad = useCallback(() => {
     if (!autoRun || !openApiUrl) return;
 
     const parts = openApiUrl.trim().split(/\s+/);
     if (parts.length < 2) return;
     const method = parts[0].toLowerCase();
-    const fullPath = parts[1];
+    const [fullPath, fullQuery = ""] = parts[1].split("?");
+    const navParams = new URLSearchParams(fullQuery);
 
-    // Swagger UI renders asynchronously after the iframe load event
-    setTimeout(() => {
+    void (async () => {
       const doc = iframeRef.current?.contentDocument;
       if (!doc) return;
 
       // data-path is relative to the server base (e.g. /pet-store/inquiries),
-      // but NL gives the full path (/data/rest/pet-store/inquiries) — use endsWith
-      const blocks = Array.from(doc.querySelectorAll(".opblock"));
-      const block = blocks.find((b) => {
-        const m = b.querySelector(".opblock-summary-method")?.textContent?.toLowerCase();
-        const dataPath = b.querySelector("[data-path]")?.getAttribute("data-path") ?? "";
-        return m === method && fullPath.endsWith(dataPath);
-      });
+      // but NL gives the full path (/data/rest/pet-store/inquiries) — use endsWith.
+      // REQ-1359: fullPath must have its querystring stripped first, or it never matches.
+      const findBlock = () =>
+        Array.from(doc.querySelectorAll(".opblock")).find((b) => {
+          const m = b.querySelector(".opblock-summary-method")?.textContent?.toLowerCase();
+          const dataPath = b.querySelector("[data-path]")?.getAttribute("data-path") ?? "";
+          return m === method && fullPath.endsWith(dataPath);
+        }) as HTMLElement | undefined;
+
+      await waitFor(() => !!findBlock());
+      const block = findBlock();
       if (!block) return;
 
       block.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -69,11 +96,50 @@ export function OpenApiPage() {
         (block.querySelector(".opblock-summary-control") as HTMLElement)?.click();
       }
 
-      setTimeout(() => {
-        (block.querySelector(".btn.execute.opblock-control__btn") as HTMLElement)?.click();
-      }, 500);
-    }, 1200);
-  }, [autoRun, openApiUrl]);
+      const paramKeys = [...navParams.keys()];
+      await waitFor(() =>
+        paramKeys.every((key) => !!block.querySelector(`tr[data-param-name="${key}"] input, tr[data-param-name="${key}"] select, tr[data-param-name="${key}"] textarea`)),
+      );
+
+      // REQ-1359: populate the try-it-out param inputs (e.g. aggregate/groupBy) from the
+      // NL-forwarded querystring before executing, so the replicated call matches the NL query.
+      navParams.forEach((value, key) => {
+        const row = block.querySelector(`tr[data-param-name="${key}"]`);
+        const input = row?.querySelector("input, select, textarea") as
+          | HTMLInputElement
+          | HTMLSelectElement
+          | HTMLTextAreaElement
+          | null;
+        if (!input) return;
+        const setter = Object.getOwnPropertyDescriptor(
+          input.tagName === "SELECT" ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype,
+          "value",
+        )?.set;
+        setter?.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      // The native-setter + dispatchEvent hack updates the DOM input immediately, but the actual
+      // request Swagger UI builds on execute is driven by its own Redux store, which only picks
+      // up the change a render cycle later. The live curl preview reflects that same store, so
+      // wait for it to show every param before executing — otherwise execute can fire against
+      // the pre-update state even though the inputs already display the right values.
+      await waitFor(() => {
+        const curlText = block.querySelector(".curl-command, .opblock-body pre.curl, .curl")?.textContent ?? "";
+        return [...navParams.entries()].every(([key, value]) => curlText.includes(`${key}=${encodeURIComponent(value)}`));
+      });
+
+      await waitFor(() => !!block.querySelector(".btn.execute.opblock-control__btn"));
+      (block.querySelector(".btn.execute.opblock-control__btn") as HTMLElement | null)?.click();
+
+      await waitFor(() => !!block.querySelector(".responses-wrapper .live-responses-table, .responses-wrapper .microlight"));
+      (block.querySelector(".responses-wrapper") as HTMLElement | null)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    })();
+  }, [autoRun, openApiUrl, waitFor]);
 
   return (
     <div className="openapi-page page">

@@ -62,7 +62,7 @@
       },
       "step13": {
         "title": "Just ask — the surface that writes all seven",
-        "description": "💬 <em>\"show inquiry count by user\"</em><p>🎁 Here's the capstone: <strong>you don't have to learn any of those seven.</strong> Ask in plain English and Provisa compiles your question into every query language at once — each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API, and REST.</p><p>Use the surface your tools already speak — or skip them all and just ask.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model, <strong>eight surfaces</strong> — seven to query, and the one that writes them.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "description": "💬 <em>\"how many pets per species\"</em><p>🎁 Here's the capstone: <strong>you don't have to learn any of those seven.</strong> Ask in plain English and Provisa compiles your question into every query language at once — each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API, and REST.</p><p>Use the surface your tools already speak — or skip them all and just ask.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model, <strong>eight surfaces</strong> — seven to query, and the one that writes them.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
       },
       "step14": {
         "title": "That's the five-minute core",

@@ -31,7 +31,36 @@ from graphql import (
     GraphQLString,
 )
 
+from provisa.api.rest.generator import _agg_fields_map
+
 _WHERE_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "like"]
+
+
+def _agg_result_schema(
+    agg_map: dict[str, list[str]], col_schemas: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Build the OpenAPI schema for an `aggregate { ... }` result object (REQ-1359).
+
+    ``agg_map`` comes from ``_agg_fields_map`` — {func_name: [eligible column names]}.
+    """
+    props: dict[str, Any] = {"count": {"type": "integer"}}
+    for func_name in ("sum", "avg", "stddev", "variance"):
+        cols = agg_map.get(func_name)
+        if cols:
+            props[func_name] = {
+                "type": "object",
+                "properties": {c: {"type": "number", "format": "double"} for c in cols},
+            }
+    for func_name in ("min", "max"):
+        cols = agg_map.get(func_name)
+        if cols:
+            props[func_name] = {
+                "type": "object",
+                "properties": {
+                    c: col_schemas.get(c, {"type": "string"}) for c in cols
+                },
+            }
+    return {"type": "object", "properties": props}
 
 
 def _gql_to_openapi_schema(gql_type: Any) -> dict[str, Any]:
@@ -180,6 +209,32 @@ def generate_rest_openapi_spec(
             },
         }
 
+        # REQ-1359: aggregate/groupBy params + component schemas are only registered for
+        # tables that actually expose {field}_aggregate / {field}_group_by root fields —
+        # same schema-presence gate `_agg_fields_map` uses in the REST generator.
+        col_schemas = dict(columns)
+        agg_map = _agg_fields_map(schema, field_name, group_by=False)
+        gb_agg_map = _agg_fields_map(schema, field_name, group_by=True)
+        agg_result_name = f"{type_name}AggregateResult"
+        group_by_row_name = f"{type_name}GroupByRow"
+
+        if agg_map is not None:
+            components[agg_result_name] = _agg_result_schema(agg_map, col_schemas)
+        if gb_agg_map is not None:
+            if agg_result_name not in components:
+                components[agg_result_name] = _agg_result_schema(gb_agg_map, col_schemas)
+            components[group_by_row_name] = {
+                "type": "object",
+                "properties": {
+                    "groupKey": {
+                        "description": (
+                            "Group-by key value (or array of values for multi-column groupBy)"
+                        )
+                    },
+                    "aggregate": {"$ref": f"#/components/schemas/{agg_result_name}"},
+                },
+            }
+
         parameters: list[dict[str, Any]] = [
             {
                 "name": "limit",
@@ -231,6 +286,31 @@ def generate_rest_openapi_spec(
                 },
             },
         ]
+
+        if agg_map is not None or gb_agg_map is not None:
+            parameters.append(
+                {
+                    "name": "aggregate",
+                    "in": "query",
+                    "schema": {
+                        "type": "string",
+                        "description": "Comma-separated aggregate functions, e.g. count,sum,avg",
+                    },
+                    "description": "Request an aggregate result instead of rows (REQ-1359)",
+                }
+            )
+        if gb_agg_map is not None:
+            parameters.append(
+                {
+                    "name": "groupBy",
+                    "in": "query",
+                    "schema": {
+                        "type": "string",
+                        "description": "Comma-separated column names, e.g. species,breedName",
+                    },
+                    "description": "Group rows by these columns, returning per-group aggregates (REQ-1359)",
+                }
+            )
 
         row_array_schema = {
             "type": "object",

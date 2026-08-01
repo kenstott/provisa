@@ -28,7 +28,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from provisa.api.errors import ApiError
-from provisa.grpc.query_ir import grpc_table_to_semantic_sql
+from provisa.grpc.query_ir import (
+    AGG_FUNCS,
+    grpc_table_to_aggregate_graphql_text,
+    grpc_table_to_group_by_graphql_text,
+    grpc_table_to_semantic_sql,
+    split_agg_columns,
+    split_group_by_columns,
+)
 from provisa.grpc.proto_gen import _to_proto_field_name
 from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
@@ -174,6 +181,71 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
     return JSONResponse(jsonable_encoder(rows))
 
 
+@router.get("/grpc-group-by-columns/{role_id}/{type_name}")
+async def grpc_group_by_columns(role_id: str, type_name: str):  # REQ-1361
+    """List the columns valid in a Query{Type}GroupBy request's ``by`` argument.
+
+    The gRPC Explorer's group-by picker must offer only columns the server's
+    ``{Type}DistinctOnColumn`` enum (the schema's actual source of truth for valid ``by``
+    columns, per ``_build_distinct_on_enum``) accepts — the ``{Type}Filter`` message's field
+    set the picker used before is a different, broader column set and yields runtime 400s.
+    """
+    from graphql import GraphQLEnumType
+
+    from provisa.api.app import state
+    from provisa.grpc.query_ir import _find_table_meta
+
+    if role_id not in state.schemas:
+        raise ApiError(
+            404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+        )
+    ctx = state.contexts[role_id]
+    base_type_name = type_name[: -len("GroupBy")] if type_name.endswith("GroupBy") else type_name
+    meta = _find_table_meta(ctx, base_type_name)
+    if meta is None:
+        return []
+
+    schema = state.schemas[role_id]
+    enum_type = schema.get_type(f"{meta.type_name}DistinctOnColumn")
+    if not isinstance(enum_type, GraphQLEnumType):
+        return []
+    return sorted(enum_type.values)
+
+
+@router.get("/jsonapi-group-by-columns/{role_id}/{domain_id}/{table_name}")
+async def jsonapi_group_by_columns(role_id: str, domain_id: str, table_name: str):  # REQ-1361
+    """List the columns valid in a JSON:API ``?groupBy=`` request for this table.
+
+    Same rationale as ``grpc_group_by_columns``: the ``{Type}DistinctOnColumn`` enum is the
+    schema's actual source of truth for valid ``by`` columns, not the table's full column set.
+    """
+    from graphql import GraphQLEnumType
+
+    from provisa.api.app import state
+
+    if role_id not in state.schemas:
+        raise ApiError(
+            404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+        )
+    ctx = state.contexts[role_id]
+    meta = next(
+        (
+            m
+            for m in ctx.tables.values()
+            if m.domain_id == domain_id and m.table_name == table_name
+        ),
+        None,
+    )
+    if meta is None:
+        return []
+
+    schema = state.schemas[role_id]
+    enum_type = schema.get_type(f"{meta.type_name}DistinctOnColumn")
+    if not isinstance(enum_type, GraphQLEnumType):
+        return []
+    return sorted(enum_type.values)
+
+
 @router.post("/grpc/{type_name}")
 async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
     """Translate an HTTP+JSON request into the gRPC query pipeline and return JSON rows."""
@@ -192,6 +264,84 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
 
     ctx = state.contexts[role_id]
     mask_map = _parse_read_mask(body)
+
+    # REQ-1359: Aggregate/GroupBy synthetic proto type names have no semantic-SQL table match —
+    # route them through the same GraphQL-text synthesis + compile path the native gRPC servicer
+    # (provisa/grpc/server.py::_handle_query_aggregate_bound / _handle_query_group_by_bound) uses,
+    # instead of falling through to grpc_table_to_semantic_sql (which only knows plain tables).
+    if type_name.endswith("Aggregate") or type_name.endswith("GroupBy"):
+        from provisa.compiler.parser import GraphQLValidationError, parse_query
+        from provisa.compiler.sql_gen import compile_query
+        from fastapi.encoders import jsonable_encoder
+
+        schema = state.schemas[role_id]
+        is_group_by = type_name.endswith("GroupBy")
+        # grpc_table_to_*_graphql_text match against the bare table type name (mirrors
+        # server.py's __getattr__, which strips both the "Query" prefix and the
+        # "Aggregate"/"GroupBy" suffix before dispatching) — this endpoint's {type_name} path
+        # param only ever carries the suffix, never the "Query" prefix.
+        base_type_name = type_name[: -len("GroupBy")] if is_group_by else type_name[: -len("Aggregate")]
+
+        # REQ-1361: optional "funcs" body param restricts which aggregate functions are
+        # computed (parity with JSON:API/REST's ?aggregate=count,sum), instead of always
+        # returning every function the schema exposes for the table.
+        funcs = body.get("funcs") or None
+        if funcs is not None:
+            if not isinstance(funcs, list) or any(f not in AGG_FUNCS for f in funcs):
+                raise ApiError(
+                    400,
+                    "data.invalid_aggregate_functions",
+                    f"funcs must be a subset of {list(AGG_FUNCS)!r}",
+                    funcs=funcs,
+                )
+
+        if is_group_by:
+            by_columns = list(body.get("by") or [])
+            gql_text = grpc_table_to_group_by_graphql_text(ctx, base_type_name, by_columns, funcs)
+        else:
+            gql_text = grpc_table_to_aggregate_graphql_text(ctx, base_type_name, funcs)
+
+        if gql_text is None:
+            raise ApiError(
+                404,
+                "data.no_query_field_for_proto_type",
+                f"No query field for proto type {type_name!r} under role {role_id!r}",
+                type_name=type_name,
+                role_id=role_id,
+            )
+
+        try:
+            document = parse_query(schema, gql_text)
+            compiled_queries = compile_query(document, ctx)
+        except GraphQLValidationError as exc:
+            raise ApiError(400, "data.aggregate_query_validation_failed", str(exc)) from exc
+        if not compiled_queries:
+            raise HTTPException(status_code=500, detail="Aggregate/GroupBy compilation failed")
+        compiled = compiled_queries[0]
+
+        try:
+            plan = await _govern_and_route_compiled(
+                compiled.sql, role_id, exec_params=compiled.params or None, state=state
+            )
+            result = await _execute_plan(plan, state)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        if is_group_by:
+            group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
+            out_rows = []
+            for row in result.rows:
+                group_key = {c.field_name: row[i] for c, i in zip(group_key_cols, group_key_idx)}
+                agg_row = tuple(row[i] for i in agg_idx)
+                top, nested = split_agg_columns(agg_cols, agg_row)
+                out_rows.append({"group_key": group_key, "aggregate": {**top, **nested}})
+            return JSONResponse(jsonable_encoder(out_rows))
+
+        row = result.rows[0] if result.rows else ()
+        top, nested = split_agg_columns(compiled.columns, row)
+        return JSONResponse(jsonable_encoder({**top, **nested}))
 
     # Same IR path as the native gRPC servicer (query language → IR → governed IR → plan → physical).
     # Lower the request straight to a semantic SELECT — never round-trip through GraphQL.

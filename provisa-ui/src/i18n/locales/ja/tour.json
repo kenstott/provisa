@@ -62,7 +62,7 @@
       },
       "step13": {
         "title": "質問するだけ — 7つすべてを書いてくれるサーフェス",
-        "description": "💬 <em>「ユーザーごとの問い合わせ数を表示して」</em><p>🎁 これが集大成です：<strong>7つのどれも学ぶ必要はありません。</strong>普通の英語で質問すれば、Provisa はあなたの質問をすべてのクエリ言語に同時にコンパイルします — 以下の各パネルは、その1文を SQL、GraphQL、Cypher、gRPC、JSON:API、REST として表したものです。</p><p>お使いのツールがすでに話せるサーフェスを使うか、それらすべてをスキップして質問するだけでも構いません。</p><p>🔑 ライブの自然言語クエリはご自身の LLM キーを使用します。この例はサンプルです。</p><p>✅ 1つのモデル、<strong>8つのサーフェス</strong> — クエリ用の7つと、それらを書いてくれる1つ。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "description": "💬 <em>「種ごとのペット数を表示して」</em><p>🎁 これが集大成です：<strong>7つのどれも学ぶ必要はありません。</strong>普通の英語で質問すれば、Provisa はあなたの質問をすべてのクエリ言語に同時にコンパイルします — 以下の各パネルは、その1文を SQL、GraphQL、Cypher、gRPC、JSON:API、REST として表したものです。</p><p>お使いのツールがすでに話せるサーフェスを使うか、それらすべてをスキップして質問するだけでも構いません。</p><p>🔑 ライブの自然言語クエリはご自身の LLM キーを使用します。この例はサンプルです。</p><p>✅ 1つのモデル、<strong>8つのサーフェス</strong> — クエリ用の7つと、それらを書いてくれる1つ。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
       },
       "step14": {
         "title": "これが5分でわかるコアです",

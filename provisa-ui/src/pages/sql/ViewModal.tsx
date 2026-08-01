@@ -106,7 +106,7 @@ export function ViewModal({
         opened={viewModal}
         onClose={() => setViewModal(false)}
         title={
-          <Title order={4}>
+          <Title order={4} component="span">
             {canCreateView ? t("sqlViewModal.titleCreate") : t("sqlViewModal.titleRequest")}
           </Title>
         }
@@ -207,7 +207,7 @@ export function ViewModal({
       <Modal
         opened={savedViewId !== null}
         onClose={closeConfirmation}
-        title={<Title order={4}>{t("sqlViewModal.savedTitle")}</Title>}
+        title={<Title order={4} component="span">{t("sqlViewModal.savedTitle")}</Title>}
         centered
         data-testid="view-saved-modal"
       >

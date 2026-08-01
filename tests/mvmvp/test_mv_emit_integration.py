@@ -40,7 +40,7 @@ from provisa.subscriptions.pg_provider import PgNotificationProvider
 from provisa.subscriptions.pg_triggers import _trigger_sql
 from tests.helpers import DsnEngine
 
-pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _COLS = [("id", "bigint"), ("status", "text")]
 _TABLE = {"mv.a": "mv_a", "mv.b": "mv_b", "mv.c": "mv_c", "mv.d": "mv_d"}

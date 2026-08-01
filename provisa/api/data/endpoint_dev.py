@@ -510,6 +510,57 @@ def _build_schema_block(
     return schema_block
 
 
+import re
+
+# REQ-1362: phrase -> aggregate function(s) it implies, checked against the generated SQL after
+# parsing so a plain SELECT that drops the implied aggregate (observed for AVG) triggers a retry
+# instead of silently returning unaggregated rows.
+_AGG_KEYWORD_FUNCS: dict[str, tuple[str, ...]] = {
+    "average": ("AVG",),
+    "avg": ("AVG",),
+    "mean": ("AVG",),
+    "sum": ("SUM",),
+    "total": ("SUM",),
+    "count": ("COUNT",),
+    "number of": ("COUNT",),
+    "how many": ("COUNT",),
+    "minimum": ("MIN",),
+    "lowest": ("MIN",),
+    "smallest": ("MIN",),
+    "maximum": ("MAX",),
+    "highest": ("MAX",),
+    "largest": ("MAX",),
+}
+
+
+def _check_missing_aggregate(question: str, tree) -> str | None:  # REQ-1362
+    """Flag a generated SQL tree that omits an aggregate function implied by the question's
+    phrasing (e.g. "average price" -> AVG). Returns a retry error message, or None if the
+    question implies no aggregate or the SQL already contains a matching one."""
+    from sqlglot import exp
+
+    agg_types_by_name = {
+        "AVG": exp.Avg,
+        "SUM": exp.Sum,
+        "COUNT": exp.Count,
+        "MIN": exp.Min,
+        "MAX": exp.Max,
+    }
+    present = {name for name, cls in agg_types_by_name.items() if tree.find(cls) is not None}
+    q = question.lower()
+    for phrase, funcs in _AGG_KEYWORD_FUNCS.items():
+        if not re.search(r"\b" + re.escape(phrase) + r"\b", q):
+            continue
+        if any(f in present for f in funcs):
+            continue
+        names = "/".join(f"{f}()" for f in funcs)
+        return (
+            f"The question's phrase {phrase!r} implies a {names} aggregate, but the generated "
+            f"SQL contains no {names} call. Wrap the relevant measure column in {names}."
+        )
+    return None
+
+
 async def _run_sql_generation_loop(
     question: str,
     schema_block: str,
@@ -545,7 +596,12 @@ async def _run_sql_generation_loop(
         "appear in the approved joins list above, do not use that join: instead answer with the "
         "closest query the approved joins and available tables can express (e.g. aggregate over "
         "a single table alone, or omit the unsupported side of the relationship).\n"
-        "7. Output only the SQL statement — no explanation, no markdown fences."
+        "7. Aggregate every measure/quantity phrase in the question: 'average'/'mean' -> AVG(), "
+        "'total'/'sum' -> SUM(), 'count'/'number of'/'how many' -> COUNT(), "
+        "'minimum'/'lowest'/'smallest' -> MIN(), 'maximum'/'highest'/'largest' -> MAX(). "
+        "Never return the bare column when the question asks for one of these — wrap it in the "
+        "matching aggregate function.\n"
+        "8. Output only the SQL statement — no explanation, no markdown fences."
     )
 
     _sql_gen = ProviasLLMClient("sql_generation")
@@ -587,6 +643,11 @@ async def _run_sql_generation_loop(
         binding_error = _check_qualifier_binding(tree)
         if binding_error:
             last_error = binding_error
+            continue
+
+        missing_agg_error = _check_missing_aggregate(question, tree)
+        if missing_agg_error:
+            last_error = missing_agg_error
             continue
 
         normalized = rewrite_semantic_to_physical(last_sql, ctx)

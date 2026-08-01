@@ -190,6 +190,8 @@
     "queryBadge": "query",
     "fkBadge": "FK",
     "akBadge": "AK",
+    "measureBadge": "माप",
+    "dimBadge": "आयाम",
     "maskingTemplateLabel": "↳ मास्किंग टेम्पलेट",
     "regexPatternPlaceholder": "regex पैटर्न",
     "regexReplacementPlaceholder": "प्रतिस्थापन",

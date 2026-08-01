@@ -62,7 +62,7 @@
       },
       "step13": {
         "title": "直接問——那個替你寫出全部七種的介面",
-        "description": "💬 <em>「顯示每個使用者的查詢數目」</em><p>🎁 這就是壓軸功能：<strong>你根本不必學習前面那七種介面。</strong>用日常英語提問，Provisa 會將你的問題同時編譯成每一種查詢語言——下面每個面板，都是同一句話對應的 SQL、GraphQL、Cypher、gRPC、JSON:API 及 REST 版本。</p><p>用你的工具已經懂的介面——或者全部略過，直接發問。</p><p>🔑 即時的自然語言查詢使用你自己的 LLM 金鑰；此範例為預錄示範。</p><p>✅ 一個模型，<strong>八種介面</strong>——七種用來查詢，還有一種能寫出全部七種。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "description": "💬 <em>「顯示每個物種的寵物數目」</em><p>🎁 這就是壓軸功能：<strong>你根本不必學習前面那七種介面。</strong>用日常英語提問，Provisa 會將你的問題同時編譯成每一種查詢語言——下面每個面板，都是同一句話對應的 SQL、GraphQL、Cypher、gRPC、JSON:API 及 REST 版本。</p><p>用你的工具已經懂的介面——或者全部略過，直接發問。</p><p>🔑 即時的自然語言查詢使用你自己的 LLM 金鑰；此範例為預錄示範。</p><p>✅ 一個模型，<strong>八種介面</strong>——七種用來查詢，還有一種能寫出全部七種。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
       },
       "step14": {
         "title": "這就是五分鐘的核心內容",

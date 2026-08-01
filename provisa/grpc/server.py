@@ -99,6 +99,23 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
     def __getattr__(self, name: str):
         """Dynamically resolve RPC handler methods like QueryOrders, InsertOrders."""
+        # REQ-1359: Query{Type}Aggregate / Query{Type}GroupBy must resolve BEFORE the generic
+        # Query{Type} branch below — both prefixes also start with "Query".
+        if name.startswith("Query") and name.endswith("Aggregate"):
+            type_name = name[len("Query") : -len("Aggregate")]
+
+            async def query_aggregate_handler(request, context):
+                return await self._handle_query_aggregate(request, context, type_name)
+
+            return query_aggregate_handler
+        if name.startswith("Query") and name.endswith("GroupBy"):
+            type_name = name[len("Query") : -len("GroupBy")]
+
+            async def query_group_by_handler(request, context):
+                async for msg in self._handle_query_group_by(request, context, type_name):
+                    yield msg
+
+            return query_group_by_handler
         if name.startswith("Query"):
             type_name = name[len("Query") :]
             # Convert PascalCase type name to snake_case field name
@@ -373,6 +390,194 @@ class ProvisaServicer:  # REQ-045, REQ-143
         out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
         for row in result.rows:
             yield msg_cls(**_kwargs_for(out_cols, row))
+
+    # --- REQ-1359: aggregate / group-by protocol parity -----------------------------------------
+    # gRPC synthesizes GraphQL query text (query_ir.grpc_table_to_aggregate_graphql_text /
+    # grpc_table_to_group_by_graphql_text) targeting the same {field}_aggregate/{field}_group_by
+    # root fields JSON:API/REST synthesize, then runs it through the identical
+    # parse_query/compile_query/govern/route/execute pipeline — no third, divergent aggregate
+    # implementation.
+
+    _AGG_FUNC_SUFFIX = {
+        "sum": "SumFields",
+        "avg": "AvgFields",
+        "stddev": "StddevFields",
+        "variance": "VarianceFields",
+        "min": "MinFields",
+        "max": "MaxFields",
+    }
+
+    def _split_agg_columns(self, columns, row) -> tuple[dict, dict]:
+        from provisa.grpc.query_ir import split_agg_columns
+
+        return split_agg_columns(columns, row)
+
+    def _build_aggregate_result_message(self, type_name: str, top: dict, nested: dict):
+        """Construct a {Type}AggregateResult message from split (top, nested) aggregate values,
+        reusing the same nested-message shape proto_gen emitted (REQ-1359)."""
+        agg_cls = getattr(self._pb2, f"{type_name}AggregateResult")
+        kwargs = dict(top)
+        for func_name, sub_kwargs in nested.items():
+            suffix = self._AGG_FUNC_SUFFIX.get(func_name)
+            if suffix is None:
+                continue
+            sub_cls = getattr(self._pb2, f"{type_name}{suffix}", None)
+            if sub_cls is None:
+                continue
+            kwargs[func_name] = sub_cls(**sub_kwargs)
+        return agg_cls(**kwargs)
+
+    async def _handle_query_aggregate(self, request, context, type_name: str):
+        """Query{Type}Aggregate (REQ-1359, unary): resolve+bind org, then run the bound aggregate
+        query and map its single result row into the generated {Type}AggregateResult message."""
+        metadata = dict(context.invocation_metadata())
+        role_id = metadata.get("x-provisa-role")
+        if not role_id:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+            return None
+        try:
+            _org_token = await self._bind_org(metadata)
+        except ValueError as exc:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+            return None
+        try:
+            return await self._handle_query_aggregate_bound(request, context, type_name, role_id)
+        finally:
+            if _org_token is not None:
+                from provisa.api.org_runtime import reset_current_org
+
+                reset_current_org(_org_token)
+
+    async def _handle_query_aggregate_bound(self, request, context, type_name: str, role_id: str):
+        from provisa.compiler.parser import GraphQLValidationError, parse_query
+        from provisa.compiler.sql_gen import compile_query
+        from provisa.grpc.query_ir import grpc_table_to_aggregate_graphql_text
+        from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+
+        state = self._state
+        if role_id not in state.contexts or role_id not in state.schemas:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"No schema for role {role_id!r}")
+            return None
+        ctx = state.contexts[role_id]
+        schema = state.schemas[role_id]
+
+        msg_cls = getattr(self._pb2, f"{type_name}AggregateResult", None)
+        if msg_cls is None:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
+            return None
+
+        gql_text = grpc_table_to_aggregate_graphql_text(ctx, type_name)
+        if gql_text is None:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
+            return None
+
+        try:
+            document = parse_query(schema, gql_text)
+        except GraphQLValidationError as exc:
+            await context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
+            return None
+        compiled_queries = compile_query(document, ctx)
+        if not compiled_queries:
+            await context.abort(grpc.StatusCode.INTERNAL, "Aggregate compilation failed")
+            return None
+        compiled = compiled_queries[0]
+
+        try:
+            plan = await _govern_and_route_compiled(
+                compiled.sql, role_id, exec_params=compiled.params or None, state=state
+            )
+        except PermissionError as exc:
+            await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            return None
+        result = await _execute_plan(plan, state)
+        self._emit_license_nag(context)  # REQ-1137
+        row = result.rows[0] if result.rows else ()
+        top, nested = self._split_agg_columns(compiled.columns, row)
+        return self._build_aggregate_result_message(type_name, top, nested)
+
+    async def _handle_query_group_by(self, request, context, type_name: str):
+        """Query{Type}GroupBy (REQ-1359, streaming): resolve+bind org, then stream the bound
+        group-by query's rows as {Type}GroupByRow messages, mirroring _handle_query's org lifecycle."""
+        metadata = dict(context.invocation_metadata())
+        role_id = metadata.get("x-provisa-role")
+        if not role_id:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+            return
+        try:
+            _org_token = await self._bind_org(metadata)
+        except ValueError as exc:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+            return
+        try:
+            async for _m in self._handle_query_group_by_bound(request, context, type_name, role_id):
+                yield _m
+        finally:
+            if _org_token is not None:
+                from provisa.api.org_runtime import reset_current_org
+
+                reset_current_org(_org_token)
+
+    async def _handle_query_group_by_bound(self, request, context, type_name: str, role_id: str):
+        import json
+
+        from provisa.compiler.parser import GraphQLValidationError, parse_query
+        from provisa.compiler.sql_gen import compile_query
+        from provisa.grpc.query_ir import grpc_table_to_group_by_graphql_text
+        from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+
+        state = self._state
+        if role_id not in state.contexts or role_id not in state.schemas:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"No schema for role {role_id!r}")
+            return
+        ctx = state.contexts[role_id]
+        schema = state.schemas[role_id]
+
+        row_cls = getattr(self._pb2, f"{type_name}GroupByRow", None)
+        if row_cls is None or getattr(self._pb2, f"{type_name}AggregateResult", None) is None:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
+            return
+
+        by_columns = list(request.by)
+        gql_text = grpc_table_to_group_by_graphql_text(ctx, type_name, by_columns)
+        if gql_text is None:
+            await context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"No table for type {type_name!r} or empty 'by'"
+                if by_columns
+                else "GroupBy requires at least one 'by' column",
+            )
+            return
+
+        try:
+            document = parse_query(schema, gql_text)
+        except GraphQLValidationError as exc:
+            await context.abort(grpc.StatusCode.NOT_FOUND, str(exc))
+            return
+        compiled_queries = compile_query(document, ctx)
+        if not compiled_queries:
+            await context.abort(grpc.StatusCode.INTERNAL, "Group-by compilation failed")
+            return
+        compiled = compiled_queries[0]
+
+        try:
+            plan = await _govern_and_route_compiled(
+                compiled.sql, role_id, exec_params=compiled.params or None, state=state
+            )
+        except PermissionError as exc:
+            await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            return
+        result = await _execute_plan(plan, state)
+        self._emit_license_nag(context)  # REQ-1137
+
+        from provisa.grpc.query_ir import split_group_by_columns
+
+        group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
+        for row in result.rows:
+            group_key = {c.field_name: row[i] for c, i in zip(group_key_cols, group_key_idx)}
+            agg_row = [row[i] for i in agg_idx]
+            top, nested = self._split_agg_columns(agg_cols, agg_row)
+            agg_msg = self._build_aggregate_result_message(type_name, top, nested)
+            yield row_cls(group_key=json.dumps(group_key, default=str), aggregate=agg_msg)
 
 
 async def start_grpc_server(
