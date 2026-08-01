@@ -25,12 +25,6 @@ from typing import Literal
 
 NlTarget = Literal["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
 
-_NOT_APPLICABLE_RULE = (
-    "If the question cannot be naturally expressed as a {lang} query "
-    "(e.g. it requires features absent from the language), "
-    "respond with exactly the token: NOT_APPLICABLE"
-)
-
 _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
     "cypher": (
         "Generate a read-only Cypher query (no CREATE, MERGE, SET, DELETE, DETACH, REMOVE).\n"
@@ -63,9 +57,9 @@ _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
         "Do NOT prefix table names with any schema or catalog (no 'public.', no catalog qualifiers).\n"
         "Use only tables and columns present in the schema SDL below.\n"
         "Do not use vendor-specific syntax; write standard SQL (postgres dialect).\n"
-        + _NOT_APPLICABLE_RULE.format(lang="SQL")
-        + "\n"
-        "Return only the SQL statement or NOT_APPLICABLE — no explanation, no markdown fences."
+        "SQL can express everything GraphQL and Cypher can and more (GROUP BY, aggregates, joins, "
+        "window functions) — always generate a SQL query. Never respond NOT_APPLICABLE.\n"
+        "Return only the SQL statement — no explanation, no markdown fences."
     ),
 }
 

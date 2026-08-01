@@ -234,7 +234,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         )
         shared_user_nodes = _u_nodes
 
-    _QUERY_TARGETS = {"cypher", "graphql", "sql"}
+    _QUERY_TARGETS = {"cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"}
 
     async def _run_branch(target: NlTarget) -> tuple[NlTarget, str | None, str | None]:
         # Each branch is independent: a failure in one (e.g. SQL generation

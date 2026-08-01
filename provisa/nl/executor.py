@@ -63,6 +63,9 @@ async def execute(
         "cypher": _execute_cypher,
         "graphql": _execute_graphql,
         "sql": _execute_sql,
+        "grpc": _execute_grpc,
+        "jsonapi": _execute_jsonapi,
+        "openapi": _execute_openapi,
     }
     fn = dispatch.get(target)
     if fn is None:
@@ -103,6 +106,7 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     )
     governed_sql = apply_governance(make_semantic_sql(sql_str, ctx), gov_ctx)
     exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
+    exec_sql = _expand_views(exec_sql, app_state)
     physical_sql = app_state.federation_engine.transpile_physical(exec_sql)
     rows = await _run_engine(physical_sql, [], app_state)
     assembled = assemble_rows(rows, graph_vars)
@@ -145,10 +149,12 @@ async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
     for cq in compiled_queries:
         governed = apply_governance(cq.sql, gov_ctx)
         physical = rewrite_semantic_to_catalog_physical(governed, ctx)
+        physical = _expand_views(physical, app_state)
         result = await engine.execute_engine(physical, cq.params)
         if cq.nodes_sql is not None:
             governed_nodes = apply_governance(cq.nodes_sql, gov_ctx)
             physical_nodes = rewrite_semantic_to_catalog_physical(governed_nodes, ctx)
+            physical_nodes = _expand_views(physical_nodes, app_state)
             nodes_result = await engine.execute_engine(physical_nodes, cq.nodes_params)
             serialized = serialize_aggregate(
                 result.rows,
@@ -184,10 +190,70 @@ async def _execute_sql(query: str, role: str, app_state: Any) -> dict:
     )
     governed_sql = apply_governance(make_semantic_sql(query, ctx), gov_ctx)
     exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
+    exec_sql = _expand_views(exec_sql, app_state)
     physical_sql = app_state.federation_engine.transpile_physical(exec_sql)
     rows = await _run_engine(physical_sql, [], app_state)
     columns = list(rows[0].keys()) if rows else []
     return {"columns": columns, "rows": rows}
+
+
+async def _execute_grpc(query: str, role: str, app_state: Any) -> dict:
+    from provisa.grpc.query_ir import grpc_table_to_semantic_sql
+
+    type_name = query[len("Query") :] if query.startswith("Query") else query
+    ctx = _get_ctx(app_state, role)
+    sql = grpc_table_to_semantic_sql(ctx, type_name, limit=20)
+    if sql is None:
+        raise RuntimeError(f"No table matches gRPC type: {type_name}")
+    return await _execute_sql(sql, role, app_state)
+
+
+async def _execute_jsonapi(query: str, role: str, app_state: Any) -> dict:
+    m = re.match(r"^/data/jsonapi/([^/]+)/([^/?]+)", query)
+    if m is None:
+        raise RuntimeError(f"Malformed jsonapi query: {query}")
+    return await _execute_domain_table(m.group(1), m.group(2), role, app_state)
+
+
+async def _execute_openapi(query: str, role: str, app_state: Any) -> dict:
+    m = re.match(r"^GET /data/rest/([^/]+)/([^/?]+)", query)
+    if m is None:
+        raise RuntimeError(f"Malformed openapi query: {query}")
+    return await _execute_domain_table(m.group(1), m.group(2), role, app_state)
+
+
+async def _execute_domain_table(
+    domain_id: str, table_name: str, role: str, app_state: Any
+) -> dict:
+    from provisa.compiler.sql_gen import _q
+    from provisa.compiler.sql_rewrite import _semantic_table_ref
+
+    ctx = _get_ctx(app_state, role)
+    meta = next(
+        (m for m in ctx.tables.values() if m.domain_id == domain_id and m.table_name == table_name),
+        None,
+    )
+    if meta is None:
+        raise RuntimeError(f"No table matches {domain_id}/{table_name}")
+    cols = ", ".join(_q(c) for c, _t in ctx.aggregate_columns.get(meta.table_id, [])) or "*"
+    sql = f"SELECT {cols} FROM {_semantic_table_ref(meta)} LIMIT 20"
+    return await _execute_sql(sql, role, app_state)
+
+
+def _expand_views(sql: str, app_state: Any) -> str:
+    """Inline-expand __derived__ view refs before transpile/execute (REQ-135/REQ-1163).
+
+    Mirrors the pgwire SQL path (provisa/pgwire/_pipeline.py) and the REST/GraphQL
+    path (provisa/api/data/endpoint.py's _prepare_compiled) — without this, a
+    __derived__-sourced table survives rewrite_semantic_to_catalog_physical as a
+    literal "__derived__" catalog reference the engine has no such catalog for.
+    """
+    view_sql_map = getattr(app_state, "view_sql_map", None)
+    if not view_sql_map:
+        return sql
+    from provisa.compiler.view_expand import expand_view_refs
+
+    return expand_view_refs(sql, view_sql_map)
 
 
 def _get_ctx(app_state: Any, role: str) -> Any:

@@ -383,6 +383,22 @@ function ResultTable({ result }: { result: unknown }) {
   const { columns, rows } = result as { columns: string[]; rows: Record<string, unknown>[] };
   if (!rows.length) return <Text size="sm" c="dimmed" fs="italic">{t("nlPage.noRowsReturned")}</Text>;
 
+  const TOP_LIMIT = 100;
+  const BOTTOM_LIMIT = 3;
+  const truncated = rows.length > TOP_LIMIT;
+  const topRows = rows.slice(0, TOP_LIMIT);
+  const bottomRows = truncated
+    ? rows.slice(Math.max(TOP_LIMIT, rows.length - BOTTOM_LIMIT))
+    : [];
+
+  const renderRow = (row: Record<string, unknown>, key: string | number) => (
+    <Table.Tr key={key}>
+      {columns.map((c, j) => (
+        <Table.Td key={j}>{row[c] == null ? "" : String(row[c])}</Table.Td>
+      ))}
+    </Table.Tr>
+  );
+
   return (
     <Paper withBorder radius="sm" style={{ overflow: "auto" }}>
       <Table striped fz="xs">
@@ -394,18 +410,20 @@ function ResultTable({ result }: { result: unknown }) {
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {rows.slice(0, 100).map((row, i) => (
-            <Table.Tr key={i}>
-              {columns.map((c, j) => (
-                <Table.Td key={j}>{row[c] == null ? "" : String(row[c])}</Table.Td>
-              ))}
+          {topRows.map((row, i) => renderRow(row, i))}
+          {truncated && (
+            <Table.Tr>
+              <Table.Td colSpan={columns.length} style={{ textAlign: "center" }}>
+                …
+              </Table.Td>
             </Table.Tr>
-          ))}
+          )}
+          {bottomRows.map((row, i) => renderRow(row, `bottom-${i}`))}
         </Table.Tbody>
       </Table>
-      {rows.length > 100 && (
+      {truncated && (
         <Text size="xs" c="dimmed" px="xs" py={4}>
-          {t("nlPage.showingRows", { shown: 100, total: rows.length })}
+          {t("nlPage.showingRows", { shown: TOP_LIMIT, total: rows.length })}
         </Text>
       )}
     </Paper>

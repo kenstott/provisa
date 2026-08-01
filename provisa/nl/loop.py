@@ -90,9 +90,15 @@ async def generation_loop(  # REQ-355, REQ-356
             continue
 
         generated = generated.strip()
-        # Cypher prompt forbids NOT_APPLICABLE — treat it as a generation failure and retry
-        if generated == "NOT_APPLICABLE" and target != "cypher":
-            return None, "NOT_APPLICABLE"
+        # No target's prompt permits NOT_APPLICABLE (REQ-355/356) — treat a stray one as an
+        # ordinary invalid generation and retry with corrective feedback, same as any compile
+        # failure, instead of bailing out on the LLM's first non-compliant response.
+        if generated == "NOT_APPLICABLE":
+            prior_error = (
+                "NOT_APPLICABLE is not a valid response — this language can express the "
+                "question. Generate the actual query."
+            )
+            continue
         # Strip leading "cypher" keyword some LLMs emit for Cypher queries
         if target == "cypher" and generated.lower().startswith("cypher "):
             generated = generated[7:].lstrip()
