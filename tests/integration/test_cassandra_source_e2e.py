@@ -57,7 +57,9 @@ Cassandra specifics
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import subprocess
 import time
 
@@ -69,7 +71,15 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
-_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", "provisa-itest")
+
+
+def _default_itest_project() -> str:
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    slug = re.sub(r"[^a-z0-9]+", "-", os.path.basename(root).lower()).strip("-") or "repo"
+    return f"provisa-itest-{slug}-{hashlib.sha1(root.encode()).hexdigest()[:6]}"
+
+
+_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", _default_itest_project())
 
 _KEYSPACE = "provisa"
 _TABLE = "widgets"

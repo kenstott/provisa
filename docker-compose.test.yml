@@ -29,6 +29,9 @@ services:
       CLUSTER_ID: 3W4Vn7JTS4yUfx7dcvUlPg
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_LOG_RETENTION_HOURS: 168
+      # Trino's JVM is capped at 8G in an 11.67G Docker VM; without this Kafka's
+      # default 1G heap triggers an OOM kill (exit 137) before health-check passes.
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
     volumes:
       - kafka_test_data:/var/lib/kafka/data
     healthcheck:

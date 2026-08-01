@@ -65,7 +65,7 @@ async def test_bitemporal_view_http_end_to_end(client):
                 materialize: true,
                 mvBitemporalMode: "delta",
                 mvBitemporalKey: ["id"],
-                columns: [{ name: "id", visibleTo: ["public"] }, { name: "amount", visibleTo: ["public"] }]
+                columns: [{ name: "id", visibleTo: ["org_admin", "analyst", "developer"] }, { name: "amount", visibleTo: ["org_admin", "analyst", "developer"] }]
             }) { success message }
         }
         """,

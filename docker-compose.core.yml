@@ -77,7 +77,7 @@ services:
   trino:
     restart: unless-stopped
     image: trinodb/trino:481
-    mem_limit: 8g
+    mem_limit: 7g
     ports:
       - "${TRINO_PORT:-8080}:8080"
     volumes:

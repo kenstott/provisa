@@ -33,19 +33,19 @@ class TestKafkaTopicRead:
         cursor = trino_conn.cursor()
         cursor.execute("SHOW CATALOGS")
         catalogs = [row[0] for row in cursor.fetchall()]
-        assert "support_kafka" in catalogs, "Kafka catalog not configured in Trino"
+        assert "kafka_support" in catalogs, "Kafka catalog not configured in Trino"
 
     async def test_kafka_topic_readable_as_table(self, trino_conn):
         """Read from a Kafka topic table via Trino."""
         cursor = trino_conn.cursor()
-        cursor.execute("SHOW TABLES FROM support_kafka.default")
+        cursor.execute("SHOW TABLES FROM kafka_support.default")
         tables = [row[0] for row in cursor.fetchall()]
         assert tables, "No Kafka topic tables configured"
 
         # Query the first available topic table
         table = tables[0]
         cursor2 = trino_conn.cursor()
-        cursor2.execute(f'SELECT * FROM support_kafka."default"."{table}" LIMIT 5')
+        cursor2.execute(f'SELECT * FROM kafka_support."default"."{table}" LIMIT 5')
         rows = cursor2.fetchall()
         # Should return rows (may be empty if no messages yet)
         assert isinstance(rows, list)
@@ -53,13 +53,13 @@ class TestKafkaTopicRead:
     async def test_kafka_topic_has_columns(self, trino_conn):
         """Kafka topic tables should have schema-defined columns."""
         cursor = trino_conn.cursor()
-        cursor.execute("SHOW TABLES FROM support_kafka.default")
+        cursor.execute("SHOW TABLES FROM kafka_support.default")
         tables = [row[0] for row in cursor.fetchall()]
         assert tables, "No Kafka topic tables"
 
         table = tables[0]
         cursor.execute(
-            f"SELECT column_name FROM support_kafka.information_schema.columns "
+            f"SELECT column_name FROM kafka_support.information_schema.columns "
             f"WHERE table_schema = 'default' AND table_name = '{table}'"
         )
         columns = [row[0] for row in cursor.fetchall()]
@@ -75,13 +75,13 @@ class TestKafkaMessageContent:
     async def test_kafka_messages_have_typed_columns(self, trino_conn):
         """When a schema is defined, messages have typed columns (not just raw bytes)."""
         cursor = trino_conn.cursor()
-        cursor.execute("SHOW TABLES FROM support_kafka.default")
+        cursor.execute("SHOW TABLES FROM kafka_support.default")
         tables = [row[0] for row in cursor.fetchall()]
         assert tables, "No Kafka topic tables"
 
         table = tables[0]
         cursor.execute(
-            f"SELECT column_name, data_type FROM support_kafka.information_schema.columns "
+            f"SELECT column_name, data_type FROM kafka_support.information_schema.columns "
             f"WHERE table_schema = 'default' AND table_name = '{table}' "
             f"AND column_name NOT LIKE '\\_%' ESCAPE '\\'"
         )

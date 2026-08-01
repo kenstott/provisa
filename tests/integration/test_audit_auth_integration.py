@@ -81,21 +81,25 @@ class TestREQ535AnonymousAuth:
     """
 
     def test_anonymous_identity_user_id(self):
-        # REQ-535/REQ-1297: no provider → the username IS the role, defaulting to platform_admin
+        # REQ-535/REQ-1327: no provider → user_id is the fixed string "anonymous";
+        # the role is resolved separately (not the same as the identity label).
         app = _make_app(provider=None)
         client = TestClient(app)
         resp = client.get("/probe")
         assert resp.status_code == 200
-        assert resp.json()["user_id"] == PLATFORM_ADMIN_ROLE
+        assert resp.json()["user_id"] == "anonymous"
 
     def test_anonymous_identity_has_role(self):
-        # REQ-535/REQ-1297: no provider → resolved role defaults to platform_admin (or the
-        # x-provisa-role header)
+        # REQ-535/REQ-1327: no provider → anonymous role defaults to org_admin regardless
+        # of the default_role constructor parameter (data-plane admin; platform_admin is
+        # control-plane only and must not be the unsecured default).
         app = _make_app(provider=None, default_role=PLATFORM_ADMIN_ROLE)
         client = TestClient(app)
         resp = client.get("/probe")
         assert resp.status_code == 200
-        assert resp.json()["role"] == PLATFORM_ADMIN_ROLE
+        from provisa.security.rights import ORG_ADMIN_ROLE
+
+        assert resp.json()["role"] == ORG_ADMIN_ROLE
 
     def test_anonymous_assignment_has_wildcard_domain(self):
         # REQ-535: no provider → RoleAssignment has domain_id="*" (wildcard domain access)

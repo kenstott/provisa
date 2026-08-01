@@ -61,6 +61,14 @@ async def _load_config(tenant_db, _init_schema):
         import yaml
 
         config = parse_config_dict(yaml.safe_load(FIXTURE_CONFIG.read_text()))
+    # The TRUNCATE above also wipes the system-seeded roles (org_admin, platform_admin, ...).
+    # Those are schema.sql's rows, not this config's — role_repo.upsert refuses to (re)write
+    # org_admin/platform_admin from any config (REQ-1349), so a real deployment never TRUNCATEs
+    # them either. Re-run the (idempotent, ON CONFLICT DO NOTHING) seed to restore them before
+    # load_config adds the config-only roles (analyst).
+    await init_schema(tenant_db, SCHEMA_SQL)
+    async with tenant_db.acquire() as conn:
+        await conn.execute("SET search_path TO org_default")
         await load_config(config, conn)
 
 
