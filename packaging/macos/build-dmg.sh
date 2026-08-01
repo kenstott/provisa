@@ -172,7 +172,7 @@ embed_compose() {
   # from source), so the old provisa-source/ + Linux wheelhouse are no longer bundled.
   info "Building React UI..."
   local venv="${SCRIPT_DIR}/.build-venv"
-  "${venv}/bin/pip" install mkdocs-material pymdown-extensions --quiet --upgrade
+  "${venv}/bin/pip" install mkdocs-material pymdown-extensions mkdocs-static-i18n --quiet --upgrade
   (cd "${REPO_ROOT}/provisa-ui" \
     && MKDOCS_BIN="${venv}/bin/mkdocs" PYTHON_BIN="${venv}/bin/python3" \
        npm ci --silent && MKDOCS_BIN="${venv}/bin/mkdocs" PYTHON_BIN="${venv}/bin/python3" npm run build)
