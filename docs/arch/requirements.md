@@ -13919,3 +13919,31 @@ The in-app guided product tour (provisa-ui/src/tour/) is now integrated into the
 **Code:** `provisa-ui/src/tour/tourSteps.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/i18n/locales/`
 
 **Tests:** —
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1359 · Aggregate & Group-by Queries {#REQ-1359}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+gRPC, JSON:API, and OpenAPI query surfaces expose aggregate and group-by capability for tables with `enable_aggregates` and `enable_group_by` flags set, routed through the existing compiler aggregate machinery (provisa/compiler/aggregates.py) rather than per-protocol implementations. JSON:API carries `?aggregate=` and `?groupBy=` query parameters; gRPC and OpenAPI define equivalent request shapes.
+
+**Use case:** Currently, GraphQL/SQL/Cypher surfaces synthesize `{table}_aggregate` and `{table}_group_by` queries via compiler aggregates, while gRPC/JSON:API/OpenAPI only issue raw `SELECT <cols> FROM <table> LIMIT n`, leaving three protocols without aggregate capability. Protocol parity ensures all surfaces can answer the same analytical questions (e.g., "inquiry count by user") without reimplementing aggregation logic per-protocol.
+
+**Code:** `provisa/grpc/query_ir.py`, `provisa/nl/executor.py`, `provisa/compiler/aggregates.py`
+
+**Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1360 · Catalog & Schema Discovery {#REQ-1360}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+When a table has `enable_aggregates` and/or `enable_group_by` flags, the catalog and semantic metadata layer synthesize virtual (metadata-only, non-materialized) dimension-role and measure-role annotations for discovery in the Tables/Model tab, docs, and schema introspection. Group-by-eligible columns are labeled as implicit dimension keys; aggregatable numeric and count columns are labeled as implicit measures. This does not replace governed, reusable metrics (config/provisa-install.yaml `metrics:` block with `visible_to` governance) — only adds metadata for Kimball-style naming and discoverability in UI.
+
+**Use case:** Ad-hoc analytics queries need to surface which columns can be grouped and which can be aggregated to help users explore data without reading schema documentation. Implicit metadata from enable_* flags provides this discovery signal in the UI, complementing explicit metrics governance for formal, reusable, access-controlled measures.
+
+**Code:** `provisa/core/catalog.py`, `provisa/compiler/aggregates.py`
+
+**Tests:** —

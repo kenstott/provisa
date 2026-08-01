@@ -41155,3 +41155,58 @@
     - REQ-1356
     - REQ-1012
     - REQ-1342
+- id: REQ-1359
+  status: complete
+  group: "5. Query Languages, Compilation & Operations"
+  category: Aggregate & Group-by Queries
+  priority: SHOULD
+  type: behavioral
+  since: "2026-08"
+  description: >-
+    gRPC, JSON:API, and OpenAPI query surfaces expose aggregate and group-by capability for tables with
+    `enable_aggregates` and `enable_group_by` flags set, routed through the existing compiler aggregate
+    machinery (provisa/compiler/aggregates.py) rather than per-protocol implementations. JSON:API carries
+    `?aggregate=` and `?groupBy=` query parameters; gRPC and OpenAPI define equivalent request shapes.
+  use_case: >-
+    Currently, GraphQL/SQL/Cypher surfaces synthesize `{table}_aggregate` and `{table}_group_by` queries via
+    compiler aggregates, while gRPC/JSON:API/OpenAPI only issue raw `SELECT <cols> FROM <table> LIMIT n`,
+    leaving three protocols without aggregate capability. Protocol parity ensures all surfaces can answer the
+    same analytical questions (e.g., "inquiry count by user") without reimplementing aggregation logic per-protocol.
+  code:
+    - provisa/grpc/query_ir.py
+    - provisa/nl/executor.py
+    - provisa/compiler/aggregates.py
+  scenario: |
+    Given a table with enable_aggregates: true
+    When a gRPC/JSON:API/OpenAPI client requests an aggregate (sum, count, avg, etc.) on a grouping column
+    Then the request is routed through provisa/compiler/aggregates.py
+    And results are returned with proper aggregate naming parity (e.g., inquiry_count)
+    And gRPC/JSON:API/OpenAPI surfaces feature the same aggregate capabilities as GraphQL/SQL/Cypher
+- id: REQ-1360
+  status: complete
+  group: "3. Source Registration & Data Modeling"
+  category: Catalog & Schema Discovery
+  priority: SHOULD
+  type: structural
+  since: "2026-08"
+  description: >-
+    When a table has `enable_aggregates` and/or `enable_group_by` flags, the catalog and semantic metadata
+    layer synthesize virtual (metadata-only, non-materialized) dimension-role and measure-role annotations for
+    discovery in the Tables/Model tab, docs, and schema introspection. Group-by-eligible columns are labeled
+    as implicit dimension keys; aggregatable numeric and count columns are labeled as implicit measures. This
+    does not replace governed, reusable metrics (config/provisa-install.yaml `metrics:` block with `visible_to`
+    governance) — only adds metadata for Kimball-style naming and discoverability in UI.
+  use_case: >-
+    Ad-hoc analytics queries need to surface which columns can be grouped and which can be aggregated to help
+    users explore data without reading schema documentation. Implicit metadata from enable_* flags provides
+    this discovery signal in the UI, complementing explicit metrics governance for formal, reusable, access-controlled measures.
+  code:
+    - provisa/core/catalog.py
+    - provisa/compiler/aggregates.py
+  scenario: |
+    Given a fact_table with enable_aggregates: true and enable_group_by: true
+    When a user views the table in the Explore UI
+    Then numeric columns and count-eligible fields appear tagged as "Measures"
+    And non-aggregated ID/foreign-key columns appear tagged as "Dimensions"
+    And explicit metrics (visible_to-governed) remain separately discoverable
+    And no new physical tables or materialized views are created
