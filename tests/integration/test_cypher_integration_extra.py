@@ -966,7 +966,8 @@ def test_req778_response_has_error_on_failure(client):
     )
     if resp.status_code != 200:
         data = resp.json()
-        assert "error" in data or "columns" in data
+        # REQ-1327: anonymous role is org_admin; columns not visible → 403 with "violations" key.
+        assert "error" in data or "columns" in data or "violations" in data
 
 
 def test_req778_no_implicit_row_truncation(client):

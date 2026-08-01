@@ -124,8 +124,9 @@ def test_valid_query_returns_columns_and_rows(client):
         data = resp.json()
         assert "columns" in data
         assert "rows" in data
-    elif resp.status_code in (400, 500, 503):
-        # Acceptable: no schema, cross-source error, or Trino catalog unavailable
+    elif resp.status_code in (400, 403, 500, 503):
+        # Acceptable: no schema, cross-source error, Trino catalog unavailable, or
+        # no columns visible to the anonymous role (V003 — org_admin after REQ-1327).
         pass
     else:
         pytest.fail(f"Unexpected status {resp.status_code}: {resp.text}")

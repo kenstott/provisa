@@ -97,6 +97,11 @@ async def _reconcile_mv_store_schemas(
         cols = mv_cols.get(key)
         if not cols:
             continue
+        if getattr(mv, "bitemporal", None) is not None:
+            # REQ-1162: bitemporal MVs manage their own store schema (sys cols included) via
+            # _refresh_bitemporal — reconcile_mv_table only knows business columns and would
+            # drop sys cols (sys_recorded_at, sys_op) on every wiring pass.
+            continue
         try:
             await engine.reconcile_mv_table(
                 schema=mv.target_schema,

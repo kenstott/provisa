@@ -22,7 +22,9 @@ default in docker-compose.core.yml) up to 1 for the module, then back to 0.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -34,10 +36,18 @@ import trino.dbapi
 pytestmark = [pytest.mark.integration]
 
 _REPO_ROOT = Path(__file__).parents[2]
+
+
+def _default_itest_project() -> str:
+    root = os.path.abspath(str(_REPO_ROOT))
+    slug = re.sub(r"[^a-z0-9]+", "-", os.path.basename(root).lower()).strip("-") or "repo"
+    return f"provisa-itest-{slug}-{hashlib.sha1(root.encode()).hexdigest()[:6]}"
+
+
 # Operate on the SAME isolated stack the integration lane provisions (conftest's
 # provisa-itest project on core+test compose) — TRINO_PORT points at THAT
 # coordinator, so the worker must be scaled within THAT project to register.
-_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", "provisa-itest")
+_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", _default_itest_project())
 _COMPOSE_FILES = [
     _REPO_ROOT / "docker-compose.core.yml",
     _REPO_ROOT / "docker-compose.test.yml",
@@ -56,12 +66,14 @@ def _compose(*args: str) -> subprocess.CompletedProcess:
 
 
 def _new_conn() -> trino.dbapi.Connection:
+    # Use system catalog for connections — sales_pg uses localhost:PORT which is unreachable
+    # from inside Trino worker containers; system is always available from any node.
     return trino.dbapi.connect(
         host=_TRINO_HOST,
         port=_TRINO_PORT,
         user="test",
-        catalog="sales_pg",
-        schema="public",
+        catalog="system",
+        schema="runtime",
     )
 
 
@@ -158,14 +170,19 @@ def test_distributed_query_fans_out_to_worker():
         # run demonstrably places a task on the worker — the property under test is "work
         # CAN fan out", which one fan-out run proves; retrying removes the scheduler/warm-up
         # race without weakening the assertion.
+        #
+        # NOTE: the query uses provisa_admin.public (JDBC url=postgres:5432, reachable from inside
+        # Docker worker containers), NOT sales_pg (url=localhost:PORT, unreachable from Trino
+        # containers). provisa_admin connects to the same Postgres DB but via the container-internal
+        # address. public.customers and public.orders are seeded by db/init.sql and always present.
         worker_tasks = 0
         overall_deadline = time.monotonic() + 120
         while time.monotonic() < overall_deadline:
             cur.execute(
                 """
                 SELECT c.region, count(*)
-                FROM sales_pg.public.orders o
-                JOIN sales_pg.public.customers c ON o.customer_id = c.id
+                FROM provisa_admin.public.customers c
+                JOIN provisa_admin.public.orders o ON o.customer_id = c.id
                 GROUP BY c.region
                 """
             )

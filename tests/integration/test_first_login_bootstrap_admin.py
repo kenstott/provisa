@@ -110,6 +110,19 @@ def planes(monkeypatch):
         {"provider": "firebase", "assignments_source": "provisa", "bootstrap_superadmin": True},
         raising=False,
     )
+    # REQ-1337: _loaded_roles() reads state.roles to decide if a role is control-plane (cross_org).
+    # Patch it so is_control_plane_role is deterministic regardless of whether another test (e.g.
+    # test_bitemporal_http_e2e) populated state.roles via create_app().
+    monkeypatch.setattr(
+        app_state,
+        "roles",
+        {
+            "platform_admin": {"capabilities": ["cross_org", "admin", "superadmin"]},
+            "org_admin": {"capabilities": ["user_management", "source_registration"]},
+            "analyst": {"capabilities": ["query_development"]},
+        },
+        raising=False,
+    )
 
     yield admin_db, tenant_db
 
@@ -234,16 +247,19 @@ def test_claim_seats_the_admin_in_both_planes(planes):
 
 
 def test_platform_admin_may_request_the_platform_admin_role(planes):
-    """The role /auth/me offered is the role the server honors — no 403 on the next request."""
+    """Requesting platform_admin when holding both roles is NOT a 403; REQ-1327 redirects to org_admin."""
     admin_db, tenant_db = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         client.post("/auth/claim-bootstrap", headers=_hdr("tok-first"))
         resp = client.get("/whoami", headers=_hdr("tok-first", "platform_admin"))
     assert resp.status_code == 200, resp.text
+    # REQ-1327: platform_admin is a control-plane role (cross_org right) and is NEVER the acting
+    # data role while the caller holds a data-plane role. Requesting it via X-Provisa-Role is
+    # silently redirected to the first data-plane role (org_admin) — no 403.
+    # REQ-1297: the claim seats both — platform_admin for the control plane, org_admin for the
+    # bootstrap org's data plane.
     assert resp.json() == {
-        "role": "platform_admin",
-        # REQ-1297: the claim seats both — platform_admin for the control plane, org_admin for the
-        # bootstrap org's data plane.
+        "role": "org_admin",
         "assigned": ["org_admin", "platform_admin"],
         "active_org_id": _ORG,
     }

@@ -77,7 +77,7 @@ async def server():
         enable_pgwire=True,
         await_flight=True,
         config="tests/fixtures/sample_config.yaml",
-        control_plane="sqlite",
+        control_plane="postgres",  # Trino requires a Postgres control plane (trino_system_catalogs.py)
     )
     srv.start()
     try:

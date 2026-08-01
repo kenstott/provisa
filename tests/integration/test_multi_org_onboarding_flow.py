@@ -172,7 +172,7 @@ def planes(monkeypatch):
     # Stub the Part-1 data-plane build + physical provisioning: this test pins the control plane.
     # build_org_runtime returns the org's tenant Database so grant_org_role lands the org_admin
     # assignment we verify; provision_org (schema/PG-role/Redis) is a no-op.
-    async def _fake_build(org_id, *, include_demo=False):  # noqa: ARG001
+    async def _fake_build(org_id, *, include_demo=False, **_kw):  # noqa: ARG001
         return types.SimpleNamespace(tenant_db=tenant_db)
 
     async def _noop_provision(*_args, **_kwargs):
@@ -257,7 +257,9 @@ def test_full_multi_org_onboarding_lifecycle(planes):
         }
         who = client.get("/whoami", headers={**_basic("super1"), "host": _CONTROL_HOST})
         assert who.status_code == 200, who.text
-        assert who.json()["roles"] == ["platform_admin"]
+        # REQ-1297: _seat_claimant_in_root grants BOTH platform_admin and org_admin; the claimant
+        # holds both — platform_admin for control-plane access, org_admin for data-plane access.
+        assert "platform_admin" in who.json()["roles"]
 
         # 2. person 2 (member-less) self-creates an org from the control-plane host.
         created = client.post(
@@ -362,7 +364,8 @@ def test_second_user_cannot_claim_superadmin(planes):
         assert claimed.json()["claimed"] is True
         first = client.get("/whoami", headers={**_basic("super1"), "host": _CONTROL_HOST})
         assert first.status_code == 200, first.text
-        assert first.json()["roles"] == ["platform_admin"]
+        # REQ-1297: _seat_claimant_in_root grants BOTH platform_admin and org_admin.
+        assert "platform_admin" in first.json()["roles"]
         # REQ-1290: person 2's own claim attempt loses the singleton race — it never displaces the
         # holder, and posting it confers nothing.
         losing = client.post(
