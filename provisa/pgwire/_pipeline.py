@@ -145,7 +145,15 @@ _NON_FTE_SOURCE_TYPES = frozenset({"kafka"})
 
 
 async def _optimize_and_route(
-    exec_sql: str, governed_sql: str, gov_ctx, ctx, state, *, nf_args=None, has_json_extract=False
+    exec_sql: str,
+    governed_sql: str,
+    gov_ctx,
+    ctx,
+    state,
+    *,
+    nf_args=None,
+    has_json_extract=False,
+    is_mutation=False,
 ):
     """REQ-863 post-governance optimization stage (may REMOVE sources) + routing on the reduced
     set — shared by both governed-SQL entrypoints so routing observes the optimized source set,
@@ -188,6 +196,7 @@ async def _optimize_and_route(
         source_dialects=state.source_dialects,
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
+        is_mutation=is_mutation,
     )
     return exec_sql, decision, default_source, optimized, sources
 
@@ -439,6 +448,10 @@ async def _govern_and_route(
     # normalize_table_refs first (sqlglot parse-based): an UNQUOTED semantic ref like
     # `pet_store.inquiries` is invisible to the literal-match rewrite, so it must be
     # parsed, qualified and quoted before rewrite_semantic_to_catalog_physical can lower it.
+    # REQ-031: an UPDATE/DELETE/INSERT/MERGE always routes DIRECT — the engine terminal takes no
+    # writes. decide_route only applies that rule when told; the raw-SQL surfaces (pgwire, /data/sql)
+    # parse the statement themselves, so the type must be passed through explicitly.
+    _is_mutation = isinstance(_parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
     _qualified, decision, _default_source, _optimized, _sources = await _optimize_and_route(
         rewrite_semantic_to_catalog_physical(normalize_table_refs(governed_semantic, ctx), ctx),
         governed_semantic,
@@ -446,6 +459,7 @@ async def _govern_and_route(
         ctx,
         state,
         has_json_extract="->>" in governed_semantic,
+        is_mutation=_is_mutation,
     )
 
     exec_params = embedded_params or None
@@ -558,18 +572,24 @@ async def _govern_and_route(
         if _optimized:
             from provisa.compiler.sql_rewrite import strip_catalog
 
-            sql_to_run = transpile(strip_catalog(_qualified), dialect)
+            _physical = strip_catalog(_qualified)
         else:
             # Lower the semantic model to physical schema.table for the native driver — same as
             # _govern_and_route_compiled's DIRECT branch. Passing governed_semantic verbatim sent
             # an unresolved semantic ref (e.g. "pet_store"."inquiries") to the source.
             from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
 
-            sql_to_run = transpile(rewrite_semantic_to_physical(governed_semantic, ctx), dialect)
+            _physical = rewrite_semantic_to_physical(governed_semantic, ctx)
+        from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES, strip_schema
+
+        _direct_sid = decision.source_id or _default_source
+        if state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES:
+            _physical = strip_schema(_physical)
+        sql_to_run = transpile(_physical, dialect)
         return _Plan(
             route=decision.route,
             sql=sql_to_run,
-            source_id=decision.source_id or _default_source,
+            source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
@@ -960,12 +980,17 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             physical_sql = strip_catalog(_exec_sql)
         else:
             physical_sql = rewrite_semantic_to_physical(governed_sql, ctx)
+        from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES, strip_schema
+
+        _direct_sid = decision.source_id or _default_source
+        if state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES:
+            physical_sql = strip_schema(physical_sql)
         sql_to_run = transpile(physical_sql, dialect)
         return _Plan(
             route=decision.route,
             sql=sql_to_run,
             exec_sql=physical_sql,
-            source_id=decision.source_id or _default_source,
+            source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline

@@ -36,16 +36,25 @@ def _expand_one(sql: str, view_table: str, view_sql: str) -> str:
     """
 
     def repl(m: re.Match) -> str:
+        kw = m.groupdict().get("kw") or ""
         alias = m.group("alias")
         if alias:
-            return f"({view_sql}){alias}"
-        return f"({view_sql}) {view_table}"
+            return f"{kw}({view_sql}){alias}"
+        return f"{kw}({view_sql}) {view_table}"
 
     vt = re.escape(view_table)
     # Catalog-qualified: "catalog"."schema"."view_table" [alias]
     sql = re.sub(rf'"[^"]+"\."[^"]+"\."{vt}"{_ALIAS}', repl, sql)
     # Schema-qualified: "schema"."view_table" [alias]
     sql = re.sub(rf'"[^"]+"\."{vt}"{_ALIAS}', repl, sql)
+    # Unquoted schema-qualified: a view's own definition (e.g. `views.e2e_mv_a`) is raw,
+    # user-typed semantic SQL — never quoted/catalog-rewritten like the outer query is
+    # before this runs. Nested view chains inline that raw text as-is, so a second (or
+    # deeper) level of view reference only ever appears in this unquoted form.
+    sql = re.sub(rf'(?<![\w."])(?P<kw>FROM\s+|JOIN\s+)?[A-Za-z_]\w*\.{vt}\b{_ALIAS}', repl, sql)
+    # Unquoted bare reference (no schema prefix), only directly after FROM/JOIN so a
+    # same-named column or alias elsewhere in the query is never mistaken for the table.
+    sql = re.sub(rf'\b(?P<kw>FROM\s+|JOIN\s+){vt}\b{_ALIAS}', repl, sql)
     return sql
 
 
@@ -55,11 +64,23 @@ def expand_view_refs(sql: str, view_sql_map: dict[str, str]) -> str:  # REQ-135
     For each view table in view_sql_map, replaces a catalog- or schema-qualified
     reference  "catalog"."schema"."view_table" [alias]  with  (view_sql) [alias].
     Shared by the GraphQL/SQL path (via expand_views) and the Cypher path.
+
+    A view may itself reference another (nested) view — e.g. a two-level virtual-view
+    chain (REQ-966/158/133) — so re-expanding runs to a fixed point: each pass may inline
+    text that exposes a further view reference, bounded by map size + 1 to guarantee
+    termination (a cycle could never have validated at view-creation time).
     """
     if not view_sql_map:
         return sql
-    for view_table, view_sql in view_sql_map.items():
-        sql = _expand_one(sql, view_table, view_sql)
+    for _ in range(len(view_sql_map) + 1):
+        changed = False
+        for view_table, view_sql in view_sql_map.items():
+            new_sql = _expand_one(sql, view_table, view_sql)
+            if new_sql != sql:
+                changed = True
+                sql = new_sql
+        if not changed:
+            break
     return sql
 
 

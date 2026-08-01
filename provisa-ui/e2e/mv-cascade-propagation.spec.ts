@@ -89,7 +89,11 @@ async function materialize(page: import("@playwright/test").Page, tableName: str
   if (!(await matCheckbox.isChecked())) await matCheckbox.check();
 
   await page.getByRole("button", { name: /save/i }).first().click();
-  await page.waitForTimeout(500);
+  // handleSaveEdit fires several sequential admin mutations before closing the edit view; a fixed
+  // timeout races them against the next helper's page.goto (which aborts them mid-flight and trips
+  // the uncaught-browser-error check). Wait for the read view's edit button to reappear instead —
+  // it only renders once editingTable is cleared, i.e. after the whole save chain has resolved.
+  await editBtn.waitFor({ timeout: 10000 });
 }
 
 async function deleteTable(page: import("@playwright/test").Page, tableName: string) {
@@ -135,8 +139,9 @@ test("source state change propagates through a two-level materialized-view DAG",
 
     // Mutate the physical source table directly (the SQL Explorer's Run wraps all SQL as a SELECT
     // subquery and cannot execute this UPDATE) and confirm it landed.
-    const updateResult = await runSql(page, "UPDATE pet_store.pets SET price = 999.99 WHERE id = 1");
-    expect(Number(updateResult[0].Count)).toBeGreaterThan(0);
+    await runSql(page, "UPDATE pet_store.pets SET price = 999.99 WHERE id = 1");
+    const updated = await runSql(page, "SELECT price FROM pet_store.pets WHERE id = 1");
+    expect(Number(updated[0].price)).toBeCloseTo(999.99, 2);
 
     // Force the cascade rather than waiting on the default 300s TTL poll: refresh level 1, then level
     // 2 — mirroring the order the real change-signal loop would apply the ripple in.

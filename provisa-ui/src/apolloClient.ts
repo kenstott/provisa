@@ -93,7 +93,13 @@ const schemaVersionLink = new ApolloLink((operation, forward) =>
     if (stored !== null && stored !== version) {
       localStorage.setItem(SCHEMA_VERSION_KEY, version);
       _resetting = true;
-      client.resetStore().finally(() => { _resetting = false; });
+      // resetStore() refetches every active watchQuery app-wide; a navigation away mid-refetch
+      // aborts them and rejects this promise. Nothing awaits it (it's fired from a response
+      // interceptor), so an unhandled rejection would otherwise surface as an uncaught page error.
+      client
+        .resetStore()
+        .catch(() => {})
+        .finally(() => { _resetting = false; });
     } else if (stored === null) {
       localStorage.setItem(SCHEMA_VERSION_KEY, version);
     }

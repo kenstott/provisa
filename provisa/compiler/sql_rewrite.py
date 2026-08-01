@@ -338,4 +338,27 @@ def strip_catalog(sql: str) -> str:  # REQ-863
     return tree.sql(dialect="postgres")
 
 
+# Source types with no real schema namespace: the DIRECT connection is already scoped to one
+# specific physical file/database, so a schema qualifier is purely Provisa's own catalog
+# convention and has nothing to resolve against on the wire (REQ-1361).
+FLAT_NAMESPACE_SOURCES: frozenset[str] = frozenset({"sqlite"})
+
+
+def strip_schema(sql: str) -> str:  # REQ-1361
+    """Drop the schema segment from every table ref: "schema"."table" → "table".
+
+    Structural, AST-only, mirrors strip_catalog: used to lower a DIRECT-routed mutation/query onto
+    a FLAT_NAMESPACE_SOURCES driver (sqlite via the generic SQLAlchemy fallback), whose connection
+    is already scoped to the one physical file — the schema segment is unresolvable there.
+    """
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    for tbl in tree.find_all(exp.Table):
+        if tbl.args.get("db") is not None:
+            tbl.set("db", None)
+    return tree.sql(dialect="postgres")
+
+
 # --- Main compilation ---

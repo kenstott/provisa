@@ -131,10 +131,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setLoading(true);
     // tables/sources/domains/roles come from useQuery subscribers; refetch revalidates
     // their caches. Settings is still an imperative REST read (fetch(), not GraphQL).
-    refetchTables();
-    refetchSources();
-    refetchDomains();
-    refetchRoles();
+    // These refetches outlive this callback (a subsequent navigation can abort them in
+    // flight), so an unhandled rejection here becomes an uncaught error in the page —
+    // Apollo's own error state already reflects the failure, so just swallow it.
+    refetchTables().catch(() => {});
+    refetchSources().catch(() => {});
+    refetchDomains().catch(() => {});
+    refetchRoles().catch(() => {});
     fetchSettings()
       .then((st) => setSettings(st))
       .finally(() => setLoading(false));

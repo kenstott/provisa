@@ -245,6 +245,7 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
     from provisa.api.app import state
     from provisa.executor.drivers.registry import has_driver
     from provisa.transpiler.router import VIRTUAL_SOURCES
+    from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
     from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
 
     # Catalog names + source types must exist before pools/domains read them (idempotent — also
@@ -252,25 +253,30 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
     _populate_source_catalog_names(config)
 
     for src in config.sources:
-        # Engine-attached sources (file-based sqlite, NoSQL, lake) are reached only through the
-        # engine's ATTACH — they have no network direct pool. Attempting one builds an invalid DSN
-        # (e.g. sqlite has a file ``path``, not host/port) and would leave the source routable-as-
-        # direct with no driver behind it. Never pool them; the router routes them to the engine.
-        if has_driver(src.type.value) and src.type.value not in VIRTUAL_SOURCES:
+        # Engine-attached sources (NoSQL, lake) are reached only through the engine's ATTACH — they
+        # have no direct driver at all. FLAT_NAMESPACE_SOURCES (sqlite) DO have a direct driver (the
+        # generic SQLAlchemy fallback, REQ-031/REQ-1361: mutations always route direct, and the
+        # engine terminal takes no writes) — they just connect by file ``path``, not host/port, so
+        # they need the pool built from that field instead of skipping registration entirely.
+        _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
+        if has_driver(src.type.value) and (src.type.value not in VIRTUAL_SOURCES or _is_flat_file):
             resolved_pw = resolve_secrets(src.password)
-            resolved_host = resolve_secrets(src.host) if src.host else "localhost"
-            state.source_dsns[src.id] = f"{resolved_host}:{src.port}/{src.database}"
+            resolved_host = "" if _is_flat_file else (resolve_secrets(src.host) if src.host else "localhost")
+            resolved_database = (src.path or src.database) if _is_flat_file else src.database
+            state.source_dsns[src.id] = (
+                resolved_database if _is_flat_file else f"{resolved_host}:{src.port}/{src.database}"
+            )
             # Best-effort: an unreachable/misconfigured source must not abort startup —
             # the engine-routed path still works. See startup_resilience.
             with tolerate_startup_failure(
-                f"direct pool for {src.id!r} ({resolved_host}:{src.port})"
+                f"direct pool for {src.id!r} ({resolved_database if _is_flat_file else f'{resolved_host}:{src.port}'})"
             ):
                 await state.source_pools.add(
                     source_id=src.id,
                     source_type=src.type.value,
                     host=resolved_host,
                     port=src.port,
-                    database=src.database,
+                    database=resolved_database,
                     user=src.username,
                     password=resolved_pw,
                     min_size=src.pool_min,

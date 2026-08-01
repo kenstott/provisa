@@ -14,6 +14,7 @@ from __future__ import annotations
 
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 import strawberry
@@ -917,7 +918,10 @@ async def resolve_available_columns_metadata(
             )
             for c in cols
         ]
-    catalog = state.catalog_for(source_id)
+    # A __derived__ virtual view has no registered source and thus no catalog_for() entry — it's
+    # physically materialized in the view catalog (same pattern as table_profile_router.py:88).
+    view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
+    catalog = view_catalog if source_id == DERIVED_SOURCE_ID else state.catalog_for(source_id)
     cols_meta: list[AvailableColumnType] = []
     with discovery_fallback(f"engine column metadata for {source_id!r}.{schema_name}.{table_name}"):
         # PK columns + column metadata via the engine terminal (information_schema).
