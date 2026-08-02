@@ -41265,3 +41265,37 @@
   related_reqs:
   - REQ-1320
   - REQ-1360
+- id: REQ-1362
+  status: complete
+  since: 2026-08
+  group: 10. UI & Admin Surfaces
+  category: Product Tour
+  priority: SHOULD
+  type: behavioral
+  description: In demo mode, all application page chunks must be preloaded and compiled before the guided
+    product tour begins showing any steps. This prevents the tour popover from displaying over a destination
+    page stuck in a loading state.
+  use_case: Product tours require destination pages to be ready for display when the tour navigates to them.
+    Pre-loading ensures a smooth tour experience without popover overlays appearing over in-flight page
+    loads.
+  code:
+  - provisa-ui/src/pageChunks.ts
+  - provisa-ui/src/tour/useTour.tsx
+  - provisa-ui/src/tour/tourSteps.ts
+  tests:
+  - provisa-ui/e2e/tour-page-preload.spec.ts
+  scenario: 'Given a user initiates the guided product tour in demo mode
+
+    When startTour() is called
+
+    Then all page chunks are prefetched and compiled before step 0 is shown
+
+    And each tour step''s readySelector validates destination page content is loaded before the highlight
+    is displayed
+
+    And the tour popover never appears over a page in a loading state
+
+    '
+  e2e: true
+  e2e_reason: Tour step display timing relative to destination page rendering is only verifiable through
+    full end-to-end UI interaction with the tour system navigating between pages.

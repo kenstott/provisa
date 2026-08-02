@@ -13960,4 +13960,16 @@ On the Tables list page (provisa-ui/src/pages/TablesPage.tsx), when a table has 
 
 **Code:** `provisa-ui/src/pages/TablesPage.tsx`
 
-**Tests:** `provisa-ui/e2e/tables-enable-aggregates.spec.ts`
+**Tests:** `provisa-ui/e2e/tables-enable-aggregates.spec.ts`, `tests/unit/test_nl_aggregation_routing.py`
+
+### REQ-1362 · Product Tour {#REQ-1362}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+In demo mode, all application page chunks must be preloaded and compiled before the guided product tour begins showing any steps. This prevents the tour popover from displaying over a destination page stuck in a loading state.
+
+**Use case:** Product tours require destination pages to be ready for display when the tour navigates to them. Pre-loading ensures a smooth tour experience without popover overlays appearing over in-flight page loads.
+
+**Code:** `provisa-ui/src/pageChunks.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/tourSteps.ts`
+
+**Tests:** `provisa-ui/e2e/tour-page-preload.spec.ts`

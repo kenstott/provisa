@@ -25,6 +25,7 @@ import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
 import { TOUR_STEPS, type TourStep } from "./tourSteps";
+import { prefetchAllPageChunks } from "../pageChunks";
 
 const TOUR_SEEN_KEY = "provisa_tour_seen";
 
@@ -320,6 +321,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
           const trigger = await waitForElement(step.clickBefore);
           trigger.click();
         }
+        // Gate on the destination page's own content, not just `step.element` — that selector
+        // is sometimes a persistent-shell anchor (navbar/subnav) that exists before the page has
+        // finished loading its data, which would otherwise show the popover over a page still
+        // stuck on its own "Loading…" state.
+        if (step.readySelector) {
+          await waitForElement(step.readySelector);
+        }
         const element = await waitForElement(step.element);
         if (cancelled || !driverRef.current) return;
         // Expand a native <select> into an inline list box so its options and
@@ -397,6 +405,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
   }, [activeStep, navigate, endTour, t]);
 
   // Start the tour. Resumes from saved progress by default; pass { restart: true } to force step 0.
+  //
+  // The tour hops between surfaces faster than a step's own destination can pay its first-visit
+  // route-chunk fetch/parse, so a step can end up highlighting a persistent-shell element (navbar/
+  // subnav) while the destination page is still compiling underneath — the popover shows over a
+  // page stuck on its own "Loading…" state. Awaiting every page chunk before the first step removes
+  // that source of the race; the in-flight guard (`driverRef.current` set immediately) still blocks
+  // a double-start from a second click during the wait.
   const startTour = useCallback((opts?: { restart?: boolean }) => {
     if (driverRef.current) return;
     currentPathRef.current = "";
@@ -420,7 +435,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
         }
       },
     });
-    setActiveStep(opts?.restart ? 0 : (tourResumeStep() ?? 0));
+    void prefetchAllPageChunks().then(() => {
+      // The wait may have outlasted a dismissal (e.g. immediate Esc) — don't resurrect it.
+      if (!driverRef.current) return;
+      setActiveStep(opts?.restart ? 0 : (tourResumeStep() ?? 0));
+    });
   }, []);
 
   return (

@@ -20,6 +20,7 @@ import { OnboardGate } from "./components/OnboardGate";
 import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
 import { fetchSetupStatus } from "./api/setup";
 import { TourProvider, useTour, hasSeenTour } from "./tour/useTour";
+import { prefetchPageChunksOnIdle } from "./pageChunks";
 import "./App.css";
 
 const SourcesPage = lazy(() => import("./pages/SourcesPage").then((m) => ({ default: m.SourcesPage })));
@@ -49,26 +50,6 @@ const OpenApiPage = lazy(() => import("./pages/OpenApiPage").then((m) => ({ defa
 const McpExplorePage = lazy(() =>
   import("./pages/McpExplorePage").then((m) => ({ default: m.McpExplorePage })),
 );
-
-// Route chunks are code-split (lazy above), so the first visit to each surface pays a chunk
-// fetch/parse — worst on the Query/SQL/gRPC editors, which pull Monaco (multi-MB). Warm every
-// page chunk on idle after first paint so navigation is instant. Vite dedupes modules by
-// resolved id, so these glob loaders hit the SAME chunks as the lazy() imports above (and drag
-// Monaco in via the editor pages). Lazy by default — the functions trigger the import when called.
-const PAGE_CHUNK_LOADERS = import.meta.glob("./pages/*.tsx");
-
-function prefetchPageChunksOnIdle(): () => void {
-  const schedule =
-    typeof window.requestIdleCallback === "function"
-      ? window.requestIdleCallback
-      : (cb: () => void) => window.setTimeout(cb, 200);
-  const cancel =
-    typeof window.cancelIdleCallback === "function" ? window.cancelIdleCallback : window.clearTimeout;
-  const handle = schedule(() => {
-    for (const load of Object.values(PAGE_CHUNK_LOADERS)) void load();
-  });
-  return () => cancel(handle as number);
-}
 
 function NotAuthorized() {
   return <div className="page">You do not have permission to view this page.</div>;

@@ -62,6 +62,13 @@ export interface TourStep {
    * undo `clickBefore`, e.g. cancelling the form or closing a modal.
    */
   clickAfterNext?: string;
+  /**
+   * Selector awaited *before* highlighting `element`, without being the highlight
+   * target itself — used when `element` lives in a persistent shell (e.g. the
+   * navbar) and would otherwise resolve instantly on route change, showing the
+   * popover over a destination page that's still loading its own data.
+   */
+  readySelector?: string;
 }
 
 const SOURCES_ADD = '[data-tour="sources-add"]';
@@ -103,6 +110,11 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/tables",
     element: '[data-tour="nav-tables"]',
+    // nav-tables lives in the always-mounted NavBar, so it resolves the instant navigation
+    // happens — before TablesPage has finished loading. Gate on tables-add (page content,
+    // rendered only past TablesPage's loading state) so the popover doesn't appear over a
+    // page still stuck on "Loading tables…".
+    readySelector: '[data-tour="tables-add"]',
     key: "step4",
   },
   {
