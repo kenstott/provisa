@@ -121,6 +121,14 @@ def planes(monkeypatch):
 
     yield admin_db, tenant_db, sync_engine, grants
 
+    # This flow registers orgs into the process-global org_registry via the stubbed
+    # build_org_runtime above (a bare SimpleNamespace with no federation_engine). Unlike
+    # the monkeypatch.setattr() calls, those registrations aren't auto-reverted — leaving
+    # them in the registry crashes app shutdown for every later test in the same process
+    # (REQ-1266). invalidate() is a safe no-op for org IDs never actually registered.
+    for _oid in ("carolco", "dupe", "nope"):
+        app_state.org_registry.invalidate(_oid)
+
     with sync_engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_ADMIN_SCHEMA} CASCADE"))
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_TENANT_SCHEMA} CASCADE"))

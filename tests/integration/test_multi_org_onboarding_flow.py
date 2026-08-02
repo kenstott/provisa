@@ -185,6 +185,12 @@ def planes(monkeypatch):
 
     yield admin_db, tenant_db, sync_engine
 
+    # The onboarding flow registers org "acme" into the process-global org_registry via the
+    # stubbed build_org_runtime above (a bare SimpleNamespace with no federation_engine). Unlike
+    # the monkeypatch.setattr() calls, that registration isn't auto-reverted — leaving "acme"
+    # in the registry crashes app shutdown for every later test in the same process (REQ-1266).
+    app_state.org_registry.invalidate("acme")
+
     with sync_engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_ADMIN_SCHEMA} CASCADE"))
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_TENANT_SCHEMA} CASCADE"))
