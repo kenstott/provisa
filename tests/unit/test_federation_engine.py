@@ -242,7 +242,11 @@ def test_swapping_engine_swaps_reachability():
 # ---- mechanism is fixed by the connector (REQ-841/842) ----------------------
 
 
-def test_trino_postgres_attach_details():
+def test_trino_postgres_attach_details(monkeypatch):
+    # Clear the Docker-internal redirect env vars (set by conftest for integration tests)
+    # so this unit test exercises the native source.host/port path.
+    monkeypatch.delenv("PROVISA_ENGINE_CONTROL_PLANE_HOST", raising=False)
+    monkeypatch.delenv("PROVISA_ENGINE_CONTROL_PLANE_PORT", raising=False)
     entry = build_trino_engine().resolve(_PG)
     assert entry.mechanism is Mechanism.ATTACH_RW
     assert entry.engine == "trino" and entry.source_type == "postgresql"

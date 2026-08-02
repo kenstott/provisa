@@ -75,6 +75,31 @@ class TrinoPostgresConnector(_TrinoJdbcConnector):
     trino_connector = "postgresql"
     materialized_store = True  # REQ-846: PG is the one proven materialized store today
 
+    def details(self, source: Source) -> dict:
+        import os
+
+        from provisa.core.secrets import resolve_secrets
+
+        host = resolve_secrets(source.host or "")
+        port = source.port
+        # REQ-ITEST: Trino runs inside Docker; source.host may be 'localhost' (host-visible
+        # address) which is unreachable from inside the coordinator/worker containers.
+        # PROVISA_ENGINE_CONTROL_PLANE_HOST/PORT redirect catalog JDBC URLs to the
+        # Docker-internal address (e.g. 'postgres:5432') — identical to what
+        # trino_system_catalogs.engine_visible_address() does for system catalogs.
+        # Not set in production → no behaviour change.
+        host = os.environ.get("PROVISA_ENGINE_CONTROL_PLANE_HOST", host)
+        port = int(os.environ.get("PROVISA_ENGINE_CONTROL_PLANE_PORT", port or 5432))
+        jdbc_url = source.jdbc_url(host=host, port=port)
+        if not jdbc_url:
+            return {}
+        return {
+            "connection-url": jdbc_url,
+            "connection-user": resolve_secrets(source.username or ""),
+            "connection-password": resolve_secrets(source.password or ""),
+            "statistics.enabled": "false",
+        }
+
 
 class TrinoMysqlConnector(_TrinoJdbcConnector):
     source_type = "mysql"

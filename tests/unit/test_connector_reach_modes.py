@@ -73,6 +73,30 @@ def test_scan_and_attach_both_read_in_place_direct_fetch_do_not():  # REQ-951
     assert WarehouseNativeConnector("wh", "wh").reads_in_place is False  # DIRECT
 
 
+def test_postgres_connector_uses_engine_visible_host_when_env_set(monkeypatch):
+    """TrinoPostgresConnector.details() must use PROVISA_ENGINE_CONTROL_PLANE_HOST/PORT
+    instead of source.host/port when those env vars are set.  Without this, every
+    in-process app lifespan (provision_infra → create_catalog) rewrites the Trino
+    catalog with 'localhost:<PG_PORT>' which is unreachable from inside the Trino
+    container — breaking all sales_pg.* queries for subsequent test modules."""
+    monkeypatch.setenv("PROVISA_ENGINE_CONTROL_PLANE_HOST", "postgres")
+    monkeypatch.setenv("PROVISA_ENGINE_CONTROL_PLANE_PORT", "5432")
+    src = Source(
+        id="sales-pg",
+        type=SourceType.postgresql,
+        host="localhost",
+        port=59999,  # ephemeral host-published port; wrong from inside Docker
+        database="provisa",
+        username="provisa",
+        password="provisa",
+    )
+    details = TrinoPostgresConnector().details(src)
+    # Must use the engine-visible address (postgres:5432), not localhost:59999
+    assert "localhost" not in details["connection-url"], details["connection-url"]
+    assert "postgres" in details["connection-url"], details["connection-url"]
+    assert ":5432/" in details["connection-url"], details["connection-url"]
+
+
 def test_runtime_deps_are_structured_by_provider():  # REQ-948
     # A bundled driver (Provisa ships it) is not operator-provided → not shown disabled/BYO.
     dep = MysqlFdwConnector().runtime_deps[0]
