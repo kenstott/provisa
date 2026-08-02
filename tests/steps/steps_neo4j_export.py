@@ -250,6 +250,10 @@ def _make_request(headers: dict[str, str] | None = None) -> Any:
     req = MagicMock()
     req.headers = headers or {}
     req.query_params = {}
+    # REQ-486: role resolution reads request.state.role (settled by AuthMiddleware from
+    # X-Provisa-Role on an unsecured server), not headers directly — mirror that here.
+    req.state = MagicMock()
+    req.state.role = (headers or {}).get("x-provisa-role")
     return req
 
 

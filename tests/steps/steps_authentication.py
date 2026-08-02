@@ -48,6 +48,7 @@ from pytest_bdd import given, scenarios, then, when
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.models import AuthIdentity
 from provisa.auth.superuser import check_superuser
+from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
 scenarios("../features/REQ-121.feature")
 scenarios("../features/REQ-122.feature")
@@ -1047,7 +1048,9 @@ def superuser_authenticates(shared_data: dict) -> None:
     shared_data["superuser_auth_result"] = result
 
 
-@then("they receive admin role and all capabilities regardless of the configured auth provider")
+@then(
+    "they receive platform_admin role and all capabilities regardless of the configured auth provider"
+)
 def superuser_receives_admin_role(shared_data: dict) -> None:
     result = shared_data["superuser_auth_result"]
 
@@ -1055,8 +1058,8 @@ def superuser_receives_admin_role(shared_data: dict) -> None:
     assert isinstance(result, AuthIdentity), (
         f"check_superuser must return an AuthIdentity; got {type(result)}"
     )
-    assert "admin" in result.roles, (
-        f"Superuser must have the 'admin' role; got roles={result.roles}"
+    assert PLATFORM_ADMIN_ROLE in result.roles, (
+        f"Superuser must have the '{PLATFORM_ADMIN_ROLE}' role; got roles={result.roles}"
     )
     assert result.user_id == _SUPERUSER_USERNAME, (
         f"Superuser identity user_id must be {_SUPERUSER_USERNAME!r}; got {result.user_id!r}"
@@ -1098,7 +1101,8 @@ def any_request_arrives(shared_data: dict) -> None:
 
 
 @then(
-    "it is treated as a role identity (admin by default) with all roles and wildcard domain access"
+    "it is treated as the anonymous dev principal with role org_admin by default, "
+    "all roles, and wildcard domain access"
 )
 def role_identity_admin_default(shared_data: dict) -> None:
     response = shared_data["anon_response"]
@@ -1108,11 +1112,12 @@ def role_identity_admin_default(shared_data: dict) -> None:
     )
 
     body = response.json()
-    # REQ-535: with no auth provider the username IS the role, defaulting to "admin".
-    assert body["user_id"] == "admin", (
-        f"Dev-mode identity user_id must equal the role 'admin'; got {body['user_id']!r}"
+    # REQ-1327: dev-mode identity is the fixed anonymous principal; the role
+    # defaults to org_admin (the data-plane administrator), not the username.
+    assert body["user_id"] == "anonymous", (
+        f"Dev-mode identity user_id must be 'anonymous'; got {body['user_id']!r}"
     )
-    assert "admin" in body["roles"], (
-        f"Dev-mode identity roles must include 'admin'; got {body['roles']}"
+    assert ORG_ADMIN_ROLE in body["roles"], (
+        f"Dev-mode identity roles must include '{ORG_ADMIN_ROLE}'; got {body['roles']}"
     )
     shared_data["anon_identity_response"] = body
