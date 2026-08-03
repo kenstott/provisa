@@ -398,7 +398,7 @@
         "source" : "AMNDT_IND"
       }
     },
-    "modelUri" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T/govdata-model2898799993976654166.json",
+    "modelUri" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T/govdata-model1940063055818901432.json",
     "baseDirectory" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T",
     "views" : [ {
       "name" : "active_candidates",
@@ -419,7 +419,7 @@
     "actualSchemaName" : "fec",
     "autoDownload" : false,
     "s3Config" : {
-      "accessKeyId" : "****e63b",
+      "accessKeyId" : "****e4dc",
       "secretAccessKey" : "********",
       "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
       "region" : "auto"
@@ -2772,6 +2772,6 @@
     "dataSource" : "fec"
   },
   "parentSchema" : "",
-  "generatedAt" : "2026-07-04T23:33:45.876705Z",
+  "generatedAt" : "2026-08-02T05:54:29.682682Z",
   "schemaName" : "fec"
 }
